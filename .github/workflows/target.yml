@@ -1,0 +1,292 @@
+name: Target
+
+# One target leg: one release on one architecture, from its prefix build to its verdict. release.yml calls this
+# workflow once for each entry of the target list (scripts/supported-targets.py, legs_own and legs_shared), with
+# strategy.matrix. Inside the leg, needs chains the stages, so a slow or failed target holds up no other target:
+#
+#   1. prefix     builds a Git checkout of ref into a prefix in a docker container of the target's image
+#                 (.github/actions/build-prefix). A target whose prefix is a shared prefix gets it from the shared
+#                 stage of release.yml instead, and a target without an own prefix installs the shared packages
+#   2. packages   writes the packages of the target's lane from that prefix with pkgsmith. A target without a lane
+#                 installs the shared packages that release.yml wrote, so it has no packages job here
+#   3. test       the package suite (scripts/run-package-tests.sh, design/package-testing.md): static checks, install,
+#                 upgrade and removal in clean containers of the release, a headless session and a signed repository
+#   4. graphical  the graphical VM test (.github/actions/graphical-test, design/graphical-testing.md) on the
+#                 architecture of the target: a QEMU guest of the release's cloud image boots, installs the packages
+#                 and runs a real session. It runs after the suite, whatever its result, when the packages exist
+#   5. verdict    writes one artifact, verdict-<tag>-<slug>-<arch>, with the record of every stage. The release gate
+#                 (tests/packages/gate.py) reads the verdicts of every leg
+#
+# A stage runs only when the stage before it wrote its output: a stage after a failed one does not run, and the gate
+# reports it as "not run: <stage> failed". Each job records its own status (job.status) as the output "status" in its
+# last step, because an experimental target's jobs have continue-on-error, and then needs.<job>.result says success
+# for a failed job.
+#
+# The jobs run on the host and start the target's image with docker, not with container:. JavaScript actions
+# (checkout, upload-artifact) do not run in every image, such as Alpine on an arm64 runner (actions/runner#1637), the
+# graphical job needs /dev/kvm of the host for its guest, and the package suite starts clean containers of its own.
+#
+# No job names a release, an image or a distribution: everything is a field of the target.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: One leg of scripts/supported-targets.py (legs_own or legs_shared), as JSON
+        type: string
+        required: true
+      matrix:
+        description: Every target on every architecture (the matrix output), for the package suite
+        type: string
+        required: true
+      ref:
+        description: Branch, tag or commit to build, and that holds the scripts
+        type: string
+        required: true
+      release_tag:
+        description: Release tag, or commit-<sha> for a dry run. Names the artifacts.
+        type: string
+        required: true
+      version:
+        description: Nightly version to give the checkout. Empty builds the version in the tree.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prefix:
+    if: fromJSON(inputs.target).prefix == 'own' && fromJSON(inputs.target).prefix_artifact == 'prefix'
+    runs-on: ${{ fromJSON(inputs.target).runner }}
+    continue-on-error: ${{ fromJSON(inputs.target).experimental }}
+    timeout-minutes: 150
+    outputs:
+      status: ${{ steps.status.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-prefix
+        with:
+          image: ${{ fromJSON(inputs.target).prefix_image }}
+          bootstrap: ${{ fromJSON(inputs.target).bootstrap }}
+          deps-script: ${{ fromJSON(inputs.target).deps_script }}
+          version: ${{ inputs.version }}
+          artifact: prefix-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+      - id: status
+        if: always()
+        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+
+  packages:
+    # The own prefix of the leg, or the shared prefix that release.yml built for this target.
+    needs: prefix
+    if: >-
+      ${{ !cancelled() && fromJSON(inputs.target).lane != ''
+      && (needs.prefix.outputs.status == 'success'
+      || (needs.prefix.result == 'skipped' && fromJSON(inputs.target).prefix_artifact == 'prefix-shared')) }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ fromJSON(inputs.target).experimental }}
+    timeout-minutes: 30
+    outputs:
+      status: ${{ steps.status.outputs.status }}
+    env:
+      PACKAGE_ARGS: ${{ fromJSON(inputs.target).package_args }}
+      KIND: ${{ fromJSON(inputs.target).kind }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ inputs.release_tag }}
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ fromJSON(inputs.target).prefix_artifact }}-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          path: prefix-archive
+      - name: Restore the pkgsmith build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin/pkgsmith
+          key: pkgsmith-${{ runner.os }}-${{ hashFiles('scripts/pkgsmith.ref') }}
+      - name: Build pkgsmith
+        run: echo "$(scripts/install-pkgsmith.sh)" >> "$GITHUB_PATH"
+      - name: Unpack the prefix
+        run: |
+          mkdir prefix
+          tar --zstd -xf prefix-archive/prefix.tar.zst -C prefix
+      - name: Read the version the source bundle was built with
+        # A nightly gives the bundle its own version, and the packages must carry the same one.
+        run: |
+          bundle="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
+          version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/src/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Write the packages
+        # The prefix was built on this release, so the packages ask for the libraries and the glibc that it has. The
+        # lane and the release name come from the target (package_args).
+        run: |
+          pkgsmith plugins
+          # shellcheck disable=SC2086
+          scripts/build-packages.sh --prefix prefix --output dist $PACKAGE_ARGS --version "$PACKAGE_VERSION"
+      - name: Check that the rpms stay out of GNOME's way
+        if: env.KIND == 'rpm'
+        run: |
+          sudo apt-get install -y -qq rpm
+          python3 scripts/check-rpm-isolation.py dist/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ fromJSON(inputs.target).packages_artifact }}-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - id: status
+        if: always()
+        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+
+  test:
+    # The package suite. A target without a lane tests the shared packages of release.yml.
+    needs: packages
+    if: >-
+      ${{ !cancelled() && (needs.packages.outputs.status == 'success'
+      || (needs.packages.result == 'skipped' && fromJSON(inputs.target).lane == '')) }}
+    runs-on: ${{ fromJSON(inputs.target).runner }}
+    continue-on-error: ${{ fromJSON(inputs.target).experimental }}
+    timeout-minutes: 90
+    outputs:
+      status: ${{ steps.status.outputs.status }}
+    env:
+      TARGETS: ${{ inputs.matrix }}
+      SLUG: ${{ fromJSON(inputs.target).slug }}
+      ARCH: ${{ fromJSON(inputs.target).arch }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      NIGHTLY_VERSION: ${{ inputs.version }}
+      INSTALL_ARTIFACT: ${{ fromJSON(inputs.target).install_artifact }}-${{ inputs.release_tag }}${{ fromJSON(inputs.target).install_suffix }}-${{ fromJSON(inputs.target).arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.INSTALL_ARTIFACT }}
+          path: artifacts/${{ env.INSTALL_ARTIFACT }}
+      - uses: actions/download-artifact@v4
+        with:
+          # The prefixes that wrote these packages, for the reproducibility check: the prefix of a target with a
+          # package lane, or the shared prefixes of this architecture.
+          pattern: >-
+            ${{ fromJSON(inputs.target).lane != ''
+            && format('{0}-{1}-{2}-{3}', fromJSON(inputs.target).prefix_artifact, inputs.release_tag, fromJSON(inputs.target).slug, fromJSON(inputs.target).arch)
+            || format('prefix-shared-{0}-*-{1}', inputs.release_tag, fromJSON(inputs.target).arch) }}
+          path: prefixes
+      - name: Restore the pkgsmith build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin/pkgsmith
+          key: pkgsmith-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/pkgsmith.ref') }}
+      - name: Install the tools of the static layer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends rpm cpio desktop-file-utils libglib2.0-bin zstd binutils
+          echo "$(scripts/install-pkgsmith.sh)" >> "$GITHUB_PATH"
+      - name: Run the package suite
+        run: |
+          printf '{"matrix": %s}\n' "$TARGETS" > targets.json
+          version_args=()
+          if [ -n "$NIGHTLY_VERSION" ]; then version_args=(--version "$NIGHTLY_VERSION"); fi
+          CONTAINER_ENGINE=docker scripts/run-package-tests.sh --target "$SLUG" --arch "$ARCH" --targets targets.json \
+            --artifacts artifacts --release-tag "$RELEASE_TAG" --report report --prefixes prefixes "${version_args[@]}"
+      - name: Write the job summary
+        if: always()
+        run: cat report/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no report was written" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-tests-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          path: report
+          if-no-files-found: warn
+          retention-days: 30
+      - id: status
+        if: always()
+        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+
+  graphical:
+    # After the suite, whatever its result, so a run shows both. It needs the packages, and a graphical entry for the
+    # architecture: scripts/targets.json gives every architecture its guest. A target without one is "not run" in the
+    # gate and is not published. The job timeout comes from the guest data; the harness deadline stops the test
+    # 20 minutes before it, so result.json says which check ran out of time.
+    needs: [packages, test]
+    if: >-
+      ${{ !cancelled() && fromJSON(inputs.target).graphical != null && fromJSON(inputs.target).graphical.image != null
+      && (needs.packages.outputs.status == 'success'
+      || (needs.packages.result == 'skipped' && fromJSON(inputs.target).lane == '')) }}
+    runs-on: ${{ fromJSON(inputs.target).graphical.runner }}
+    continue-on-error: ${{ fromJSON(inputs.target).experimental }}
+    timeout-minutes: ${{ fromJSON(inputs.target).graphical.guest.timeout_minutes }}
+    outputs:
+      status: ${{ steps.status.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ fromJSON(inputs.target).install_artifact }}-${{ inputs.release_tag }}${{ fromJSON(inputs.target).install_suffix }}-${{ fromJSON(inputs.target).arch }}
+          path: packages
+      - uses: ./.github/actions/graphical-test
+        with:
+          target: ${{ toJSON(fromJSON(inputs.target).graphical) }}
+          packages: packages
+          artifact: graphical-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - id: status
+        if: always()
+        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+
+  verdict:
+    # Always runs, so every leg leaves a verdict, a failed or skipped one too. It holds the records of the prefix and
+    # packages jobs of this leg (tests/pipeline/stages.py), the package suite's report.json and the graphical
+    # result.json. A stage whose record is missing is "not run" or a failure in the gate, never a pass.
+    needs: [prefix, packages, test, graphical]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: package-tests-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          path: downloads/package-tests
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: graphical-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          path: downloads/graphical
+      - name: Write the verdict
+        env:
+          TARGET: ${{ inputs.target }}
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p verdict/package-tests verdict/graphical
+          python3 tests/pipeline/stages.py needs --target "$TARGET" --needs "$NEEDS" --out verdict --run-url "$RUN_URL"
+          # Only the files the gate reads: the evidence stays in its own artifacts.
+          for file in report.json summary.md; do
+            if [ -f "downloads/package-tests/$file" ]; then cp "downloads/package-tests/$file" verdict/package-tests/; fi
+          done
+          if [ -f downloads/graphical/result.json ]; then cp downloads/graphical/result.json verdict/graphical/; fi
+          find verdict -type f | sort
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verdict-${{ inputs.release_tag }}-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}
+          path: verdict/
+          if-no-files-found: error
+          retention-days: 30

@@ -135,14 +135,27 @@ class SessionEnvironmentTests(unittest.TestCase):
             guardian.index("if (!devkit && !prepare_session_environment())"),
             guardian.index("spawn_compositor(compositor_path"),
         )
+        # Activation runs once, in the loop right after the supervisor is spawned. It must finish
+        # before the loop starts any autostart child, and a failure must stop the session so the
+        # compositor is terminated and reaped and the guardian exits with a failure status.
         self.assertLess(
-            guardian.index("if (!devkit && !activate_session())"),
             guardian.index("spawn_session_supervisor("),
+            guardian.index("if (!devkit && !session_activated) {"),
         )
-        activation_failure = guardian[guardian.index("if (!devkit && !activate_session()) {") :]
-        activation_failure = activation_failure[: activation_failure.index("\n    }")]
-        self.assertIn("terminate_and_reap(&guardian);", activation_failure)
-        self.assertIn("return EXIT_FAILURE;", activation_failure)
+        self.assertLess(
+            guardian.index("if (!devkit && !session_activated) {"),
+            guardian.index("&autostart_environment, autostart_children,"),
+        )
+        activation = guardian[guardian.index("if (!devkit && !session_activated) {") :]
+        activation = activation[: activation.index("session_activated = TRUE;")]
+        self.assertIn("if (!activate_session()) {", activation)
+        self.assertIn("guardian.exit_status = EXIT_FAILURE;", activation)
+        self.assertIn("stop_session = TRUE;", activation)
+        self.assertIn("break;", activation)
+        shutdown = guardian[guardian.index("if (stop_session && guardian.compositor_pid) {") :]
+        self.assertLess(
+            shutdown.index("terminate_and_reap(&guardian);"), shutdown.index("return guardian.exit_status;")
+        )
         worker = runtime[runtime.index("int runtime_worker_main(") : runtime.index("GPid spawn_runtime_worker(")]
         self.assertLess(
             worker.index("gnoblin_config_load_runtime_salvaged("), worker.index("send_config(&runtime, document")

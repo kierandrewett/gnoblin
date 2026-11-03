@@ -1,0 +1,38 @@
+[
+  {
+    "number": 12,
+    "title": "Release pipeline: Fedora 44",
+    "body": "old <!-- release-pipeline-signature: amd64 graphical keyboard: x -->",
+    "html_url": "https://github.com/kierandrewett/gnoblin/issues/12"
+  },
+  {
+    "number": 9,
+    "title": "Release pipeline: Fedora 41",
+    "body": "",
+    "html_url": "https://github.com/kierandrewett/gnoblin/issues/9"
+  },
+  {
+    "number": 15,
+    "title": "Release pipeline: Ubuntu 24.04",
+    "body": "Gnoblin has no build for **Ubuntu 24.04**.\n\n<!-- release-pipeline-signature: - build build: GLib N.N.N is below the build floors -->",
+    "html_url": "https://github.com/kierandrewett/gnoblin/issues/15"
+  },
+  {
+    "number": 16,
+    "title": "Release pipeline: openSUSE Leap 16.0",
+    "body": "<!-- release-pipeline-signature: amd64 graphical screenshot: the screenshot is blank -->",
+    "html_url": "https://github.com/kierandrewett/gnoblin/issues/16"
+  },
+  {
+    "number": 21,
+    "title": "Release pipeline: Alpine 3.23",
+    "body": "",
+    "html_url": "https://github.com/kierandrewett/gnoblin/issues/21"
+  },
+  {
+    "number": 20,
+    "title": "Release pipeline: Alpine 3.23",
+    "body": "",
+    "html_url": "https://github.com/kierandrewett/gnoblin/issues/20"
+  }
+]

@@ -1,0 +1,201 @@
+name: Graphical VM test
+
+# The graphical VM test by hand: boots releases in QEMU guests, installs Gnoblin, starts a real session and checks
+# that it renders and takes input (.github/actions/graphical-test, tests/graphical/harness.py). See
+# design/graphical-testing.md.
+#
+# The release workflow runs the same test in every target leg (.github/workflows/target.yml), and its result gates
+# the publication there. This workflow is for a look outside a release: other releases (the planned ones too, which
+# fail as "not packaged" with their blocker), packages of an earlier run, or a channel of repo.gnoblin.org. Its report
+# is a dry run unless dry_run is false; then it raises and updates the same issues as the release workflow
+# (tests/pipeline/issues.py --results). It never closes one, because it does not run the build stages.
+#
+# The releases, their end of life, their cloud images and the guest of each architecture come from
+# scripts/supported-targets.py (the graphical output), so this file names none.
+
+on:
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: Only these releases, by name or slug as scripts/supported-targets.py prints them, separated by commas. Empty for all.
+        type: string
+        default: ""
+      architectures:
+        description: Only these architectures, separated by commas ("amd64"). Empty for all.
+        type: string
+        default: ""
+      packages_from:
+        description: >-
+          nightly-build (the packages of the newest Nightly run that built), artifacts (the packages of the run
+          artifacts_run_id), nightly or stable (that channel of repo.gnoblin.org)
+        type: choice
+        options: [nightly-build, artifacts, nightly, stable]
+        default: nightly-build
+      artifacts_run_id:
+        description: The run whose package artifacts to test, for packages_from artifacts
+        type: string
+        default: ""
+      dry_run:
+        description: Print the issues that the report would create or update, and change none
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: graphical-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  targets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      graphical: ${{ steps.targets.outputs.graphical }}
+      run_id: ${{ steps.source.outputs.run_id }}
+      tag: ${{ steps.source.outputs.tag }}
+      packages_from: ${{ steps.source.outputs.packages_from }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List the graphical targets
+        id: targets
+        env:
+          RELEASES: ${{ inputs.releases }}
+          ARCHITECTURES: ${{ inputs.architectures }}
+        run: |
+          python3 scripts/supported-targets.py --github-output "$RUNNER_TEMP/targets" >/dev/null
+          graphical="$(sed -n 's/^graphical=//p' "$RUNNER_TEMP/targets")"
+          pick='($wanted | split(",") | map(gsub("^ +| +$"; "")) | map(select(. != ""))) as $w'
+          if [ -n "$RELEASES" ]; then
+            graphical="$(jq -c --arg wanted "$RELEASES" \
+              "$pick | map(select(.name as \$n | .slug as \$s | (\$w | index(\$n)) != null or (\$w | index(\$s)) != null))" \
+              <<<"$graphical")"
+          fi
+          if [ -n "$ARCHITECTURES" ]; then
+            graphical="$(jq -c --arg wanted "$ARCHITECTURES" "$pick | map(select(.arch as \$a | \$w | index(\$a) != null))" \
+              <<<"$graphical")"
+          fi
+          echo "graphical=$graphical" >> "$GITHUB_OUTPUT"
+          jq -r '.[] | "\(.name) \(.arch)\t eol=\(.eol)\t packaged=\(.packaged)"' <<<"$graphical"
+
+      - name: Find the packages
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGES_FROM: ${{ inputs.packages_from }}
+          RUN_ID: ${{ inputs.artifacts_run_id }}
+        run: |
+          # The release tag of a run's packages is in the name of its source bundle artifact, gnoblin-<tag>.
+          tag_of() {
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired | not) | .name | select(test("^gnoblin-")) | sub("^gnoblin-"; "")][0] // empty'
+          }
+          run_id="" tag=""
+          case "$PACKAGES_FROM" in
+            artifacts)
+              run_id="$RUN_ID"
+              tag="$(tag_of "$run_id")"
+              ;;
+            nightly-build)
+              for candidate in $(gh run list -R "$GITHUB_REPOSITORY" --workflow nightly.yml --status success \
+                --limit 30 --json databaseId --jq '.[].databaseId'); do
+                tag="$(tag_of "$candidate")"
+                if [ -n "$tag" ]; then
+                  run_id="$candidate"
+                  break
+                fi
+              done
+              ;;
+            nightly | stable) ;;
+          esac
+          if [ "$PACKAGES_FROM" = artifacts ] || [ "$PACKAGES_FROM" = nightly-build ]; then
+            if [ -z "$run_id" ] || [ -z "$tag" ]; then
+              echo "::error::no package artifacts found for packages_from $PACKAGES_FROM"
+              exit 1
+            fi
+          fi
+          printf 'run_id=%s\ntag=%s\npackages_from=%s\n' "$run_id" "$tag" "$PACKAGES_FROM" | tee -a "$GITHUB_OUTPUT"
+
+  test:
+    needs: targets
+    if: needs.targets.outputs.graphical != '[]'
+    name: ${{ matrix.target.name }} (${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.runner }}
+    # The guest of the architecture sets the timeout: an arm64 runner has no /dev/kvm, so its guest runs on TCG.
+    timeout-minutes: ${{ matrix.target.guest.timeout_minutes }}
+    # The report job decides what a failure means. A release without packages fails as "not packaged".
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.graphical) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the packages
+        if: matrix.target.packaged && needs.targets.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.target.install_artifact }}-${{ needs.targets.outputs.tag }}${{ matrix.target.install_suffix }}-${{ matrix.target.arch }}
+          path: packages
+          run-id: ${{ needs.targets.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Make an empty package folder for a release without packages
+        if: ${{ !matrix.target.packaged }}
+        run: mkdir -p packages
+
+      - uses: ./.github/actions/graphical-test
+        with:
+          target: ${{ toJSON(matrix.target) }}
+          packages: ${{ (needs.targets.outputs.packages_from == 'nightly' || needs.targets.outputs.packages_from == 'stable') && needs.targets.outputs.packages_from || 'packages' }}
+          artifact: graphical-${{ matrix.target.slug }}-${{ matrix.target.arch }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  report:
+    needs: [targets, test]
+    if: always() && needs.targets.result == 'success' && needs.targets.outputs.graphical != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: graphical-*
+          path: results
+
+      - name: Raise and update issues
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mode=--dry-run
+          if [ "$DRY_RUN" = false ]; then mode=--apply; fi
+          python3 tests/pipeline/issues.py --results results --repo "$GITHUB_REPOSITORY" --run-url "$RUN_URL" \
+            "$mode" --summary "$GITHUB_STEP_SUMMARY" --out report
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphical-report
+          path: report/
+          if-no-files-found: warn
+          retention-days: 30

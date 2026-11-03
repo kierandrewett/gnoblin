@@ -1,15 +1,37 @@
 name: Release
 
-# Stages (design/release-pipeline.md has the reasoning):
-#   1. source      builds the source bundle once and uploads it as an artifact
-#   2. packages    builds a checkout of the same ref into a prefix on Fedora and on Alpine, writes the rpm, deb, Arch,
-#                  apk and tar packages from the prefixes with pkgsmith, and installs them on clean Fedora, openSUSE,
-#                  Arch, Debian and Alpine systems (packages.yml)
-#   3. publish     attaches every asset to one release, checksums and attests them, and makes the release public
-#   4. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
+# One generated target list, one leg for each target. design/release-pipeline.md has the reasoning.
 #
-# Only a release tag publishes. A push to main, a pull request that changes the pipeline, and a manual run without a
-# tag run stages 1 and 2 as a dry run and publish nothing. The assets stay as workflow artifacts for 30 days.
+#   targets     scripts/supported-targets.py lists the targets from scripts/targets.json and endoflife.date: the
+#               built and experimental releases of each family and the rolling systems, on each architecture. The
+#               planned releases have no job; the gate gives them a verdict ("not built", with the blocker)
+#   source      builds the source bundle once and uploads it as an artifact, on the release that the targets name
+#               as the source of the shared prefixes
+#   shared      the shared stage: shared-prefix builds the shared prefixes (the glibc one and the musl one), and
+#               shared-packages writes the shared packages (the openSUSE rpm, deb, Arch, apk and tar packages) from
+#               them, on each architecture. The targets that use them wait for it; the others do not
+#   own, dependent
+#               one leg for each target on each architecture (.github/workflows/target.yml): prefix -> packages ->
+#               package suite -> graphical VM test -> verdict. own: the targets with a prefix and packages of their
+#               own, which start at once. dependent: the targets whose prefix is a shared prefix or that install the
+#               shared packages, which start after the shared stage. A leg waits for no other leg
+#   gate        the release gate (tests/packages/gate.py) reads every verdict and writes the coverage table and the
+#               publish set: the packages whose every target and architecture passed every stage, the graphical VM
+#               test on that architecture included. A built target that fails any stage, or an empty publish set,
+#               makes the gate fail, so the run is red. The gate still uploads the publish set: the targets that passed
+#               are released, and a target that failed holds no other back. An experimental one that fails is left out
+#   issues      one GitHub issue for each release that failed a stage or is not built and is not at its end of life
+#               (tests/pipeline/issues.py): created, updated with a comment when the failures change, or closed when
+#               it passes again. An end-of-life release gets a notice only. Only a release tag and the nightly run
+#               change issues; every other run prints what it would do
+#   publish     attaches the source bundle and the publish set to the release of the tag, checksums and attests them,
+#               and makes the release public. Only for a release tag, when the gate ran (passed or failed) and its
+#               publish set is not empty. The release notes name the targets that passed and, apart, those left out
+#   repository  builds the signed RPM, APT, pacman and Alpine repository from the publish set and uploads it
+#
+# A push to main, a pull request that changes the pipeline, and a manual run without a tag run everything up to the
+# gate and the issues as a dry run, and publish nothing. The assets stay as workflow artifacts for 30 days. No job
+# names a release, an image or a distribution: they are fields of the target list.
 
 on:
   push:
@@ -18,7 +40,7 @@ on:
     paths:
       - ".github/release.yml"
       - ".github/workflows/release.yml"
-      - ".github/workflows/packages.yml"
+      - ".github/workflows/target.yml"
       - ".github/workflows/package-repository.yml"
       - ".github/actions/**"
       - "pkgsmith/**"
@@ -26,9 +48,14 @@ on:
       - "scripts/build-packages.sh"
       - "scripts/build-prefix.sh"
       - "scripts/build-release-assets.sh"
-      - "scripts/check-package-install.sh"
+      - "scripts/run-package-tests.sh"
+      - "tests/packages/**"
+      - "tests/graphical/**"
+      - "tests/pipeline/**"
       - "scripts/check-release-tag.sh"
-      - "scripts/install-fedora-build-deps.sh"
+      - "scripts/supported-targets.py"
+      - "scripts/targets.json"
+      - "scripts/install-*-build-deps.sh"
       - "scripts/install-pkgsmith.sh"
       - "scripts/make-tarball.sh"
       - "scripts/pkgrepo/**"
@@ -46,7 +73,7 @@ on:
     paths:
       - ".github/release.yml"
       - ".github/workflows/release.yml"
-      - ".github/workflows/packages.yml"
+      - ".github/workflows/target.yml"
       - ".github/workflows/package-repository.yml"
       - ".github/actions/**"
       - "pkgsmith/**"
@@ -54,9 +81,14 @@ on:
       - "scripts/build-packages.sh"
       - "scripts/build-prefix.sh"
       - "scripts/build-release-assets.sh"
-      - "scripts/check-package-install.sh"
+      - "scripts/run-package-tests.sh"
+      - "tests/packages/**"
+      - "tests/graphical/**"
+      - "tests/pipeline/**"
       - "scripts/check-release-tag.sh"
-      - "scripts/install-fedora-build-deps.sh"
+      - "scripts/supported-targets.py"
+      - "scripts/targets.json"
+      - "scripts/install-*-build-deps.sh"
       - "scripts/install-pkgsmith.sh"
       - "scripts/make-tarball.sh"
       - "scripts/pkgrepo/**"
@@ -81,7 +113,7 @@ on:
         required: false
         type: string
       dry_run:
-        description: Build and test every package and install gate, and publish nothing. Leave the tag empty.
+        description: Build and test every target, and publish nothing and change no issue. Leave the tag empty.
         required: false
         default: false
         type: boolean
@@ -101,7 +133,35 @@ defaults:
     shell: bash
 
 jobs:
+  targets:
+    # The targets, from scripts/targets.json and the release data of endoflife.date. The legs get the built and
+    # experimental releases. The planned releases have no job and show in the step summary and in the gate.
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+      shared_prefixes: ${{ steps.targets.outputs.shared_prefixes }}
+      legs_own: ${{ steps.targets.outputs.legs_own }}
+      legs_shared: ${{ steps.targets.outputs.legs_shared }}
+      architectures: ${{ steps.targets.outputs.architectures }}
+      rows: ${{ steps.targets.outputs.rows }}
+      graphical_packaged: ${{ steps.targets.outputs.graphical_packaged }}
+      source_image: ${{ steps.targets.outputs.source_image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: List the targets
+        id: targets
+        run: |
+          python3 scripts/supported-targets.py --rows --github-output "$GITHUB_OUTPUT" >/dev/null
+          {
+            echo '```'
+            python3 scripts/supported-targets.py --table
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   source:
+    needs: targets
     outputs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       is_release: ${{ steps.meta.outputs.is_release }}
@@ -109,7 +169,8 @@ jobs:
       commit: ${{ steps.meta.outputs.commit }}
       nightly_version: ${{ steps.nightly.outputs.version }}
     runs-on: ubuntu-latest
-    container: fedora:45
+    # The release that makes the shared prefix, which is never a pre-release, so the source job never waits on one.
+    container: ${{ needs.targets.outputs.source_image }}
     timeout-minutes: 30
     env:
       GIT_COMMITTER_NAME: Gnoblin release automation
@@ -152,7 +213,7 @@ jobs:
       - name: Set checkout ownership
         run: chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
       - name: Stop early if the release is already public
-        # Publishing refuses to change a public release. Saying so here saves the hour that the package jobs take.
+        # Publishing refuses to change a public release. Saying so here saves the hours that the legs take.
         if: steps.meta.outputs.is_release == 'true'
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
@@ -205,27 +266,58 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  packages:
-    needs: source
-    uses: ./.github/workflows/packages.yml
-    with:
-      ref: ${{ needs.source.outputs.ref }}
-      release_tag: ${{ needs.source.outputs.release_tag }}
-      # The prefix jobs build their own checkout, so a nightly version reaches them as an input.
-      version: ${{ needs.source.outputs.nightly_version }}
+  shared-prefix:
+    # The prefixes that feed the shared packages: one for glibc and one for musl, on each architecture. Each is also
+    # the prefix of its own target (prefix_artifact prefix-shared), whose leg reads it from here.
+    name: shared prefix (${{ matrix.target.slug }}, ${{ matrix.target.arch }})
+    needs: [targets, source]
+    if: needs.targets.outputs.shared_prefixes != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.shared_prefixes) }}
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.ref }}
+          fetch-depth: 0
+      - uses: ./.github/actions/build-prefix
+        with:
+          image: ${{ matrix.target.prefix_image }}
+          bootstrap: ${{ matrix.target.bootstrap }}
+          deps-script: ${{ matrix.target.deps_script }}
+          version: ${{ needs.source.outputs.nightly_version }}
+          artifact: prefix-shared-${{ needs.source.outputs.release_tag }}-${{ matrix.target.slug }}-${{ matrix.target.arch }}
+      - name: Record the stage
+        if: always()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 tests/pipeline/stages.py record --stage prefix --slug "${{ matrix.target.slug }}" \
+            --arch "${{ matrix.target.arch }}" --job-status "${{ job.status }}" --out stage --run-url "$RUN_URL"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage-${{ needs.source.outputs.release_tag }}-prefix-${{ matrix.target.slug }}-${{ matrix.target.arch }}
+          path: stage/
+          retention-days: 30
 
-  publish:
-    # Runs only for a release tag, and only when every package job and install gate passed. A failed gate leaves no
-    # release behind. The run keeps the built assets as artifacts, so the fix needs a new run, not a rebuild by hand.
-    if: needs.source.outputs.is_release == 'true'
-    needs: [source, packages]
+  shared-packages:
+    # pkgsmith writes a package for any architecture on any machine: it reads the prefix and does not run it. It records
+    # the packages stage of every target that installs these packages.
+    name: shared packages (${{ matrix.architecture.arch }})
+    needs: [targets, source, shared-prefix]
+    if: ${{ !cancelled() && needs.source.result == 'success' && needs.targets.outputs.shared_prefixes != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: ${{ fromJSON(needs.targets.outputs.architectures) }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
+    timeout-minutes: 60
     env:
-      GH_TOKEN: ${{ github.token }}
+      ARCH: ${{ matrix.architecture.arch }}
       RELEASE_TAG: ${{ needs.source.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -237,9 +329,261 @@ jobs:
           path: release-assets
       - uses: actions/download-artifact@v4
         with:
+          # One folder for each shared prefix, named after its artifact.
+          pattern: prefix-shared-${{ needs.source.outputs.release_tag }}-*-${{ matrix.architecture.arch }}
+          path: prefix-archives
+      - name: Restore the pkgsmith build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin/pkgsmith
+          key: pkgsmith-${{ runner.os }}-${{ hashFiles('scripts/pkgsmith.ref') }}
+      - name: Build pkgsmith
+        run: echo "$(scripts/install-pkgsmith.sh)" >> "$GITHUB_PATH"
+      - name: Unpack the prefixes
+        env:
+          SHARED: ${{ needs.targets.outputs.shared_prefixes }}
+        run: |
+          mkdir prefixes
+          for archive in prefix-archives/*/prefix.tar.zst; do
+            [ -e "$archive" ] || continue
+            name="$(basename -- "$(dirname -- "$archive")")"
+            mkdir "prefixes/$name"
+            tar --zstd -xf "$archive" -C "prefixes/$name"
+          done
+          # Every shared prefix of this architecture: one without the other would drop a package format without a word.
+          expected="$(jq --arg arch "$ARCH" '[.[] | select(.arch == $arch)] | length' <<<"$SHARED")"
+          found="$(find prefixes -mindepth 1 -maxdepth 1 | wc -l)"
+          if [ "$found" -ne "$expected" ]; then
+            echo "::error::$found of the $expected shared prefixes of $ARCH were built"
+            exit 1
+          fi
+      - name: Read the version the source bundle was built with
+        # A nightly gives the bundle its own version, and the packages must carry the same one.
+        run: |
+          bundle="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
+          version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/src/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Plan and write the packages
+        # The packages of a target with its own lane are written in its leg. Everything else comes from here.
+        run: |
+          pkgsmith plugins
+          for prefix in prefixes/*; do
+            scripts/build-packages.sh --prefix "$prefix" --output dist --lanes other --version "$PACKAGE_VERSION"
+          done
+      - name: Check the package definitions and that the rpms stay out of GNOME's way
+        run: |
+          sudo apt-get install -y -qq rpm
+          python3 tests/pkgsmith-packages.test.py
+          python3 scripts/check-rpm-isolation.py dist/*.rpm
+      - name: List the files of every package
+        run: |
+          for prefix in prefixes/*; do
+            scripts/build-packages.sh --prefix "$prefix" --lanes other --list --version "$PACKAGE_VERSION" | tail -n 400
+          done
+      - name: Give the Arch packages names that an artifact keeps
+        # The epoch makes an Arch file name hold a colon (gnoblin-1:0.1.13-1-x86_64.pkg.tar.zst). An artifact refuses a
+        # colon and a GitHub release turns it into a dot, which would no longer match SHA256SUMS. pacman reads the name
+        # from the package, and scripts/pkgrepo reads the version from it.
+        run: |
+          for file in dist/*:*; do
+            [ -e "$file" ] || continue
+            mv -- "$file" "$(dirname -- "$file")/$(basename -- "$file" | tr : .)"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ needs.source.outputs.release_tag }}-${{ matrix.architecture.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Record the stage of every target that installs these packages
+        if: always()
+        env:
+          MATRIX: ${{ needs.targets.outputs.matrix }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 tests/pipeline/stages.py shared --matrix "$MATRIX" --arch "$ARCH" --job-status "${{ job.status }}" \
+            --out stage --run-url "$RUN_URL"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage-${{ needs.source.outputs.release_tag }}-packages-shared-${{ matrix.architecture.arch }}
+          path: stage/
+          retention-days: 30
+
+  own:
+    # The legs that need nothing from the shared stage start as soon as the source bundle exists.
+    name: ${{ matrix.target.name }} (${{ matrix.target.arch }})
+    needs: [targets, source]
+    if: needs.targets.outputs.legs_own != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.legs_own) }}
+    uses: ./.github/workflows/target.yml
+    with:
+      target: ${{ toJSON(matrix.target) }}
+      matrix: ${{ needs.targets.outputs.matrix }}
+      ref: ${{ needs.source.outputs.ref }}
+      release_tag: ${{ needs.source.outputs.release_tag }}
+      # The legs build their own checkout, so a nightly version reaches them as an input.
+      version: ${{ needs.source.outputs.nightly_version }}
+
+  dependent:
+    # The legs whose prefix is a shared prefix or that install the shared packages. They run after the shared stage
+    # whatever its result: a leg whose shared input is missing fails or is "not run" in the gate, with the reason.
+    name: ${{ matrix.target.name }} (${{ matrix.target.arch }})
+    needs: [targets, source, shared-packages]
+    if: ${{ !cancelled() && needs.source.result == 'success' && needs.targets.outputs.legs_shared != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.legs_shared) }}
+    uses: ./.github/workflows/target.yml
+    with:
+      target: ${{ toJSON(matrix.target) }}
+      matrix: ${{ needs.targets.outputs.matrix }}
+      ref: ${{ needs.source.outputs.ref }}
+      release_tag: ${{ needs.source.outputs.release_tag }}
+      version: ${{ needs.source.outputs.nightly_version }}
+
+  gate:
+    # The release gate. It runs after every leg, failed ones included, and is the last job before publish and the
+    # repository stage, which take only its publish set (the artifact publishable-<tag>). A built target that failed
+    # a stage, or an empty publish set, fails it. The publish set and the coverage are uploaded whatever the result:
+    # the publish set never holds a file of a target that did not pass, so publish takes it when the gate failed too.
+    outputs:
+      publish_count: ${{ steps.gate.outputs.publish_count }}
+    needs: [targets, source, shared-prefix, shared-packages, own, dependent]
+    if: ${{ !cancelled() && needs.source.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGETS: ${{ needs.targets.outputs.matrix }}
+      ROWS: ${{ needs.targets.outputs.rows }}
+      ARCHITECTURES: ${{ needs.targets.outputs.architectures }}
+      GRAPHICAL: ${{ needs.targets.outputs.graphical_packaged }}
+      RELEASE_TAG: ${{ needs.source.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: verdict-${{ needs.source.outputs.release_tag }}-*
+          path: run
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: stage-${{ needs.source.outputs.release_tag }}-*
+          path: run/shared
+      - uses: actions/download-artifact@v4
+        with:
           pattern: packages-${{ needs.source.outputs.release_tag }}-*
+          path: artifacts
+      - name: Check every stage of every target and write the publish set
+        id: gate
+        run: |
+          printf '{"matrix": %s, "rows": %s, "architectures": %s, "graphical_packaged": %s}\n' \
+            "$TARGETS" "$ROWS" "$ARCHITECTURES" "$GRAPHICAL" > targets.json
+          mkdir -p artifacts
+          status=0
+          python3 tests/packages/gate.py --targets targets.json --stages run --reports run --graphical run \
+            --artifacts artifacts --release-tag "$RELEASE_TAG" --out coverage || status=$?
+          cat coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          echo "publish_count=$(jq '.publish_set | length' coverage/coverage.json)" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ needs.source.outputs.release_tag }}
+          path: |
+            coverage/coverage.md
+            coverage/coverage.json
+          if-no-files-found: warn
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.publish_count != '' && steps.gate.outputs.publish_count != '0'
+        with:
+          name: publishable-${{ needs.source.outputs.release_tag }}
+          path: coverage/publishable
+          if-no-files-found: error
+          retention-days: 30
+
+  issues:
+    # Runs after the gate whatever its result, as long as the gate wrote coverage.json. A release tag and the nightly
+    # run change issues; every other run is a dry run that prints the actions. The only job with issues: write.
+    needs: [source, gate]
+    if: ${{ !cancelled() && needs.source.result == 'success' && needs.gate.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-${{ needs.source.outputs.release_tag }}
+          path: coverage
+      - name: Raise, update and close issues
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLY: ${{ needs.source.outputs.is_release == 'true' || inputs.nightly == true }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mode=--dry-run
+          if [ "$APPLY" = true ]; then mode=--apply; fi
+          python3 tests/pipeline/issues.py --coverage coverage/coverage.json --repo "$GITHUB_REPOSITORY" \
+            --run-url "$RUN_URL" "$mode" --summary "$GITHUB_STEP_SUMMARY" --out issues
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issues-${{ needs.source.outputs.release_tag }}
+          path: issues/
+          if-no-files-found: warn
+          retention-days: 30
+
+  publish:
+    # Runs for a release tag when the gate ran, passed or failed, and its publish set is not empty: the targets that
+    # passed are released, and the others are named as left out. An empty publish set publishes nothing (the gate
+    # failed the run already). The run keeps the built assets as artifacts, so a fix needs a new run, not a rebuild.
+    if: >-
+      ${{ !cancelled() && needs.source.result == 'success' && needs.source.outputs.is_release == 'true'
+      && (needs.gate.result == 'success' || needs.gate.result == 'failure')
+      && needs.gate.outputs.publish_count != '' && needs.gate.outputs.publish_count != '0' }}
+    needs: [source, targets, gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.source.outputs.release_tag }}
+      TARGETS: ${{ needs.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ needs.source.outputs.release_tag }}
           path: release-assets
-          merge-multiple: true
+      # Only the publish set of the gate: the packages whose every target and architecture passed every stage. A
+      # package that is the same file on two architectures is in both folders.
+      - uses: actions/download-artifact@v4
+        with:
+          name: publishable-${{ needs.source.outputs.release_tag }}
+          path: publishable
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-${{ needs.source.outputs.release_tag }}
+          path: coverage
+      - name: Add the publish set to the release assets
+        run: |
+          test -n "$(find publishable -type f)"
+          find publishable -type f -exec cp -f -t release-assets {} +
       - name: Checksum every release asset
         run: |
           cd release-assets
@@ -253,16 +597,40 @@ jobs:
       - name: Write the release notes header
         run: |
           version="${RELEASE_TAG#gnoblin-v}"
+          # The targets whose packages the gate let through, with the architectures each passed on, and apart the
+          # targets that did not pass, with the first stage that stopped each. An experimental one is named apart.
+          experimental="$(jq -r '.experimental_published_targets | join(", ")' coverage/coverage.json)"
+          built="$(jq -r '(.published_targets - .experimental_published_targets) | join(", ")' coverage/coverage.json)"
+          left_out="$(jq -r '.left_out | join("; ")' coverage/coverage.json)"
+          experimental_note=""
+          if [ -n "$experimental" ]; then
+            experimental_note="- Experimental: $experimental. Its packages are included because they passed every stage. They are not a release claim."
+          fi
+          left_out_note=""
+          if [ -n "$left_out" ]; then
+            left_out_note="Left out (no packages in this release): $left_out."
+          fi
+          declare -A how=(
+            [rpm]='- RPM: use the signed repository (docs/package-repositories.md), or download the RPMs that match your release and run `dnf install` or `zypper install`. The release is in the file name, such as `.fcNN.`.'
+            [deb]='- deb: use the signed repository, or download the `.deb` files and run `apt install ./gnoblin_*.deb`.'
+            [pacman]='- pacman: use the signed repository, or download the packages and run `pacman -U`.'
+            [apk]='- apk: download the `.apk` files and run `apk add --allow-untrusted ./gnoblin-*.apk`.'
+          )
+          formats=""
+          for kind in $(jq -r '[.[] | select(.install_artifact == "packages") | .kind] | unique | .[]' <<<"$TARGETS"); do
+            formats+="${how[$kind]}"$'\n'
+          done
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           Gnoblin $version targets GNOME $(python3 scripts/gnoblin-version.py get gnomeVersion).
 
           ## Install
 
-          - Fedora 45: use the signed repository (docs/package-repositories.md), or download the \`fc45\` RPMs and run \`dnf install ./gnoblin-*.fc45.*.rpm\`.
-          - openSUSE Tumbleweed: use the signed repository, or install the \`tumbleweed\` RPMs with \`zypper install\`.
-          - Arch Linux: use the signed repository, or download the packages and run \`pacman -U\`.
-          - Debian testing: use the signed repository, or download the \`.deb\` files and run \`apt install ./gnoblin_*.deb\`.
-          - Alpine edge: download the \`.apk\` files and run \`apk add --allow-untrusted ./gnoblin-*.apk\`.
+          Built and tested on: $built. Each release and architecture named here passed the package suite (static,
+          install, runtime and repository checks) and the graphical VM test on that architecture.
+          $experimental_note
+          $left_out_note
+
+          $formats
           - Any other glibc system: the \`.tar.xz\` packages hold the same files. Extract one with \`tar -C / -xf\` as root.
           - Other systems: build the source bundle with \`make\`.
 
@@ -283,9 +651,11 @@ jobs:
   repository:
     # The signed package repository. A release tag publishes the stable channel and the nightly run the nightly channel.
     # Any other run builds and verifies the tree with a throw-away key, so a change that breaks it is seen before a tag.
-    needs: [source, packages, publish]
+    needs: [source, gate, publish]
     if: >-
-      ${{ !cancelled() && needs.source.result == 'success' && needs.packages.result == 'success'
+      ${{ !cancelled() && needs.source.result == 'success'
+      && (needs.gate.result == 'success' || needs.gate.result == 'failure')
+      && needs.gate.outputs.publish_count != '' && needs.gate.outputs.publish_count != '0'
       && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     uses: ./.github/workflows/package-repository.yml
     with:
@@ -294,6 +664,8 @@ jobs:
       release_tag: ${{ needs.source.outputs.release_tag }}
       source_commit: ${{ needs.source.outputs.commit }}
       publish: ${{ needs.source.outputs.is_release == 'true' || inputs.nightly == true }}
+      # The publish set of the gate, not every package that was built.
+      packages_artifact: publishable-${{ needs.source.outputs.release_tag }}
     secrets:
       REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
       REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}

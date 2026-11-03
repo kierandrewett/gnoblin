@@ -1,0 +1,69 @@
+name: Build a prefix
+description: >-
+  Builds a Git checkout of Gnoblin into a prefix with scripts/build-prefix.sh, in a docker container of the image of
+  one target, and uploads it as an artifact. The caller checks out the ref with its whole history (fetch-depth 0).
+  The image, the command that installs the first tools and the script that installs the build requirements are data
+  of the target (scripts/supported-targets.py), so nothing here names a release or an image.
+
+inputs:
+  image:
+    description: The container image of the target (prefix_image)
+    required: true
+  bootstrap:
+    description: The command that installs git, tar, xz and zstd in the image
+    required: true
+  deps-script:
+    description: The script in scripts/ that installs the build requirements
+    required: true
+  version:
+    description: Nightly version to give the checkout (scripts/apply-nightly-version.py). Empty keeps the tree version.
+    default: ""
+  artifact:
+    description: The name of the artifact that gets prefix.tar.zst
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch pinned sources, retrying GNOME GitLab errors
+      shell: bash
+      run: ./scripts/checkout-submodules-with-retry.sh
+    - name: Give the checkout the nightly version
+      # scripts/build-prefix.sh fetches the upstream tags of the Mutter and portal checkouts itself.
+      if: inputs.version != ''
+      shell: bash
+      env:
+        NIGHTLY_VERSION: ${{ inputs.version }}
+      run: python3 scripts/apply-nightly-version.py "$NIGHTLY_VERSION"
+    - name: Build the prefix in the image of the target
+      # The container runs as root, so it hands every file it wrote back to the runner user before it exits. The
+      # runner cleans up the workspace and uploads the archive as that user.
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        BOOTSTRAP: ${{ inputs.bootstrap }}
+        DEPS_SCRIPT: ${{ inputs.deps-script }}
+        # ./build.sh applies the Mutter patch series as commits, which needs a committer.
+        GIT_COMMITTER_NAME: Gnoblin release automation
+        GIT_COMMITTER_EMAIL: release@gnoblin.local
+      run: |
+        mkdir -p "$RUNNER_TEMP/out"
+        docker run --rm -i \
+          --volume "$GITHUB_WORKSPACE:/work" --volume "$RUNNER_TEMP/out:/out" --workdir /work \
+          --env "HOST_OWNER=$(id -u):$(id -g)" --env GIT_COMMITTER_NAME --env GIT_COMMITTER_EMAIL \
+          --env BOOTSTRAP --env DEPS_SCRIPT \
+          "$IMAGE" sh -eu <<'SCRIPT'
+        trap 'chown -R "$HOST_OWNER" /work /out' EXIT
+        eval "$BOOTSTRAP"
+        git config --global --add safe.directory '*'
+        "./scripts/$DEPS_SCRIPT"
+        ./scripts/build-prefix.sh --prefix /out/prefix
+        # An artifact does not keep symbolic links or modes, and the prefix has both.
+        tar --zstd -cf /out/prefix.tar.zst -C /out/prefix .
+        SCRIPT
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact }}
+        path: ${{ runner.temp }}/out/prefix.tar.zst
+        if-no-files-found: error
+        retention-days: 7

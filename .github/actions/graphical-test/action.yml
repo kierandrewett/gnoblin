@@ -1,0 +1,90 @@
+name: Graphical VM test
+description: >-
+  Boots one release in a QEMU guest on the runner, installs Gnoblin, starts a real session and checks that it renders
+  and takes input (tests/graphical/harness.py). The guest data of the architecture (emulator, machine, GPU, UEFI
+  firmware and the runner packages) and the cloud image come from the graphical entry of scripts/supported-targets.py,
+  so nothing here names a release, an image or an architecture. The step fails when the test fails. The evidence,
+  with result.json, is uploaded whatever the result.
+
+inputs:
+  target:
+    description: The graphical entry of the target, as JSON
+    required: true
+  packages:
+    description: A folder of package files, or nightly or stable for that channel of repo.gnoblin.org
+    required: true
+  artifact:
+    description: The name of the evidence artifact
+    required: true
+  run-url:
+    description: The URL of the run, for the report
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Enable KVM
+      shell: bash
+      run: |
+        # A hosted amd64 runner has /dev/kvm, owned by root. A udev rule lets the runner user open it. A hosted arm64
+        # runner has none, and the guest runs on TCG: the harness prints the time of each check, so a slow boot shows.
+        if [ -e /dev/kvm ]; then
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+        fi
+        if [ -w /dev/kvm ]; then
+          echo "KVM: yes"
+        else
+          echo "::warning::/dev/kvm is not usable: the guest runs on TCG, about ten times slower"
+        fi
+    - name: Install QEMU, the guest firmware and the tools of an image build
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        read -r -a host_packages <<<"$(jq -r '[.guest.host_packages, (.image.build.host_packages // "")] | join(" ")' <<<"$TARGET")"
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends "${host_packages[@]}"
+    - name: Name the month of the image build cache
+      # A target whose image is built in the run (the image data has "build") downloads a large archive. It is kept
+      # in the Actions cache for the month; the build script checks its signature again in every run.
+      id: month
+      if: fromJSON(inputs.target).image.build != null
+      shell: bash
+      run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+    - name: Restore the sources of the image build
+      if: steps.month.outputs.month != ''
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/images/sources
+        key: graphical-image-sources-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}-${{ steps.month.outputs.month }}
+        restore-keys: graphical-image-sources-${{ fromJSON(inputs.target).slug }}-${{ fromJSON(inputs.target).arch }}-
+    - name: Run the graphical test
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        PACKAGES: ${{ inputs.packages }}
+        ARTIFACT: ${{ inputs.artifact }}
+        RUN_URL: ${{ inputs.run-url }}
+      run: |
+        printf '%s' "$TARGET" > "$RUNNER_TEMP/target.json"
+        case "$PACKAGES" in
+          nightly | stable) source="$PACKAGES" ;;
+          *) source="$(realpath -- "$PACKAGES")" ;;
+        esac
+        # The job timeout is the guest's timeout_minutes. The harness stops 20 minutes before it, so the running
+        # check fails with the deadline, the rest are skipped, and result.json and the evidence are still uploaded.
+        deadline=$(( $(jq -r '.guest.timeout_minutes' "$RUNNER_TEMP/target.json") * 60 - 1200 ))
+        python3 tests/graphical/harness.py --entry "$RUNNER_TEMP/target.json" --packages "$source" \
+          --out evidence --work "$RUNNER_TEMP" --cache "$RUNNER_TEMP/images" --artifact "$ARTIFACT" \
+          --run-url "$RUN_URL" --deadline "$deadline"
+    - name: Upload the evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact }}
+        path: evidence/
+        if-no-files-found: warn
+        retention-days: 14

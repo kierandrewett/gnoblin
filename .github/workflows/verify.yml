@@ -35,13 +35,23 @@ defaults:
     shell: bash
 
 jobs:
-  source-tarball-and-verify:
+  targets:
+    # The systems to check, from scripts/targets.json and the release data of endoflife.date (scripts/supported-targets.py).
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        fedora: [45]
-    container: fedora:${{ matrix.fedora }}
+    outputs:
+      compile: ${{ steps.targets.outputs.compile }}
+      source_image: ${{ steps.targets.outputs.source_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: List the targets
+        id: targets
+        run: python3 scripts/supported-targets.py --github-output "$GITHUB_OUTPUT"
+
+  source-tarball-and-verify:
+    needs: targets
+    runs-on: ubuntu-latest
+    # The system that builds the source bundle of a release, and the shared prefix of its packages.
+    container: ${{ needs.targets.outputs.source_image }}
     timeout-minutes: 90
     steps:
       - name: Install checkout tools
@@ -123,3 +133,75 @@ jobs:
           if ((${#unexpected_files[@]})); then
             git diff --exit-code -- "${unexpected_files[@]}"
           fi
+
+  # The release gate and the package suite tested on themselves: the gate on made-up runs (tests/packages/selftest),
+  # the static layer and its negative tests on a small package set that the pinned pkgsmith writes, the stage records
+  # and the issue logic of the release (tests/pipeline), and the parts of the graphical harness that need no guest.
+  # No network, no container.
+  package-suite-selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore the pkgsmith build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin/pkgsmith
+          key: pkgsmith-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/pkgsmith.ref') }}
+      - name: Build pkgsmith and install the tools of the static layer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends rpm cpio desktop-file-utils libglib2.0-bin zstd binutils
+          scripts/install-pkgsmith.sh
+      - name: Run the self test
+        run: python3 tests/packages/selftest/selftest.py -v
+      - name: Run the tests of the stage records, the issue logic, the graphical harness and the image signature check
+        run: |
+          python3 tests/pipeline/stages.test.py -v
+          python3 tests/pipeline/issues.test.py -v
+          python3 tests/graphical/harness.test.py -v
+          python3 tests/graphical/arch-arm-image.test.py -v
+
+  # The oldest listed release of every family that has a native build. The job compiles the compositor and the portal
+  # backend against the libraries of that release, so a patch that needs a newer library fails here. It does not start a
+  # session. A release that is experimental may fail without failing the run.
+  compile:
+    name: compile (${{ matrix.target.name }})
+    needs: targets
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.targets.outputs.compile) }}
+    runs-on: ${{ matrix.target.runner }}
+    continue-on-error: ${{ matrix.target.experimental }}
+    container: ${{ matrix.target.prefix_image }}
+    timeout-minutes: 60
+    steps:
+      - name: Install checkout tools
+        # sh, because the image may have no bash yet: an Alpine bootstrap installs it.
+        shell: sh
+        env:
+          BOOTSTRAP: ${{ matrix.target.bootstrap }}
+        run: eval "$BOOTSTRAP"
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Set container checkout ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch compositor and portal source trees
+        run: ./scripts/checkout-submodules-with-retry.sh subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
+      - name: Install build dependencies
+        env:
+          DEPS_SCRIPT: ${{ matrix.target.deps_script }}
+        run: ./scripts/"$DEPS_SCRIPT" --with-test-tools
+      - name: Build the compositor and the portal backend
+        env:
+          GIT_COMMITTER_NAME: Gnoblin CI
+          GIT_COMMITTER_EMAIL: ci@gnoblin.local
+        run: |
+          git -C subprojects/mutter fetch --force --tags origin
+          git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
+          ./build.sh --jobs "$(nproc)"
+          test -x install/bin/gnoblin
+          test -x install/libexec/xdg-desktop-portal-gnoblin

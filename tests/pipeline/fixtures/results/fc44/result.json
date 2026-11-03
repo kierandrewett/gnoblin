@@ -1,0 +1,30 @@
+{
+  "name": "Fedora 44",
+  "family": "Fedora",
+  "release": "44",
+  "slug": "fc44",
+  "eol": false,
+  "eol_date": "2027-06-02",
+  "state": "built",
+  "packaged": true,
+  "reason": "",
+  "result": "pass",
+  "first_failure": null,
+  "checks": [],
+  "breaks": [],
+  "packages_from": "artifacts",
+  "accel": "kvm",
+  "qemu": "QEMU emulator version 10.1.5",
+  "image": null,
+  "guest": {
+    "os": "Fedora 44 (fixture)",
+    "kernel": "6.0.0",
+    "gnoblin": "0.1.13-1",
+    "mesa": "25.0"
+  },
+  "renderer": null,
+  "started": "2026-11-02T06:41:00+00:00",
+  "seconds": 300.0,
+  "artifact": "graphical-fc44-amd64",
+  "run_url": "https://github.com/kierandrewett/gnoblin/actions/runs/1"
+}

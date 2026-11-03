@@ -2,8 +2,10 @@ name: Nightly
 
 # Builds the nightly channel of the package repositories from main, once a day, when main has moved since the channel
 # was last built. The packages come from the release pipeline (release.yml with nightly: true), so a nightly goes through
-# the same prefix build, pkgsmith packages, clean-install and removal checks as a release, and its repository stage signs
-# and publishes the nightly channel. A nightly never creates a GitHub release and never touches the stable channel.
+# the same legs as a release: prefix build, pkgsmith packages, package suite and graphical VM test for every target and
+# architecture, then the release gate. Its repository stage signs and publishes the nightly channel from the gate's
+# publish set, and its issues job raises, updates and closes the issues of failing releases (not a dry run). A nightly
+# never creates a GitHub release and never touches the stable channel.
 # design/package-repositories.md has the version rules (0.1.13~nightly.<date>.<count>.g<commit>).
 
 on:
@@ -55,10 +57,12 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       nightly: true
-    # The release workflow asks for write access in its publish job, which a nightly never runs. A called workflow cannot
-    # ask for more than its caller grants, so the caller grants the same.
+    # The release workflow asks for write access in its publish job, which a nightly never runs, and in its issues
+    # job, which a nightly runs. A called workflow cannot ask for more than its caller grants, so the caller grants
+    # the same.
     permissions:
       contents: write
       id-token: write
       attestations: write
+      issues: write
     secrets: inherit
