@@ -1,7 +1,7 @@
 # Shell API redesign: gaps and plan
 
-Status: in progress on `refactor/lua-api-table`. Done: the `lua_api[]` descriptor table, phase 1 and phase 2 (see
-Phases). The findings come from six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and
+Status: implemented on `refactor/lua-api-table`: the `lua_api[]` descriptor table and phases 1 to 4, plus the object
+model (live objects, window visual transforms and native tweens). Phase 5 below stays open by design. The findings come from six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and
 control code, and the docs; items the auditors could not confirm in source were checked before implementation.
 
 ## The pattern behind the original bug
@@ -84,11 +84,20 @@ Each phase leaves the tree working and is its own pull request.
    session; pid from the display server) and `Window:present()` with a 250 ms input-quiet gate. `Process` takes the role
    of `Launch`, so there is no separate `Launch:on_window`; shells match `window.process` in `gnoblin.window.created`.
    This replaces PR #314.
-3. **Requests.** One `Request` for prompt, auth, location and lock. Delete the per-feature verbs after migrating
-   callers.
-4. **Conventions.** Positional signatures for all 38 table-call functions, alias removal, stubs for missing functions,
-   schema generated once.
+3. **Requests. Done.** One `Request` (`event.request`) for prompt, auth, location and lock, with `finished()` and the
+   answer verbs only on the kinds that take them. The Lua verbs are gone; socket clients keep the wire methods, and
+   the compositor now checks that a socket client received the request it answers. The auth and location paths are
+   not yet run in an isolated session.
+4. **Conventions. Done.** Positional signatures driven by the annotations (`named_arguments` in `lua_api[]`, one
+   adapter); duplicate Lua names removed while their wire names stay for shells. `configure`, `animation`,
+   `window_rule` and `array` keep a table because they declare data; filters stay trailing option tables.
 5. **Overrides, input grabs, idle.** Gaps 8, 9, 11.
+
+**Object model. Done.** Windows, workspaces and layer surfaces are interned live objects with `alive`, `on` and
+`watch`; `watch` accepts the fields the annotated class declares. `Window:set_opacity/scale/rotation/offset` and
+`reset_visuals` (one operation, `window.set_visual`); clicks follow the drawn position, a reload resets them and the
+lock refuses them. `gnoblin.tween()` compiles to one description that the compositor plays on a stage timeline;
+`gnoblin.ease` shares its curves with the compositor through one header.
 
 ## Decisions
 
@@ -98,7 +107,8 @@ Each phase leaves the tree working and is its own pull request.
 
 ## Open decisions
 
-- Whether prompt, auth and location ship together in phase 3.
+- A change made while a lifecycle animation plays is overwritten when that animation restores its saved state.
+- `gnoblinctl lua` does not expose the visual methods or tweens yet.
 
 ## Windows as objects you can transform
 
@@ -121,6 +131,8 @@ window:reset_visuals()
   window interacts with stacking and with lock surfaces, and whether a runtime reload can reliably clear overrides it
   owns.
 - Tweens and named animations are conveniences on top. Anyone can also build their own animation from these calls.
+- Verified: input hit testing follows the transform, a reload clears the overrides, and changes are refused while the
+  session is locked.
 - Calling these every frame crosses the runtime channel, so it will not match native frame timing. Tweens therefore
   compile to one description that the compositor plays itself. A frame callback for custom loops is a separate decision,
   to be measured before it is added.
@@ -161,8 +173,8 @@ Three layers, each usable alone:
   not depend on the Lua runtime.
 - A timeline runs on one backend. Native tracks and Lua-driven steps are not mixed in one tween, because they would
   visibly diverge. Order them with `on_finished` instead.
-- Intended, to verify: a tween owned by the runtime is cancelled when the runtime reloads, and a native step whose
-  target closes ends early and still reports `finished`.
+- Verified: a tween owned by the runtime is cancelled when the runtime reloads, and a tween whose targets all close
+  ends early and still reports `finished`.
 - Named lifecycle animations (`gnoblin.animation`) stay declarative and run natively, so a window opening never waits on
   Lua. They share the easing and property names above. A later `tween:play(name)` can reuse their tracks.
 - The preview session API (`preview`, `seek`, `step`, `play`, `pause`, `stop`) and `inspect` stay as they are for now.
