@@ -412,12 +412,18 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
             g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
             g_str_equal(method, "window.begin_resize") ||
             g_str_equal(method, "input.text_target") || g_str_equal(method, "window.snap_context");
-        g_autoptr(GVariant) packet = NULL;
+        /* Fields the compositor needs beside the operation itself. Only the operation that a
+         * socket client's call created carries that client's ID. */
+        gboolean needs_generation =
+            g_str_equal(method, "window.snap.offer") || g_str_equal(method, "window.snap") ||
+            g_str_equal(method, "window.snap_context") || g_str_has_prefix(method, "process.");
+        gboolean needs_client =
+            runtime->current_client_id && request_id == runtime->current_client_operation_id;
+        guint64 handle = 0;
+        guint64 native_generation = 0;
+        gint64 expires_at_us = 0;
         if (needs_focus_context) {
-            guint64 handle = 0;
             guint64 runtime_generation = 0;
-            guint64 native_generation = 0;
-            gint64 expires_at_us = 0;
             if (!gnoblin_config_take_focus_context(request_id, &handle, &runtime_generation,
                                                    &native_generation, &expires_at_us) ||
                 !handle || !native_generation || expires_at_us <= g_get_monotonic_time()) {
@@ -430,6 +436,9 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                                     "Lua focus operation belongs to an old runtime generation");
                 return FALSE;
             }
+        }
+        g_autoptr(GVariant) packet = NULL;
+        if (needs_focus_context || needs_generation || needs_client) {
             GVariantBuilder operation_builder;
             GVariantIter fields;
             const char* field_name;
@@ -440,58 +449,20 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                 g_autoptr(GVariant) value = field_value;
                 g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
             }
-            g_variant_builder_add(&operation_builder, "{sv}", "focus_context_handle",
-                                  g_variant_new_uint64(handle));
-            g_variant_builder_add(&operation_builder, "{sv}", "focus_context_generation",
-                                  g_variant_new_uint64(native_generation));
-            g_variant_builder_add(&operation_builder, "{sv}", "focus_context_expires_at_us",
-                                  g_variant_new_int64(expires_at_us));
-            if (g_str_equal(method, "window.snap_context"))
+            if (needs_focus_context) {
+                g_variant_builder_add(&operation_builder, "{sv}", "focus_context_handle",
+                                      g_variant_new_uint64(handle));
+                g_variant_builder_add(&operation_builder, "{sv}", "focus_context_generation",
+                                      g_variant_new_uint64(native_generation));
+                g_variant_builder_add(&operation_builder, "{sv}", "focus_context_expires_at_us",
+                                      g_variant_new_int64(expires_at_us));
+            }
+            if (needs_generation)
                 g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
                                       g_variant_new_uint64(gnoblin_config_runtime_generation()));
-            packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.thumbnail") && runtime->current_client_id) {
-            GVariantBuilder operation_builder;
-            GVariantIter fields;
-            const char* field_name;
-            GVariant* field_value;
-            g_variant_builder_init(&operation_builder, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&fields, operation);
-            while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
-                g_autoptr(GVariant) value = field_value;
-                g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
-            }
-            g_variant_builder_add(&operation_builder, "{sv}", "client_id",
-                                  g_variant_new_uint64(runtime->current_client_id));
-            packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.snap.offer") ||
-                   g_str_has_prefix(method, "process.")) {
-            GVariantBuilder operation_builder;
-            GVariantIter fields;
-            const char* field_name;
-            GVariant* field_value;
-            g_variant_builder_init(&operation_builder, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&fields, operation);
-            while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
-                g_autoptr(GVariant) value = field_value;
-                g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
-            }
-            g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
-                                  g_variant_new_uint64(gnoblin_config_runtime_generation()));
-            packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.snap")) {
-            GVariantBuilder operation_builder;
-            GVariantIter fields;
-            const char* field_name;
-            GVariant* field_value;
-            g_variant_builder_init(&operation_builder, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&fields, operation);
-            while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
-                g_autoptr(GVariant) value = field_value;
-                g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
-            }
-            g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
-                                  g_variant_new_uint64(gnoblin_config_runtime_generation()));
+            if (needs_client)
+                g_variant_builder_add(&operation_builder, "{sv}", "client_id",
+                                      g_variant_new_uint64(runtime->current_client_id));
             packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
         } else {
             packet = g_variant_ref(operation);

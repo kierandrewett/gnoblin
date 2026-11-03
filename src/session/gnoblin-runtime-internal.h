@@ -75,6 +75,9 @@ typedef struct {
     guint deferred_callback_idle_id;
     guint64 event_sequence;
     guint64 current_client_id;
+    /* The operation a socket client's call created; only it carries current_client_id, so the
+     * compositor checks that client's right to answer a request. */
+    gint64 current_client_operation_id;
     /* Nonzero only while draining operations emitted by one INPUT callback. */
     guint64 active_input_request_id;
     GPid compositor_pid;

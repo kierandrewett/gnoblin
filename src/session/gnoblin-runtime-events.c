@@ -486,6 +486,9 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
         result = gnoblin_config_read_api(method, arguments, &api_error);
     } else if (g_str_equal(kind, "call")) {
         result = gnoblin_config_call_api(method, arguments, &api_error);
+        runtime->current_client_operation_id = 0;
+        if (result)
+            g_variant_lookup(result, "request_id", "x", &runtime->current_client_operation_id);
     } else if (g_str_equal(kind, "console")) {
         const char* source = NULL;
         if ((!g_str_equal(method, "console.eval") && !g_str_equal(method, "console.complete")) ||
@@ -562,6 +565,7 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
                     runtime->pending_reload = reload;
                     runtime_schedule_reload_progress(runtime);
                     runtime->current_client_id = 0;
+                    runtime->current_client_operation_id = 0;
                     return TRUE;
                 }
             } else {
@@ -602,10 +606,12 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
     if (!startup_request && !send_api_response(runtime, request_id, result,
                                                api_error ? api_error->message : NULL, error)) {
         runtime->current_client_id = 0;
+        runtime->current_client_operation_id = 0;
         return FALSE;
     }
     gboolean sent = (!g_str_equal(kind, "call") && !g_str_equal(kind, "console")) ||
                     send_pending_operations(runtime, error);
     runtime->current_client_id = 0;
+    runtime->current_client_operation_id = 0;
     return sent;
 }

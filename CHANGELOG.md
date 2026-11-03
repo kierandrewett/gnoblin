@@ -77,6 +77,10 @@
   window-rule fields stay available from `gnoblinctl window match`.
 - A callback added with `Operation:on_complete` after the operation had finished now runs.
   Before, the runtime called the Operation table instead of the callback and logged an error.
+- A shell process that called `prompt.respond`, `prompt.cancel`, `auth.*` or
+  `location.authorize_app` could answer a request that it never received. The call reached
+  the compositor without the client's identity, so the recipient check did not run. The
+  compositor now checks it.
 
 ### Removed
 
