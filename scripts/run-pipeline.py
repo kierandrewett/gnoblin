@@ -1096,21 +1096,14 @@ def gate_and_report(root, tag, log):
 
 def clean(root, scratch):
     """Remove what the run made that is not a result: sources, prefixes, packages, guest disks, cloud images, the
-    containers it named and the images it pulled."""
+    containers it named. It never removes an image."""
     root = Path(root)
     remove(scratch)
     for name in ("prefixes", "artifacts"):
         remove(root / name)
     subprocess.run("podman ps -aq --filter name=gnoblin-pipeline- | xargs -r podman rm -f", shell=True, check=False)
-    before = root / "images-before.txt"
-    if before.is_file():
-        kept = set(before.read_text().split())
-        listed = subprocess.run(
-            ["podman", "images", "--format", "{{.ID}}"], capture_output=True, text=True, check=False
-        ).stdout.split()
-        new = sorted(set(listed) - kept)
-        if new:
-            subprocess.run(["podman", "rmi", "-f", *new], check=False)
+    # Images are never removed. A pulled base image is shared with other work on this machine, and a removal once took
+    # images that were not ours.
 
 
 def main(argv=None):
@@ -1149,10 +1142,6 @@ def main(argv=None):
         data = generated_targets(args)
         write_json(root / "targets.json", data)
     if not args.matrix_only:
-        before = root / "images-before.txt"
-        if not before.is_file():
-            listed = subprocess.run(["podman", "images", "--format", "{{.ID}}"], capture_output=True, text=True)
-            before.write_text(listed.stdout)
         pipeline = Pipeline(args, data)
         pipeline.run_all()
     statuses = gate_and_report(root, args.release_tag, root / "gate.log")
