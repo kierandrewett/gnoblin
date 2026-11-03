@@ -34,7 +34,8 @@
 - `window:set_opacity`, `set_scale`, `set_rotation`, `set_offset` and `reset_visuals` change
   how the compositor draws a window without moving its frame. Clicks follow the drawn
   position, a config reload resets them, and they fail while the session is locked. Window
-  objects show the values in `opacity`, `scale`, `rotation` and `offset`. See
+  objects show the values in `opacity`, `scale`, `rotation` and `offset`, and `gnoblinctl lua`
+  has the same methods. See
   [change how a window is drawn](docs/shell-api/windows.md#change-how-a-window-is-drawn).
 - `gnoblin.tween()` builds a timeline of window opacity, scale, rotation and offset changes,
   intervals and callbacks, and the compositor plays it in its render loop. `play`, `pause`,

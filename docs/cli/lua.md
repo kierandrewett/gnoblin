@@ -40,6 +40,15 @@ end
 Window actions wait for compositor completion and return the completed value.
 They do not return an asynchronous `Operation` handle.
 
+The [draw methods](/shell-api/windows#change-how-a-window-is-drawn) work here
+too: `set_opacity`, `set_scale`, `set_rotation`, `set_offset` and
+`reset_visuals` return the window's visual values. The Lua configuration owns
+the change, so a config reload resets it.
+
+Records here are copies, not [live objects](/shell-api/windows#live-window-objects),
+and the console has no `gnoblin.tween()`. A tween's callbacks run in the Lua
+configuration, which outlives a console script, so build tweens in your config.
+
 `focus`, `begin_move`, and `begin_resize` require a trusted `FocusContext` from
 an event callback. The ordinary REPL cannot create one or call these methods.
 

@@ -212,6 +212,53 @@ static int lua_cli_window_method(lua_State* state) {
     return 1;
 }
 
+/* window:set_opacity(v), set_scale(s), set_rotation(degrees), set_offset(x, y) and
+ * reset_visuals(): one window.set_visual call each, as in the runtime. Upvalue 2 names the
+ * method; the compositor checks the ranges. */
+static int lua_cli_window_visual(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* name = lua_tostring(state, lua_upvalueindex(2));
+    int supplied = lua_gettop(state) - 1;
+    g_autofree char* id = g_strdup(lua_cli_window_id(state));
+    static const struct {
+        const char* method;
+        const char* fields[2];
+    } visuals[] = {
+        {"set_opacity", {"opacity", NULL}},   {"set_scale", {"scale", NULL}},
+        {"set_rotation", {"rotation", NULL}}, {"set_offset", {"offset_x", "offset_y"}},
+        {"reset_visuals", {NULL, NULL}},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(visuals); i++) {
+        if (!g_str_equal(name, visuals[i].method))
+            continue;
+        int count = visuals[i].fields[1] ? 2 : visuals[i].fields[0] ? 1 : 0;
+        if (supplied != count)
+            return luaL_error(state, "window:%s takes %d number%s", name, count,
+                              count == 1 ? "" : "s");
+        JsonObject* arguments = json_object_new();
+        lua_cli_set_window_id(arguments, id);
+        for (int field = 0; field < count; field++) {
+            if (lua_type(state, 2 + field) != LUA_TNUMBER) {
+                json_object_unref(arguments);
+                return luaL_error(state, "window:%s takes numbers", name);
+            }
+            json_object_set_double_member(arguments, visuals[i].fields[field],
+                                          lua_tonumber(state, 2 + field));
+        }
+        if (count == 0)
+            json_object_set_boolean_member(arguments, "reset", TRUE);
+        g_autoptr(GError) call_error = NULL;
+        g_autoptr(JsonNode) result =
+            call_compositor(cli, "api", "window.set_visual", arguments, &call_error);
+        json_object_unref(arguments);
+        if (!result)
+            return luaL_error(state, "window:%s failed: %s", name, call_error->message);
+        json_to_lua(state, result);
+        return 1;
+    }
+    return luaL_error(state, "unknown window visual method %s", name);
+}
+
 void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) {
     g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
     json_node_set_object(node, object);
@@ -251,6 +298,14 @@ void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) 
         lua_pushstring(state, methods[i][1]);
         lua_pushcclosure(state, lua_cli_window_method, 2);
         lua_setfield(state, -2, methods[i][0]);
+    }
+    static const char* const visual_methods[] = {"set_opacity", "set_scale",     "set_rotation",
+                                                 "set_offset",  "reset_visuals", NULL};
+    for (guint i = 0; visual_methods[i]; i++) {
+        lua_pushlightuserdata(state, cli);
+        lua_pushstring(state, visual_methods[i]);
+        lua_pushcclosure(state, lua_cli_window_visual, 2);
+        lua_setfield(state, -2, visual_methods[i]);
     }
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_WINDOW_RECORD_METATABLE);

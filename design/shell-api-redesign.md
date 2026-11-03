@@ -108,7 +108,8 @@ lock refuses them. `gnoblin.tween()` compiles to one description that the compos
 ## Open decisions
 
 - A change made while a lifecycle animation plays is overwritten when that animation restores its saved state.
-- `gnoblinctl lua` does not expose the visual methods or tweens yet.
+- `gnoblinctl lua` has the visual methods but no tweens and no live objects: tween callbacks and object signals
+  run in the configuration runtime, which outlives a console script.
 
 ## Windows as objects you can transform
 
