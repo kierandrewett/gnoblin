@@ -49,10 +49,10 @@ GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrA
 GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
                                       GError** error);
 /* Load order of gnoblin_config_load_runtime and the variants that follow: the system drop-ins are
- * `gnoblin/conf.d/*.lua` under each XDG_DATA_DIRS entry (last entry first), then
- * /etc/gnoblin/conf.d/*.lua. Without a user config the built-in init.lua runs and the drop-ins
- * follow it; with one, the drop-ins run first and the user config last. A drop-in that fails is
- * skipped, never fatal. */
+ * the `.lua` files of `gnoblin/conf.d` under each XDG_DATA_DIRS entry (last entry first), then
+ * the `.lua` files of /etc/gnoblin/conf.d. Without a user config the built-in init.lua runs and the
+ * drop-ins follow it; with one, the drop-ins run first and the user config last. A drop-in that
+ * fails is skipped, never fatal. */
 /* Like gnoblin_config_load_runtime, but `ignored` receives one line for every drop-in that
  * failed, so a rejected or accepted reload can show it. */
 GVariant* gnoblin_config_load_runtime_reporting(const char* path, GPtrArray** paths,
