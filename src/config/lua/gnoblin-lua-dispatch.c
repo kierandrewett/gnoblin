@@ -201,6 +201,7 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
             }
         }
     }
+    int request_reference = request_for_event(state, &active_runtime->config, event, payload);
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "listeners");
     gboolean dispatched = operation_completed;
@@ -266,6 +267,10 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
                                       active_runtime->config.dispatch_menu_window_id);
                     lua_setfield(state, -2, "menu_context");
                 }
+                if (request_reference != LUA_NOREF && event_index == 0) {
+                    lua_rawgeti(state, LUA_REGISTRYINDEX, request_reference);
+                    lua_setfield(state, -2, "request");
+                }
                 if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
                     g_warning("Lua event '%s' failed: %s", event_names[event_index],
                               lua_error_text(state));
@@ -276,6 +281,7 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
             lua_pop(state, 2);
         }
     }
+    luaL_unref(state, LUA_REGISTRYINDEX, request_reference);
     active_runtime->config.dispatching = FALSE;
     active_runtime->config.actions_in_dispatch = 0;
     lua_pop(state, 2);

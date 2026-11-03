@@ -217,12 +217,6 @@ const LuaApiEntry lua_api[] = {
     {"privacy.state", NULL, lua_privacy_state},
     {"privacy.stop_sharing", "privacy.stop_sharing", NULL},
     {"privacy.stop_recording", "privacy.stop_recording", NULL},
-    {"location.authorize_app", "location.authorize_app", NULL},
-    {"auth.begin", "auth.begin", NULL},
-    {"auth.respond", "auth.respond", NULL},
-    {"auth.cancel", "auth.cancel", NULL},
-    {"prompt.respond", "prompt.respond", NULL},
-    {"prompt.cancel", "prompt.cancel", NULL},
 
     {"session.status", "session.status", lua_session_status},
     {"session.activity", "session.activity", lua_session_activity},
@@ -238,6 +232,19 @@ const LuaApiEntry lua_api[] = {
     {NULL, NULL, NULL},
 };
 
+/* Wire operations that socket clients call directly but Lua reaches only through an object:
+ * Request answers (gnoblin-lua-request.c). gnoblin_config_call_api accepts them; install_api
+ * does not install them. */
+static const LuaApiEntry bridge_operations[] = {
+    {"prompt.respond", "prompt.respond", NULL},
+    {"prompt.cancel", "prompt.cancel", NULL},
+    {"auth.begin", "auth.begin", NULL},
+    {"auth.respond", "auth.respond", NULL},
+    {"auth.cancel", "auth.cancel", NULL},
+    {"location.authorize_app", "location.authorize_app", NULL},
+    {NULL, NULL, NULL},
+};
+
 /* The entry a socket client names by operation or by gnoblin path. Paths under gnoblin come
  * before record methods, so workspace.switch resolves to workspaces.activate. */
 const LuaApiEntry* lua_api_find_call(const char* method) {
@@ -247,6 +254,9 @@ const LuaApiEntry* lua_api_find_call(const char* method) {
             return entry;
     for (const LuaApiEntry* entry = lua_api; entry->path; entry++)
         if (entry->operation && strchr(entry->path, ':') && g_str_equal(entry->operation, method))
+            return entry;
+    for (const LuaApiEntry* entry = bridge_operations; entry->path; entry++)
+        if (g_str_equal(entry->operation, method))
             return entry;
     return NULL;
 }

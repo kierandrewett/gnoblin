@@ -19,6 +19,14 @@
   such a window without a key press, after the user has not typed or clicked for 250 ms. A
   shell can now open a passphrase prompt that takes typing straight away. See
   [focus and activation](docs/shell-api/focus-activation.md).
+- Keyring and GPG prompts, polkit authentication, location authorization and session-lock
+  requests reach Lua as one `Request` object, `event.request`. It has `id`, `kind`, `status`,
+  the request's detail fields and `finished()`, an Operation that succeeds once with the
+  outcome. `answer()`, `cancel()`, `claim()` and `on()` exist only on the kinds that use them.
+  See [requests](docs/shell-api/requests.md).
+- The Lua configuration receives `gnoblin.session.lock-requested` when it listens for it, so
+  a config can start a locker without a separate shell process. See
+  [session lock](docs/session-lock.md).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin
@@ -109,6 +117,21 @@ function is a Lua error, so a config that still calls one fails to load.
 | result `exit_code` below 0 after a signal          | result `signal`, such as `"term"`; `exit_code` is `nil`                  |
 | failure past 64 KiB of output, or non-UTF-8 output | `output_limit` chooses the size; `stdout_truncated`; output is raw bytes |
 
+`gnoblin.prompt.respond`, `gnoblin.prompt.cancel`, `gnoblin.auth.begin`, `gnoblin.auth.respond`,
+`gnoblin.auth.cancel` and `gnoblin.location.authorize_app` are removed from Lua; answer through
+`event.request`. Shell processes keep these methods on the compositor bridge.
+
+| Before                                                                         | After                           |
+| ------------------------------------------------------------------------------ | ------------------------------- |
+| `gnoblin.prompt.respond {request_id = id, password = p}`                       | `event.request:answer(p)`       |
+| `gnoblin.prompt.respond {request_id = id, confirmed = true}`                   | `event.request:answer(true)`    |
+| `gnoblin.prompt.cancel {request_id = id}`                                      | `event.request:cancel()`        |
+| `gnoblin.auth.begin {request_id = id, identity = n}`                           | `event.request:claim(n)`        |
+| `gnoblin.auth.respond {request_id = id, response = p}`                         | `request:answer(p)`             |
+| `gnoblin.auth.cancel {request_id = id}`                                        | `request:cancel()`              |
+| `gnoblin.location.authorize_app {request_id = id, allow = true, accuracy = a}` | `event.request:answer(true, a)` |
+| `gnoblin.on("gnoblin.prompt.finished", ...)`                                   | `event.request:finished()`      |
+
 ### Migration
 
 1. Remove the `permissions` section, `gnoblin.permission_rule` calls, and
@@ -120,6 +143,8 @@ function is a Lua error, so a config that still calls one fails to load.
 3. Stop subscribing to the removed events and calling the removed commands.
 4. Replace `gnoblin.commands.run` and `gnoblin.commands.capture` with
    `gnoblin.process.spawn` as the table above shows.
+5. Answer prompts, authentication and location requests through `event.request`, as the
+   table above shows.
 
 ### Changed
 

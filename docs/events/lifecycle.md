@@ -150,6 +150,11 @@ families.
 | `gnoblin.prompt.requested`                 | `request_id`, `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label`, `sequence`, `time` | A keyring or GPG prompt asks for a password or a confirmation.         |
 | `gnoblin.prompt.finished`                  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A keyring or GPG prompt ends.                                          |
 
+In the Lua configuration, the `location`, `auth` and `prompt` events above, and
+`gnoblin.session.lock-requested`, also carry `request`: a
+[`Request`](/shell-api/requests) that you answer with methods instead of
+`request_id`.
+
 #### Animations and operations
 
 | Event name                    | Fields                                                                             | Dispatched when                                                                              |

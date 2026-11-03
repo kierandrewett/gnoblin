@@ -26,18 +26,18 @@ same way.
 gnoblin.configure {auth = {polkit_agent = true}}
 
 gnoblin.on("gnoblin.auth.requested", function(event)
-    gnoblin.auth.begin {request_id = event.request_id}
-end)
-
-gnoblin.on("gnoblin.auth.prompt", function(event)
-    local prompt = gnoblin.process.spawn({"zenity", "--password", "--title", event.prompt}, {stdout = "capture"})
-    prompt:wait():on_complete(function(exit, err)
-        if err or exit.exit_code ~= 0 then
-            gnoblin.auth.cancel {request_id = event.request_id}
-            return
-        end
-        local password = exit.stdout:gsub("\n$", "")
-        gnoblin.auth.respond {request_id = event.request_id, response = password}
+    local request = event.request
+    request:claim()
+    request:on("prompt", function()
+        local prompt = gnoblin.process.spawn({"zenity", "--password", "--title", request.prompt},
+            {stdout = "capture"})
+        prompt:wait():on_complete(function(exit, err)
+            if err or exit.exit_code ~= 0 then
+                request:cancel()
+                return
+            end
+            request:answer((exit.stdout:gsub("\n$", "")))
+        end)
     end)
 end)
 ```
@@ -45,49 +45,42 @@ end)
 Run `pkexec id -u` in a terminal. The prompt appears, and the command prints `0`
 after a correct password.
 
-## Events
+## The request
 
-All events carry `request_id`, an integer that stays the same for one request.
+`gnoblin.auth.requested` and its follow-up events carry `event.request`, a
+[`Request`](/shell-api/requests) whose `kind` is `"authentication"`. Its fields:
 
-| Event                    | Extra fields                                                 | When it fires                              |
-| ------------------------ | ------------------------------------------------------------ | ------------------------------------------ |
-| `gnoblin.auth.requested` | `action_id`, `message`, `icon_name`, `details`, `identities` | A program asks for authentication.         |
-| `gnoblin.auth.prompt`    | `prompt`, `echo`                                             | The check needs input from the user.       |
-| `gnoblin.auth.message`   | `text`, `error`                                              | The check has a line of text for the user. |
-| `gnoblin.auth.finished`  | `result`                                                     | The request ended.                         |
-
-- `message` is the text polkit wants shown, for example "Authentication is
+- `id`: the same for every event of one request.
+- `message`: the text polkit wants shown, for example "Authentication is
   needed to run `/usr/bin/id -u' as the super user".
-- `details` is a table of strings that describe the action.
-- `identities` lists who can authenticate. Each entry has `kind` (`user`,
-  `group`, or `other`) and `name`.
-- `echo` is `false` for a password. Hide what the user types.
-- `error` is `true` when `text` is an error line from the check.
-- `result` is `authorized`, `denied` (wrong password), or `cancelled`.
+- `action_id` and `icon_name`: the polkit action and its icon.
+- `details`: a table of strings that describe the action.
+- `identities`: who can authenticate. Each entry has `kind` (`user`, `group`,
+  or `other`) and `name`.
+- `prompt` and `echo`: the current question. `echo` is `false` for a password;
+  hide what the user types.
+- `text` and `error`: the last message line, and whether it is an error.
 
-## Methods
+| Method              | Effect                                                                |
+| ------------------- | --------------------------------------------------------------------- |
+| `claim(identity?)`  | Start the check for one identity, counted from 1. The default is `1`. |
+| `on("prompt", fn)`  | Call `fn(request)` when the check needs input.                        |
+| `on("message", fn)` | Call `fn(request)` for each line of text for the user.                |
+| `answer(response)`  | Answer the current prompt. Up to 4096 bytes of UTF-8.                 |
+| `cancel()`          | End the request. The program that asked reports a refusal.            |
+| `finished()`        | An Operation that succeeds with the outcome.                          |
 
-Each method takes a table and returns an operation. The operation succeeds with
-`{request_id = ..., submitted = true}`.
+The outcome is `authorized`, `denied` (wrong password) or `cancelled`. A wrong
+password ends the request, and Gnoblin does not ask again. The program can
+start a new request.
 
-| Method                 | Fields                              | Effect                                                      |
-| ---------------------- | ----------------------------------- | ----------------------------------------------------------- |
-| `gnoblin.auth.begin`   | `request_id`, `identity` (optional) | Start the check for one identity. `identity` counts from 1. |
-| `gnoblin.auth.respond` | `request_id`, `response`            | Answer the pending prompt. Up to 4096 bytes of UTF-8.       |
-| `gnoblin.auth.cancel`  | `request_id`                        | End the request. The program that asked reports a refusal.  |
-
-`identity` defaults to `1`. Pick another entry from `identities` when the user
-must authenticate as a different account.
-
-A wrong password ends the request with `gnoblin.auth.finished` and
-`result = "denied"`. The program that asked reports a refusal, and Gnoblin does
-not ask again. The program can start a new request.
+The events are `gnoblin.auth.requested`, `gnoblin.auth.prompt`,
+`gnoblin.auth.message` and `gnoblin.auth.finished`.
 
 ## Limits
 
-- A request that nothing claims with `begin` or `cancel` is cancelled after 15
-  seconds.
-- After `begin`, each prompt waits up to 120 seconds for `respond`.
+- A request that nothing claims or cancels is cancelled after 15 seconds.
+- After `claim()`, each prompt waits up to 120 seconds for an answer.
 - At most 8 requests wait at the same time. Extra requests are cancelled.
 - Only one authentication agent can own a session. Check the `auth-agent`
   capability with `gnoblinctl capabilities`. It reports `auth_disabled` while
@@ -99,14 +92,19 @@ not ask again. The program can start a new request.
 The password passes through Gnoblin's memory and the Lua runtime's memory.
 Gnoblin wipes its own copies where it can, but Lua strings are not wiped.
 
-- Do not log `response` or `result.stdout`.
+- Do not log the answer or the prompt program's `stdout`.
 - Do not put a password in `argv`. Other users can read command lines.
 - A prompt program that prints the password to standard output keeps it off the
   command line.
 
-## Use the methods from a shell process
+## Answer from a shell process
 
-A shell that connects to the [compositor bridge](/bridge/) uses the
-same methods as `auth.begin`, `auth.respond`, and `auth.cancel` with API version
-1.78 or later, and subscribes to the `gnoblin.auth.*` events. Only a client that
-received `gnoblin.auth.requested` can answer that request.
+A shell that connects to the [compositor bridge](/bridge/) needs API version
+1.78 or later. It subscribes to the `gnoblin.auth.*` events and answers with
+these methods, each with `request_id`:
+
+- `auth.begin`, with optional `identity`, claims the request.
+- `auth.respond`, with `response`, answers the current prompt.
+- `auth.cancel` ends the request.
+
+Only a client that received `gnoblin.auth.requested` can answer that request.

@@ -5,23 +5,24 @@ local function log(text)
 end
 
 gnoblin.on("gnoblin.auth.requested", function(event)
-    log("requested " .. event.request_id)
-    gnoblin.auth.begin({ request_id = event.request_id })
+    log("requested " .. event.request.id)
+    event.request:claim()
 end)
 
 gnoblin.on("gnoblin.auth.prompt", function(event)
-    log("prompt " .. event.request_id)
+    local request = event.request
+    log("prompt " .. request.id)
     gnoblin.process
         .spawn({ "sh", "-c", "echo gnoblin-test" }, { stdout = "capture" })
         :wait()
         :on_complete(function(result, err)
             if err or result.exit_code ~= 0 then
                 log("cancelling")
-                gnoblin.auth.cancel({ request_id = event.request_id })
+                request:cancel()
                 return
             end
             local password = result.stdout:gsub("\n$", "")
-            gnoblin.auth.respond({ request_id = event.request_id, response = password })
+            request:answer(password)
         end)
 end)
 

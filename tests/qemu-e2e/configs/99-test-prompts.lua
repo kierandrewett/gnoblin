@@ -5,25 +5,25 @@ local function log(text)
 end
 
 gnoblin.on("gnoblin.prompt.requested", function(event)
+    local request = event.request
     log(
         "requested id="
-            .. event.request_id
+            .. request.id
             .. " kind="
-            .. event.kind
+            .. request.kind
             .. " title=["
-            .. tostring(event.title)
+            .. tostring(request.title)
             .. "] message=["
-            .. tostring(event.message)
+            .. tostring(request.message)
             .. "] new="
-            .. tostring(event.password_new)
+            .. tostring(request.password_new)
     )
-    if event.kind == "password" then
-        gnoblin.prompt.respond({ request_id = event.request_id, password = "gnoblin-keyring-test" })
+    request:finished():on_complete(function(result)
+        log("finished id=" .. request.id .. " result=" .. result)
+    end)
+    if request.kind == "password" then
+        request:answer("gnoblin-keyring-test")
     else
-        gnoblin.prompt.respond({ request_id = event.request_id, confirmed = true })
+        request:answer(true)
     end
-end)
-
-gnoblin.on("gnoblin.prompt.finished", function(event)
-    log("finished id=" .. event.request_id .. " result=" .. event.result)
 end)

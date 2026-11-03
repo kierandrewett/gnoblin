@@ -29,8 +29,9 @@ back in; protocol globals are registered at compositor startup. See the
 
 A lock request asks your shell to show its lock screen. Gnoblin sends the
 request as the `gnoblin.session.lock-requested` event to every shell client
-that subscribed to it. The shell starts its locker, and the locker takes the
-lock with `ext-session-lock-v1`. Gnoblin binds no key and starts no locker.
+that subscribed to it, and to the Lua configuration when it listens for the
+event. The shell starts its locker, and the locker takes the lock with
+`ext-session-lock-v1`. Gnoblin binds no key and starts no locker.
 
 These sources send the request:
 
@@ -86,14 +87,29 @@ gnoblin.configure {
 }
 ```
 
-To receive the request in a shell, subscribe to the event and start the locker.
-This script runs in `gnoblinctl lua` and starts `swaylock` on each request:
+To receive the request in your Lua configuration, listen for the event and
+start the locker. This handler starts `swaylock` on each request and logs when
+the lock does not take effect:
 
 ```lua
-gnoblin.events.on("gnoblin.session.lock-requested", function(event)
+gnoblin.on("gnoblin.session.lock-requested", function(event)
     gnoblin.process.spawn({"swaylock", "-f"})
+    event.request:finished():on_complete(function(outcome)
+        if outcome ~= "locked" then
+            print("swaylock did not lock the session")
+        end
+    end)
 end)
 ```
+
+`event.request` is a [`Request`](/shell-api/requests) of kind `"lock"`. Its
+`finished()` Operation reports one of two outcomes:
+
+- `"locked"`: the session locked.
+- `"timeout"`: the session did not lock within 30 seconds.
+
+A shell process that connects to the [compositor bridge](/bridge/) subscribes
+to the same event.
 
 Check the result from a terminal:
 

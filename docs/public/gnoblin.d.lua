@@ -6,7 +6,6 @@
 gnoblin = {}
 gnoblin.animations = {}
 gnoblin.appearance = {}
-gnoblin.auth = {}
 gnoblin.capabilities = {}
 gnoblin.config = {}
 gnoblin.console = {}
@@ -18,13 +17,11 @@ gnoblin.launch = {}
 gnoblin.launches = {}
 gnoblin.layer = {}
 gnoblin.layers = {}
-gnoblin.location = {}
 gnoblin.monitor = {}
 gnoblin.monitors = {}
 gnoblin.outputs = {}
 gnoblin.privacy = {}
 gnoblin.process = {}
-gnoblin.prompt = {}
 gnoblin.runtime = {}
 gnoblin.session = {}
 gnoblin.shortcuts = {}
@@ -211,50 +208,44 @@ function AnimationPreview:pause() end
 ---@return Operation<AnimationStopResult>
 function AnimationPreview:stop() end
 
----@class AuthBeginArgs
----@field request_id integer Positive request identifier.
----@field identity? integer Positive identity identifier; omitted when no identity is supplied.
+---Something a shell answers: a passphrase prompt, a polkit authentication, a location
+---authorization or a session-lock request. The event that offers it carries it as event.request,
+---and so do its follow-up events. Fields are read-only. Methods exist only on the kinds that use
+---them; calling another raises an error.
+---@class Request
+---@field id integer Identifier of the request among requests of its kind.
+---@field kind "password"|"confirm"|"authentication"|"location"|"lock"
+---@field status "pending"|"claimed"|"answered"|"finished"
+---@field result? string The outcome once status is "finished".
 
----@class AuthRespondArgs
----@field request_id integer Positive request identifier.
----@field response string UTF-8 response of at most 4096 bytes.
+---Answer the request. A password prompt takes (password, choice?), a confirm prompt takes
+---(confirmed, choice?), authentication takes the response for the current prompt, and location
+---takes (allow, accuracy?), where accuracy defaults to the requested accuracy when allowed.
+---@param value string|boolean Password, confirmed, response or allow, by kind.
+---@param option? boolean|integer The choice checkbox for prompts, or the accuracy for location.
+---@return Operation<{request_id: integer, submitted: boolean}>
+function Request:answer(value, option) end
 
----@class AuthCancelArgs
----@field request_id integer Positive request identifier.
+---Refuse the request: cancel a prompt or authentication, or deny location.
+---@return Operation<{request_id: integer, submitted: boolean}>
+function Request:cancel() end
 
----@class PromptRespondArgs
----@field request_id integer Positive request identifier.
----@field password? string|nil UTF-8 password of at most 4096 bytes, or nil.
----@field confirmed? boolean Confirmation value.
----@field choice? boolean Choice value.
+---Take an authentication request and choose the identity, counted from 1 (the default). Answer
+---each later prompt with answer().
+---@param identity? integer
+---@return Operation<{request_id: integer, submitted: boolean}>
+function Request:claim(identity) end
 
----@class PromptCancelArgs
----@field request_id integer Positive request identifier.
+---An Operation that succeeds once with the outcome: "answered", "cancelled" or "timeout" for
+---prompts; "authorized", "denied" or "cancelled" for authentication; "allowed", "denied" or
+---"timeout" for location; "locked" or "timeout" for lock.
+---@return Operation<string>
+function Request:finished() end
 
----Begin an authentication request for an identity.
----@param request AuthBeginArgs
----@return Operation<any>
-function gnoblin.auth.begin(request) end
-
----Submit a UTF-8 authentication response of at most 4096 bytes.
----@param request AuthRespondArgs
----@return Operation<any>
-function gnoblin.auth.respond(request) end
-
----Cancel an authentication request.
----@param request AuthCancelArgs
----@return Operation<any>
-function gnoblin.auth.cancel(request) end
-
----Answer a prompt with an optional password, confirmation, or choice.
----@param request PromptRespondArgs
----@return Operation<any>
-function gnoblin.prompt.respond(request) end
-
----Cancel a prompt request.
----@param request PromptCancelArgs
----@return Operation<any>
-function gnoblin.prompt.cancel(request) end
+---Call fn(request) for each later authentication prompt or message.
+---@param signal "prompt"|"message"
+---@param fn fun(request: Request)
+function Request:on(signal, fn) end
 
 ---@alias Json nil|boolean|number|string|table
 
@@ -910,10 +901,6 @@ function Process:kill(signal) end
 ---@class PrivacyStopResult
 ---@field requested integer Number of privacy sessions asked to stop.
 
----@class LocationAuthorizationResult
----@field request_id integer Identifier of the answered authorization request.
----@field submitted boolean Whether the response was submitted.
-
 ---@class ConsoleToggleResult
 ---@field toggled boolean Whether the console was toggled.
 
@@ -970,16 +957,6 @@ function gnoblin.privacy.stop_sharing() end
 ---Request that active recording sessions stop.
 ---@return Operation<PrivacyStopResult>
 function gnoblin.privacy.stop_recording() end
-
----Answer a pending location authorization request. The request ID must have been received from an active authorization event subscription.
----@param request LocationAuthorizationArgs
----@return Operation<LocationAuthorizationResult>
-function gnoblin.location.authorize_app(request) end
-
----@class LocationAuthorizationArgs
----@field request_id integer Positive ID from a pending location authorization request.
----@field allow boolean Whether to allow location access.
----@field accuracy integer 0 when denied; when allowed, one of 1, 4, 5, 6, or 8 and no greater than the requested accuracy.
 
 ---Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.
 ---@return VersionInfo

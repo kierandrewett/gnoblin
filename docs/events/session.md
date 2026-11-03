@@ -21,7 +21,7 @@ and location activity in `state`. Activity appears only for available sources.
 The native runtime monitors screen sharing, PipeWire microphone and camera
 activity, and GeoClue location activity. GeoClue authorization requests arrive
 through `gnoblin.location.authorization-requested`; answer them with
-`gnoblin.location.authorize_app`. See [Privacy](/shell-api/privacy)
+`event.request:answer()`. See [Privacy](/shell-api/privacy)
 for accuracy levels, deadlines, and the authorization rules.
 
 `gnoblin.capability.changed` fires when a monitored native capability becomes

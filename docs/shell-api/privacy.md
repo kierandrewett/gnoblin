@@ -1,11 +1,10 @@
 # Privacy
 
-| Method                                    | Arguments                                              | Successful result                                                |
-| ----------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `gnoblin.privacy.state()`                 | None                                                   | Read-only `PrivacyState` snapshot                                |
-| `gnoblin.privacy.stop_sharing()`          | None                                                   | `Operation<{requested: integer}>`                                |
-| `gnoblin.privacy.stop_recording()`        | None                                                   | `Operation<{requested: integer}>`                                |
-| `gnoblin.location.authorize_app(options)` | `request_id`, `allow`, `accuracy` from a pending event | Runtime: `Operation<Result>`; `gnoblinctl lua`: read-only result |
+| Method                             | Arguments | Successful result                 |
+| ---------------------------------- | --------- | --------------------------------- |
+| `gnoblin.privacy.state()`          | None      | Read-only `PrivacyState` snapshot |
+| `gnoblin.privacy.stop_sharing()`   | None      | `Operation<{requested: integer}>` |
+| `gnoblin.privacy.stop_recording()` | None      | `Operation<{requested: integer}>` |
 
 ## Privacy state
 
@@ -63,25 +62,28 @@ The `unavailable` status means GeoClue is unreachable or rejected Gnoblin's
 registration.
 
 Gnoblin publishes `gnoblin.location.authorization-requested` when GeoClue asks
-whether an application may use location. A shell or Lua handler can answer
-with `gnoblin.location.authorize_app`:
+whether an application may use location. The event carries `event.request`, a
+[`Request`](/shell-api/requests) whose `kind` is `"location"`:
 
 ```lua
 gnoblin.on("gnoblin.location.authorization-requested", function(event)
-  gnoblin.location.authorize_app {
-    request_id = event.request_id,
-    allow = false,
-    accuracy = 0,
-  }
+    event.request:cancel()
 end)
 ```
 
-This handler denies every request. A shell that asks the user for consent can
-return `allow = true` with the selected accuracy after the user approves.
-The [compositor bridge](/bridge/) describes how a socket client
-receives and answers these requests. GeoClue configuration that does not allow
-the agent must be fixed by the system administrator before the capability
-becomes available.
+This handler denies every request. A shell that asks the user for consent calls
+`request:answer(true, accuracy)` after the user approves. Without `accuracy`,
+it allows the accuracy the application asked for.
+
+`request:finished()` succeeds with one of these outcomes:
+
+- `"allowed"` or `"denied"`: the request got that answer.
+- `"timeout"`: nothing answered before the deadline.
+
+The [compositor bridge](/bridge/) describes how a socket client receives these
+requests and answers them with `location.authorize_app`. GeoClue configuration
+that does not allow the agent must be fixed by the system administrator before
+the capability becomes available.
 
 GeoClue supplies `app_id` as the application's desktop ID. Treat it as a
 request attribute, not an authenticated identity.
@@ -99,12 +101,12 @@ An allowed answer must be nonzero, no more precise than the request, and
 within the global [location policy](/config/configure/location). A disabled
 policy denies the request.
 
-The event fields are `request_id`, `app_id`, `requested_accuracy`, and
-`expires_at_us`, plus the standard event metadata.
+The request's fields are `id`, `app_id`, `requested_accuracy`, and
+`expires_at_us`.
 
 Requests expire after 25 seconds. Gnoblin denies unanswered requests and
 requests still pending when the runtime stops or the GeoClue agent becomes
-unavailable. The answer is a one-use operation. Socket clients must answer on the same
+unavailable. A request takes one answer. Socket clients must answer on the same
 connection that received the request event.
 
 `gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording

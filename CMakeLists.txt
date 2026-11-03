@@ -116,6 +116,7 @@ if(GNOBLIN_LUA_FOUND)
     src/config/lua/gnoblin-lua-process.c
     src/config/lua/gnoblin-lua-queries.c
     src/config/lua/gnoblin-lua-read.c
+    src/config/lua/gnoblin-lua-request.c
     src/config/lua/gnoblin-lua-runtime.c
     src/config/lua/gnoblin-lua-state-queries.c
     src/config/lua/gnoblin-lua-subscriptions.c

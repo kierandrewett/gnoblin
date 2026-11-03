@@ -632,6 +632,13 @@ GVariant* gnoblin_native_control_request_session_lock(MetaDisplay* display, GVar
             g_hash_table_contains(client->event_subscriptions, event_name))
             listeners++;
     }
+    /* A config that listens for lock requests answers them as well as socket shells do. */
+    gboolean runtime_listens =
+        control->supervised_runtime && !control->runtime_worker_suspended &&
+        control->runtime_event_subscriptions &&
+        g_hash_table_contains(control->runtime_event_subscriptions, event_name);
+    if (runtime_listens)
+        listeners++;
     if (listeners == 0) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
                             "no session-lock client is subscribed to lock requests");
@@ -647,6 +654,14 @@ GVariant* gnoblin_native_control_request_session_lock(MetaDisplay* display, GVar
     json_object_set_int_member(object, "sequence", sequence);
     json_object_set_int_member(object, "time", time);
     publish_native_socket_event(control, event);
+    if (runtime_listens) {
+        GVariantBuilder payload;
+        g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&payload, "{sv}", "sequence", g_variant_new_int64(sequence));
+        g_variant_builder_add(&payload, "{sv}", "time", g_variant_new_int64(time));
+        g_autoptr(GVariant) runtime_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
+        native_runtime_dispatch_event(control, event_name, runtime_payload);
+    }
 
     GVariantBuilder result;
     g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);

@@ -62,10 +62,6 @@
 ---@class PrivacyStopResult
 ---@field requested integer Number of privacy sessions asked to stop.
 
----@class LocationAuthorizationResult
----@field request_id integer Identifier of the answered authorization request.
----@field submitted boolean Whether the response was submitted.
-
 ---@class ConsoleToggleResult
 ---@field toggled boolean Whether the console was toggled.
 
@@ -122,18 +118,6 @@ function gnoblin.privacy.stop_sharing() end
 ---Request that active recording sessions stop.
 ---@return Operation<PrivacyStopResult>
 function gnoblin.privacy.stop_recording() end
-
----Answer a pending location authorization request. The request ID must have been received from an
-active authorization event subscription.
----@param request LocationAuthorizationArgs
----@return Operation<LocationAuthorizationResult>
-function gnoblin.location.authorize_app(request) end
-
----@class LocationAuthorizationArgs
----@field request_id integer Positive ID from a pending location authorization request.
----@field allow boolean Whether to allow location access.
----@field accuracy integer 0 when denied; when allowed, one of 1, 4, 5, 6, or 8 and no greater than
-the requested accuracy.
 
 ---Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.
 ---@return VersionInfo

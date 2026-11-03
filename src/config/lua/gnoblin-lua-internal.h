@@ -81,6 +81,7 @@ typedef struct {
     GHashTable* operations;
     GHashTable* timers;    /* Operation ID -> LuaTimer for runtime-local timers. */
     GHashTable* processes; /* process.spawn request ID -> registry reference to the Process. */
+    GHashTable* requests;  /* "family:id" -> registry reference to a Request's backing table. */
     GHashTable* focus_operations;
     GVariant* window_snapshot;
     guint64 window_revision;
@@ -270,6 +271,10 @@ void subscribe_operation(lua_State* state, LuaConfig* config, int operation);
 GVariant* lua_command_argv_variant(lua_State* state, int index, const char* label);
 int lua_process_spawn(lua_State* state);
 void process_exited(lua_State* state, LuaConfig* config, GVariant* payload);
+void finish_operation_after(lua_State* state, LuaConfig* config, int handle, double seconds,
+                            const char* value);
+int request_for_event(lua_State* state, LuaConfig* config, const char* event, GVariant* payload);
+GHashTable* runtime_requests_new(void);
 gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed);
 int lua_workspace_action(lua_State* state);
 int lua_generic_api_action(lua_State* state);

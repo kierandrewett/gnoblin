@@ -17,7 +17,8 @@ typedef struct {
     lua_State* state;
     int handle; /* Registry reference to the Operation the timer finishes. */
     guint source;
-    gboolean timeout; /* Fail with timed_out instead of succeeding with nil. */
+    gboolean timeout;  /* Fail with timed_out instead of succeeding. */
+    const char* value; /* Static string the Operation succeeds with, or NULL for nil. */
 } LuaTimer;
 
 static int lua_operation_unsubscribe(lua_State* state);
@@ -362,6 +363,18 @@ static void start_timer(lua_State* state, LuaConfig* config, int handle, double 
     g_hash_table_replace(config->timers, operation_key(state, handle), timer);
 }
 
+/* Succeed the local Operation at `handle` with the static string `value` after `seconds`, unless
+ * it finishes first. */
+void finish_operation_after(lua_State* state, LuaConfig* config, int handle, double seconds,
+                            const char* value) {
+    handle = lua_absindex(state, handle);
+    start_timer(state, config, handle, seconds, FALSE);
+    g_autofree char* key = operation_key(state, handle);
+    LuaTimer* timer = g_hash_table_lookup(config->timers, key);
+    if (timer)
+        timer->value = value;
+}
+
 static int lua_operation_timeout(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     if (lua_gettop(state) != 2)
@@ -382,6 +395,9 @@ static int finish_timer(lua_State* state) {
     if (timer->timeout) {
         push_operation_error(state, "timed_out", "the operation did not finish in time");
         finish_operation(state, config, handle, FALSE, 0, -1);
+    } else if (timer->value) {
+        lua_pushstring(state, timer->value);
+        finish_operation(state, config, handle, TRUE, -1, 0);
     } else {
         finish_operation(state, config, handle, TRUE, 0, 0);
     }
