@@ -559,29 +559,7 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     }
     if (operation_error) {
         /* Report a normal operation failure; late input is not a protocol fault. */
-    } else if (g_str_equal(method, "command.run")) {
-        guint64 operation_generation = 0;
-        if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &operation_generation) ||
-            !operation_generation || operation_generation != control->runtime_generation) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.run belongs to a stale runtime generation");
-        } else if (control->runtime_worker_suspended || control->runtime_recovery_failed) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
-                                "Lua runtime is unavailable for command execution");
-        } else if (control->wayland_compositor &&
-                   meta_wayland_session_lock_is_active(control->wayland_compositor)) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.run is unavailable while the session is locked");
-        } else {
-            g_auto(GStrv) argv = gnoblin_control_command_run_argv(arguments, &operation_error);
-            if (argv && gnoblin_control_queue_command("command", argv[0], argv, &operation_error)) {
-                GVariantBuilder accepted;
-                g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
-                g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-                result = g_variant_ref_sink(g_variant_builder_end(&accepted));
-            }
-        }
-    } else if (g_str_equal(method, "command.capture") || g_str_has_prefix(method, "process.")) {
+    } else if (g_str_has_prefix(method, "process.")) {
         guint64 operation_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &operation_generation) ||
             !operation_generation || operation_generation != control->runtime_generation) {
@@ -607,15 +585,6 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     }
     if (operation_error) {
         /* Return a normal operation failure; do not tear down the private channel. */
-    } else if (g_str_equal(method, "command.run")) {
-        /* The command was accepted by the asynchronous executor above. */
-    } else if (g_str_equal(method, "command.capture")) {
-        guint64* operation_key = g_new(guint64, 1);
-        *operation_key = (guint64)operation_id;
-        g_hash_table_add(control->runtime_operation_ids, operation_key);
-        if (gnoblin_control_capture_begin(control, operation_id, arguments, &operation_error))
-            return TRUE;
-        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
     } else if (g_str_equal(method, "process.spawn")) {
         guint64* operation_key = g_new(guint64, 1);
         *operation_key = (guint64)operation_id;

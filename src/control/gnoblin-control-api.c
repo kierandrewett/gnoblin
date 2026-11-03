@@ -137,7 +137,6 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_int64_hash, g_int64_equal, g_free, gnoblin_control_pending_location_authorization_free);
     gnoblin_control_auth_init(control);
     gnoblin_control_prompts_init(control);
-    gnoblin_control_capture_init(control);
     gnoblin_control_process_init(control);
     control->runtime_operation_ids =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
@@ -486,7 +485,6 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->location_agent, gnoblin_location_agent_free);
     gnoblin_control_auth_stop(control);
     gnoblin_control_prompts_stop(control);
-    gnoblin_control_capture_clear(control);
     gnoblin_control_process_clear(control);
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
@@ -667,7 +665,6 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->pending_location_authorizations, g_hash_table_unref);
     g_clear_pointer(&control->pending_auth, g_hash_table_unref);
     g_clear_pointer(&control->pending_prompts, g_hash_table_unref);
-    g_clear_pointer(&control->pending_captures, g_hash_table_unref);
     g_clear_pointer(&control->processes, g_hash_table_unref);
     g_clear_pointer(&control->runtime_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_cancelled_operation_ids, g_hash_table_unref);

@@ -213,9 +213,6 @@ const LuaApiEntry lua_api[] = {
     {"launch.begin", "launch.begin", NULL},
     {"launch.end", "launch.end", NULL},
 
-    {"commands.run", "command.run", NULL},
-    {"commands.capture", "command.capture", NULL},
-
     {"privacy.state", NULL, lua_privacy_state},
     {"privacy.stop_sharing", "privacy.stop_sharing", NULL},
     {"privacy.stop_recording", "privacy.stop_recording", NULL},

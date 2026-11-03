@@ -30,14 +30,13 @@ gnoblin.on("gnoblin.auth.requested", function(event)
 end)
 
 gnoblin.on("gnoblin.auth.prompt", function(event)
-    gnoblin.commands.capture {
-        argv = {"zenity", "--password", "--title", event.prompt},
-    }:on_complete(function(result, err)
-        if err or result.exit_code ~= 0 then
+    local prompt = gnoblin.process.spawn({"zenity", "--password", "--title", event.prompt}, {stdout = "capture"})
+    prompt:wait():on_complete(function(exit, err)
+        if err or exit.exit_code ~= 0 then
             gnoblin.auth.cancel {request_id = event.request_id}
             return
         end
-        local password = result.stdout:gsub("\n$", "")
+        local password = exit.stdout:gsub("\n$", "")
         gnoblin.auth.respond {request_id = event.request_id, response = password}
     end)
 end)

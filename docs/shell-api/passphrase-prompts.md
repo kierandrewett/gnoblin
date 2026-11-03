@@ -35,29 +35,27 @@ gnoblin.on("gnoblin.prompt.requested", function(event)
     local message = text(event.message, title)
 
     if event.kind == "password" then
-        gnoblin.commands.capture {
-            argv = {"zenity", "--password", "--title", message},
-        }:on_complete(function(result, err)
-            if err or result.exit_code ~= 0 then
+        local prompt = gnoblin.process.spawn({"zenity", "--password", "--title", message}, {stdout = "capture"})
+        prompt:wait():on_complete(function(exit, err)
+            if err or exit.exit_code ~= 0 then
                 gnoblin.prompt.cancel {request_id = event.request_id}
                 return
             end
-            local password = result.stdout:gsub("\n$", "")
+            local password = exit.stdout:gsub("\n$", "")
             gnoblin.prompt.respond {request_id = event.request_id, password = password}
         end)
         return
     end
 
-    gnoblin.commands.capture {
-        argv = {"zenity", "--question", "--title", title, "--text", message},
-    }:on_complete(function(result, err)
-        if err or result.exit_code < 0 then
+    local question = gnoblin.process.spawn({"zenity", "--question", "--title", title, "--text", message})
+    question:wait():on_complete(function(exit, err)
+        if err or exit.signal then
             gnoblin.prompt.cancel {request_id = event.request_id}
             return
         end
         gnoblin.prompt.respond {
             request_id = event.request_id,
-            confirmed = result.exit_code == 0,
+            confirmed = exit.exit_code == 0,
         }
     end)
 end)

@@ -1,4 +1,4 @@
-/* Command spawning: configured shortcut commands, command.run and touchpad gesture commands.
+/* Command spawning: configured shortcut commands and touchpad gesture commands.
  * A single worker thread runs the fork/exec handshake so that it cannot stall the compositor
  * main loop, and the main loop watches each child until it exits. */
 #ifndef _GNU_SOURCE
@@ -271,35 +271,4 @@ gboolean gnoblin_control_queue_command(const char* category, const char* name, c
         return FALSE;
     }
     return TRUE;
-}
-
-char** gnoblin_control_command_run_argv(GVariant* arguments, GError** error) {
-    g_autoptr(GVariant) argv_value =
-        arguments ? g_variant_lookup_value(arguments, "argv", G_VARIANT_TYPE_STRING_ARRAY) : NULL;
-    if (!arguments || g_variant_n_children(arguments) != 1 || !argv_value ||
-        g_variant_n_children(argv_value) == 0 ||
-        g_variant_n_children(argv_value) > MAX_NATIVE_COMMAND_ARGUMENTS) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "command.run requires an argv array of 1 to 64 strings");
-        return NULL;
-    }
-
-    char** argv = g_new0(char*, g_variant_n_children(argv_value) + 1);
-    gsize bytes = 0;
-    for (gsize index = 0; index < g_variant_n_children(argv_value); index++) {
-        g_autoptr(GVariant) argument = g_variant_get_child_value(argv_value, index);
-        gsize length = 0;
-        const char* text = g_variant_get_string(argument, &length);
-        if ((index == 0 && length == 0) || memchr(text, '\0', length) ||
-            !g_utf8_validate(text, length, NULL) || length > MAX_NATIVE_COMMAND_BYTES - 1 ||
-            bytes > MAX_NATIVE_COMMAND_BYTES - length - 1) {
-            g_strfreev(argv);
-            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "command.run argv is invalid or exceeds 64 KiB");
-            return NULL;
-        }
-        argv[index] = g_strndup(text, length);
-        bytes += length + 1;
-    }
-    return argv;
 }

@@ -272,7 +272,6 @@ struct _GnoblinNativeControl {
     GnoblinControlPromptBroker* prompt_broker;
     GHashTable* pending_prompts;
     guint64 next_prompt_request_id;
-    GHashTable* pending_captures;
     GHashTable* processes; /* process.spawn request ID -> RunningProcess */
     GHashTable* runtime_operation_ids;
     GHashTable* runtime_cancelled_operation_ids;
@@ -439,13 +438,6 @@ G_GNUC_INTERNAL GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl
                                                             const char* method, GVariant* arguments,
                                                             guint64 client_id, GError** error);
 
-/* gnoblin-control-capture.c: command.capture. */
-G_GNUC_INTERNAL void gnoblin_control_capture_init(GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_capture_clear(GnoblinNativeControl* control);
-G_GNUC_INTERNAL gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control,
-                                                       gint64 operation_id, GVariant* arguments,
-                                                       GError** error);
-
 /* gnoblin-control-process.c: process.spawn and process.kill. */
 G_GNUC_INTERNAL void gnoblin_control_process_init(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_process_clear(GnoblinNativeControl* control);
@@ -500,7 +492,6 @@ G_GNUC_INTERNAL gboolean gnoblin_control_queue_command(const char* category, con
                                                        char** argv, GError** error);
 G_GNUC_INTERNAL void gnoblin_control_launch_command(const char* category, const char* name,
                                                     char** argv);
-G_GNUC_INTERNAL char** gnoblin_control_command_run_argv(GVariant* arguments, GError** error);
 
 /* gnoblin-control-publish.c: transient notices drawn by the compositor plugin. A no-op while no
  * plugin has registered a handler. */

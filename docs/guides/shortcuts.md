@@ -20,7 +20,7 @@ gnoblin.configure {
             my_terminal = {
                 binding = "<Super>Return",
                 callback = function()
-                    gnoblin.commands.run({"ptyxis", "--new-window"})
+                    gnoblin.process.spawn({"ptyxis", "--new-window"})
                 end,
             },
         },
@@ -61,7 +61,7 @@ gnoblin.configure {
             launcher = {
                 binding = "<Super>d",
                 callback = function()
-                    gnoblin.commands.run({"fuzzel"})
+                    gnoblin.process.spawn({"fuzzel"})
                 end,
             },
         },
@@ -117,8 +117,8 @@ for 1–60 seconds.
 ## Declarative shortcuts and built-in actions
 
 Use `gnoblin.configure.shortcuts` for a declarative command shortcut when a
-Lua callback is unnecessary. Use `gnoblin.commands.run` inside a callback when
-the action needs Lua logic.
+Lua callback is unnecessary. Use [`gnoblin.process.spawn`](/shell-api/processes) inside a
+callback when the action needs Lua logic.
 
 Use `keybindings.wm`, `keybindings.mutter` or `keybindings.wayland` to override
 an existing Mutter action:
@@ -168,7 +168,7 @@ gnoblin.configure {
             volume_up = {
                 binding = "XF86AudioRaiseVolume",
                 callback = function()
-                    gnoblin.commands.run({"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"})
+                    gnoblin.process.spawn({"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"})
                 end,
             },
         },

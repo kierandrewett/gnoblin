@@ -180,46 +180,10 @@ until their physical end so an application cannot receive an orphan release.
 If the terminal event is lost, the next non-repeated press from that device and
 control starts a new stream and retires the stale state.
 
-### Launch a command from Lua
+### Start a program from Lua
 
-`gnoblin.commands.run(argv)` accepts 1–64 UTF-8 strings, with a nonempty program
-name and at most 64 KiB total. It returns an operation whose successful value
-is `{accepted = true}`: the command has entered the launch queue. This does not
-confirm that spawning succeeded or that the child exited successfully. Spawn
-and exit failures are reported in Gnoblin's output.
-
-Commands started by `run` or `capture` reset an inherited negative CPU nice
-value to `0`. Positive nice values are retained. This leaves the compositor's
-priority unchanged. A system priority daemon can change command priority
-after launch.
-
-### Run a command and read its output
-
-`gnoblin.commands.capture(options)` runs a command and returns its standard
-output. Use it to ask a prompt program for an answer.
-
-| Field     | Type             | Default | Meaning                                                      |
-| --------- | ---------------- | ------- | ------------------------------------------------------------ |
-| `argv`    | 1-64 strings     | none    | The program and its arguments. The first entry is not empty. |
-| `stdin`   | string           | none    | Text sent to the command, up to 4096 bytes.                  |
-| `timeout` | integer, seconds | `60`    | Time before Gnoblin stops the command. From 1 to 600.        |
-
-The operation succeeds with `{exit_code = integer, stdout = string}` when the
-command exits. A command stopped by a signal reports a negative `exit_code`
-with the signal number. The operation fails when the command cannot start, runs
-past `timeout`, prints more than 64 KiB, or prints text that is not UTF-8.
-
-```lua
-gnoblin.commands.capture {argv = {"date", "+%H:%M"}}:on_complete(function(result, err)
-    if not err then
-        print(result.stdout)
-    end
-end)
-```
-
-The command gets no standard input unless you set `stdin`, and Gnoblin discards
-its standard error. Up to 4 captures run at the same time. The call fails while
-the session is locked.
+Use [`gnoblin.process.spawn`](/shell-api/processes) to start a program from a
+handler, read its output, or wait for its exit.
 
 ## Insert text into the focused Wayland client
 

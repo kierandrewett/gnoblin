@@ -20,7 +20,7 @@ gnoblin.configure {
             terminal = {
                 binding = "<Super>Return",
                 callback = function(event)
-                    gnoblin.commands.run({"ptyxis", "--new-window"})
+                    gnoblin.process.spawn({"ptyxis", "--new-window"})
                 end,
             },
         },
@@ -29,7 +29,7 @@ gnoblin.configure {
 ```
 
 Install `ptyxis`, save the file, and run `gnoblinctl reload`. Super+Enter then
-queues a terminal launch. Commands are argument arrays; shell expansion happens
+starts a terminal. Commands are argument arrays; shell expansion happens
 only if you explicitly run a shell.
 
 Use snake_case names. A later declaration with the same name replaces its

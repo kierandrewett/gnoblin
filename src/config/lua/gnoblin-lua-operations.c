@@ -368,62 +368,6 @@ int lua_generic_api_action(lua_State* state) {
     if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
         return luaL_error(state, "too many pending Gnoblin session actions");
 
-    if (g_str_equal(method, "command.run") || g_str_equal(method, "command.capture")) {
-        const gboolean capture = g_str_equal(method, "command.capture");
-        GVariantBuilder arguments;
-        g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
-        if (!capture) {
-            if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-                return luaL_error(state, "commands.run requires one argv array");
-            g_variant_builder_add(&arguments, "{sv}", "argv",
-                                  lua_command_argv_variant(state, 1, "commands.run"));
-        } else {
-            static const char* const fields[] = {"argv", "stdin", "timeout", NULL};
-            if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
-                !table_fields_allowed(state, 1, fields))
-                return luaL_error(state, "commands.capture accepts a table with argv, stdin, "
-                                         "and timeout");
-            lua_getfield(state, 1, "argv");
-            g_variant_builder_add(&arguments, "{sv}", "argv",
-                                  lua_command_argv_variant(state, -1, "commands.capture"));
-            lua_pop(state, 1);
-            lua_getfield(state, 1, "stdin");
-            if (!lua_isnil(state, -1)) {
-                size_t length = 0;
-                const char* text =
-                    lua_type(state, -1) == LUA_TSTRING ? lua_tolstring(state, -1, &length) : NULL;
-                if (!text || length > 4096 || memchr(text, '\0', length) ||
-                    !g_utf8_validate(text, length, NULL))
-                    return luaL_error(state, "commands.capture stdin must be UTF-8 text up to "
-                                             "4096 bytes");
-                g_variant_builder_add(&arguments, "{sv}", "stdin", g_variant_new_string(text));
-            }
-            lua_pop(state, 1);
-            lua_getfield(state, 1, "timeout");
-            if (!lua_isnil(state, -1)) {
-                if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
-                    lua_tointeger(state, -1) > 600)
-                    return luaL_error(state, "commands.capture timeout must be an integer from "
-                                             "1 to 600 seconds");
-                g_variant_builder_add(&arguments, "{sv}", "timeout",
-                                      g_variant_new_int64(lua_tointeger(state, -1)));
-            }
-            lua_pop(state, 1);
-        }
-        guint64 request_id = allocate_operation_id();
-        if (!request_id)
-            return luaL_error(state, "Gnoblin operation request ID space is exhausted");
-        GVariantBuilder action;
-        g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
-        g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
-        g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
-        g_ptr_array_add(config->runtime_actions,
-                        g_variant_ref_sink(g_variant_builder_end(&action)));
-        config->actions_in_dispatch++;
-        push_operation_handle(state, config, request_id, method);
-        return 1;
-    }
     if ((g_str_equal(method, "privacy.stop_sharing") ||
          g_str_equal(method, "privacy.stop_recording")) &&
         lua_gettop(state) != 0)

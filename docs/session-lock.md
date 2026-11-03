@@ -91,7 +91,7 @@ This script runs in `gnoblinctl lua` and starts `swaylock` on each request:
 
 ```lua
 gnoblin.events.on("gnoblin.session.lock-requested", function(event)
-    gnoblin.commands.run({"swaylock", "-f"})
+    gnoblin.process.spawn({"swaylock", "-f"})
 end)
 ```
 

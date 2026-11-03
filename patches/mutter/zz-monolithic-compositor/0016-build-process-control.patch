@@ -1,17 +1,18 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 8 Oct 2026 21:00:00 +0100
-Subject: [PATCH] mutter: build the Lua process control
+Subject: [PATCH] mutter: build the Lua process control in place of command
+ capture
 
 ---
 diff --git a/src/meson.build b/src/meson.build
 index ec738dd17..0a473b24a 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1204,6 +1204,7 @@ libmutter = library(libmutter_name,
+@@ -1204,6 +1204,6 @@ libmutter = library(libmutter_name,
    files('core/gnoblin-auth-agent.c'),
    files('core/gnoblin-control-auth.c'),
-   files('core/gnoblin-control-capture.c'),
+-  files('core/gnoblin-control-capture.c'),
 +  files('core/gnoblin-control-process.c'),
    files('core/gnoblin-control-privacy.c'),
    files('core/gnoblin-control-session-activity.c'),

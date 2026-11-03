@@ -88,6 +88,18 @@ owns permission rules and enforcement.
 Gnoblin still routes portal interfaces to the selected backend. The default GTK
 backend keeps its normal consent dialogs.
 
+`gnoblin.commands.run` and `gnoblin.commands.capture` are removed; use `gnoblin.process.spawn`. Calling a removed
+function is a Lua error, so a config that still calls one fails to load.
+
+| Before                                             | After                                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------ |
+| `gnoblin.commands.run(argv)`                       | `gnoblin.process.spawn(argv)`                                            |
+| `gnoblin.commands.capture {argv = argv}`           | `gnoblin.process.spawn(argv, {stdout = "capture"}):wait()`               |
+| `capture` option `stdin = text`                    | `stdin = text`, now any bytes up to 1 MiB                                |
+| `capture` option `timeout = seconds`               | `timeout = seconds`; the result then has `timed_out = true`              |
+| result `exit_code` below 0 after a signal          | result `signal`, such as `"term"`; `exit_code` is `nil`                  |
+| failure past 64 KiB of output, or non-UTF-8 output | `output_limit` chooses the size; `stdout_truncated`; output is raw bytes |
+
 ### Migration
 
 1. Remove the `permissions` section, `gnoblin.permission_rule` calls, and
@@ -97,6 +109,8 @@ backend keeps its normal consent dialogs.
 2. Write permission rules in the portal backend you use. Bingux reads its own
    rules.
 3. Stop subscribing to the removed events and calling the removed commands.
+4. Replace `gnoblin.commands.run` and `gnoblin.commands.capture` with
+   `gnoblin.process.spawn` as the table above shows.
 
 ### Changed
 
