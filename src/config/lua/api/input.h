@@ -21,10 +21,6 @@
 ---@field current boolean True when this source is selected.
 ---@field revision integer Input source snapshot revision.
 
----@class InputSourceSelector
----@field type "xkb"|"ibus" Source implementation.
----@field id string Non-empty source ID.
-
 ---@class OrientationLock
 ---@field available boolean Whether orientation lock is supported.
 ---@field locked boolean Whether screen orientation is currently locked.
@@ -77,18 +73,11 @@ function gnoblin.input.sources() end
 ---@return InputSource|nil
 function gnoblin.input.current_source() end
 
----Alias for input.sources.
----@return InputSource[]
-function gnoblin.input.list() end
-
----Alias for input.current_source.
----@return InputSource|nil
-function gnoblin.input.current() end
-
 ---Select an XKB layout or IBus engine.
----@param source InputSourceSelector
+---@param type "xkb"|"ibus" Source implementation.
+---@param id string Non-empty source ID.
 ---@return Operation<InputSource>
-function gnoblin.input.select_source(source) end
+function gnoblin.input.select_source(type, id) end
 
 ---Return the current orientation lock state.
 ---@return OrientationLock

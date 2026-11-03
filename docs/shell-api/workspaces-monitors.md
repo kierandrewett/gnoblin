@@ -31,26 +31,37 @@ These methods return immediate, read-only snapshots:
 
 ## Create and change workspaces
 
-| Method                         | Arguments                                                          | Successful result             |
-| ------------------------------ | ------------------------------------------------------------------ | ----------------------------- |
-| `workspaces.create(args)`      | `name` required; optional `id`, `activate`                         | New `Workspace` record        |
-| `workspaces.rename(args)`      | Exactly one of `id` or `number`, plus `name`                       | Updated `Workspace` record    |
-| `workspaces.remove(args)`      | Exactly one of `id` or `number`                                    | Removed workspace record      |
-| `workspaces.activate(args)`    | Exactly one of `id` or `number`                                    | Activated `Workspace` record  |
-| `workspaces.next()`            | None                                                               | Activated `Workspace` record  |
-| `workspaces.previous()`        | None                                                               | Activated `Workspace` record  |
-| `workspaces.move_active(args)` | `workspace` selector; optional `follow`                            | `{workspace, window, follow}` |
-| `workspaces.move_window(args)` | `window` ID or `"active"`; `workspace` selector; optional `follow` | `{workspace, window, follow}` |
+| Method                                                | Arguments                                                | Successful result             |
+| ----------------------------------------------------- | -------------------------------------------------------- | ----------------------------- |
+| `workspaces.create(name, options?)`                   | Name; options `id`, `activate`                           | New `Workspace` record        |
+| `workspaces.rename(workspace, name)`                  | Workspace, new name                                      | Updated `Workspace` record    |
+| `workspaces.remove(workspace)`                        | Workspace                                                | Removed workspace record      |
+| `workspaces.activate(workspace)`                      | Workspace                                                | Activated `Workspace` record  |
+| `workspaces.next()`                                   | None                                                     | Activated `Workspace` record  |
+| `workspaces.previous()`                               | None                                                     | Activated `Workspace` record  |
+| `workspaces.move_active(workspace, options?)`         | Destination; option `follow`                             | `{workspace, window, follow}` |
+| `workspaces.move_window(window, workspace, options?)` | `Window`, window ID or `"active"`; destination; `follow` | `{workspace, window, follow}` |
 
-Mutations return operation handles and complete asynchronously. Workspace
-reads and mutations use the `workspaces` namespace in Lua. For socket operation
-names and fields, see the [compositor bridge](/bridge/).
+A workspace argument is a workspace ID string or a one-based workspace number
+from 1 to 1024:
 
-`create` requires a nonempty name of up to 80 characters. Its optional ID must
-match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; if omitted, Gnoblin generates a
-session-only ID. `activate` defaults to `false`. Rename also requires a
-nonempty name of up to 80 characters. `follow` defaults to `false`; when true,
-moving a window also switches to the destination workspace.
+```lua
+gnoblin.workspaces.activate(2)
+gnoblin.workspaces.rename(2, "Mail")
+gnoblin.workspaces.move_active(3, {follow = true})
+```
+
+Mutations return operation handles and complete asynchronously. For socket
+operation names and fields, see the [compositor bridge](/bridge/).
+
+Names for `create` and `rename` are nonempty and at most 80 characters. The
+options follow these rules:
+
+- `id` must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Without it, Gnoblin
+  generates a session-only ID.
+- `activate` defaults to `false`.
+- `follow` defaults to `false`. When true, moving a window also switches to the
+  destination workspace.
 
 A runtime rename changes the live workspace only. It does not edit your Lua
 configuration or change workspace names saved for GNOME. A config reload restores

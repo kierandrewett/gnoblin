@@ -28,21 +28,11 @@
 ---@field capture_input boolean Whether the bare Super session captures subsequent key input.
 Default false.
 
----@class ShortcutBindingArgs
----@field id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
----@field accelerator string Valid accelerator. Bare "Super" requires capture_input=true,
-trigger="release", and hold="none".
+---@class ShortcutBindOptions
 ---@field hold? "none"|"super"|"control"|"alt" Modifier family held for the binding. Default "none".
 ---@field trigger? "press"|"release" Activation edge. Default "press".
 ---@field mode? "passive"|"modal" Modal requires a non-none hold. Default "passive".
 ---@field capture_input? boolean Only bare "Super" supports input capture. Default false.
-
----@class ShortcutIdArgs
----@field id string Binding ID owned by this Lua runtime.
-
----@class ShortcutSessionArgs
----@field id string Binding ID owned by this Lua runtime.
----@field session_id integer Positive ID of the active binding session.
 
 ---@class ShortcutUnbindResult
 ---@field id string Unbound binding ID.
@@ -69,14 +59,17 @@ function gnoblin.shortcuts.actions(group) end
 function gnoblin.shortcuts.list() end
 
 ---Register a shortcut binding owned by the current Lua runtime.
----@param binding ShortcutBindingArgs
+---@param id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
+---@param accelerator string Valid accelerator. Bare "Super" requires capture_input=true,
+trigger="release", and hold="none".
+---@param options? ShortcutBindOptions
 ---@return Operation<ShortcutBinding>
-function gnoblin.shortcuts.bind(binding) end
+function gnoblin.shortcuts.bind(id, accelerator, options) end
 
 ---Remove a shortcut binding owned by the current Lua runtime.
----@param binding ShortcutIdArgs
+---@param id string Binding ID owned by this Lua runtime.
 ---@return Operation<ShortcutUnbindResult>
-function gnoblin.shortcuts.unbind(binding) end
+function gnoblin.shortcuts.unbind(id) end
 
 ---Capture one normalized keyboard accelerator.
 ---@param options? ShortcutCaptureOptions
@@ -84,7 +77,8 @@ function gnoblin.shortcuts.unbind(binding) end
 function gnoblin.shortcuts.capture(options) end
 
 ---End an active shortcut binding session.
----@param session ShortcutSessionArgs
+---@param id string Binding ID owned by this Lua runtime.
+---@param session_id integer Positive ID of the active binding session.
 ---@return Operation<ShortcutEndSessionResult>
-function gnoblin.shortcuts.end_session(session) end
+function gnoblin.shortcuts.end_session(id, session_id) end
 */

@@ -224,6 +224,16 @@ JsonObject* lua_cli_table_object(lua_State* state, int index, const char* descri
     return json_object_ref(json_node_get_object(node));
 }
 
+JsonObject* lua_cli_optional_options(lua_State* state, int index, const char* function) {
+    if (lua_gettop(state) > index)
+        luaL_error(state, "%s takes at most %d arguments", function, index);
+    if (lua_gettop(state) < index || lua_isnil(state, index))
+        return json_object_new();
+    if (!lua_istable(state, index))
+        luaL_error(state, "%s requires options (argument %d) to be a table", function, index);
+    return lua_cli_table_object(state, index, function);
+}
+
 static int lua_cli_animation_preview_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));

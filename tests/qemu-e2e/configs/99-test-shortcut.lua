@@ -11,6 +11,6 @@ gnoblin.on("gnoblin.shortcut.binding-deactivated", function(event)
 end)
 
 gnoblin.on("gnoblin.config.reloaded", function(event)
-    gnoblin.shortcuts.bind({ id = "regression-shortcut", accelerator = "<Super><Alt>F9" })
+    gnoblin.shortcuts.bind("regression-shortcut", "<Super><Alt>F9")
     log("bound regression-shortcut")
 end)

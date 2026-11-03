@@ -51,19 +51,15 @@
 ---@field namespace string Layer-shell namespace.
 ---@field title string Surface title; may be empty.
 
----@class AnimationInspectArgs
----@field name string Animation name.
+---@class AnimationInspectOptions
 ---@field target? string Target ID; defaults to "active".
 ---@field event? string Lifecycle event override.
 ---@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field targetType? "window"|"layer"|"namespace" Legacy spelling of target_type.
 
----@class AnimationPreviewArgs
----@field name string Animation name.
+---@class AnimationPreviewOptions
 ---@field target? string Target ID; defaults to "active".
 ---@field event? string Lifecycle event override.
 ---@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field targetType? "window"|"layer"|"namespace" Legacy spelling of target_type.
 ---@field autoplay? boolean Start the preview immediately. Default false.
 
 ---@class AnimationInspection
@@ -97,17 +93,6 @@
 ---@field ok boolean True when the preview was stopped.
 ---@field session string Stopped preview session ID.
 
----@class AnimationSeekArgs
----@field session string Preview session ID.
----@field progress number Progress from 0 to 1.
-
----@class AnimationStepArgs
----@field session string Preview session ID.
----@field milliseconds integer Step duration, from 1 to 60000.
-
----@class AnimationSessionArgs
----@field session string Preview session ID.
-
 ---Declare or update a named animation in configuration.
 ---@param animation AnimationArgs
 function gnoblin.animation(animation) end
@@ -126,39 +111,43 @@ function gnoblin.animations.get(name) end
 function gnoblin.animations.surfaces() end
 
 ---Resolve an animation against a visible target without starting it.
----@param spec AnimationInspectArgs
+---@param name string Animation name.
+---@param options? AnimationInspectOptions
 ---@return AnimationInspection
-function gnoblin.animations.inspect(spec) end
+function gnoblin.animations.inspect(name, options) end
 
 ---Start a controllable preview of an animation on a visible target.
----@param spec AnimationPreviewArgs
+---@param name string Animation name.
+---@param options? AnimationPreviewOptions
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.preview(spec) end
+function gnoblin.animations.preview(name, options) end
 
 ---Set a preview session to a progress value from 0 to 1.
----@param request AnimationSeekArgs
+---@param session string Preview session ID.
+---@param progress number Progress from 0 to 1.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.seek(request) end
+function gnoblin.animations.seek(session, progress) end
 
 ---Advance a preview session by a duration in milliseconds.
----@param request AnimationStepArgs
+---@param session string Preview session ID.
+---@param milliseconds integer Step duration, from 1 to 60000.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.step(request) end
+function gnoblin.animations.step(session, milliseconds) end
 
 ---Resume a preview session.
----@param request AnimationSessionArgs
+---@param session string Preview session ID.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.play(request) end
+function gnoblin.animations.play(session) end
 
 ---Pause a preview session.
----@param request AnimationSessionArgs
+---@param session string Preview session ID.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.pause(request) end
+function gnoblin.animations.pause(session) end
 
 ---Stop a preview session and restore the target's original actor state.
----@param request AnimationSessionArgs
+---@param session string Preview session ID.
 ---@return Operation<AnimationStopResult>
-function gnoblin.animations.stop(request) end
+function gnoblin.animations.stop(session) end
 
 ---Set preview progress from an AnimationPreview record.
 ---@param progress number Progress from 0 to 1.

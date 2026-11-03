@@ -215,11 +215,9 @@ same token when the launch is cancelled or the application has started:
 
 ```lua
 local token = "launcher-42"
-local launch = gnoblin.launches.begin {
-    token = token,
-    application = "org.example.Editor",
+local launch = gnoblin.launches.begin(token, "org.example.Editor", {
     timeout_ms = 3000,
-}
+})
 print(launch.state)
 gnoblin.launches.finish(token)
 ```
@@ -274,18 +272,20 @@ end
 Workspace actions wait for compositor completion and return the completed
 value. The console supports these namespace methods:
 
-- `create {name, id?, activate?}`
-- `rename {id|number, name}`, `activate {id|number}`, and `remove {id|number}`
+- `create(name, options?)`, where options may hold `id` and `activate`
+- `rename(workspace, name)`, `activate(workspace)`, and `remove(workspace)`
 - `next()` and `previous()`
-- `move_active {workspace, follow?}` and `move_window {window, workspace, follow?}`
+- `move_active(workspace, options?)`
+- `move_window(window, workspace, options?)`
 
-A workspace selector is a table with exactly one of `id` or positive `number`.
+A `workspace` argument is a string ID or a positive integer number, as
+for `rename`.
 
 Creation accepts a nonempty name up to 80 characters. An optional ID must
 start with an ASCII letter or digit and contain up to 64 letters, digits,
 periods, underscores, or hyphens.
 
-`activate` and `follow` must be booleans when supplied. A window is `"active"`
+The `follow` option must be a boolean when supplied. A window is `"active"`
 or a stable window ID.
 
 `move_active` and `move_window` return a read-only `WorkspaceMove` with the
@@ -304,7 +304,7 @@ for _, source in ipairs(gnoblin.input.sources()) do
     end
 end
 
-local selected = gnoblin.input.select_source { type = "xkb", id = "us" }
+local selected = gnoblin.input.select_source("xkb", "us")
 print(selected.name)
 ```
 
@@ -328,8 +328,7 @@ records; add `--json` for machine-readable output. During login, `renderer()`
 can return `nil` until the first output snapshot is published.
 
 Use `gnoblin.layers.list(filter?)` to read layer surfaces. Each result is a
-read-only `LayerSurface` record. `gnoblin.layer.list()` is the compatibility
-spelling for the same snapshot.
+read-only `LayerSurface` record.
 
 The optional filter matches these fields exactly:
 
@@ -357,12 +356,11 @@ Animation previews return a read-only `AnimationPreview` record. Its
 `stop` returns its completion result:
 
 ```lua
-local preview = gnoblin.animations.preview {
-    name = "gnoblin-window-open",
+local preview = gnoblin.animations.preview("gnoblin-window-open", {
     event = "open",
     target_type = "window",
     target = "active",
-}
+})
 preview = preview:seek(0.5)
 print(preview.progress)
 preview:stop()
@@ -444,12 +442,10 @@ for the accepted binding options.
 For example, save this as `shortcut.lua` and run `gnoblinctl lua ./shortcut.lua`:
 
 ```lua
-local binding = gnoblin.shortcuts.bind {
-    id = "temporary-cli-shortcut",
-    accelerator = "<Alt>F12",
+local binding = gnoblin.shortcuts.bind("temporary-cli-shortcut", "<Alt>F12", {
     hold = "alt",
     mode = "modal",
-}
+})
 
 local subscription
 subscription = gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
@@ -457,11 +453,8 @@ subscription = gnoblin.events.on("gnoblin.shortcut.session.activated", function(
         return
     end
 
-    gnoblin.shortcuts.end_session {
-        id = event.id,
-        session_id = event.session_id,
-    }
-    gnoblin.shortcuts.unbind { id = binding.id }
+    gnoblin.shortcuts.end_session(event.id, event.session_id)
+    gnoblin.shortcuts.unbind(binding.id)
     subscription:unsubscribe()
 end)
 ```
@@ -667,9 +660,6 @@ gnoblinctl input orientation-lock on
 gnoblinctl input orientation-lock inherit
 ```
 
-The Lua-only aliases `gnoblin.input.list()` and `gnoblin.input.current()` are
-not socket methods. Socket clients use the names above.
-
 ## Animations
 
 Use animation previews to inspect registered curves for compatible window and
@@ -714,14 +704,14 @@ end
 ```
 
 Inspect the resolved animation for a visible target with
-`gnoblin.animations.inspect {name, target, event?, target_type?}`. The result
+`gnoblin.animations.inspect(name, options?)`, where options may hold `target`,
+`event`, and `target_type`. The result
 and its nested tables are read-only:
 
 ```lua
-local inspection = gnoblin.animations.inspect {
-    name = "gnome-open",
+local inspection = gnoblin.animations.inspect("gnome-open", {
     target = "active",
-}
+})
 print(inspection.event, inspection.duration)
 ```
 

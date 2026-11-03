@@ -140,9 +140,26 @@ static void input_source_selector_valid_args(lua_State* state) {
     lua_pop(state, 1);
 }
 
-static GVariant* workspace_selector(lua_State* state, int index, gboolean allow_name) {
-    luaL_checktype(state, index, LUA_TTABLE);
+/* Push the selector table for a workspace ID string or workspace number. Returns FALSE and pushes
+ * nothing for any other value. */
+gboolean lua_push_workspace_selector(lua_State* state, int index) {
     index = lua_absindex(state, index);
+    if (lua_type(state, index) != LUA_TSTRING && !lua_isinteger(state, index))
+        return FALSE;
+    lua_createtable(state, 0, 1);
+    lua_pushvalue(state, index);
+    lua_setfield(state, -2, lua_type(state, index) == LUA_TSTRING ? "id" : "number");
+    return TRUE;
+}
+
+static GVariant* workspace_selector(lua_State* state, int index, gboolean allow_name) {
+    index = lua_absindex(state, index);
+    if (lua_push_workspace_selector(state, index)) {
+        GVariant* selector = workspace_selector(state, -1, FALSE);
+        lua_pop(state, 1);
+        return selector;
+    }
+    luaL_checktype(state, index, LUA_TTABLE);
     static const char* const fields[] = {"id", "number", NULL};
     static const char* const rename_fields[] = {"id", "number", "name", NULL};
     if (!table_fields_allowed(state, index, allow_name ? rename_fields : fields))
@@ -184,9 +201,24 @@ static void add_workspace_field(lua_State* state, GVariantBuilder* arguments, in
     lua_pop(state, 1);
 }
 
+/* Add id or number for the workspace that `table` names: either its `workspace` field (an ID
+ * string, a number or a selector table, as positional Lua calls pass it) or its own top-level id
+ * or number fields. */
 static void add_selector_arguments(lua_State* state, GVariantBuilder* arguments, int table,
                                    gboolean allow_name) {
-    g_autoptr(GVariant) selector = workspace_selector(state, table, allow_name);
+    table = lua_absindex(state, table);
+    luaL_checktype(state, table, LUA_TTABLE);
+    lua_getfield(state, table, "workspace");
+    gboolean nested = !lua_isnil(state, -1);
+    if (nested) {
+        static const char* const fields[] = {"workspace", NULL};
+        static const char* const rename_fields[] = {"workspace", "name", NULL};
+        if (!table_fields_allowed(state, table, allow_name ? rename_fields : fields))
+            luaL_error(state, "workspace selector accepts only one workspace");
+    }
+    g_autoptr(GVariant) selector = nested ? workspace_selector(state, -1, FALSE)
+                                          : workspace_selector(state, table, allow_name);
+    lua_pop(state, 1);
     GVariantIter iter;
     const char* key;
     GVariant* value;
@@ -245,9 +277,9 @@ int lua_workspace_action(lua_State* state) {
         lua_pop(state, 1);
     } else if (g_str_equal(method, "workspace.rename")) {
         luaL_checktype(state, 1, LUA_TTABLE);
-        static const char* const fields[] = {"id", "number", "name", NULL};
+        static const char* const fields[] = {"id", "number", "workspace", "name", NULL};
         if (!table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "workspace.rename accepts only id or number and name");
+            return luaL_error(state, "workspace.rename accepts only a workspace and a name");
         add_selector_arguments(state, &arguments, 1, TRUE);
         lua_getfield(state, 1, "name");
         const char* name = luaL_checkstring(state, -1);
@@ -278,7 +310,13 @@ int lua_workspace_action(lua_State* state) {
             return luaL_error(state,
                               "workspace.move_window accepts only window, workspace, and follow");
         lua_getfield(state, 1, "window");
-        const char* window = luaL_checkstring(state, -1);
+        if (lua_isuserdata(state, -1)) {
+            lua_getfield(state, -1, "id");
+            lua_remove(state, -2);
+        }
+        if (lua_type(state, -1) != LUA_TSTRING)
+            return luaL_error(state, "window must be a Window, 'active' or a window ID");
+        const char* window = lua_tostring(state, -1);
         if (g_str_equal(window, "active")) {
             g_variant_builder_add(&arguments, "{sv}", "window", g_variant_new_string("active"));
         } else if (*window && g_utf8_validate(window, -1, NULL)) {

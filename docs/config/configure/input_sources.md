@@ -79,7 +79,7 @@ same global shortcut.
 Without Bingux, select a source with `gnoblinctl input select xkb us` or bind a
 callback in your own config with `keybindings.keyboard`. The callback can read
 `gnoblin.input.sources()` and select a source with
-`gnoblin.input.select_source {type = "xkb", id = "gb"}`. See the
+`gnoblin.input.select_source("xkb", "gb")`. See the
 [keyboard shortcut guide](/guides/shortcuts) for callback syntax.
 
 ## Share or keep sources per window

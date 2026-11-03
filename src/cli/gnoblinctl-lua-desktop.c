@@ -316,28 +316,12 @@ int lua_cli_appearance_color_scheme(lua_State* state) {
 
 int lua_cli_input_select_source(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "input.select_source requires a {type, id} selector");
-    const char* type = NULL;
-    const char* id = NULL;
-    lua_pushnil(state);
-    while (lua_next(state, 1)) {
-        if (lua_type(state, -2) != LUA_TSTRING) {
-            lua_pop(state, 2);
-            return luaL_error(state, "input selector accepts only type and id strings");
-        }
-        const char* key = lua_tostring(state, -2);
-        if (g_str_equal(key, "type") && lua_type(state, -1) == LUA_TSTRING)
-            type = lua_tostring(state, -1);
-        else if (g_str_equal(key, "id") && lua_type(state, -1) == LUA_TSTRING)
-            id = lua_tostring(state, -1);
-        else {
-            lua_pop(state, 2);
-            return luaL_error(state, "input selector accepts only type and id strings");
-        }
-        lua_pop(state, 1);
-    }
-    if (!type || !*type || !id || !*id || (!g_str_equal(type, "xkb") && !g_str_equal(type, "ibus")))
+    if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING ||
+        lua_type(state, 2) != LUA_TSTRING)
+        return luaL_error(state, "input.select_source requires type (string) and id (string)");
+    const char* type = lua_tostring(state, 1);
+    const char* id = lua_tostring(state, 2);
+    if (!*type || !*id || (!g_str_equal(type, "xkb") && !g_str_equal(type, "ibus")))
         return luaL_error(state, "input.select_source requires type xkb or ibus and a nonempty id");
 
     JsonObject* arguments = json_object_new();

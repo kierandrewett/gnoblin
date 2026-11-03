@@ -81,10 +81,6 @@ or system value.
 ---@return Operation<Json>
 function gnoblin.monitors.set_privacy_screen(value) end
 
----Return monitors through the legacy singular namespace alias.
----@return Monitor[]
-function gnoblin.monitor.list() end
-
 ---Return the current layer surface snapshot, optionally filtered.
 ---@param filter? LayerFilter
 ---@return LayerSurface[]
@@ -94,10 +90,6 @@ function gnoblin.layers.list(filter) end
 ---@param namespace string UTF-8 namespace from 1 to 128 bytes.
 ---@return LayerAnimationPolicy
 function gnoblin.layers.animation_policy(namespace) end
-
----Return layer surfaces through the legacy singular namespace alias.
----@return LayerSurface[]
-function gnoblin.layer.list() end
 
 ---@class OutputMode
 ---@field width integer Width in physical pixels.

@@ -230,7 +230,7 @@ try:
         f"""
 local window = gnoblin.windows.by_id({json.dumps(window["id"])})
 assert(window and window.title == {json.dumps(WINDOW_TITLE)})
-window:resize {{width = {TARGET_WIDTH}, height = {TARGET_HEIGHT}}}
+window:resize({TARGET_WIDTH}, {TARGET_HEIGHT})
 """
     )
     resize = subprocess.Popen(

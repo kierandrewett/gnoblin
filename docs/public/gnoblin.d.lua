@@ -13,11 +13,8 @@ gnoblin.events = {}
 gnoblin.events.mutter = {}
 gnoblin.focus = {}
 gnoblin.input = {}
-gnoblin.launch = {}
 gnoblin.launches = {}
-gnoblin.layer = {}
 gnoblin.layers = {}
-gnoblin.monitor = {}
 gnoblin.monitors = {}
 gnoblin.outputs = {}
 gnoblin.privacy = {}
@@ -77,19 +74,15 @@ gnoblin.workspaces = {}
 ---@field namespace string Layer-shell namespace.
 ---@field title string Surface title; may be empty.
 
----@class AnimationInspectArgs
----@field name string Animation name.
+---@class AnimationInspectOptions
 ---@field target? string Target ID; defaults to "active".
 ---@field event? string Lifecycle event override.
 ---@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field targetType? "window"|"layer"|"namespace" Legacy spelling of target_type.
 
----@class AnimationPreviewArgs
----@field name string Animation name.
+---@class AnimationPreviewOptions
 ---@field target? string Target ID; defaults to "active".
 ---@field event? string Lifecycle event override.
 ---@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field targetType? "window"|"layer"|"namespace" Legacy spelling of target_type.
 ---@field autoplay? boolean Start the preview immediately. Default false.
 
 ---@class AnimationInspection
@@ -123,17 +116,6 @@ gnoblin.workspaces = {}
 ---@field ok boolean True when the preview was stopped.
 ---@field session string Stopped preview session ID.
 
----@class AnimationSeekArgs
----@field session string Preview session ID.
----@field progress number Progress from 0 to 1.
-
----@class AnimationStepArgs
----@field session string Preview session ID.
----@field milliseconds integer Step duration, from 1 to 60000.
-
----@class AnimationSessionArgs
----@field session string Preview session ID.
-
 ---Declare or update a named animation in configuration.
 ---@param animation AnimationArgs
 function gnoblin.animation(animation) end
@@ -152,39 +134,43 @@ function gnoblin.animations.get(name) end
 function gnoblin.animations.surfaces() end
 
 ---Resolve an animation against a visible target without starting it.
----@param spec AnimationInspectArgs
+---@param name string Animation name.
+---@param options? AnimationInspectOptions
 ---@return AnimationInspection
-function gnoblin.animations.inspect(spec) end
+function gnoblin.animations.inspect(name, options) end
 
 ---Start a controllable preview of an animation on a visible target.
----@param spec AnimationPreviewArgs
+---@param name string Animation name.
+---@param options? AnimationPreviewOptions
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.preview(spec) end
+function gnoblin.animations.preview(name, options) end
 
 ---Set a preview session to a progress value from 0 to 1.
----@param request AnimationSeekArgs
+---@param session string Preview session ID.
+---@param progress number Progress from 0 to 1.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.seek(request) end
+function gnoblin.animations.seek(session, progress) end
 
 ---Advance a preview session by a duration in milliseconds.
----@param request AnimationStepArgs
+---@param session string Preview session ID.
+---@param milliseconds integer Step duration, from 1 to 60000.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.step(request) end
+function gnoblin.animations.step(session, milliseconds) end
 
 ---Resume a preview session.
----@param request AnimationSessionArgs
+---@param session string Preview session ID.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.play(request) end
+function gnoblin.animations.play(session) end
 
 ---Pause a preview session.
----@param request AnimationSessionArgs
+---@param session string Preview session ID.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.pause(request) end
+function gnoblin.animations.pause(session) end
 
 ---Stop a preview session and restore the target's original actor state.
----@param request AnimationSessionArgs
+---@param session string Preview session ID.
 ---@return Operation<AnimationStopResult>
-function gnoblin.animations.stop(request) end
+function gnoblin.animations.stop(session) end
 
 ---Set preview progress from an AnimationPreview record.
 ---@param progress number Progress from 0 to 1.
@@ -495,10 +481,6 @@ function gnoblin.focus.policy() end
 ---@field current boolean True when this source is selected.
 ---@field revision integer Input source snapshot revision.
 
----@class InputSourceSelector
----@field type "xkb"|"ibus" Source implementation.
----@field id string Non-empty source ID.
-
 ---@class OrientationLock
 ---@field available boolean Whether orientation lock is supported.
 ---@field locked boolean Whether screen orientation is currently locked.
@@ -551,18 +533,11 @@ function gnoblin.input.sources() end
 ---@return InputSource|nil
 function gnoblin.input.current_source() end
 
----Alias for input.sources.
----@return InputSource[]
-function gnoblin.input.list() end
-
----Alias for input.current_source.
----@return InputSource|nil
-function gnoblin.input.current() end
-
 ---Select an XKB layout or IBus engine.
----@param source InputSourceSelector
+---@param type "xkb"|"ibus" Source implementation.
+---@param id string Non-empty source ID.
 ---@return Operation<InputSource>
-function gnoblin.input.select_source(source) end
+function gnoblin.input.select_source(type, id) end
 
 ---Return the current orientation lock state.
 ---@return OrientationLock
@@ -597,18 +572,8 @@ function TextTarget:insert_text(text) end
 ---@field state "pending"|"started"|"timed_out"|"ended" Current launch state.
 ---@field revision integer Launch snapshot revision.
 
----@class LaunchBeginArgs
----@field token string Non-empty token, at most 128 characters.
----@field application string Non-empty application identifier, at most 512 characters.
+---@class LaunchBeginOptions
 ---@field timeout_ms? integer Timeout in milliseconds, from 100 to 10000. Default 3000.
-
----@class NativeLaunchBeginArgs
----@field token string Non-empty token, at most 128 characters.
----@field application string Non-empty application identifier, at most 512 characters.
----@field milliseconds? integer Timeout in milliseconds. Default 3000; native requests are clamped to 100–10000.
-
----@class LaunchEndArgs
----@field token string Non-empty token, at most 128 characters.
 
 ---@class LaunchEndResult
 ---@field ok boolean True when the request was accepted.
@@ -619,19 +584,16 @@ function TextTarget:insert_text(text) end
 ---@field revision integer Revision of the launch snapshot.
 
 ---Begin tracking a matching application launch.
----@param launch LaunchBeginArgs
+---@param token string Non-empty token, at most 128 characters.
+---@param application string Non-empty application identifier, at most 512 characters.
+---@param options? LaunchBeginOptions
 ---@return Operation<Launch>
-function gnoblin.launches.begin(launch) end
+function gnoblin.launches.begin(token, application, options) end
 
 ---Finish tracking a launch token.
 ---@param token string Non-empty token, at most 128 characters.
 ---@return Operation<LaunchEndResult>
 function gnoblin.launches.finish(token) end
-
----Alias for launches.finish.
----@param token string Non-empty token, at most 128 characters.
----@return Operation<LaunchEndResult>
-gnoblin.launches["end"] = function(token) end
 
 ---Return the current launch records.
 ---@return Launch[]
@@ -640,20 +602,6 @@ function gnoblin.launches.list() end
 ---Return the launch records and their snapshot revision.
 ---@return LaunchSnapshot
 function gnoblin.launches.snapshot() end
-
----Begin tracking a matching application launch through the singular API.
----@param launch NativeLaunchBeginArgs
----@return Operation<Launch>
-function gnoblin.launch.begin(launch) end
-
----Stop tracking a launch token through the singular API.
----@param request LaunchEndArgs
----@return Operation<LaunchEndResult>
-gnoblin.launch["end"] = function(request) end
-
----Return the current launch snapshot through the singular API.
----@return LaunchSnapshot
-function gnoblin.launch.status() end
 
 ---@class MonitorRect
 ---@field x integer X coordinate in compositor layout.
@@ -732,10 +680,6 @@ function gnoblin.monitors.privacy_screen() end
 ---@return Operation<Json>
 function gnoblin.monitors.set_privacy_screen(value) end
 
----Return monitors through the legacy singular namespace alias.
----@return Monitor[]
-function gnoblin.monitor.list() end
-
 ---Return the current layer surface snapshot, optionally filtered.
 ---@param filter? LayerFilter
 ---@return LayerSurface[]
@@ -745,10 +689,6 @@ function gnoblin.layers.list(filter) end
 ---@param namespace string UTF-8 namespace from 1 to 128 bytes.
 ---@return LayerAnimationPolicy
 function gnoblin.layers.animation_policy(namespace) end
-
----Return layer surfaces through the legacy singular namespace alias.
----@return LayerSurface[]
-function gnoblin.layer.list() end
 
 ---@class OutputMode
 ---@field width integer Width in physical pixels.
@@ -1009,20 +949,11 @@ function gnoblin.capabilities.list() end
 ---@field mode "passive"|"modal" Whether other input continues while held. Default "passive".
 ---@field capture_input boolean Whether the bare Super session captures subsequent key input. Default false.
 
----@class ShortcutBindingArgs
----@field id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
----@field accelerator string Valid accelerator. Bare "Super" requires capture_input=true, trigger="release", and hold="none".
+---@class ShortcutBindOptions
 ---@field hold? "none"|"super"|"control"|"alt" Modifier family held for the binding. Default "none".
 ---@field trigger? "press"|"release" Activation edge. Default "press".
 ---@field mode? "passive"|"modal" Modal requires a non-none hold. Default "passive".
 ---@field capture_input? boolean Only bare "Super" supports input capture. Default false.
-
----@class ShortcutIdArgs
----@field id string Binding ID owned by this Lua runtime.
-
----@class ShortcutSessionArgs
----@field id string Binding ID owned by this Lua runtime.
----@field session_id integer Positive ID of the active binding session.
 
 ---@class ShortcutUnbindResult
 ---@field id string Unbound binding ID.
@@ -1049,14 +980,16 @@ function gnoblin.shortcuts.actions(group) end
 function gnoblin.shortcuts.list() end
 
 ---Register a shortcut binding owned by the current Lua runtime.
----@param binding ShortcutBindingArgs
+---@param id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
+---@param accelerator string Valid accelerator. Bare "Super" requires capture_input=true, trigger="release", and hold="none".
+---@param options? ShortcutBindOptions
 ---@return Operation<ShortcutBinding>
-function gnoblin.shortcuts.bind(binding) end
+function gnoblin.shortcuts.bind(id, accelerator, options) end
 
 ---Remove a shortcut binding owned by the current Lua runtime.
----@param binding ShortcutIdArgs
+---@param id string Binding ID owned by this Lua runtime.
 ---@return Operation<ShortcutUnbindResult>
-function gnoblin.shortcuts.unbind(binding) end
+function gnoblin.shortcuts.unbind(id) end
 
 ---Capture one normalized keyboard accelerator.
 ---@param options? ShortcutCaptureOptions
@@ -1064,9 +997,10 @@ function gnoblin.shortcuts.unbind(binding) end
 function gnoblin.shortcuts.capture(options) end
 
 ---End an active shortcut binding session.
----@param session ShortcutSessionArgs
+---@param id string Binding ID owned by this Lua runtime.
+---@param session_id integer Positive ID of the active binding session.
 ---@return Operation<ShortcutEndSessionResult>
-function gnoblin.shortcuts.end_session(session) end
+function gnoblin.shortcuts.end_session(id, session_id) end
 
 ---@class WindowFrame
 ---@field x integer Frame origin on the compositor layout, from -100000 to 100000.
@@ -1115,21 +1049,6 @@ function gnoblin.shortcuts.end_session(session) end
 ---@field focused? boolean Include focused windows when true, or unfocused windows when false.
 ---@field workspace_id? string Exact workspace ID.
 ---@field monitor_id? string Exact monitor ID.
-
----@class WindowPosition
----@field x integer X coordinate, from -100000 to 100000.
----@field y integer Y coordinate, from -100000 to 100000.
-
----@class WindowSize
----@field width integer Width, from 1 to 32768.
----@field height integer Height, from 1 to 32768.
-
----@class WindowMonitorSelector
----@field id string Monitor ID.
-
----@class WindowThumbnailSize
----@field width integer Thumbnail width from 1 to 480 pixels.
----@field height integer Thumbnail height from 1 to 320 pixels.
 
 ---@class FocusContext
 
@@ -1231,23 +1150,25 @@ function Window:set_above(enabled) end
 function Window:set_sticky(enabled) end
 
 ---Move this window to a position in the compositor layout.
----@param position WindowPosition
+---@param x integer X coordinate, from -100000 to 100000.
+---@param y integer Y coordinate, from -100000 to 100000.
 ---@return Operation<Json>
-function Window:move(position) end
+function Window:move(x, y) end
 
 ---Resize this window.
----@param size WindowSize
+---@param width integer Width, from 1 to 32768.
+---@param height integer Height, from 1 to 32768.
 ---@return Operation<Json>
-function Window:resize(size) end
+function Window:resize(width, height) end
 
 ---Move this window to a workspace.
----@param workspace WorkspaceSelector Select by exactly one of id or one-based number.
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<Json>
 function Window:move_to_workspace(workspace, options) end
 
 ---Move this window to a monitor.
----@param monitor string|WindowMonitorSelector Monitor ID or a table containing id.
+---@param monitor string Monitor ID.
 ---@return Operation<Json>
 function Window:move_to_monitor(monitor) end
 
@@ -1274,9 +1195,10 @@ function Window:begin_move(context) end
 function Window:begin_resize(edge, context) end
 
 ---Capture a thumbnail at the requested dimensions.
----@param size WindowThumbnailSize
+---@param width integer Thumbnail width from 1 to 480 pixels.
+---@param height integer Thumbnail height from 1 to 320 pixels.
 ---@return Operation<Json>
-function Window:thumbnail(size) end
+function Window:thumbnail(width, height) end
 
 ---Commit a snap context to a monitor and frame. A context can be committed only once.
 ---@param request SnapContextCommitArgs
@@ -1290,31 +1212,12 @@ function SnapContext:commit(request) end
 ---@field active boolean Whether this is the active workspace.
 ---@field windows integer Number of windows on this workspace.
 
----@class WorkspaceCreateArgs
----@field name string Nonempty UTF-8 name of at most 80 characters.
+---@class WorkspaceCreateOptions
 ---@field id? string Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor rejects it.
 ---@field activate? boolean Activate the new workspace after creation. Default false.
 
----@class WorkspaceRenameArgs
----@field id? string Stable workspace ID; provide exactly one of id or number.
----@field number? integer One-based workspace number from 1 to 1024; provide exactly one of id or number.
----@field name string Nonempty UTF-8 name of at most 80 characters.
-
----@class WorkspaceSelector
----@field id? string Stable workspace ID; provide exactly one of id or number.
----@field number? integer One-based workspace number from 1 to 1024; provide exactly one of id or number.
-
 ---@class WorkspaceMoveOptions
 ---@field follow? boolean Activate the destination workspace after moving. Default false.
-
----@class WorkspaceMoveActiveArgs
----@field workspace WorkspaceSelector Destination workspace.
----@field follow? boolean Activate the destination after moving. Default false.
-
----@class WorkspaceMoveWindowArgs
----@field window string Stable window ID, or "active" for the focused window.
----@field workspace WorkspaceSelector Destination workspace.
----@field follow? boolean Activate the destination after moving. Default false.
 
 ---@class WorkspaceMoveResult
 ---@field workspace Workspace Destination workspace snapshot.
@@ -1335,22 +1238,24 @@ function gnoblin.workspaces.active() end
 function gnoblin.workspaces.by_id(id) end
 
 ---Create a workspace with a name and optional activation.
----@param workspace WorkspaceCreateArgs
+---@param name string Nonempty UTF-8 name of at most 80 characters.
+---@param options? WorkspaceCreateOptions
 ---@return Operation<Workspace>
-function gnoblin.workspaces.create(workspace) end
+function gnoblin.workspaces.create(name, options) end
 
----Rename a workspace selected by ID or one-based number.
----@param workspace WorkspaceRenameArgs
+---Rename a workspace.
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
+---@param name string Nonempty UTF-8 name of at most 80 characters.
 ---@return Operation<Workspace>
-function gnoblin.workspaces.rename(workspace) end
+function gnoblin.workspaces.rename(workspace, name) end
 
 ---Remove an inactive, empty workspace when at least one other workspace remains.
----@param workspace WorkspaceSelector
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.remove(workspace) end
 
----Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.
----@param workspace WorkspaceSelector
+---Activate a workspace. The current native compositor supports numbers and rejects IDs.
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.activate(workspace) end
 
@@ -1363,14 +1268,17 @@ function gnoblin.workspaces.next() end
 function gnoblin.workspaces.previous() end
 
 ---Move the focused window to a workspace.
----@param request WorkspaceMoveActiveArgs
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
+---@param options? WorkspaceMoveOptions
 ---@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_active(request) end
+function gnoblin.workspaces.move_active(workspace, options) end
 
 ---Move a window to a workspace.
----@param request WorkspaceMoveWindowArgs
+---@param window Window|string Window snapshot, stable window ID, or "active" for the focused window.
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
+---@param options? WorkspaceMoveOptions
 ---@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_window(request) end
+function gnoblin.workspaces.move_window(window, workspace, options) end
 
 ---Activate this workspace.
 ---@return Operation<Workspace>

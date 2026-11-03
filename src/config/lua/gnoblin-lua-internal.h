@@ -215,10 +215,15 @@ typedef struct {
     const char* path;
     const char* operation;
     lua_CFunction function;
+    /* The implementation takes one table of named fields, the form socket clients send. Lua
+     * callers pass the annotated parameters positionally (lua_positional_call). */
+    gboolean named_arguments;
 } LuaApiEntry;
 
 extern const LuaApiEntry lua_api[];
 const LuaApiEntry* lua_api_find_call(const char* method);
+gsize lua_api_parameter_names(const char* path, const char** names, gsize capacity);
+gboolean lua_push_workspace_selector(lua_State* state, int index);
 int lua_gnoblin_version(lua_State* state);
 int lua_config_path(lua_State* state);
 int lua_config_default(lua_State* state);

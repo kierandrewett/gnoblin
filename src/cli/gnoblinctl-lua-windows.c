@@ -299,18 +299,109 @@ static int lua_cli_workspace_operation_error(lua_State* state, JsonObject* argum
     return luaL_error(state, "%s", message);
 }
 
+static char* lua_cli_workspace_function_name(const char* method) {
+    const char* name = method + strlen("workspace.");
+    if (g_str_equal(name, "switch"))
+        name = "activate";
+    return g_strdup_printf("gnoblin.workspaces.%s", name);
+}
+
+/* A workspace argument is a string id or a positive integer number; both map to the wire selector.
+ */
+static JsonObject* lua_cli_workspace_selector_argument(lua_State* state, int index,
+                                                       const char* function,
+                                                       const char* parameter) {
+    JsonObject* selector = json_object_new();
+    if (lua_type(state, index) == LUA_TSTRING && *lua_tostring(state, index)) {
+        json_object_set_string_member(selector, "id", lua_tostring(state, index));
+    } else if (lua_isinteger(state, index) && lua_tointeger(state, index) > 0) {
+        json_object_set_int_member(selector, "number", lua_tointeger(state, index));
+    } else {
+        json_object_unref(selector);
+        luaL_error(state, "%s requires %s to be a workspace id string or a positive integer number",
+                   function, parameter);
+    }
+    return selector;
+}
+
+static void lua_cli_workspace_set_object_member(JsonObject* arguments, const char* name,
+                                                JsonObject* object) {
+    JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(node, object);
+    json_object_set_member(arguments, name, node);
+}
+
 int lua_cli_workspaces_operation(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
+    g_autofree char* function = lua_cli_workspace_function_name(method);
     gboolean takes_no_arguments =
         g_str_equal(method, "workspace.next") || g_str_equal(method, "workspace.previous");
-    if (takes_no_arguments ? lua_gettop(state) != 0
-                           : lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "%s has invalid arguments", method);
+    int top = lua_gettop(state);
 
-    JsonObject* arguments = takes_no_arguments
-                                ? json_object_new()
-                                : lua_cli_table_object(state, 1, "workspace options");
+    JsonObject* arguments = NULL;
+    static const char* const follow_only[] = {"follow", NULL};
+    if (takes_no_arguments) {
+        if (top != 0)
+            return luaL_error(state, "%s takes no arguments", function);
+        arguments = json_object_new();
+    } else if (g_str_equal(method, "workspace.create")) {
+        if (top < 1 || top > 2 || lua_type(state, 1) != LUA_TSTRING)
+            return luaL_error(state, "%s requires name (string) and optional options", function);
+        arguments = lua_cli_optional_options(state, 2, function);
+        if (json_object_has_member(arguments, "name")) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s takes name as argument 1, not in options", function);
+        }
+        json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
+    } else if (g_str_equal(method, "workspace.rename")) {
+        if (top != 2 || lua_type(state, 2) != LUA_TSTRING)
+            return luaL_error(state, "%s requires workspace (id or number) and name (string)",
+                              function);
+        arguments = lua_cli_workspace_selector_argument(state, 1, function, "workspace");
+        json_object_set_string_member(arguments, "name", lua_tostring(state, 2));
+    } else if (g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
+        if (top != 1)
+            return luaL_error(state, "%s requires one workspace (id or number)", function);
+        arguments = lua_cli_workspace_selector_argument(state, 1, function, "workspace");
+    } else if (g_str_equal(method, "workspace.move_active")) {
+        if (top < 1 || top > 2)
+            return luaL_error(state, "%s requires workspace (id or number) and optional options",
+                              function);
+        g_autoptr(JsonObject) selector =
+            lua_cli_workspace_selector_argument(state, 1, function, "workspace");
+        arguments = lua_cli_optional_options(state, 2, function);
+        if (!lua_cli_workspace_object_has_only_keys(arguments, follow_only)) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s options accept only follow", function);
+        }
+        lua_cli_workspace_set_object_member(arguments, "workspace", json_object_ref(selector));
+    } else {
+        /* workspace.move_window */
+        if (top < 2 || top > 3)
+            return luaL_error(state,
+                              "%s requires window, workspace (id or number) and optional options",
+                              function);
+        g_autofree char* window = NULL;
+        if (lua_type(state, 1) == LUA_TSTRING) {
+            window = g_strdup(lua_tostring(state, 1));
+        } else if (luaL_testudata(state, 1, GNOBLINCTL_WINDOW_RECORD_METATABLE)) {
+            window = g_strdup(lua_cli_window_id(state));
+            lua_settop(state, top);
+        } else {
+            return luaL_error(state, "%s requires window to be a Window, id string, or 'active'",
+                              function);
+        }
+        g_autoptr(JsonObject) selector =
+            lua_cli_workspace_selector_argument(state, 2, function, "workspace");
+        arguments = lua_cli_optional_options(state, 3, function);
+        if (!lua_cli_workspace_object_has_only_keys(arguments, follow_only)) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s options accept only follow", function);
+        }
+        json_object_set_string_member(arguments, "window", window);
+        lua_cli_workspace_set_object_member(arguments, "workspace", json_object_ref(selector));
+    }
     gboolean valid = FALSE;
     static const char* const create_fields[] = {"id", "name", "activate", NULL};
     static const char* const selector_fields[] = {"id", "number", NULL};
@@ -350,9 +441,12 @@ int lua_cli_workspaces_operation(lua_State* state) {
     } else if (takes_no_arguments) {
         valid = TRUE;
     }
-    if (!valid)
-        return lua_cli_workspace_operation_error(state, arguments,
-                                                 "workspace operation received invalid arguments");
+    if (!valid) {
+        g_autofree char* message = g_strdup_printf(
+            "%s received invalid arguments (check name, workspace, window and option values)",
+            function);
+        return lua_cli_workspace_operation_error(state, arguments, message);
+    }
 
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);

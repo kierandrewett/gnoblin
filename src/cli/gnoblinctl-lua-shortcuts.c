@@ -381,14 +381,18 @@ static void lua_cli_push_readonly_json_object(lua_State* state, JsonObject* obje
 }
 
 int lua_cli_shortcuts_bind(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.shortcuts.bind requires one options table");
-    static const char* const allowed[] = {"id",   "accelerator",   "hold", "trigger",
-                                          "mode", "capture_input", NULL};
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut binding options");
+    if (lua_gettop(state) < 2 || lua_gettop(state) > 3 || lua_type(state, 1) != LUA_TSTRING ||
+        !*lua_tostring(state, 1) || lua_type(state, 2) != LUA_TSTRING || !*lua_tostring(state, 2))
+        return luaL_error(state,
+                          "gnoblin.shortcuts.bind requires id (string), accelerator (string) "
+                          "and optional options");
+    static const char* const allowed[] = {"hold", "trigger", "mode", "capture_input", NULL};
+    g_autoptr(JsonObject) arguments = lua_cli_optional_options(state, 3, "gnoblin.shortcuts.bind");
     if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
-        return luaL_error(state, "gnoblin.shortcuts.bind accepts only id, accelerator, hold, "
-                                 "trigger, mode, and capture_input");
+        return luaL_error(state, "gnoblin.shortcuts.bind options accept only hold, trigger, mode, "
+                                 "and capture_input");
+    json_object_set_string_member(arguments, "id", lua_tostring(state, 1));
+    json_object_set_string_member(arguments, "accelerator", lua_tostring(state, 2));
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     g_autoptr(GError) error = NULL;
     if (!cli_lua_shortcut_owner_ensure(cli, &error))
@@ -411,12 +415,10 @@ int lua_cli_shortcuts_bind(lua_State* state) {
 }
 
 int lua_cli_shortcuts_unbind(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.shortcuts.unbind requires one {id} table");
-    static const char* const allowed[] = {"id", NULL};
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut unbind options");
-    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
-        return luaL_error(state, "gnoblin.shortcuts.unbind accepts only id");
+    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1))
+        return luaL_error(state, "gnoblin.shortcuts.unbind requires id (string)");
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "id", lua_tostring(state, 1));
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     if (!cli->lua_shortcut_owner)
         return luaL_error(state, "gnoblin.shortcuts.unbind has no active owner connection");
@@ -436,13 +438,14 @@ int lua_cli_shortcuts_unbind(lua_State* state) {
 }
 
 int lua_cli_shortcuts_end_session(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state,
-                          "gnoblin.shortcuts.end_session requires one {id, session_id} table");
-    static const char* const allowed[] = {"id", "session_id", NULL};
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut session options");
-    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
-        return luaL_error(state, "gnoblin.shortcuts.end_session accepts only id and session_id");
+    if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1) ||
+        !lua_isinteger(state, 2) || lua_tointeger(state, 2) <= 0)
+        return luaL_error(
+            state,
+            "gnoblin.shortcuts.end_session requires id (string) and session_id (positive integer)");
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "id", lua_tostring(state, 1));
+    json_object_set_int_member(arguments, "session_id", lua_tointeger(state, 2));
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     if (!cli->lua_shortcut_owner)
         return luaL_error(state, "gnoblin.shortcuts.end_session has no active owner connection");

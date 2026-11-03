@@ -65,6 +65,20 @@ typedef struct {
 
 #include "gnoblin-lua-signatures.inc"
 
+/* The annotated parameter names of a gnoblin API path, in order; returns how many it wrote. The
+ * annotations are the one declaration of each function's Lua parameters. */
+gsize lua_api_parameter_names(const char* path, const char** names, gsize capacity) {
+    for (const ApiFunction* function = api_functions; function->path; function++) {
+        if (!g_str_equal(function->path, path))
+            continue;
+        gsize count = MIN(function->n_params, capacity);
+        for (gsize i = 0; i < count; i++)
+            names[i] = function->params[i].name;
+        return count;
+    }
+    return 0;
+}
+
 #define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
 
 /* Remember each annotated C function's signature, keyed by the function itself, so a result shows

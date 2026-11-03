@@ -50,21 +50,6 @@
 ---@field workspace_id? string Exact workspace ID.
 ---@field monitor_id? string Exact monitor ID.
 
----@class WindowPosition
----@field x integer X coordinate, from -100000 to 100000.
----@field y integer Y coordinate, from -100000 to 100000.
-
----@class WindowSize
----@field width integer Width, from 1 to 32768.
----@field height integer Height, from 1 to 32768.
-
----@class WindowMonitorSelector
----@field id string Monitor ID.
-
----@class WindowThumbnailSize
----@field width integer Thumbnail width from 1 to 480 pixels.
----@field height integer Thumbnail height from 1 to 320 pixels.
-
 ---@class FocusContext
 
 ---@class SnapContextFrame
@@ -166,23 +151,25 @@ function Window:set_above(enabled) end
 function Window:set_sticky(enabled) end
 
 ---Move this window to a position in the compositor layout.
----@param position WindowPosition
+---@param x integer X coordinate, from -100000 to 100000.
+---@param y integer Y coordinate, from -100000 to 100000.
 ---@return Operation<Json>
-function Window:move(position) end
+function Window:move(x, y) end
 
 ---Resize this window.
----@param size WindowSize
+---@param width integer Width, from 1 to 32768.
+---@param height integer Height, from 1 to 32768.
 ---@return Operation<Json>
-function Window:resize(size) end
+function Window:resize(width, height) end
 
 ---Move this window to a workspace.
----@param workspace WorkspaceSelector Select by exactly one of id or one-based number.
+---@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<Json>
 function Window:move_to_workspace(workspace, options) end
 
 ---Move this window to a monitor.
----@param monitor string|WindowMonitorSelector Monitor ID or a table containing id.
+---@param monitor string Monitor ID.
 ---@return Operation<Json>
 function Window:move_to_monitor(monitor) end
 
@@ -209,9 +196,10 @@ function Window:begin_move(context) end
 function Window:begin_resize(edge, context) end
 
 ---Capture a thumbnail at the requested dimensions.
----@param size WindowThumbnailSize
+---@param width integer Thumbnail width from 1 to 480 pixels.
+---@param height integer Thumbnail height from 1 to 320 pixels.
 ---@return Operation<Json>
-function Window:thumbnail(size) end
+function Window:thumbnail(width, height) end
 
 ---Commit a snap context to a monitor and frame. A context can be committed only once.
 ---@param request SnapContextCommitArgs

@@ -144,39 +144,30 @@ static int lua_cli_window_method(lua_State* state) {
         json_object_set_boolean_member(arguments, "enabled", lua_toboolean(state, 2));
     } else if (g_str_equal(method, "window.move") || g_str_equal(method, "window.resize") ||
                g_str_equal(method, "window.thumbnail")) {
-        if (supplied != 1 || !lua_istable(state, 2)) {
+        if (supplied != 2 || !lua_isinteger(state, 2) || !lua_isinteger(state, 3)) {
             json_object_unref(arguments);
-            return luaL_error(state, "%s requires one table", method);
+            return luaL_error(state, "%s requires integer %s and %s", method,
+                              g_str_equal(method, "window.move") ? "x" : "width",
+                              g_str_equal(method, "window.move") ? "y" : "height");
         }
-        g_autoptr(JsonObject) values = lua_cli_table_object(state, 2, method);
-        const char* first = g_str_equal(method, "window.move") ? "x" : "width";
-        const char* second = g_str_equal(method, "window.move") ? "y" : "height";
-        JsonNode* first_value = json_object_get_member(values, first);
-        JsonNode* second_value = json_object_get_member(values, second);
-        if (json_object_get_size(values) != 2 || !first_value || !second_value ||
-            !JSON_NODE_HOLDS_VALUE(first_value) || !JSON_NODE_HOLDS_VALUE(second_value) ||
-            (json_node_get_value_type(first_value) != G_TYPE_INT &&
-             json_node_get_value_type(first_value) != G_TYPE_INT64) ||
-            (json_node_get_value_type(second_value) != G_TYPE_INT &&
-             json_node_get_value_type(second_value) != G_TYPE_INT64)) {
-            json_object_unref(arguments);
-            return luaL_error(state, "%s requires integer %s and %s", method, first, second);
-        }
-        json_object_set_member(arguments, first, json_node_copy(first_value));
-        json_object_set_member(arguments, second, json_node_copy(second_value));
+        json_object_set_int_member(arguments, g_str_equal(method, "window.move") ? "x" : "width",
+                                   lua_tointeger(state, 2));
+        json_object_set_int_member(arguments, g_str_equal(method, "window.move") ? "y" : "height",
+                                   lua_tointeger(state, 3));
     } else if (g_str_equal(method, "window.move_to_workspace")) {
-        if (supplied < 1 || supplied > 2 || !lua_istable(state, 2) ||
+        gboolean id_selector = lua_type(state, 2) == LUA_TSTRING && *lua_tostring(state, 2);
+        gboolean number_selector = lua_isinteger(state, 2) && lua_tointeger(state, 2) > 0;
+        if (supplied < 1 || supplied > 2 || (!id_selector && !number_selector) ||
             (supplied == 2 && !lua_isnil(state, 3) && !lua_istable(state, 3))) {
             json_object_unref(arguments);
-            return luaL_error(state,
-                              "window.move_to_workspace requires a selector and optional options");
+            return luaL_error(state, "window:move_to_workspace requires workspace (id string or "
+                                     "positive integer number) and optional options");
         }
-        g_autoptr(JsonObject) selector = lua_cli_table_object(state, 2, "workspace selector");
-        if (json_object_get_size(selector) != 1 || (!json_object_has_member(selector, "id") &&
-                                                    !json_object_has_member(selector, "number"))) {
-            json_object_unref(arguments);
-            return luaL_error(state, "workspace selector accepts exactly id or number");
-        }
+        g_autoptr(JsonObject) selector = json_object_new();
+        if (id_selector)
+            json_object_set_string_member(selector, "id", lua_tostring(state, 2));
+        else
+            json_object_set_int_member(selector, "number", lua_tointeger(state, 2));
         JsonNode* workspace = json_node_new(JSON_NODE_OBJECT);
         json_node_set_object(workspace, selector);
         json_object_set_member(arguments, "workspace", workspace);
@@ -191,21 +182,11 @@ static int lua_cli_window_method(lua_State* state) {
             json_object_set_boolean_member(arguments, "follow", json_node_get_boolean(follow));
         }
     } else if (g_str_equal(method, "window.move_to_monitor")) {
-        if (supplied != 1) {
+        if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING || !*lua_tostring(state, 2)) {
             json_object_unref(arguments);
-            return luaL_error(state, "window.move_to_monitor requires a monitor selector");
+            return luaL_error(state, "window:move_to_monitor requires monitor_id (string)");
         }
-        g_autofree char* monitor = lua_isstring(state, 2) ? g_strdup(lua_tostring(state, 2)) : NULL;
-        if (!monitor && lua_istable(state, 2)) {
-            lua_getfield(state, 2, "id");
-            if (lua_isstring(state, -1))
-                monitor = g_strdup(lua_tostring(state, -1));
-            lua_pop(state, 1);
-        }
-        if (!monitor || !*monitor) {
-            json_object_unref(arguments);
-            return luaL_error(state, "window.move_to_monitor requires a monitor ID");
-        }
+        g_autofree char* monitor = g_strdup(lua_tostring(state, 2));
         json_object_set_string_member(arguments, "monitor", monitor);
     } else {
         json_object_unref(arguments);

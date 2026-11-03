@@ -187,6 +187,7 @@ const char* lua_cli_workspace_id(lua_State* state);
 void lua_cli_push_animation_preview_record(lua_State* state, Cli* cli, JsonObject* object,
                                            const char* session);
 JsonObject* lua_cli_table_object(lua_State* state, int index, const char* description);
+JsonObject* lua_cli_optional_options(lua_State* state, int index, const char* function);
 int lua_cli_animations_preview(lua_State* state);
 int lua_cli_animations_control(lua_State* state);
 int lua_cli_animations_list(lua_State* state);

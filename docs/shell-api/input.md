@@ -46,10 +46,10 @@ the active group of four when you select a listed source outside that group.
 the current configured IBus engine, or nil when the active source is unknown
 or is not configured in Gnoblin.
 
-`gnoblin.input.select_source({type = "xkb", id = "us"})` requests a listed XKB
-source and returns an operation handle. The operation completes after Mutter
-confirms the keymap change. Use `{type = "ibus", id = "engine-id"}` to select a
-listed IBus source. Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
+`gnoblin.input.select_source("xkb", "us")` requests a listed XKB source and
+returns an operation handle. The operation completes after Mutter confirms the
+keymap change. Use `gnoblin.input.select_source("ibus", "engine-id")` to select
+a listed IBus source. Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
 the session bus and completes when IBus accepts the request. XKB selection
 changes the seat's keyboard layout; IBus selection changes the session's
 global input method.
@@ -325,18 +325,12 @@ listener, no overlay appears.
 | `gnoblin.input.devices()`                   | None                            | Physical input-device records           |
 | `gnoblin.input.sources()`                   | None                            | Configured XKB input-source records     |
 | `gnoblin.input.current_source()`            | None                            | Current XKB source, or `nil`            |
-| `gnoblin.input.select_source({type, id})`   | Source selector                 | Operation returning the selected source |
+| `gnoblin.input.select_source(type, id)`     | Source type and ID              | Operation returning the selected source |
 | `gnoblin.input.orientation_lock()`          | None                            | Immutable `OrientationLock` record      |
 | `gnoblin.input.set_orientation_lock(value)` | `true`, `false`, or `"inherit"` | `Operation<OrientationLock>`            |
 
 Pass a source's `type` and `id` from `gnoblin.input.sources()` to
 `gnoblin.input.select_source()`.
 
-Lua also retains two read aliases: `gnoblin.input.list()` matches
-`gnoblin.input.sources()`, and `gnoblin.input.current()` matches
-`gnoblin.input.current_source()`. The socket operation `input.select` is
-exposed in Lua as `gnoblin.input.select_source()`.
-
-These aliases are available in supervised configuration and `gnoblinctl lua`.
-The CLI maps them to the canonical socket reads. Socket clients call the
-canonical method names directly.
+The socket operation `input.select` is exposed in Lua as
+`gnoblin.input.select_source()`.

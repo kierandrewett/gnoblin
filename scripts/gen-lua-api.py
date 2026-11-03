@@ -265,25 +265,6 @@ def emit_inc(all_functions, classes):
     return "\n".join(out) + "\n"
 
 
-LUA_KEYWORDS = {
-    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
-    "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
-}  # fmt: skip
-
-
-def lua_stub(line):
-    """A function named like a Lua keyword, such as launches.end, cannot be declared with the
-    function statement; declare it by assignment instead."""
-    match = FUNCTION.match(line.strip())
-    if not match or ":" in match.group(1):
-        return line
-    parts = match.group(1).split(".")
-    if not any(part in LUA_KEYWORDS for part in parts):
-        return line
-    target = parts[0] + "".join(f'["{p}"]' if p in LUA_KEYWORDS else f".{p}" for p in parts[1:])
-    return f"{target} = function({match.group(2)}) end"
-
-
 def emit_types(functions, raw):
     namespaces = set()
     for path in functions:
@@ -302,7 +283,7 @@ def emit_types(functions, raw):
         out.append(f"{name} = {{}}")
     out.append("")
     for body in raw:
-        out.append("\n".join(lua_stub(line) for line in body.split("\n")))
+        out.append(body)
         out.append("")
     return "\n".join(out).rstrip("\n") + "\n"
 

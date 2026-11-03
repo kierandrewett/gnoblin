@@ -357,28 +357,22 @@ static int lua_record_method(lua_State* state) {
         lua_pushvalue(state, 2);
         lua_setfield(state, arguments, "enabled");
     } else if (g_str_equal(method, "window.move") || g_str_equal(method, "window.resize")) {
-        if (supplied != 1 || !lua_istable(state, 2))
-            return luaL_error(state, "%s requires one geometry table", method);
-        static const char* const move_fields[] = {"x", "y", NULL};
-        static const char* const resize_fields[] = {"width", "height", NULL};
-        if (!table_fields_allowed(state, 2,
-                                  g_str_equal(method, "window.move") ? move_fields : resize_fields))
-            return luaL_error(state, "%s received an unsupported geometry field", method);
-        const char* a = g_str_equal(method, "window.move") ? "x" : "width";
-        const char* b = g_str_equal(method, "window.move") ? "y" : "height";
-        lua_getfield(state, 2, a);
-        lua_setfield(state, arguments, a);
-        lua_getfield(state, 2, b);
-        lua_setfield(state, arguments, b);
-    } else if (g_str_equal(method, "window.move_to_workspace")) {
-        if (supplied < 1 || supplied > 2 || !lua_istable(state, 2))
-            return luaL_error(state,
-                              "window:move_to_workspace requires a selector and optional options");
-        static const char* const selector_fields[] = {"id", "number", NULL};
-        static const char* const option_fields[] = {"follow", NULL};
-        if (!table_fields_allowed(state, 2, selector_fields))
-            return luaL_error(state, "window:move_to_workspace selector accepts only id or number");
+        gboolean move = g_str_equal(method, "window.move");
+        if (supplied != 2 || !lua_isinteger(state, 2) || !lua_isinteger(state, 3))
+            return luaL_error(state, move ? "window:move takes integer x and y"
+                                          : "window:resize takes integer width and height");
         lua_pushvalue(state, 2);
+        lua_setfield(state, arguments, move ? "x" : "width");
+        lua_pushvalue(state, 3);
+        lua_setfield(state, arguments, move ? "y" : "height");
+    } else if (g_str_equal(method, "window.move_to_workspace")) {
+        if (supplied < 1 || supplied > 2)
+            return luaL_error(state,
+                              "window:move_to_workspace takes a workspace and optional options");
+        static const char* const option_fields[] = {"follow", NULL};
+        if (!lua_push_workspace_selector(state, 2))
+            return luaL_error(state, "window:move_to_workspace takes a workspace ID string or "
+                                     "number");
         lua_setfield(state, arguments, "workspace");
         if (supplied == 2 && !lua_isnil(state, 3)) {
             if (!lua_istable(state, 3) || !table_fields_allowed(state, 3, option_fields))
@@ -390,24 +384,21 @@ static int lua_record_method(lua_State* state) {
                 lua_pop(state, 1);
         }
     } else if (g_str_equal(method, "window.move_to_monitor")) {
-        if (supplied != 1)
-            return luaL_error(state, "%s requires a monitor selector", method);
+        if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING)
+            return luaL_error(state, "window:move_to_monitor takes a monitor ID");
         lua_pushvalue(state, 2);
         lua_setfield(state, arguments, "monitor");
     } else if (thumbnail) {
-        if (supplied != 1 || !lua_istable(state, 2))
-            return luaL_error(state, "window:thumbnail requires a size table");
-        static const char* const size_fields[] = {"width", "height", NULL};
-        if (!table_fields_allowed(state, 2, size_fields))
-            return luaL_error(state, "window:thumbnail size accepts only width and height");
+        if (supplied != 2)
+            return luaL_error(state, "window:thumbnail takes width and height");
         const char* dimensions[] = {"width", "height"};
         const lua_Integer limits[] = {480, 320};
         for (guint i = 0; i < G_N_ELEMENTS(dimensions); i++) {
-            lua_getfield(state, 2, dimensions[i]);
-            if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
-                lua_tointeger(state, -1) > limits[i])
+            if (!lua_isinteger(state, 2 + (int)i) || lua_tointeger(state, 2 + (int)i) < 1 ||
+                lua_tointeger(state, 2 + (int)i) > limits[i])
                 return luaL_error(state, "window:thumbnail %s must be an integer from 1 to %d",
                                   dimensions[i], (int)limits[i]);
+            lua_pushvalue(state, 2 + (int)i);
             lua_setfield(state, arguments, dimensions[i]);
         }
     } else if (g_str_equal(method, "workspace.rename")) {

@@ -2,9 +2,16 @@
 
 int lua_cli_animations_preview(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.animations.preview requires one spec table");
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "animation preview spec");
+    if (lua_gettop(state) < 1 || lua_gettop(state) > 2 || lua_type(state, 1) != LUA_TSTRING ||
+        !*lua_tostring(state, 1))
+        return luaL_error(state,
+                          "gnoblin.animations.preview requires name (string) and optional options");
+    g_autoptr(JsonObject) arguments =
+        lua_cli_optional_options(state, 2, "gnoblin.animations.preview");
+    if (json_object_has_member(arguments, "name"))
+        return luaL_error(state,
+                          "gnoblin.animations.preview takes name as argument 1, not in options");
+    json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result =
         call_compositor(cli, "api", "animation.preview", arguments, &call_error);
@@ -23,28 +30,31 @@ int lua_cli_animations_preview(lua_State* state) {
 int lua_cli_animations_control(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.animations.%s requires one argument table",
-                          method + strlen("animation."));
-
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "animation control arguments");
     gboolean takes_progress = g_str_equal(method, "animation.seek");
     gboolean takes_milliseconds = g_str_equal(method, "animation.step");
-    static const char* const session_fields[] = {"session", NULL};
-    static const char* const progress_fields[] = {"session", "progress", NULL};
-    static const char* const step_fields[] = {"session", "milliseconds", NULL};
-    const char* const* allowed = takes_progress       ? progress_fields
-                                 : takes_milliseconds ? step_fields
-                                                      : session_fields;
-    JsonNode* session_node = json_object_get_member(arguments, "session");
-    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed) || !session_node ||
-        !JSON_NODE_HOLDS_VALUE(session_node) ||
-        json_node_get_value_type(session_node) != G_TYPE_STRING ||
-        !*json_node_get_string(session_node))
-        return luaL_error(state,
-                          "gnoblin.animations.%s requires a nonempty session and valid fields",
+    int expected = takes_progress || takes_milliseconds ? 2 : 1;
+    if (lua_gettop(state) != expected)
+        return luaL_error(state, "gnoblin.animations.%s requires %s", method + strlen("animation."),
+                          takes_progress       ? "session (string) and progress (number)"
+                          : takes_milliseconds ? "session (string) and milliseconds (integer)"
+                                               : "session (string)");
+    if (lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1))
+        return luaL_error(state, "gnoblin.animations.%s requires session to be a nonempty string",
                           method + strlen("animation."));
 
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "session", lua_tostring(state, 1));
+    JsonNode* session_node = json_object_get_member(arguments, "session");
+    if (takes_progress) {
+        if (lua_type(state, 2) != LUA_TNUMBER)
+            return luaL_error(state, "gnoblin.animations.seek requires progress from 0 to 1");
+        json_object_set_double_member(arguments, "progress", lua_tonumber(state, 2));
+    } else if (takes_milliseconds) {
+        if (!lua_isinteger(state, 2))
+            return luaL_error(state,
+                              "gnoblin.animations.step requires milliseconds from 1 to 60000");
+        json_object_set_int_member(arguments, "milliseconds", lua_tointeger(state, 2));
+    }
     if (takes_progress) {
         JsonNode* progress_node = json_object_get_member(arguments, "progress");
         if (!progress_node || !JSON_NODE_HOLDS_VALUE(progress_node) ||
@@ -228,9 +238,15 @@ static gboolean lua_cli_animation_inspection_valid(JsonObject* result, JsonObjec
 }
 
 int lua_cli_animations_inspect(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.animations.inspect requires one spec table");
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "animation inspection spec");
+    if (lua_gettop(state) < 1 || lua_gettop(state) > 2 || lua_type(state, 1) != LUA_TSTRING)
+        return luaL_error(state,
+                          "gnoblin.animations.inspect requires name (string) and optional options");
+    g_autoptr(JsonObject) arguments =
+        lua_cli_optional_options(state, 2, "gnoblin.animations.inspect");
+    if (json_object_has_member(arguments, "name"))
+        return luaL_error(state,
+                          "gnoblin.animations.inspect takes name as argument 1, not in options");
+    json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
     if (!lua_cli_animation_inspect_arguments_valid(arguments))
         return luaL_error(state, "gnoblin.animations.inspect received invalid arguments");
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
@@ -350,9 +366,19 @@ int lua_cli_launches_operation(lua_State* state) {
     static const char* const begin_fields[] = {"token", "application", "timeout_ms", NULL};
 
     if (beginning) {
-        if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-            return luaL_error(state, "gnoblin.launches.begin requires an options table");
-        g_autoptr(JsonObject) options = lua_cli_table_object(state, 1, "launch options");
+        if (lua_gettop(state) < 2 || lua_gettop(state) > 3 || lua_type(state, 1) != LUA_TSTRING ||
+            lua_type(state, 2) != LUA_TSTRING)
+            return luaL_error(state, "gnoblin.launches.begin requires token (string), application "
+                                     "(string) and optional options");
+        g_autoptr(JsonObject) options =
+            lua_cli_optional_options(state, 3, "gnoblin.launches.begin");
+        if (json_object_has_member(options, "token") ||
+            json_object_has_member(options, "application"))
+            return luaL_error(state,
+                              "gnoblin.launches.begin takes token and application as arguments "
+                              "1 and 2, not in options");
+        json_object_set_string_member(options, "token", lua_tostring(state, 1));
+        json_object_set_string_member(options, "application", lua_tostring(state, 2));
         const char* token = member_string(options, "token", NULL);
         const char* application = member_string(options, "application", NULL);
         JsonNode* timeout = json_object_get_member(options, "timeout_ms");

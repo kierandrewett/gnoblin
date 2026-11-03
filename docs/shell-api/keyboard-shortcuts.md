@@ -22,9 +22,8 @@ end
 
 Use `gnoblin.shortcuts.list()` from Lua; see the [compositor bridge](/bridge/) for socket request details.
 
-`gnoblin.shortcuts.bind` accepts
-`id` and `accelerator`, with optional `hold`, `trigger`, `mode`, and
-`capture_input` fields:
+`gnoblin.shortcuts.bind(id, accelerator, options?)` registers a binding. The
+optional `options` table takes `hold`, `trigger`, `mode` and `capture_input`:
 
 - `hold` accepts `none`, `super`, `control`, or `alt`. It defaults to `none`.
 - `trigger` accepts `press` or `release`. It defaults to `press`.
@@ -35,30 +34,22 @@ Use `gnoblin.shortcuts.list()` from Lua; see the [compositor bridge](/bridge/) f
   binding also requires `trigger: "release"`, `hold: "none"`, and an available
   compositor early modifier hook.
 
-`shortcut.unbind` accepts only the binding `id`.
+`gnoblin.shortcuts.unbind(id)` removes a binding.
 
-`gnoblin.shortcuts.end_session` accepts the binding `id` and the
+`gnoblin.shortcuts.end_session(id, session_id)` takes the binding ID and the
 `session_id` from that binding's `gnoblin.shortcut.session.activated` event.
 Ending a session releases its keyboard capture while keeping the binding
 registered. A stale session ID or a binding owned by another connection is
 rejected. The matching ended event uses reason `cancelled`.
 
-Lua uses the same operation as `gnoblin.shortcuts.end_session`:
+This binding ends each of its sessions when the session starts:
 
 ```lua
-gnoblin.shortcuts.bind {
-    id = "switcher",
-    accelerator = "<Alt>Tab",
-    hold = "alt",
-    mode = "modal",
-}
+gnoblin.shortcuts.bind("switcher", "<Alt>Tab", {hold = "alt", mode = "modal"})
 
 gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
     if event.id == "switcher" then
-        gnoblin.shortcuts.end_session {
-            id = event.id,
-            session_id = event.session_id,
-        }
+        gnoblin.shortcuts.end_session(event.id, event.session_id)
     end
 end)
 ```

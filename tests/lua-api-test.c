@@ -201,11 +201,11 @@ int main(void) {
         "g.on('gnoblin.window.created', function(event)\n"
         "  thumbnail_events=thumbnail_events+1\n"
         "  if thumbnail_events==1 then\n"
-        "    local operation=event.window:thumbnail({width=320,height=200})\n"
+        "    local operation=event.window:thumbnail(320,200)\n"
         "    assert(operation.method=='window.thumbnail' and operation.status=='pending')\n"
         "  else\n"
         "    assert(not pcall(function()\n"
-        "      event.window:thumbnail({width=481,height=200})\n"
+        "      event.window:thumbnail(481,200)\n"
         "    end))\n"
         "  end\n"
         "end)\n";

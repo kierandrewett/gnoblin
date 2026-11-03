@@ -71,9 +71,6 @@ gnoblinctl input orientation-lock on
 gnoblinctl input orientation-lock inherit
 ```
 
-The Lua-only aliases `gnoblin.input.list()` and `gnoblin.input.current()` are
-not socket methods. Socket clients use the names above.
-
 ## Animations
 
 Use animation previews to inspect registered curves for compatible window and
@@ -120,14 +117,14 @@ end
 ```
 
 Inspect the resolved animation for a visible target with
-`gnoblin.animations.inspect {name, target, event?, target_type?}`. The result
+`gnoblin.animations.inspect(name, options?)`, where options may hold `target`,
+`event`, and `target_type`. The result
 and its nested tables are read-only:
 
 ```lua
-local inspection = gnoblin.animations.inspect {
-    name = "gnome-open",
+local inspection = gnoblin.animations.inspect("gnome-open", {
     target = "active",
-}
+})
 print(inspection.event, inspection.duration)
 ```
 

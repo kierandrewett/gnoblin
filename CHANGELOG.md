@@ -134,6 +134,34 @@ function is a Lua error, so a config that still calls one fails to load.
 | `gnoblin.location.authorize_app {request_id = id, allow = true, accuracy = a}` | `event.request:answer(true, a)` |
 | `gnoblin.on("gnoblin.prompt.finished", ...)`                                   | `event.request:finished()`      |
 
+Lua functions that took one table of named fields now take positional arguments, with an
+optional `options` table last. The same applies to `gnoblinctl lua`. Socket clients keep
+sending named fields.
+
+| Before                                                                | After                                                  |
+| --------------------------------------------------------------------- | ------------------------------------------------------ |
+| `workspaces.create {name = n, id = i, activate = a}`                  | `workspaces.create(n, {id = i, activate = a})`         |
+| `workspaces.rename {number = 2, name = n}`                            | `workspaces.rename(2, n)`                              |
+| `workspaces.activate {number = 2}` and `remove`                       | `workspaces.activate(2)`; an ID string also works      |
+| `workspaces.move_active {workspace = {number = 2}, follow = f}`       | `workspaces.move_active(2, {follow = f})`              |
+| `workspaces.move_window {window = w, workspace = s, follow = f}`      | `workspaces.move_window(w, s, {follow = f})`           |
+| `animations.inspect {name = n, target = t}` and `preview`             | `animations.inspect(n, {target = t})`                  |
+| `animations.seek {session = s, progress = p}`                         | `animations.seek(s, p)`; also `step(s, ms)`            |
+| `animations.play {session = s}`, `pause`, `stop`                      | `animations.play(s)`                                   |
+| `input.select_source {type = t, id = i}`                              | `input.select_source(t, i)`                            |
+| `launches.begin {token = t, application = a, timeout_ms = m}`         | `launches.begin(t, a, {timeout_ms = m})`               |
+| `shortcuts.bind {id = i, accelerator = k, hold = h}`                  | `shortcuts.bind(i, k, {hold = h})`                     |
+| `shortcuts.unbind {id = i}`, `end_session {id = i, session_id = s}`   | `shortcuts.unbind(i)`, `end_session(i, s)`             |
+| `window:move {x = x, y = y}`, `resize`, `thumbnail`                   | `window:move(x, y)`, `resize(w, h)`, `thumbnail(w, h)` |
+| `window:move_to_workspace({number = 2})`, `move_to_monitor({id = m})` | `window:move_to_workspace(2)`, `move_to_monitor(m)`    |
+
+Duplicate Lua names are removed. Use `monitors.list` for `gnoblin.monitor.list`,
+`layers.list` for `layer.list`, `input.sources` for `input.list`, `input.current_source`
+for `input.current`, `launches.finish` for `launches["end"]`, and `launches.snapshot`,
+`launches.begin` and `launches.finish` for `gnoblin.launch.status`, `begin` and `end`. The
+bridge methods `monitor.list`, `layer.list` and `launch.*` stay for shell processes. The
+`targetType` spelling is no longer documented for Lua; use `target_type`.
+
 ### Migration
 
 1. Remove the `permissions` section, `gnoblin.permission_rule` calls, and
@@ -147,6 +175,8 @@ function is a Lua error, so a config that still calls one fails to load.
    `gnoblin.process.spawn` as the table above shows.
 5. Answer prompts, authentication and location requests through `event.request`, as the
    table above shows.
+6. Rewrite table calls to the positional forms above, and replace the removed duplicate
+   names.
 
 ### Changed
 

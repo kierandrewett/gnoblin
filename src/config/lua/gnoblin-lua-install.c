@@ -136,6 +136,49 @@ static const char* push_api_parent(lua_State* state, int root, const char* path)
     return name;
 }
 
+/* Positional Lua entry point for an implementation that takes one table of named fields, the
+ * form socket clients send. Upvalue 1 is the implementation and upvalue 2 the API path. Each
+ * argument goes to the field that its annotated parameter names; a trailing parameter called
+ * `options` is a table whose fields are added instead. Nil arguments are left out. */
+static int lua_positional_call(lua_State* state) {
+    const char* path = lua_tostring(state, lua_upvalueindex(2));
+    const char* names[8];
+    gsize count = lua_api_parameter_names(path, names, G_N_ELEMENTS(names));
+    int supplied = lua_gettop(state);
+    if (supplied > (int)count)
+        return luaL_error(state, "gnoblin.%s takes at most %d arguments", path, (int)count);
+    lua_createtable(state, 0, (int)count);
+    int table = lua_gettop(state);
+    for (int i = 1; i <= supplied; i++) {
+        if (lua_isnil(state, i))
+            continue;
+        if (!g_str_equal(names[i - 1], "options")) {
+            lua_pushvalue(state, i);
+            lua_setfield(state, table, names[i - 1]);
+            continue;
+        }
+        if (!lua_istable(state, i))
+            return luaL_error(state, "gnoblin.%s options must be a table", path);
+        lua_pushnil(state);
+        while (lua_next(state, i)) {
+            if (lua_type(state, -2) != LUA_TSTRING)
+                return luaL_error(state, "gnoblin.%s options take only named fields", path);
+            lua_pushvalue(state, -2);
+            if (lua_rawget(state, table) != LUA_TNIL)
+                return luaL_error(state, "gnoblin.%s options cannot set %s", path,
+                                  lua_tostring(state, -3));
+            lua_pop(state, 1);
+            lua_pushvalue(state, -2);
+            lua_insert(state, -2);
+            lua_rawset(state, table);
+        }
+    }
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_pushvalue(state, table);
+    lua_call(state, 1, LUA_MULTRET);
+    return lua_gettop(state) - table;
+}
+
 static void install_api(lua_State* state, LuaConfig* config) {
     luaL_openlibs(state);
     const char* blocked[] = {"os", "io", "debug", "package", "dofile", "loadfile", NULL};
@@ -168,6 +211,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
                                  ? lua_workspace_action
                                  : lua_generic_api_action,
                              2);
+        }
+        if (entry->named_arguments) {
+            lua_pushstring(state, entry->path);
+            lua_pushcclosure(state, lua_positional_call, 2);
         }
         lua_setfield(state, -2, name);
         lua_pop(state, 1);

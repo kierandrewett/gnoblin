@@ -11,19 +11,8 @@
 ---@field state "pending"|"started"|"timed_out"|"ended" Current launch state.
 ---@field revision integer Launch snapshot revision.
 
----@class LaunchBeginArgs
----@field token string Non-empty token, at most 128 characters.
----@field application string Non-empty application identifier, at most 512 characters.
+---@class LaunchBeginOptions
 ---@field timeout_ms? integer Timeout in milliseconds, from 100 to 10000. Default 3000.
-
----@class NativeLaunchBeginArgs
----@field token string Non-empty token, at most 128 characters.
----@field application string Non-empty application identifier, at most 512 characters.
----@field milliseconds? integer Timeout in milliseconds. Default 3000; native requests are clamped
-to 100–10000.
-
----@class LaunchEndArgs
----@field token string Non-empty token, at most 128 characters.
 
 ---@class LaunchEndResult
 ---@field ok boolean True when the request was accepted.
@@ -34,19 +23,16 @@ to 100–10000.
 ---@field revision integer Revision of the launch snapshot.
 
 ---Begin tracking a matching application launch.
----@param launch LaunchBeginArgs
+---@param token string Non-empty token, at most 128 characters.
+---@param application string Non-empty application identifier, at most 512 characters.
+---@param options? LaunchBeginOptions
 ---@return Operation<Launch>
-function gnoblin.launches.begin(launch) end
+function gnoblin.launches.begin(token, application, options) end
 
 ---Finish tracking a launch token.
 ---@param token string Non-empty token, at most 128 characters.
 ---@return Operation<LaunchEndResult>
 function gnoblin.launches.finish(token) end
-
----Alias for launches.finish.
----@param token string Non-empty token, at most 128 characters.
----@return Operation<LaunchEndResult>
-function gnoblin.launches.end(token) end
 
 ---Return the current launch records.
 ---@return Launch[]
@@ -55,18 +41,4 @@ function gnoblin.launches.list() end
 ---Return the launch records and their snapshot revision.
 ---@return LaunchSnapshot
 function gnoblin.launches.snapshot() end
-
----Begin tracking a matching application launch through the singular API.
----@param launch NativeLaunchBeginArgs
----@return Operation<Launch>
-function gnoblin.launch.begin(launch) end
-
----Stop tracking a launch token through the singular API.
----@param request LaunchEndArgs
----@return Operation<LaunchEndResult>
-function gnoblin.launch.end(request) end
-
----Return the current launch snapshot through the singular API.
----@return LaunchSnapshot
-function gnoblin.launch.status() end
 */

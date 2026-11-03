@@ -186,11 +186,6 @@ int lua_api_index(lua_State* state) {
             g_str_equal(name, "privacy_screen") || g_str_equal(name, "set_privacy_screen"))
             return 1;
     }
-    if (g_str_equal(prefix, "monitor") && g_str_equal(name, "list")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_monitors_list, 1);
-        return 1;
-    }
     if (g_str_equal(prefix, "layers")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         if (g_str_equal(name, "list"))
@@ -309,7 +304,7 @@ int lua_api_index(lua_State* state) {
         return 1;
     }
     if (g_str_equal(prefix, "launches") &&
-        (g_str_equal(name, "begin") || g_str_equal(name, "finish") || g_str_equal(name, "end"))) {
+        (g_str_equal(name, "begin") || g_str_equal(name, "finish"))) {
         const char* method = g_str_equal(name, "begin") ? "launch.begin" : "launch.end";
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushstring(state, method);
@@ -323,14 +318,8 @@ int lua_api_index(lua_State* state) {
             return 1;
         }
         if (g_str_equal(name, "devices") || g_str_equal(name, "sources") ||
-            g_str_equal(name, "current_source") || g_str_equal(name, "orientation_lock") ||
-            g_str_equal(name, "list") || g_str_equal(name, "current")) {
-            const char* canonical_name = name;
-            if (g_str_equal(name, "list"))
-                canonical_name = "sources";
-            else if (g_str_equal(name, "current"))
-                canonical_name = "current_source";
-            g_autofree char* method = g_strdup_printf("input.%s", canonical_name);
+            g_str_equal(name, "current_source") || g_str_equal(name, "orientation_lock")) {
+            g_autofree char* method = g_strdup_printf("input.%s", name);
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushstring(state, method);
             lua_pushcclosure(state, lua_cli_input_snapshot, 2);
@@ -383,11 +372,18 @@ int lua_api_index(lua_State* state) {
             return 1;
         }
     }
-    if (g_str_equal(prefix, "layer") && g_str_equal(name, "list")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_layers_list, 1);
-        return 1;
-    }
+    static const char* const removed[][2] = {
+        {"monitor.list", "gnoblin.monitors.list"},
+        {"layer.list", "gnoblin.layers.list"},
+        {"input.list", "gnoblin.input.sources"},
+        {"input.current", "gnoblin.input.current_source"},
+        {"launches.end", "gnoblin.launches.finish"},
+        {NULL, NULL},
+    };
+    g_autofree char* qualified = g_strdup_printf("%s.%s", prefix, name);
+    for (guint i = 0; removed[i][0]; i++)
+        if (g_str_equal(qualified, removed[i][0]))
+            return luaL_error(state, "gnoblin.%s was removed; use %s", qualified, removed[i][1]);
     g_autofree char* method = g_strdup_printf("%s.%s", prefix, name);
     lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
     lua_pushstring(state, method);
