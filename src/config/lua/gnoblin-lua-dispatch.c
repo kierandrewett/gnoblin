@@ -164,6 +164,8 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
     memcpy(lua_getextraspace(state), &steps, sizeof steps);
     gboolean operation_completed = FALSE;
     gboolean callback_failed = FALSE;
+    if (g_str_equal(event, "gnoblin.process.exited"))
+        process_exited(state, &active_runtime->config, payload);
     if (g_str_equal(event, "gnoblin.operation.completed")) {
         gint64 request_id = 0;
         gboolean ok = FALSE;

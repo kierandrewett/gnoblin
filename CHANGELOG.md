@@ -9,6 +9,11 @@
   Operation now has `map(fn)`, `timeout(seconds)` and `cancel()` beside `on_complete`. Pending
   timers end when the config reloads and do not delay the reload. See
   [operations, errors and timers](docs/shell-api/errors.md).
+- `gnoblin.process.spawn(argv, options?)` starts a program and returns a `Process` with its
+  `pid` and `status`, `wait()` for its exit and `kill(signal?)`. Options set the working
+  directory, environment, standard input, where each output stream goes and how much of it to
+  capture, and a timeout. Output is returned as raw bytes. A process keeps running across a
+  config reload. See [processes](docs/shell-api/processes.md).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin

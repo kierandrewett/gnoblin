@@ -320,7 +320,7 @@ int lua_workspace_action(lua_State* state) {
 
 /* Validates the dense argv array at index and returns it as a floating string-array variant.
  * label names the Lua call in error messages. */
-static GVariant* lua_command_argv_variant(lua_State* state, int index, const char* label) {
+GVariant* lua_command_argv_variant(lua_State* state, int index, const char* label) {
     index = lua_absindex(state, index);
     lua_Integer count = lua_istable(state, index) ? (lua_Integer)lua_rawlen(state, index) : 0;
     if (count < 1 || !lua_dense_array(state, index, 64)) {

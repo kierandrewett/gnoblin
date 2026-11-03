@@ -8,6 +8,7 @@ mutter gnoblin-runtime-cache.c src/core/gnoblin-runtime-cache.c
 mutter gnoblin-runtime-cache.h src/core/gnoblin-runtime-cache.h
 mutter gnoblin-control-internal.h src/core/gnoblin-control-internal.h
 mutter gnoblin-control-capture.c src/core/gnoblin-control-capture.c
+mutter gnoblin-control-process.c src/core/gnoblin-control-process.c
 mutter gnoblin-control-command.c src/core/gnoblin-control-command.c
 mutter gnoblin-control-runtime.c src/core/gnoblin-control-runtime.c
 mutter gnoblin-control-focus.c src/core/gnoblin-control-focus.c

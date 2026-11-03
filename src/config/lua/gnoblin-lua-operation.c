@@ -42,7 +42,7 @@ static gboolean operation_pending(lua_State* state, int handle) {
     return pending;
 }
 
-static void push_operation_error(lua_State* state, const char* code, const char* message) {
+void push_operation_error(lua_State* state, const char* code, const char* message) {
     lua_createtable(state, 0, 2);
     lua_pushstring(state, code);
     lua_setfield(state, -2, "code");
@@ -126,8 +126,8 @@ static void timer_free(gpointer data) {
 /* Finish a pending Operation in the runtime. `value` and `error` are stack indexes, or 0 for nil.
  * Stops the Operation's timer, detaches it from the operation it waits on, and stops waiting for
  * the compositor when it was a compositor operation. */
-static void finish_operation(lua_State* state, LuaConfig* config, int handle, gboolean ok,
-                             int value, int error) {
+void finish_operation(lua_State* state, LuaConfig* config, int handle, gboolean ok, int value,
+                      int error) {
     handle = lua_absindex(state, handle);
     value = value ? lua_absindex(state, value) : 0;
     error = error ? lua_absindex(state, error) : 0;
@@ -238,7 +238,7 @@ static LuaConfig* runtime_config(lua_State* state, const char* name) {
 static void push_operation_metatable(lua_State* state, LuaConfig* config);
 
 /* Push a new pending Operation that the runtime itself finishes. */
-static void push_local_operation(lua_State* state, LuaConfig* config, const char* method) {
+void push_local_operation(lua_State* state, LuaConfig* config, const char* method) {
     guint64 id = allocate_operation_id();
     if (!id)
         luaL_error(state, "Gnoblin operation request ID space is exhausted");
@@ -293,6 +293,18 @@ static int lua_operation_forward(lua_State* state) {
     return 0;
 }
 
+/* Subscribe the function on top of the stack to the Operation at `operation`. Replaces the function
+ * with the subscription. */
+void subscribe_operation(lua_State* state, LuaConfig* config, int operation) {
+    operation = lua_absindex(state, operation);
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_operation_on_complete, 1);
+    lua_insert(state, -2);
+    lua_pushvalue(state, operation);
+    lua_insert(state, -2);
+    lua_call(state, 2, 1);
+}
+
 /* Push an Operation that finishes when `source` does, mapped through `map` when it is not 0. */
 static int push_derived_operation(lua_State* state, LuaConfig* config, int source, int map,
                                   const char* method) {
@@ -301,16 +313,13 @@ static int push_derived_operation(lua_State* state, LuaConfig* config, int sourc
     push_local_operation(state, config, method);
     int derived = lua_absindex(state, -1);
     lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_operation_on_complete, 1);
-    lua_pushvalue(state, source);
-    lua_pushlightuserdata(state, config);
     lua_pushvalue(state, derived);
     if (map)
         lua_pushvalue(state, map);
     else
         lua_pushnil(state);
     lua_pushcclosure(state, lua_operation_forward, 3);
-    lua_call(state, 2, 1);
+    subscribe_operation(state, config, source);
     lua_setfield(state, derived, "_source");
     return derived;
 }

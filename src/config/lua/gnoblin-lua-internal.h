@@ -79,7 +79,8 @@ typedef struct {
     GPtrArray* runtime_actions;
     GPtrArray* deferred_callbacks;
     GHashTable* operations;
-    GHashTable* timers; /* Operation ID -> LuaTimer for runtime-local timers. */
+    GHashTable* timers;    /* Operation ID -> LuaTimer for runtime-local timers. */
+    GHashTable* processes; /* process.spawn request ID -> registry reference to the Process. */
     GHashTable* focus_operations;
     GVariant* window_snapshot;
     guint64 window_revision;
@@ -261,6 +262,14 @@ void run_operation_callbacks(lua_State* state, int handle);
 GHashTable* runtime_timers_new(void);
 int lua_timers_after(lua_State* state);
 int lua_timers_now(lua_State* state);
+void push_operation_error(lua_State* state, const char* code, const char* message);
+void push_local_operation(lua_State* state, LuaConfig* config, const char* method);
+void finish_operation(lua_State* state, LuaConfig* config, int handle, gboolean ok, int value,
+                      int error);
+void subscribe_operation(lua_State* state, LuaConfig* config, int operation);
+GVariant* lua_command_argv_variant(lua_State* state, int index, const char* label);
+int lua_process_spawn(lua_State* state);
+void process_exited(lua_State* state, LuaConfig* config, GVariant* payload);
 gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed);
 int lua_workspace_action(lua_State* state);
 int lua_generic_api_action(lua_State* state);

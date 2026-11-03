@@ -167,7 +167,12 @@ void push_variant(lua_State* state, GVariant* value) {
         lua_pushnumber(state, g_variant_get_double(value));
     else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
         lua_pushstring(state, g_variant_get_string(value, NULL));
-    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING_ARRAY)) {
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_BYTESTRING)) {
+        /* Raw bytes, such as process output, which need not be UTF-8. */
+        gsize length = 0;
+        const void* bytes = g_variant_get_fixed_array(value, &length, 1);
+        lua_pushlstring(state, length ? bytes : "", length);
+    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING_ARRAY)) {
         lua_newtable(state);
         mark_array_table(state, -1);
         for (gsize i = 0; i < g_variant_n_children(value); i++) {

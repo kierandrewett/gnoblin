@@ -368,6 +368,32 @@ static const ApiMember api_fields_PrivacyState[] = {
 static const ApiMember api_fields_PrivacyStopResult[] = {
     {"requested", "integer", FALSE, "Number of privacy sessions asked to stop."},
 };
+static const ApiMember api_fields_Process[] = {
+    {"id", "integer", FALSE, "Identifier for this process within the session."},
+    {"argv", "string[]", FALSE, "The command line it was started with."},
+    {"pid", "integer|nil", FALSE, "Process ID, once the process has started."},
+    {"status", "\"starting\"|\"running\"|\"exited\"|\"failed\"", FALSE, "\"failed\" means it could not be started."},
+    {"exit_code", "integer|nil", FALSE, "Exit status, once it exited normally."},
+    {"signal", "string|integer|nil", FALSE, "Signal that ended it, such as \"term\", once it was killed."},
+};
+static const ApiMember api_fields_ProcessExit[] = {
+    {"exit_code", "integer|nil", FALSE, "Exit status when the process exited normally."},
+    {"signal", "string|integer|nil", FALSE, "Signal that ended the process, such as \"term\" or \"kill\"."},
+    {"timed_out", "boolean", FALSE, "True when the timeout option ended the process."},
+    {"stdout", "string", TRUE, "Captured standard output, as raw bytes."},
+    {"stdout_truncated", "boolean", TRUE, "True when standard output passed output_limit."},
+    {"stderr", "string", TRUE, "Captured standard error, as raw bytes."},
+    {"stderr_truncated", "boolean", TRUE, "True when standard error passed output_limit."},
+};
+static const ApiMember api_fields_ProcessOptions[] = {
+    {"cwd", "string", TRUE, "Absolute working directory; the default is the compositor's."},
+    {"env", "table<string, string>", TRUE, "Variables added to the session environment, at most 128."},
+    {"stdin", "string", TRUE, "Bytes for standard input, at most 1 MiB; empty when unset."},
+    {"stdout", "\"inherit\"|\"discard\"|\"capture\"", TRUE, "Where standard output goes; \"inherit\" by default."},
+    {"stderr", "\"inherit\"|\"discard\"|\"capture\"", TRUE, "Where standard error goes; \"inherit\" by default."},
+    {"output_limit", "integer", TRUE, "Bytes kept per captured stream, 0 to 4194304; 65536 by default."},
+    {"timeout", "number", TRUE, "Seconds, up to 86400, before the process group is ended."},
+};
 static const ApiMember api_fields_PromptCancelArgs[] = {
     {"request_id", "integer", FALSE, "Positive request identifier."},
 };
@@ -739,6 +765,9 @@ static const ApiClass api_classes[] = {
     {"PrivacyScreenSnapshot", "", api_fields_PrivacyScreenSnapshot, 4},
     {"PrivacyState", "", api_fields_PrivacyState, 7},
     {"PrivacyStopResult", "", api_fields_PrivacyStopResult, 1},
+    {"Process", "A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.", api_fields_Process, 6},
+    {"ProcessExit", "How a process ended, the value of Process:wait().", api_fields_ProcessExit, 7},
+    {"ProcessOptions", "Options for gnoblin.process.spawn. Every field is optional.", api_fields_ProcessOptions, 7},
     {"PromptCancelArgs", "", api_fields_PromptCancelArgs, 1},
     {"PromptRespondArgs", "", api_fields_PromptRespondArgs, 4},
     {"Renderer", "", api_fields_Renderer, 4},
@@ -943,60 +972,64 @@ static const ApiMember api_params_80[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
 static const ApiMember api_params_87[] = {
-    {"request", "PromptCancelArgs", FALSE, ""},
+    {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
+    {"options", "ProcessOptions", TRUE, ""},
 };
 static const ApiMember api_params_88[] = {
+    {"request", "PromptCancelArgs", FALSE, ""},
+};
+static const ApiMember api_params_89[] = {
     {"request", "PromptRespondArgs", FALSE, ""},
 };
-static const ApiMember api_params_99[] = {
+static const ApiMember api_params_100[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
 };
-static const ApiMember api_params_100[] = {
+static const ApiMember api_params_101[] = {
     {"binding", "ShortcutBindingArgs", FALSE, ""},
 };
-static const ApiMember api_params_101[] = {
+static const ApiMember api_params_102[] = {
     {"options", "ShortcutCaptureOptions", TRUE, ""},
 };
-static const ApiMember api_params_102[] = {
+static const ApiMember api_params_103[] = {
     {"session", "ShortcutSessionArgs", FALSE, ""},
 };
-static const ApiMember api_params_104[] = {
+static const ApiMember api_params_105[] = {
     {"binding", "ShortcutIdArgs", FALSE, ""},
 };
-static const ApiMember api_params_106[] = {
+static const ApiMember api_params_107[] = {
     {"seconds", "number", FALSE, "From 0 to 86400."},
 };
-static const ApiMember api_params_109[] = {
+static const ApiMember api_params_110[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
-static const ApiMember api_params_110[] = {
+static const ApiMember api_params_111[] = {
     {"id", "string", FALSE, "Stable window ID."},
 };
-static const ApiMember api_params_112[] = {
+static const ApiMember api_params_113[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_113[] = {
+static const ApiMember api_params_114[] = {
     {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
 };
-static const ApiMember api_params_114[] = {
+static const ApiMember api_params_115[] = {
     {"workspace", "WorkspaceSelector", FALSE, ""},
-};
-static const ApiMember api_params_116[] = {
-    {"id", "string", FALSE, "Stable workspace ID."},
 };
 static const ApiMember api_params_117[] = {
+    {"id", "string", FALSE, "Stable workspace ID."},
+};
+static const ApiMember api_params_118[] = {
     {"workspace", "WorkspaceCreateArgs", FALSE, ""},
 };
-static const ApiMember api_params_119[] = {
+static const ApiMember api_params_120[] = {
     {"request", "WorkspaceMoveActiveArgs", FALSE, ""},
 };
-static const ApiMember api_params_120[] = {
+static const ApiMember api_params_121[] = {
     {"request", "WorkspaceMoveWindowArgs", FALSE, ""},
 };
-static const ApiMember api_params_123[] = {
+static const ApiMember api_params_124[] = {
     {"workspace", "WorkspaceSelector", FALSE, ""},
 };
-static const ApiMember api_params_124[] = {
+static const ApiMember api_params_125[] = {
     {"workspace", "WorkspaceRenameArgs", FALSE, ""},
 };
 
@@ -1088,8 +1121,9 @@ static const ApiFunction api_functions[] = {
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"prompt.cancel", "Cancel a prompt request.", api_params_87, 1, "Operation<any>"},
-    {"prompt.respond", "Answer a prompt with an optional password, confirmation, or choice.", api_params_88, 1, "Operation<any>"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_87, 2, "Process"},
+    {"prompt.cancel", "Cancel a prompt request.", api_params_88, 1, "Operation<any>"},
+    {"prompt.respond", "Answer a prompt with an optional password, confirmation, or choice.", api_params_89, 1, "Operation<any>"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.activity", "Read the session idle state and elapsed idle time.", NULL, 0, "SessionActivity"},
@@ -1100,31 +1134,31 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Request that the machine reboot through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Request that the session suspend through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
-    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_99, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_100, 1, "Operation<ShortcutBinding>"},
-    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_101, 1, "Operation<ShortcutCaptureResult>"},
-    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_102, 1, "Operation<ShortcutEndSessionResult>"},
+    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_100, 1, "ShortcutAction[]"},
+    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_101, 1, "Operation<ShortcutBinding>"},
+    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_102, 1, "Operation<ShortcutCaptureResult>"},
+    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_103, 1, "Operation<ShortcutEndSessionResult>"},
     {"shortcuts.list", "List the configured shortcut records.", NULL, 0, "ShortcutState[]"},
-    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_104, 1, "Operation<ShortcutUnbindResult>"},
+    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_105, 1, "Operation<ShortcutUnbindResult>"},
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
-    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_106, 1, "Operation<nil>"},
+    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_107, 1, "Operation<nil>"},
     {"timers.now", "Seconds on a monotonic clock. Only differences between two readings are meaningful.", NULL, 0, "number"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_109, 1, ""},
-    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_110, 1, "Window|nil"},
+    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_110, 1, ""},
+    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_111, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_112, 1, "Window[]"},
-    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_113, 1, "Operation<SnapContext>"},
-    {"workspaces.activate", "Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.", api_params_114, 1, "Operation<Workspace>"},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_113, 1, "Window[]"},
+    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_114, 1, "Operation<SnapContext>"},
+    {"workspaces.activate", "Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.", api_params_115, 1, "Operation<Workspace>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_116, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_117, 1, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_117, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_118, 1, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
-    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_119, 1, "Operation<WorkspaceMoveResult>"},
-    {"workspaces.move_window", "Move a window to a workspace.", api_params_120, 1, "Operation<WorkspaceMoveResult>"},
+    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_120, 1, "Operation<WorkspaceMoveResult>"},
+    {"workspaces.move_window", "Move a window to a workspace.", api_params_121, 1, "Operation<WorkspaceMoveResult>"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},
-    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_123, 1, "Operation<Workspace>"},
-    {"workspaces.rename", "Rename a workspace selected by ID or one-based number.", api_params_124, 1, "Operation<Workspace>"},
+    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_124, 1, "Operation<Workspace>"},
+    {"workspaces.rename", "Rename a workspace selected by ID or one-based number.", api_params_125, 1, "Operation<Workspace>"},
     {NULL, NULL, NULL, 0, NULL},
 };

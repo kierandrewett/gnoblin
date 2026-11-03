@@ -581,19 +581,21 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                 result = g_variant_ref_sink(g_variant_builder_end(&accepted));
             }
         }
-    } else if (g_str_equal(method, "command.capture")) {
+    } else if (g_str_equal(method, "command.capture") || g_str_has_prefix(method, "process.")) {
         guint64 operation_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &operation_generation) ||
             !operation_generation || operation_generation != control->runtime_generation) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.capture belongs to a stale runtime generation");
+            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                        "%s belongs to a stale runtime generation", method);
         } else if (control->runtime_worker_suspended || control->runtime_recovery_failed) {
             g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
                                 "Lua runtime is unavailable for command execution");
+        } else if (g_str_equal(method, "process.kill")) {
+            /* Ending a process stays allowed while the session is locked. */
         } else if (control->wayland_compositor &&
                    meta_wayland_session_lock_is_active(control->wayland_compositor)) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.capture is unavailable while the session is locked");
+            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                        "%s is unavailable while the session is locked", method);
         }
     } else if (g_str_equal(method, "window.snap") || g_str_equal(method, "window.snap_context")) {
         guint64 operation_generation = 0;
@@ -614,6 +616,15 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         if (gnoblin_control_capture_begin(control, operation_id, arguments, &operation_error))
             return TRUE;
         g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+    } else if (g_str_equal(method, "process.spawn")) {
+        guint64* operation_key = g_new(guint64, 1);
+        *operation_key = (guint64)operation_id;
+        g_hash_table_add(control->runtime_operation_ids, operation_key);
+        if (gnoblin_control_process_spawn(control, operation_id, arguments, &operation_error))
+            return TRUE;
+        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+    } else if (g_str_equal(method, "process.kill")) {
+        result = gnoblin_control_process_kill(control, arguments, &operation_error);
     } else if (g_str_equal(method, "window.snap.offer")) {
         guint64 owner_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation) ||

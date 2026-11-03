@@ -465,7 +465,7 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                                   g_variant_new_uint64(runtime->current_client_id));
             packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
         } else if (g_str_equal(method, "window.snap.offer") || g_str_equal(method, "command.run") ||
-                   g_str_equal(method, "command.capture")) {
+                   g_str_equal(method, "command.capture") || g_str_has_prefix(method, "process.")) {
             GVariantBuilder operation_builder;
             GVariantIter fields;
             const char* field_name;

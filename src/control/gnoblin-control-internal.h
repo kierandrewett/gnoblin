@@ -273,6 +273,7 @@ struct _GnoblinNativeControl {
     GHashTable* pending_prompts;
     guint64 next_prompt_request_id;
     GHashTable* pending_captures;
+    GHashTable* processes; /* process.spawn request ID -> RunningProcess */
     GHashTable* runtime_operation_ids;
     GHashTable* runtime_cancelled_operation_ids;
     GHashTable* runtime_event_subscriptions;
@@ -444,6 +445,15 @@ G_GNUC_INTERNAL void gnoblin_control_capture_clear(GnoblinNativeControl* control
 G_GNUC_INTERNAL gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control,
                                                        gint64 operation_id, GVariant* arguments,
                                                        GError** error);
+
+/* gnoblin-control-process.c: process.spawn and process.kill. */
+G_GNUC_INTERNAL void gnoblin_control_process_init(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_process_clear(GnoblinNativeControl* control);
+G_GNUC_INTERNAL gboolean gnoblin_control_process_spawn(GnoblinNativeControl* control, gint64 id,
+                                                       GVariant* arguments, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_process_kill(GnoblinNativeControl* control,
+                                                       GVariant* arguments, GError** error);
+G_GNUC_INTERNAL gint64 gnoblin_control_process_for_pid(GnoblinNativeControl* control, pid_t pid);
 
 /* gnoblin-control-privacy.c: privacy snapshot and location authorization glue. */
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,
