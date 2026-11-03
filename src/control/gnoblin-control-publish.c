@@ -38,6 +38,7 @@ static void attribute_windows(GnoblinNativeControl* control, JsonNode* snapshot)
             g_object_set_data(G_OBJECT(window), "gnoblin-process", GSIZE_TO_POINTER(process));
         if (process > 0)
             json_object_set_int_member(record, "process", process);
+        gnoblin_control_window_visual_add_fields(window, record);
     }
 }
 
@@ -112,6 +113,10 @@ const WindowPropertyName window_property_names[] = {
     {"pid", "pid"},
     {"process", "process"},
     {"geometry", "frame"},
+    {"opacity", "opacity"},
+    {"scale", "scale"},
+    {"rotation", "rotation"},
+    {"offset", "offset"},
 };
 
 const gsize window_property_names_count = G_N_ELEMENTS(window_property_names);

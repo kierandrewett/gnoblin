@@ -455,6 +455,15 @@ G_GNUC_INTERNAL gboolean gnoblin_control_present_window(GnoblinNativeControl* co
                                                         gint64 operation_id, GVariant* arguments,
                                                         GError** error);
 
+/* gnoblin-control-window-visuals.c: window.set_visual, visual fields of window records. */
+G_GNUC_INTERNAL GVariant* gnoblin_control_window_set_visual(GnoblinNativeControl* control,
+                                                            GVariant* arguments,
+                                                            guint64 owner_generation,
+                                                            GError** error);
+G_GNUC_INTERNAL void gnoblin_control_window_visual_add_fields(MetaWindow* window,
+                                                              JsonObject* record);
+G_GNUC_INTERNAL void gnoblin_control_window_visuals_reset(GnoblinNativeControl* control);
+
 /* gnoblin-control-privacy.c: privacy snapshot and location authorization glue. */
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,
                                                               gboolean changed);

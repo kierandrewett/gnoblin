@@ -28,6 +28,8 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
     static const char* const monitor[] = {"id", "monitor", NULL};
     static const char* const thumbnail[] = {"id", "width", "height", NULL};
     static const char* const monitor_selector[] = {"id", NULL};
+    static const char* const visual[] = {"id",       "opacity",  "scale", "rotation",
+                                         "offset_x", "offset_y", "reset", NULL};
     luaL_checktype(state, 1, LUA_TTABLE);
     const char* const* fields = id_only;
     if (g_str_equal(method, "window.set_maximized") ||
@@ -44,6 +46,8 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
         fields = monitor;
     else if (g_str_equal(method, "window.thumbnail"))
         fields = thumbnail;
+    else if (g_str_equal(method, "window.set_visual"))
+        fields = visual;
     if (!table_fields_allowed(state, 1, fields))
         luaL_error(state, "%s arguments contain an unsupported field", method);
 
@@ -60,6 +64,17 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
         if (!lua_isboolean(state, -1))
             luaL_error(state, "%s requires boolean enabled", method);
         lua_pop(state, 1);
+    } else if (fields == visual) {
+        /* The compositor checks the ranges; Lua checks the types. */
+        for (guint i = 1; visual[i]; i++) {
+            lua_getfield(state, 1, visual[i]);
+            gboolean is_reset = g_str_equal(visual[i], "reset");
+            if (!lua_isnil(state, -1) &&
+                (is_reset ? !lua_isboolean(state, -1) : lua_type(state, -1) != LUA_TNUMBER))
+                luaL_error(state, "window.set_visual %s must be %s", visual[i],
+                           is_reset ? "a boolean" : "a number");
+            lua_pop(state, 1);
+        }
     } else if (fields == move || fields == resize) {
         const char* first = fields == move ? "x" : "width";
         const char* second = fields == move ? "y" : "height";

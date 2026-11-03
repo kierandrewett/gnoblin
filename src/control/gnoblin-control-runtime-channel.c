@@ -278,6 +278,7 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     gnoblin_runtime_writer_reset(control->runtime_writer);
     gnoblin_runtime_reader_reset(control->runtime_reader);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_states);
+    gnoblin_control_window_visuals_reset(control);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_events);
     native_runtime_fail_pending_requests(control, "Lua worker restarted before replying");
     gnoblin_control_cancel_window_drags(control, "runtime_restarted");
@@ -615,6 +616,11 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
             result = g_variant_ref_sink(g_variant_builder_end(&accepted));
         }
+    } else if (g_str_equal(method, "window.set_visual")) {
+        guint64 owner_generation = 0;
+        g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+        result = gnoblin_control_window_set_visual(control, arguments, owner_generation,
+                                                   &operation_error);
     } else if (g_str_equal(method, "window.restore_or_minimize")) {
         result = gnoblin_native_control_restore_or_minimize_window(control->display, arguments,
                                                                    &operation_error);
@@ -1201,6 +1207,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                     control->input_policy_bypassed = FALSE;
                     g_clear_pointer(&control->input_policy_error, g_free);
                     gnoblin_control_cancel_window_drags(control, "config_reloaded");
+                    gnoblin_control_window_visuals_reset(control);
                     revoke_focus_contexts(control);
                 }
                 if (handled && revision > previous_revision) {

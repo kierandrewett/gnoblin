@@ -383,6 +383,40 @@ static int lua_record_method(lua_State* state) {
             else
                 lua_pop(state, 1);
         }
+    } else if (g_str_equal(method, "window.set_visual")) {
+        /* set_opacity(v), set_scale(s), set_rotation(degrees), set_offset(x, y) and
+         * reset_visuals() share the operation; the compositor checks the ranges. */
+        const char* name = lua_tostring(state, lua_upvalueindex(2));
+        static const struct {
+            const char* method;
+            const char* fields[2];
+        } visuals[] = {
+            {"set_opacity", {"opacity", NULL}},   {"set_scale", {"scale", NULL}},
+            {"set_rotation", {"rotation", NULL}}, {"set_offset", {"offset_x", "offset_y"}},
+            {"reset_visuals", {NULL, NULL}},
+        };
+        gboolean known = FALSE;
+        for (guint i = 0; name && i < G_N_ELEMENTS(visuals); i++) {
+            if (!g_str_equal(name, visuals[i].method))
+                continue;
+            known = TRUE;
+            int count = visuals[i].fields[1] ? 2 : visuals[i].fields[0] ? 1 : 0;
+            if (supplied != count)
+                return luaL_error(state, "window:%s takes %d number%s", name, count,
+                                  count == 1 ? "" : "s");
+            for (int field = 0; field < count; field++) {
+                if (lua_type(state, 2 + field) != LUA_TNUMBER)
+                    return luaL_error(state, "window:%s takes numbers", name);
+                lua_pushvalue(state, 2 + field);
+                lua_setfield(state, arguments, visuals[i].fields[field]);
+            }
+            if (count == 0) {
+                lua_pushboolean(state, TRUE);
+                lua_setfield(state, arguments, "reset");
+            }
+        }
+        if (!known)
+            return luaL_error(state, "unknown window visual method");
     } else if (g_str_equal(method, "window.move_to_monitor")) {
         if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING)
             return luaL_error(state, "window:move_to_monitor takes a monitor ID");
@@ -442,14 +476,16 @@ static int lua_record_method(lua_State* state) {
 }
 
 /* Add the lua_api methods of one record class, such as Window, to a record's method table. Each
- * gets its wire operation as upvalue 1, or the class name when it has none. */
+ * gets its wire operation as upvalue 1, or the class name when it has none, and its own name as
+ * upvalue 2, which tells apart methods that share one operation. */
 static void add_record_methods(lua_State* state, int method_table, const char* class) {
     gsize length = strlen(class);
     for (const LuaApiEntry* entry = lua_api; entry->path; entry++) {
         if (strncmp(entry->path, class, length) != 0 || entry->path[length] != ':')
             continue;
         lua_pushstring(state, entry->operation ? entry->operation : class);
-        lua_pushcclosure(state, entry->function ? entry->function : lua_record_method, 1);
+        lua_pushstring(state, entry->path + length + 1);
+        lua_pushcclosure(state, entry->function ? entry->function : lua_record_method, 2);
         lua_setfield(state, method_table, entry->path + length + 1);
     }
 }

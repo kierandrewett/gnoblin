@@ -105,6 +105,36 @@ context remain denied.
 
 For socket operation names and argument fields, see the [compositor bridge](/bridge/).
 
+## Change how a window is drawn
+
+These methods change only how the compositor draws a window. The frame,
+workspace, focus and what the application sees stay the same. Each returns an
+`Operation` whose value lists the window's visual state.
+
+| Window method                  | Accepted values                       | Default  |
+| ------------------------------ | ------------------------------------- | -------- |
+| `window:set_opacity(opacity)`  | 0 (invisible) to 1 (opaque)           | 1        |
+| `window:set_scale(scale)`      | 0.01 to 10, about the window's centre | 1        |
+| `window:set_rotation(degrees)` | -3600 to 3600, about the centre       | 0        |
+| `window:set_offset(x, y)`      | -100000 to 100000 logical pixels each | 0, 0     |
+| `window:reset_visuals()`       | None                                  | Defaults |
+
+```lua
+window:set_offset(0, 400)
+window:set_opacity(0.8)
+```
+
+- The window's `opacity`, `scale`, `rotation` and `offset` fields show the
+  current values, so `window:watch("offset", fn)` sees each change.
+- Pointer clicks follow the drawn position: after `set_offset`, a click where
+  the window is drawn reaches it.
+- A window rule's `opacity` multiplies with `set_opacity`.
+- A config reload, or a stopped Lua worker, resets every window to the
+  defaults.
+- While the session is locked, these methods fail.
+- An open, close, minimize or resize animation draws the window itself. A
+  change made while one plays can be overwritten when it ends.
+
 ## Compositor requests
 
 Subscribe to `gnoblin.window.menu-requested` to show a shell-owned window menu,

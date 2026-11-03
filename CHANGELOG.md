@@ -31,6 +31,11 @@
   the same object, updated with each change, with `alive`, `on(signal, fn)` for its
   `changed`, `closed` and other signals, and `watch(field, fn)` for one declared field. Before,
   each read returned a detached copy. See [live window objects](docs/shell-api/windows.md#live-window-objects).
+- `window:set_opacity`, `set_scale`, `set_rotation`, `set_offset` and `reset_visuals` change
+  how the compositor draws a window without moving its frame. Clicks follow the drawn
+  position, a config reload resets them, and they fail while the session is locked. Window
+  objects show the values in `opacity`, `scale`, `rotation` and `offset`. See
+  [change how a window is drawn](docs/shell-api/windows.md#change-how-a-window-is-drawn).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin

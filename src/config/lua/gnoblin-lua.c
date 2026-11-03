@@ -139,6 +139,11 @@ const LuaApiEntry lua_api[] = {
     {"Window:begin_resize", "window.begin_resize", NULL},
     {"Window:thumbnail", "window.thumbnail", NULL},
     {"Window:present", "window.present", NULL},
+    {"Window:set_opacity", "window.set_visual", NULL},
+    {"Window:set_scale", "window.set_visual", NULL},
+    {"Window:set_rotation", "window.set_visual", NULL},
+    {"Window:set_offset", "window.set_visual", NULL},
+    {"Window:reset_visuals", "window.set_visual", NULL},
     {"Window:on", NULL, lua_object_on},
     {"Window:watch", NULL, lua_object_watch},
 

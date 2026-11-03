@@ -47,7 +47,7 @@
 ---@class LayerSurface
 ---@field id string Stable layer surface ID.
 ---@field alive boolean False once the surface has been removed. Every read of one surface returns
-this same object, which shows the newest state the runtime has seen.
+this same object, updated with each change.
 ---@field namespace string Layer surface namespace.
 ---@field title string Layer surface title.
 ---@field layer string Layer-shell layer value.

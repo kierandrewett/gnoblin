@@ -4,7 +4,7 @@
 /*** lua
 ---@class Workspace
 ---@field alive boolean False once the workspace has been removed. Every read of one workspace
-returns this same object, which shows the newest state the runtime has seen.
+returns this same object, updated with each change.
 ---@field id? string Stable workspace ID. The current native workspace snapshot does not provide
 this field.
 ---@field number integer One-based workspace number.

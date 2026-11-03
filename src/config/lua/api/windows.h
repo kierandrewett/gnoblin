@@ -11,7 +11,7 @@
 ---@class Window
 ---@field id string Stable window ID.
 ---@field alive boolean False once the window has closed. Every read of one window returns this
-same object, which shows the newest state the runtime has seen.
+same object, updated with each change.
 ---@field title string Window title; empty when the native window has no title.
 ---@field app_id string Application ID used for matching.
 ---@field gtk_app_id? string GTK application ID, when present.
@@ -41,9 +41,21 @@ same object, which shows the newest state the runtime has seen.
 ---@field process? integer Process.id when gnoblin.process.spawn started this window's program.
 ---@field monitor? integer Zero-based monitor index.
 ---@field frame WindowFrame Window frame rectangle.
+---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
+---@field scale number Drawn scale about the window's centre that the runtime set; 1 by default.
+---@field rotation number Drawn rotation in degrees about the window's centre; 0 by default.
+---@field offset {x: number, y: number} Drawn offset in logical pixels; {x = 0, y = 0} by default.
 ---@field focused boolean Whether the window currently has focus.
 ---@field modal boolean Whether the window is a modal dialog.
 ---@field revision integer State revision for this snapshot.
+
+---@class WindowVisual
+---@field id string Window ID.
+---@field opacity number
+---@field scale number
+---@field rotation number
+---@field offset_x number
+---@field offset_y number
 
 ---@class WindowFilter
 ---@field app_id? string Exact application ID.
@@ -185,6 +197,32 @@ function Window:focus(context) end
 ---250 ms, at most 5 seconds, then succeeds when the window has focus.
 ---@return Operation<{id: string, focused: boolean}>
 function Window:present() end
+
+---Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn
+---and picked, not its frame or what the client sees. The runtime's reload clears them.
+---@param opacity number
+---@return Operation<WindowVisual>
+function Window:set_opacity(opacity) end
+
+---Draw this window scaled about its centre, from 0.01 to 10.
+---@param scale number
+---@return Operation<WindowVisual>
+function Window:set_scale(scale) end
+
+---Draw this window rotated about its centre, in degrees from -3600 to 3600.
+---@param degrees number
+---@return Operation<WindowVisual>
+function Window:set_rotation(degrees) end
+
+---Draw this window moved by an offset in logical pixels, each from -100000 to 100000.
+---@param x number
+---@param y number
+---@return Operation<WindowVisual>
+function Window:set_offset(x, y) end
+
+---Draw this window without any visual change the runtime set.
+---@return Operation<WindowVisual>
+function Window:reset_visuals() end
 
 ---Call fn(window, ...) on a signal of this window: "changed" (with the list of changed fields),
 ---"focused", "unfocused" or "closed". Listening ends after "closed".
