@@ -306,6 +306,26 @@ static GVariant* legacy_layer_list_from_lua(GVariant* layers, GError** error) {
     return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 
+/* A field of a monitor record that went through Lua, in the type monitor.list replies use. Lua
+ * integers come back as int64 and whole numbers can come back as either kind, so convert numbers
+ * that fit; any other field must already have the wanted type. */
+static GVariant* legacy_monitor_field(GVariant* monitor, const char* key,
+                                      const GVariantType* type) {
+    g_autoptr(GVariant) value = g_variant_lookup_value(monitor, key, NULL);
+    if (!value)
+        return NULL;
+    gboolean is_int64 = g_variant_is_of_type(value, G_VARIANT_TYPE_INT64);
+    if (g_variant_type_equal(type, G_VARIANT_TYPE_INT32) && is_int64) {
+        gint64 number = g_variant_get_int64(value);
+        if (number < G_MININT32 || number > G_MAXINT32)
+            return NULL;
+        return g_variant_ref_sink(g_variant_new_int32((gint32)number));
+    }
+    if (g_variant_type_equal(type, G_VARIANT_TYPE_DOUBLE) && is_int64)
+        return g_variant_ref_sink(g_variant_new_double((double)g_variant_get_int64(value)));
+    return g_variant_is_of_type(value, type) ? g_steal_pointer(&value) : NULL;
+}
+
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
         "version",
@@ -647,7 +667,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
                         {"primary", G_VARIANT_TYPE_BOOLEAN}, {"scale", G_VARIANT_TYPE_DOUBLE},
                     };
                     g_autoptr(GVariant) index =
-                        g_variant_lookup_value(monitor, "index", G_VARIANT_TYPE_INT32);
+                        legacy_monitor_field(monitor, "index", G_VARIANT_TYPE_INT32);
                     if (!index) {
                         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                             "Lua monitor record has no integer index");
@@ -658,8 +678,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
                     g_variant_builder_add(&record, "{sv}", "id", index);
                     gboolean valid = TRUE;
                     for (guint field = 0; field < G_N_ELEMENTS(fields); field++) {
-                        g_autoptr(GVariant) field_value = g_variant_lookup_value(
-                            monitor, fields[field].source, fields[field].type);
+                        g_autoptr(GVariant) field_value =
+                            legacy_monitor_field(monitor, fields[field].source, fields[field].type);
                         if (!field_value) {
                             valid = FALSE;
                             break;

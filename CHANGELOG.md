@@ -89,6 +89,8 @@
   `location.authorize_app` could answer a request that it never received. The call reached
   the compositor without the client's identity, so the recipient check did not run. The
   compositor now checks it.
+- The `monitor.list` bridge method failed with "Lua monitor record has no integer index". The
+  reply now lists each monitor again.
 
 ### Removed
 
