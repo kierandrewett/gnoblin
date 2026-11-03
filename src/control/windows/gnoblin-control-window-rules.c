@@ -954,6 +954,15 @@ static GVariant* native_rule_workspace_target(GnoblinNativeControl* control, Met
     return target;
 }
 
+static void activate_prompt_window(MetaWindow* window, GnoblinNativeControl* control) {
+    meta_window_activate(window, meta_display_get_current_time_roundtrip(control->display));
+}
+
+static void on_prompt_window_shown(MetaWindow* window, gpointer user_data) {
+    g_signal_handlers_disconnect_by_func(window, on_prompt_window_shown, user_data);
+    activate_prompt_window(window, user_data);
+}
+
 /* Called on window creation and on every property change until the window is ready.
  * A Wayland client sets its app ID and title after the toplevel exists, so rules that
  * match on them only work once the window has gone through its first commit. The guard
@@ -966,6 +975,18 @@ void gnoblin_control_place_window_by_rules(GnoblinNativeControl* control, MetaWi
     if (!meta_window_is_ready(window))
         return;
     g_object_set_data(G_OBJECT(window), "gnoblin-rule-workspace-placed", GINT_TO_POINTER(1));
+
+    /* The window of a command that Lua started for a waiting prompt takes focus whatever
+     * focus_new_windows says: nothing the user clicked started it, so it has no token to carry, and
+     * the compositor started the process itself for a question the user must answer. */
+    if (gnoblin_control_capture_activates_window(control, window)) {
+        if (window->mapped && !window->hidden)
+            activate_prompt_window(window, control);
+        else
+            /* Mutter refuses to focus a window that is not mapped yet, and then shows it under
+             * its own focus policy. Wait until the window is on screen. */
+            g_signal_connect(window, "shown", G_CALLBACK(on_prompt_window_shown), control);
+    }
 
     if (meta_window_get_window_type(window) != META_WINDOW_NORMAL ||
         meta_window_is_override_redirect(window) || meta_window_get_transient_for(window) ||

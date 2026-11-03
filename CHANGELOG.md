@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- `gnoblin.commands.capture` accepts `prompt = request_id`. The command becomes
+  the window of that waiting passphrase prompt. Its window takes keyboard
+  focus under `focus_new_windows = "prevent"`, and Gnoblin stops the command
+  when the prompt ends.
+
+### Fixed
+
+- The prompt broker now reports `password-strength` for a new password: 0 for
+  an empty password and greater than 0 otherwise, as Gcr defines it. gnome-keyring treated every new
+  password as blank and asked "Store passwords unencrypted?" in a loop.
+
 ### Removed
 
 Gnoblin no longer manages app permissions or persistent portal grants. Bingux

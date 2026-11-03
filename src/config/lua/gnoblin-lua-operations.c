@@ -378,11 +378,11 @@ int lua_generic_api_action(lua_State* state) {
             g_variant_builder_add(&arguments, "{sv}", "argv",
                                   lua_command_argv_variant(state, 1, "commands.run"));
         } else {
-            static const char* const fields[] = {"argv", "stdin", "timeout", NULL};
+            static const char* const fields[] = {"argv", "stdin", "timeout", "prompt", NULL};
             if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
                 !table_fields_allowed(state, 1, fields))
                 return luaL_error(state, "commands.capture accepts a table with argv, stdin, "
-                                         "and timeout");
+                                         "timeout, and prompt");
             lua_getfield(state, 1, "argv");
             g_variant_builder_add(&arguments, "{sv}", "argv",
                                   lua_command_argv_variant(state, -1, "commands.capture"));
@@ -406,6 +406,15 @@ int lua_generic_api_action(lua_State* state) {
                     return luaL_error(state, "commands.capture timeout must be an integer from "
                                              "1 to 600 seconds");
                 g_variant_builder_add(&arguments, "{sv}", "timeout",
+                                      g_variant_new_int64(lua_tointeger(state, -1)));
+            }
+            lua_pop(state, 1);
+            lua_getfield(state, 1, "prompt");
+            if (!lua_isnil(state, -1)) {
+                if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1)
+                    return luaL_error(state, "commands.capture prompt must be the request_id of "
+                                             "a waiting prompt");
+                g_variant_builder_add(&arguments, "{sv}", "prompt",
                                       g_variant_new_int64(lua_tointeger(state, -1)));
             }
             lua_pop(state, 1);

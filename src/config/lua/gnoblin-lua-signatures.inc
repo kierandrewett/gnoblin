@@ -123,6 +123,7 @@ static const ApiMember api_fields_CommandCaptureArgs[] = {
     {"argv", "string[]", FALSE, "Command and arguments; 1 to 64 entries with a non-empty command name; total size at most 64 KiB."},
     {"stdin", "string", TRUE, "UTF-8 input, at most 4096 bytes."},
     {"timeout", "integer", TRUE, "Timeout in seconds, from 1 to 600. Default 60."},
+    {"prompt", "integer", TRUE, "`request_id` of a waiting prompt. The command is that prompt's window: a window its own process opens takes focus, and the command stops when the prompt ends."},
 };
 static const ApiMember api_fields_CommandResult[] = {
     {"exit_code", "integer", FALSE, "Exit status, or the negative signal number when terminated by a signal."},
@@ -670,7 +671,7 @@ static const ApiClass api_classes[] = {
     {"AuthBeginArgs", "", api_fields_AuthBeginArgs, 2},
     {"AuthCancelArgs", "", api_fields_AuthCancelArgs, 1},
     {"AuthRespondArgs", "", api_fields_AuthRespondArgs, 2},
-    {"CommandCaptureArgs", "", api_fields_CommandCaptureArgs, 3},
+    {"CommandCaptureArgs", "", api_fields_CommandCaptureArgs, 4},
     {"CommandResult", "", api_fields_CommandResult, 2},
     {"CommandRunResult", "", api_fields_CommandRunResult, 1},
     {"ConfigReloadResult", "", api_fields_ConfigReloadResult, 2},

@@ -68,6 +68,7 @@ typedef struct {
     char* cancel_label;
     gboolean choice_chosen;
     gboolean password_new;
+    int password_strength;
     char* password;
 } GnoblinControlPrompt;
 
@@ -98,6 +99,30 @@ enum {
     PROP_CONTINUE_LABEL,
     PROP_CANCEL_LABEL,
 };
+
+/* GcrPrompt:password-strength is zero for an empty password and greater than zero otherwise; that
+ * is all Gcr defines. gnome-keyring reads it to tell a blank new password from a chosen one, and
+ * asks to store passwords unencrypted when it is 0. Gnoblin does not judge quality, so longer and
+ * more varied passwords only score a little higher. */
+static int prompt_rate_password(const char* password) {
+    gsize length = g_utf8_strlen(password, -1);
+    if (!length)
+        return 0;
+    gboolean lower = FALSE, upper = FALSE, digit = FALSE, other = FALSE;
+    for (const char* p = password; *p; p = g_utf8_next_char(p)) {
+        gunichar c = g_utf8_get_char(p);
+        if (g_unichar_islower(c))
+            lower = TRUE;
+        else if (g_unichar_isupper(c))
+            upper = TRUE;
+        else if (g_unichar_isdigit(c))
+            digit = TRUE;
+        else
+            other = TRUE;
+    }
+    int classes = lower + upper + digit + other;
+    return 1 + (length >= 8) + (length >= 12) + (classes >= 2);
+}
 
 static void prompt_wipe_password(GnoblinControlPrompt* self) {
     if (self->password)
@@ -175,8 +200,7 @@ static void gnoblin_control_prompt_get_property(GObject* object, guint property_
         g_value_set_boolean(value, self->password_new);
         break;
     case PROP_PASSWORD_STRENGTH:
-        /* Gnoblin does not rate passwords. */
-        g_value_set_int(value, 0);
+        g_value_set_int(value, self->password_strength);
         break;
     case PROP_CALLER_WINDOW:
         g_value_set_string(value, self->caller_window);
@@ -263,6 +287,7 @@ static void pending_prompt_free(gpointer user_data) {
             g_task_return_int(task, GCR_PROMPT_REPLY_CANCEL);
     }
     pending_prompt_publish_finished(pending);
+    gnoblin_control_capture_end_prompt(pending->control, (gint64)pending->request_id);
     g_clear_object(&pending->prompt);
     g_clear_object(&pending->cancellable);
     g_clear_pointer(&pending->recipient_client_ids, g_hash_table_unref);
@@ -565,6 +590,11 @@ void gnoblin_control_prompts_apply_config(GnoblinNativeControl* control, GVarian
     }
 }
 
+gboolean gnoblin_control_prompts_is_pending(GnoblinNativeControl* control, gint64 request_id) {
+    return control && control->pending_prompts && request_id > 0 &&
+           g_hash_table_lookup(control->pending_prompts, &request_id) != NULL;
+}
+
 void gnoblin_control_prompts_stop(GnoblinNativeControl* control) {
     prompts_shutdown(control);
     if (control->pending_prompts)
@@ -667,6 +697,8 @@ GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl* control, const
         if (pending->kind == PROMPT_KIND_PASSWORD) {
             prompt_wipe_password(prompt);
             prompt->password = gcr_secure_memory_strdup(password);
+            prompt->password_strength = prompt_rate_password(password);
+            g_object_notify(G_OBJECT(prompt), "password-strength");
             g_task_return_boolean(task, TRUE);
         } else {
             g_task_return_int(task,

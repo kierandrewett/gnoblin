@@ -427,6 +427,8 @@ G_GNUC_INTERNAL void gnoblin_control_prompts_init(GnoblinNativeControl* control)
 G_GNUC_INTERNAL void gnoblin_control_prompts_apply_config(GnoblinNativeControl* control,
                                                           GVariant* config);
 G_GNUC_INTERNAL void gnoblin_control_prompts_stop(GnoblinNativeControl* control);
+G_GNUC_INTERNAL gboolean gnoblin_control_prompts_is_pending(GnoblinNativeControl* control,
+                                                            gint64 request_id);
 G_GNUC_INTERNAL gboolean gnoblin_control_prompts_available(GnoblinNativeControl* control);
 G_GNUC_INTERNAL const char*
 gnoblin_control_prompts_unavailable_reason(GnoblinNativeControl* control);
@@ -442,6 +444,10 @@ G_GNUC_INTERNAL void gnoblin_control_capture_clear(GnoblinNativeControl* control
 G_GNUC_INTERNAL gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control,
                                                        gint64 operation_id, GVariant* arguments,
                                                        GError** error);
+G_GNUC_INTERNAL gboolean gnoblin_control_capture_activates_window(GnoblinNativeControl* control,
+                                                                  MetaWindow* window);
+G_GNUC_INTERNAL void gnoblin_control_capture_end_prompt(GnoblinNativeControl* control,
+                                                        gint64 request_id);
 
 /* gnoblin-control-privacy.c: privacy snapshot and location authorization glue. */
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,

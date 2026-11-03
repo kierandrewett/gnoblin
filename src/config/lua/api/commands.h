@@ -7,6 +7,8 @@
 size at most 64 KiB.
 ---@field stdin? string UTF-8 input, at most 4096 bytes.
 ---@field timeout? integer Timeout in seconds, from 1 to 600. Default 60.
+---@field prompt? integer `request_id` of a waiting prompt. The command is that prompt's window: a
+window its own process opens takes focus, and the command stops when the prompt ends.
 
 ---@class CommandRunResult
 ---@field accepted boolean True when the command was queued for execution.

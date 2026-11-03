@@ -27,6 +27,8 @@ typedef struct {
     char** argv;
     char* stdin_text;
     guint timeout_seconds;
+    /* Request ID of the prompt this command is the window for, or 0. */
+    gint64 prompt_id;
     GSubprocess* subprocess;
     GCancellable* cancellable;
     GByteArray* output;
@@ -287,12 +289,20 @@ gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control, gint64 ope
 
     const char* stdin_text = NULL;
     gint64 timeout = CAPTURE_DEFAULT_TIMEOUT_SECONDS;
+    gint64 prompt_id = 0;
     g_variant_lookup(arguments, "stdin", "&s", &stdin_text);
+    g_variant_lookup(arguments, "prompt", "x", &prompt_id);
     g_variant_lookup(arguments, "timeout", "x", &timeout);
     if ((stdin_text && strlen(stdin_text) > CAPTURE_MAX_STDIN_BYTES) || timeout < 1 ||
         timeout > CAPTURE_MAX_TIMEOUT_SECONDS) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "command.capture stdin is limited to 4096 bytes and timeout to 1-600");
+        return FALSE;
+    }
+    if (g_variant_lookup_value(arguments, "prompt", NULL) &&
+        !gnoblin_control_prompts_is_pending(control, prompt_id)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "command.capture prompt is not a waiting prompt request");
         return FALSE;
     }
     if (!control->pending_captures ||
@@ -309,6 +319,7 @@ gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control, gint64 ope
     capture->argv = g_steal_pointer(&argv);
     capture->stdin_text = stdin_text ? g_strdup(stdin_text) : NULL;
     capture->timeout_seconds = (guint)timeout;
+    capture->prompt_id = prompt_id;
     g_hash_table_add(control->pending_captures, capture_ref(capture));
 
     /* Forking a large process can stall the main loop, so spawn on a worker thread. */
@@ -317,6 +328,46 @@ gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control, gint64 ope
     g_task_run_in_thread(task, capture_spawn_thread);
     return TRUE;
 }
+/* True when `window` belongs to the process of a running command.capture that is the window
+ * for a waiting prompt. The authority is that pairing: Lua started the command for a prompt that
+ * is still waiting, and the compositor started the process itself, so a window cannot claim focus
+ * by choosing an app ID or title. A command that starts the program through a wrapper that forks
+ * does not match; exec the program directly. */
+gboolean gnoblin_control_capture_activates_window(GnoblinNativeControl* control,
+                                                  MetaWindow* window) {
+    if (!control || !control->pending_captures || !window)
+        return FALSE;
+    const pid_t window_pid = meta_window_get_pid(window);
+    if (window_pid <= 0)
+        return FALSE;
+    GHashTableIter iter;
+    gpointer key;
+    g_hash_table_iter_init(&iter, control->pending_captures);
+    while (g_hash_table_iter_next(&iter, &key, NULL)) {
+        const PendingCapture* capture = key;
+        if (capture->prompt_id <= 0 || capture->finished || !capture->subprocess)
+            continue;
+        const char* identifier = g_subprocess_get_identifier(capture->subprocess);
+        if (identifier && g_ascii_strtoll(identifier, NULL, 10) == window_pid)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* The prompt ended, so the window that asked for its answer has nothing left to ask. */
+void gnoblin_control_capture_end_prompt(GnoblinNativeControl* control, gint64 request_id) {
+    if (!control || !control->pending_captures || request_id <= 0)
+        return;
+    GHashTableIter iter;
+    gpointer key;
+    g_hash_table_iter_init(&iter, control->pending_captures);
+    while (g_hash_table_iter_next(&iter, &key, NULL)) {
+        PendingCapture* capture = key;
+        if (capture->prompt_id == request_id && !capture->finished)
+            capture_stop_io(capture);
+    }
+}
+
 void gnoblin_control_capture_init(GnoblinNativeControl* control) {
     control->pending_captures =
         g_hash_table_new_full(g_direct_hash, g_direct_equal, capture_unref, NULL);

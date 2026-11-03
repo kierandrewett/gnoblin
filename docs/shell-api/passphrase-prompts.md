@@ -68,6 +68,28 @@ Run `echo test | gpg --symmetric --output /dev/null` in a terminal with
 `pinentry-gnome3` as the pinentry program. The prompt appears, and `gpg`
 continues after you enter a passphrase.
 
+## Give the prompt window focus
+
+With the default `focus_new_windows = "prevent"`, a window that no click
+started does not get keyboard focus, so the user cannot type in a prompt
+program's window until they click it. Pass the prompt's `request_id` as
+`prompt` to [`gnoblin.commands.capture`](/shell-api/input-handlers#run-a-command-and-read-its-output)
+to make the command that prompt's window:
+
+```lua
+gnoblin.commands.capture {
+    argv = {"my-prompt-program"},
+    prompt = event.request_id,
+}
+```
+
+- The window that the command's own process opens takes focus when it is
+  shown. A window of a child process does not match, so a wrapper script must
+  `exec` the program.
+- Gnoblin stops the command when the prompt ends, because the program that
+  asked withdrew it, it timed out, or another handler answered it.
+- The call fails if `request_id` is not a waiting prompt.
+
 ## Events
 
 Both events carry `request_id`, an integer that stays the same for one prompt.
