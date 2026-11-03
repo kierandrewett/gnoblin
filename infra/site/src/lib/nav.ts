@@ -177,7 +177,7 @@ export const NAV: NavSection[] = [
                     { label: "Keyring and GPG prompts", slug: "shell-api/passphrase-prompts" },
                     { label: "Appearance and animations", slug: "shell-api/appearance-animations" },
                     { label: "Shared types", slug: "shell-api/types" },
-                    { label: "Errors and results", slug: "shell-api/errors" },
+                    { label: "Operations, errors and timers", slug: "shell-api/errors" },
                 ],
             },
             {

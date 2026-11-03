@@ -28,7 +28,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 
 ## Shared conventions
 
-Read-only calls return detached snapshots. Runtime mutations return an `Operation` handle and complete asynchronously. See [Errors and results](/shell-api/errors) and [shared runtime types](/shell-api/types).
+Read-only calls return detached snapshots. Runtime mutations return an `Operation` handle and complete asynchronously. See [Operations, errors and timers](/shell-api/errors) and [shared runtime types](/shell-api/types).
 
 Subscribe with `gnoblin.events.on(name, callback)` or the `gnoblin.on` alias. See the [event reference](/events/).
 

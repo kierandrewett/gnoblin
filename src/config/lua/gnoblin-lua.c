@@ -103,6 +103,8 @@ const LuaApiEntry lua_api[] = {
     {"load", NULL, lua_config_load},
     {"array", NULL, lua_array},
     {"snapshot", NULL, lua_snapshot},
+    {"timers.after", NULL, lua_timers_after},
+    {"timers.now", NULL, lua_timers_now},
 
     {"on", NULL, lua_on},
     {"events.on", NULL, lua_on},

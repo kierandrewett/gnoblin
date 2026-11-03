@@ -59,6 +59,8 @@ void lua_runtime_free(LuaRuntime* runtime) {
         g_clear_pointer(&runtime->config.operations, g_hash_table_unref);
     }
     g_clear_pointer(&runtime->config.focus_operations, g_hash_table_unref);
+    /* Timers hold registry references into this state; remove their sources before it closes. */
+    g_clear_pointer(&runtime->config.timers, g_hash_table_unref);
     if (runtime->config.deferred_callbacks && runtime->state) {
         for (guint i = 0; i < runtime->config.deferred_callbacks->len; i++)
             luaL_unref(runtime->state, LUA_REGISTRYINDEX,
@@ -566,6 +568,7 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
         g_ptr_array_new_with_free_func((GDestroyNotify)g_variant_unref);
     runtime->config.deferred_callbacks = g_ptr_array_new();
     runtime->config.operations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    runtime->config.timers = runtime_timers_new();
     runtime->config.focus_operations =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     runtime->config.focus_history_ids = g_ptr_array_new_with_free_func(g_free);
@@ -962,40 +965,7 @@ void fail_dropped_operation(LuaRuntime* runtime, GVariant* operation, const char
     lua_setfield(state, -2, "message");
     lua_setfield(state, handle, "error");
 
-    lua_getfield(state, handle, "_callbacks");
-    if (lua_istable(state, -1)) {
-        int registered = lua_absindex(state, -1);
-        lua_newtable(state);
-        int callbacks = lua_absindex(state, -1);
-        lua_Integer count = lua_rawlen(state, registered);
-        for (lua_Integer i = 1; i <= count; i++) {
-            lua_rawgeti(state, registered, i);
-            lua_rawseti(state, callbacks, i);
-        }
-        for (lua_Integer i = 1; i <= count; i++) {
-            lua_rawgeti(state, callbacks, i);
-            int subscription = lua_absindex(state, -1);
-            lua_getfield(state, subscription, "_active");
-            gboolean active = lua_toboolean(state, -1);
-            lua_pop(state, 1);
-            if (!active) {
-                lua_pop(state, 1);
-                continue;
-            }
-            lua_pushboolean(state, FALSE);
-            lua_setfield(state, subscription, "_active");
-            lua_getfield(state, subscription, "_callback");
-            lua_getfield(state, handle, "value");
-            lua_getfield(state, handle, "error");
-            if (lua_pcall(state, 2, 0, 0) != LUA_OK) {
-                g_warning("Lua operation completion callback failed: %s", lua_error_text(state));
-                lua_pop(state, 1);
-            }
-            lua_pop(state, 1);
-        }
-        lua_newtable(state);
-        lua_setfield(state, handle, "_callbacks");
-    }
+    run_operation_callbacks(state, handle);
     lua_settop(state, base);
     luaL_unref(state, LUA_REGISTRYINDEX, GPOINTER_TO_INT(reference));
     g_hash_table_remove(config->operations, key);

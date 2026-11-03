@@ -79,6 +79,7 @@ typedef struct {
     GPtrArray* runtime_actions;
     GPtrArray* deferred_callbacks;
     GHashTable* operations;
+    GHashTable* timers; /* Operation ID -> LuaTimer for runtime-local timers. */
     GHashTable* focus_operations;
     GVariant* window_snapshot;
     guint64 window_revision;
@@ -256,6 +257,10 @@ gboolean workspace_id_valid(const char* id);
 gboolean workspace_selector_id_valid(const char* id);
 guint64 allocate_operation_id(void);
 void push_operation_handle(lua_State* state, LuaConfig* config, guint64 id, const char* method);
+void run_operation_callbacks(lua_State* state, int handle);
+GHashTable* runtime_timers_new(void);
+int lua_timers_after(lua_State* state);
+int lua_timers_now(lua_State* state);
 gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed);
 int lua_workspace_action(lua_State* state);
 int lua_generic_api_action(lua_State* state);

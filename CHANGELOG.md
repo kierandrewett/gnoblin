@@ -4,6 +4,11 @@
 
 ### Added
 
+- Lua timers and Operation methods. `gnoblin.timers.after(seconds)` returns an Operation that
+  succeeds after the given time, and `gnoblin.timers.now()` reads a monotonic clock. Every
+  Operation now has `map(fn)`, `timeout(seconds)` and `cancel()` beside `on_complete`. Pending
+  timers end when the config reloads and do not delay the reload. See
+  [operations, errors and timers](docs/shell-api/errors.md).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin
@@ -60,6 +65,8 @@
   `gnoblin.d.lua` did not list them.
 - The Lua API reference no longer lists `Window:match`. The runtime never installed it; the
   window-rule fields stay available from `gnoblinctl window match`.
+- A callback added with `Operation:on_complete` after the operation had finished now runs.
+  Before, the runtime called the Operation table instead of the callback and logged an error.
 
 ### Removed
 
