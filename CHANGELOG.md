@@ -54,6 +54,10 @@
 - The portal backend now destroys and releases each ScreenCast consent dialog
   and its hidden parent window when the session ends. Before, the dialog's
   widget tree stayed alive after every screen cast.
+- The Lua API reference now describes `gnoblin.windows.focused`, `windows.by_id`,
+  `windows.snap_context`, `gnoblin.outputs.*`, and `gnoblin.capabilities.list`.
+  These functions already worked, but editor hints and the generated
+  `gnoblin.d.lua` did not list them.
 
 ### Removed
 
