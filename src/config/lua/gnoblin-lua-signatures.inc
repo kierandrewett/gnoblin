@@ -981,27 +981,33 @@ static const ApiMember api_params_108[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
 static const ApiMember api_params_109[] = {
+    {"id", "string", FALSE, "Stable window ID."},
+};
+static const ApiMember api_params_111[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_110[] = {
-    {"workspace", "WorkspaceSelector", FALSE, ""},
-};
 static const ApiMember api_params_112[] = {
-    {"id", "string", FALSE, "Stable workspace ID."},
+    {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
 };
 static const ApiMember api_params_113[] = {
-    {"workspace", "WorkspaceCreateArgs", FALSE, ""},
-};
-static const ApiMember api_params_115[] = {
-    {"request", "WorkspaceMoveActiveArgs", FALSE, ""},
-};
-static const ApiMember api_params_116[] = {
-    {"request", "WorkspaceMoveWindowArgs", FALSE, ""},
-};
-static const ApiMember api_params_119[] = {
     {"workspace", "WorkspaceSelector", FALSE, ""},
 };
-static const ApiMember api_params_120[] = {
+static const ApiMember api_params_115[] = {
+    {"id", "string", FALSE, "Stable workspace ID."},
+};
+static const ApiMember api_params_116[] = {
+    {"workspace", "WorkspaceCreateArgs", FALSE, ""},
+};
+static const ApiMember api_params_118[] = {
+    {"request", "WorkspaceMoveActiveArgs", FALSE, ""},
+};
+static const ApiMember api_params_119[] = {
+    {"request", "WorkspaceMoveWindowArgs", FALSE, ""},
+};
+static const ApiMember api_params_122[] = {
+    {"workspace", "WorkspaceSelector", FALSE, ""},
+};
+static const ApiMember api_params_123[] = {
     {"workspace", "WorkspaceRenameArgs", FALSE, ""},
 };
 
@@ -1115,17 +1121,20 @@ static const ApiFunction api_functions[] = {
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
     {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_108, 1, ""},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_109, 1, "Window[]"},
-    {"workspaces.activate", "Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.", api_params_110, 1, "Operation<Workspace>"},
+    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_109, 1, "Window|nil"},
+    {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_111, 1, "Window[]"},
+    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_112, 1, "Operation<SnapContext>"},
+    {"workspaces.activate", "Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.", api_params_113, 1, "Operation<Workspace>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_112, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_113, 1, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_115, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_116, 1, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
-    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_115, 1, "Operation<WorkspaceMoveResult>"},
-    {"workspaces.move_window", "Move a window to a workspace.", api_params_116, 1, "Operation<WorkspaceMoveResult>"},
+    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_118, 1, "Operation<WorkspaceMoveResult>"},
+    {"workspaces.move_window", "Move a window to a workspace.", api_params_119, 1, "Operation<WorkspaceMoveResult>"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},
-    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_119, 1, "Operation<Workspace>"},
-    {"workspaces.rename", "Rename a workspace selected by ID or one-based number.", api_params_120, 1, "Operation<Workspace>"},
+    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_122, 1, "Operation<Workspace>"},
+    {"workspaces.rename", "Rename a workspace selected by ID or one-based number.", api_params_123, 1, "Operation<Workspace>"},
     {NULL, NULL, NULL, 0, NULL},
 };
