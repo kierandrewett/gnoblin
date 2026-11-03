@@ -528,7 +528,8 @@ void gnoblin_control_process_init(GnoblinNativeControl* control) {
     control->processes = g_hash_table_new_full(g_int64_hash, g_int64_equal, NULL, process_unref);
 }
 
-/* Compositor shutdown: end every child it started for Lua. */
+/* Compositor shutdown: send SIGTERM to each process group the runtime started and stop tracking
+ * it. A child that ignores SIGTERM keeps running; the session's own teardown ends it. */
 void gnoblin_control_process_clear(GnoblinNativeControl* control) {
     if (!control || !control->processes)
         return;

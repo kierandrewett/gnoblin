@@ -1,9 +1,8 @@
 # Shell API redesign: gaps and plan
 
-Status: proposal, except gap 10's missing stubs, which are fixed on `fix/lua-api-missing-stubs`. The findings come from
-six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and control code, and the docs. File
-and line references are in the audit reports; items the auditors could not confirm in source are marked [INFERENCE]
-there and must be checked before implementation.
+Status: in progress on `refactor/lua-api-table`. Done: the `lua_api[]` descriptor table, phase 1 and phase 2 (see
+Phases). The findings come from six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and
+control code, and the docs; items the auditors could not confirm in source were checked before implementation.
 
 ## The pattern behind the original bug
 
@@ -77,21 +76,28 @@ and time and cancellation you can use. Decisions so far:
 
 Each phase leaves the tree working and is its own pull request.
 
-1. **Foundation.** Positional `Process` (`gnoblin.process.spawn`), exit event, kill, wait, `timers.after`,
-   `Operation:map/cancel`. `commands.run` and `capture` become thin wrappers; the 4 KiB, 64 KiB and UTF-8 limits move
-   into caller-chosen limits.
-2. **Attribution and focus.** `Window.pid`, `Window.launch`, `Launch:on_window`, `Window:present`, ownership rule for
-   focus. This replaces PR #314.
+1. **Foundation. Done.** `gnoblin.process.spawn(argv, options?)` returns a `Process` with `pid`, `wait()` and `kill()`;
+   its exit is a runtime event, so a long-lived child never holds a reload back. `gnoblin.timers.after`, `timers.now`,
+   and `Operation:map`, `timeout` and `cancel`. `commands.run` and `capture` were removed, not wrapped:
+   `design/lua-api-goal.md` rules out shims, and every caller moved to `process.spawn`.
+2. **Attribution and focus. Done.** `Window.pid` and `Window.process` (the client is the spawned process or runs in its
+   session; pid from the display server) and `Window:present()` with a 250 ms input-quiet gate. `Process` takes the role
+   of `Launch`, so there is no separate `Launch:on_window`; shells match `window.process` in `gnoblin.window.created`.
+   This replaces PR #314.
 3. **Requests.** One `Request` for prompt, auth, location and lock. Delete the per-feature verbs after migrating
    callers.
 4. **Conventions.** Positional signatures for all 38 table-call functions, alias removal, stubs for missing functions,
    schema generated once.
 5. **Overrides, input grabs, idle.** Gaps 8, 9, 11.
 
+## Decisions
+
+- Hard cutover, no compatibility wrappers (`design/lua-api-goal.md`).
+- Names: `gnoblin.process.spawn`, `Window:present`, `gnoblin.timers.after`, `Operation:cancel`.
+- `Operation:cancel()` means stop waiting. A timer stops; an action already sent to the compositor still runs.
+
 ## Open decisions
 
-- Whether phase 4 is a hard cutover of the existing table-call functions or keeps them for one release.
-- The final names: `gnoblin.process.spawn`, `Window:present`, `Request`, `timers.after`.
 - Whether prompt, auth and location ship together in phase 3.
 
 ## Windows as objects you can transform
