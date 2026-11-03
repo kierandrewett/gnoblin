@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+# The guest side of the graphical VM test (tests/graphical/harness.py). It runs as root in the guest, from
+# /var/tmp/gnoblin-graphical, where the harness copies this folder and the package files.
+#
+# usage: guest.sh install USER SOURCE   install the graphics stack and Gnoblin, and prepare the session on tty1.
+#                                       SOURCE is a folder of package files, or "nightly" or "stable" for the
+#                                       channel of repo.gnoblin.org (GNOBLIN_REPO_URL changes the server)
+#        guest.sh start USER            start the Gnoblin session of USER on tty1
+#        guest.sh status                print "running", or "ended STATUS" once the session has ended
+#        guest.sh log                   print the output of the session command
+#        guest.sh info                  print the guest versions as JSON
+#        guest.sh unbind NAME           detach the virtio input device NAME from its driver (a broken-guest check)
+#        guest.sh unbind-gpu            detach the virtio GPU from its driver (a broken-guest check)
+#
+# The session starts the way a display manager starts it: the Exec line of the installed wayland-sessions entry, in a
+# logind session of type wayland on seat0 and tty1 (see prepare_session). No display manager is installed, because
+# the test is about Gnoblin and not about GDM, and a display manager is one more package that differs from system to
+# system.
+set -euo pipefail
+
+readonly HERE=/var/tmp/gnoblin-graphical
+readonly SESSION_ENTRY=/usr/share/wayland-sessions/gnoblin.desktop
+
+# shellcheck disable=SC1091
+. /etc/os-release
+separator=-
+case "$ID" in
+    fedora)
+        kind=rpm
+        suffix=".fc${VERSION_ID}.*.rpm"
+        ;;
+    opensuse-tumbleweed | opensuse)
+        kind=suse
+        suffix=".tumbleweed.*.rpm"
+        ;;
+    opensuse-leap)
+        kind=suse
+        suffix=".leap${VERSION_ID}.*.rpm"
+        ;;
+    arch | archarm)
+        kind=arch
+        suffix=.pkg.tar.zst
+        ;;
+    alpine)
+        kind=apk
+        suffix=.apk
+        ;;
+    debian | ubuntu)
+        kind=deb
+        separator=_
+        suffix=.deb
+        ;;
+    *)
+        echo "[guest] no package manager known for $ID" >&2
+        exit 2
+        ;;
+esac
+
+# The graphics stack that a desktop system has and the test needs: the Mesa drivers with llvmpipe (software GL for
+# EGL on the virtio GPU), a D-Bus user session and Python 3 for the test client. On Alpine also the login and seat
+# services that systemd provides elsewhere.
+support_packages() {
+    case "$kind" in
+        rpm) echo mesa-dri-drivers mesa-libEGL python3 ;;
+        suse) echo Mesa-dri Mesa-libEGL1 python3 ;;
+        arch) echo mesa python ;;
+        apk) echo mesa-dri-gallium mesa-egl python3 curl elogind polkit-elogind dbus ;;
+        deb) echo libgl1-mesa-dri libegl-mesa0 python3 dbus-user-session ;;
+    esac
+}
+
+pm_refresh() {
+    case "$kind" in
+        rpm) dnf -y makecache >/dev/null ;;
+        suse) zypper -n --gpg-auto-import-keys refresh >/dev/null ;;
+        arch) pacman -Sy --noconfirm >/dev/null ;;
+        apk) apk update >/dev/null ;;
+        deb) DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null ;;
+    esac
+}
+
+pm_install() {
+    case "$kind" in
+        rpm) dnf -y --setopt=install_weak_deps=False install "$@" ;;
+        suse) zypper -n install --no-recommends "$@" ;;
+        arch) pacman -S --noconfirm --needed "$@" ;;
+        apk) apk add "$@" ;;
+        deb) DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" ;;
+    esac
+}
+
+pm_install_files() {
+    case "$kind" in
+        rpm) dnf -y --setopt=install_weak_deps=False install "$@" ;;
+        suse) zypper -n --no-gpg-checks install --no-recommends --allow-unsigned-rpm "$@" ;;
+        arch) pacman -U --noconfirm "$@" ;;
+        apk) apk add --allow-untrusted "$@" ;;
+        deb) DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" ;;
+    esac
+}
+
+pm_version() {
+    case "$kind" in
+        rpm | suse) rpm -q --qf '%{VERSION}-%{RELEASE}\n' "$1" 2>/dev/null ;;
+        arch) pacman -Q "$1" 2>/dev/null | cut -d' ' -f2 ;;
+        apk) apk info -v "$1" 2>/dev/null | sed "s/^$1-//" ;;
+        deb) dpkg-query -W -f='${Version}\n' "$1" 2>/dev/null ;;
+    esac
+}
+
+# The files of one package in the package folder: gnoblin-0.1.13-1.fc42.x86_64.rpm, gnoblin_0.1.13-1~deb13_amd64.deb.
+package_files() {
+    local folder="$1" name="$2"
+    find "$folder" -maxdepth 3 -type f -name "${name}${separator}[0-9]*${suffix}" | sort
+}
+
+install_gnoblin() {
+    local source="$1"
+    if [[ -d "$source" ]]; then
+        local files=()
+        mapfile -t files < <(package_files "$source" gnoblin)
+        ((${#files[@]} == 1)) || {
+            echo "[guest] expected one gnoblin${separator}*${suffix} in $source, found ${#files[@]}" >&2
+            exit 1
+        }
+        # The frames client is a recommendation on rpm and deb and a dependency on Arch and Alpine. The test installs
+        # it when it is there, as a user who installs the recommended packages would.
+        mapfile -t -O 1 files < <(package_files "$source" gnoblin-x11-frames)
+        echo "[guest] installing ${files[*]}"
+        pm_install_files "${files[@]}"
+        return
+    fi
+    case "$source" in
+        nightly | stable) ;;
+        *)
+            echo "[guest] package source is not a folder, nightly or stable: $source" >&2
+            exit 2
+            ;;
+    esac
+    local channel=()
+    [[ "$source" == nightly ]] && channel=(--nightly)
+    curl -fsSL "${GNOBLIN_REPO_URL:-https://repo.gnoblin.org}/setup.sh" | sh -s -- --gnoblin "${channel[@]}"
+    pm_refresh
+    pm_install gnoblin gnoblin-x11-frames
+}
+
+# The session runs the way a display manager runs it: the Exec line of the installed wayland-sessions entry, in a
+# logind session of type wayland on seat0 and tty1, opened through the "login" PAM stack. With systemd a service
+# does this (PAMName, TTYPath and XDG_SESSION_TYPE=wayland, as a kiosk unit does). OpenRC (Alpine) has no such service:
+# an autologin on tty1 starts it from the login shell when the harness asks for it (the start file), so a session
+# that ends does not start again.
+prepare_session() {
+    local user="$1" command
+    [[ -r "$SESSION_ENTRY" ]] || {
+        echo "[guest] $SESSION_ENTRY is missing" >&2
+        exit 1
+    }
+    command="$(sed -n 's/^Exec=//p' "$SESSION_ENTRY" | head -n 1)"
+    [[ -n "$command" ]] || {
+        echo "[guest] $SESSION_ENTRY has no Exec line" >&2
+        exit 1
+    }
+    install -d -m 0755 -o "$user" "$HERE/session"
+    if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
+        # The console on tty1 is getty, or kmscon (kmsconvt@tty1, the default from Fedora 45). It must stop before the
+        # session takes tty1: a console that stops after it hangs up tty1, and the session ends on that SIGHUP, which
+        # systemd counts as a clean exit.
+        cat >/etc/systemd/system/gnoblin-graphical-session.service <<EOF
+[Unit]
+Description=Gnoblin session of the graphical VM test
+After=systemd-user-sessions.service getty@tty1.service kmsconvt@tty1.service
+Conflicts=getty@tty1.service kmsconvt@tty1.service
+
+[Service]
+Type=simple
+User=$user
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=inherit
+UtmpIdentifier=tty1
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+# The session command runs from a shell, as a display manager's session helper runs it (gdm-wayland-session): with
+# SELinux, the user domain may enter through a shell but not through a file under /usr/lib (lib_t).
+ExecStart=/bin/sh -c 'exec $command'
+EOF
+        systemctl daemon-reload
+    else
+        cat >/etc/profile.d/zz-gnoblin-graphical.sh <<EOF
+if [ "\$(id -un)" = "$user" ] && [ "\$(tty)" = /dev/tty1 ] && [ -e $HERE/session/start ]; then
+    rm -f $HERE/session/start
+    XDG_SESSION_TYPE=wayland $command > $HERE/session/session.log 2>&1
+    echo \$? > $HERE/session/exit-status
+    exit 0
+fi
+EOF
+        rc-update add dbus default >/dev/null && rc-service dbus start >/dev/null
+        rc-update add elogind default >/dev/null && rc-service elogind start >/dev/null
+        sed -i "s|^tty1::.*|tty1::respawn:/bin/login -f $user|" /etc/inittab
+    fi
+}
+
+start_session() {
+    local user="$1"
+    rm -f "$HERE/session/exit-status" "$HERE/session/session.log"
+    if systemd_guest; then
+        systemctl reset-failed gnoblin-graphical-session.service 2>/dev/null || true
+        systemctl start gnoblin-graphical-session.service
+    else
+        install -m 0644 -o "$user" /dev/null "$HERE/session/start"
+        kill -HUP 1
+        pkill -t tty1 || true
+    fi
+}
+
+# The state of the session: "running", or "ended STATUS" with the exit status of the session command.
+session_status() {
+    if systemd_guest; then
+        if systemctl is-active --quiet gnoblin-graphical-session.service; then
+            echo running
+        else
+            local result code status
+            result="$(systemctl show -p Result --value gnoblin-graphical-session.service)"
+            code="$(systemctl show -p ExecMainCode --value gnoblin-graphical-session.service)"
+            status="$(systemctl show -p ExecMainStatus --value gnoblin-graphical-session.service)"
+            # Result "success" is an exit with status 0. Otherwise ExecMainCode 1 is "exited", and 2 and 3 are
+            # "killed" and "dumped" by a signal.
+            if [[ "$result" == success ]]; then
+                echo "ended 0"
+            elif [[ "$code" == 1 ]]; then
+                echo "ended $status ($result)"
+            elif [[ "$code" == 2 || "$code" == 3 ]]; then
+                echo "ended signal $status ($result)"
+            else
+                echo "ended ($result)"
+            fi
+        fi
+    elif [[ -e "$HERE/session/exit-status" ]]; then
+        echo "ended $(cat "$HERE/session/exit-status")"
+    else
+        echo running
+    fi
+}
+
+session_log() {
+    if systemd_guest; then
+        journalctl -b --no-pager -o short-monotonic -u gnoblin-graphical-session.service
+    else
+        cat "$HERE/session/session.log" 2>/dev/null || true
+    fi
+}
+
+systemd_guest() {
+    command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]
+}
+
+info() {
+    local kernel gnoblin frames mesa python
+    kernel="$(uname -r)"
+    gnoblin="$(pm_version gnoblin || true)"
+    frames="$(pm_version gnoblin-x11-frames || true)"
+    case "$kind" in
+        rpm) mesa="$(pm_version mesa-dri-drivers || true)" ;;
+        suse) mesa="$(pm_version Mesa-dri || true)" ;;
+        arch) mesa="$(pm_version mesa || true)" ;;
+        apk) mesa="$(pm_version mesa-dri-gallium || true)" ;;
+        deb) mesa="$(pm_version libgl1-mesa-dri || true)" ;;
+    esac
+    python="$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null || true)"
+    python3 - "$PRETTY_NAME" "$kernel" "$gnoblin" "$frames" "$mesa" "$python" <<'PY'
+import json, sys
+keys = ("os", "kernel", "gnoblin", "gnoblin_x11_frames", "mesa", "python")
+print(json.dumps(dict(zip(keys, sys.argv[1:]))))
+PY
+}
+
+# Detach the virtio input device whose name contains NAME (Tablet, Keyboard) from the virtio_input driver.
+unbind_input() {
+    local name="$1" device
+    for device in /sys/bus/virtio/drivers/virtio_input/virtio*; do
+        if grep -qs "$name" "$device"/input/input*/name; then
+            basename "$device" >/sys/bus/virtio/drivers/virtio_input/unbind
+            echo "[guest] unbound $(basename "$device") ($(cat "$device"/input/input*/name 2>/dev/null || echo "$name"))"
+            return
+        fi
+    done
+    echo "[guest] no virtio input device named $name" >&2
+    exit 1
+}
+
+unbind_gpu() {
+    local device
+    for device in /sys/bus/virtio/drivers/virtio_gpu/virtio*; do
+        [[ -e "$device" ]] || continue
+        basename "$device" >/sys/bus/virtio/drivers/virtio_gpu/unbind
+        echo "[guest] unbound the virtio GPU $(basename "$device")"
+        return
+    done
+    echo "[guest] no virtio GPU is bound" >&2
+    exit 1
+}
+
+case "${1:-}" in
+    install)
+        (($# == 3)) || exit 2
+        pm_refresh
+        # shellcheck disable=SC2046
+        pm_install $(support_packages)
+        install_gnoblin "$3"
+        prepare_session "$2"
+        ;;
+    start)
+        (($# == 2)) || exit 2
+        start_session "$2"
+        ;;
+    status) session_status ;;
+    log) session_log ;;
+    info) info ;;
+    unbind)
+        (($# == 2)) || exit 2
+        unbind_input "$2"
+        ;;
+    unbind-gpu) unbind_gpu ;;
+    *)
+        sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2
+        exit 2
+        ;;
+esac

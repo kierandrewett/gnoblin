@@ -1,0 +1,19 @@
+# The Wayland globals that a Gnoblin session must announce to an ordinary client in the graphical VM test.
+# One interface a line. The check fails when one is missing. More globals are fine.
+wl_compositor
+wl_subcompositor
+wl_shm
+wl_seat
+wl_output
+wl_data_device_manager
+xdg_wm_base
+zxdg_output_manager_v1
+wp_viewporter
+wp_presentation
+xdg_activation_v1
+zwp_text_input_manager_v3
+zwlr_layer_shell_v1
+ext_session_lock_manager_v1
+zwp_linux_dmabuf_v1
+zwlr_screencopy_manager_v1
+zwlr_foreign_toplevel_manager_v1
