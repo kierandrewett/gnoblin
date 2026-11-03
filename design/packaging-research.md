@@ -87,11 +87,11 @@ GNOME; each target still needs its own clean install/removal evidence.
 
 The supported source build does not compile or run GJS. It checks the host
 requirements declared by pinned Mutter and portal sources with
-`scripts/check-build-deps.py`. Mutter's schema floor is now 49.1. The schema-51
+`scripts/check-build-deps.py`. Mutter's schema floor is now 48.0 (Debian 13). The schema-51
 stylus eraser mode and action keys now flow through Gnoblin's typed input
 adapter, and Mutter uses a local enum for that mode. Its other newer optional
-input keys are checked against the installed schema before use. The GTK 4.22.0
-and xdg-desktop-portal 1.21.1 requirements belong to the optional
+input keys are checked against the installed schema before use. The GTK 4.18.0
+and xdg-desktop-portal 1.20.0 requirements belong to the optional
 `xdg-desktop-portal-gnoblin` package; they do not block the core session build. Support
 still requires measured package availability and a successful clean
 build/install per target. For older targets, decide whether each missing
@@ -171,8 +171,8 @@ remain real constraints.
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Debian 11                        | Build solve lacks GTK4, libadwaita, GCR4, GI Repository 2.0, GNOME Desktop 4, libei, libdisplay-info, modern C++/Rust toolchains; stock runtime lacks WirePlumber and the GNOME portal                                                                                                                                                                                            | Current private bundle cannot support it. Requires a much larger toolchain, session, and portal compatibility effort.                                                                                                                                                                                                        |
 | Debian 12, Ubuntu 22.04          | A clean-image CI probe records missing GCR4, GI Repository 2.0, libei/libeis, libdisplay-info, Glycin, and Hyprcursor development interfaces. Debian 12 has GTK 4.8 and Ubuntu 22.04 has GTK 4.6; Mutter 51 needs GTK 4.14. Host Rust on Debian 12 is 1.63. Stock GNOME session/settings components are GNOME 43 and 42 respectively.                                             | Not installable with today's declared dependencies and runtime closure. A full route needs a separately reviewed private GTK, GIRepository, and GCR chain, followed by clean package, stock-GNOME coexistence, graphical-session, and removal gates. Do not add either to the package build matrix until that design exists. |
-| EL 8, 9, 10 (Rocky Linux images) | GLib is 2.56, 2.68, and 2.80; each image misses the current GLib 2.86 floor.                                                                                                                                                                                                                                                                                                      | Adding an EL repository or changing RPM macros cannot make these targets work. They need a separately reviewed private GLib/runtime path and per-EL session integration.                                                                                                                                                     |
-| openSUSE Leap 15.6 and 16.0      | GLib is 2.78 and 2.84; both miss the current 2.86 floor. Leap 16 also misses libinput 1.30 and Wayland Protocols 1.48.                                                                                                                                                                                                                                                            | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                                                                                                                    |
+| EL 8, 9, 10 (Rocky Linux images) | GLib is 2.56, 2.68, and 2.80; each image misses the GLib 2.84 floor.                                                                                                                                                                                                                                                                                                              | Adding an EL repository or changing RPM macros cannot make these targets work. They need a separately reviewed private GLib/runtime path and per-EL session integration.                                                                                                                                                     |
+| openSUSE Leap 15.6 and 16.0      | GLib is 2.78 and 2.84. Leap 15.6 misses the GLib 2.84 floor. Leap 16.0 was probed against the earlier floors (GLib 2.86, libinput 1.30, Wayland Protocols 1.48) and needs a new probe.                                                                                                                                                                                            | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                                                                                                                    |
 | openSUSE Tumbleweed              | The earlier host-capability probe passed for GLib 2.88, PipeWire 1.6, libinput 1.32, libei 1.6, and Wayland Protocols 1.49. Its RPM resolver previously stopped at the `gsettings-desktop-schemas >= 51.0` requirement. That floor is now 49.1 after an interface audit; the full package solve and source build have not been repeated. GJS is not a Gnoblin runtime dependency. | Re-run the package solve and build against current Tumbleweed repositories before adding it as a supported target. The earlier schema-version failure is no longer current evidence.                                                                                                                                         |
 
 The Arch placeholder is now replaced by a source-addressable single-package
@@ -215,10 +215,10 @@ contracts: [systemd PAM session setup](https://www.freedesktop.org/software/syst
 [portal backend selection](https://flatpak.github.io/xdg-desktop-portal/docs/configuration-file.html),
 and [PipeWire session management](https://docs.pipewire.org/page_session_manager.html).
 
-Probe constraints and negative results are useful evidence. Keep them in the
-target inventory, but don't describe a target as supported until its exact
-package build, stock-GNOME coexistence, graphical session, and removal gates
-pass.
+Probe constraints and negative results are useful evidence. Record the floor
+they set as `build_from` in `scripts/targets.json`, but don't describe a target
+as supported until its exact package build, stock-GNOME coexistence, graphical
+session, and removal gates pass.
 
 ## Recommended support contract
 

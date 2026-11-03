@@ -6,7 +6,8 @@ It replaces no document yet. `design/release-packaging.md` still holds the
 history of past release runs.
 
 Measured on 2026-10-08 from the GitHub run history and the checked-out tree. Updated on 2026-10-21 after the
-stage split; the problems below describe the pipeline as measured on the first date.
+stage split, and on 2026-11-03 for the per-target legs ("One leg for each target" below). The problems below describe
+the pipeline as measured on the first date.
 
 ## What a release is meant to produce
 
@@ -146,6 +147,123 @@ and keeps the bundle as a workflow artifact for 30 days.
 Implemented on 2026-10-21 with the install checks inside each package job, so stage 3 is part of stage 2:
 `release.yml` holds `source`, `publish` and `copr`, and `fedora-rpm.yml`, `opensuse-rpm.yml` and
 `arch-package.yml` hold the package jobs and their install gates.
+
+## One leg for each target
+
+Since 2026-11-03 `release.yml` runs one generated target list through one leg for each target. The owner's rule:
+
+1. The targets come from `scripts/supported-targets.py` (policy: `scripts/targets.json`). No workflow or script
+   names a release, an image or a distribution.
+2. Each target on each architecture is one leg: one call of `.github/workflows/target.yml`, from a matrix of calls.
+3. A target that builds goes on to the graphical VM test. Its packages are published only when its build, its
+   package suite and its graphical test passed. A target that fails any stage publishes nothing.
+4. Each release that failed a stage, or has no build, and is not at its end of life, has one GitHub issue. A release
+   at its end of life gets a notice only.
+
+### The jobs
+
+```text
+targets ── source ─┬─ shared-prefix ── shared-packages ── dependent legs ─┐
+                   └─ own legs ───────────────────────────────────────────┼─ gate ─┬─ issues
+                                                                          │        ├─ publish (tag only)
+                                                                          │        └─ repository
+```
+
+- `shared-prefix` builds the shared prefixes (glibc and musl) on each architecture, and `shared-packages` writes the
+  shared packages from them. The legs of the targets whose prefix is a shared prefix, or that install the shared
+  packages, wait for them (`legs_shared`). The other legs start at once (`legs_own`).
+- A leg is `prefix` -> `packages` -> `test` (the package suite) -> `graphical` -> `verdict`. `needs` chains them,
+  so a leg waits for no other leg. A stage runs only when the stage before it wrote its output. The graphical job
+  runs after the suite whatever its result, when the packages exist.
+- The builds and the suite run on the host and start the target's image with `docker run`, not with `container:`.
+  JavaScript actions do not run in every image (Alpine on an arm64 runner), the graphical guest needs `/dev/kvm` of
+  the host, and the suite starts clean containers of its own.
+- An experimental target's jobs have `continue-on-error`. Each job records its own `job.status` as an output, because
+  `needs.<job>.result` reads `success` for a failed job with `continue-on-error`.
+- `verdict` always runs. Its artifact `verdict-<tag>-<slug>-<arch>` holds the stage records of the prefix and packages
+  jobs (`tests/pipeline/stages.py`), the suite's `report.json` and the graphical `result.json`.
+- `python3 scripts/supported-targets.py --table` prints the job counts in its `Jobs:` line.
+
+### The gate
+
+`tests/packages/gate.py` reads every verdict and the stage records of the shared stage. For each target on each
+architecture it gives each stage a status:
+
+| Stage       | Pass                                     | Fail                                                |
+| ----------- | ---------------------------------------- | --------------------------------------------------- |
+| `prefix`    | the prefix built ("shared" when none)    | the job failed, was cancelled or timed out          |
+| `packages`  | pkgsmith wrote the packages              | the job failed, or the shared packages job failed   |
+| `suite`     | every layer of the package suite passed  | a layer failed or is missing, or there is no report |
+| `graphical` | the graphical VM test passed on the arch | a check failed, or there is no result               |
+
+A stage after a failed one is "not run: <stage> failed", never a pass. A target on an architecture without a
+graphical job is "not run" there. A planned release gets one verdict, "not built", with its blocker. The publish set
+is the files of the published artifacts whose every target and architecture passed every stage. A file that is the
+same on two architectures needs both.
+
+Each target is released on its own. The publish set holds only the files of targets that passed, and a target that
+failed holds no other back. A built target that did not pass, or an empty publish set, fails the gate, so the run is
+red. The gate still uploads the publish set and `coverage.json`. `publish` (release tag) and `repository` run when
+the gate ran, passed or failed, and the publish set is not empty; an empty set publishes nothing. An experimental
+target that did not pass is left out and does not fail the run. The release notes name the targets that passed, and
+on a separate line the targets left out and the first stage that stopped each (`left_out` in `coverage.json`:
+`Arch Linux arm64, graphical`). The gate writes `coverage.md` (also in the job summary) and `coverage.json`, with the
+verdict of every target.
+
+### arm64
+
+arm64 has no exemption. An arm64 package needs a passing arm64 package suite and a passing arm64 graphical test.
+The amd64 result never stands in for it. The arm64 runners have no `/dev/kvm`, so the arm64 guest runs on TCG, with
+a job timeout of 345 minutes and a harness deadline 20 minutes before it (`design/graphical-testing.md`).
+
+Consequences: no arm64 package and no file that is the same on both architectures (`noarch`, `all`, `any`) is
+published until the arm64 graphical job passes. Arch Linux publishes no aarch64 cloud image, so the Arch Linux arm64
+graphical job builds one in the run from the signed Arch Linux ARM archive (`scripts/build-arch-arm-image.sh`,
+`design/graphical-testing.md`), with no exemption: Arch Linux arm64 publishes only after its own arm64 graphical test
+passes. The chroot stages of that build and the aarch64 guest path have not run on any machine yet. A target whose
+graphical entry has no image at all would be "not run: no <cpu> image for <name>", an unmet requirement of a built
+target, and the run would be red while the other targets are still released.
+
+### Issues
+
+`tests/pipeline/issues.py` reads `coverage.json`. One issue for each release, titled `Release pipeline: <name>`,
+label `release-pipeline`:
+
+| The release in this run                             | Action                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------ |
+| a stage failed or not built, not at its end of life | create the issue, or rewrite its body; comment when the failures changed |
+| a stage failed or not built, at its end of life     | a notice; an open issue is closed with a comment                         |
+| every stage passed on every architecture            | an open issue is closed with a comment                                   |
+| a stage did not run, and none failed                | nothing; an open issue stays open                                        |
+
+The body names each failing architecture, stage, check and detail, the run, the verdict artifacts and what unblocks
+the release. A hidden signature (the failures, with numbers removed) decides whether a comment is new. The oldest of
+two open issues with one title is used, and the others are named in the summary. A release tag and the nightly run
+change issues; every other run is a dry run that prints the actions. Only the `issues` job has `issues: write`.
+
+### What the owner sets
+
+- Nothing new for the dry run: a pull request, a push to `main` and a manual run need no secret and no variable.
+- `issues: write` for the `issues` job is in `release.yml`; `nightly.yml` grants it to the call. If the repository
+  limits the default token permissions, it must allow workflows to ask for `issues: write`.
+- The `release-pipeline` label is created by the first run that applies.
+- The arm64 runner label is in `scripts/targets.json` (`ubuntu-24.04-arm`). Private repositories need arm64 runners
+  enabled.
+- The repository secrets and variables of `package-repository.yml` are unchanged.
+
+### Not proven yet
+
+No workflow of this layout has run on GitHub. `actionlint` 1.7.7 passes, and a reference check (every `needs`,
+`uses`, `with` and output) passes. The gate, the issue logic and the stage records are tested on fixtures, and the
+gate and the issue logic were run on the result files of a local run of the amd64 targets
+(`scripts/run-pipeline.py`). No arm64 target and no aarch64 guest ran locally.
+
+A first `workflow_dispatch` run with `dry_run: true` must show: the `Jobs:` line in the summary of `targets`; one
+shared prefix job for each shared prefix and one shared packages job for each architecture; one leg for each
+target and architecture, each with a `verdict` artifact; arm64 graphical jobs on the arm64 runner that print the
+time of each check; a gate summary with a row for every target, architecture and planned release; an exclusion for
+every target that did not pass; and an `issues` job that prints "would create" or "would update" lines and the
+"(dry run: no issue was changed)" table.
 
 ## Decisions for the owner
 

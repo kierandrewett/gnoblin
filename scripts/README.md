@@ -89,14 +89,18 @@ Run by the workflows and by `./build.sh package`.
 | `list-tarball-sources.sh`                   | List the files a source archive needs                                  | `make-tarball.sh`                       |
 | `make-gsettings-desktop-schemas-tarball.sh` | Write the pinned GSettings schema archive                              | `build-release-assets.sh`               |
 | `build-source-bundle.sh`                    | Join the archives into the source bundle                               | `build-release-assets.sh`               |
-| `install-fedora-build-deps.sh`              | Install the Fedora packages that `build.sh` needs                      | `packages.yml`, the test workflows      |
-| `build-prefix.sh`                           | Build everything Gnoblin ships into a prefix for pkgsmith              | `packages.yml`, by hand                 |
-| `install-pkgsmith.sh`                       | Build the pkgsmith commit pinned in `pkgsmith.ref`                     | `packages.yml`, by hand                 |
-| `build-packages.sh`                         | Write the packages from a prefix with pkgsmith                         | `packages.yml`, by hand                 |
-| `check-package-install.sh`                  | Install, run, coexist with GNOME and remove the packages on one system | `packages.yml`                          |
+| `install-fedora-build-deps.sh`              | Install the Fedora packages that `build.sh` needs                      | `target.yml`, the test workflows        |
+| `install-debian-build-deps.sh`              | Install the Debian or Ubuntu packages that `build.sh` needs            | `target.yml`, `verify.yml`              |
+| `install-alpine-build-deps.sh`              | Install the Alpine packages that `build.sh` needs, on edge or a branch | `target.yml`, `verify.yml`              |
+| `install-opensuse-build-deps.sh`            | Install the openSUSE Leap or Tumbleweed packages that `build.sh` needs | `target.yml`, `verify.yml`              |
+| `build-prefix.sh`                           | Build everything Gnoblin ships into a prefix for pkgsmith              | `actions/build-prefix`, by hand         |
+| `install-pkgsmith.sh`                       | Build the pkgsmith commit pinned in `pkgsmith.ref`                     | `target.yml`, `release.yml`, by hand    |
+| `build-packages.sh`                         | Write the packages from a prefix with pkgsmith                         | `target.yml`, `release.yml`, by hand    |
+| `run-package-tests.sh`                      | Run the package suite (`tests/packages`) for one target                | `target.yml`, by hand                   |
+| `build-arch-arm-image.sh`                   | Build the aarch64 Arch Linux guest image from the signed ALARM archive | `tests/graphical/harness.py`, by hand   |
 | `check-release-tag.sh`                      | Check a release tag against the version in the tree                    | `release.yml`                           |
-| `check-rpm-isolation.py`                    | Reject an RPM that could replace GNOME files                           | `packages.yml`                          |
-| `check-packaging-targets.py`                | Validate the package target list                                       | a workflow                              |
+| `check-rpm-isolation.py`                    | Reject an RPM that could replace GNOME files                           | `target.yml`, `release.yml`             |
+| `supported-targets.py`                      | List the build targets from `targets.json` and endoflife.date          | `release.yml`                           |
 | `probe-rpm-target.py`                       | Record the library floor of a distribution image                       | a workflow                              |
 | `pkgrepo/`                                  | Build, sign and upload the RPM, APT and pacman repositories            | `package-repository.yml`, `nightly.yml` |
 | `apply-nightly-version.py`                  | Give a CI checkout a nightly version                                   | `release.yml`                           |
@@ -130,3 +134,19 @@ use them, they can be removed.
 - `run-normal-config-devkit.sh`: a nested session that copies your normal configuration.
 - `build-hyprcursor-test.sh`: builds the cursor bridge check.
 - `report-mtk-region-copy-probe.sh`: reads the output of the region copy probe.
+
+## Package tests
+
+`run-package-tests.sh` runs the four layers of the package suite for one target on packages that are already built:
+static checks of the files, install and removal in a clean container of the release, a headless session of the
+installed compositor, and a signed repository tree. CI runs it for every target and architecture after the packages
+are built, and `tests/packages/gate.py` decides which packages may be published. To repeat the run of one target from
+the artifacts of a workflow run:
+
+```sh
+gh run download RUN_ID --pattern '*-commit-*' --dir artifacts
+scripts/run-package-tests.sh --target fc43 --arch amd64 --artifacts artifacts --release-tag commit-0123456789ab
+```
+
+`tests/packages/README.md` lists the options, and `design/package-testing.md` the failure modes that each layer
+detects.

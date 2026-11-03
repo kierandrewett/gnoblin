@@ -141,7 +141,7 @@ The `apply-patches` step (`cmake/source-step.cmake`) checks every patch header b
 Packages are not built by distribution recipes. `scripts/build-prefix.sh` builds Gnoblin into a
 prefix, and [pkgsmith](https://github.com/kierandrewett/pkgsmith) writes the rpm, deb, Arch and
 tar packages from that prefix with the definitions in `pkgsmith/`. `scripts/build-packages.sh`
-runs it, and `scripts/check-package-install.sh` installs the result on a clean system. The
+runs it, and `scripts/run-package-tests.sh` tests the result on a clean system of each release. The
 commands, the package list and the release stages are in
 [Packaging and releases](design/distribution.md).
 

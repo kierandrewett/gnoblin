@@ -16,14 +16,21 @@ Install these with your package manager:
 - Git, if you build from a Git checkout
 - The development libraries that Gnoblin needs, including [GLib](https://docs.gtk.org/glib/),
   [GTK4](https://www.gtk.org/), [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/),
-  [PipeWire](https://pipewire.org/), [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/docs/),
-  [Glycin](https://gitlab.gnome.org/GNOME/glycin) and `gsettings-desktop-schemas`
+  [PipeWire](https://pipewire.org/), [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/docs/) and
+  `gsettings-desktop-schemas`
 
 `python3 scripts/check-build-deps.py` checks the library versions. The versions Gnoblin builds against are listed in the
-[pinned versions file](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json).
+[pinned versions file](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json). On Fedora,
+`scripts/install-fedora-build-deps.sh` installs them. On Debian and Ubuntu,
+`scripts/install-debian-build-deps.sh --with-test-tools` installs them. When the release has a Meson that is too old
+for Mutter, this script also installs a newer Meson from PyPI into `/opt/gnoblin-meson`. See
+[platform support](/platform-support) for the systems that Gnoblin builds on.
+
+When the system libraries are older than the ones Gnoblin is built against, some features are not available. The
+[platform support](/platform-support) page lists them.
 
 To build without Gnoblin's portal backend, run `./build.sh --without-portal` instead of `make`. You then need no
-GTK4, libadwaita or Glycin.
+GTK4 or libadwaita.
 
 ## 1. Get the source
 
