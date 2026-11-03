@@ -1,0 +1,83 @@
+{
+  "comment": "Every Wayland global that the Gnoblin compositor can register: the 44 of Mutter and libwayland and the 13 of Gnoblin. The runtime layer expects an interface when the installed binaries hold its name, unless it has a container reason. A release with an older libwayland or wayland-protocols compiles some interfaces out (wl_fixes needs libwayland 1.24), so its binaries do not hold the name and the interface is not expected. design/package-testing.md, R2.",
+  "globals": [
+    { "interface": "wl_compositor", "from": "mutter" },
+    { "interface": "wl_shm", "from": "libwayland" },
+    { "interface": "wl_subcompositor", "from": "mutter" },
+    { "interface": "wl_data_device_manager", "from": "mutter" },
+    { "interface": "wl_output", "from": "mutter" },
+    { "interface": "wl_seat", "from": "mutter" },
+    { "interface": "wl_fixes", "from": "mutter" },
+    { "interface": "xdg_wm_base", "from": "mutter" },
+    { "interface": "xdg_activation_v1", "from": "mutter" },
+    { "interface": "xdg_session_manager_v1", "from": "mutter" },
+    { "interface": "xdg_system_bell_v1", "from": "mutter" },
+    { "interface": "xdg_toplevel_drag_manager_v1", "from": "mutter" },
+    { "interface": "xdg_toplevel_tag_manager_v1", "from": "mutter" },
+    { "interface": "xdg_wm_dialog_v1", "from": "mutter" },
+    { "interface": "zxdg_exporter_v1", "from": "mutter" },
+    { "interface": "zxdg_exporter_v2", "from": "mutter" },
+    { "interface": "zxdg_importer_v1", "from": "mutter" },
+    { "interface": "zxdg_importer_v2", "from": "mutter" },
+    { "interface": "zxdg_output_manager_v1", "from": "mutter" },
+    { "interface": "gtk_shell1", "from": "mutter" },
+    { "interface": "wp_color_manager_v1", "from": "mutter" },
+    { "interface": "wp_color_representation_manager_v1", "from": "mutter" },
+    { "interface": "wp_commit_timing_manager_v1", "from": "mutter" },
+    { "interface": "wp_cursor_shape_manager_v1", "from": "mutter" },
+    { "interface": "wp_fifo_manager_v1", "from": "mutter" },
+    { "interface": "wp_fractional_scale_manager_v1", "from": "mutter" },
+    { "interface": "wp_pointer_warp_v1", "from": "mutter" },
+    { "interface": "wp_presentation", "from": "mutter" },
+    { "interface": "wp_single_pixel_buffer_manager_v1", "from": "mutter" },
+    { "interface": "wp_viewporter", "from": "mutter" },
+    { "interface": "zwp_idle_inhibit_manager_v1", "from": "mutter" },
+    { "interface": "zwp_keyboard_shortcuts_inhibit_manager_v1", "from": "mutter" },
+    { "interface": "zwp_linux_dmabuf_v1", "from": "mutter" },
+    { "interface": "zwp_pointer_constraints_v1", "from": "mutter" },
+    { "interface": "zwp_pointer_gestures_v1", "from": "mutter" },
+    { "interface": "zwp_primary_selection_device_manager_v1", "from": "mutter" },
+    { "interface": "zwp_relative_pointer_manager_v1", "from": "mutter" },
+    { "interface": "zwp_tablet_manager_v2", "from": "mutter" },
+    { "interface": "zwp_text_input_manager_v3", "from": "mutter" },
+    { "interface": "ext_session_lock_manager_v1", "from": "gnoblin", "gate": "ext_session_lock" },
+    {
+      "interface": "wp_drm_lease_device_v1",
+      "from": "mutter",
+      "container": "registered for each DRM device with leasable connectors; the headless backend has none"
+    },
+    {
+      "interface": "wp_linux_drm_syncobj_manager_v1",
+      "from": "mutter",
+      "container": "needs a DRM render node with timeline synchronisation objects; the software renderer of the container has none"
+    },
+    {
+      "interface": "zwp_xwayland_keyboard_grab_manager_v1",
+      "from": "mutter",
+      "container": "registered with Xwayland, which the test session turns off (--no-xwayland)"
+    },
+    {
+      "interface": "mutter_x11_interop",
+      "from": "mutter",
+      "container": "advertised to the Xwayland client only (a global filter)"
+    },
+    { "interface": "zwlr_layer_shell_v1", "from": "gnoblin", "gate": "wlr_layer_shell" },
+    { "interface": "zwlr_screencopy_manager_v1", "from": "gnoblin", "gate": "wlr_screencopy" },
+    { "interface": "ext_foreign_toplevel_list_v1", "from": "gnoblin", "gate": "ext_foreign_toplevel_list" },
+    { "interface": "zwlr_foreign_toplevel_manager_v1", "from": "gnoblin", "gate": "wlr_foreign_toplevel_management" },
+    { "interface": "ext_data_control_manager_v1", "from": "gnoblin", "gate": "ext_data_control" },
+    { "interface": "ext_idle_notifier_v1", "from": "gnoblin", "gate": "ext_idle_notify" },
+    { "interface": "zwlr_gamma_control_manager_v1", "from": "gnoblin", "gate": "wlr_gamma_control" },
+    { "interface": "zwlr_output_power_manager_v1", "from": "gnoblin", "gate": "wlr_output_power_management" },
+    { "interface": "ext_background_effect_manager_v1", "from": "gnoblin", "gate": "ext_background_effect_v1" },
+    { "interface": "zxdg_decoration_manager_v1", "from": "gnoblin", "gate": "xdg_decoration" },
+    { "interface": "org_kde_kwin_server_decoration_manager", "from": "gnoblin", "gate": "kde_server_decoration" },
+    { "interface": "gnoblin_blur_fade_manager_v1", "from": "gnoblin", "gate": "blur_fade" },
+    {
+      "interface": "gnoblin_window_frame_manager_v1",
+      "from": "gnoblin",
+      "gate": "window_frame_renderer",
+      "container": "advertised only to the frame renderer processes of frame_renderers (a global filter); the default configuration names none"
+    }
+  ]
+}

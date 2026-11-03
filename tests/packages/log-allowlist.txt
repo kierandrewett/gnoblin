@@ -1,0 +1,8 @@
+# Log lines that the runtime layer of the package suite accepts (tests/packages/runtime_probe.py logs).
+#
+# The layer fails on every CRITICAL, ERROR, crash or sanitiser line of the compositor and session logs that no rule
+# here matches. One rule per line: an extended regular expression (Python syntax), two spaces, "# ", and the reason the
+# line is expected in a container. Keep the list short. A rule must name the condition of the test environment that
+# causes the line, never a defect of Gnoblin. The graphical tests (tests/graphical/) read this file too.
+
+pw\.conf .*can't load config client\.conf  # libpipewire is installed as a library dependency, without the PipeWire daemon and its client configuration. The container runs no PipeWire.

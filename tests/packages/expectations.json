@@ -1,0 +1,92 @@
+{
+  "comment": "What the package suite expects of every package set. tests/packages/README.md explains each key.",
+  "packages": {
+    "gnoblin": {
+      "licence": "GPL-2.0-or-later",
+      "version": "gnoblin",
+      "compiled": true
+    },
+    "gnoblin-x11-frames": {
+      "licence": "GPL-2.0-or-later",
+      "version": "gnoblin",
+      "compiled": true
+    },
+    "xdg-desktop-portal-gnoblin": {
+      "licence": "LGPL-2.1-or-later",
+      "version": "portal",
+      "compiled": true
+    },
+    "gnoblin-geoclue-integration": {
+      "licence": "GPL-2.0-or-later",
+      "version": "gnoblin",
+      "compiled": false
+    },
+    "gnoblin-ananicy-rules": {
+      "licence": "GPL-2.0-or-later",
+      "version": "gnoblin",
+      "compiled": false
+    }
+  },
+  "formats": {
+    "rpm": "rpm",
+    "deb": "deb",
+    "pacman": "archlinux",
+    "apk": "apk"
+  },
+  "architectures": {
+    "amd64": {
+      "rpm": "x86_64",
+      "deb": "amd64",
+      "archlinux": "x86_64",
+      "apk": "x86_64",
+      "tar": "amd64"
+    },
+    "arm64": {
+      "rpm": "aarch64",
+      "deb": "arm64",
+      "archlinux": "aarch64",
+      "apk": "aarch64",
+      "tar": "arm64"
+    }
+  },
+  "independent": {
+    "rpm": "noarch",
+    "deb": "all",
+    "archlinux": "any",
+    "apk": "noarch",
+    "tar": "all"
+  },
+  "symbol_floors": {
+    "comment": "A versioned symbol of these libraries needs a version floor on the package that provides the library. rpm and apk name the library itself.",
+    "GLIBC": {
+      "soname": "libc.so.6",
+      "deb": "libc6",
+      "archlinux": "glibc"
+    },
+    "LIBINPUT": {
+      "soname": "libinput.so.10",
+      "deb": "libinput10",
+      "archlinux": "libinput"
+    }
+  },
+  "build_paths": [
+    "(?:^|[\\x00\\s\"'=:])/home/[A-Za-z0-9._-]+/",
+    "(?:^|[\\x00\\s\"'=:])/root/",
+    "(?:^|[\\x00\\s\"'=:])/var/tmp/",
+    "(?:^|[\\x00\\s\"'=:])/out/prefix",
+    "(?:^|[\\x00\\s\"'=:])/work/"
+  ],
+  "build_path_allow": [],
+  "desktop_validate_allow": [
+    {
+      "path": "/wayland-sessions/",
+      "pattern": "key \"DesktopNames\" in group \"Desktop Entry\"",
+      "reason": "A session entry is read by display managers, which define DesktopNames for sessions (GDM, SDDM). desktop-file-validate checks application entries and does not know the key."
+    }
+  ],
+  "abi_not_linked": {
+    "dbus": "gnoblin starts dbus-update-activation-environment and the session bus tools; libdbus in the same Arch package is not linked",
+    "dconf": "the GSettings backend that GIO loads as a module at run time; libdconf in the same Arch package is not linked",
+    "python": "runs gdctl and gnoblin-seed-config, which are Python scripts; libpython in the same Arch package is not linked"
+  }
+}
