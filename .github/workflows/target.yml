@@ -13,7 +13,7 @@ name: Target
 #                 upgrade and removal in clean containers of the release, a headless session and a signed repository
 #   4. graphical  the graphical VM test (.github/actions/graphical-test, design/graphical-testing.md) on the
 #                 architecture of the target: a QEMU guest of the release's cloud image boots, installs the packages
-#                 and runs a real session. It runs after the suite, whatever its result, when the packages exist
+#                 and runs a real session. It runs only when the package suite passed
 #   5. verdict    writes one artifact, verdict-<tag>-<slug>-<arch>, with the record of every stage. The release gate
 #                 (tests/packages/gate.py) reads the verdicts of every leg
 #
@@ -216,15 +216,15 @@ jobs:
         run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
 
   graphical:
-    # After the suite, whatever its result, so a run shows both. It needs the packages, and a graphical entry for the
-    # architecture: scripts/targets.json gives every architecture its guest. A target without one is "not run" in the
-    # gate and is not published. The job timeout comes from the guest data; the harness deadline stops the test
-    # 20 minutes before it, so result.json says which check ran out of time.
+    # After the suite, and only when it passed: the gate counts a graphical result only after a passing suite, so a
+    # job after a failed suite would show a red result that decides nothing (run 41672380634, Alpine). It is skipped,
+    # and the gate reports "not run: suite failed". It needs a graphical entry with an image for the architecture:
+    # scripts/targets.json gives every architecture its guest. The job timeout comes from the guest data; the harness
+    # deadline stops the test 20 minutes before it, so result.json says which check ran out of time.
     needs: [packages, test]
     if: >-
       ${{ !cancelled() && fromJSON(inputs.target).graphical != null && fromJSON(inputs.target).graphical.image != null
-      && (needs.packages.outputs.status == 'success'
-      || (needs.packages.result == 'skipped' && fromJSON(inputs.target).lane == '')) }}
+      && needs.test.outputs.status == 'success' }}
     runs-on: ${{ fromJSON(inputs.target).graphical.runner }}
     continue-on-error: ${{ fromJSON(inputs.target).experimental }}
     timeout-minutes: ${{ fromJSON(inputs.target).graphical.guest.timeout_minutes }}

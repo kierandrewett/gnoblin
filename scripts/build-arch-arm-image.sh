@@ -194,11 +194,20 @@ stage_extract() {
 
 # mkinitcpio's autodetect hook keeps only the modules that the BUILD host uses, and in a chroot that is the runner's
 # hardware. The guest needs virtio and whatever else the VM has, so the initramfs is generic (arch-boxes does the same).
+#
+# pacman's CheckSpace needs the mount point of /var/cache/pacman/pkg, and the root tree is a plain folder, not a mount:
+# pacman stops with "could not determine cachedir mount point" and "not enough free disk space" (run 41672380634). The
+# image is built without a mount on purpose, so CheckSpace is off while the packages stage runs, and the configure
+# stage turns it on again: the guest's pacman checks the space as usual.
+readonly CHECKSPACE_OFF="#CheckSpace (off while build-arch-arm-image.sh builds the image)"
 stage_prepare() {
     [[ -d "$ROOTFS/etc" ]] || die "run the extract stage first"
     sed -i -E '/^HOOKS=/ s/[[:space:]]autodetect//' "$ROOTFS/etc/mkinitcpio.conf"
     grep -q '^HOOKS=.*autodetect' "$ROOTFS/etc/mkinitcpio.conf" && die "autodetect is still in mkinitcpio.conf"
     log "mkinitcpio hooks: $(grep '^HOOKS=' "$ROOTFS/etc/mkinitcpio.conf")"
+    sed -i "s/^CheckSpace\$/$CHECKSPACE_OFF/" "$ROOTFS/etc/pacman.conf"
+    grep -q '^CheckSpace' "$ROOTFS/etc/pacman.conf" && die "CheckSpace is still on in pacman.conf"
+    log "pacman CheckSpace is off until the configure stage"
 }
 
 stage_packages() {
@@ -231,6 +240,10 @@ write_file() { # write_file PATH [MODE]: the content comes from stdin
 stage_configure() {
     [[ -d "$ROOTFS/usr" ]] || die "run the extract stage first"
     need systemctl
+    if grep -qxF "$CHECKSPACE_OFF" "$ROOTFS/etc/pacman.conf"; then
+        sed -i "s/^$CHECKSPACE_OFF\$/CheckSpace/" "$ROOTFS/etc/pacman.conf"
+        grep -qx 'CheckSpace' "$ROOTFS/etc/pacman.conf" || die "CheckSpace is not on again in pacman.conf"
+    fi
 
     # fstab by PARTUUID: the image is copied and overlaid, so labels and device names would be guesses.
     write_file /etc/fstab <<EOF

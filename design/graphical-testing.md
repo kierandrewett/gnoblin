@@ -245,8 +245,8 @@ timeout without a result.
 ## In the release
 
 Every target leg of the release (`.github/workflows/target.yml`, called by `release.yml` once for each target and
-architecture) has a `graphical` job after its package suite. It runs when the leg's packages exist, whatever the
-suite result, on the runner of the target's architecture:
+architecture) has a `graphical` job after its package suite. It runs when the suite passed, on the runner of the
+target's architecture. After a failed suite it is skipped, and the gate reports "not run: suite failed":
 
 1. It downloads the package artifact of the target.
 2. `.github/actions/graphical-test` makes `/dev/kvm` usable when the runner has it, installs the runner packages of

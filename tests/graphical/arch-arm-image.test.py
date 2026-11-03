@@ -133,5 +133,25 @@ class Signature(unittest.TestCase):
         self.assertEqual(primary, self.pinned)
 
 
+class CheckSpace(unittest.TestCase):
+    """pacman's CheckSpace fails in the build tree, which is a folder and not a mount (run 41672380634): the prepare
+    stage turns it off and the configure stage turns it on again, so the guest's own pacman checks the space."""
+
+    def test_prepare_turns_it_off_and_configure_turns_it_on_again(self):
+        work = Path(tempfile.mkdtemp(prefix="gnoblin-arch-arm-checkspace-"))
+        etc = work / "rootfs/etc"
+        etc.mkdir(parents=True)
+        (work / "rootfs/usr").mkdir()
+        (etc / "mkinitcpio.conf").write_text("HOOKS=(base udev autodetect modconf)\n")
+        (etc / "pacman.conf").write_text("[options]\nHoldPkg = pacman\nCheckSpace\n")
+        run = [str(SCRIPT), "--work", str(work), "--stage"]
+        subprocess.run([*run, "prepare"], check=True, capture_output=True)
+        self.assertNotIn("\nCheckSpace\n", (etc / "pacman.conf").read_text())
+        # configure stops later on the missing boot loader of this fake tree, after CheckSpace is back.
+        subprocess.run([*run, "configure"], capture_output=True)
+        self.assertIn("\nCheckSpace\n", (etc / "pacman.conf").read_text())
+        shutil.rmtree(work, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

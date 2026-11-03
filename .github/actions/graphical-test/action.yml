@@ -80,6 +80,22 @@ runs:
         python3 tests/graphical/harness.py --entry "$RUNNER_TEMP/target.json" --packages "$source" \
           --out evidence --work "$RUNNER_TEMP" --cache "$RUNNER_TEMP/images" --artifact "$ARTIFACT" \
           --run-url "$RUN_URL" --deadline "$deadline"
+    - name: Show the guest evidence
+      # The QEMU command line (with the firmware paths), QEMU's own output, the end of the serial console and the
+      # checks with their times, in the step log, so a failure can be read without the artifact.
+      if: always()
+      shell: bash
+      run: |
+        for file in command.txt qemu-version.txt qemu.log; do
+          if [ -f "evidence/$file" ]; then echo "::group::$file"; cat "evidence/$file"; echo "::endgroup::"; fi
+        done
+        if [ -f evidence/serial.log ]; then
+          echo "::group::serial.log (last 80 lines)"; tail -n 80 evidence/serial.log; echo "::endgroup::"
+        fi
+        if [ -f evidence/result.json ]; then
+          jq -r '"result: \(.result), accelerator: \(.accel)", (.checks[] | "  \(.status) \(.name) \(.seconds) s \(.detail)")' \
+            evidence/result.json
+        fi
     - name: Upload the evidence
       if: always()
       uses: actions/upload-artifact@v4

@@ -173,8 +173,8 @@ targets ── source ─┬─ shared-prefix ── shared-packages ── depe
   shared packages from them. The legs of the targets whose prefix is a shared prefix, or that install the shared
   packages, wait for them (`legs_shared`). The other legs start at once (`legs_own`).
 - A leg is `prefix` -> `packages` -> `test` (the package suite) -> `graphical` -> `verdict`. `needs` chains them,
-  so a leg waits for no other leg. A stage runs only when the stage before it wrote its output. The graphical job
-  runs after the suite whatever its result, when the packages exist.
+  so a leg waits for no other leg. A stage runs only when the stage before it passed: the graphical job runs only
+  after a passing package suite, so a failed suite shows as a skipped graphical job and "not run: suite failed".
 - The builds and the suite run on the host and start the target's image with `docker run`, not with `container:`.
   JavaScript actions do not run in every image (Alpine on an arm64 runner), the graphical guest needs `/dev/kvm` of
   the host, and the suite starts clean containers of its own.

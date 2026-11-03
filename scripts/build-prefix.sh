@@ -93,8 +93,23 @@ if [ ! -f "$lua_root/lib/pkgconfig/lua.pc" ]; then
     lua_source="$root/build/lua-src-$target"
     rm -rf -- "$lua_root" "$lua_source"
     mkdir -p "$lua_source" "$lua_root"
-    curl -fsSL --retry 5 "https://www.lua.org/ftp/lua-$lua_version.tar.gz" -o "$lua_source.tar.gz"
-    echo "$lua_sha256  $lua_source.tar.gz" | sha256sum -c -
+    # lua.org resets connections now and then (run 41672380634: "curl: (35) Recv failure: Connection reset by
+    # peer"), which curl --retry does not retry. The archive is checked against its pinned sha256 after each attempt,
+    # so a retry can never let a different file through. Four attempts at most, each with its reason printed.
+    lua_url="https://www.lua.org/ftp/lua-$lua_version.tar.gz"
+    attempt=1
+    until curl -fsSL --retry 3 --connect-timeout 30 --max-time 300 "$lua_url" -o "$lua_source.tar.gz" &&
+        echo "$lua_sha256  $lua_source.tar.gz" | sha256sum -c --quiet -; do
+        status=$?
+        if [ "$attempt" -ge 4 ]; then
+            echo "[prefix] $lua_url: attempt $attempt of 4 failed (exit $status), giving up" >&2
+            exit 1
+        fi
+        echo "[prefix] $lua_url: attempt $attempt of 4 failed (exit $status), retrying in $((attempt * 15)) s" >&2
+        rm -f -- "$lua_source.tar.gz"
+        sleep $((attempt * 15))
+        attempt=$((attempt + 1))
+    done
     tar -C "$lua_source" --strip-components=1 -xzf "$lua_source.tar.gz"
     make -C "$lua_source" -j"$jobs" linux MYCFLAGS='-fPIC'
     make -C "$lua_source" install INSTALL_TOP="$lua_root"

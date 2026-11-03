@@ -155,7 +155,21 @@ container_run() {
         -e INSTALL_PREPARE="$install_prepare" "$image" "$@"
 }
 image_digest() {
-    "${engine[@]}" pull -q "$1" >/dev/null 2>&1 || true
+    # The image of the release, pulled before the layer runs. A registry that times out (run 41672380634:
+    # registry.opensuse.org, "Client.Timeout exceeded while awaiting headers") would otherwise fail the layer with no
+    # case at all. Four attempts, each failure printed with its message. A pull is idempotent and the digest is recorded,
+    # so a retry cannot change what is tested. After the last attempt the layer runs anyway and fails on the pull,
+    # with these messages in the log.
+    local attempt output
+    for attempt in 1 2 3 4; do
+        if output="$("${engine[@]}" pull -q "$1" 2>&1)"; then
+            break
+        fi
+        echo "[package-tests] pull of $1: attempt $attempt of 4 failed: $(tail -n 1 <<<"$output")" >&2
+        # A copy that is already on this machine is tested as it is; its digest goes into the evidence below.
+        if "${engine[@]}" image inspect "$1" >/dev/null 2>&1; then break; fi
+        if [ "$attempt" -lt 4 ]; then sleep $((attempt * 20)); fi
+    done
     echo "image $1: $("${engine[@]}" image inspect --format '{{.Id}} {{json .RepoDigests}}' "$1" 2>/dev/null || echo unknown)" \
         >>"$report/evidence/env.txt"
 }

@@ -243,32 +243,42 @@ def resolve_image(image):
     raise CheckFailed("no image with a checksum found", "\n".join(errors))
 
 
-def download_image(image, cache, min_free_gb, corrupt=False):
-    url, file_name, sums_url, algorithm, expected = resolve_image(image)
-    if corrupt:
-        expected = "0" * len(expected)
-    cache.mkdir(parents=True, exist_ok=True)
-    path = cache / file_name
-    if not path.exists():
-        free = shutil.disk_usage(cache).free / 2**30
-        if free < min_free_gb:
-            raise CheckFailed(f"only {free:.1f} GiB free in {cache}, below the {min_free_gb} GiB floor")
-        partial = path.with_suffix(path.suffix + ".part")
-        request = urllib.request.Request(url, headers={"User-Agent": "gnoblin-graphical-test"})
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response, partial.open("wb") as handle:
-                shutil.copyfileobj(response, handle, 1 << 20)
-        except NETWORK_ERRORS as exception:
-            partial.unlink(missing_ok=True)
-            raise CheckFailed(f"the download of {url} failed: {exception}") from None
-        partial.rename(path)
-    digest = hashlib.new(algorithm)
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    if digest.hexdigest() != expected:
-        raise CheckFailed(f"{file_name}: {algorithm} {digest.hexdigest()} does not match {expected} of {sums_url}")
-    return {"url": url, "file": file_name, "checksum_url": sums_url, algorithm: expected, "path": str(path)}
+def download_image(image, cache, min_free_gb, corrupt=False, attempts=3):
+    """Download the newest image and check it against the checksum file. A download that does not match is removed
+    and fetched again, up to attempts times in all, each time with the reason printed: a mirror can end a transfer
+    early without an error, or serve a file that its checksum file does not list yet (run 41672380634, Fedora 41
+    aarch64). A file that never matches fails the check. --break image (corrupt) does not retry."""
+    for attempt in range(1, attempts + 1):
+        url, file_name, sums_url, algorithm, expected = resolve_image(image)
+        if corrupt:
+            expected = "0" * len(expected)
+        cache.mkdir(parents=True, exist_ok=True)
+        path = cache / file_name
+        if not path.exists():
+            free = shutil.disk_usage(cache).free / 2**30
+            if free < min_free_gb:
+                raise CheckFailed(f"only {free:.1f} GiB free in {cache}, below the {min_free_gb} GiB floor")
+            partial = path.with_suffix(path.suffix + ".part")
+            request = urllib.request.Request(url, headers={"User-Agent": "gnoblin-graphical-test"})
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response, partial.open("wb") as handle:
+                    shutil.copyfileobj(response, handle, 1 << 20)
+            except NETWORK_ERRORS as exception:
+                partial.unlink(missing_ok=True)
+                raise CheckFailed(f"the download of {url} failed: {exception}") from None
+            partial.rename(path)
+        digest = hashlib.new(algorithm)
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        if digest.hexdigest() == expected:
+            return {"url": url, "file": file_name, "checksum_url": sums_url, algorithm: expected, "path": str(path)}
+        problem = f"{file_name}: {algorithm} {digest.hexdigest()} does not match {expected} of {sums_url}"
+        if corrupt or attempt == attempts:
+            raise CheckFailed(problem + (f" (after {attempt} downloads)" if attempt > 1 else ""))
+        print(f"[graphical] image download {attempt} of {attempts}: {problem}; downloading again", flush=True)
+        path.unlink()
+        time.sleep(10 * attempt)
 
 
 def build_image(build, cache, work, log, corrupt=False, min_free_gb=0.0):
@@ -864,7 +874,7 @@ class Run:
             f"cd {GUEST_DIR}/session && (setsid python3 {script} --globals globals.json --events events.jsonl "
             f"--width {width} --height {height} > client.log 2>&1 < /dev/null &)",
         )
-        text = self.wait_guest_file(f"{GUEST_DIR}/session/globals.json", 30)
+        text = self.wait_guest_file(f"{GUEST_DIR}/session/globals.json", self.arguments.client_timeout)
         if text is None:
             raise CheckFailed("the client wrote no globals", self.guest_file(f"{GUEST_DIR}/session/client.log"))
         (self.out / "globals.json").write_text(text)
@@ -879,9 +889,21 @@ class Run:
         return f"{len(announced)} globals, all {len(expected)} expected present"
 
     def window(self):
-        events = self.wait_event("mapped", 30)
+        events = self.wait_event("mapped", self.arguments.client_timeout)
         if events is None:
-            raise CheckFailed("the client window did not map", self.guest_file(f"{GUEST_DIR}/session/client.log"))
+            # What the screen and the compositor show at that moment, for a window that never got its first frame.
+            _, windows, _ = self.guest.user("gnoblinctl window list --json", check=False)
+            (self.out / "windows.json").write_text(windows)
+            try:
+                self.guest.screendump(self.out / "window-not-mapped.ppm")
+                analyse(self.out / "window-not-mapped.ppm", FIRST_COLOUR)
+                (self.out / "window-not-mapped.ppm").unlink()
+            except CheckFailed:
+                pass
+            events = self.client_events()
+            raise CheckFailed(f"the client window did not map within {self.arguments.client_timeout} s",
+                              self.events_excerpt(events) + "\n" + self.guest_file(f"{GUEST_DIR}/session/client.log")
+                              + "\nwindows: " + tail(windows))  # fmt: skip
         _, windows, _ = self.guest.user("gnoblinctl window list --json", check=False)
         (self.out / "windows.json").write_text(windows)
         if APP_ID not in windows:
@@ -913,8 +935,10 @@ class Run:
         guest.pointer_to(x + POINTER_STEP[0], y + POINTER_STEP[1])
         time.sleep(0.5)
         guest.click()
-        time.sleep(1)
-        events = self.client_events()
+        # Wait for the release of the click, up to the client timeout: under TCG the events come seconds later.
+        events = self.poll_events(
+            lambda found: any(e["event"] == "pointer-button" and not e.get("pressed") for e in found)
+        )
         enter = [event for event in events if event["event"] == "pointer-enter" and event.get("surface")]
         motion = [event for event in events if event["event"] in ("pointer-enter", "pointer-motion")]
         buttons = [event for event in events if event["event"] == "pointer-button" and event["button"] == BTN_LEFT]
@@ -935,16 +959,27 @@ class Run:
             guest.root(f"bash {GUEST_DIR}/guest.sh unbind Keyboard")
         for qcode, _ in TYPED:
             guest.press(qcode)
-        time.sleep(1.5)
-        events = self.client_events()
+        expected_keys = [code for _, code in TYPED]
+        events = self.poll_events(
+            lambda found: (
+                [e["key"] for e in found if e["event"] == "key" and e["pressed"]][-len(expected_keys) :]
+                == expected_keys
+            )
+        )
         pressed = [event["key"] for event in events if event["event"] == "key" and event["pressed"]]
         expected = [code for _, code in TYPED]
         if pressed[-len(expected) :] != expected:
             raise CheckFailed(f"the client saw the keys {pressed}, not {expected}", self.events_excerpt(events))
         path = self.out / "screenshot-typed.ppm"
-        guest.screendump(path)
-        properties = analyse(path, SECOND_COLOUR)
-        path.unlink()
+        # The repaint after G reaches the screen within the client timeout; on KVM the first screendump has it.
+        deadline = time.monotonic() + self.arguments.client_timeout
+        while True:
+            guest.screendump(path)
+            properties = analyse(path, SECOND_COLOUR)
+            path.unlink()
+            if properties["client_pixels"] or time.monotonic() >= deadline:
+                break
+            time.sleep(5)
         self.facts["screenshot_typed"] = properties
         check_frame(properties, SECOND_COLOUR, "the screenshot after typing")
         return f"keys {pressed[-len(expected) :]} seen, the repaint is on screen"
@@ -1026,6 +1061,17 @@ class Run:
                 return events
             time.sleep(1)
         return None
+
+    def poll_events(self, done):
+        """The client's events once done(events) is true, or when the client timeout runs out. A short first wait
+        keeps the KVM path as fast as before."""
+        deadline = time.monotonic() + self.arguments.client_timeout
+        time.sleep(1)
+        while True:
+            events = self.client_events()
+            if done(events) or time.monotonic() >= deadline:
+                return events
+            time.sleep(1)
 
     @staticmethod
     def events_excerpt(events):
@@ -1153,8 +1199,10 @@ def main():
     parser.add_argument("--cpus", type=int, default=4)
     parser.add_argument("--min-free-gb", type=float, default=4.0, help="refuse to download below this free space")
     parser.add_argument("--boot-timeout", type=int, help="seconds; default 600 with KVM and 1800 with TCG")
-    parser.add_argument("--install-timeout", type=int, help="seconds; default 1800 with KVM and 3600 with TCG")
+    parser.add_argument("--install-timeout", type=int, help="seconds; default 1800 with KVM and 7200 with TCG")
     parser.add_argument("--session-timeout", type=int, help="seconds; default 120 with KVM and 600 with TCG")
+    parser.add_argument("--client-timeout", type=int,
+                        help="seconds for the test client's globals and first frame; default 30 with KVM, 300 with TCG")  # fmt: skip
     parser.add_argument("--break", dest="breaks", action="append", default=[], choices=CHECKS[1:],
                         help="make the guest fail this check on purpose (repeatable)")  # fmt: skip
     parser.add_argument("--artifact", default="", help="the name of the evidence artifact, for the report")
@@ -1167,8 +1215,11 @@ def main():
     arguments = parser.parse_args()
     tcg = accelerator(arguments.accel) == "tcg"
     arguments.boot_timeout = arguments.boot_timeout or (1800 if tcg else 600)
-    arguments.install_timeout = arguments.install_timeout or (3600 if tcg else 1800)
+    # An install on TCG may hold a full upgrade of a rolling release (Debian testing): two hours, still inside the job.
+    arguments.install_timeout = arguments.install_timeout or (7200 if tcg else 1800)
     arguments.session_timeout = arguments.session_timeout or (600 if tcg else 120)
+    # The client's first frame needs the compositor and llvmpipe to draw: under TCG that takes far longer than 30 s.
+    arguments.client_timeout = arguments.client_timeout or (300 if tcg else 30)
     entry = (
         json.loads(arguments.entry.read_text()) if arguments.entry else find_target(arguments.release, arguments.arch)
     )

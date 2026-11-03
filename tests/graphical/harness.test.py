@@ -261,6 +261,78 @@ class GuestStart(unittest.TestCase):
         self.assertIn("efi-virtio.rom", caught.exception.excerpt)
 
 
+class PollEvents(unittest.TestCase):
+    """Run 41672380634: on TCG the client's events come later than the fixed waits of a KVM guest. The checks poll
+    until the event they need arrives, up to the client timeout."""
+
+    def run_for(self, timeout):
+        run = harness.Run(argparse.Namespace(out=tempfile.mkdtemp(), breaks=[], client_timeout=timeout), {"name": "x"})
+        started = time.monotonic()
+        arrivals = [[], [], [{"event": "pointer-button", "pressed": False}]]
+        run.client_events = lambda: arrivals.pop(0) if len(arrivals) > 1 else arrivals[0]
+        return run, started
+
+    def test_it_returns_when_the_event_arrives(self):
+        run, started = self.run_for(30)
+        events = run.poll_events(lambda found: any(event["event"] == "pointer-button" for event in found))
+        self.assertEqual(events, [{"event": "pointer-button", "pressed": False}])
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_it_gives_up_at_the_client_timeout(self):
+        run, started = self.run_for(2)
+        events = run.poll_events(lambda found: False)
+        self.assertGreaterEqual(time.monotonic() - started, 2)
+        self.assertLess(time.monotonic() - started, 6)
+        self.assertIsInstance(events, list)
+
+
+class DownloadRetry(unittest.TestCase):
+    """A download that does not match its checksum is fetched again, a bounded number of times (run 41672380634)."""
+
+    GOOD = b"the image\n"
+
+    def download(self, bodies, corrupt=False):
+        import hashlib
+        import io
+
+        served = list(bodies)
+        calls = []
+        expected = hashlib.sha256(self.GOOD).hexdigest()
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        def urlopen(request, timeout):
+            calls.append(request.full_url)
+            return Response(served.pop(0))
+
+        originals = (harness.resolve_image, harness.urllib.request.urlopen, harness.time.sleep)
+        harness.resolve_image = lambda image: ("https://mirror.invalid/i.qcow2", "i.qcow2", "SUMS", "sha256", expected)
+        harness.urllib.request.urlopen = urlopen
+        harness.time.sleep = lambda seconds: None
+        try:
+            return harness.download_image({}, Path(tempfile.mkdtemp()), 0, corrupt), calls
+        finally:
+            harness.resolve_image, harness.urllib.request.urlopen, harness.time.sleep = originals
+
+    def test_a_short_download_is_fetched_again(self):
+        info, calls = self.download([b"the ima", self.GOOD])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(Path(info["path"]).read_bytes(), self.GOOD)
+
+    def test_a_file_that_never_matches_fails_after_three_downloads(self):
+        with self.assertRaisesRegex(harness.CheckFailed, "after 3 downloads"):
+            self.download([b"x", b"y", b"z"])
+
+    def test_a_deliberate_break_does_not_retry(self):
+        with self.assertRaises(harness.CheckFailed):
+            self.download([self.GOOD, self.GOOD], corrupt=True)
+
+
 class Deadline(unittest.TestCase):
     def test_the_check_at_the_deadline_fails_and_the_rest_are_skipped(self):
         out = Path(tempfile.mkdtemp())
