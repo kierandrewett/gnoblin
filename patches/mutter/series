@@ -82,7 +82,6 @@
 24-shortcuts/0002-verified-shortcut-focus-context.patch
 25-animation/0001-native-animation-runtime.patch
 25-animation/0002-native-window-open-animation.patch
-22-supervisor-runtime/0002-bootstrap-supervised-runtime.patch
 15-preferences/0009-use-supervisor-config-snapshots.patch
 24-shortcuts/0003-capture-registered-super-shortcuts.patch
 13-screen-capture/0003-window-actor-png-preview.patch
@@ -134,7 +133,7 @@
 30-diagnostic-console/0002-route-console-keys-before-keybindings.patch
 30-diagnostic-console/0003-keep-pointer-input-from-clients-in-modal-console.patch
 30-diagnostic-console/0004-track-held-keys-before-the-console.patch
-22-supervisor-runtime/0003-build-monolithic-gnoblin.patch
+22-supervisor-runtime/0002-build-monolithic-gnoblin.patch
 30-diagnostic-console/0005-build-compositor-diagnostic-ui.patch
 31-cxx-compat/0001-cpp-compatible-clutter-cogl-enums.patch
 31-cxx-compat/0002-clutter-color-transform-cpp.patch
