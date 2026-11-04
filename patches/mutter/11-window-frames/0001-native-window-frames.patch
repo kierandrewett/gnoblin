@@ -3,7 +3,18 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:05:00 +0100
 Subject: [PATCH] mutter: add native window frames without Lua runtime sources
 
+Add native window frames without the Lua runtime sources, and attach the frames and the isolated renderer services
+to the surface state.
 ---
+ src/compositor/meta-window-actor-wayland.c      |  4 ++++
+ src/compositor/meta-window-actor.c              | 13 ++++++++++++-
+ src/wayland/meta-wayland-surface.c              |  4 ++++
+ src/wayland/meta-wayland-window-configuration.c |  1 +
+ src/wayland/meta-wayland-window-configuration.h |  2 ++
+ src/wayland/meta-wayland-xdg-shell.c            |  8 ++++++--
+ src/wayland/meta-window-wayland.c               |  9 ++++++---
+ 7 files changed, 35 insertions(+), 6 deletions(-)
+
 diff --git a/src/compositor/meta-window-actor-wayland.c b/src/compositor/meta-window-actor-wayland.c
 index 540975a6..310c953e 100644
 --- a/src/compositor/meta-window-actor-wayland.c
@@ -78,6 +89,35 @@ index ee1ac466..208a09a6 100644
    if (clip)
      {
        MtkRectangle tmp_clip;
+diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
+index 47a3de39..98724cc5 100644
+--- a/src/wayland/meta-wayland-surface.c
++++ b/src/wayland/meta-wayland-surface.c
+@@ -19,6 +19,7 @@
+  */
+ 
+ #include "config.h"
++#include "wayland/meta-gnoblin-frame-renderer.h"
+ 
+ #include "wayland/meta-wayland-surface-private.h"
+ 
+@@ -492,6 +493,7 @@ meta_wayland_surface_state_clear (MetaWaylandSurfaceState *state)
+ {
+   MetaWaylandFrameCallback *cb, *next;
+ 
++  g_object_set_data (G_OBJECT (state), "gnoblin-frame-commit", NULL);
+   g_clear_object (&state->texture);
+   g_clear_object (&state->drm_syncobj.acquire);
+   g_clear_object (&state->drm_syncobj.release);
+@@ -696,6 +698,8 @@ meta_wayland_surface_state_merge_into (MetaWaylandSurfaceState *from,
+   g_set_object (&to->drm_syncobj.release, from->drm_syncobj.release);
+   g_clear_object (&from->drm_syncobj.release);
+ 
++  meta_gnoblin_frame_renderer_merge_state (from, to);
++
+   if (from->has_new_color_state)
+     {
+       g_set_object (&to->color_state, from->color_state);
 diff --git a/src/wayland/meta-wayland-window-configuration.c b/src/wayland/meta-wayland-window-configuration.c
 index df309b9c..d17d9f35 100644
 --- a/src/wayland/meta-wayland-window-configuration.c
@@ -170,3 +210,6 @@ index 3fc42675..2634deaa 100644
  }
  
  void
+-- 
+2.55.0
+
