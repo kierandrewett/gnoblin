@@ -31,6 +31,8 @@ tree (Mutter or the GNOME portal backend).
     - `plugin/` — the Gnoblin Mutter plugin entry point and its console and
       recovery panels.
     - `effects/` — window effects drawn by the compositor.
+    - `animation/` — the native animation runtime (`gnoblin-animation.c`): open, close, minimize, restore, resize,
+      workspace-switch and dialog animations, and the animation preview sessions.
 - `config/` — configuration loading and the shared schema.
     - `lua/` — the Lua configuration loader, parser, and pattern matching used
       by the runtime and the portal backend.

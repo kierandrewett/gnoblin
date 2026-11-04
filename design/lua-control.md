@@ -24,7 +24,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Window resize
 
-- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/20-native-window-api/0010-native-window-resize-user-operation.patch` and `patches/mutter/26-animation/0014-animate-typed-window-resizes.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/20-native-window-api/0010-native-window-resize-user-operation.patch` and `patches/mutter/26-animation/0004-animate-typed-window-resizes.patch`
 - **Current Lua access:** Full for 2D frame size; interactive resize requires a live shortcut context
 - **What is needed:** Nothing beyond the existing 2D behavior.
 
@@ -96,7 +96,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Animation and effects
 
-- **Mutter or Gnoblin mechanism (file and function):** Lua methods in `src/config/lua/gnoblin-lua-animation.c`; compositor runtime in `patches/mutter/26-animation/0001-native-animation-runtime.patch`; effect rules in `src/control/windows/gnoblin-control-window-rules.c` (`native_apply_window_rules`)
+- **Mutter or Gnoblin mechanism (file and function):** Lua methods in `src/config/lua/gnoblin-lua-animation.c`; compositor runtime in `src/compositor/animation/gnoblin-animation.c`; effect rules in `src/control/windows/gnoblin-control-window-rules.c` (`native_apply_window_rules`)
 - **Current Lua access:** Partial: named lifecycle animations and preview controls; rules can set opacity, blur, shader, corners, shadows, and frames. No general live effect graph or frame-by-frame Lua callback
 - **What is needed:** Add bounded runtime effect properties and an animation timeline/event contract. Keep GPU work and frame pacing in Mutter; Lua supplies policy/targets, never executes on the render thread.
 

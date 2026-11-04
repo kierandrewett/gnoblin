@@ -1,6 +1,6 @@
 /* Annotations for animation APIs implemented in src/config/lua/gnoblin-lua-animation.c,
- * src/config/lua/gnoblin-lua-contexts.c, and the native compositor animation patch
- * patches/mutter/26-animation/0001-native-animation-runtime.patch. */
+ * src/config/lua/gnoblin-lua-contexts.c, and the native compositor animation runtime
+ * src/compositor/animation/gnoblin-animation.c. */
 
 /*** lua
 ---@class AnimationEaseBezier
