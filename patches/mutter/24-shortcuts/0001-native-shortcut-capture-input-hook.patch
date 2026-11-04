@@ -3,9 +3,17 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 28 Sep 2026 06:18:39 +0100
 Subject: [PATCH] core: add early native shortcut capture hook
 
+Add the early native shortcut capture hook, and dispatch the capture operations (with the stage cast they need)
+through it.
 ---
+ src/core/display-private.h |   9 ++++
+ src/core/display.c         |  23 +++++++++
+ src/core/events.c          | 100 +++++++++++++++++++++++++++++++++++++
+ src/core/events.h          |  15 ++++++
+ 4 files changed, 147 insertions(+)
+
 diff --git a/src/core/display-private.h b/src/core/display-private.h
-index 946015818..d05087e11 100644
+index 94601581..a77d87a8 100644
 --- a/src/core/display-private.h
 +++ b/src/core/display-private.h
 @@ -75,6 +75,12 @@ struct _MetaDisplay
@@ -21,17 +29,74 @@ index 946015818..d05087e11 100644
    /* Our best guess as to the "currently" focused window (that is, the
     * window that we expect will be focused at the point when the X
     * server processes our next request), and the serial of the request
+@@ -310,6 +316,9 @@ void meta_display_flush_queued_window (MetaDisplay   *display,
+ gboolean meta_display_process_captured_input (MetaDisplay        *display,
+                                               const ClutterEvent *event);
+ 
++gboolean meta_display_can_start_native_key_capture (MetaDisplay *display);
++void meta_display_cancel_native_key_capture (MetaDisplay *display);
++
+ void meta_display_cancel_input_capture (MetaDisplay *display);
+ 
+ void meta_display_handle_window_enter (MetaDisplay *display,
+diff --git a/src/core/display.c b/src/core/display.c
+index 45b860eb..af7d9f6a 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -627,6 +627,23 @@ meta_display_process_captured_input (MetaDisplay        *display,
+   return meta_input_capture_process_event (input_capture, event);
+ }
+ 
++gboolean
++meta_display_can_start_native_key_capture (MetaDisplay *display)
++{
++  MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
++  MetaBackend *backend = meta_context_get_backend (priv->context);
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++  gboolean stage_is_grabbed = TRUE;
++
++  if (stage)
++    g_object_get (stage, "is-grabbed", &stage_is_grabbed, NULL);
++
++  /* Do not pre-empt an input-capture portal or a popup/other stage grab. */
++  return !priv->enable_input_capture &&
++         stage != NULL &&
++         !stage_is_grabbed;
++}
++
+ void
+ meta_display_cancel_input_capture (MetaDisplay *display)
+ {
+@@ -648,6 +665,7 @@ enable_input_capture (MetaInputCapture *input_capture,
+   g_return_if_fail (!priv->enable_input_capture);
+ 
+   priv->enable_input_capture = TRUE;
++  meta_display_cancel_native_key_capture (display);
+ }
+ 
+ static void
+@@ -1120,6 +1138,11 @@ on_is_grabbed_changed (ClutterStage *stage,
+                        MetaDisplay  *display)
+ {
+   MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
++  gboolean is_grabbed = FALSE;
++
++  g_object_get (stage, "is-grabbed", &is_grabbed, NULL);
++  if (is_grabbed)
++    meta_display_cancel_native_key_capture (display);
+ 
+   if (!priv->focus_on_grab_dismissed.window)
+     return;
 diff --git a/src/core/events.c b/src/core/events.c
-index 2fa7b83fa..70696957f 100644
+index 544d34ce..c909e7eb 100644
 --- a/src/core/events.c
 +++ b/src/core/events.c
-@@ -158,6 +158,21 @@ meta_display_handle_event (MetaDisplay        *display,
+@@ -159,6 +159,20 @@ meta_display_handle_event (MetaDisplay        *display,
+   if (meta_display_process_captured_input (display, event))
      return CLUTTER_EVENT_STOP;
- #endif
  
-+  /* Shortcut capture must run after the session-lock embargo, but before
-+   * captured input, accessibility, text input, global keybindings, or
-+   * Wayland delivery can observe these keys. */
++  /* Shortcut capture must run after session-lock and input-capture embargoes,
++   * but before accessibility, text input, keybindings, or Wayland delivery. */
 +  if (IS_KEY_EVENT (event_type) &&
 +      display->native_key_capture_active
 +#ifdef HAVE_WAYLAND
@@ -44,10 +109,10 @@ index 2fa7b83fa..70696957f 100644
 +      return CLUTTER_EVENT_STOP;
 +    }
 +
-   if (meta_display_process_captured_input (display, event))
-     return CLUTTER_EVENT_STOP;
- 
-@@ -379,6 +394,72 @@ meta_display_init_events (MetaDisplay *display)
+   if (IS_KEY_EVENT (event_type))
+     {
+       gboolean should_inhibit_a11y = FALSE;
+@@ -359,6 +373,92 @@ meta_display_init_events (MetaDisplay *display)
  void
  meta_display_free_events (MetaDisplay *display)
  {
@@ -100,6 +165,26 @@ index 2fa7b83fa..70696957f 100644
 +    destroy (callback_data);
 +}
 +
++void
++meta_display_cancel_native_key_capture (MetaDisplay *display)
++{
++  gpointer user_data;
++
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  if (!display->native_key_capture_active ||
++      !display->native_key_capture_handler)
++    return;
++
++  user_data = display->native_key_capture_data;
++  display->native_key_capture_handler (NULL, user_data);
++
++  /* Cancellation callbacks normally unregister themselves. Keep the hook
++   * from remaining active if a caller fails to do so. */
++  if (display->native_key_capture_handler)
++    meta_display_unregister_native_key_capture_handler (display, user_data);
++}
++
 +gboolean
 +meta_display_start_native_key_capture (MetaDisplay *display)
 +{
@@ -121,7 +206,7 @@ index 2fa7b83fa..70696957f 100644
 +  display->native_key_capture_active = FALSE;
 +}
 diff --git a/src/core/events.h b/src/core/events.h
-index 590b85650..c4efb581c 100644
+index 590b8565..c4efb581 100644
 --- a/src/core/events.h
 +++ b/src/core/events.h
 @@ -34,3 +34,18 @@
@@ -143,3 +228,6 @@ index 590b85650..c4efb581c 100644
 +                                                         gpointer     user_data);
 +gboolean meta_display_start_native_key_capture (MetaDisplay *display);
 +void meta_display_stop_native_key_capture (MetaDisplay *display);
+-- 
+2.55.0
+
