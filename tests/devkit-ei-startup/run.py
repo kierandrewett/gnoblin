@@ -8,12 +8,16 @@ from pathlib import Path
 import resource
 import shlex
 import subprocess
+import sys
 import tempfile
 
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-PATCH = ROOT / "patches/mutter/10-tooling/0009-devkit-fail-on-eis-startup-disconnect.patch"
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCH = patch_series.find("mutter", "devkit-fail-on-eis-startup-disconnect")
 CASES = ("closed-peer", "null-error", "repeat", "rejected", "seat")
 
 

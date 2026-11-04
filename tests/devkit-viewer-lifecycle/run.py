@@ -15,12 +15,16 @@ import shlex
 import signal
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-PATCH = ROOT / "patches/mutter/10-tooling/0008-devkit-bind-viewer-to-compositor.patch"
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCH = patch_series.find("mutter", "devkit-bind-viewer-to-compositor")
 SOURCE = "src/core/meta-mdk.c"
 EVENT = struct.Struct("=5i")
 ENTER, INSTALLED, EXECUTED, SPAWNED, FAILED, THREAD_DONE = range(1, 7)
@@ -276,7 +280,7 @@ def main() -> int:
         source_path = directory / SOURCE
         source_path.parent.mkdir(parents=True)
         source_path.write_text(baseline)
-        previous = PATCH.with_name("0007-devkit-keep-session-after-viewer-exit.patch")
+        previous = patch_series.find("mutter", "devkit-keep-session-after-viewer-exit")
         subprocess.run(["git", "apply", str(previous)], cwd=directory, check=True)
         if not args.baseline:
             subprocess.run(["git", "apply", "--check", "--whitespace=error", str(PATCH)], cwd=directory, check=True)

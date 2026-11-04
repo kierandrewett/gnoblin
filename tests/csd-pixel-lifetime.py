@@ -12,11 +12,15 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCHES = ROOT / "patches/mutter/63-csd-sampling"
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCHES = patch_series.topic("mutter", "csd-sampling")
 
 
 def run(*args, **kwargs):
@@ -55,7 +59,7 @@ def main():
                     ["git", "-C", str(ROOT / "subprojects/mutter"), "show", f"{revision}:{relative}"]
                 )
             )
-        patches = sorted(PATCHES.glob("*.patch"))
+        patches = PATCHES
         for patch in patches[:2]:
             run("git", "-C", directory, "apply", str(patch))
         target = temporary / "src/compositor/meta-shaped-texture.c"

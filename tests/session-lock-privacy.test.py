@@ -7,13 +7,16 @@ also has to revoke its non-focus clients immediately.
 """
 
 from pathlib import Path
+import sys
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
 DATA_CONTROL = ROOT / "src/protocols/data-control/meta-wayland-data-control.c"
 MANAGER = ROOT / "src/protocols/session-lock/meta-wayland-session-lock.c"
-PRIVACY_PATCH = ROOT / "patches/mutter/73-session-lock-privacy"
+PRIVACY_PATCH = patch_series.find("mutter", "session-lock-embargo-clipboard-and-drag-offers")
 
 
 class SessionLockPrivacyTests(unittest.TestCase):
@@ -29,7 +32,7 @@ class SessionLockPrivacyTests(unittest.TestCase):
         self.assertNotIn("meta_selection_unset_owner(selection, META_SELECTION_CLIPBOARD", source)
 
     def test_native_clipboard_primary_drag_and_xwayland_paths_are_embargoed(self):
-        patch = "\n".join(path.read_text() for path in PRIVACY_PATCH.glob("*.patch"))
+        patch = PRIVACY_PATCH.read_text()
 
         self.assertIn("meta-wayland-data-offer.c", patch)
         self.assertIn("meta-wayland-data-offer-primary.c", patch)

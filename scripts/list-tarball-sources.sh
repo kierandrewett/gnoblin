@@ -26,39 +26,47 @@ case "$PROJECT" in
         ;;
 esac
 
+# The compatibility patches of one bundled dependency, one path per line in apply order. They are the entries of
+# patches/portal-dependencies/series in that dependency's topic directory, <NN>-<dependency>/.
 compatibility_patch_for() {
     local dependency="${1:?dependency required}"
+    local series="$ROOT/patches/portal-dependencies/series"
+    local entry found=1
 
-    case "$PROJECT:$dependency" in
-        xdg-desktop-portal-gnome:libgxdp)
-            printf '%s\n' "$ROOT/patches/portal-dependencies/libgxdp/0001-gtk-4.20-compat.patch"
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    [ "$PROJECT" = xdg-desktop-portal-gnome ] || return 1
+    while IFS= read -r entry; do
+        case "$entry" in
+            [0-9][0-9]-"$dependency"/*.patch)
+                printf '%s\n' "$ROOT/patches/portal-dependencies/$entry"
+                found=0
+                ;;
+        esac
+    done <"$series"
+    return "$found"
 }
 
 expected_compatibility_diff() {
     local dependency_root="${1:?dependency root required}"
-    local patch="${2:?patch required}"
-    local temporary_index
+    shift
+    local patch temporary_index
 
     temporary_index="$(mktemp)"
     rm -f -- "$temporary_index"
     GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" read-tree HEAD
-    GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" apply --cached "$patch"
+    for patch in "$@"; do
+        GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" apply --cached "$patch"
+    done
     GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" diff --cached --binary HEAD
     rm -f -- "$temporary_index"
 }
 
 compatibility_patch_is_exact() {
     local dependency_root="${1:?dependency root required}"
-    local patch="${2:?patch required}"
+    shift
     local expected actual
 
     git -C "$dependency_root" diff --cached --quiet || return 1
-    expected="$(expected_compatibility_diff "$dependency_root" "$patch")"
+    expected="$(expected_compatibility_diff "$dependency_root" "$@")"
     actual="$(git -C "$dependency_root" diff --binary HEAD)"
     [ "$actual" = "$expected" ]
 }
@@ -66,19 +74,23 @@ compatibility_patch_is_exact() {
 apply_compatibility_patch() {
     local dependency="${1:?dependency required}"
     local dependency_root="${2:?dependency root required}"
-    local patch
+    local patches patch
 
-    patch="$(compatibility_patch_for "$dependency" || true)"
-    [ -n "$patch" ] || return 0
-    [ -f "$patch" ] || {
-        echo "missing compatibility patch: $patch" >&2
-        exit 1
-    }
+    mapfile -t patches < <(compatibility_patch_for "$dependency" || true)
+    [ "${#patches[@]}" -gt 0 ] || return 0
+    for patch in "${patches[@]}"; do
+        [ -f "$patch" ] || {
+            echo "missing compatibility patch: $patch" >&2
+            exit 1
+        }
+    done
 
     if git -C "$dependency_root" diff --quiet &&
         git -C "$dependency_root" diff --cached --quiet; then
-        git -C "$dependency_root" apply "$patch"
-    elif ! compatibility_patch_is_exact "$dependency_root" "$patch"; then
+        for patch in "${patches[@]}"; do
+            git -C "$dependency_root" apply "$patch"
+        done
+    elif ! compatibility_patch_is_exact "$dependency_root" "${patches[@]}"; then
         echo "required subproject contains unknown local changes: $dependency" >&2
         exit 1
     fi
@@ -87,11 +99,11 @@ apply_compatibility_patch() {
 verify_compatibility_patch() {
     local dependency="${1:?dependency required}"
     local dependency_root="${2:?dependency root required}"
-    local patch
+    local patches
 
-    patch="$(compatibility_patch_for "$dependency" || true)"
-    [ -n "$patch" ] || return 0
-    if ! compatibility_patch_is_exact "$dependency_root" "$patch"; then
+    mapfile -t patches < <(compatibility_patch_for "$dependency" || true)
+    [ "${#patches[@]}" -gt 0 ] || return 0
+    if ! compatibility_patch_is_exact "$dependency_root" "${patches[@]}"; then
         echo "required subproject compatibility patch was not applied exactly: $dependency" >&2
         exit 1
     fi

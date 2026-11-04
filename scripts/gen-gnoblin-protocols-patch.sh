@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate patches/mutter/40-gnoblin-protocols/0001-*.patch.
+# Regenerate the gnoblin-protocols wiring patch in patches/mutter, found through its series.
 #
 # gnoblin's extra wlr-/ext- Wayland protocols are registered through a single
 # aggregated entry point (meta_gnoblin_init_protocols, an overlay file). This
@@ -20,7 +20,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TAG="$($ROOT/scripts/gnome-versions.py get mutter version)"
-OUT="$ROOT/patches/mutter/40-gnoblin-protocols"
+OUT="$("$ROOT/scripts/manage-patches.py" path mutter gnoblin-protocols-wire-gnoblin-s-extra-Wayland-proto)"
 TMP="$(mktemp -d /tmp/gnoblin-protocol-patch.XXXXXX)"
 WORKTREE="$TMP/mutter"
 trap 'git -C "$ROOT/subprojects/mutter" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
@@ -99,10 +99,8 @@ perl -0pi -e 's@(#include "wayland/meta-wayland-color-representation.h"\n)@$1#in
 perl -0pi -e 's@(  meta_wayland_xdg_shell_init \(compositor\);\n)@$1  meta_gnoblin_init_protocols (compositor);\n@' "$surface"
 
 git -C "$SM" add src/meson.build src/wayland/meta-wayland-surface.c
-mkdir -p "$OUT"
-"$ROOT/scripts/manage-patches.py" export-worktree mutter \
-    "$OUT/0001-gnoblin-protocols-wire-gnoblin-s-extra-Wayland-proto.patch" \
+"$ROOT/scripts/manage-patches.py" export-worktree mutter "$OUT" \
     --source-tree "$SM" --replace --unified 1 \
     --subject "gnoblin-protocols: wire Gnoblin's extra Wayland protocols into the build"
 
-echo ">> regenerated $(ls "$OUT"/*.patch)"
+echo ">> regenerated ${OUT#"$ROOT"/}"

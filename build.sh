@@ -253,8 +253,8 @@ fi
 if "$dry_run"; then
     mutter_version="$(./scripts/gnome-versions.py get mutter version 2>/dev/null || echo unknown)"
     portal_version="$(./scripts/gnome-versions.py get xdg-desktop-portal-gnome version 2>/dev/null || echo unknown)"
-    mutter_patches="$(find patches/mutter -name '*.patch' 2>/dev/null | wc -l)"
-    portal_patches="$(find patches/xdg-desktop-portal-gnome -name '*.patch' 2>/dev/null | wc -l)"
+    mutter_patches="$(wc -l <patches/mutter/series 2>/dev/null || echo 0)"
+    portal_patches="$(wc -l <patches/xdg-desktop-portal-gnome/series 2>/dev/null || echo 0)"
     printf 'Gnoblin build plan. Nothing has been changed.\n\nSettings\n'
     case "$source_mode" in
         checkout) echo '  Sources:         the pinned submodules of this checkout' ;;

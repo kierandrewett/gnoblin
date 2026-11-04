@@ -10,10 +10,14 @@ import runpy
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PATCH = ROOT / "patches/mutter/99-typed-window-api/0125-route-diagnostic-input-before-wayland.patch"
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCH = patch_series.find("mutter", "route-diagnostic-input-before-wayland")
 FUNCTIONS = {
     "clutter/clutter/clutter-main.c": ["void\nclutter_stage_handle_event ("],
     "clutter/clutter/clutter-event.c": ["gboolean\n_clutter_event_process_filters ("],
@@ -71,7 +75,7 @@ def main():
             target = directory / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(subprocess.check_output(["git", "-C", str(args.mutter_repo), "show", f"{pin}:{name}"]))
-        for patch in sorted((ROOT / "patches/mutter").rglob("*.patch")):
+        for patch in patch_series.series("mutter"):
             if args.baseline and patch == PATCH:
                 continue
             subprocess.run(

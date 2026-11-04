@@ -7,14 +7,16 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import patch_series  # noqa: E402
 from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES, RUNTIME_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
 SESSION = RUNTIME_SOURCES
 CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
-PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
+PAD_HELP_PATCH = patch_series.find("mutter", "emit-tablet-pad-help-without-layout")
 EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 
@@ -581,7 +583,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         overlay_manifest = overlay_manifests()
         lua = LUA.read_text()
-        mutter_patch = (ROOT / "patches/mutter/99-typed-window-api/0064-native-window-unminimize.patch").read_text()
+        mutter_patch = patch_series.find("mutter", "native-window-unminimize").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -644,9 +646,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        resize_patch = (
-            ROOT / "patches/mutter/99-typed-window-api/0065-native-window-resize-user-operation.patch"
-        ).read_text()
+        resize_patch = patch_series.find("mutter", "native-window-resize-user-operation").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -672,9 +672,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        move_patch = (
-            ROOT / "patches/mutter/99-typed-window-api/0066-native-window-move-user-operation.patch"
-        ).read_text()
+        move_patch = patch_series.find("mutter", "native-window-move-user-operation").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',

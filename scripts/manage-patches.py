@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """Export and check Gnoblin-owned patches with one mail author identity.
 
+patches/<project>/series lists the patches in apply order and is the only source of that order. The patch files sit
+in topic directories, <NN>-<topic>/<NNNN>-<slug>.patch. Both numbers are dense and follow the series.
+
 Usage:
   scripts/manage-patches.py check [PROJECT]
   scripts/manage-patches.py normalize [PROJECT]
+  scripts/manage-patches.py renumber [PROJECT]
+  scripts/manage-patches.py path PROJECT SLUG
   scripts/manage-patches.py export PROJECT REVISION OUTPUT [--replace]
   scripts/manage-patches.py export-worktree PROJECT OUTPUT --subject TEXT [--unified N]
+
+check fails when a .patch file is missing from its series, when the series names a missing file, when a file is
+listed twice, when the numbers are not dense, or when a patch lacks the Gnoblin author header. renumber rewrites
+the directory and file numbers from the series. export and export-worktree append a new patch to the series.
 
 For imported patches, keep the original author's credit in Original-Author.
 """
@@ -13,25 +22,67 @@ For imported patches, keep the original author's credit in Original-Author.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 
+import patch_series
+from patch_series import PATCH_ROOT, PROJECTS, ROOT
 
-ROOT = Path(__file__).resolve().parent.parent
-PATCH_ROOT = ROOT / "patches"
 AUTHOR = "kierandrewett <kieran@drewett.dev>"
-PROJECTS = ("mutter", "xdg-desktop-portal-gnome")
 AUTHOR_LINE = re.compile(r"(?m)^From: [^\r\n]+$")
 
 
 def paths(project: str | None) -> list[Path]:
-    base = PATCH_ROOT / project if project else PATCH_ROOT
-    selected = sorted(base.rglob("*.patch"))
+    """The patch files to inspect: the listed ones of the selected projects, plus packaged patches for a full run."""
+    selected = []
+    for name in [project] if project else PROJECTS:
+        selected += patch_series.series(name)
     if project is None:
         selected += sorted((ROOT / "packaging").rglob("*.patch"))
     return selected
+
+
+def renumber(project: str) -> int:
+    """Rename the files of one project to the layout its series implies, then rewrite the series."""
+    lines = patch_series.entries(project)
+    base = PATCH_ROOT / project
+    missing = [line for line in lines if not (base / line).is_file()]
+    if missing or len(set(lines)) != len(lines):
+        raise patch_series.SeriesError(
+            f"{project}: renumber needs every series entry to name one existing file, "
+            f"found {len(missing)} missing and {len(lines) - len(set(lines))} repeated; "
+            "edit the series with the current file names, then renumber"
+        )
+    wanted = patch_series.canonical(lines)
+    stage = base / ".renumber"
+    stage.mkdir()
+    try:
+        for number, line in enumerate(lines):
+            os.rename(base / line, stage / f"{number:05d}.patch")
+        for number, line in enumerate(wanted):
+            (base / line).parent.mkdir(exist_ok=True)
+            os.rename(stage / f"{number:05d}.patch", base / line)
+    finally:
+        stage.rmdir()
+    for directory in sorted(base.iterdir()):
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
+    patch_series.series_path(project).write_text("".join(f"{line}\n" for line in wanted))
+    moved = sum(1 for old, new in zip(lines, wanted) if old != new)
+    print(f"{project}: renamed {moved} of {len(lines)} patches")
+    return moved
+
+
+def list_new_patch(project: str, output: Path) -> None:
+    """Append an exported patch to the series when it is not listed yet."""
+    relative = output.relative_to(PATCH_ROOT / project).as_posix()
+    lines = patch_series.entries(project)
+    if relative not in lines:
+        patch_series.series_path(project).write_text("".join(f"{line}\n" for line in [*lines, relative]))
+        print(f"appended {relative} to {patch_series.series_path(project).relative_to(ROOT)}", file=sys.stderr)
 
 
 def normalize(content: str, source: str) -> str:
@@ -44,9 +95,12 @@ def normalize(content: str, source: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for command in ("check", "normalize"):
+    for command in ("check", "normalize", "renumber"):
         subcommand = commands.add_parser(command)
         subcommand.add_argument("project", choices=PROJECTS, nargs="?")
+    where = commands.add_parser("path", help="print the one patch file whose name is <NNNN>-SLUG.patch")
+    where.add_argument("project", choices=PROJECTS)
+    where.add_argument("slug")
     export = commands.add_parser("export")
     export.add_argument("project", choices=PROJECTS)
     export.add_argument("revision")
@@ -73,6 +127,8 @@ def main() -> int:
         expected_root = (PATCH_ROOT / args.project).resolve()
         if not output.is_relative_to(expected_root) or output.suffix != ".patch":
             parser.error(f"output must be a .patch under {expected_root}")
+        if not patch_series.ENTRY.fullmatch(output.relative_to(expected_root).as_posix()):
+            parser.error(f"output must be {expected_root}/<NN>-<topic>/<NNNN>-<slug>.patch")
         if output.exists() and not args.replace:
             parser.error(f"refusing to overwrite {output}; pass --replace")
         source = ROOT / "subprojects" / args.project
@@ -128,10 +184,39 @@ def main() -> int:
         temporary = output.with_name(f".{output.name}.tmp")
         temporary.write_text(content)
         temporary.replace(output)
+        list_new_patch(args.project, output)
         print(output.relative_to(ROOT))
         return 0
 
-    selected = paths(args.project)
+    if args.command == "path":
+        try:
+            print(patch_series.find(args.project, args.slug))
+        except patch_series.SeriesError as error:
+            print(error, file=sys.stderr)
+            return 1
+        return 0
+
+    if args.command == "renumber":
+        try:
+            for name in [args.project] if args.project else PROJECTS:
+                renumber(name)
+        except patch_series.SeriesError as error:
+            print(error, file=sys.stderr)
+            return 1
+        return 0
+
+    if args.command == "check":
+        listing = [
+            line for name in ([args.project] if args.project else PROJECTS) for line in patch_series.problems(name)
+        ]
+        if listing:
+            print("\n".join(listing), file=sys.stderr)
+            return 1
+    try:
+        selected = paths(args.project)
+    except patch_series.SeriesError as error:
+        print(error, file=sys.stderr)
+        return 1
     if not selected:
         parser.error("no Gnoblin patches found")
     changed = 0
