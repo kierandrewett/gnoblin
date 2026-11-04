@@ -671,7 +671,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("window.action resize requires integer width and height", handler)
         self.assertIn('"call", action, target)', handler)
         self.assertIn(
-            "meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,",
+            "meta_window_move_resize_frame(window, TRUE, frame.x, frame.y,",
             resize_patch,
         )
 
@@ -694,9 +694,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_variant_new_int64(json_node_get_int(x_node))", handler)
         self.assertIn("g_variant_new_int64(json_node_get_int(y_node))", handler)
         self.assertIn('"window.action move requires integer x and y"', handler)
-        self.assertIn("meta_window_is_fullscreen (window)", move_patch)
-        self.assertIn("meta_window_get_maximize_flags (window) != META_MAXIMIZE_NONE", move_patch)
-        self.assertIn("meta_window_move_frame (window, TRUE, (int) x, (int) y)", move_patch)
+        self.assertIn("meta_window_is_fullscreen(window)", move_patch)
+        self.assertIn("meta_window_get_maximize_flags(window) != META_MAXIMIZE_NONE", move_patch)
+        self.assertIn("meta_window_move_frame(window, TRUE, (int)x, (int)y)", move_patch)
 
     def test_legacy_workspace_and_monitor_actions_use_typed_lua_operations(self):
         source = control_source()
