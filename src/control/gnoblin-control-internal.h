@@ -294,7 +294,7 @@ struct _GnoblinNativeControl {
     GQueue* pending_runtime_events;
     GQueue* pending_input_events;
     GHashTable* held_input_dispositions;
-    GHashTable* pressed_keys; /* keycode -> keysym name of each key that is physically down */
+    GHashTable* pressed_keys; /* PressedKey of each key that is physically down, per keyboard */
     guint input_decision_timeout_id;
     guint64 next_input_request_id;
     gboolean input_policy_bypassed;
@@ -573,8 +573,11 @@ G_GNUC_INTERNAL void gnoblin_control_input_grab_key(GnoblinNativeControl* contro
 G_GNUC_INTERNAL void gnoblin_control_input_grab_end(GnoblinNativeControl* control,
                                                     const char* reason, gboolean publish);
 G_GNUC_INTERNAL void gnoblin_control_input_grab_free(GnoblinNativeControl* control);
+G_GNUC_INTERNAL GHashTable* gnoblin_control_pressed_keys_new(void);
 G_GNUC_INTERNAL void gnoblin_control_track_pressed_key(GnoblinNativeControl* control,
                                                        const ClutterEvent* event);
+G_GNUC_INTERNAL void gnoblin_control_forget_pressed_keys(GnoblinNativeControl* control,
+                                                         ClutterInputDevice* device);
 
 /* gnoblin-control-input-sources.c: XKB and IBus input sources. */
 G_GNUC_INTERNAL void gnoblin_control_window_input_source_free(gpointer data);

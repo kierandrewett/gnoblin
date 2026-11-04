@@ -320,6 +320,14 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
 
 ### Fixed
 
+- `gnoblin.input.grab` was refused for ever, naming a key that was up, after the release of that key was swallowed.
+  The compositor refuses a grab while a key is held and tracked the held keys behind the diagnostic console, which
+  takes every key while it is open: a key pressed before the console opened and released under it stayed held until
+  the user tapped it again. Held keys are now tracked ahead of the console (Mutter patch
+  `0132-track-held-keys-before-the-console`), so a key released under the console is up, and a key pressed under it
+  and still down afterwards refuses a grab until it lifts. Held keys are kept per keyboard, and a keyboard that is
+  removed drops the keys it held, so the removal of a device with a key down no longer refuses grabs. The refusal
+  for a key that is really down is unchanged.
 - A playing tween held a configuration reload back for 15 seconds, and the reload then failed. A reload now waits
   for every other pending operation but not for a tween. The compositor stops the tween when the new configuration
   takes effect, the `Operation` of `play()` succeeds with the outcome `"cancelled"`, and the `"closed"` signal of

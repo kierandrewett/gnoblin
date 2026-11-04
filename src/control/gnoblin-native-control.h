@@ -94,6 +94,10 @@ META_EXPORT
 void gnoblin_native_control_set_notice_handler(GnoblinNativeNoticeFunc handler, gpointer user_data);
 META_EXPORT
 gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
+/* Called first for every event of the stage input filter, before the diagnostic console can take
+ * a key: keeps the set of keys that are physically down. */
+META_EXPORT
+void gnoblin_native_control_track_key(MetaDisplay* display, const ClutterEvent* event);
 META_EXPORT
 gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const ClutterEvent* event,
                                                    ClutterActor* event_actor);

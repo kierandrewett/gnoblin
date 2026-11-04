@@ -10,9 +10,16 @@
  * and owned by the Lua generation or socket client that bound it, and activates for that owner
  * again, with a new session.
  *
+ * Contract 3: gnoblin.input.grab is refused while a key is held, with the message that names the
+ * key, and granted again once the key lifts. The set of held keys must not keep a key that can no
+ * longer lift: a keyboard that is removed drops its keys, and the same key on two keyboards is two
+ * entries. (A release swallowed by the diagnostic console is the stage filter's order of calls, in
+ * a Mutter patch; the nested-session smoke covers it.)
+ *
  * Failure modes this catches: the teardown flag dropped from the free guard, the free moved before
  * the flag, abort freeing; session end that unbinds, disarms, re-owns or releases the accelerator;
- * end reaching a binding of another owner, another generation or another session.
+ * end reaching a binding of another owner, another generation or another session; a grab granted
+ * with a key down, or refused for ever by a key whose keyboard is gone.
  *
  * Mutter, Clutter and the Lua runtime are stubs below. They record what the production code asks
  * of them; they do not model a desktop. */
@@ -23,6 +30,9 @@
 
 #include "gnoblin-api-operations.h"
 #include "gnoblin-chord.h"
+
+#include <xkbcommon/xkbcommon-compose.h>
+#include <xkbcommon/xkbcommon.h>
 
 typedef struct _MetaDisplay MetaDisplay;
 typedef struct _MetaWaylandCompositor MetaWaylandCompositor;
@@ -45,9 +55,30 @@ typedef void (*GnoblinNativeDebugFunc)(gboolean enabled, gpointer user_data);
 typedef guint32 xkb_mod_mask_t;
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 
+typedef struct _ClutterInputDevice ClutterInputDevice;
+
+typedef enum {
+    CLUTTER_NOTHING,
+    CLUTTER_MOTION,
+    CLUTTER_KEY_PRESS,
+    CLUTTER_KEY_RELEASE
+} ClutterEventType;
+
+typedef enum {
+    CLUTTER_EVENT_NONE = 0,
+    CLUTTER_EVENT_FLAG_SYNTHETIC = 1 << 0,
+    CLUTTER_EVENT_FLAG_INPUT_METHOD = 1 << 1,
+    CLUTTER_EVENT_FLAG_REPEATED = 1 << 2,
+} ClutterEventFlags;
+
 typedef struct _ClutterEvent {
     guint32 time;
     guint32 state;
+    ClutterEventType type;
+    ClutterEventFlags flags;
+    ClutterInputDevice* source;
+    guint32 code;
+    xkb_keysym_t keysym;
 } ClutterEvent;
 
 #define CLUTTER_SUPER_MASK (1u << 26)
@@ -100,6 +131,8 @@ void gnoblin_control_clear_runtime_dynamic_shortcuts(GnoblinNativeControl* contr
                                                      const char* reason);
 void gnoblin_control_remove_dynamic_shortcut(GnoblinNativeControl* control,
                                              NativeDynamicShortcut* shortcut);
+void gnoblin_control_input_grab_end(GnoblinNativeControl* control, const char* reason,
+                                    gboolean publish);
 
 /* ---- Boundary stubs. ---- */
 void gnoblin_control_input_sources_release(GnoblinNativeControl* control) {
@@ -109,8 +142,6 @@ void gnoblin_control_input_sources_release(GnoblinNativeControl* control) {
 void gnoblin_control_clear_pending_location_authorizations(GnoblinNativeControl* control) {}
 void gnoblin_control_corner_toolkit_cache_shutdown(GnoblinNativeControl* control) {}
 void native_runtime_fail_pending_requests(GnoblinNativeControl* control, const char* reason) {}
-void gnoblin_control_input_grab_end(GnoblinNativeControl* control, const char* reason,
-                                    gboolean notify) {}
 void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean complete, gboolean ok,
                                   const char* accelerator, const char* error_code,
                                   const char* message) {}
@@ -188,6 +219,26 @@ guint32 clutter_event_get_time(const ClutterEvent* event) {
 
 guint32 clutter_event_get_state(const ClutterEvent* event) {
     return event->state;
+}
+
+ClutterEventType clutter_event_type(const ClutterEvent* event) {
+    return event->type;
+}
+
+ClutterEventFlags clutter_event_get_flags(const ClutterEvent* event) {
+    return event->flags;
+}
+
+ClutterInputDevice* clutter_event_get_source_device(const ClutterEvent* event) {
+    return event->source;
+}
+
+guint32 clutter_event_get_key_code(const ClutterEvent* event) {
+    return event->code;
+}
+
+guint clutter_event_get_key_symbol(const ClutterEvent* event) {
+    return event->keysym;
 }
 
 ClutterEvent* clutter_event_copy(const ClutterEvent* event) {
@@ -613,6 +664,182 @@ static void test_socket_binding_survives_session_end_and_activates_again(void) {
     g_free(control);
 }
 
+/* ---- Contract 3: a grab is refused while a key is held, and the set of held keys does not keep
+ * a key that can no longer lift. The production entry point is gnoblin_control_input_grab. ---- */
+static int display_token;
+static int keyboard_a_token;
+static int keyboard_b_token;
+#define DISPLAY ((MetaDisplay*)&display_token)
+#define KEYBOARD_A ((ClutterInputDevice*)&keyboard_a_token)
+#define KEYBOARD_B ((ClutterInputDevice*)&keyboard_b_token)
+#define EVDEV_A 30
+#define EVDEV_B 48
+
+static GnoblinNativeControl* new_grab_control(void) {
+    GnoblinNativeControl* control = g_new0(GnoblinNativeControl, 1);
+    control->display = DISPLAY;
+    control->runtime_generation = 7;
+    control->pressed_keys = gnoblin_control_pressed_keys_new();
+    /* A table of the test's own: the grab then does not look for the compose file of the locale. */
+    struct xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    static const char compose[] = "<Multi_key> <a> <b> : \"x\"\n";
+    control->compose_table =
+        xkb_compose_table_new_from_buffer(context, compose, sizeof compose - 1, "C",
+                                          XKB_COMPOSE_FORMAT_TEXT_V1, XKB_COMPOSE_COMPILE_NO_FLAGS);
+    xkb_context_unref(context);
+    g_assert_nonnull(control->compose_table);
+    return control;
+}
+
+static void free_grab_control(GnoblinNativeControl* control) {
+    gnoblin_control_input_grab_end(control, "runtime_stopped", FALSE);
+    g_clear_pointer((struct xkb_compose_table**)&control->compose_table, xkb_compose_table_unref);
+    g_clear_pointer(&control->pressed_keys, g_hash_table_unref);
+    g_free(control);
+}
+
+static void feed_key(GnoblinNativeControl* control, ClutterEventType type,
+                     ClutterInputDevice* device, guint32 code, xkb_keysym_t keysym,
+                     ClutterEventFlags flags) {
+    ClutterEvent event = {
+        .type = type, .flags = flags, .source = device, .code = code, .keysym = keysym};
+    gnoblin_control_track_pressed_key(control, &event);
+}
+
+static void press_key(GnoblinNativeControl* control, ClutterInputDevice* device, guint32 code,
+                      xkb_keysym_t keysym) {
+    feed_key(control, CLUTTER_KEY_PRESS, device, code, keysym, CLUTTER_EVENT_NONE);
+}
+
+static void release_key(GnoblinNativeControl* control, ClutterInputDevice* device, guint32 code,
+                        xkb_keysym_t keysym) {
+    feed_key(control, CLUTTER_KEY_RELEASE, device, code, keysym, CLUTTER_EVENT_NONE);
+}
+
+static GVariant* start_grab(GnoblinNativeControl* control, GError** error) {
+    g_autoptr(GVariant) arguments =
+        g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
+    return gnoblin_control_input_grab(control, 1, arguments, 7, error);
+}
+
+/* The grab is refused with the message of 1b5934d9, which names the held key. */
+static void assert_grab_refused_naming(GnoblinNativeControl* control, const char* key) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) result = start_grab(control, &error);
+    g_assert_null(result);
+    g_assert_error(error, G_IO_ERROR, G_IO_ERROR_BUSY);
+    g_autofree char* named = g_strdup_printf("while a key is held (%s); its release would", key);
+    g_assert_nonnull(strstr(error->message, named));
+    g_assert_null(control->input_grab);
+}
+
+static void assert_grab_granted(GnoblinNativeControl* control) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) result = start_grab(control, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(result);
+    g_assert_nonnull(control->input_grab);
+    gnoblin_control_input_grab_end(control, "released", FALSE);
+    g_assert_null(control->input_grab);
+}
+
+/* The rule of 1b5934d9 still holds: a key that is down refuses the grab, and its release ends the
+ * refusal. */
+static void test_grab_is_refused_while_a_key_is_held_and_granted_once_it_lifts(void) {
+    GnoblinNativeControl* control = new_grab_control();
+    assert_grab_granted(control);
+
+    press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    assert_grab_refused_naming(control, "a");
+    assert_grab_refused_naming(control, "a");
+    release_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    assert_grab_granted(control);
+
+    /* A keysym without a name of its own is named by its number. */
+    press_key(control, KEYBOARD_A, EVDEV_B, 0x10203040);
+    assert_grab_refused_naming(control, "0x10203040");
+    release_key(control, KEYBOARD_A, EVDEV_B, 0x10203040);
+    assert_grab_granted(control);
+    free_grab_control(control);
+}
+
+/* A release that never comes (the keyboard is unplugged, or a virtual device is removed with its
+ * key down) must not keep the grab refused. The seat tells that the keyboard is gone. */
+static void test_a_removed_keyboard_drops_the_keys_it_held(void) {
+    GnoblinNativeControl* control = new_grab_control();
+    press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    press_key(control, KEYBOARD_A, EVDEV_B, XKB_KEY_b);
+    assert_grab_refused_naming(control, "a");
+
+    gnoblin_control_forget_pressed_keys(control, KEYBOARD_A);
+    assert_grab_granted(control);
+
+    /* Forgetting a keyboard that holds nothing, or that is already gone, changes nothing. */
+    gnoblin_control_forget_pressed_keys(control, KEYBOARD_A);
+    assert_grab_granted(control);
+    free_grab_control(control);
+}
+
+static void test_removing_one_keyboard_keeps_the_keys_of_another(void) {
+    GnoblinNativeControl* control = new_grab_control();
+    press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    press_key(control, KEYBOARD_B, EVDEV_B, XKB_KEY_b);
+
+    gnoblin_control_forget_pressed_keys(control, KEYBOARD_A);
+    assert_grab_refused_naming(control, "b");
+    release_key(control, KEYBOARD_B, EVDEV_B, XKB_KEY_b);
+    assert_grab_granted(control);
+    free_grab_control(control);
+}
+
+static void test_the_same_key_on_two_keyboards_is_two_held_keys(void) {
+    GnoblinNativeControl* control = new_grab_control();
+    press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    press_key(control, KEYBOARD_B, EVDEV_A, XKB_KEY_a);
+
+    release_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    assert_grab_refused_naming(control, "a");
+    release_key(control, KEYBOARD_B, EVDEV_A, XKB_KEY_a);
+    assert_grab_granted(control);
+
+    /* The second keyboard goes away with the key down: only the first lifts it. */
+    press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    press_key(control, KEYBOARD_B, EVDEV_A, XKB_KEY_a);
+    gnoblin_control_forget_pressed_keys(control, KEYBOARD_B);
+    assert_grab_refused_naming(control, "a");
+    release_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    assert_grab_granted(control);
+    free_grab_control(control);
+}
+
+static void test_repeats_count_once_and_synthetic_or_unseen_events_hold_nothing(void) {
+    GnoblinNativeControl* control = new_grab_control();
+
+    /* Autorepeat sends more presses of a key that is already down; one release lifts it. */
+    press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    feed_key(control, CLUTTER_KEY_PRESS, KEYBOARD_A, EVDEV_A, XKB_KEY_a,
+             CLUTTER_EVENT_FLAG_REPEATED);
+    feed_key(control, CLUTTER_KEY_PRESS, KEYBOARD_A, EVDEV_A, XKB_KEY_a,
+             CLUTTER_EVENT_FLAG_REPEATED);
+    assert_grab_refused_naming(control, "a");
+    release_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    assert_grab_granted(control);
+
+    /* A key that is not a key of a keyboard (an input method, a synthetic press) is not held. */
+    feed_key(control, CLUTTER_KEY_PRESS, KEYBOARD_A, EVDEV_A, XKB_KEY_a,
+             CLUTTER_EVENT_FLAG_SYNTHETIC);
+    feed_key(control, CLUTTER_KEY_PRESS, KEYBOARD_A, EVDEV_B, XKB_KEY_b,
+             CLUTTER_EVENT_FLAG_INPUT_METHOD);
+    assert_grab_granted(control);
+
+    /* The release of a key whose press was never seen, and an event that is not a key, hold
+     * nothing either. */
+    release_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
+    feed_key(control, CLUTTER_MOTION, KEYBOARD_A, EVDEV_A, XKB_KEY_a, CLUTTER_EVENT_NONE);
+    assert_grab_granted(control);
+    free_grab_control(control);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     released = g_ptr_array_new();
@@ -636,5 +863,15 @@ int main(int argc, char** argv) {
                     test_runtime_abort_ends_the_session_and_releases_only_lua_bindings);
     g_test_add_func("/shortcut/socket-binding-survives-session-end",
                     test_socket_binding_survives_session_end_and_activates_again);
+    g_test_add_func("/held-keys/grab-is-refused-while-a-key-is-held",
+                    test_grab_is_refused_while_a_key_is_held_and_granted_once_it_lifts);
+    g_test_add_func("/held-keys/removed-keyboard-drops-its-keys",
+                    test_a_removed_keyboard_drops_the_keys_it_held);
+    g_test_add_func("/held-keys/other-keyboards-keep-their-keys",
+                    test_removing_one_keyboard_keeps_the_keys_of_another);
+    g_test_add_func("/held-keys/same-key-on-two-keyboards",
+                    test_the_same_key_on_two_keyboards_is_two_held_keys);
+    g_test_add_func("/held-keys/repeat-synthetic-and-unseen",
+                    test_repeats_count_once_and_synthetic_or_unseen_events_hold_nothing);
     return g_test_run();
 }

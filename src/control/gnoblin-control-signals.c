@@ -682,6 +682,7 @@ void input_device_added(ClutterSeat* seat, ClutterInputDevice* device, gpointer 
 void input_device_removed(ClutterSeat* seat, ClutterInputDevice* device, gpointer user_data) {
     (void)seat;
     GnoblinNativeControl* control = user_data;
+    gnoblin_control_forget_pressed_keys(control, device);
     if (control->pending_input_events && !g_queue_is_empty(control->pending_input_events))
         native_input_cancel_pending(
             control, !(control->wayland_compositor &&

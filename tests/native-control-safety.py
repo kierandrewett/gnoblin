@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the native control safety contracts as behaviour, without a compositor.
 
-Two contracts, each with a real code path behind it:
+Three contracts, each with a real code path behind it:
 
 * After a Lua runtime abort, the native control is freed only after compositor teardown has
   finished and the last async callback has returned (native_control_maybe_free_stopped,
@@ -9,6 +9,10 @@ Two contracts, each with a real code path behind it:
 * Ending a shortcut session leaves the binding with its owner, registered and armed, so the
   next activation reaches the same owner (dynamic_shortcut_end_session, shortcut.session.end for
   Lua and socket owners, dispatch_dynamic_shortcut_activated).
+* gnoblin.input.grab is refused while a key is held and granted once it lifts, and the set of held
+  keys drops the keys of a keyboard that is removed (gnoblin_control_input_grab,
+  gnoblin_control_track_pressed_key, gnoblin_control_forget_pressed_keys). The release a console
+  swallows is a matter of the stage filter's call order in a Mutter patch, not of these functions.
 
 The production functions and structs are extracted verbatim from src/ and compiled with real
 GLib and JSON-GLib; the Mutter, Clutter and Lua-runtime boundaries are stubs. A production edit
@@ -98,6 +102,7 @@ def build(directory):
     private = read(CONTROL / "gnoblin-native-control-private.h")
     shortcuts = INPUT / "gnoblin-control-shortcuts.c"
     focus = CONTROL / "gnoblin-control-focus.c"
+    grabs = CONTROL / "gnoblin-control-grabs.c"
 
     types = "\n".join(
         [
@@ -105,6 +110,10 @@ def build(directory):
             define_line(private, "FOCUS_CONTEXT_LIFETIME_US"),
             define_line(read(shortcuts), "MAX_DYNAMIC_SHORTCUTS_PER_CLIENT"),
             define_line(read(shortcuts), "MAX_DYNAMIC_SHORTCUTS"),
+            define_line(read(grabs), "GRAB_DEFAULT_TIMEOUT"),
+            define_line(read(grabs), "GRAB_MAX_TIMEOUT"),
+            typedef_block(read(grabs), "InputGrab"),
+            typedef_block(read(grabs), "PressedKey"),
             "typedef struct _NativeDynamicShortcut NativeDynamicShortcut;",
             "typedef struct _NativeCornerToolkitCache NativeCornerToolkitCache;",
             "typedef struct _GnoblinControlPromptBroker GnoblinControlPromptBroker;",
@@ -166,6 +175,25 @@ def build(directory):
         ),
         functions(
             CONTROL / "gnoblin-control-runtime-channel.c", ["static GVariant* native_runtime_shortcut_operation("]
+        ),
+        # The keyboard grab and the set of held keys it reads.
+        functions(
+            grabs,
+            [
+                "static void grab_free(",
+                "static void grab_publish_closed(",
+                "void gnoblin_control_input_grab_end(",
+                "static gboolean grab_expired(",
+                "static void grab_arm(",
+                "static struct xkb_compose_table* compose_table(",
+                "static guint pressed_key_hash(",
+                "static gboolean pressed_key_equal(",
+                "GHashTable* gnoblin_control_pressed_keys_new(",
+                "void gnoblin_control_track_pressed_key(",
+                "void gnoblin_control_forget_pressed_keys(",
+                "static gboolean refuse_while_key_held(",
+                "GVariant* gnoblin_control_input_grab(",
+            ],
         ),
     ]
     (directory / "production.inc").write_text("\n".join(code))

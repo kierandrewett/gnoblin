@@ -140,6 +140,11 @@ runtime. The compositor gives the keyboard back in every case.
   application, which saw the press, would never see the key lift. The `Grab` ends when the compositor answers, with a
   reason that names the key that is held. A shortcut that fires on a press has its keys down, so start the grab from a
   key release, from a timer, or from a later event.
+- The keys that count as down are the keys that are physically down. The compositor watches key events ahead of every
+  other handler, so a key pressed or released while the diagnostic console is open counts as it would anywhere else: a
+  key released under the console does not stay down.
+- Each keyboard holds its own keys. A keyboard that is removed (unplugged, or a remote-desktop device that goes away)
+  lets go of the keys it held. A grab is refused only for a key that is still down.
 
 ## Why shortcut sessions keep their own timer
 
