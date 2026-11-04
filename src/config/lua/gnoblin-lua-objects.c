@@ -1,10 +1,12 @@
-/* Live handles for the things a shell touches: windows, workspaces, layer surfaces and outputs.
+/* Live handles for the things a shell touches: windows, workspaces, layer surfaces, outputs,
+ * shortcuts, launches and input sources.
  *
- * A record of one of these kinds is interned by kind and id, so every read of the same window
+ * A record of one of these kinds is interned by kind and key, so every read of the same window
  * returns the same userdata and that userdata always shows the newest state the runtime has seen.
- * Each kind declares its signals here; its properties are the fields of its annotated class (the
- * one declaration, see api/windows.h). A handle reports its end with the "closed" signal and
- * `alive == false`, and `watch` calls back when one declared property changes.
+ * The key is the record's id, except that a launch has its token and an input source has its type
+ * and id. Each kind declares its signals here; its properties are the fields of its annotated
+ * class (the one declaration, see api/windows.h). A handle reports its end with the "closed"
+ * signal and `alive == false`, and `watch` calls back when one declared property changes.
  *
  *   handle:on(signal, fn)       fn(handle, ...) for each signal; returns {unsubscribe = fn}
  *   handle:watch(property, fn)  fn(handle, value, old) when the property changes
@@ -18,42 +20,72 @@ typedef struct {
     const char* kind;
     const char* const* signals;
     const char* const* animatable; /* properties a tween can drive (gnoblin-lua-tween.c) */
+    const char* key;               /* record field that names one object; "id" when NULL */
+    gboolean diffs; /* its events carry no `changed` list: compare the record with the handle */
 } LuaObjectKind;
 
 static const char* const window_signals[] = {"changed", "closed", "focused", "unfocused", NULL};
 static const char* const workspace_signals[] = {"changed", "closed", "activated", NULL};
 static const char* const changed_closed[] = {"changed", "closed", NULL};
+static const char* const shortcut_signals[] = {"activated",   "deactivated",   "session_activated",
+                                               "session_key", "session_ended", "closed",
+                                               NULL};
+static const char* const launch_signals[] = {"changed", "started", "timed_out", "closed", NULL};
 static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
 static const char* const none[] = {NULL};
 
 static const LuaObjectKind object_kinds[] = {
-    {"Window", window_signals, window_animatable},
-    {"Workspace", workspace_signals, none},
-    {"LayerSurface", changed_closed, none},
-    {"Output", changed_closed, none},
+    {"Window", window_signals, window_animatable, NULL},
+    {"Workspace", workspace_signals, none, NULL},
+    {"LayerSurface", changed_closed, none, NULL},
+    {"Output", changed_closed, none, NULL},
+    {"Shortcut", shortcut_signals, none, NULL},
+    {"Launch", launch_signals, none, "token", TRUE},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
- * raise and which property (besides any `changed` list) they change. */
+ * raise and which property (besides any `changed` list) they change. An entry with a state applies
+ * only when the record's "state" is `when_state`, or is not `unless_state`; one event may have
+ * several entries. */
 static const struct {
     const char* event;
     const char* kind;
     const char* field;
     const char* signal;
     const char* property;
+    const char* when_state;
+    const char* unless_state;
 } object_events[] = {
-    {"gnoblin.window.changed", "Window", "window", "changed", NULL},
-    {"gnoblin.window.focused", "Window", "window", "focused", "focused"},
-    {"gnoblin.window.unfocused", "Window", "window", "unfocused", "focused"},
-    {"gnoblin.window.closed", "Window", "last", "closed", NULL},
-    {"gnoblin.workspace.changed", "Workspace", "workspace", "changed", NULL},
-    {"gnoblin.workspace.renamed", "Workspace", "workspace", "changed", "name"},
-    {"gnoblin.workspace.activated", "Workspace", "workspace", "activated", "active"},
-    {"gnoblin.workspace.removed", "Workspace", "last", "closed", NULL},
-    {"gnoblin.layer.changed", "LayerSurface", "layer", "changed", NULL},
-    {"gnoblin.layer.removed", "LayerSurface", "last", "closed", NULL},
-    {"gnoblin.output.changed", "Output", "output", "changed", NULL},
-    {"gnoblin.output.removed", "Output", "last", "closed", NULL},
+    {"gnoblin.window.changed", "Window", "window", "changed", NULL, NULL, NULL},
+    {"gnoblin.window.focused", "Window", "window", "focused", "focused", NULL, NULL},
+    {"gnoblin.window.unfocused", "Window", "window", "unfocused", "focused", NULL, NULL},
+    {"gnoblin.window.closed", "Window", "last", "closed", NULL, NULL, NULL},
+    {"gnoblin.workspace.changed", "Workspace", "workspace", "changed", NULL, NULL, NULL},
+    {"gnoblin.workspace.renamed", "Workspace", "workspace", "changed", "name", NULL, NULL},
+    {"gnoblin.workspace.activated", "Workspace", "workspace", "activated", "active", NULL, NULL},
+    {"gnoblin.workspace.removed", "Workspace", "last", "closed", NULL, NULL, NULL},
+    {"gnoblin.layer.changed", "LayerSurface", "layer", "changed", NULL, NULL, NULL},
+    {"gnoblin.layer.removed", "LayerSurface", "last", "closed", NULL, NULL, NULL},
+    {"gnoblin.output.changed", "Output", "output", "changed", NULL, NULL, NULL},
+    {"gnoblin.output.removed", "Output", "last", "closed", NULL, NULL, NULL},
+    {"gnoblin.launch.changed", "Launch", "launch", "changed", NULL, NULL, NULL},
+    {"gnoblin.launch.changed", "Launch", "launch", "started", NULL, "started", NULL},
+    {"gnoblin.launch.changed", "Launch", "launch", "timed_out", NULL, "timed_out", NULL},
+    {"gnoblin.launch.changed", "Launch", "launch", "closed", NULL, NULL, "pending"},
+};
+
+/* Events that raise a signal on an object without changing its record: the payload names the
+ * object by "id" and goes to the listener as its event. */
+static const struct {
+    const char* event;
+    const char* kind;
+    const char* signal;
+} signal_events[] = {
+    {"gnoblin.shortcut.binding-activated", "Shortcut", "activated"},
+    {"gnoblin.shortcut.binding-deactivated", "Shortcut", "deactivated"},
+    {"gnoblin.shortcut.session.activated", "Shortcut", "session_activated"},
+    {"gnoblin.shortcut.session.key", "Shortcut", "session_key"},
+    {"gnoblin.shortcut.session.ended", "Shortcut", "session_ended"},
 };
 
 static const LuaObjectKind* object_kind(const char* kind) {
@@ -92,20 +124,26 @@ static int push_registry_table(lua_State* state, const char* key, gboolean weak)
     return lua_absindex(state, -1);
 }
 
-/* Push "Kind:id" for the handle at `index`, or nothing and FALSE when it is not a live handle. */
+/* Push "Kind:key" for the handle at `index`, or nothing and FALSE when it is not a live handle. */
 static gboolean push_handle_key(lua_State* state, int index, const char* kind) {
     index = lua_absindex(state, index);
     if (!luaL_testudata(state, index, LUA_READONLY_SNAPSHOT_METATABLE))
         return FALSE;
+    const LuaObjectKind* type = object_kind(kind);
+    int base = lua_gettop(state);
     lua_getiuservalue(state, index, 1);
-    lua_getfield(state, -1, "id");
-    if (lua_type(state, -1) != LUA_TSTRING) {
-        lua_pop(state, 2);
+    int backing = lua_absindex(state, -1);
+    const char* id =
+        lua_getfield(state, backing, type && type->key ? type->key : "id") == LUA_TSTRING
+            ? lua_tostring(state, -1)
+            : NULL;
+    if (!id) {
+        lua_settop(state, base);
         return FALSE;
     }
-    lua_pushfstring(state, "%s:%s", kind, lua_tostring(state, -1));
-    lua_replace(state, -3);
-    lua_pop(state, 1);
+    lua_pushfstring(state, "%s:%s", kind, id);
+    lua_replace(state, base + 1);
+    lua_settop(state, base + 1);
     return TRUE;
 }
 
@@ -129,14 +167,39 @@ static gboolean handle_closed(lua_State* state, int index) {
     return closed && *closed;
 }
 
-/* Replace the new record at `index` with the interned handle for its kind and id, moving the new
- * state into the handle. The handle keeps its identity and its ended state. */
+/* Whether the "state" field of the record at `index` equals `value`. */
+static gboolean record_state_is(lua_State* state, int index, const char* value) {
+    index = lua_absindex(state, index);
+    lua_getiuservalue(state, index, 1);
+    gboolean same = lua_getfield(state, -1, "state") == LUA_TSTRING &&
+                    g_str_equal(lua_tostring(state, -1), value);
+    lua_pop(state, 2);
+    return same;
+}
+
+/* A launch ends when it stops waiting for its window. */
+static gboolean record_has_ended(lua_State* state, const char* kind, int index) {
+    return g_str_equal(kind, "Launch") && !record_state_is(state, index, "pending");
+}
+
+/* Replace the new record at `index` with the interned handle for its kind and key, moving the new
+ * state into the handle. The handle keeps its identity and its ended state. A new launch with the
+ * token of an ended one is another object. */
 void lua_object_intern(lua_State* state, const char* kind, int index) {
     index = lua_absindex(state, index);
     if (!push_handle_key(state, index, kind))
         return;
     int key = lua_absindex(state, -1);
     int handles = push_registry_table(state, LUA_OBJECT_HANDLES_KEY, TRUE);
+    if (g_str_equal(kind, "Launch") && record_state_is(state, index, "pending")) {
+        lua_pushvalue(state, key);
+        if (lua_rawget(state, handles) == LUA_TUSERDATA && handle_closed(state, -1)) {
+            lua_pushvalue(state, key);
+            lua_pushnil(state);
+            lua_rawset(state, handles);
+        }
+        lua_pop(state, 1);
+    }
     lua_pushvalue(state, key);
     if (lua_rawget(state, handles) == LUA_TUSERDATA && !lua_rawequal(state, -1, index)) {
         int handle = lua_absindex(state, -1);
@@ -152,6 +215,8 @@ void lua_object_intern(lua_State* state, const char* kind, int index) {
         lua_rawset(state, handles);
     }
     lua_settop(state, key - 1);
+    if (record_has_ended(state, kind, index))
+        *(gboolean*)lua_touserdata(state, index) = TRUE;
     /* `alive` lives in the method table, which every new state replaces. */
     lua_getiuservalue(state, index, 2);
     lua_pushboolean(state, !handle_closed(state, index));
@@ -189,6 +254,41 @@ static gboolean push_listener_record(lua_State* state, int index, const char* ki
     lua_replace(state, key);
     lua_settop(state, key);
     return TRUE;
+}
+
+/* Keep the handle at `index` alive, and listed, until it ends. */
+void lua_object_hold(lua_State* state, const char* kind, int index) {
+    if (push_listener_record(state, index, kind, TRUE))
+        lua_pop(state, 1);
+}
+
+static int compare_keys(gconstpointer a, gconstpointer b) {
+    return strcmp(*(const char* const*)a, *(const char* const*)b);
+}
+
+/* Push an array of the live handles of `kind` that something holds, ordered by key. */
+void lua_object_push_held(lua_State* state, const char* kind) {
+    int listeners = push_registry_table(state, LUA_OBJECT_LISTENERS_KEY, FALSE);
+    g_autofree char* prefix = g_strdup_printf("%s:", kind);
+    g_autoptr(GPtrArray) keys = g_ptr_array_new_with_free_func(g_free);
+    lua_pushnil(state);
+    while (lua_next(state, listeners)) {
+        if (lua_type(state, -2) == LUA_TSTRING && g_str_has_prefix(lua_tostring(state, -2), prefix))
+            g_ptr_array_add(keys, g_strdup(lua_tostring(state, -2)));
+        lua_pop(state, 1);
+    }
+    g_ptr_array_sort(keys, compare_keys);
+    lua_newtable(state);
+    mark_array_table(state, -1);
+    int result = lua_absindex(state, -1);
+    for (guint i = 0; i < keys->len; i++) {
+        lua_pushstring(state, g_ptr_array_index(keys, i));
+        lua_rawget(state, listeners);
+        lua_getfield(state, -1, "handle");
+        lua_remove(state, -2);
+        lua_rawseti(state, result, i + 1);
+    }
+    lua_replace(state, listeners);
 }
 
 /* Append `entry` (top of stack, popped) to list `name` in the table at `parent`. */
@@ -284,8 +384,10 @@ void lua_object_add_methods(lua_State* state, int method_table, const char* kind
 }
 
 /* Call each active entry of the list at `list` as fn(handle, ...) with `extra` arguments taken
- * from the stack top. Returns how many ran; a failing callback is logged. */
-static guint run_entries(lua_State* state, int list, int handle, int extra, const char* label) {
+ * from the stack top, or, when `event` is given, as fn(handle, event) with a new event table for
+ * each entry. Returns how many ran; a failing callback is logged. */
+static guint run_entries(lua_State* state, int list, int handle, int extra, const char* label,
+                         const char* event, GVariant* event_payload) {
     list = lua_absindex(state, list);
     handle = lua_absindex(state, handle);
     int first_extra = lua_gettop(state) - extra + 1;
@@ -303,9 +405,14 @@ static guint run_entries(lua_State* state, int list, int handle, int extra, cons
         lua_getfield(state, -1, "fn");
         lua_remove(state, -2);
         lua_pushvalue(state, handle);
-        for (int arg = 0; arg < extra; arg++)
+        int arguments = 1;
+        if (event) {
+            push_event_table(state, event, event_payload);
+            arguments++;
+        }
+        for (int arg = 0; !event && arg < extra; arg++, arguments++)
             lua_pushvalue(state, first_extra + arg);
-        if (lua_pcall(state, 1 + extra, 0, 0) != LUA_OK) {
+        if (lua_pcall(state, arguments, 0, 0) != LUA_OK) {
             g_warning("Lua %s callback failed: %s", label, lua_error_text(state));
             lua_pop(state, 1);
         }
@@ -354,79 +461,293 @@ static guint run_watches(lua_State* state, int watches, int handle, const char* 
     return ran;
 }
 
-/* Update the live object an event names and run its signals and watches. Returns TRUE when a
- * callback ran. */
-gboolean lua_object_dispatch_event(lua_State* state, const char* event, GVariant* payload) {
-    for (gsize i = 0; i < G_N_ELEMENTS(object_events); i++) {
-        if (!g_str_equal(object_events[i].event, event))
+/* Run the watches of each field in `names`, then the listeners of "changed" (given the names) and
+ * of `signal`, for the handle at `handle`. Returns how many callbacks ran. */
+static guint raise_signals(lua_State* state, int handle, const char* kind, GPtrArray* names,
+                           const char* signal) {
+    handle = lua_absindex(state, handle);
+    int base = lua_gettop(state);
+    guint ran = 0;
+    if (push_listener_record(state, handle, kind, FALSE)) {
+        int listeners = lua_absindex(state, -1);
+        lua_getfield(state, listeners, "watches");
+        int watches = lua_absindex(state, -1);
+        for (guint name = 0; name < names->len; name++)
+            ran += run_watches(state, watches, handle, g_ptr_array_index(names, name));
+        lua_getfield(state, listeners, "signals");
+        if (lua_getfield(state, -1, signal) == LUA_TTABLE) {
+            if (g_str_equal(signal, "changed")) {
+                lua_createtable(state, (int)names->len, 0);
+                for (guint name = 0; name < names->len; name++) {
+                    lua_pushstring(state, g_ptr_array_index(names, name));
+                    lua_rawseti(state, -2, name + 1);
+                }
+                ran += run_entries(state, -2, handle, 1, signal, NULL, NULL);
+            } else {
+                ran += run_entries(state, -1, handle, 0, signal, NULL, NULL);
+            }
+        }
+    }
+    lua_settop(state, base);
+    return ran;
+}
+
+static void mark_closed(lua_State* state, int handle) {
+    handle = lua_absindex(state, handle);
+    gboolean* closed = lua_touserdata(state, handle);
+    *closed = TRUE;
+    lua_getiuservalue(state, handle, 2);
+    lua_pushboolean(state, FALSE);
+    lua_setfield(state, -2, "alive");
+    lua_pop(state, 1);
+}
+
+/* An ended object raises nothing more; let go of its listeners and handle. */
+static void release_listeners(lua_State* state, int handle, const char* kind) {
+    int base = lua_gettop(state);
+    if (push_handle_key(state, handle, kind)) {
+        push_registry_table(state, LUA_OBJECT_LISTENERS_KEY, FALSE);
+        lua_insert(state, -2);
+        lua_pushnil(state);
+        lua_rawset(state, -3);
+    }
+    lua_settop(state, base);
+}
+
+/* End the live object at `handle`: it stops being alive and its "closed" listeners run, given
+ * `reason` when there is one. Does nothing when it has ended. */
+void lua_object_end(lua_State* state, const char* kind, int handle, const char* reason) {
+    handle = lua_absindex(state, handle);
+    if (!luaL_testudata(state, handle, LUA_READONLY_SNAPSHOT_METATABLE) ||
+        handle_closed(state, handle))
+        return;
+    mark_closed(state, handle);
+    int base = lua_gettop(state);
+    if (push_listener_record(state, handle, kind, FALSE)) {
+        lua_getfield(state, -1, "signals");
+        if (lua_getfield(state, -1, "closed") == LUA_TTABLE) {
+            if (reason)
+                lua_pushstring(state, reason);
+            run_entries(state, -1 - (reason != NULL), handle, reason != NULL, "closed", NULL, NULL);
+        }
+    }
+    lua_settop(state, base);
+    release_listeners(state, handle, kind);
+}
+
+static gboolean record_state_allows(GVariant* record, const char* when_state,
+                                    const char* unless_state) {
+    const char* state = NULL;
+    g_variant_lookup(record, "state", "&s", &state);
+    return (!when_state || g_strcmp0(state, when_state) == 0) &&
+           (!unless_state || g_strcmp0(state, unless_state) != 0);
+}
+
+/* Push the handle the registry holds for `key`, or nothing and FALSE. */
+static gboolean push_registered_handle(lua_State* state, const char* key) {
+    int handles = push_registry_table(state, LUA_OBJECT_HANDLES_KEY, TRUE);
+    lua_pushstring(state, key);
+    if (lua_rawget(state, handles) != LUA_TUSERDATA) {
+        lua_pop(state, 2);
+        return FALSE;
+    }
+    lua_remove(state, -2);
+    return TRUE;
+}
+
+/* A signal that names an object but does not change it: call its listeners with the event. */
+static gboolean dispatch_signal_event(lua_State* state, const char* event, GVariant* payload) {
+    const char* id = NULL;
+    for (gsize i = 0; i < G_N_ELEMENTS(signal_events); i++) {
+        if (!g_str_equal(signal_events[i].event, event))
             continue;
-        g_autoptr(GVariant) record =
-            g_variant_lookup_value(payload, object_events[i].field, G_VARIANT_TYPE_VARDICT);
-        if (!record)
+        if (!g_variant_lookup(payload, "id", "&s", &id))
             return FALSE;
         int base = lua_gettop(state);
-        push_variant(state, record);
-        push_readonly_copy(state, -1); /* interns: updates the handle */
-        int handle = lua_absindex(state, -1);
-        const char* kind = object_events[i].kind;
-        gboolean closing = g_str_equal(object_events[i].signal, "closed");
-        if (closing && luaL_testudata(state, handle, LUA_READONLY_SNAPSHOT_METATABLE)) {
-            gboolean* closed = lua_touserdata(state, handle);
-            *closed = TRUE;
-            lua_getiuservalue(state, handle, 2);
-            lua_pushboolean(state, FALSE);
-            lua_setfield(state, -2, "alive");
-            lua_pop(state, 1);
-        }
+        g_autofree char* key = g_strdup_printf("%s:%s", signal_events[i].kind, id);
         guint ran = 0;
-        if (push_listener_record(state, handle, kind, FALSE)) {
-            int listeners = lua_absindex(state, -1);
-            lua_getfield(state, listeners, "watches");
-            int watches = lua_absindex(state, -1);
-            /* `changed` names the fields that moved; it arrives as strings or as variants. */
-            g_autoptr(GVariant) changed = g_variant_lookup_value(payload, "changed", NULL);
-            g_autoptr(GPtrArray) names = g_ptr_array_new_with_free_func(g_free);
-            if (changed && g_variant_is_of_type(changed, G_VARIANT_TYPE_ARRAY)) {
-                for (gsize item = 0; item < g_variant_n_children(changed); item++) {
-                    g_autoptr(GVariant) child = g_variant_get_child_value(changed, item);
-                    if (g_variant_is_of_type(child, G_VARIANT_TYPE_VARIANT)) {
-                        g_autoptr(GVariant) inner = g_variant_get_variant(child);
-                        g_clear_pointer(&child, g_variant_unref);
-                        child = g_steal_pointer(&inner);
-                    }
-                    if (g_variant_is_of_type(child, G_VARIANT_TYPE_STRING))
-                        g_ptr_array_add(names, g_variant_dup_string(child, NULL));
-                }
-            }
-            if (object_events[i].property)
-                g_ptr_array_add(names, g_strdup(object_events[i].property));
-            for (guint name = 0; name < names->len; name++)
-                ran += run_watches(state, watches, handle, g_ptr_array_index(names, name));
-            lua_getfield(state, listeners, "signals");
-            if (lua_getfield(state, -1, object_events[i].signal) == LUA_TTABLE) {
-                if (g_str_equal(object_events[i].signal, "changed")) {
-                    lua_createtable(state, (int)names->len, 0);
-                    for (guint name = 0; name < names->len; name++) {
-                        lua_pushstring(state, g_ptr_array_index(names, name));
-                        lua_rawseti(state, -2, name + 1);
-                    }
-                    ran += run_entries(state, -2, handle, 1, object_events[i].signal);
-                    lua_pop(state, 1);
-                } else {
-                    ran += run_entries(state, -1, handle, 0, object_events[i].signal);
-                }
-            }
-            if (closing) {
-                /* An ended object raises nothing more; let go of its listeners and handle. */
-                push_handle_key(state, handle, kind);
-                push_registry_table(state, LUA_OBJECT_LISTENERS_KEY, FALSE);
-                lua_insert(state, -2);
-                lua_pushnil(state);
-                lua_rawset(state, -3);
-            }
+        if (push_registered_handle(state, key) &&
+            push_listener_record(state, -1, signal_events[i].kind, FALSE)) {
+            lua_getfield(state, -1, "signals");
+            if (lua_getfield(state, -1, signal_events[i].signal) == LUA_TTABLE)
+                ran = run_entries(state, -1, base + 1, 0, signal_events[i].signal, event, payload);
         }
         lua_settop(state, base);
         return ran > 0;
     }
     return FALSE;
+}
+
+/* The registry key of the object a record describes: "Kind:key", or NULL without a key. */
+static char* record_handle_key(const LuaObjectKind* type, GVariant* record) {
+    const char* value = NULL;
+    if (!type || !g_variant_lookup(record, type->key ? type->key : "id", "&s", &value))
+        return NULL;
+    return g_strdup_printf("%s:%s", type->kind, value);
+}
+
+/* Push a shallow copy of the fields of the record behind the handle at `handle`. */
+static void push_field_copy(lua_State* state, int handle) {
+    handle = lua_absindex(state, handle);
+    lua_newtable(state);
+    int copy = lua_absindex(state, -1);
+    lua_getiuservalue(state, handle, 1);
+    lua_pushnil(state);
+    while (lua_next(state, -2)) {
+        lua_pushvalue(state, -2);
+        lua_insert(state, -2);
+        lua_rawset(state, copy);
+    }
+    lua_pop(state, 1);
+}
+
+/* Add to `names` each field, except the revision, that differs between the copy at `before`
+ * and the handle at `handle`. */
+static void collect_field_changes(lua_State* state, int before, int handle, GPtrArray* names) {
+    before = lua_absindex(state, before);
+    handle = lua_absindex(state, handle);
+    lua_getiuservalue(state, handle, 1);
+    int backing = lua_absindex(state, -1);
+    for (int pass = 0; pass < 2; pass++) {
+        lua_pushnil(state);
+        while (lua_next(state, pass == 0 ? backing : before)) {
+            const char* name = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
+            lua_pop(state, 1); /* the value; compare through both tables */
+            if (!name || g_str_equal(name, "revision"))
+                continue;
+            lua_getfield(state, backing, name);
+            lua_getfield(state, before, name);
+            gboolean same = lua_rawequal(state, -1, -2);
+            lua_pop(state, 2);
+            gboolean listed = FALSE;
+            for (guint i = 0; i < names->len; i++)
+                listed |= g_str_equal(g_ptr_array_index(names, i), name);
+            if (!same && !listed)
+                g_ptr_array_add(names, g_strdup(name));
+        }
+    }
+    lua_pop(state, 1);
+}
+
+/* Update the live object an event names and run its signals and watches. Returns TRUE when a
+ * callback ran. */
+gboolean lua_object_dispatch_event(lua_State* state, const char* event, GVariant* payload) {
+    gboolean ran_any = dispatch_signal_event(state, event, payload);
+    for (gsize i = 0; i < G_N_ELEMENTS(object_events); i++) {
+        if (!g_str_equal(object_events[i].event, event))
+            continue;
+        g_autoptr(GVariant) record =
+            g_variant_lookup_value(payload, object_events[i].field, G_VARIANT_TYPE_VARDICT);
+        if (!record || !record_state_allows(record, object_events[i].when_state,
+                                            object_events[i].unless_state))
+            continue;
+        const LuaObjectKind* type = object_kind(object_events[i].kind);
+        int base = lua_gettop(state);
+        /* A record without a `changed` list is compared with the state the handle had. */
+        int before = 0;
+        if (type && type->diffs) {
+            g_autofree char* key = record_handle_key(type, record);
+            if (key && push_registered_handle(state, key)) {
+                push_field_copy(state, -1);
+                lua_remove(state, -2);
+                before = lua_gettop(state);
+            }
+        }
+        push_variant(state, record);
+        push_readonly_copy(state, -1); /* interns: updates the handle */
+        int handle = lua_absindex(state, -1);
+        const char* kind = object_events[i].kind;
+        gboolean closing = g_str_equal(object_events[i].signal, "closed");
+        if (closing && luaL_testudata(state, handle, LUA_READONLY_SNAPSHOT_METATABLE))
+            mark_closed(state, handle);
+        /* `changed` names the fields that moved; it arrives as strings or as variants. */
+        g_autoptr(GVariant) changed = g_variant_lookup_value(payload, "changed", NULL);
+        g_autoptr(GPtrArray) names = g_ptr_array_new_with_free_func(g_free);
+        if (changed && g_variant_is_of_type(changed, G_VARIANT_TYPE_ARRAY)) {
+            for (gsize item = 0; item < g_variant_n_children(changed); item++) {
+                g_autoptr(GVariant) child = g_variant_get_child_value(changed, item);
+                if (g_variant_is_of_type(child, G_VARIANT_TYPE_VARIANT)) {
+                    g_autoptr(GVariant) inner = g_variant_get_variant(child);
+                    g_clear_pointer(&child, g_variant_unref);
+                    child = g_steal_pointer(&inner);
+                }
+                if (g_variant_is_of_type(child, G_VARIANT_TYPE_STRING))
+                    g_ptr_array_add(names, g_variant_dup_string(child, NULL));
+            }
+        }
+        if (before)
+            collect_field_changes(state, before, handle, names);
+        gboolean listed = FALSE;
+        for (guint name = 0; object_events[i].property && name < names->len; name++)
+            listed |= g_str_equal(g_ptr_array_index(names, name), object_events[i].property);
+        if (object_events[i].property && !listed)
+            g_ptr_array_add(names, g_strdup(object_events[i].property));
+        guint ran = raise_signals(state, handle, kind, names, object_events[i].signal);
+        if (closing)
+            release_listeners(state, handle, kind);
+        lua_settop(state, base);
+        ran_any |= ran > 0;
+    }
+    return ran_any;
+}
+
+/* Callback on an Operation that decides the fate of a handle. Upvalue 1 is the kind, 2 the
+ * handle and 3 whether success (not failure) ends it. A failure ends it with the error message,
+ * so a listener of "closed" learns why. */
+static int lua_object_operation_done(lua_State* state) {
+    const char* kind = lua_tostring(state, lua_upvalueindex(1));
+    gboolean end_on_success = lua_toboolean(state, lua_upvalueindex(3));
+    lua_settop(state, 2);
+    gboolean failed = !lua_isnil(state, 2);
+    if (failed == end_on_success)
+        return 0;
+    const char* reason = NULL;
+    if (failed && lua_istable(state, 2) && lua_getfield(state, 2, "message") == LUA_TSTRING)
+        reason = lua_tostring(state, -1);
+    if (failed)
+        g_warning("Lua %s ended: %s", kind, reason ? reason : "the operation failed");
+    lua_pushvalue(state, lua_upvalueindex(2));
+    int handle = lua_gettop(state);
+    if (failed) {
+        /* A launch that never began is no longer pending. */
+        lua_getiuservalue(state, handle, 1);
+        if (lua_getfield(state, -1, "state") == LUA_TSTRING &&
+            g_str_equal(lua_tostring(state, -1), "pending")) {
+            lua_pushliteral(state, "ended");
+            lua_setfield(state, -3, "state");
+        }
+        lua_pop(state, 2);
+    }
+    lua_object_end(state, kind, handle, reason);
+    return 0;
+}
+
+/* End the handle at `handle` when the pending Operation at `operation` fails, or, with
+ * `end_on_success`, when it succeeds. */
+void lua_object_end_after(lua_State* state, LuaConfig* config, int operation, const char* kind,
+                          int handle, gboolean end_on_success) {
+    operation = lua_absindex(state, operation);
+    handle = lua_absindex(state, handle);
+    lua_pushstring(state, kind);
+    lua_pushvalue(state, handle);
+    lua_pushboolean(state, end_on_success);
+    lua_pushcclosure(state, lua_object_operation_done, 3);
+    subscribe_operation(state, config, operation);
+    lua_pop(state, 1);
+}
+
+/* Push the registered handle of `kind` with this key, or nothing and FALSE. */
+gboolean lua_object_push_registered(lua_State* state, const char* kind, const char* key) {
+    g_autofree char* full = g_strdup_printf("%s:%s", kind, key);
+    return push_registered_handle(state, full);
+}
+
+/* Forget the registered handle of `kind` with this key, so the next record with it is a new
+ * object. Handles already given out stay as they are. */
+void lua_object_forget(lua_State* state, const char* kind, const char* key) {
+    int handles = push_registry_table(state, LUA_OBJECT_HANDLES_KEY, TRUE);
+    lua_pushfstring(state, "%s:%s", kind, key);
+    lua_pushnil(state);
+    lua_rawset(state, handles);
+    lua_pop(state, 1);
 }

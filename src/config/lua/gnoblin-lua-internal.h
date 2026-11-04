@@ -242,6 +242,7 @@ GVariant* variant_from_lua(lua_State* state, int index, int depth, gboolean forc
 void push_variant(lua_State* state, GVariant* value);
 void push_readonly_copy(lua_State* state, int index);
 void push_readonly_event_fields(lua_State* state, GVariant* payload, int event_index);
+void push_event_table(lua_State* state, const char* event, GVariant* payload);
 void push_window_drag(lua_State* state, GVariant* value);
 void push_operation_result(lua_State* state, const char* method, GVariant* value);
 void remove_named_entry(lua_State* state, int list, const char* name);
@@ -286,6 +287,13 @@ int lua_lerp(lua_State* state);
 int lua_tween_new(lua_State* state);
 gboolean lua_tween_dispatch_event(lua_State* state, const char* event, GVariant* payload);
 void lua_object_intern(lua_State* state, const char* kind, int index);
+void lua_object_hold(lua_State* state, const char* kind, int index);
+void lua_object_push_held(lua_State* state, const char* kind);
+void lua_object_end(lua_State* state, const char* kind, int handle, const char* reason);
+void lua_object_end_after(lua_State* state, LuaConfig* config, int operation, const char* kind,
+                          int handle, gboolean end_on_success);
+gboolean lua_object_push_registered(lua_State* state, const char* kind, const char* key);
+void lua_object_forget(lua_State* state, const char* kind, const char* key);
 void lua_object_add_methods(lua_State* state, int method_table, const char* kind);
 int lua_object_on(lua_State* state);
 int lua_object_watch(lua_State* state);
@@ -346,11 +354,12 @@ int lua_input_current_source(lua_State* state);
 int lua_appearance_color_scheme(lua_State* state);
 int lua_input_orientation_lock(lua_State* state);
 int lua_shortcuts_list(lua_State* state);
+int lua_shortcuts_configured(lua_State* state);
 int lua_launches_list(lua_State* state);
 int lua_launches_snapshot(lua_State* state);
 int call_launch_operation(lua_State* state, const char* method, int arguments);
 int lua_launches_begin(lua_State* state);
-int lua_launches_finish(lua_State* state);
+int lua_shortcuts_bind(lua_State* state);
 int lua_shortcut_actions(lua_State* state);
 gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, gboolean root,
                        GError** error);

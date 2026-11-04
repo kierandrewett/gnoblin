@@ -107,7 +107,9 @@ typedef struct {
 #define GNOBLINCTL_ANIMATION_PREVIEW_RECORD_METATABLE "gnoblinctl.AnimationPreview"
 #define GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE "gnoblinctl.InputDevice"
 #define GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE "gnoblinctl.InputSource"
+#define GNOBLINCTL_SHORTCUT_RECORD_METATABLE "gnoblinctl.Shortcut"
 #define GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE "gnoblinctl.ShortcutState"
+#define GNOBLINCTL_LAUNCH_RECORD_METATABLE "gnoblinctl.Launch"
 #define GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE "gnoblinctl.ShortcutAction"
 #define GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE "gnoblinctl.FocusPolicy"
 #define GNOBLINCTL_SETTINGS_RECORD_METATABLE "gnoblinctl.Settings"
@@ -195,7 +197,7 @@ int lua_cli_animations_get(lua_State* state);
 int lua_cli_animations_inspect(lua_State* state);
 int lua_cli_animations_surfaces(lua_State* state);
 int lua_cli_launches_read(lua_State* state);
-int lua_cli_launches_operation(lua_State* state);
+int lua_cli_launches_begin(lua_State* state);
 LuaCliFocusContext* lua_cli_test_focus_context(lua_State* state, int index);
 LuaCliMenuContext* lua_cli_test_menu_context(lua_State* state, int index);
 int lua_cli_menu_context_begin_move(lua_State* state);
@@ -218,12 +220,12 @@ void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object);
 void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revision,
                                gboolean is_device);
 int lua_cli_shortcuts_list(lua_State* state);
+int lua_cli_shortcuts_configured(lua_State* state);
 int lua_cli_shortcuts_actions(lua_State* state);
 int lua_cli_shortcuts_capture(lua_State* state);
 int lua_cli_shortcuts_bind(lua_State* state);
-int lua_cli_shortcuts_unbind(lua_State* state);
-int lua_cli_shortcuts_end_session(lua_State* state);
 void register_lua_cli_shortcut_record(lua_State* state, const char* metatable);
+void register_lua_cli_launch_record(lua_State* state);
 gboolean lua_cli_focus_policy_valid(JsonObject* object);
 void register_lua_cli_focus_policy_record(lua_State* state);
 void register_lua_cli_settings_record(lua_State* state);

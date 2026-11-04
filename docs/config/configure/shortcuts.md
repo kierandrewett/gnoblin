@@ -70,7 +70,7 @@ running, or read them from Lua with `gnoblin.shortcuts.actions(group?)`.
 The named `capture_input` form above is for a shell binding that belongs in
 your config. It emits shortcut-session events instead of launching a command.
 Runtime bindings can also set `capture_input` when a shell registers the
-binding dynamically. Neither form appears in `gnoblin.shortcuts.list()`;
+binding dynamically. Neither form appears in `gnoblin.shortcuts.configured()`;
 static capture declarations use the shortcut-session event API. See
 [shortcut state and capture](/shell-api/#shortcut-state-and-capture).
 

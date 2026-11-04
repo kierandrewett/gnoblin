@@ -199,8 +199,9 @@ for _, capability in ipairs(gnoblin.capabilities.list()) do
 end
 ```
 
-Read launch feedback with `gnoblin.launches.list()`. It returns deeply
-read-only launch records. Each record carries its own `revision`:
+Read launch feedback with `gnoblin.launches.list()`. It returns read-only
+`Launch` records. Each record carries its own `revision`, and `alive` is true
+while its `state` is `pending`:
 
 ```lua
 for _, launch in ipairs(gnoblin.launches.list()) do
@@ -208,17 +209,20 @@ for _, launch in ipairs(gnoblin.launches.list()) do
 end
 ```
 
-The console can also begin and finish launch feedback. Call `finish()` with the
-same token when the launch is cancelled or the application has started:
+The console can also begin and finish launch feedback. `begin` returns the
+`Launch`. Call `launch:finish()` when the launch is cancelled or the
+application has started:
 
 ```lua
-local token = "launcher-42"
-local launch = gnoblin.launches.begin(token, "org.example.Editor", {
+local launch = gnoblin.launches.begin("launcher-42", "org.example.Editor", {
     timeout_ms = 3000,
 })
 print(launch.state)
-gnoblin.launches.finish(token)
+launch:finish()
 ```
+
+A console `Launch` is a snapshot. It has no `on` signal; use
+`gnoblin.on("gnoblin.launch.changed", fn)` to follow a launch.
 
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
@@ -301,8 +305,9 @@ completed `InputSource` record.
 
 Read displays with `gnoblin.outputs.list()`, `gnoblin.outputs.primary()` and
 `gnoblin.outputs.by_id(id)`. They return read-only `Output` records, or `nil`
-when no output matches. `output:set_privacy_screen(enabled)` takes `true`,
-`false` or `"inherit"`, waits for the compositor and returns the privacy screen
+when no output matches.
+
+`output:set_privacy_screen(enabled)` takes `true`, `false` or `"inherit"`, waits for the compositor and returns the privacy screen
 state. It fails on an output without a privacy screen:
 
 ```lua
@@ -356,12 +361,11 @@ print(preview.progress)
 preview:stop()
 ```
 
-Shortcut snapshots return read-only `ShortcutState` and `ShortcutAction`
-records. `gnoblin.shortcuts.actions(group?)` accepts an optional `wm`,
-`mutter`, or `wayland` group:
+`gnoblin.shortcuts.configured()` and `gnoblin.shortcuts.actions(group?)` return
+read-only `ShortcutState` and `ShortcutAction` records. `actions` accepts an optional `wm`, `mutter`, or `wayland` group:
 
 ```lua
-for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
+for _, shortcut in ipairs(gnoblin.shortcuts.configured()) do
     print(shortcut.name, shortcut.binding, shortcut.enabled)
 end
 
@@ -423,10 +427,17 @@ Approval must choose an accuracy level no greater than the one requested by the
 app. The call returns a read-only result; `submitted` confirms Gnoblin accepted
 and queued the answer. System settings can still limit approved accuracy.
 
-`gnoblinctl lua` can register, remove, and manage shortcut sessions. Bindings
-created by the console belong to its compositor connection, so the process
-stays open while one of its bindings remains registered. Unbind the shortcut or
-exit the process to release it. See the [shortcut API reference](./shell-api/keyboard-shortcuts.md#capture-a-shortcut)
+`gnoblinctl lua` can register, remove, and manage shortcut sessions:
+
+- `bind` returns a `Shortcut` with `unbind()` and `end_session(session_id)`.
+- `gnoblin.shortcuts.list()` returns the shortcuts that the script still binds.
+- The console `Shortcut` has no `on` signal. Follow it with
+  `gnoblin.on("gnoblin.shortcut.binding-activated", fn)`.
+
+Bindings created by the console belong to its compositor connection, so the
+process stays open while one of its bindings remains registered. Unbind the
+shortcut or exit the process to release it. See the
+[shortcut API reference](./shell-api/keyboard-shortcuts.md#capture-a-shortcut)
 for the accepted binding options.
 
 For example, save this as `shortcut.lua` and run `gnoblinctl lua ./shortcut.lua`:
@@ -443,8 +454,8 @@ subscription = gnoblin.on("gnoblin.shortcut.session.activated", function(event)
         return
     end
 
-    gnoblin.shortcuts.end_session(event.id, event.session_id)
-    gnoblin.shortcuts.unbind(binding.id)
+    binding:end_session(event.session_id)
+    binding:unbind()
     subscription:unsubscribe()
 end)
 ```

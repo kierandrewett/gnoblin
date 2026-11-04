@@ -249,10 +249,11 @@ int lua_input_orientation_lock(lua_State* state) {
     return 1;
 }
 
-int lua_shortcuts_list(lua_State* state) {
+/* The shortcuts the configuration declares, as read-only records. */
+int lua_shortcuts_configured(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.shortcuts.list takes no arguments");
+        return luaL_error(state, "gnoblin.shortcuts.configured takes no arguments");
     if (!config || !config->shortcut_snapshot)
         return luaL_error(state, "native shortcut snapshot is unavailable");
 
@@ -270,6 +271,67 @@ int lua_shortcuts_list(lua_State* state) {
         lua_remove(state, -2);
         lua_rawseti(state, -2, i + 1);
     }
+    return 1;
+}
+
+/* gnoblin.shortcuts.bind: bind the accelerator and return the Shortcut. The Shortcut exists
+ * before the compositor confirms the binding, with the values it was asked for. When the
+ * binding fails it ends, and its "closed" listeners get the reason. */
+int lua_shortcuts_bind(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    luaL_checktype(state, 1, LUA_TTABLE);
+    lua_settop(state, 1);
+    lua_getfield(state, 1, "id");
+    if (lua_type(state, 2) == LUA_TSTRING &&
+        lua_object_push_registered(state, "Shortcut", lua_tostring(state, 2))) {
+        lua_getfield(state, -1, "alive");
+        gboolean alive = lua_toboolean(state, -1);
+        if (alive)
+            return luaL_error(state, "shortcut %s is already bound; unbind it first",
+                              lua_tostring(state, 2));
+        lua_object_forget(state, "Shortcut", lua_tostring(state, 2));
+    }
+    lua_settop(state, 1);
+    lua_pushlightuserdata(state, config);
+    lua_pushstring(state, "shortcut.bind");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_pushvalue(state, 1);
+    lua_call(state, 1, 1);
+    int operation = lua_gettop(state);
+
+    lua_createtable(state, 0, 6);
+    int record = lua_gettop(state);
+    static const struct {
+        const char* field;
+        const char* fallback;
+    } defaults[] = {{"id", NULL},
+                    {"accelerator", NULL},
+                    {"hold", "none"},
+                    {"trigger", "press"},
+                    {"mode", "passive"}};
+    for (gsize i = 0; i < G_N_ELEMENTS(defaults); i++) {
+        lua_getfield(state, 1, defaults[i].field);
+        if (lua_isnil(state, -1) && defaults[i].fallback) {
+            lua_pop(state, 1);
+            lua_pushstring(state, defaults[i].fallback);
+        }
+        lua_setfield(state, record, defaults[i].field);
+    }
+    lua_getfield(state, 1, "capture_input");
+    lua_pushboolean(state, lua_toboolean(state, -1));
+    lua_remove(state, -2);
+    lua_setfield(state, record, "capture_input");
+    push_readonly_copy(state, record);
+    lua_object_hold(state, "Shortcut", -1);
+    lua_object_end_after(state, config, operation, "Shortcut", -1, FALSE);
+    return 1;
+}
+
+/* gnoblin.shortcuts.list: the Shortcuts this runtime has bound and not unbound. */
+int lua_shortcuts_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.shortcuts.list takes no arguments");
+    lua_object_push_held(state, "Shortcut");
     return 1;
 }
 
@@ -360,19 +422,36 @@ int lua_launches_begin(lua_State* state) {
         lua_setfield(state, arguments, "milliseconds");
     }
     lua_settop(state, arguments);
-    return call_launch_operation(state, "launch.begin", arguments);
-}
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    call_launch_operation(state, "launch.begin", arguments);
+    int operation = lua_gettop(state);
 
-int lua_launches_finish(lua_State* state) {
-    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1) ||
-        g_utf8_strlen(lua_tostring(state, 1), -1) > 128)
-        return luaL_error(
-            state, "gnoblin.launches.finish requires a non-empty token of at most 128 characters");
-    lua_newtable(state);
-    lua_pushvalue(state, 1);
-    lua_setfield(state, -2, "token");
-    int arguments = lua_absindex(state, -1);
-    return call_launch_operation(state, "launch.end", arguments);
+    /* The Launch exists before the compositor confirms it, with the values it was asked for; the
+     * confirmation and each later change update this same object. Beginning a token again ends
+     * the Launch that had it. */
+    const char* token = lua_tostring(state, 2);
+    if (lua_object_push_registered(state, "Launch", token)) {
+        lua_object_end(state, "Launch", -1, "replaced");
+        lua_pop(state, 1);
+        lua_object_forget(state, "Launch", token);
+    }
+    lua_createtable(state, 0, 6);
+    int record = lua_gettop(state);
+    lua_pushvalue(state, 2);
+    lua_setfield(state, record, "token");
+    lua_pushvalue(state, 3);
+    lua_setfield(state, record, "application");
+    lua_pushinteger(state, (lua_Integer)(g_get_real_time() / 1000));
+    lua_setfield(state, record, "started_at");
+    lua_pushinteger(state, lua_isnil(state, 4) ? 3000 : lua_tointeger(state, 4));
+    lua_setfield(state, record, "timeout_ms");
+    lua_pushliteral(state, "pending");
+    lua_setfield(state, record, "state");
+    lua_pushinteger(state, 0);
+    lua_setfield(state, record, "revision");
+    push_readonly_copy(state, record);
+    lua_object_end_after(state, config, operation, "Launch", -1, FALSE);
+    return 1;
 }
 
 int lua_shortcut_actions(lua_State* state) {

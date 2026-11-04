@@ -595,12 +595,14 @@ def run_shortcut_binding_cli_test(binary: str, build_directory: str) -> subproce
             'local binding = gnoblin.shortcuts.bind("cli-test", "<Super>F12")\n'
             'assert(binding.id == "cli-test" and binding.accelerator == "<Super>F12")\n'
             'assert(not pcall(function() binding.id = "changed" end))\n'
+            "assert(binding.alive and #gnoblin.shortcuts.list() == 1 and gnoblin.shortcuts.list()[1] == binding)\n"
             'gnoblin.once("gnoblin.shortcut.session.activated", function(event)\n'
             '  assert(event.id == "cli-test" and event.session_id == 9)\n'
-            "  local ended = gnoblin.shortcuts.end_session(event.id, event.session_id)\n"
+            "  local ended = binding:end_session(event.session_id)\n"
             "  assert(ended.ended and ended.session_id == event.session_id)\n"
-            "  local unbound = gnoblin.shortcuts.unbind(event.id)\n"
+            "  local unbound = binding:unbind()\n"
             "  assert(unbound.unbound and unbound.id == event.id)\n"
+            "  assert(not binding.alive and #gnoblin.shortcuts.list() == 0)\n"
             '  print("SHORTCUT_OWNER_OK")\n'
             "end)\n",
             encoding="utf-8",
@@ -1209,12 +1211,11 @@ def main() -> int:
     runtime_scope_script = Path(build_directory) / "runtime-scope.lua"
     runtime_scope_script.write_text(
         'assert(type(gnoblin.shortcuts.bind) == "function")\n'
-        'assert(type(gnoblin.shortcuts.unbind) == "function")\n'
-        'assert(type(gnoblin.shortcuts.end_session) == "function")\n'
-        'local ok, err = pcall(function() gnoblin.shortcuts.unbind("missing") end)\n'
-        'assert(not ok and err:match("no active owner connection"), tostring(err))\n'
-        'ok, err = pcall(function() gnoblin.shortcuts.end_session("missing", 1) end)\n'
-        'assert(not ok and err:match("no active owner connection"), tostring(err))\n'
+        'assert(type(gnoblin.shortcuts.list) == "function" and #gnoblin.shortcuts.list() == 0)\n'
+        "local ok, err = pcall(function() return gnoblin.shortcuts.unbind end)\n"
+        'assert(not ok and err:match("use shortcut:unbind"), tostring(err))\n'
+        "ok, err = pcall(function() return gnoblin.shortcuts.end_session end)\n"
+        'assert(not ok and err:match("use shortcut:end_session"), tostring(err))\n'
     )
     runtime_scope_result = run(
         binary,
@@ -2449,11 +2450,12 @@ def main() -> int:
         assert input_lua.returncode == 0, input_lua.stderr
         shortcuts_lua_file = Path(temporary) / "shortcut-snapshots.lua"
         shortcuts_lua_file.write_text(
-            "local shortcuts = gnoblin.shortcuts.list()\n"
+            "local shortcuts = gnoblin.shortcuts.configured()\n"
             'assert(#shortcuts == 1 and tostring(shortcuts[1]) == "ShortcutState<test.shortcut>")\n'
             'assert(shortcuts[1].binding == "<Super>space" and shortcuts[1].enabled)\n'
             'assert(shortcuts[1].action == "test.action" and shortcuts[1].revision == 6)\n'
             "assert(not pcall(function() shortcuts[1].enabled = false end))\n"
+            "assert(#gnoblin.shortcuts.list() == 0)\n"
             'local actions = gnoblin.shortcuts.actions("wm")\n'
             'assert(#actions == 1 and tostring(actions[1]) == "ShortcutAction<wm.close>")\n'
             'assert(actions[1].group == "wm" and actions[1].key == "close")\n'
@@ -2461,6 +2463,7 @@ def main() -> int:
             'assert(not pcall(function() actions[1].group = "wayland" end))\n'
             'assert(not pcall(function() actions[1].default_bindings[1] = "<Alt>Tab" end))\n'
             'assert(not pcall(function() rawset(actions[1].default_bindings, 1, "<Alt>Tab") end))\n'
+            "assert(not pcall(function() gnoblin.shortcuts.configured(true) end))\n"
             "assert(not pcall(function() gnoblin.shortcuts.list(true) end))\n"
             'assert(not pcall(function() gnoblin.shortcuts.actions({group = "wm"}) end))\n',
             encoding="utf-8",
@@ -2625,6 +2628,7 @@ def main() -> int:
             "assert(launches[1].started_at == 1720000000123 and launches[1].timeout_ms == 3000)\n"
             'assert(not pcall(function() launches[1].state = "ended" end))\n'
             "assert(not pcall(function() return gnoblin.launches.snapshot() end))\n"
+            "assert(launches[1].alive)\n"
             "assert(not pcall(function() gnoblin.launches.list(true) end))\n",
             encoding="utf-8",
         )
@@ -2636,13 +2640,16 @@ def main() -> int:
             'assert(launch.token == "lua-start" and launch.application == "org.example.Editor")\n'
             'assert(launch.timeout_ms == 750 and launch.state == "pending")\n'
             'assert(not pcall(function() launch.state = "ended" end))\n'
-            'local ended = gnoblin.launches.finish("lua-start")\n'
+            "assert(launch.alive)\n"
+            "local ended = launch:finish()\n"
             'assert(ended.ok and ended.token == "lua-start")\n'
+            'assert(not launch.alive and launch.state == "ended")\n'
             "assert(not pcall(function() ended.ok = false end))\n"
             'assert(not pcall(function() gnoblin.launches.begin("bad", "app", {timeout_ms = 99}) end))\n'
             'assert(not pcall(function() gnoblin.launches.begin("bad", "app", {extra = true}) end))\n'
             'assert(not pcall(function() return gnoblin.launches["end"] end))\n'
-            "assert(not pcall(function() gnoblin.launches.finish(42) end))\n",
+            "assert(not pcall(function() return gnoblin.launches.finish end))\n"
+            "assert(not pcall(function() launch:finish(true) end))\n",
             encoding="utf-8",
         )
         launch_operations_result = run(binary, "--socket", socket_path, "lua", str(launch_operations_file))

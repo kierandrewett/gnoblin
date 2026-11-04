@@ -126,8 +126,14 @@ and gap 7 stay open.
   the `monitors.*` wire reads stay for socket clients only. `Output:set_privacy_screen` sets
   the one global request: Mutter applies a single privacy screen setting to every capable
   monitor and syncs the hotkey back to it, so a per-output request would need a Mutter patch.
-- Steps (c) and (d) are not done: `shortcuts.bind`, `launches.begin` and
-  `input.select_source` still take IDs.
+- Step (c), done. `shortcuts.bind` returns a `Shortcut` and `launches.begin` returns a `Launch`
+  (both interned, with `alive`, `on`; a `Launch` also has `watch`). `unbind`, `end_session` and
+  `finish` are methods; `shortcuts.unbind`, `shortcuts.end_session` and `launches.finish` are
+  gone from Lua. The objects exist before the compositor confirms them and end with the reason
+  when it refuses. `shortcuts.list` lists this runtime's bindings; configured shortcuts moved to
+  `shortcuts.configured`. A `Launch` does not link to a window or `Process`, because the
+  compositor does not record the match. No wire change.
+- Step (d) is not done: `input.select_source` and the `Process` `alive`/`on` verbs.
 
 ## Decisions
 

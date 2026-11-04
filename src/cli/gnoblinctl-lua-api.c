@@ -241,12 +241,9 @@ int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_launches_read, 1);
         return 1;
     }
-    if (g_str_equal(prefix, "launches") &&
-        (g_str_equal(name, "begin") || g_str_equal(name, "finish"))) {
-        const char* method = g_str_equal(name, "begin") ? "launch.begin" : "launch.end";
+    if (g_str_equal(prefix, "launches") && g_str_equal(name, "begin")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushstring(state, method);
-        lua_pushcclosure(state, lua_cli_launches_operation, 2);
+        lua_pushcclosure(state, lua_cli_launches_begin, 1);
         return 1;
     }
     if (g_str_equal(prefix, "input")) {
@@ -287,20 +284,18 @@ int lua_api_index(lua_State* state) {
         }
     }
     if (g_str_equal(prefix, "shortcuts")) {
-        if (g_str_equal(name, "bind") || g_str_equal(name, "unbind") ||
-            g_str_equal(name, "end_session")) {
+        if (g_str_equal(name, "bind")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-            lua_pushcclosure(state,
-                             g_str_equal(name, "bind")     ? lua_cli_shortcuts_bind
-                             : g_str_equal(name, "unbind") ? lua_cli_shortcuts_unbind
-                                                           : lua_cli_shortcuts_end_session,
-                             1);
+            lua_pushcclosure(state, lua_cli_shortcuts_bind, 1);
             return 1;
         }
-        if (g_str_equal(name, "list") || g_str_equal(name, "actions")) {
+        if (g_str_equal(name, "list") || g_str_equal(name, "configured") ||
+            g_str_equal(name, "actions")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-            lua_CFunction function =
-                g_str_equal(name, "list") ? lua_cli_shortcuts_list : lua_cli_shortcuts_actions;
+            lua_CFunction function = g_str_equal(name, "list") ? lua_cli_shortcuts_list
+                                     : g_str_equal(name, "configured")
+                                         ? lua_cli_shortcuts_configured
+                                         : lua_cli_shortcuts_actions;
             lua_pushcclosure(state, function, 1);
             return 1;
         }
@@ -332,7 +327,10 @@ int lua_api_index(lua_State* state) {
         {"animations.pause", "preview:pause"},
         {"animations.stop", "preview:stop"},
         {"launches.snapshot", "gnoblin.launches.list"},
-        {"launches.end", "gnoblin.launches.finish"},
+        {"launches.end", "launch:finish"},
+        {"launches.finish", "launch:finish"},
+        {"shortcuts.unbind", "shortcut:unbind"},
+        {"shortcuts.end_session", "shortcut:end_session"},
         {NULL, NULL},
     };
     g_autofree char* qualified = g_strdup_printf("%s.%s", prefix, name);

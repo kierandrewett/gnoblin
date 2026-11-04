@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Changed
+
+- Shortcuts and launches are live objects in Lua; the functions that took IDs or tokens are gone
+  (hard cutover; the wire names `shortcut.bind`, `shortcut.unbind`, `shortcut.session.end`,
+  `launch.begin` and `launch.end` stay for socket clients, and no wire change was needed).
+    - `gnoblin.shortcuts.bind(id, accelerator, options?)` returns a `Shortcut`: interned by ID,
+      with `alive`, `on` and the signals `activated`, `deactivated`, `session_activated`,
+      `session_key`, `session_ended` and `closed`. A refused binding ends at once and `closed`
+      gets the reason.
+    - `shortcut:unbind()` replaces `shortcuts.unbind(id)`, and `shortcut:end_session(session_id)`
+      replaces `shortcuts.end_session(id, session_id)`: the shortcut owns the session.
+    - `shortcuts.list()` now returns the shortcuts this runtime bound, as the same objects. The
+      configured shortcut records move to `shortcuts.configured()`; the socket read
+      `shortcuts.list` is unchanged.
+    - `gnoblin.launches.begin(token, application, options?)` returns a `Launch` with `alive`,
+      `on`, `watch` and the signals `changed`, `started`, `timed_out` and `closed`.
+      `launch:finish()` replaces `launches.finish(token)`. `launches.list()` returns the same
+      objects. A `Launch` has no link to a window or `Process`: the compositor does not record
+      which window answered a launch.
+    - `gnoblinctl lua` returns `Shortcut` and `Launch` records with the same methods.
+
 ### Added
 
 - Outputs are live objects (bridge API 1.88). See [outputs](docs/shell-api/outputs.md).

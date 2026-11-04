@@ -255,16 +255,18 @@ static int lua_record_method(lua_State* state) {
     const char* method = lua_tostring(state, lua_upvalueindex(1));
     gboolean workspace = g_str_has_prefix(method, "workspace.");
     gboolean thumbnail = g_str_equal(method, "window.thumbnail");
+    /* A launch is named by its token, every other record by its id. */
+    const char* key_field = g_str_has_prefix(method, "launch.") ? "token" : "id";
     lua_getiuservalue(state, 1, 1);
     int backing = lua_absindex(state, -1);
-    lua_getfield(state, -1, "id");
+    lua_getfield(state, -1, key_field);
     if (lua_type(state, -1) != LUA_TSTRING)
-        return luaL_error(state, "snapshot record has no stable id");
+        return luaL_error(state, "snapshot record has no stable %s", key_field);
     const char* id = lua_tostring(state, -1);
     lua_newtable(state);
     int arguments = lua_absindex(state, -1);
     lua_pushstring(state, id);
-    lua_setfield(state, arguments, "id");
+    lua_setfield(state, arguments, key_field);
     lua_remove(state, -2); /* id */
     lua_remove(state, -2); /* backing */
     arguments = lua_gettop(state);
@@ -340,7 +342,8 @@ static int lua_record_method(lua_State* state) {
         g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
         g_str_equal(method, "window.restore_or_minimize") ||
         g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
-        g_str_equal(method, "workspace.switch")) {
+        g_str_equal(method, "workspace.switch") || g_str_equal(method, "shortcut.unbind") ||
+        g_str_equal(method, "launch.end")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "window.set_minimized")) {
@@ -440,12 +443,20 @@ static int lua_record_method(lua_State* state) {
             return luaL_error(state, "workspace:rename requires a name");
         lua_pushvalue(state, 2);
         lua_setfield(state, arguments, "name");
+    } else if (g_str_equal(method, "shortcut.session.end")) {
+        if (supplied != 1 || !lua_isinteger(state, 2) || lua_tointeger(state, 2) <= 0)
+            return luaL_error(state, "shortcut:end_session takes a positive integer session ID");
+        lua_pushvalue(state, 2);
+        lua_setfield(state, arguments, "session_id");
     }
     lua_pushlightuserdata(state, config);
     lua_pushstring(state, method);
     lua_pushcclosure(state, workspace ? lua_workspace_action : lua_generic_api_action, 2);
     lua_insert(state, arguments);
     lua_call(state, 1, 1);
+    /* A shortcut ends when the compositor has unbound it. */
+    if (config && g_str_equal(method, "shortcut.unbind"))
+        lua_object_end_after(state, config, -1, "Shortcut", 1, TRUE);
     return 1;
 }
 
@@ -464,9 +475,25 @@ static void add_record_methods(lua_State* state, int method_table, const char* c
     }
 }
 
+/* The Lua type of field `name` of the record at `backing`. */
+static int backing_field_type(lua_State* state, int backing, const char* name) {
+    int type = lua_getfield(state, backing, name);
+    lua_pop(state, 1);
+    return type;
+}
+
 /* Install the record methods for the kind of record `backing` holds and return that kind, or
  * NULL for plain data. */
 static const char* add_snapshot_methods(lua_State* state, int backing, int method_table) {
+    /* A launch is named by its token and has a launch state. */
+    if (backing_field_type(state, backing, "token") == LUA_TSTRING &&
+        backing_field_type(state, backing, "application") == LUA_TSTRING &&
+        backing_field_type(state, backing, "state") == LUA_TSTRING &&
+        backing_field_type(state, backing, "timeout_ms") == LUA_TNUMBER) {
+        add_record_methods(state, method_table, "Launch");
+        lua_object_add_methods(state, method_table, "Launch");
+        return "Launch";
+    }
     lua_getfield(state, backing, "id");
     gboolean has_id = lua_type(state, -1) == LUA_TSTRING;
     lua_pop(state, 1);
@@ -510,11 +537,16 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
     is_output &= lua_istable(state, -1) ||
                  luaL_testudata(state, -1, LUA_READONLY_SNAPSHOT_METATABLE) != NULL;
     lua_pop(state, 1);
+    /* A shortcut binding has an accelerator and a hold. */
+    gboolean is_shortcut = backing_field_type(state, backing, "accelerator") == LUA_TSTRING &&
+                           backing_field_type(state, backing, "hold") == LUA_TSTRING &&
+                           backing_field_type(state, backing, "capture_input") == LUA_TBOOLEAN;
     const char* kind = is_window              ? "Window"
                        : is_animation_preview ? "AnimationPreview"
                        : is_workspace         ? "Workspace"
                        : is_layer             ? "LayerSurface"
                        : is_output            ? "Output"
+                       : is_shortcut          ? "Shortcut"
                                               : NULL;
     if (kind)
         add_record_methods(state, method_table, kind);
@@ -730,7 +762,11 @@ void push_operation_result(lua_State* state, const char* method, GVariant* value
         return;
     }
     push_variant(state, value);
-    if (!g_str_has_prefix(method, "animation.") || !variant_is_animation_preview(value))
+    /* These return the live object they started or changed. */
+    gboolean live_result =
+        g_str_equal(method, "shortcut.bind") || g_str_equal(method, "launch.begin");
+    if (!live_result &&
+        (!g_str_has_prefix(method, "animation.") || !variant_is_animation_preview(value)))
         return;
     push_readonly_copy(state, -1);
     lua_remove(state, -2);

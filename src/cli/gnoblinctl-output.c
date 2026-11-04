@@ -81,7 +81,9 @@ int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_animation_preview_record(state);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
+    register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_RECORD_METATABLE);
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE);
+    register_lua_cli_launch_record(state);
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE);
     register_lua_cli_focus_policy_record(state);
     register_lua_cli_settings_record(state);

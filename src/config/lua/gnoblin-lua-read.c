@@ -521,9 +521,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_pushcclosure(state, lua_launches_snapshot, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "shortcuts.list")) {
-        lua_getfield(state, -1, "shortcuts");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        /* A wire read of the configured shortcuts; Lua lists the shortcuts it bound itself. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_shortcuts_configured, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "shortcuts.actions")) {
         lua_getfield(state, -1, "shortcuts");

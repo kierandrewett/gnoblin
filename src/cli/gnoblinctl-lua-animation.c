@@ -313,6 +313,8 @@ static gboolean lua_cli_launch_record_valid(JsonObject* launch) {
     return TRUE;
 }
 
+static void lua_cli_push_launch_record(lua_State* state, Cli* cli, JsonNode* value);
+
 int lua_cli_launches_read(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.launches reads take no arguments");
@@ -340,89 +342,141 @@ int lua_cli_launches_read(lua_State* state) {
     }
     lua_createtable(state, json_array_get_length(launches), 0);
     for (guint i = 0; i < json_array_get_length(launches); i++) {
-        JsonNode* value = json_array_get_element(launches, i);
-        json_to_lua(state, value);
-        lua_cli_push_readonly_value(state, -1);
-        lua_remove(state, -2);
+        lua_cli_push_launch_record(state, cli, json_array_get_element(launches, i));
         lua_rawseti(state, -2, i + 1);
     }
+    return 1;
+}
+
+/* Launch:finish(): stop waiting for this launch. A launch that was pending is ended. */
+static int lua_cli_launch_finish(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    luaL_checkudata(state, 1, GNOBLINCTL_LAUNCH_RECORD_METATABLE);
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "launch:finish takes no arguments");
+    lua_getiuservalue(state, 1, 1);
+    int backing = lua_absindex(state, -1);
+    lua_getfield(state, backing, "token");
+    g_autofree char* token = g_strdup(lua_tostring(state, -1));
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "token", token);
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", "launch.end", arguments, &call_error);
+    if (!result)
+        return luaL_error(state, "launch.end failed: %s", call_error->message);
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* ok = response ? json_object_get_member(response, "ok") : NULL;
+    if (!response || json_object_get_size(response) != 2 || !ok || !JSON_NODE_HOLDS_VALUE(ok) ||
+        json_node_get_value_type(ok) != G_TYPE_BOOLEAN || !json_node_get_boolean(ok) ||
+        !g_str_equal(member_string(response, "token", ""), token))
+        return luaL_error(state, "launch.end returned an invalid result");
+    if (lua_getfield(state, backing, "state") == LUA_TSTRING &&
+        g_str_equal(lua_tostring(state, -1), "pending")) {
+        lua_pushliteral(state, "ended");
+        lua_setfield(state, backing, "state");
+        lua_pushboolean(state, FALSE);
+        lua_setfield(state, backing, "alive");
+    }
+    json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
     return 1;
 }
 
-int lua_cli_launches_operation(lua_State* state) {
+/* A Launch record: the compositor's fields, `alive` while it is pending, and finish(). */
+static void lua_cli_push_launch_record(lua_State* state, Cli* cli, JsonNode* value) {
+    json_to_lua(state, value);
+    int backing = lua_absindex(state, -1);
+    lua_getfield(state, backing, "state");
+    lua_pushboolean(state, g_strcmp0(lua_tostring(state, -1), "pending") == 0);
+    lua_remove(state, -2);
+    lua_setfield(state, backing, "alive");
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_pushlightuserdata(state, cli);
+    lua_pushcclosure(state, lua_cli_launch_finish, 1);
+    lua_setfield(state, -2, "finish");
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_LAUNCH_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_launch_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "token");
+    const char* token = lua_tostring(state, -1);
+    lua_pushfstring(state, "Launch<%s>", token ? token : "unknown");
+    return 1;
+}
+
+void register_lua_cli_launch_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_LAUNCH_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_launch_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+int lua_cli_launches_begin(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    const char* method = lua_tostring(state, lua_upvalueindex(2));
-    gboolean beginning = g_str_equal(method, "launch.begin");
     JsonObject* arguments = NULL;
     static const char* const begin_fields[] = {"token", "application", "timeout_ms", NULL};
 
-    if (beginning) {
-        if (lua_gettop(state) < 2 || lua_gettop(state) > 3 || lua_type(state, 1) != LUA_TSTRING ||
-            lua_type(state, 2) != LUA_TSTRING)
-            return luaL_error(state, "gnoblin.launches.begin requires token (string), application "
-                                     "(string) and optional options");
-        g_autoptr(JsonObject) options =
-            lua_cli_optional_options(state, 3, "gnoblin.launches.begin");
-        if (json_object_has_member(options, "token") ||
-            json_object_has_member(options, "application"))
-            return luaL_error(state,
-                              "gnoblin.launches.begin takes token and application as arguments "
-                              "1 and 2, not in options");
-        json_object_set_string_member(options, "token", lua_tostring(state, 1));
-        json_object_set_string_member(options, "application", lua_tostring(state, 2));
-        const char* token = member_string(options, "token", NULL);
-        const char* application = member_string(options, "application", NULL);
-        JsonNode* timeout = json_object_get_member(options, "timeout_ms");
-        gboolean valid = lua_cli_workspace_object_has_only_keys(options, begin_fields) && token &&
-                         *token && g_utf8_validate(token, -1, NULL) &&
-                         g_utf8_strlen(token, -1) <= 128 && application && *application &&
-                         g_utf8_validate(application, -1, NULL) &&
-                         g_utf8_strlen(application, -1) <= 512;
-        if (timeout)
-            valid = valid && JSON_NODE_HOLDS_VALUE(timeout) &&
-                    (json_node_get_value_type(timeout) == G_TYPE_INT ||
-                     json_node_get_value_type(timeout) == G_TYPE_INT64) &&
-                    json_node_get_int(timeout) >= 100 && json_node_get_int(timeout) <= 10000;
-        if (!valid)
-            return luaL_error(state, "gnoblin.launches.begin received invalid launch options");
+    if (lua_gettop(state) < 2 || lua_gettop(state) > 3 || lua_type(state, 1) != LUA_TSTRING ||
+        lua_type(state, 2) != LUA_TSTRING)
+        return luaL_error(state, "gnoblin.launches.begin requires token (string), application "
+                                 "(string) and optional options");
+    g_autoptr(JsonObject) options = lua_cli_optional_options(state, 3, "gnoblin.launches.begin");
+    if (json_object_has_member(options, "token") || json_object_has_member(options, "application"))
+        return luaL_error(state, "gnoblin.launches.begin takes token and application as arguments "
+                                 "1 and 2, not in options");
+    json_object_set_string_member(options, "token", lua_tostring(state, 1));
+    json_object_set_string_member(options, "application", lua_tostring(state, 2));
+    const char* token = member_string(options, "token", NULL);
+    const char* application = member_string(options, "application", NULL);
+    JsonNode* timeout = json_object_get_member(options, "timeout_ms");
+    gboolean valid = lua_cli_workspace_object_has_only_keys(options, begin_fields) && token &&
+                     *token && g_utf8_validate(token, -1, NULL) &&
+                     g_utf8_strlen(token, -1) <= 128 && application && *application &&
+                     g_utf8_validate(application, -1, NULL) &&
+                     g_utf8_strlen(application, -1) <= 512;
+    if (timeout)
+        valid = valid && JSON_NODE_HOLDS_VALUE(timeout) &&
+                (json_node_get_value_type(timeout) == G_TYPE_INT ||
+                 json_node_get_value_type(timeout) == G_TYPE_INT64) &&
+                json_node_get_int(timeout) >= 100 && json_node_get_int(timeout) <= 10000;
+    if (!valid)
+        return luaL_error(state, "gnoblin.launches.begin received invalid launch options");
 
-        arguments = json_object_new();
-        json_object_set_string_member(arguments, "token", token);
-        json_object_set_string_member(arguments, "application", application);
-        if (timeout)
-            json_object_set_int_member(arguments, "milliseconds", json_node_get_int(timeout));
-    } else {
-        if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING ||
-            !*lua_tostring(state, 1) || g_utf8_strlen(lua_tostring(state, 1), -1) > 128)
-            return luaL_error(state,
-                              "gnoblin.launches.finish requires a non-empty launch token of at "
-                              "most 128 characters");
-        arguments = json_object_new();
-        json_object_set_string_member(arguments, "token", lua_tostring(state, 1));
-    }
+    arguments = json_object_new();
+    json_object_set_string_member(arguments, "token", token);
+    json_object_set_string_member(arguments, "application", application);
+    if (timeout)
+        json_object_set_int_member(arguments, "milliseconds", json_node_get_int(timeout));
 
     g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "launch.begin", arguments, &call_error);
     json_object_unref(arguments);
     if (!result)
-        return luaL_error(state, "%s failed: %s", method, call_error->message);
-
+        return luaL_error(state, "launch.begin failed: %s", call_error->message);
     JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
-    if (beginning) {
-        if (!response || !lua_cli_launch_record_valid(response))
-            return luaL_error(state, "launch.begin returned an invalid Launch record");
-    } else {
-        JsonNode* ok = response ? json_object_get_member(response, "ok") : NULL;
-        if (!response || json_object_get_size(response) != 2 || !ok || !JSON_NODE_HOLDS_VALUE(ok) ||
-            json_node_get_value_type(ok) != G_TYPE_BOOLEAN || !json_node_get_boolean(ok) ||
-            !g_str_equal(member_string(response, "token", ""), lua_tostring(state, 1)))
-            return luaL_error(state, "launch.end returned an invalid result");
-    }
-
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
+    if (!response || !lua_cli_launch_record_valid(response))
+        return luaL_error(state, "launch.begin returned an invalid Launch record");
+    lua_cli_push_launch_record(state, cli, result);
     return 1;
 }

@@ -135,6 +135,44 @@ static GVariant* input_gesture_event(LuaConfig* config, GVariant* payload) {
     return g_variant_ref_sink(g_variant_builder_end(&event));
 }
 
+/* Push the table a listener of `event` receives: the payload fields, the event name, and the
+ * drag, focus context or menu context the event carries. */
+void push_event_table(lua_State* state, const char* event, GVariant* payload) {
+    push_variant(state, payload);
+    push_readonly_event_fields(state, payload, -1);
+    lua_pushstring(state, event);
+    lua_setfield(state, -2, "name");
+    if (g_str_equal(event, "gnoblin.window.drag.started") ||
+        g_str_equal(event, "gnoblin.window.drag.updated")) {
+        push_window_drag(state, payload);
+        lua_setfield(state, -2, "drag");
+    }
+    gboolean focus_context_event = g_str_equal(event, "gnoblin.shortcut.activated") ||
+                                   g_str_equal(event, "gnoblin.shortcut.session.key") ||
+                                   g_str_equal(event, "gnoblin.pointer.binding-activated");
+    if (g_str_equal(event, "gnoblin.shortcut.binding-activated")) {
+        lua_getfield(state, -1, "first");
+        focus_context_event = lua_toboolean(state, -1);
+        lua_pop(state, 1);
+    }
+    if (focus_context_event && active_runtime->config.dispatch_focus_handle) {
+        push_focus_context(state, active_runtime->config.dispatch_focus_handle,
+                           active_runtime->config.dispatch_focus_generation,
+                           active_runtime->config.dispatch_native_focus_generation,
+                           active_runtime->config.dispatch_focus_expires_at_us);
+        lua_setfield(state, -2, "focus_context");
+    }
+    if (g_str_equal(event, "gnoblin.window.menu-requested") &&
+        active_runtime->config.dispatch_menu_handle) {
+        push_menu_context(state, active_runtime->config.dispatch_menu_handle,
+                          active_runtime->config.dispatch_menu_generation,
+                          active_runtime->config.dispatch_native_menu_generation,
+                          active_runtime->config.dispatch_menu_expires_at_us,
+                          active_runtime->config.dispatch_menu_window_id);
+        lua_setfield(state, -2, "menu_context");
+    }
+}
+
 static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVariant* payload,
                                                         GError** error) {
     // The supervisor is applying a candidate configuration before committing it.
@@ -237,40 +275,7 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
             dispatched |= count > 0;
             for (lua_Integer i = 1; i <= count; i++) {
                 lua_rawgeti(state, listeners, i);
-                push_variant(state, event_payloads[event_index]);
-                push_readonly_event_fields(state, event_payloads[event_index], -1);
-                lua_pushstring(state, event_names[event_index]);
-                lua_setfield(state, -2, "name");
-                if (g_str_equal(event_names[event_index], "gnoblin.window.drag.started") ||
-                    g_str_equal(event_names[event_index], "gnoblin.window.drag.updated")) {
-                    push_window_drag(state, event_payloads[event_index]);
-                    lua_setfield(state, -2, "drag");
-                }
-                gboolean focus_context_event =
-                    g_str_equal(event_names[event_index], "gnoblin.shortcut.activated") ||
-                    g_str_equal(event_names[event_index], "gnoblin.shortcut.session.key") ||
-                    g_str_equal(event_names[event_index], "gnoblin.pointer.binding-activated");
-                if (g_str_equal(event_names[event_index], "gnoblin.shortcut.binding-activated")) {
-                    lua_getfield(state, -1, "first");
-                    focus_context_event = lua_toboolean(state, -1);
-                    lua_pop(state, 1);
-                }
-                if (focus_context_event && active_runtime->config.dispatch_focus_handle) {
-                    push_focus_context(state, active_runtime->config.dispatch_focus_handle,
-                                       active_runtime->config.dispatch_focus_generation,
-                                       active_runtime->config.dispatch_native_focus_generation,
-                                       active_runtime->config.dispatch_focus_expires_at_us);
-                    lua_setfield(state, -2, "focus_context");
-                }
-                if (g_str_equal(event_names[event_index], "gnoblin.window.menu-requested") &&
-                    active_runtime->config.dispatch_menu_handle) {
-                    push_menu_context(state, active_runtime->config.dispatch_menu_handle,
-                                      active_runtime->config.dispatch_menu_generation,
-                                      active_runtime->config.dispatch_native_menu_generation,
-                                      active_runtime->config.dispatch_menu_expires_at_us,
-                                      active_runtime->config.dispatch_menu_window_id);
-                    lua_setfield(state, -2, "menu_context");
-                }
+                push_event_table(state, event_names[event_index], event_payloads[event_index]);
                 if (request_reference != LUA_NOREF && event_index == 0) {
                     lua_rawgeti(state, LUA_REGISTRYINDEX, request_reference);
                     lua_setfield(state, -2, "request");

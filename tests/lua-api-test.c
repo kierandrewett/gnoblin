@@ -74,6 +74,57 @@ static GVariant* test_output(const char* id, gboolean primary, double scale, gbo
     return g_variant_builder_end(&output);
 }
 
+static gsize dispatch_counting_operations(const char* event, GVariant* payload);
+
+/* The payload of a test step: {step = name}. */
+static GVariant* step_payload(const char* step) {
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "step", g_variant_new_string(step));
+    return g_variant_builder_end(&builder);
+}
+
+/* Dispatch `event` with `payload` (sunk here) and return the request IDs of the operations it
+ * queued, in order. */
+static GArray* dispatch_operation_ids(const char* event, GVariant* payload) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) sunk = g_variant_ref_sink(payload);
+    g_autoptr(GVariant) result = gnoblin_config_dispatch_event(event, sunk, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(result);
+    g_autoptr(GVariant) operations = gnoblin_config_drain_runtime_operations();
+    gnoblin_config_finish_event(TRUE);
+    GArray* ids = g_array_new(FALSE, FALSE, sizeof(gint64));
+    for (gsize i = 0; i < g_variant_n_children(operations); i++) {
+        g_autoptr(GVariant) operation = g_variant_get_child_value(operations, i);
+        gint64 id = 0;
+        g_assert_true(g_variant_lookup(operation, "request_id", "x", &id));
+        g_array_append_val(ids, id);
+    }
+    return ids;
+}
+
+/* Complete operation `id` as the compositor does: `value` (sunk here) on success, or an error
+ * with `message`. */
+static void complete_operation(gint64 id, gboolean ok, GVariant* value, const char* message) {
+    GVariantBuilder completion;
+    g_variant_builder_init(&completion, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&completion, "{sv}", "operation_id", g_variant_new_int64(id));
+    g_variant_builder_add(&completion, "{sv}", "ok", g_variant_new_boolean(ok));
+    if (value)
+        g_variant_builder_add(&completion, "{sv}", "value", value);
+    if (message) {
+        GVariantBuilder failure;
+        g_variant_builder_init(&failure, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&failure, "{sv}", "code", g_variant_new_string("failed"));
+        g_variant_builder_add(&failure, "{sv}", "message", g_variant_new_string(message));
+        g_variant_builder_add(&completion, "{sv}", "error", g_variant_builder_end(&failure));
+    }
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.operation.completed",
+                                                  g_variant_builder_end(&completion)),
+                     ==, 0);
+}
+
 /* Dispatch `event` with `payload` (sunk here) and return how many operations it queued. */
 static gsize dispatch_counting_operations(const char* event, GVariant* payload) {
     g_autoptr(GError) error = NULL;
@@ -284,6 +335,85 @@ int main(void) {
         "    assert(not output.alive and output.scale==2)\n"
         "    assert(not pcall(function() output:on('changed', print) end))\n"
         "    g.workspaces.next()\n"
+        "  end\n"
+        "end)\n"
+        "local launch, launch_log, replaced_log=nil, {}, {}\n"
+        "g.on('test.launches', function(event)\n"
+        "  if event.step=='begin' then\n"
+        "    assert(g.launches.finish==nil)\n"
+        "    launch=g.launches.begin('tok', 'org.example.Editor', {timeout_ms=500})\n"
+        "    assert(launch.alive and launch.state=='pending' and launch.token=='tok')\n"
+        "    assert(launch.timeout_ms==500 and launch.revision==0)\n"
+        "    launch:on('changed', function(l, changed)\n"
+        "      table.sort(changed)\n"
+        "      launch_log[#launch_log+1]='changed:'..table.concat(changed, ',')\n"
+        "    end)\n"
+        "    launch:on('started', function(l) launch_log[#launch_log+1]='started' end)\n"
+        "    launch:on('timed_out', function(l) launch_log[#launch_log+1]='timed_out' end)\n"
+        "    launch:on('closed', function(l, reason)\n"
+        "      launch_log[#launch_log+1]='closed:'..tostring(reason)\n"
+        "    end)\n"
+        "    launch:watch('state', function(l, value, old)\n"
+        "      launch_log[#launch_log+1]=old..'>'..value\n"
+        "    end)\n"
+        "    assert(not pcall(function() launch:on('bogus', print) end))\n"
+        "    assert(not pcall(function() launch:watch('bogus', print) end))\n"
+        "    local first=g.launches.begin('rep', 'x.y')\n"
+        "    first:on('closed', function(l, reason) replaced_log[#replaced_log+1]=reason end)\n"
+        "    local again=g.launches.begin('rep', 'x.y')\n"
+        "    assert(first~=again and not first.alive and again.alive and "
+        "replaced_log[1]=='replaced')\n"
+        "    local finish=launch:finish()\n"
+        "    assert(finish.method=='launch.end')\n"
+        "    assert(not pcall(function() launch:finish(true) end))\n"
+        "  else\n"
+        "    assert(table.concat(launch_log, ';')=="
+        "'pending>started;changed:started_at,state;started;closed:nil', "
+        "table.concat(launch_log, ';'))\n"
+        "    assert(not launch.alive and launch.state=='started' and launch.revision==2)\n"
+        "    assert(not pcall(function() launch:on('changed', print) end))\n"
+        "    assert(launch.state=='started')\n"
+        "    local reused=g.launches.begin('tok', 'org.example.Editor')\n"
+        "    assert(reused~=launch and reused.alive and not launch.alive)\n"
+        "  end\n"
+        "end)\n"
+        "local shortcut, shortcut_log=nil, {}\n"
+        "g.on('test.shortcuts', function(event)\n"
+        "  if event.step=='bind' then\n"
+        "    assert(g.shortcuts.unbind==nil and g.shortcuts.end_session==nil)\n"
+        "    shortcut=g.shortcuts.bind('sw', '<Super>space', {hold='super', mode='modal'})\n"
+        "    assert(shortcut.alive and shortcut.hold=='super' and shortcut.mode=='modal')\n"
+        "    assert(shortcut.trigger=='press' and not shortcut.capture_input)\n"
+        "    assert(#g.shortcuts.list()==1 and g.shortcuts.list()[1]==shortcut)\n"
+        "    assert(not pcall(function() g.shortcuts.bind('sw', '<Super>x') end))\n"
+        "    assert(not pcall(function() shortcut:on('bogus', print) end))\n"
+        "    assert(not pcall(function() shortcut:end_session(0) end))\n"
+        "    shortcut:on('activated', function(s, e)\n"
+        "      shortcut_log[#shortcut_log+1]='activated:'..e.id..':'..tostring(e.first)\n"
+        "    end)\n"
+        "    shortcut:on('session_activated', function(s, e)\n"
+        "      shortcut_log[#shortcut_log+1]='session:'..e.session_id\n"
+        "    end)\n"
+        "    shortcut:on('session_ended', function(s, e)\n"
+        "      shortcut_log[#shortcut_log+1]='ended:'..e.reason\n"
+        "    end)\n"
+        "    shortcut:on('closed', function(s, reason)\n"
+        "      shortcut_log[#shortcut_log+1]='closed:'..tostring(reason)\n"
+        "    end)\n"
+        "    assert(shortcut:end_session(3).method=='shortcut.session.end')\n"
+        "    assert(shortcut:unbind().method=='shortcut.unbind')\n"
+        "    local refused=g.shortcuts.bind('refused', '<Super>y')\n"
+        "    refused:on('closed', function(s, reason)\n"
+        "      shortcut_log[#shortcut_log+1]='refused:'..tostring(reason)\n"
+        "    end)\n"
+        "  else\n"
+        "    assert(table.concat(shortcut_log, ';')=="
+        "'refused:taken;activated:sw:true;session:3;ended:cancelled;closed:nil', "
+        "table.concat(shortcut_log, ';'))\n"
+        "    assert(not shortcut.alive and #g.shortcuts.list()==0)\n"
+        "    assert(not pcall(function() shortcut:on('closed', print) end))\n"
+        "    local rebound=g.shortcuts.bind('sw', '<Super>space')\n"
+        "    assert(rebound~=shortcut and rebound.alive and #g.shortcuts.list()==1)\n"
         "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
@@ -690,6 +820,74 @@ int main(void) {
     g_variant_builder_add(&check_step, "{sv}", "step", g_variant_new_string("check"));
     g_assert_cmpuint(
         dispatch_counting_operations("test.outputs", g_variant_builder_end(&check_step)), ==, 1);
+
+    /* Launches are live objects: the compositor's events move one handle per token. */
+    g_autoptr(GArray) launch_ids = dispatch_operation_ids("test.launches", step_payload("begin"));
+    g_assert_cmpuint(launch_ids->len, ==, 4);
+    GVariantBuilder launch_record;
+    g_variant_builder_init(&launch_record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&launch_record, "{sv}", "token", g_variant_new_string("tok"));
+    g_variant_builder_add(&launch_record, "{sv}", "application",
+                          g_variant_new_string("org.example.Editor"));
+    g_variant_builder_add(&launch_record, "{sv}", "started_at", g_variant_new_int64(1720000000123));
+    g_variant_builder_add(&launch_record, "{sv}", "timeout_ms", g_variant_new_int64(500));
+    g_variant_builder_add(&launch_record, "{sv}", "state", g_variant_new_string("started"));
+    g_variant_builder_add(&launch_record, "{sv}", "revision", g_variant_new_int64(2));
+    GVariantBuilder launch_changed;
+    g_variant_builder_init(&launch_changed, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&launch_changed, "{sv}", "launch", g_variant_builder_end(&launch_record));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.launch.changed",
+                                                  g_variant_builder_end(&launch_changed)),
+                     ==, 0);
+    g_assert_cmpuint(dispatch_counting_operations("test.launches", step_payload("check")), ==, 1);
+
+    /* Shortcuts: one handle per binding; activation and the session reach its signals, a refused
+     * binding ends with the reason, and unbinding ends it when the compositor confirms. */
+    g_autoptr(GArray) shortcut_ids = dispatch_operation_ids("test.shortcuts", step_payload("bind"));
+    g_assert_cmpuint(shortcut_ids->len, ==, 4);
+    complete_operation(g_array_index(shortcut_ids, gint64, 3), FALSE, NULL, "taken");
+    GVariantBuilder bound_record;
+    g_variant_builder_init(&bound_record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&bound_record, "{sv}", "id", g_variant_new_string("sw"));
+    g_variant_builder_add(&bound_record, "{sv}", "accelerator",
+                          g_variant_new_string("<Super>space"));
+    g_variant_builder_add(&bound_record, "{sv}", "hold", g_variant_new_string("super"));
+    g_variant_builder_add(&bound_record, "{sv}", "trigger", g_variant_new_string("press"));
+    g_variant_builder_add(&bound_record, "{sv}", "mode", g_variant_new_string("modal"));
+    g_variant_builder_add(&bound_record, "{sv}", "capture_input", g_variant_new_boolean(FALSE));
+    complete_operation(g_array_index(shortcut_ids, gint64, 0), TRUE,
+                       g_variant_builder_end(&bound_record), NULL);
+    GVariantBuilder activated;
+    g_variant_builder_init(&activated, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&activated, "{sv}", "id", g_variant_new_string("sw"));
+    g_variant_builder_add(&activated, "{sv}", "accelerator", g_variant_new_string("<Super>space"));
+    g_variant_builder_add(&activated, "{sv}", "first", g_variant_new_boolean(TRUE));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.shortcut.binding-activated",
+                                                  g_variant_builder_end(&activated)),
+                     ==, 0);
+    GVariantBuilder session_started;
+    g_variant_builder_init(&session_started, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&session_started, "{sv}", "id", g_variant_new_string("sw"));
+    g_variant_builder_add(&session_started, "{sv}", "session_id", g_variant_new_uint64(3));
+    g_variant_builder_add(&session_started, "{sv}", "first", g_variant_new_boolean(TRUE));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.shortcut.session.activated",
+                                                  g_variant_builder_end(&session_started)),
+                     ==, 0);
+    GVariantBuilder session_ended;
+    g_variant_builder_init(&session_ended, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&session_ended, "{sv}", "id", g_variant_new_string("sw"));
+    g_variant_builder_add(&session_ended, "{sv}", "session_id", g_variant_new_uint64(3));
+    g_variant_builder_add(&session_ended, "{sv}", "reason", g_variant_new_string("cancelled"));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.shortcut.session.ended",
+                                                  g_variant_builder_end(&session_ended)),
+                     ==, 0);
+    GVariantBuilder unbound;
+    g_variant_builder_init(&unbound, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&unbound, "{sv}", "id", g_variant_new_string("sw"));
+    g_variant_builder_add(&unbound, "{sv}", "unbound", g_variant_new_boolean(TRUE));
+    complete_operation(g_array_index(shortcut_ids, gint64, 2), TRUE,
+                       g_variant_builder_end(&unbound), NULL);
+    g_assert_cmpuint(dispatch_counting_operations("test.shortcuts", step_payload("check")), ==, 1);
 
     g_unlink(root);
     g_unlink(component);

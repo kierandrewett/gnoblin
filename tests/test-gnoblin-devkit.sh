@@ -245,7 +245,7 @@ print("LUA_API:workspace-config")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/workspaces.lua"
 cat > "$XDG_RUNTIME_DIR/shortcuts.lua" <<'LUA'
-for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
+for _, shortcut in ipairs(gnoblin.shortcuts.configured()) do
     assert(shortcut.name ~= "shell_input_capture",
         "capture-only config must be represented through shortcut-session events")
 end
