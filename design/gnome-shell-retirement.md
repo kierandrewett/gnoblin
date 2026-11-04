@@ -3,6 +3,9 @@
 This is an internal migration record. It does not describe a supported
 GNOME Shell build or compatibility layer.
 
+Mutter patch paths in this record predate the 2026-11 topic-directory layout of `patches/`; see
+`design/patches-layout-mapping.tsv`.
+
 ## Build boundary
 
 The source build prepares and builds Mutter and `xdg-desktop-portal-gnome`.

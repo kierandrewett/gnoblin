@@ -2,14 +2,23 @@
 """Source-level contract for the compositor lock capture embargo."""
 
 from pathlib import Path
+import sys
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
 SCREENCOPY = ROOT / "src/protocols/screencopy/meta-wayland-screencopy.c"
 SESSION_LOCK_HEADER = ROOT / "src/protocols/session-lock/meta-wayland-session-lock.h"
 SESSION_LOCK_SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock.c"
-PATCH_DIR = ROOT / "patches/mutter/71-session-lock-capture"
+PATCHES = [
+    patch_series.find("mutter", slug)
+    for slug in (
+        "session-lock-embargo-capture-and-remote-input",
+        "session-lock-controller-finalize-before-context",
+    )
+]
 
 
 class SessionLockCaptureTests(unittest.TestCase):
@@ -17,7 +26,7 @@ class SessionLockCaptureTests(unittest.TestCase):
         self.screencopy = SCREENCOPY.read_text()
         self.session_lock_header = SESSION_LOCK_HEADER.read_text()
         self.session_lock_source = SESSION_LOCK_SOURCE.read_text()
-        self.patch = "\n".join(path.read_text() for path in sorted(PATCH_DIR.glob("*.patch")))
+        self.patch = "\n".join(path.read_text() for path in PATCHES)
 
     def test_screencopy_rejects_frames_created_or_copied_after_covering(self):
         self.assertIn('#include "wayland/meta-wayland-session-lock.h"', self.screencopy)
@@ -55,8 +64,7 @@ class SessionLockCaptureTests(unittest.TestCase):
         self.assertIn("META_WAYLAND_SESSION_LOCK_LOCKED", self.patch)
         self.assertIn("meta_wayland_session_lock_is_presentation_confirmed", self.patch)
         self.assertIn("check_capture_allowed (session, invocation, TRUE)", self.patch)
-        self.assertGreaterEqual(
-            self.patch.count("check_capture_allowed (session, invocation, FALSE)"), 3)
+        self.assertGreaterEqual(self.patch.count("check_capture_allowed (session, invocation, FALSE)"), 3)
         self.assertIn("Screen capture is unavailable while the session is locked", self.patch)
         self.assertIn("src/backends/meta-remote-desktop-session.c", self.patch)
         self.assertIn("meta_remote_desktop_session_check_can_notify", self.patch)

@@ -11,9 +11,12 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
 
 
 def archive(repo, revision, destination):
@@ -49,12 +52,12 @@ def main():
         "-P",
         ROOT / "cmake/source-step.cmake",
     )
-    for patch in sorted((ROOT / "patches/xdg-desktop-portal-gnome").rglob("*.patch")):
+    for patch in patch_series.series("xdg-desktop-portal-gnome"):
         run("git", "-C", source, "apply", patch)
     wrap = configparser.ConfigParser()
     wrap.read(source / "subprojects/libgxdp.wrap")
     archive(upstream / "subprojects/libgxdp", wrap["wrap-git"]["revision"], source / "subprojects/libgxdp")
-    for patch in sorted((ROOT / "patches/portal-dependencies/libgxdp").glob("*.patch")):
+    for patch in patch_series.topic("portal-dependencies", "libgxdp"):
         run("git", "-C", source / "subprojects/libgxdp", "apply", patch)
     run(
         "meson",

@@ -6,6 +6,8 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import patch_series  # noqa: E402
 from _sources import CONFIG_SOURCES  # noqa: E402
 
 
@@ -14,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class WindowButtonLayoutContractTests(unittest.TestCase):
     def test_mutter_applies_lua_layout_and_owns_the_gsettings_key(self):
-        patch = (ROOT / "patches/mutter/99-typed-window-api/0090-configure-titlebar-button-layout.patch").read_text()
+        patch = patch_series.find("mutter", "configure-titlebar-button-layout").read_text()
         self.assertIn('g_variant_lookup_value (preferences, "button-layout", G_VARIANT_TYPE_VARDICT)', patch)
         self.assertIn("button_layout_handler (layout_value, &ignored, NULL);", patch)
         self.assertIn('g_strdup ("minimize,maximize,close")', patch)

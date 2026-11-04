@@ -11,7 +11,9 @@ import xml.etree.ElementTree as ET
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import patch_series  # noqa: E402
 from _sources import control_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +21,16 @@ SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock.c"
 SURFACE_SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock-surface.c"
 XML = ROOT / "src/protocols/session-lock/ext-session-lock-v1.xml"
 MANIFEST = ROOT / "src/protocols/session-lock/manifest"
-INPUT_PATCH_DIR = ROOT / "patches/mutter/72-session-lock-input"
+INPUT_PATCHES = [
+    patch_series.find("mutter", slug)
+    for slug in (
+        "session-lock-embargo-input-before-global-handling",
+        "session-lock-route-verified-lock-surfaces-only",
+        "session-lock-avoid-normal-pointer-repick",
+        "session-lock-keep-pointer-and-touch-on-lock-role",
+        "session-lock-allow-verified-pointer-focus-while-hidden",
+    )
+]
 
 
 class SessionLockProtocolTests(unittest.TestCase):
@@ -120,7 +131,7 @@ class SessionLockProtocolTests(unittest.TestCase):
     def test_input_embargo_precedes_every_normal_session_consumer(self):
         header = (ROOT / "src/protocols/session-lock/meta-wayland-session-lock.h").read_text()
         source = SOURCE.read_text()
-        patch = "\n".join(path.read_text() for path in sorted(INPUT_PATCH_DIR.glob("*.patch")))
+        patch = "\n".join(path.read_text() for path in INPUT_PATCHES)
 
         self.assertIn("meta_wayland_session_lock_filter_event", header)
         self.assertIn("meta_wayland_session_lock_filter_event", source)

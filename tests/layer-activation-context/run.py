@@ -10,10 +10,14 @@ import re
 import runpy
 import shlex
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PATCH = ROOT / "patches/mutter/99-typed-window-api/0124-preserve-layer-activation-context.patch"
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCH = patch_series.find("mutter", "preserve-layer-activation-context")
 FILES = [
     f"src/wayland/meta-wayland-{name}"
     for name in ("activation.c", "activation.h", "keyboard.c", "pointer.c", "seat.c", "touch.c", "tablet-tool.c")
@@ -29,7 +33,7 @@ def prepare(directory, baseline):
         target.write_bytes(
             subprocess.check_output(["git", "-C", str(ROOT / "subprojects/mutter"), "show", f"{pin}:{name}"])
         )
-    for patch in sorted((ROOT / "patches/mutter").rglob("*.patch")):
+    for patch in patch_series.series("mutter"):
         if baseline and patch == PATCH:
             continue
         subprocess.run(

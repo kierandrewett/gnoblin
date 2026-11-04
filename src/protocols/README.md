@@ -7,14 +7,14 @@ startup wiring.
 
 ## Implemented protocols
 
-- `layer-shell/` and `screencopy/` use dedicated wiring patches under
-  `patches/mutter/30-layer-shell/` and `30-screencopy/`.
+- `layer-shell/` and `screencopy/` use dedicated wiring patches in
+  `patches/mutter/03-layer-shell/` and `patches/mutter/04-wayland-protocols/`.
 - `idle-notify/`, `data-control/`, `gamma-control/`,
   `output-power-management/`, `foreign-toplevel-list/`, and
   `foreign-toplevel-management/` and `session-lock/` share the entry point in
-  `aggregator/` and the generated `40-gnoblin-protocols` wiring patch.
+  `aggregator/` and the generated gnoblin-protocols wiring patch in `patches/mutter/04-wayland-protocols/`.
 - GNOME 51 supplies `ext-background-effect-v1`; Gnoblin's
-  `patches/mutter/62-background-effect/` adds committed-region handling and
+  `patches/mutter/08-background-blur/` adds committed-region handling and
   applies the `protocols.ext_background_effect_v1` gate in Gnoblin mode.
   See [background effects](../../docs/background-effects.md) for semantics and tests.
 - `foreign-toplevel-common/` contains helpers shared by the two foreign

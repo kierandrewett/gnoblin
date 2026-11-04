@@ -9,6 +9,9 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import patch_series  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 MESON_ASSIGNMENT = re.compile(r"^([a-zA-Z0-9_]+)\s*=\s*'([^']+)'$", re.MULTILINE)
 
@@ -72,7 +75,6 @@ def requirements(source, include_schemas=False, bundled=()):
 def apply_dependency_version_patches(source, project, build_file):
     """Apply patched Meson version-variable assignments to pinned source text."""
     variables = dict(MESON_ASSIGNMENT.findall(source))
-    patch_root = ROOT / "patches" / project
 
     def apply_section(target, removed, added, patch):
         if target != build_file:
@@ -89,7 +91,7 @@ def apply_dependency_version_patches(source, project, build_file):
                 )
             variables[name] = new_value
 
-    for patch in sorted(patch_root.rglob("*.patch")):
+    for patch in patch_series.series(project):
         target = None
         removed = {}
         added = {}

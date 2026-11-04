@@ -1,0 +1,14 @@
+01-build-compat/0001-bundle-backend-interfaces.patch
+01-build-compat/0002-read-reduced-motion-by-nick.patch
+02-identity/0001-give-gnoblin-portal-its-own-service-identity.patch
+03-file-chooser/0001-use-gtk-file-chooser-without-nautilus.patch
+03-file-chooser/0002-provide-gnoblin-filechooser.patch
+04-native-portals/0001-provide-gnoblin-email-portal.patch
+04-native-portals/0002-add-native-gnoblin-inhibit-backend.patch
+04-native-portals/0003-route-global-shortcuts-through-gnoblin.patch
+04-native-portals/0004-preview-wallpapers-with-gtk.patch
+05-access-and-screencast/0001-show-dialog-without-parent-or-shell.patch
+05-access-and-screencast/0002-wait-for-the-screencast-interface.patch
+04-native-portals/0005-capture-through-mutter-screencast.patch
+05-access-and-screencast/0003-release-dialogs-with-their-requests.patch
+05-access-and-screencast/0004-release-screencast-dialogs-with-their-sessions.patch

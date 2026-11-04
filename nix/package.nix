@@ -40,11 +40,12 @@ let
     (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/src/gnoblin-version.json")).version;
   mutterVersion = versions.components.mutter.version;
   mutterApi = versions.components.mutter.api;
+  # patches/<project>/series is the only source of patch order. Nothing here globs or sorts the patch directories.
   patchesFor =
     project:
-    lib.sort (left: right: builtins.lessThan (toString left) (toString right)) (
-      lib.filter (path: lib.hasSuffix ".patch" (toString path)) (
-        lib.filesystem.listFilesRecursive "${gnoblinSrc}/patches/${project}"
+    map (entry: "${gnoblinSrc}/patches/${project}/${entry}") (
+      lib.filter (entry: entry != "") (
+        lib.splitString "\n" (builtins.readFile "${gnoblinSrc}/patches/${project}/series")
       )
     );
   # Mutter's meson build compiles Dear ImGui from subprojects/imgui under the Gnoblin source root. The flake source has no

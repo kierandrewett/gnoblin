@@ -55,7 +55,7 @@ The cases cover:
 ## Source and lifecycle evidence
 
 The new patch is
-[`66-capture-cursor/0001-refresh-cursors-on-stream-inhibition.patch`](../../patches/mutter/66-capture-cursor/0001-refresh-cursors-on-stream-inhibition.patch).
+[`13-screen-capture/0002-refresh-cursors-on-stream-inhibition.patch`](../../patches/mutter/13-screen-capture/0002-refresh-cursors-on-stream-inhibition.patch).
 Its production change is two calls in `meta-backend.c`, after the inhibitor
 list is changed. It uses Mutter's existing refresh mechanism and adds no
 portal delay, protocol or setting.

@@ -7,12 +7,14 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import patch_series  # noqa: E402
 from _sources import control_header, control_source, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
-DISPATCH_PATCH = ROOT / "patches/mutter/99-typed-window-api/0032-dispatch-shell-session-lock-request.patch"
+DISPATCH_PATCH = patch_series.find("mutter", "dispatch-shell-session-lock-request")
 BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 

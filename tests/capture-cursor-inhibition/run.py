@@ -11,12 +11,16 @@ import re
 import runpy
 import shlex
 import subprocess
+import sys
 import tempfile
 
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-PATCH = ROOT / "patches/mutter/66-capture-cursor/0001-refresh-cursors-on-stream-inhibition.patch"
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCH = patch_series.find("mutter", "refresh-cursors-on-stream-inhibition")
 EXTRACT = runpy.run_path(str(ROOT / "tests/native-window-publish.py"))["function"]
 BACKEND = "src/backends/meta-backend.c"
 FUNCTIONS = {

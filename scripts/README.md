@@ -39,7 +39,7 @@ cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 | Action              | Arguments                       | What it does                                                                     |
 | ------------------- | ------------------------------- | -------------------------------------------------------------------------------- |
 | `prepare`           | `SOURCE_MODE`, `PROJECTS`       | Check out the pinned submodules, or unpack a source bundle                       |
-| `apply-patches`     | `PROJECT`                       | Reset a submodule to its tag, copy the overlay, apply `patches/<name>/`          |
+| `apply-patches`     | `PROJECT`                       | Reset a submodule to its tag, copy the overlay, apply `patches/<name>/series`    |
 | `component-sources` | `PROJECT`, `BUILD_ROOT`         | Run `apply-patches` when the patches, overlay or pins changed since the last run |
 | `overlay`           | `PROJECT`, `SOURCE_DIR`, `MODE` | Copy, list or remove the overlay files. `MODE` is `copy`, `list` or `remove`     |
 | `state-check`       | `PROJECT`, `TAG`                | Refuse to reset a submodule that has local changes                               |
@@ -103,10 +103,10 @@ Run by the workflows and by `./build.sh package`.
 
 ## Patches
 
-| Script                           | What it does                                                  |
-| -------------------------------- | ------------------------------------------------------------- |
-| `manage-patches.py`              | Export and check the Gnoblin patches with one author identity |
-| `gen-gnoblin-protocols-patch.sh` | Regenerate the protocol patch (see `src/protocols/README.md`) |
+| Script                           | What it does                                                    |
+| -------------------------------- | --------------------------------------------------------------- |
+| `manage-patches.py`              | Export, check and renumber the patches; see `patches/README.md` |
+| `gen-gnoblin-protocols-patch.sh` | Regenerate the protocol patch (see `src/protocols/README.md`)   |
 
 ## Checks, tools and documentation
 

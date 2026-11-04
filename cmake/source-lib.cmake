@@ -296,7 +296,25 @@ endfunction()
 
 # --- Patches ----------------------------------------------------------------------------------------------------
 
-# Reset a submodule to its pinned tag, copy the overlay, and apply patches/<project>/ in name order. The run is
+# The patches of one project as absolute paths, in apply order. patches/<project>/series is the only source of the
+# order. Nothing globs or sorts the patch directories.
+function(gnoblin_patch_series out project)
+  set(series "${GNOBLIN_ROOT}/patches/${project}/series")
+  if(NOT EXISTS "${series}")
+    message(FATAL_ERROR "missing ${series}; every patch project lists its patches in a series file")
+  endif()
+  file(STRINGS "${series}" entries)
+  set(paths "")
+  foreach(entry IN LISTS entries)
+    if(NOT EXISTS "${GNOBLIN_ROOT}/patches/${project}/${entry}")
+      message(FATAL_ERROR "patches/${project}/series lists ${entry}, which does not exist")
+    endif()
+    list(APPEND paths "${GNOBLIN_ROOT}/patches/${project}/${entry}")
+  endforeach()
+  set(${out} "${paths}" PARENT_SCOPE)
+endfunction()
+
+# Reset a submodule to its pinned tag, copy the overlay, and apply patches/<project>/ in series order. The run is
 # idempotent: the reset comes first, so no state builds up.
 function(gnoblin_apply_patches project)
   gnoblin_require_source_project("${project}")
@@ -319,8 +337,7 @@ function(gnoblin_apply_patches project)
 
   gnoblin_overlay("${project}" "${subproject}" copy)
 
-  file(GLOB_RECURSE patches "${GNOBLIN_ROOT}/patches/${project}/*.patch")
-  list(SORT patches)
+  gnoblin_patch_series(patches "${project}")
   list(LENGTH patches patch_count)
   gnoblin_say(">> applying ${patch_count} patch(es) to ${project}")
   if(patch_count GREATER 0)
