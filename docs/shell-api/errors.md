@@ -17,6 +17,23 @@ An asynchronous Lua operation has these fields:
 Invalid arguments and calls outside an allowed runtime event fail before the operation is queued. A queued operation
 can fail later, when Mutter or the session service applies it.
 
+## Handler errors
+
+An error raised in a handler is local to that handler. This applies to event handlers (`gnoblin.on`), `on` and `watch`
+callbacks of objects, `Process` and `Request` signals, timers, `Operation` callbacks, tween callbacks and input
+handlers.
+
+- Gnoblin logs the error with the event or signal name and the Lua stack traceback.
+- The handler stays registered and runs again on the next event. Gnoblin never disables a handler.
+- Other handlers of the same event still run. Each handler gets its own instruction budget (one million
+  instructions), so a loop that never ends in one handler cannot stop the handlers after it.
+- An input handler that throws or returns an invalid value decides nothing: its queued operations are dropped and
+  the handlers after it still decide.
+- Gnoblin shows a notice for the first failure of a handler. A success resets the count. To keep the log short, a
+  handler that fails again and again is logged for its first three failures in a row and then once for every 1000.
+- When an event handler fails, Gnoblin rolls back all configuration changes made while it dispatched that event,
+  including changes from handlers that did not fail. Operations that other handlers queued still run.
+
 ## Operation methods
 
 | Method             | What it does                                                                              |

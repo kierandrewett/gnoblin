@@ -139,6 +139,16 @@ and gap 7 stay open.
   `closed`). `Process` has `alive` and `on("closed")`; the end signal is `closed`, not `exited`,
   so every object ends the same way, and `gnoblin.process.exited` stays the wire event. No wire
   change.
+- Gap 5, done. A throwing handler is logged with its event and stack and stays registered; the
+  other handlers of the event still run. Before, `gnoblin.on` listeners and input handlers were
+  disabled after one error (a listener by an `_active` flag, an input handler by removing it), and
+  the input loop stopped at the failure. All handler sites now go through `call_handler`
+  (`gnoblin-lua-dispatch.c`): a stack traceback, a full instruction budget for each call (the old
+  budget was shared by one dispatch, so a runaway handler made every later handler fail) and a
+  count of consecutive failures per handler that only limits the log (three, then one in 1000).
+  A handler is never disabled. When an event handler fails, the configuration edits made during
+  that event are rolled back as before; a per-handler rollback would need a config snapshot before
+  every handler call. Answerable events (the other half of the gap table row) stay open.
 
 ## Decisions
 

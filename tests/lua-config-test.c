@@ -258,6 +258,134 @@ static void dispatch_gesture_sequence_event(gint64 source_sequence) {
     gnoblin_config_finish_event(TRUE);
 }
 
+typedef struct {
+    guint failures;
+    guint first_traceback;
+    guint first_named_event;
+} FaultLog;
+
+static void capture_fault_warning(const gchar* domain, GLogLevelFlags level, const gchar* message,
+                                  gpointer user_data) {
+    FaultLog* log = user_data;
+    (void)domain;
+    (void)level;
+    if (!strstr(message, "Lua event 'test.fault' failed:") &&
+        !strstr(message, "Lua input handler 'input-1' failed:"))
+        return;
+    log->failures++;
+    if (strstr(message, "stack traceback:"))
+        log->first_traceback++;
+    if (strstr(message, "test.fault") || strstr(message, "input-1"))
+        log->first_named_event++;
+}
+
+static void dispatch_fault_event(FaultLog* log, guint* next, guint* previous) {
+    g_autoptr(GError) error = NULL;
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
+    guint handler = g_log_set_handler(NULL, G_LOG_LEVEL_WARNING, capture_fault_warning, log);
+    g_autoptr(GVariant) document = gnoblin_config_dispatch_event("test.fault", payload, &error);
+    g_log_remove_handler(NULL, handler);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) operations = gnoblin_config_drain_runtime_operations();
+    *next = *previous = 0;
+    for (gsize i = 0; i < g_variant_n_children(operations); i++) {
+        g_autoptr(GVariant) operation = g_variant_get_child_value(operations, i);
+        const char* method = NULL;
+        g_assert_true(g_variant_lookup(operation, "method", "&s", &method));
+        if (g_str_equal(method, "workspace.next"))
+            (*next)++;
+        else if (g_str_equal(method, "workspace.previous"))
+            (*previous)++;
+    }
+    gnoblin_config_finish_event(TRUE);
+}
+
+/* A handler that throws is logged and stays registered; it never stops the other handlers of
+ * the event, and a runaway loop in one cannot starve the ones after it. */
+static void test_handler_fault_isolation(const char* path) {
+    const char* source =
+        "local g=require('gnoblin')\n"
+        "local calls = 0\n"
+        "g.on('test.fault', function()\n"
+        "  calls = calls + 1\n"
+        "  if calls == 1 then error('first event fails') end\n"
+        "  g.workspaces.next()\n"
+        "end)\n"
+        "g.on('test.fault', function() g.workspaces.previous() end)\n"
+        "g.on('test.fault', function() while true do end end)\n"
+        "g.on('test.fault', function() g.workspaces.previous() end)\n"
+        "local inputs = 0\n"
+        "g.input.on({type='key', accelerator='F11'}, function()\n"
+        "  inputs = inputs + 1\n"
+        "  if inputs == 1 then error('first input fails') end\n"
+        "end)\n"
+        "g.input.on({type='key', accelerator='F11'}, function() return 'consume' end)\n";
+    g_autoptr(GError) error = NULL;
+    g_assert_true(g_file_set_contents(path, source, -1, &error));
+    g_assert_no_error(error);
+    g_autoptr(GVariant) document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    gnoblin_config_finish_load(TRUE);
+
+    FaultLog log = {0};
+    guint next = 0, previous = 0;
+    /* Event 1: the first handler and the runaway handler fail; both siblings still run. */
+    dispatch_fault_event(&log, &next, &previous);
+    g_assert_cmpuint(next, ==, 0);
+    g_assert_cmpuint(previous, ==, 2);
+    g_assert_cmpuint(log.failures, ==, 2);
+    g_assert_cmpuint(log.first_traceback, ==, 2);
+    g_assert_cmpuint(log.first_named_event, ==, 2);
+    g_autofree char* notice = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(notice);
+    g_assert_nonnull(strstr(notice, "stays active"));
+    /* Event 2: the first handler runs again and now acts; the runaway handler fails again. */
+    dispatch_fault_event(&log, &next, &previous);
+    g_assert_cmpuint(next, ==, 1);
+    g_assert_cmpuint(previous, ==, 2);
+    g_assert_cmpuint(log.failures, ==, 3);
+    g_assert_null(gnoblin_config_take_runtime_callback_error());
+    /* The log is bounded: a handler that keeps failing is logged three times, then rarely. */
+    for (guint i = 0; i < 5; i++)
+        dispatch_fault_event(&log, &next, &previous);
+    g_assert_cmpuint(log.failures, ==, 4);
+    g_assert_cmpuint(next, ==, 1);
+    g_assert_cmpuint(previous, ==, 2);
+
+    const char* handler_ids[] = {"input-1", "input-2", NULL};
+    GVariantBuilder input_builder, event_builder;
+    g_variant_builder_init(&input_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_init(&event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_builder, "{sv}", "event", g_variant_builder_end(&event_builder));
+    g_variant_builder_add(&input_builder, "{sv}", "handler_ids",
+                          g_variant_new_strv(handler_ids, -1));
+    g_autoptr(GVariant) input = g_variant_ref_sink(g_variant_builder_end(&input_builder));
+    guint input_handler = g_log_set_handler(NULL, G_LOG_LEVEL_WARNING, capture_fault_warning, &log);
+    for (guint round = 0; round < 2; round++) {
+        g_autoptr(GVariant) decision = gnoblin_config_dispatch_input(input, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(decision);
+        const char* action = NULL;
+        const char* selected = NULL;
+        g_assert_true(g_variant_lookup(decision, "action", "&s", &action));
+        g_assert_true(g_variant_lookup(decision, "handler_id", "&s", &selected));
+        /* The second handler decides even though the first threw, and the first runs again. */
+        g_assert_cmpstr(action, ==, "consume");
+        g_assert_cmpstr(selected, ==, "input-2");
+        const char* failure = NULL;
+        g_assert_cmpint(g_variant_lookup(decision, "error", "&s", &failure), ==, round == 0);
+    }
+    g_log_remove_handler(NULL, input_handler);
+    g_assert_cmpuint(log.failures, ==, 5);
+    g_autofree char* input_notice = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(input_notice);
+    g_assert_nonnull(strstr(input_notice, "first input fails"));
+}
+
 /* A last-good document that an older Gnoblin saved can hold deprecated enum spellings. Mutter would
  * read an unknown name as its fallback, so the loader must refuse such a document and accept the
  * same setting with its new name. */
@@ -380,6 +508,7 @@ int main(void) {
     g_assert_true(g_file_set_contents(runtime_root, "return {}\n", -1, &error));
     g_assert_no_error(error);
     test_runtime_document_ownership(runtime_root);
+    test_handler_fault_isolation(runtime_root);
     GVariantBuilder unhandled_gesture_builder;
     g_variant_builder_init(&unhandled_gesture_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&unhandled_gesture_builder, "{sv}", "gesture",
@@ -1497,9 +1626,9 @@ int main(void) {
     g_assert_nonnull(runtime_document);
     gnoblin_config_finish_load(TRUE);
 
-    /* A callback failure must be contained. It is reported once and that
-     * subscription is disabled, leaving later events and the active document
-     * usable. */
+    /* A callback failure must be contained. The user notice is raised on the first failure of a
+     * run, the handler stays active, and later events and the active document stay usable. The
+     * isolation itself is covered by test_handler_fault_isolation. */
     GVariantBuilder callback_failure_builder;
     g_variant_builder_init(&callback_failure_builder, G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) callback_failure_payload =

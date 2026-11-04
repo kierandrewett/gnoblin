@@ -374,10 +374,7 @@ static void run_signal(lua_State* state, int backing, const char* signal) {
         for (lua_Integer i = 1; i <= (lua_Integer)lua_rawlen(state, callbacks); i++) {
             lua_rawgeti(state, callbacks, i);
             lua_getfield(state, backing, "_object");
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-                g_warning("Lua request %s callback failed: %s", signal, lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 1, "Request signal", signal);
         }
     }
     lua_pop(state, 2);

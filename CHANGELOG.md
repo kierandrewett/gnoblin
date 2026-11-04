@@ -4,6 +4,19 @@
 
 ### Changed
 
+- A Lua handler that throws now keeps running on later events. Before, Gnoblin disabled a `gnoblin.on`
+  listener or an input handler after its first error, and an input handler that threw stopped the
+  handlers after it. Now Gnoblin logs the error with the event name and the Lua stack, and every
+  other handler of the event still runs. This applies to `gnoblin.on`, the `on` and `watch`
+  callbacks of objects, `Process` and `Request` signals, `Operation` callbacks, tween callbacks and
+  input handlers.
+    - Each handler call has its own instruction budget, so a loop that never ends in one handler no
+      longer makes the handlers after it fail.
+    - An input handler that throws or returns an invalid value decides nothing, and only its own
+      queued operations are dropped.
+    - A handler that keeps failing is logged for its first three failures in a row and then once for
+      every 1000. The user notice appears once for each run of failures.
+    - See [Handler errors](docs/shell-api/errors.md#handler-errors).
 - Shortcuts and launches are live objects in Lua; the functions that took IDs or tokens are gone
   (hard cutover; the wire names `shortcut.bind`, `shortcut.unbind`, `shortcut.session.end`,
   `launch.begin` and `launch.end` stay for socket clients, and no wire change was needed).

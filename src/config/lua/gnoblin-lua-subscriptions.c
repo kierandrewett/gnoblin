@@ -165,14 +165,11 @@ static int lua_listener_wrapper(lua_State* state) {
     lua_pop(state, 1);
     if (!active)
         return 0;
+    /* An error propagates to the dispatcher, which logs it with the event and stack. The
+     * subscription stays active. */
     lua_getfield(state, lua_upvalueindex(1), "_user_callback");
     lua_pushvalue(state, 1);
-    if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-        record_runtime_callback_error("event callback", lua_error_text(state));
-        lua_pushboolean(state, FALSE);
-        lua_setfield(state, lua_upvalueindex(1), "_active");
-        return lua_error(state);
-    }
+    lua_call(state, 1, 0);
     return 0;
 }
 
@@ -228,8 +225,7 @@ static int lua_once_callback(lua_State* state) {
     lua_pop(state, 1);
     lua_getfield(state, lua_upvalueindex(1), "callback");
     lua_pushvalue(state, 1);
-    if (lua_pcall(state, 1, 0, 0) != LUA_OK)
-        return lua_error(state);
+    lua_call(state, 1, 0);
     return 0;
 }
 

@@ -340,7 +340,7 @@ const char* lua_error_text(lua_State* state) {
 void record_runtime_callback_error(const char* scope, const char* detail) {
     g_free(runtime_callback_error);
     runtime_callback_error =
-        g_strdup_printf("Lua %s was disabled after an error: %s", scope ? scope : "callback",
+        g_strdup_printf("Lua %s failed and stays active: %s", scope ? scope : "callback",
                         detail ? detail : "Lua configuration failed");
 }
 

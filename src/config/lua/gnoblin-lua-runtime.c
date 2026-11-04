@@ -932,10 +932,7 @@ static void dispatch_rejected_operation_event(lua_State* state, GVariant* payloa
             push_variant(state, payload);
             lua_pushstring(state, event_name);
             lua_setfield(state, -2, "name");
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-                g_warning("Lua event '%s' failed: %s", event_name, lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 1, "event", event_name);
         }
         lua_pop(state, 2);
     }

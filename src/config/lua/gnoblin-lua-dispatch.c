@@ -1,5 +1,108 @@
 #include "gnoblin-lua-internal.h"
 
+/* Fault isolation for Lua handlers.
+ *
+ * Every handler the runtime calls (event listeners, object signals and watches, timers, Operation
+ * and tween callbacks, input policy handlers) goes through `call_handler`. A handler that throws is
+ * logged with its event and Lua stack and stays registered, so it runs again on the next event. It
+ * never stops another handler: each call gets a full instruction budget, so a runaway loop cannot
+ * starve the handlers that run after it. Consecutive failures are counted per handler in a weak
+ * table, and only the count limits the log: the first HANDLER_LOGGED_FAILURES failures and then
+ * every HANDLER_LOG_INTERVAL-th are logged, and the user notice is raised on the first failure of
+ * a run. A success resets the count. */
+#define HANDLER_LOGGED_FAILURES 3
+#define HANDLER_LOG_INTERVAL 1000
+
+static char handler_failures_key;
+
+static int handler_message(lua_State* state) {
+    const char* message = lua_tostring(state, 1);
+    if (!message) {
+        if (luaL_callmeta(state, 1, "__tostring") && lua_type(state, -1) == LUA_TSTRING)
+            return 1;
+        message = lua_pushfstring(state, "(error object is a %s value)", luaL_typename(state, 1));
+    }
+    luaL_traceback(state, state, message, 1);
+    return 1;
+}
+
+/* Call the function below `arguments` values with a full instruction budget and a stack traceback
+ * on failure. Like lua_pcall: on success the results replace the function and its arguments; on
+ * failure the traceback text is the only value left. */
+int handler_pcall(lua_State* state, int arguments, int results) {
+    int function = lua_gettop(state) - arguments;
+    lua_pushcfunction(state, handler_message);
+    lua_insert(state, function);
+    int steps = MAX_CONFIG_STEPS / 1000;
+    memcpy(lua_getextraspace(state), &steps, sizeof steps);
+    int status = lua_pcall(state, arguments, results, function);
+    lua_remove(state, function);
+    return status;
+}
+
+/* Record how a handler ended. `failure` is the error text, or NULL after a success. */
+void handler_outcome(lua_State* state, int function, const char* kind, const char* name,
+                     const char* failure) {
+    function = lua_absindex(state, function);
+    int base = lua_gettop(state);
+    lua_Integer count = 0;
+    if (lua_rawgetp(state, LUA_REGISTRYINDEX, &handler_failures_key) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        if (!failure)
+            return;
+        lua_newtable(state);
+        lua_newtable(state);
+        lua_pushliteral(state, "k");
+        lua_setfield(state, -2, "__mode");
+        lua_setmetatable(state, -2);
+        lua_pushvalue(state, -1);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &handler_failures_key);
+    }
+    int failures = lua_gettop(state);
+    lua_pushvalue(state, function);
+    lua_rawget(state, failures);
+    count = lua_tointeger(state, -1);
+    lua_pop(state, 1);
+    if (!failure && !count) {
+        lua_settop(state, base);
+        return;
+    }
+    lua_pushvalue(state, function);
+    if (failure)
+        lua_pushinteger(state, ++count);
+    else
+        lua_pushnil(state);
+    lua_rawset(state, failures);
+    lua_settop(state, base);
+    if (!failure)
+        return;
+    if (count == 1) {
+        g_autofree char* summary = g_strndup(failure, strcspn(failure, "\n"));
+        g_autofree char* scope = g_strdup_printf("%s '%s'", kind, name);
+        record_runtime_callback_error(scope, summary);
+    }
+    if (count > HANDLER_LOGGED_FAILURES && count % HANDLER_LOG_INTERVAL)
+        return;
+    if (count > 1)
+        g_warning("Lua %s '%s' failed: %s\n(%" G_GINT64_FORMAT " consecutive failures; the handler "
+                  "stays active)",
+                  kind, name, failure, (gint64)count);
+    else
+        g_warning("Lua %s '%s' failed: %s", kind, name, failure);
+}
+
+/* Call the handler below `arguments` values with fault isolation. The function and arguments are
+ * consumed and no result is kept. Returns FALSE when the handler threw. */
+gboolean call_handler(lua_State* state, int arguments, const char* kind, const char* name) {
+    int function = lua_gettop(state) - arguments;
+    lua_pushvalue(state, function);
+    lua_insert(state, function);
+    int status = handler_pcall(state, arguments, 0);
+    handler_outcome(state, function, kind, name, status == LUA_OK ? NULL : lua_error_text(state));
+    lua_settop(state, function - 1);
+    return status == LUA_OK;
+}
+
 GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error) {
     if (pending_runtime) {
         if (active_runtime)
@@ -46,10 +149,7 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error) {
             lua_getfield(state, operation, "value");
             lua_getfield(state, operation, "error");
             lua_remove(state, operation); /* Call _callback(value, error), not the Operation. */
-            if (lua_pcall(state, 2, 0, 0) != LUA_OK) {
-                g_warning("Lua operation completion callback failed: %s", lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 2, "Operation callback", "on_complete");
         }
         lua_pop(state, 1);
         luaL_unref(state, LUA_REGISTRYINDEX, reference);
@@ -280,12 +380,8 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
                     lua_rawgeti(state, LUA_REGISTRYINDEX, request_reference);
                     lua_setfield(state, -2, "request");
                 }
-                if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-                    g_warning("Lua event '%s' failed: %s", event_names[event_index],
-                              lua_error_text(state));
+                if (!call_handler(state, 1, "event", event_names[event_index]))
                     callback_failed = TRUE;
-                    lua_pop(state, 1);
-                }
             }
             lua_pop(state, 2);
         }
@@ -446,18 +542,19 @@ GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error) {
     }
     config->dispatching = TRUE;
     config->input_dispatching = TRUE;
-    guint action_start = config->runtime_actions ? config->runtime_actions->len : 0;
     for (gsize i = 0; i < g_variant_n_children(handler_ids); i++) {
         g_autoptr(GVariant) item = g_variant_get_child_value(handler_ids, i);
         const char* id = g_variant_get_string(item, NULL);
         if (!id || !*id)
             continue;
-        gboolean handler_failed = FALSE;
         lua_getfield(state, -1, id);
         if (!lua_isfunction(state, -1)) {
             lua_pop(state, 1);
             continue;
         }
+        int function = lua_absindex(state, -1);
+        guint handler_actions = config->runtime_actions ? config->runtime_actions->len : 0;
+        lua_pushvalue(state, function);
         push_variant(state, event);
         push_readonly_event_fields(state, event, -1);
         lua_pushliteral(state, "gnoblin.input");
@@ -467,69 +564,71 @@ GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error) {
                                focus_expiry);
             lua_setfield(state, -2, "focus_context");
         }
-        if (lua_pcall(state, 1, 1, 0) != LUA_OK) {
-            g_warning("Lua input handler '%s' failed: %s", id, lua_error_text(state));
-            record_runtime_callback_error("input handler", lua_error_text(state));
-            lua_pop(state, 1);
-            lua_pushnil(state);
-            lua_setfield(state, -2, id);
-            callback_failed = TRUE;
-            handler_failed = TRUE;
-            break;
-        }
-        const char* returned = lua_tostring(state, -1);
-        if (returned && (g_str_equal(returned, "forward") || g_str_equal(returned, "consume"))) {
-            g_free(action);
-            action = g_strdup(returned);
-            g_free(selected);
-            selected = g_strdup(id);
-            lua_pop(state, 1);
-            if (g_str_equal(action, "consume"))
-                break;
-            continue;
-        }
-        if (lua_istable(state, -1)) {
-            if (!table_fields_allowed(state, -1, (const char* const[]){"action", NULL}))
-                handler_failed = TRUE;
-            lua_getfield(state, -1, "action");
-            returned = lua_tostring(state, -1);
+        /* A handler that throws or returns an invalid value decides nothing. It stays registered
+         * and the handlers after it still run. */
+        g_autofree char* failure = NULL;
+        const char* decided = NULL;
+        if (handler_pcall(state, 1, 1) != LUA_OK) {
+            failure = g_strdup(lua_error_text(state));
+        } else {
+            const char* returned = lua_tostring(state, -1);
+            gboolean valid = TRUE;
             if (returned &&
                 (g_str_equal(returned, "forward") || g_str_equal(returned, "consume"))) {
+                decided = returned;
+            } else if (lua_istable(state, -1)) {
+                valid = table_fields_allowed(state, -1, (const char* const[]){"action", NULL});
+                lua_getfield(state, -1, "action");
+                returned = lua_tostring(state, -1);
+                if (valid && returned &&
+                    (g_str_equal(returned, "forward") || g_str_equal(returned, "consume")))
+                    decided = returned;
+                else
+                    valid = FALSE;
+                lua_pop(state, 1);
+            } else if (!lua_isnil(state, -1)) {
+                valid = FALSE;
+            }
+            if (!valid) {
+                decided = NULL;
+                failure = g_strdup("invalid return value; expected \"forward\", \"consume\", "
+                                   "{action = \"forward\" or \"consume\"} or nil");
+            }
+            /* `decided` points into the result, so copy it before the result leaves the stack. */
+            if (decided) {
                 g_free(action);
-                action = g_strdup(returned);
+                action = g_strdup(decided);
                 g_free(selected);
                 selected = g_strdup(id);
-            } else if (returned)
-                handler_failed = TRUE;
-            else
-                handler_failed = TRUE;
-            lua_pop(state, 1);
-        } else if (!lua_isnil(state, -1)) {
-            handler_failed = TRUE;
+            }
         }
         lua_pop(state, 1);
-        if (handler_failed) {
-            record_runtime_callback_error("input handler", "invalid return value");
-            lua_pushnil(state);
-            lua_setfield(state, -2, id);
+        handler_outcome(state, function, "input handler", id, failure);
+        lua_pop(state, 1); /* the handler */
+        if (failure) {
             callback_failed = TRUE;
+            if (config->runtime_actions) {
+                g_autoptr(GPtrArray) dropped =
+                    g_ptr_array_new_with_free_func((GDestroyNotify)g_variant_unref);
+                for (guint a = handler_actions; a < config->runtime_actions->len; a++)
+                    g_ptr_array_add(dropped,
+                                    g_variant_ref(g_ptr_array_index(config->runtime_actions, a)));
+                g_ptr_array_set_size(config->runtime_actions, handler_actions);
+                config->rejecting_operations = TRUE;
+                for (guint a = 0; a < dropped->len; a++)
+                    fail_dropped_operation(active_runtime, g_ptr_array_index(dropped, a),
+                                           "input policy handler failed");
+                config->rejecting_operations = FALSE;
+            }
+            continue;
         }
-        if (g_str_equal(action, "consume"))
+        if (decided && g_str_equal(action, "consume"))
             break;
     }
     config->dispatching = FALSE;
     config->input_dispatching = FALSE;
     config->actions_in_dispatch = 0;
     lua_pop(state, 2); /* handler registry, gnoblin */
-    if (callback_failed && config->runtime_actions) {
-        for (guint i = action_start; i < config->runtime_actions->len; i++)
-            fail_dropped_operation(active_runtime, g_ptr_array_index(config->runtime_actions, i),
-                                   "input policy handler failed");
-        g_ptr_array_set_size(config->runtime_actions, action_start);
-        g_free(action);
-        action = g_strdup("forward");
-        g_clear_pointer(&selected, g_free);
-    }
     config->dispatch_focus_handle = 0;
     config->dispatch_focus_generation = 0;
     config->dispatch_native_focus_generation = 0;

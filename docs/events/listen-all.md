@@ -37,9 +37,10 @@ Operations requested by a callback are dispatched after it returns.
 `gnoblinctl config reload`. Xwayland startup options restart the Xwayland child
 and disconnect running X11 apps.
 
-If a listener fails, Gnoblin logs the error and continues with the remaining
-listeners. It rolls back configuration changes from that event while still
-dispatching operations queued by its callbacks.
+If a listener fails, Gnoblin logs the error and the stack, keeps the listener
+registered and continues with the remaining listeners. It rolls back
+configuration changes from that event while still dispatching operations queued
+by its callbacks. See [Handler errors](/shell-api/errors#handler-errors).
 
 If the resulting config fails validation, Gnoblin restores the last valid
 config and fails those queued operations. The compositor applies accepted

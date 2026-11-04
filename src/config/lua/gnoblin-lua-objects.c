@@ -399,7 +399,7 @@ void lua_object_add_methods(lua_State* state, int method_table, const char* kind
 
 /* Call each active entry of the list at `list` as fn(handle, ...) with `extra` arguments taken
  * from the stack top, or, when `event` is given, as fn(handle, event) with a new event table for
- * each entry. Returns how many ran; a failing callback is logged. */
+ * each entry. Returns how many ran; a failing callback is logged and does not stop the rest. */
 static guint run_entries(lua_State* state, int list, int handle, int extra, const char* label,
                          const char* event, GVariant* event_payload) {
     list = lua_absindex(state, list);
@@ -426,10 +426,7 @@ static guint run_entries(lua_State* state, int list, int handle, int extra, cons
         }
         for (int arg = 0; !event && arg < extra; arg++, arguments++)
             lua_pushvalue(state, first_extra + arg);
-        if (lua_pcall(state, arguments, 0, 0) != LUA_OK) {
-            g_warning("Lua %s callback failed: %s", label, lua_error_text(state));
-            lua_pop(state, 1);
-        }
+        call_handler(state, arguments, "signal", label);
         ran++;
     }
     return ran;
@@ -463,10 +460,7 @@ static guint run_watches(lua_State* state, int watches, int handle, const char* 
             lua_pushvalue(state, last);
             lua_pushvalue(state, value);
             lua_setfield(state, entry, "last");
-            if (lua_pcall(state, 3, 0, 0) != LUA_OK) {
-                g_warning("Lua watch callback for %s failed: %s", property, lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 3, "watch", property);
             ran++;
         }
         lua_settop(state, list);

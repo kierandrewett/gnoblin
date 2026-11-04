@@ -178,9 +178,11 @@ layer surface. Check for both fields before starting a window operation.
 Configuration changes and new input registrations are unavailable inside a raw
 input callback. Request supported runtime operations instead.
 
-Handler failures restore forwarding. Gnoblin queues at most 256 events and waits at most 16 ms
-for the head decision. A timeout, disconnected runtime, or queue overflow
-bypasses handlers until a successful config reload and shows an error overlay.
+A handler that throws or returns an invalid value decides nothing and stays active. The
+handlers after it still decide, and an event that no handler decides is forwarded.
+
+Gnoblin queues at most 256 events and waits at most 16 ms for the head decision.
+A timeout, disconnected runtime, or queue overflow bypasses handlers until a successful config reload and shows an error overlay.
 Late decisions cannot operate on retired input requests.
 
 Press decisions also own their matching release. A release-only key or button

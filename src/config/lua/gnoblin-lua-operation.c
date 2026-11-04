@@ -89,10 +89,7 @@ void run_operation_callbacks(lua_State* state, int handle) {
             lua_getfield(state, subscription, "_callback");
             lua_getfield(state, handle, "value");
             lua_getfield(state, handle, "error");
-            if (lua_pcall(state, 2, 0, 0) != LUA_OK) {
-                g_warning("Lua operation completion callback failed: %s", lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 2, "Operation callback", "on_complete");
         }
         lua_pop(state, 1);
     }

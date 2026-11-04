@@ -241,10 +241,7 @@ static int lua_tween_ended(lua_State* state) {
         lua_rawgeti(state, fns, i);
         lua_pushvalue(state, lua_upvalueindex(2));
         lua_pushstring(state, outcome);
-        if (lua_pcall(state, 2, 0, 0) != LUA_OK) {
-            g_warning("Lua tween on_finished callback failed: %s", lua_error_text(state));
-            lua_pop(state, 1);
-        }
+        call_handler(state, 2, "Tween callback", "on_finished");
     }
     return 0;
 }
@@ -479,10 +476,7 @@ gboolean lua_tween_dispatch_event(lua_State* state, const char* event, GVariant*
         lua_getfield(state, -1, "callback_fns");
         if (lua_istable(state, -1) && lua_rawgeti(state, -1, index) == LUA_TFUNCTION) {
             lua_pushvalue(state, tween);
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-                g_warning("Lua tween callback failed: %s", lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 1, "Tween callback", "callback");
             ran = TRUE;
         }
     }

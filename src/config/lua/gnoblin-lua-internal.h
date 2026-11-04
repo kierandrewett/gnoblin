@@ -235,6 +235,10 @@ char* resolve_path(const char* current, const char* given);
 LuaConfig* config_from_upvalue(lua_State* state);
 const char* lua_error_text(lua_State* state);
 void record_runtime_callback_error(const char* scope, const char* detail);
+int handler_pcall(lua_State* state, int arguments, int results);
+void handler_outcome(lua_State* state, int function, const char* kind, const char* name,
+                     const char* failure);
+gboolean call_handler(lua_State* state, int arguments, const char* kind, const char* name);
 gboolean marked_array(lua_State* state, int index);
 void mark_array_table(lua_State* state, int index);
 GVariant* variant_from_lua(lua_State* state, int index, int depth, gboolean force_array,

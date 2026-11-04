@@ -306,10 +306,7 @@ static void run_process_closed(lua_State* state, int process) {
             lua_getfield(state, -1, "fn");
             /* The handle the script holds is the userdata; its metatable reads this backing. */
             lua_getfield(state, process, "_handle");
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-                g_warning("Lua Process closed callback failed: %s", lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 1, "Process signal", "closed");
         }
         lua_pop(state, 1);
     }
