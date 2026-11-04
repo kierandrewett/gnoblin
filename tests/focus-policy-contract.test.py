@@ -22,7 +22,6 @@ class FocusPolicyContractTests(unittest.TestCase):
 
     def test_mutter_uses_strict_for_omitted_settings_and_initial_state(self):
         preferences = patch_series.find("mutter", "native-gnoblin-preferences").read_text()
-        initial = patch_series.find("mutter", "default-strict-new-window-focus").read_text()
         self.assertIn(
             'APPLY_ENUM ("focus-new-windows", focus_new_windows, new_window_modes, '
             "G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT, META_PREF_FOCUS_NEW_WINDOWS);",
@@ -30,7 +29,7 @@ class FocusPolicyContractTests(unittest.TestCase):
         )
         self.assertIn(
             "+static GDesktopFocusNewWindows focus_new_windows = G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT;",
-            initial,
+            preferences,
         )
 
     def test_user_documentation_names_prevent_as_the_default(self):
