@@ -1,0 +1,30 @@
+{
+  "packages": [
+    {
+      "name": "gnoblin-compat-screencast",
+      "dependencies": [
+        {
+          "name": "gnoblin-compat-clipboard",
+          "kind": null
+        },
+        {
+          "name": "gnoblin-compat-core",
+          "kind": null
+        }
+      ]
+    },
+    {
+      "name": "gnoblin-compat-clipboard",
+      "dependencies": [
+        {
+          "name": "gnoblin-compat-core",
+          "kind": null
+        }
+      ]
+    },
+    {
+      "name": "gnoblin-compat-core",
+      "dependencies": []
+    }
+  ]
+}
