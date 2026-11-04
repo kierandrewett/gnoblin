@@ -62,8 +62,7 @@
 17-distro-compat/0001-pipewire-1.4-screen-cast-compat.patch
 14-input-settings/0005-input-configure-touchpad-scroll-speed.patch
 18-build-wiring/0001-include-gnoblin-meson-fragments.patch
-18-build-wiring/0002-include-gnoblin-test-fragment.patch
-18-build-wiring/0003-define-have-wayland-in-config.patch
+18-build-wiring/0002-define-have-wayland-in-config.patch
 19-native-control-core/0001-declare-gnoblin-window-frame-and-native-event-api.patch
 19-native-control-core/0002-dispatch-runtime-events.patch
 10-compositor-paint/0004-compositor-repaint-surface-after-window-effects.patch
@@ -149,7 +148,7 @@
 30-diagnostic-console/0006-link-diagnostics-into-gnoblin.patch
 28-xwayland/0004-keep-session-when-restarting-xwayland-for-config.patch
 28-xwayland/0005-fix-xsettings-byte-order.patch
-18-build-wiring/0004-optional-ibus-input-method-build.patch
+18-build-wiring/0003-optional-ibus-input-method-build.patch
 05-window-drag/0007-apply-drag-work-area-constraint.patch
 28-xwayland/0006-fix-xdnd-atom-names.patch
 28-xwayland/0007-keep-session-when-xwayland-exits.patch

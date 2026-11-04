@@ -3,17 +3,13 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 4 Nov 2026 17:16:04 +0000
 Subject: [PATCH] mutter: include the Gnoblin Meson fragments
 
-Everything Gnoblin adds to src/meson.build lives in two overlay fragments,
-src/gnoblin-wiring/meson.build and src/gnoblin-executable/meson.build, that
-the Gnoblin source overlay copies in before the patches apply. This patch is
-the whole upstream side: include the wiring fragment before the Wayland
-protocols are generated, hand its sources and libraries to libmutter, and
-replace Mutter's own executable by the Gnoblin one. The IBus and Hyprcursor
-libraries join mutter_lib_deps here because that list is read before any
-fragment can run.
+Include the Gnoblin Meson fragments that the overlays install, and the test fragment, before Mutter builds the test
+executables from test_cases. The Gnoblin settings tests are overlay files, src/tests/*-gnoblin-settings-test.c, and
+their test_cases entries are the overlay fragment src/tests/gnoblin-tests/meson.build.
 ---
- src/meson.build | 24 +++++++++++-------------
- 1 file changed, 11 insertions(+), 13 deletions(-)
+ src/meson.build       | 24 +++++++++++-------------
+ src/tests/meson.build |  2 ++
+ 2 files changed, 13 insertions(+), 13 deletions(-)
 
 diff --git a/src/meson.build b/src/meson.build
 index 60970cef..3ce67428 100644
@@ -78,6 +74,19 @@ index 60970cef..3ce67428 100644
  
  if have_introspection
    mutter_introspected_sources = []
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index a58ddacf..262c952f 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -1291,6 +1291,8 @@ test_cases += [
+   },
+ ]
+ 
++subdir('gnoblin-tests')
++
+ foreach test_case: test_cases
+   test_executable = executable('mutter-' + test_case['name'],
+     sources: test_case['sources'],
 -- 
 2.55.0
 
