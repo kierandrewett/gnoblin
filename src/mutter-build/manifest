@@ -1,3 +1,8 @@
 # project source destination
 mutter wiring.meson src/gnoblin-wiring/meson.build
 mutter executable.meson src/gnoblin-executable/meson.build
+mutter tests.meson src/tests/gnoblin-tests/meson.build
+mutter tests/a11y-gnoblin-settings-test.c src/tests/a11y-gnoblin-settings-test.c
+mutter tests/gnoblin-monitor-settings-test.c src/tests/gnoblin-monitor-settings-test.c
+mutter tests/gnoblin-privacy-screen-settings-test.c src/tests/gnoblin-privacy-screen-settings-test.c
+mutter tests/trackball-gnoblin-settings-test.c src/tests/trackball-gnoblin-settings-test.c

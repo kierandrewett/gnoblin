@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 17:25:15 +0000
+Subject: [PATCH] mutter: include the Gnoblin test fragment
+
+The Gnoblin settings tests are overlay files, src/tests/*-gnoblin-settings-test.c, and their test_cases entries are
+the overlay fragment src/tests/gnoblin-tests/meson.build. This patch is the upstream side: include the fragment
+before Mutter builds the test executables from test_cases.
+---
+ src/tests/meson.build | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index a58ddacf..262c952f 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -1291,6 +1291,8 @@ test_cases += [
+   },
+ ]
+ 
++subdir('gnoblin-tests')
++
+ foreach test_case: test_cases
+   test_executable = executable('mutter-' + test_case['name'],
+     sources: test_case['sources'],
+-- 
+2.55.0
+
