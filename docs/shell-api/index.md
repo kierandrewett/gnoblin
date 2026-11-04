@@ -16,8 +16,9 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Input](/shell-api/input): devices, sources, and orientation lock.
 - [Input handlers](/shell-api/input-handlers): handle local pointer, keyboard, and gesture events.
 - [Keyboard grabs](/shell-api/input-grab): take every key for a shell, with composed text and a lease that expires.
+- [Grants](/shell-api/grants): the proof of a user gesture that focus, move, resize, snap and text insertion need.
 - [Text insertion](/shell-api/text-insertion): insert text into a focused Wayland client.
-- [Window snapping](/shell-api/window-snapping): arrange a window from a trusted focus context.
+- [Window snapping](/shell-api/window-snapping): arrange a window from a trusted grant.
 - [Tablet-pad help](/shell-api/tablet-pad-help): receive tablet help requests.
 - [Keyboard shortcuts](/shell-api/keyboard-shortcuts): actions, capture, and bindings.
 - [Launch feedback](/shell-api/launch-feedback): track application launch feedback.

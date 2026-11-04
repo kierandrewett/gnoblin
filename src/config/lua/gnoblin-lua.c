@@ -28,63 +28,6 @@ GnoblinConfigSettingsChangedFunc settings_changed_callback;
 
 gpointer settings_changed_data;
 
-static int lua_focus_context_tostring(lua_State* state) {
-    lua_pushliteral(state, "FocusContext");
-    return 1;
-}
-
-static int lua_menu_context_tostring(lua_State* state) {
-    lua_pushliteral(state, "MenuContext");
-    return 1;
-}
-
-static int lua_menu_context_index(lua_State* state) {
-    const char* key = lua_tostring(state, 2);
-    if (key && g_str_equal(key, "begin_move"))
-        lua_pushcfunction(state, lua_menu_context_begin_move);
-    else if (key && g_str_equal(key, "begin_resize"))
-        lua_pushcfunction(state, lua_menu_context_begin_resize);
-    else
-        lua_pushnil(state);
-    return 1;
-}
-
-void push_menu_context(lua_State* state, guint64 handle, guint64 generation,
-                       guint64 native_generation, gint64 expires_at_us, const char* window_id) {
-    LuaMenuContext* context = lua_newuserdatauv(state, sizeof(*context), 0);
-    *context = (LuaMenuContext){.handle = handle,
-                                .generation = generation,
-                                .native_generation = native_generation,
-                                .expires_at_us = expires_at_us};
-    g_strlcpy(context->window_id, window_id ? window_id : "", sizeof(context->window_id));
-    if (luaL_newmetatable(state, LUA_MENU_CONTEXT_METATABLE)) {
-        lua_pushcfunction(state, lua_menu_context_tostring);
-        lua_setfield(state, -2, "__tostring");
-        lua_pushcfunction(state, lua_menu_context_index);
-        lua_setfield(state, -2, "__index");
-        lua_pushliteral(state, "MenuContext");
-        lua_setfield(state, -2, "__metatable");
-    }
-    lua_setmetatable(state, -2);
-}
-
-void push_focus_context(lua_State* state, guint64 handle, guint64 generation,
-                        guint64 native_generation, gint64 expires_at_us) {
-    LuaFocusContext* context = lua_newuserdatauv(state, sizeof(*context), 0);
-    *context = (LuaFocusContext){.handle = handle,
-                                 .generation = generation,
-                                 .native_generation = native_generation,
-                                 .expires_at_us = expires_at_us,
-                                 .consumed = FALSE};
-    if (luaL_newmetatable(state, LUA_FOCUS_CONTEXT_METATABLE)) {
-        lua_pushcfunction(state, lua_focus_context_tostring);
-        lua_setfield(state, -2, "__tostring");
-        lua_pushliteral(state, "FocusContext");
-        lua_setfield(state, -2, "__metatable");
-    }
-    lua_setmetatable(state, -2);
-}
-
 /* Every function the Lua API installs. `path` is where Lua finds it: a dotted path under the
  * gnoblin global, or Class:method for a method on a snapshot record. install_api, the record
  * methods, gnoblin_config_call_api and scripts/audit-lua-annotations.py all read this table.

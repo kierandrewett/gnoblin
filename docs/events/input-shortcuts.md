@@ -51,9 +51,10 @@ Each press sends a new event; without a listener, no overlay appears. See the
 `gnoblin.shortcut.session.key` reports the key value, key code, modifiers,
 phase, and time. Its phase is `press` or `release`.
 
-Real, non-repeated input may include `focus_context`. Synthetic and
-input-method events do not carry authority. The context expires after five
-seconds and authorizes one focus-sensitive compositor operation.
+Real, non-repeated input may include a `grant` (`focus_context` on the socket).
+Synthetic and input-method events do not carry authority. The
+[grant](/shell-api/grants) lasts five seconds and lets each focus-sensitive
+compositor operation run once.
 
 For configured command shortcuts, `gnoblin.shortcut.activated` reports the
 shortcut name and trigger. Dynamic bindings use `gnoblin.shortcut.binding-activated`;

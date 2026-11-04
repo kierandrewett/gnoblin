@@ -155,6 +155,12 @@ static const ApiMember api_fields_GrabRenewResult[] = {
     {"id", "string", FALSE, "The grab that was renewed."},
     {"renewed", "boolean", FALSE, "True when the compositor restarted the timeout."},
 };
+static const ApiMember api_fields_Grant[] = {
+    {"scope", "GrantScope[]", FALSE, "Operations this Grant may still take, in the order of GrantScope."},
+    {"window", "Window|nil", FALSE, "The one window this Grant is narrowed to, or nil when it has no window."},
+    {"expires_at_us", "integer", FALSE, "Monotonic time, in microseconds, when the gesture ends."},
+    {"alive", "boolean", FALSE, "False when the Grant has expired, its runtime ended or it has no scope left."},
+};
 static const ApiMember api_fields_IdleCancelResult[] = {
     {"cancelled", "boolean", FALSE, "True when the compositor removed the watch."},
 };
@@ -649,7 +655,6 @@ static const ApiClass api_classes[] = {
     {"ConsoleToggleResult", "", api_fields_ConsoleToggleResult, 1},
     {"Event", "Event payload passed to a subscription callback. Fields beyond `name` depend on the event.", api_fields_Event, 1},
     {"EventSubscription", "Handle returned by an event subscription.", api_fields_EventSubscription, 1},
-    {"FocusContext", "", NULL, 0},
     {"FocusHistoryFilter", "", api_fields_FocusHistoryFilter, 3},
     {"FocusPolicy", "", api_fields_FocusPolicy, 7},
     {"Grab", "A lease on the keyboard. While a Grab is alive, every key press and release goes to it: no application, no shortcut and no other handler sees a key. The Grab ends by itself when it has had no key and no `renew()` for its `timeout` seconds, so a script that stops cannot keep the keyboard. There is one Grab for the whole compositor: a new one ends the old one with \"replaced\". It is the same object for as long as it is alive.", api_fields_Grab, 4},
@@ -657,6 +662,7 @@ static const ApiClass api_classes[] = {
     {"GrabOptions", "", api_fields_GrabOptions, 1},
     {"GrabReleaseResult", "", api_fields_GrabReleaseResult, 2},
     {"GrabRenewResult", "", api_fields_GrabRenewResult, 2},
+    {"Grant", "Proof that a user gesture just happened, scoped to the operations it may start. The compositor makes the proof; a script receives it as `event.grant` on a shortcut activation, a pointer binding, an input handler event for a button press, a shortcut session key and a window menu request. Timers, the other events and a script's own code have none.  A Grant lists the operations it may take and may name one window. `narrow` returns a Grant with fewer of both, and nothing widens one. Each operation of a gesture runs once, whichever Grant takes it, so one key press can focus a window and then begin a move. A Grant ends five seconds after the gesture, at a configuration reload, and when the session locks.", api_fields_Grant, 4},
     {"IdleCancelResult", "", api_fields_IdleCancelResult, 1},
     {"IdleWatch", "A watch on how long the session has had no input. It is the same object for as long as it is alive. It is not idle when it starts. When the user does nothing for `seconds`, `idle` becomes true and the \"idle\" signal runs; the next input makes `idle` false and runs \"active\". The watch repeats for every idle period until it is cancelled. Mutter's idle monitor counts the time, and an idle inhibitor of the session delays \"idle\" as it delays the screen blank. A runtime reload ends every watch.", api_fields_IdleWatch, 4},
     {"InputDevice", "", api_fields_InputDevice, 8},
@@ -725,14 +731,14 @@ static const ApiClass api_classes[] = {
 };
 
 static const ApiMember api_params_0[] = {
-    {"context", "FocusContext", FALSE, "Live context from the current shortcut event."},
+    {"grant", "Grant", FALSE, "From a shortcut, pointer binding, input or window menu event."},
 };
 static const ApiMember api_params_1[] = {
     {"edge", "\"north\"|\"south\"|\"east\"|\"west\"|\"north_east\"|\"north_west\"|\"south_east\"|\"south_west\"", FALSE, ""},
-    {"context", "FocusContext", FALSE, "Live context from the current shortcut event."},
+    {"grant", "Grant", FALSE, "From a shortcut, pointer binding, input or window menu event."},
 };
 static const ApiMember api_params_3[] = {
-    {"context", "FocusContext", FALSE, "Live context from the current shortcut event."},
+    {"grant", "Grant", FALSE, "From a shortcut, pointer binding, input or window menu event."},
 };
 static const ApiMember api_params_6[] = {
     {"x", "integer", FALSE, "X coordinate, from -100000 to 100000."},
@@ -832,7 +838,7 @@ static const ApiMember api_params_48[] = {
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
 };
 static const ApiMember api_params_51[] = {
-    {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
+    {"grant", "Grant", FALSE, "From a gesture with no modifier key held."},
 };
 static const ApiMember api_params_52[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
@@ -896,7 +902,7 @@ static const ApiMember api_params_91[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
 static const ApiMember api_params_92[] = {
-    {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
+    {"grant", "Grant", FALSE, "From a shortcut, pointer binding or input event."},
 };
 static const ApiMember api_params_94[] = {
     {"id", "string", FALSE, "Stable workspace ID."},
@@ -907,10 +913,10 @@ static const ApiMember api_params_95[] = {
 };
 
 static const ApiFunction api_functions[] = {
-    {"Window:begin_move", "Begin an interactive move using a live shortcut-event context.", api_params_0, 1, "Operation<Json>"},
-    {"Window:begin_resize", "Begin an interactive resize using a live shortcut-event context.", api_params_1, 2, "Operation<Json>"},
+    {"Window:begin_move", "Begin an interactive move. This takes the \"begin_move\" scope of a Grant.", api_params_0, 1, "Operation<Json>"},
+    {"Window:begin_resize", "Begin an interactive resize. This takes the \"begin_resize\" scope of a Grant.", api_params_1, 2, "Operation<Json>"},
     {"Window:close", "Close this window.", NULL, 0, "Operation<Json>"},
-    {"Window:focus", "Focus this window using a live shortcut-event context.", api_params_3, 1, "Operation<Json>"},
+    {"Window:focus", "Focus this window. This takes the \"focus\" scope of a Grant, so the user's key press or click gives focus without the compositor's focus-stealing rules getting in the way.", api_params_3, 1, "Operation<Json>"},
     {"Window:kill", "Send SIGKILL to the client process that owns this window. Use it for a window whose `unresponsive` field is true; the client loses unsaved work.", NULL, 0, "Operation<Json>"},
     {"Window:lower", "Lower this window below the others.", NULL, 0, "Operation<Json>"},
     {"Window:move", "Move this window to a position in the compositor layout.", api_params_6, 2, "Operation<Json>"},
@@ -958,7 +964,7 @@ static const ApiFunction api_functions[] = {
     {"input.on", "Register a Lua policy callback for matching input events.", api_params_48, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
-    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_51, 1, "Operation<TextTarget>"},
+    {"input.text_target", "Create a one-use text target in the focused window, and spend the \"text_target\" scope of a Grant. It works only while the window that had focus at the gesture still has it, so take it before \"focus\".", api_params_51, 1, "Operation<TextTarget>"},
     {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_52, 3, "Launch"},
     {"launches.list", "Return the current launch records, each the Launch object for its token.", NULL, 0, "Launch[]"},
     {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_54, 1, "LayerAnimationPolicy"},
@@ -999,7 +1005,7 @@ static const ApiFunction api_functions[] = {
     {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_89, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
     {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_91, 1, "Window[]"},
-    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_92, 1, "Operation<SnapContext>"},
+    {"windows.snap_context", "Return a SnapContext for the focused window and spend the \"snap_context\" scope of a Grant. Callers cannot choose the window. Take it before \"focus\": the context holds only while the window that had focus at the gesture still has it.", api_params_92, 1, "Operation<SnapContext>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
     {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_94, 1, "Workspace|nil"},
     {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_95, 2, "Operation<Workspace>"},

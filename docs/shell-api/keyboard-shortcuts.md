@@ -70,7 +70,7 @@ the shortcut and the event:
 | `closed`            | The binding has ended.                                    | None                                   |
 
 The global events stay for code that watches every binding. The `activated`
-event carries a one-use `focus_context` on a real activation.
+event carries a [`grant`](/shell-api/grants) on a real activation.
 
 `shortcut:unbind()` removes the binding and returns an `Operation`. The
 `Shortcut` ends, and its `closed` listeners run, when the compositor has removed
@@ -118,7 +118,7 @@ the same events on its own object as `session_activated`, `session_key` and
 - `gnoblin.shortcut.session.activated` when a held binding starts.
 - `gnoblin.shortcut.session.key` for captured keyboard input. Fields include
   `keyval`, `keycode`, `modifiers`, `phase` (`press` or `release`), and `time`.
-  Real key presses and releases can carry a one-use `focus_context`; repeated
+  Real key presses and releases can carry a `grant`; repeated
   events do not carry one.
 - `gnoblin.shortcut.session.ended` when a session ends. Reasons are `released`,
   `unbound`, `owner_disconnected`, `config_changed`, `locked`, `preempted`,
@@ -127,13 +127,13 @@ the same events on its own object as `session_activated`, `session_key` and
   sent to a socket client when the Lua runtime stops while that client owns the
   active session.
 
-Lua listeners receive the same authority as an opaque `event.focus_context`
-userdata on real, non-repeated `session.key` events. Synthetic and input-method
-events are excluded. The context expires after five seconds and authorizes one
-focus-sensitive compositor operation. Gnoblin still delivers the key event if
-it cannot issue a context.
+Lua listeners receive the same authority as a [`Grant`](/shell-api/grants)
+in `event.grant` on real, non-repeated `session.key` events. Synthetic and input-method
+events are excluded. The gesture ends after five seconds, and each focus-sensitive
+operation can take its scope from it once. Gnoblin still delivers the key event if
+it cannot issue a grant.
 
-`gnoblin.shortcut.binding-activated` can carry a one-use `focus_context` on
+`gnoblin.shortcut.binding-activated` can carry a `grant` on
 trusted activation. `gnoblin.shortcut.binding-deactivated` is emitted for
 press-triggered bindings. The event contains:
 

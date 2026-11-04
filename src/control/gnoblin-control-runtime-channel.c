@@ -691,6 +691,8 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             guint64 handle = 0;
             guint64 generation = 0;
             gint64 expires_at_us = 0;
+            const char* grant_window = NULL;
+            g_variant_lookup(packet->payload, "grant_window", "&s", &grant_window);
             if (!g_variant_lookup(packet->payload, "focus_context_handle", "t", &handle) ||
                 !handle ||
                 !g_variant_lookup(packet->payload, "focus_context_generation", "t", &generation) ||
@@ -701,17 +703,21 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                 g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
                                     "operation requires a live shortcut focus context");
             } else if (g_str_equal(method, "input.text_target")) {
-                result = gnoblin_native_control_create_text_target(
-                    control->display, handle, generation, expires_at_us, &operation_error);
+                result = gnoblin_native_control_create_text_target(control->display, handle,
+                                                                   generation, expires_at_us,
+                                                                   grant_window, &operation_error);
             } else if (g_str_equal(method, "window.snap_context")) {
-                result = gnoblin_native_control_create_snap_context(
-                    control->display, handle, generation, expires_at_us, &operation_error);
+                result = gnoblin_native_control_create_snap_context(control->display, handle,
+                                                                    generation, expires_at_us,
+                                                                    grant_window, &operation_error);
             } else if (g_str_equal(method, "window.focus")) {
-                result = gnoblin_native_control_focus_window(control->display, arguments, handle,
-                                                             generation, &operation_error);
+                result =
+                    gnoblin_native_control_focus_window(control->display, arguments, handle,
+                                                        generation, grant_window, &operation_error);
             } else {
-                result = gnoblin_native_control_begin_window_grab(
-                    control->display, method, arguments, handle, generation, &operation_error);
+                result = gnoblin_native_control_begin_window_grab(control->display, method,
+                                                                  arguments, handle, generation,
+                                                                  grant_window, &operation_error);
             }
         }
     } else if (g_str_equal(method, "console.toggle")) {

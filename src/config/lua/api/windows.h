@@ -64,7 +64,22 @@ same object, updated with each change.
 ---@field workspace_id? string Exact workspace ID.
 ---@field monitor_id? string Exact monitor ID.
 
----@class FocusContext
+---@alias GrantScope "focus"|"begin_move"|"begin_resize"|"snap_context"|"text_target"
+
+---Proof that a user gesture just happened, scoped to the operations it may start. The compositor
+---makes the proof; a script receives it as `event.grant` on a shortcut activation, a pointer
+---binding, an input handler event for a button press, a shortcut session key and a window menu
+---request. Timers, the other events and a script's own code have none.
+---
+---A Grant lists the operations it may take and may name one window. `narrow` returns a Grant
+---with fewer of both, and nothing widens one. Each operation of a gesture runs once, whichever
+---Grant takes it, so one key press can focus a window and then begin a move. A Grant ends five
+---seconds after the gesture, at a configuration reload, and when the session locks.
+---@class Grant
+---@field scope GrantScope[] Operations this Grant may still take, in the order of GrantScope.
+---@field window Window|nil The one window this Grant is narrowed to, or nil when it has no window.
+---@field expires_at_us integer Monotonic time, in microseconds, when the gesture ends.
+---@field alive boolean False when the Grant has expired, its runtime ended or it has no scope left.
 
 ---@class SnapContextFrame
 ---@field x integer X coordinate, from -100000 to 100000.
@@ -101,11 +116,21 @@ function gnoblin.windows.focused() end
 ---@return Window|nil
 function gnoblin.windows.by_id(id) end
 
----Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot
----choose the window.
----@param context FocusContext Live context from a trusted shortcut event.
+---Return a SnapContext for the focused window and spend the "snap_context" scope of a Grant.
+---Callers cannot choose the window. Take it before "focus": the context holds only while the
+---window that had focus at the gesture still has it.
+---@param grant Grant From a shortcut, pointer binding or input event.
 ---@return Operation<SnapContext>
-function gnoblin.windows.snap_context(context) end
+function gnoblin.windows.snap_context(grant) end
+
+---Return a Grant for fewer operations, and for one window if `window` is given. It shares the
+---gesture with the Grant it comes from: an operation that either one took is gone from both. It
+---fails when `scope` names an operation this Grant does not have or the gesture already used,
+---or when `window` is not the window this Grant is narrowed to.
+---@param scope GrantScope|GrantScope[] One operation, or a list of them.
+---@param window? Window|string The window, or its stable ID.
+---@return Grant
+function Grant:narrow(scope, window) end
 
 ---Close this window.
 ---@return Operation<Json>
@@ -177,10 +202,11 @@ function Window:move_to_workspace(workspace, options) end
 ---@return Operation<Json>
 function Window:move_to_monitor(monitor) end
 
----Focus this window using a live shortcut-event context.
----@param context FocusContext Live context from the current shortcut event.
+---Focus this window. This takes the "focus" scope of a Grant, so the user's key press or click
+---gives focus without the compositor's focus-stealing rules getting in the way.
+---@param grant Grant From a shortcut, pointer binding, input or window menu event.
 ---@return Operation<Json>
-function Window:focus(context) end
+function Window:focus(grant) end
 
 ---Focus a window whose program the runtime started with gnoblin.process.spawn. No key press is
 ---needed. It waits until the window is shown and no key press or click reached a window for
@@ -243,16 +269,16 @@ function Window:on(signal, fn) end
 ---@return {unsubscribe: fun()}
 function Window:watch(property, fn) end
 
----Begin an interactive move using a live shortcut-event context.
----@param context FocusContext Live context from the current shortcut event.
+---Begin an interactive move. This takes the "begin_move" scope of a Grant.
+---@param grant Grant From a shortcut, pointer binding, input or window menu event.
 ---@return Operation<Json>
-function Window:begin_move(context) end
+function Window:begin_move(grant) end
 
----Begin an interactive resize using a live shortcut-event context.
+---Begin an interactive resize. This takes the "begin_resize" scope of a Grant.
 ---@param edge "north"|"south"|"east"|"west"|"north_east"|"north_west"|"south_east"|"south_west"
----@param context FocusContext Live context from the current shortcut event.
+---@param grant Grant From a shortcut, pointer binding, input or window menu event.
 ---@return Operation<Json>
-function Window:begin_resize(edge, context) end
+function Window:begin_resize(edge, grant) end
 
 ---Capture a thumbnail at the requested dimensions.
 ---@param width integer Thumbnail width from 1 to 480 pixels.

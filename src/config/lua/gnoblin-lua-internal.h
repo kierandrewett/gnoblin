@@ -28,27 +28,38 @@
 #define MAX_CONSOLE_SOURCE_BYTES (16 * 1024)
 #define MAX_CONSOLE_RESULT_BYTES (16 * 1024)
 #define MAX_CONSOLE_STEPS 100000
-#define LUA_FOCUS_CONTEXT_METATABLE "gnoblin.FocusContext"
-#define LUA_MENU_CONTEXT_METATABLE "gnoblin.MenuContext"
+#define LUA_GRANT_METATABLE "gnoblin.Grant"
 #define LUA_TEXT_TARGET_METATABLE "gnoblin.TextTarget"
 #define LUA_WINDOW_DRAG_METATABLE "gnoblin.WindowDrag"
 #define LUA_SNAP_CONTEXT_METATABLE "gnoblin.SnapContext"
 #define LUA_READONLY_SNAPSHOT_METATABLE "gnoblin.ReadonlySnapshot"
+/* The operations one gesture can authorise. A Grant holds the ones it may still take. */
+typedef enum {
+    LUA_GRANT_FOCUS = 1 << 0,
+    LUA_GRANT_BEGIN_MOVE = 1 << 1,
+    LUA_GRANT_BEGIN_RESIZE = 1 << 2,
+    LUA_GRANT_SNAP_CONTEXT = 1 << 3,
+    LUA_GRANT_TEXT_TARGET = 1 << 4,
+} LuaGrantScope;
+#define LUA_GRANT_ALL                                                                              \
+    (LUA_GRANT_FOCUS | LUA_GRANT_BEGIN_MOVE | LUA_GRANT_BEGIN_RESIZE | LUA_GRANT_SNAP_CONTEXT |    \
+     LUA_GRANT_TEXT_TARGET)
+/* What a Lua script holds as `event.grant`. The compositor made the proof of the gesture; the
+ * userdata only names it. What the gesture has spent is in LuaConfig.grant_spent, so every Grant
+ * narrowed from one event shares it. */
 typedef struct {
     guint64 handle;
     guint64 generation;
     guint64 native_generation;
     gint64 expires_at_us;
-    gboolean consumed;
-} LuaFocusContext;
+    guint scope;   /* LuaGrantScope bits this Grant may take */
+    gboolean menu; /* a WM menu request: begin_move and begin_resize on one window, once */
+    char window_id[GNOBLIN_GRANT_WINDOW_ID_SIZE]; /* "" until narrowed (a menu starts narrowed) */
+} LuaGrant;
 typedef struct {
-    guint64 handle;
-    guint64 generation;
-    guint64 native_generation;
+    guint used; /* LuaGrantScope bits already taken */
     gint64 expires_at_us;
-    char window_id[24];
-    gboolean consumed;
-} LuaMenuContext;
+} LuaGrantSpent;
 typedef struct {
     char token[65];
     char window_id[24];
@@ -73,6 +84,7 @@ typedef struct {
     guint64 generation;
     guint64 native_generation;
     gint64 expires_at_us;
+    char window_id[GNOBLIN_GRANT_WINDOW_ID_SIZE];
 } LuaFocusOperation;
 typedef struct {
     gsize allocated;
@@ -84,6 +96,7 @@ typedef struct {
     GHashTable* processes; /* process.spawn request ID -> registry reference to the Process. */
     GHashTable* requests;  /* "family:id" -> registry reference to a Request's backing table. */
     GHashTable* focus_operations;
+    GHashTable* grant_spent; /* gesture handle (menu bit set for a menu) -> LuaGrantSpent */
     GVariant* window_snapshot;
     guint64 window_revision;
     GVariant* workspace_snapshot;
@@ -205,10 +218,11 @@ extern GnoblinConfigFocusPolicyChangedFunc focus_policy_changed_callback;
 extern gpointer focus_policy_changed_data;
 extern GnoblinConfigSettingsChangedFunc settings_changed_callback;
 extern gpointer settings_changed_data;
-void push_menu_context(lua_State* state, guint64 handle, guint64 generation,
-                       guint64 native_generation, gint64 expires_at_us, const char* window_id);
-void push_focus_context(lua_State* state, guint64 handle, guint64 generation,
-                        guint64 native_generation, gint64 expires_at_us);
+void push_grant(lua_State* state, guint64 handle, guint64 generation, guint64 native_generation,
+                gint64 expires_at_us, gboolean menu, const char* window_id);
+gboolean lua_push_window_by_id(lua_State* state, LuaConfig* config, const char* id);
+int lua_window_grant_operation(lua_State* state, LuaConfig* config, const char* method,
+                               const char* window_id, int grant_index, const char* edge);
 typedef struct {
     const char* path;
     const char* operation;
@@ -309,8 +323,7 @@ void lua_check_operation_context(lua_State* state, LuaConfig* config);
 int lua_queue_operation(lua_State* state, LuaConfig* config, const char* method,
                         GVariant* arguments);
 int lua_input_text_target(lua_State* state);
-int lua_menu_context_begin_move(lua_State* state);
-int lua_menu_context_begin_resize(lua_State* state);
+int lua_grant_index(lua_State* state);
 int lua_windows_snap_context(lua_State* state);
 int lua_snap_context_commit(lua_State* state);
 gboolean lua_dense_array(lua_State* state, int index, lua_Integer maximum);

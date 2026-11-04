@@ -31,8 +31,9 @@ Unavailable monitor capabilities report one of these reasons:
 - `remote_desktop_disabled`: Mutter was built without remote-desktop support.
 - `pipewire_unavailable`: the monitor is disconnected or could not connect.
 
-Pass `focus_context` to `Window:focus(context)` to use the authority granted to
-that event. Lua cannot inspect or create the protected value.
+Pass `grant` to `Window:focus(grant)` to use the authority granted to
+that event. Lua cannot inspect or create the protected value. See
+[grants](/shell-api/grants).
 
 The compositor socket and its directory are accessible only to the current
 user. Any process running as that user can subscribe. Treat same-user socket

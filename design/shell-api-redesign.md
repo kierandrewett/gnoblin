@@ -105,7 +105,7 @@ lock refuses them. `gnoblin.tween()` compiles to one description that the compos
 
 **Round 2: finish the object model.** Section 1 of the review (no two Lua names for one action) and
 section 2 (output, shortcut, launch, input source and process objects) land in four steps. Phase 5
-and gap 7 stay open.
+and gap 7 are done (see the end of this list).
 
 - Step (a), done. `gnoblin.on` and `gnoblin.once` replace the `events` namespace, including
   `events.mutter`.
@@ -248,6 +248,30 @@ and gap 7 stay open.
       carry a one-use `focus_context`, which a script-renewed lease must not carry. They share the capture
       slot and nothing else.
     - Not done: a grab that also takes pointer input, and a key the grab lets through to the focused window.
+
+- Gap 7, done. `FocusContext` and `MenuContext` are one `Grant` (bridge API 1.92): `event.grant` on a
+  shortcut, pointer binding, shortcut session key, input event and WM menu request.
+    - Source facts. The compositor made one `NativeFocusContext` per gesture (key press, pointer binding,
+      matched input event) and the first of five operations (`window.focus`, `window.begin_move`,
+      `window.begin_resize`, `window.snap_context`, `input.text_target`) removed it. It lasted five seconds,
+      died at a reload and a lock, and a socket token for it was also removed at first use. A WM menu
+      request had its own `MenuContext` (one move or resize). `Window:present` is separate: it needs no
+      gesture and keeps its own attribution rule.
+    - Now. The context keeps a `used_scopes` mask; each operation takes its own scope once
+      (`native_focus_context_claim`), a failed operation still spends its scope, and the context ends with
+      its fifth scope, at five seconds, at a reload and at a lock. A script holds a `Grant` userdata, not
+      the proof. `grant:narrow(scope, window?)` returns a Grant for fewer operations and one window; it never
+      widens, and every Grant of a gesture shares what was spent (`LuaConfig.grant_spent`). The Lua runtime
+      checks scope and window; the compositor checks the window again (`grant_window` in the operation packet)
+      and owns expiry and the lock. Timers and events that are not gestures carry no Grant.
+    - Menu requests. A menu Grant has `begin_move` and `begin_resize` for its window and takes one of them.
+      The Lua operation sends the menu capability, not a gesture context; the packet writer used to demand
+      a gesture context for every `window.begin_move`, so a Lua menu move could not reach the compositor.
+    - Wire. Socket clients keep the `focus_context` field and the method names. Their token now lasts for
+      the gesture and each operation uses it once (API 1.92); the connection that uses a gesture first keeps
+      it. The wire has no narrowing. `gnoblinctl lua` gives the same `Grant` and narrows in its own process.
+    - Order. The compositor checks focus identity for `snap_context` and `text_target`, so take them before
+      `focus`.
 
 ## Decisions
 

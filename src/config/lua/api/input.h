@@ -102,10 +102,12 @@ function InputSource:watch(property, fn) end
 ---@return OrientationLock
 function gnoblin.input.orientation_lock() end
 
----Create a one-use text target from the active shortcut FocusContext.
----@param context FocusContext Context supplied to a shortcut event callback.
+---Create a one-use text target in the focused window, and spend the "text_target" scope of a
+---Grant. It works only while the window that had focus at the gesture still has it, so take it
+---before "focus".
+---@param grant Grant From a gesture with no modifier key held.
 ---@return Operation<TextTarget>
-function gnoblin.input.text_target(context) end
+function gnoblin.input.text_target(grant) end
 
 ---Register a Lua policy callback for matching input events.
 ---@param match InputHandlerMatch Event selectors. type is required; other selectors are optional.

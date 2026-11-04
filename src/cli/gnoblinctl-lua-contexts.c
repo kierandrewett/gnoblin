@@ -4,22 +4,58 @@ static void lua_cli_set_window_id(JsonObject* arguments, const char* id) {
     json_object_set_string_member(arguments, "id", id);
 }
 
-LuaCliFocusContext* lua_cli_test_focus_context(lua_State* state, int index) {
-    if (!luaL_testudata(state, index, GNOBLINCTL_FOCUS_CONTEXT_METATABLE) ||
-        lua_rawlen(state, index) != sizeof(LuaCliFocusContext))
-        return NULL;
-    LuaCliFocusContext* context = lua_touserdata(state, index);
-    return context->magic == LUA_CLI_FOCUS_CONTEXT_MAGIC ? context : NULL;
+/* A Grant here wraps the compositor's one-use token for a gesture. The wire has no narrowing, so
+ * `narrow` is enforced in this process; the compositor still takes each operation once. */
+static const struct {
+    const char* name;
+    LuaCliGrantScope scope;
+} lua_cli_grant_scopes[] = {
+    {"focus", LUA_CLI_GRANT_FOCUS},
+    {"begin_move", LUA_CLI_GRANT_BEGIN_MOVE},
+    {"begin_resize", LUA_CLI_GRANT_BEGIN_RESIZE},
+    {"snap_context", LUA_CLI_GRANT_SNAP_CONTEXT},
+    {"text_target", LUA_CLI_GRANT_TEXT_TARGET},
+};
+
+static const char* lua_cli_grant_scope_name(LuaCliGrantScope scope) {
+    for (guint i = 0; i < G_N_ELEMENTS(lua_cli_grant_scopes); i++)
+        if (lua_cli_grant_scopes[i].scope == scope)
+            return lua_cli_grant_scopes[i].name;
+    return "operation";
 }
 
-LuaCliMenuContext* lua_cli_test_menu_context(lua_State* state, int index) {
-    if (!luaL_testudata(state, index, GNOBLINCTL_MENU_CONTEXT_METATABLE) ||
-        lua_rawlen(state, index) != sizeof(LuaCliMenuContext))
+LuaCliGrant* lua_cli_test_grant(lua_State* state, int index) {
+    if (!luaL_testudata(state, index, GNOBLINCTL_GRANT_METATABLE) ||
+        lua_rawlen(state, index) != sizeof(LuaCliGrant))
         return NULL;
-    LuaCliMenuContext* context = lua_touserdata(state, index);
-    return context->magic == LUA_CLI_MENU_CONTEXT_MAGIC && context->subscription && context->token
-               ? context
+    LuaCliGrant* grant = lua_touserdata(state, index);
+    return grant->magic == LUA_CLI_GRANT_MAGIC && grant->subscription && grant->token &&
+                   grant->spent
+               ? grant
                : NULL;
+}
+
+static void lua_cli_new_grant(lua_State* state, const LuaCliGrant* source) {
+    LuaCliGrant* grant = lua_newuserdatauv(state, sizeof *grant, 0);
+    *grant = *source;
+    grant->token = g_strdup(source->token);
+    grant->spent->refs++;
+    luaL_getmetatable(state, GNOBLINCTL_GRANT_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+void lua_cli_push_grant(lua_State* state, CliLuaEventSubscription* subscription, const char* token,
+                        gboolean menu, const char* window_id) {
+    LuaCliGrantSpent* spent = g_new0(LuaCliGrantSpent, 1);
+    LuaCliGrant grant = {.magic = LUA_CLI_GRANT_MAGIC,
+                         .subscription = subscription,
+                         .token = (char*)token,
+                         .menu = menu,
+                         .scope = menu ? (LUA_CLI_GRANT_BEGIN_MOVE | LUA_CLI_GRANT_BEGIN_RESIZE)
+                                       : LUA_CLI_GRANT_ALL,
+                         .spent = spent};
+    g_strlcpy(grant.window_id, window_id ? window_id : "", sizeof grant.window_id);
+    lua_cli_new_grant(state, &grant);
 }
 
 static gboolean lua_cli_resize_edge_valid(const char* edge) {
@@ -29,56 +65,233 @@ static gboolean lua_cli_resize_edge_valid(const char* edge) {
                     g_str_equal(edge, "south_east") || g_str_equal(edge, "south_west"));
 }
 
-static int lua_cli_menu_context_begin(lua_State* state, gboolean resize) {
-    LuaCliMenuContext* context = lua_cli_test_menu_context(state, 1);
-    if (!context)
-        return luaL_error(state, "MenuContext method called on a forged or invalid value");
-    if (lua_gettop(state) != (resize ? 2 : 1))
-        return luaL_error(state, "MenuContext:%s takes %s", resize ? "begin_resize" : "begin_move",
-                          resize ? "one ResizeEdge" : "no arguments");
-    if (context->consumed)
-        return luaL_error(state, "MenuContext has already been consumed");
-    CliLuaEventSubscription* subscription = context->subscription;
-    if (!subscription || !subscription->active || !subscription->connection || !subscription->cli)
-        return luaL_error(state, "MenuContext requires its active event subscription");
-
-    const char* edge = NULL;
-    if (resize) {
-        size_t edge_length = 0;
-        edge = lua_type(state, 2) == LUA_TSTRING ? lua_tolstring(state, 2, &edge_length) : NULL;
-        if (!lua_cli_resize_edge_valid(edge) || edge_length != strlen(edge))
-            return luaL_error(state, "MenuContext:begin_resize requires a valid ResizeEdge");
+/* Take `scope` for `method` from the Grant at `index`. */
+static LuaCliGrant* lua_cli_grant_take(lua_State* state, Cli* cli, int index,
+                                       LuaCliGrantScope scope, const char* method,
+                                       const char* window_id) {
+    LuaCliGrant* grant = lua_cli_test_grant(state, index);
+    if (!grant) {
+        luaL_error(state, "%s requires a Grant received from a Gnoblin event", method);
+        return NULL;
     }
+    CliLuaEventSubscription* subscription = grant->subscription;
+    if (!subscription->active || !subscription->connection || subscription->cli != cli) {
+        luaL_error(state, "%s requires a Grant from an active event subscription", method);
+        return NULL;
+    }
+    if (!(grant->scope & scope)) {
+        luaL_error(state, "%s: this Grant has no %s scope", method,
+                   lua_cli_grant_scope_name(scope));
+        return NULL;
+    }
+    if (grant->window_id[0] && window_id && !g_str_equal(grant->window_id, window_id)) {
+        luaL_error(state, "%s: this Grant is narrowed to window %s, not window %s", method,
+                   grant->window_id, window_id);
+        return NULL;
+    }
+    if (grant->spent->used & scope) {
+        luaL_error(state, "%s: this gesture already used its %s scope", method,
+                   lua_cli_grant_scope_name(scope));
+        return NULL;
+    }
+    /* The compositor takes the scope on the first valid request, even when the action is
+     * denied, so never offer local reuse. A menu request offers one move or one resize. */
+    grant->spent->used |= grant->menu ? LUA_CLI_GRANT_ALL : scope;
+    return grant;
+}
 
+JsonNode* lua_cli_grant_request(lua_State* state, Cli* cli, int index, LuaCliGrantScope scope,
+                                const char* method, const char* window_id, const char* edge,
+                                CliLuaEventSubscription** subscription) {
+    LuaCliGrant* grant = lua_cli_grant_take(state, cli, index, scope, method, window_id);
     JsonObject* arguments = json_object_new();
-    json_object_set_string_member(arguments, "menu_context", context->token);
-    if (resize)
+    if (grant->menu) {
+        json_object_set_string_member(arguments, "menu_context", grant->token);
+    } else {
+        json_object_set_string_member(arguments, "focus_context", grant->token);
+        if (window_id)
+            lua_cli_set_window_id(arguments, window_id);
+    }
+    if (edge)
         json_object_set_string_member(arguments, "edge", edge);
-    context->consumed = TRUE;
-
     GError* error = NULL;
-    JsonNode* result = cli_lua_call_compositor_direct_on_subscription(
-        subscription, resize ? "window.begin_resize" : "window.begin_move", arguments, &error);
+    CliLuaEventSubscription* owner = grant->subscription;
+    JsonNode* result =
+        grant->menu
+            ? cli_lua_call_compositor_direct_on_subscription(owner, method, arguments, &error)
+            : cli_lua_call_compositor_on_subscription(owner, method, arguments, &error);
     json_object_unref(arguments);
     if (!result) {
         char message[512];
         g_snprintf(message, sizeof message, "%s",
                    error ? error->message : "unknown compositor error");
         g_clear_error(&error);
-        return luaL_error(state, "MenuContext operation failed: %s", message);
+        luaL_error(state, "%s failed: %s", method, message);
+        return NULL;
     }
+    if (subscription)
+        *subscription = owner;
+    return result;
+}
 
-    json_to_lua(state, result);
-    json_node_unref(result);
+static gboolean lua_cli_grant_window_argument(lua_State* state, int index, char* out) {
+    if (lua_isnoneornil(state, index))
+        return TRUE;
+    const char* id = NULL;
+    if (lua_type(state, index) == LUA_TSTRING) {
+        id = lua_tostring(state, index);
+    } else if (lua_type(state, index) == LUA_TTABLE || lua_type(state, index) == LUA_TUSERDATA) {
+        lua_getfield(state, index, "id");
+        id = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+        lua_pop(state, 1);
+    }
+    if (!id || !*id || strlen(id) >= sizeof((LuaCliGrant){0}.window_id))
+        return FALSE;
+    g_strlcpy(out, id, sizeof((LuaCliGrant){0}.window_id));
+    return TRUE;
+}
+
+/* grant:narrow(scope, window?): a Grant for fewer operations and, optionally, one window. */
+static int lua_cli_grant_narrow(lua_State* state) {
+    LuaCliGrant* grant = lua_cli_test_grant(state, 1);
+    if (!grant)
+        return luaL_error(state, "Grant:narrow called on a forged or invalid value");
+    if (lua_gettop(state) < 2 || lua_gettop(state) > 3)
+        return luaL_error(state, "Grant:narrow takes operations and an optional window");
+    guint requested = 0;
+    int count = 0;
+    if (lua_type(state, 2) == LUA_TSTRING) {
+        lua_pushvalue(state, 2);
+        count = 1;
+    } else if (lua_type(state, 2) == LUA_TTABLE && lua_rawlen(state, 2) > 0 &&
+               lua_rawlen(state, 2) <= G_N_ELEMENTS(lua_cli_grant_scopes)) {
+        count = (int)lua_rawlen(state, 2);
+        for (int i = 1; i <= count; i++)
+            lua_rawgeti(state, 2, i);
+    } else {
+        return luaL_error(state, "Grant:narrow needs an operation name or a list of names");
+    }
+    for (int i = 0; i < count; i++) {
+        const char* name =
+            lua_type(state, -count + i) == LUA_TSTRING ? lua_tostring(state, -count + i) : NULL;
+        guint bit = 0;
+        for (guint s = 0; name && s < G_N_ELEMENTS(lua_cli_grant_scopes); s++)
+            if (g_str_equal(name, lua_cli_grant_scopes[s].name))
+                bit = lua_cli_grant_scopes[s].scope;
+        if (!bit)
+            return luaL_error(state,
+                              "Grant:narrow: %s is not an operation (focus, begin_move, "
+                              "begin_resize, snap_context, text_target)",
+                              name ? name : "a non-string");
+        requested |= bit;
+    }
+    lua_pop(state, count);
+    for (guint s = 0; s < G_N_ELEMENTS(lua_cli_grant_scopes); s++) {
+        guint bit = lua_cli_grant_scopes[s].scope;
+        if (!(requested & bit))
+            continue;
+        if (!(grant->scope & bit))
+            return luaL_error(state, "Grant:narrow cannot widen: this Grant has no %s scope",
+                              lua_cli_grant_scopes[s].name);
+        if (grant->spent->used & bit)
+            return luaL_error(state, "Grant:narrow: this gesture already used its %s scope",
+                              lua_cli_grant_scopes[s].name);
+    }
+    LuaCliGrant narrowed = *grant;
+    narrowed.scope = requested;
+    char window_id[sizeof grant->window_id] = {0};
+    if (!lua_cli_grant_window_argument(state, 3, window_id))
+        return luaL_error(state, "Grant:narrow needs a Window or a window ID for its window");
+    if (window_id[0]) {
+        if (grant->window_id[0] && !g_str_equal(grant->window_id, window_id))
+            return luaL_error(state, "Grant:narrow cannot widen: this Grant is for window %s",
+                              grant->window_id);
+        g_strlcpy(narrowed.window_id, window_id, sizeof narrowed.window_id);
+    }
+    lua_cli_new_grant(state, &narrowed);
     return 1;
 }
 
-int lua_cli_menu_context_begin_move(lua_State* state) {
-    return lua_cli_menu_context_begin(state, FALSE);
+static int lua_cli_grant_index(lua_State* state) {
+    LuaCliGrant* grant = lua_cli_test_grant(state, 1);
+    if (!grant)
+        return 0;
+    const char* key = lua_type(state, 2) == LUA_TSTRING ? lua_tostring(state, 2) : NULL;
+    if (!key)
+        return 0;
+    if (g_str_equal(key, "narrow")) {
+        lua_pushcfunction(state, lua_cli_grant_narrow);
+        return 1;
+    }
+    gboolean live = grant->subscription->active && grant->subscription->connection;
+    if (g_str_equal(key, "scope")) {
+        guint remaining = live ? grant->scope & ~grant->spent->used : 0;
+        lua_newtable(state);
+        lua_Integer next = 1;
+        for (guint s = 0; s < G_N_ELEMENTS(lua_cli_grant_scopes); s++) {
+            if (!(remaining & lua_cli_grant_scopes[s].scope))
+                continue;
+            lua_pushstring(state, lua_cli_grant_scopes[s].name);
+            lua_rawseti(state, -2, next++);
+        }
+        return 1;
+    }
+    if (g_str_equal(key, "window")) {
+        if (!grant->window_id[0]) {
+            lua_pushnil(state);
+            return 1;
+        }
+        lua_getglobal(state, "gnoblin");
+        lua_getfield(state, -1, "windows");
+        lua_getfield(state, -1, "by_id");
+        lua_pushstring(state, grant->window_id);
+        lua_call(state, 1, 1);
+        return 1;
+    }
+    if (g_str_equal(key, "alive")) {
+        lua_pushboolean(state, live && (grant->scope & ~grant->spent->used) != 0);
+        return 1;
+    }
+    return 0;
 }
 
-int lua_cli_menu_context_begin_resize(lua_State* state) {
-    return lua_cli_menu_context_begin(state, TRUE);
+static int lua_cli_grant_gc(lua_State* state) {
+    LuaCliGrant* grant = luaL_testudata(state, 1, GNOBLINCTL_GRANT_METATABLE);
+    if (!grant || lua_rawlen(state, 1) != sizeof(LuaCliGrant) ||
+        grant->magic != LUA_CLI_GRANT_MAGIC)
+        return 0;
+    g_clear_pointer(&grant->token, g_free);
+    if (grant->spent && --grant->spent->refs == 0)
+        g_free(grant->spent);
+    grant->spent = NULL;
+    grant->subscription = NULL;
+    grant->magic = 0;
+    return 0;
+}
+
+static int lua_cli_grant_newindex(lua_State* state) {
+    return luaL_error(state, "Grant values are read-only");
+}
+
+static int lua_cli_grant_tostring(lua_State* state) {
+    lua_pushstring(state, lua_cli_test_grant(state, 1) ? "Grant" : "Grant<invalid>");
+    return 1;
+}
+
+void register_lua_cli_grant(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_GRANT_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_grant_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_grant_gc);
+    lua_setfield(state, -2, "__gc");
+    lua_pushcfunction(state, lua_cli_grant_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_grant_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
 }
 
 static int lua_cli_window_method(lua_State* state) {
@@ -88,44 +301,34 @@ static int lua_cli_window_method(lua_State* state) {
     g_autofree char* id = g_strdup(lua_cli_window_id(state));
     lua_settop(state, supplied + 1);
 
-    gboolean uses_focus_context = g_str_equal(method, "window.focus") ||
-                                  g_str_equal(method, "window.begin_move") ||
-                                  g_str_equal(method, "window.begin_resize");
-    LuaCliFocusContext* focus_context = NULL;
-    if (uses_focus_context) {
-        int context_index = g_str_equal(method, "window.begin_resize") ? 3 : 2;
-        int expected_arguments = g_str_equal(method, "window.begin_resize") ? 2 : 1;
-        if (supplied != expected_arguments) {
-            return luaL_error(state, "%s requires %sFocusContext as its final argument", method,
-                              g_str_equal(method, "window.begin_resize") ? "an edge and a " : "a ");
+    gboolean uses_grant = g_str_equal(method, "window.focus") ||
+                          g_str_equal(method, "window.begin_move") ||
+                          g_str_equal(method, "window.begin_resize");
+    if (uses_grant) {
+        gboolean resize = g_str_equal(method, "window.begin_resize");
+        if (supplied != (resize ? 2 : 1))
+            return luaL_error(state, "%s requires %sa Grant as its final argument", method,
+                              resize ? "an edge and " : "");
+        const char* edge = NULL;
+        if (resize) {
+            edge = lua_type(state, 2) == LUA_TSTRING ? lua_tostring(state, 2) : NULL;
+            if (!lua_cli_resize_edge_valid(edge))
+                return luaL_error(state, "window.begin_resize requires a valid ResizeEdge");
         }
-        focus_context = lua_cli_test_focus_context(state, context_index);
-        if (!focus_context)
-            return luaL_error(state, "%s requires a FocusContext received from a Gnoblin event",
-                              method);
-        if (focus_context->consumed)
-            return luaL_error(state, "%s cannot reuse a consumed FocusContext", method);
-        if (!focus_context->subscription || !focus_context->subscription->active ||
-            !focus_context->subscription->connection || focus_context->subscription->cli != cli)
-            return luaL_error(state, "%s requires a FocusContext from an active event subscription",
-                              method);
+        LuaCliGrantScope scope = g_str_equal(method, "window.focus") ? LUA_CLI_GRANT_FOCUS
+                                 : resize                            ? LUA_CLI_GRANT_BEGIN_RESIZE
+                                                                     : LUA_CLI_GRANT_BEGIN_MOVE;
+        g_autoptr(JsonNode) grant_result =
+            lua_cli_grant_request(state, cli, resize ? 3 : 2, scope, method, id, edge, NULL);
+        json_to_lua(state, grant_result);
+        return 1;
     }
 
     JsonObject* arguments = json_object_new();
     lua_cli_set_window_id(arguments, id);
-    if (uses_focus_context) {
-        json_object_set_string_member(arguments, "focus_context", focus_context->token);
-        if (g_str_equal(method, "window.begin_resize")) {
-            const char* edge = lua_type(state, 2) == LUA_TSTRING ? lua_tostring(state, 2) : NULL;
-            if (!lua_cli_resize_edge_valid(edge)) {
-                json_object_unref(arguments);
-                return luaL_error(state, "window.begin_resize requires a valid ResizeEdge");
-            }
-            json_object_set_string_member(arguments, "edge", edge);
-        }
-    } else if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
-               g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
-               g_str_equal(method, "window.restore_or_minimize")) {
+    if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
+        g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
+        g_str_equal(method, "window.restore_or_minimize")) {
         if (supplied != 0) {
             json_object_unref(arguments);
             return luaL_error(state, "%s takes no arguments", method);
@@ -198,16 +401,7 @@ static int lua_cli_window_method(lua_State* state) {
     }
 
     g_autoptr(GError) call_error = NULL;
-    JsonNode* raw_result;
-    if (focus_context) {
-        /* The server consumes a focus grant on the first valid request, even
-         * when the requested action is denied, so never offer local reuse. */
-        focus_context->consumed = TRUE;
-        raw_result = cli_lua_call_compositor_on_subscription(focus_context->subscription, method,
-                                                             arguments, &call_error);
-    } else {
-        raw_result = call_compositor(cli, "api", method, arguments, &call_error);
-    }
+    JsonNode* raw_result = call_compositor(cli, "api", method, arguments, &call_error);
     g_autoptr(JsonNode) result = raw_result;
     json_object_unref(arguments);
     if (!result)
@@ -646,28 +840,13 @@ static void lua_cli_push_text_target(lua_State* state, CliLuaEventSubscription* 
 
 int lua_cli_input_text_target(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    LuaCliFocusContext* context = lua_cli_test_focus_context(state, 1);
-    if (lua_gettop(state) != 1 || !context)
-        return luaL_error(state,
-                          "gnoblin.input.text_target requires a FocusContext from a Gnoblin event");
-    if (context->consumed)
-        return luaL_error(state, "gnoblin.input.text_target cannot reuse a consumed FocusContext");
-    if (!context->subscription || !context->subscription->active ||
-        !context->subscription->connection || context->subscription->cli != cli)
-        return luaL_error(state, "gnoblin.input.text_target requires its active event connection");
-
-    JsonObject* arguments = json_object_new();
-    json_object_set_string_member(arguments, "focus_context", context->token);
-    context->consumed = TRUE;
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
-        context->subscription, "input.text_target", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "input.text_target failed: %s",
-                          call_error ? call_error->message : "compositor request failed");
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "gnoblin.input.text_target takes one Grant");
+    CliLuaEventSubscription* subscription = NULL;
+    g_autoptr(JsonNode) result = lua_cli_grant_request(
+        state, cli, 1, LUA_CLI_GRANT_TEXT_TARGET, "input.text_target", NULL, NULL, &subscription);
     if (!JSON_NODE_HOLDS_OBJECT(result))
         return luaL_error(state, "input.text_target returned an invalid result");
-    lua_cli_push_text_target(state, context->subscription, json_node_get_object(result));
+    lua_cli_push_text_target(state, subscription, json_node_get_object(result));
     return 1;
 }

@@ -22,24 +22,24 @@ gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode*
             lua_pushstring(state, event_name);
             lua_setfield(state, -2, "name");
         }
+        /* The wire carries a one-use token; a script gets the Grant that names it. A menu
+         * request carries its own token, only for a window-manager menu. */
         const char* token = member_string(object, "focus_context", NULL);
-        if (token && *token) {
-            lua_cli_push_focus_context(state, subscription, token);
-            lua_setfield(state, -2, "focus_context");
-        }
-
         const char* menu_token = member_string(object, "menu_context", NULL);
-        if (menu_token) {
-            const char* event_name = member_string(object, "event", NULL);
-            const char* menu_type = member_string(object, "menu_type", NULL);
-            lua_pushnil(state);
-            lua_setfield(state, -2, "menu_context");
-            if (*menu_token && event_name && menu_type &&
-                g_str_equal(event_name, "gnoblin.window.menu-requested") &&
-                g_str_equal(menu_type, "wm")) {
-                lua_cli_push_menu_context(state, subscription, menu_token);
-                lua_setfield(state, -2, "menu_context");
-            }
+        const char* menu_type = member_string(object, "menu_type", NULL);
+        gboolean wm_menu = event_name && g_str_equal(event_name, "gnoblin.window.menu-requested") &&
+                           menu_type && g_str_equal(menu_type, "wm");
+        lua_pushnil(state);
+        lua_setfield(state, -2, "focus_context");
+        lua_pushnil(state);
+        lua_setfield(state, -2, "menu_context");
+        if (token && *token) {
+            lua_cli_push_grant(state, subscription, token, FALSE, NULL);
+            lua_setfield(state, -2, "grant");
+        } else if (menu_token && *menu_token && wm_menu) {
+            lua_cli_push_grant(state, subscription, menu_token, TRUE,
+                               member_string(object, "window_id", NULL));
+            lua_setfield(state, -2, "grant");
         }
     }
     gboolean succeeded = lua_pcall(state, 1, 0, 0) == LUA_OK;
@@ -422,104 +422,6 @@ static int lua_cli_event_subscription_tostring(lua_State* state) {
                     subscription && subscription->active ? "active" : "ended",
                     subscription ? subscription->event_name : "unknown");
     return 1;
-}
-
-static int lua_cli_focus_context_gc(lua_State* state) {
-    LuaCliFocusContext* context = luaL_testudata(state, 1, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
-    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliFocusContext) ||
-        context->magic != LUA_CLI_FOCUS_CONTEXT_MAGIC)
-        return 0;
-    g_clear_pointer(&context->token, g_free);
-    context->subscription = NULL;
-    context->magic = 0;
-    return 0;
-}
-
-static int lua_cli_focus_context_newindex(lua_State* state) {
-    return luaL_error(state, "FocusContext values are opaque and read-only");
-}
-
-static int lua_cli_focus_context_tostring(lua_State* state) {
-    LuaCliFocusContext* context = luaL_testudata(state, 1, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
-    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliFocusContext) ||
-        context->magic != LUA_CLI_FOCUS_CONTEXT_MAGIC) {
-        lua_pushliteral(state, "FocusContext<invalid>");
-        return 1;
-    }
-    lua_pushfstring(state, "FocusContext<%s>", context->consumed ? "consumed" : "available");
-    return 1;
-}
-
-void register_lua_cli_focus_context(lua_State* state) {
-    if (!luaL_newmetatable(state, GNOBLINCTL_FOCUS_CONTEXT_METATABLE)) {
-        lua_pop(state, 1);
-        return;
-    }
-    lua_pushcfunction(state, lua_cli_focus_context_gc);
-    lua_setfield(state, -2, "__gc");
-    lua_pushcfunction(state, lua_cli_focus_context_newindex);
-    lua_setfield(state, -2, "__newindex");
-    lua_pushcfunction(state, lua_cli_focus_context_tostring);
-    lua_setfield(state, -2, "__tostring");
-    lua_pop(state, 1);
-}
-
-static int lua_cli_menu_context_index(lua_State* state) {
-    LuaCliMenuContext* context = lua_cli_test_menu_context(state, 1);
-    if (!context)
-        return 0;
-    const char* field = luaL_checkstring(state, 2);
-    if (g_str_equal(field, "begin_move")) {
-        lua_pushcfunction(state, lua_cli_menu_context_begin_move);
-        return 1;
-    }
-    if (g_str_equal(field, "begin_resize")) {
-        lua_pushcfunction(state, lua_cli_menu_context_begin_resize);
-        return 1;
-    }
-    return 0;
-}
-
-static int lua_cli_menu_context_gc(lua_State* state) {
-    LuaCliMenuContext* context = luaL_testudata(state, 1, GNOBLINCTL_MENU_CONTEXT_METATABLE);
-    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliMenuContext) ||
-        context->magic != LUA_CLI_MENU_CONTEXT_MAGIC)
-        return 0;
-    g_clear_pointer(&context->token, g_free);
-    context->subscription = NULL;
-    context->magic = 0;
-    return 0;
-}
-
-static int lua_cli_menu_context_newindex(lua_State* state) {
-    return luaL_error(state, "MenuContext values are opaque and read-only");
-}
-
-static int lua_cli_menu_context_tostring(lua_State* state) {
-    LuaCliMenuContext* context = luaL_testudata(state, 1, GNOBLINCTL_MENU_CONTEXT_METATABLE);
-    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliMenuContext) ||
-        context->magic != LUA_CLI_MENU_CONTEXT_MAGIC) {
-        lua_pushliteral(state, "MenuContext<invalid>");
-        return 1;
-    }
-    lua_pushfstring(state, "MenuContext<%s>", context->consumed ? "consumed" : "available");
-    return 1;
-}
-
-void register_lua_cli_menu_context(lua_State* state) {
-    if (!luaL_newmetatable(state, GNOBLINCTL_MENU_CONTEXT_METATABLE)) {
-        lua_pop(state, 1);
-        return;
-    }
-    lua_pushcfunction(state, lua_cli_menu_context_index);
-    lua_setfield(state, -2, "__index");
-    lua_pushcfunction(state, lua_cli_menu_context_gc);
-    lua_setfield(state, -2, "__gc");
-    lua_pushcfunction(state, lua_cli_menu_context_newindex);
-    lua_setfield(state, -2, "__newindex");
-    lua_pushcfunction(state, lua_cli_menu_context_tostring);
-    lua_setfield(state, -2, "__tostring");
-    lua_pop(state, 1);
 }
 
 void register_lua_cli_snap_context(lua_State* state) {

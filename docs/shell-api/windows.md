@@ -84,21 +84,22 @@ Each method returns an `Operation` handle.
 | `window:present()`                              | None                                      | Focus a window of a process the runtime started.             |
 
 Record properties remain read-only. In the native runtime,
-`Window:focus(context)` requests focus using the context from
-`gnoblin.shortcut.activated`. The callback provides that value only for a
-trusted shortcut key press. It expires after five seconds.
+`Window:focus(grant)` requests focus with the [`grant`](/shell-api/grants) of
+an event such as `gnoblin.shortcut.activated`. The callback provides that value only for a
+trusted key press, pointer binding or window menu request. It expires after five seconds.
 A successful focus operation completes with `{id = window.id}`.
 
-The same context can authorize `begin_move` or `begin_resize`. It works once
-across all three operations. A config reload invalidates contexts from the old
-Lua runtime; a session lock also revokes them.
+The same grant can authorize `begin_move` and `begin_resize`. Each of the three operations
+works once for a gesture, so one key press can focus a window and then begin a move.
+`grant:narrow(scope, window?)` hands out less. A config reload invalidates grants from
+the old Lua runtime; a session lock also revokes them.
 
 Mutter still applies its normal window activation policy.
 
-Contexts are not provided for clicks, external-client shortcuts, release
+Grants are not provided for external-client shortcuts, release
 bindings, synthetic input, input-method events, or repeated key presses. Direct
 `Window:focus`, `Window:begin_move`, and `Window:begin_resize` calls without a
-context remain denied.
+grant remain denied.
 
 For socket operation names and argument fields, see the [compositor bridge](/bridge/).
 
@@ -165,21 +166,23 @@ receive events with those names.
 - `menu_type`: `wm` for a window manager menu or `app` for an application menu;
 - `x` and `y`: global logical coordinates supplied by Mutter.
 
-For `menu_type == "wm"`, Lua receives a non-serializable
-`event.menu_context` userdata. In that callback, call
-`event.menu_context:begin_move()` or
-`event.menu_context:begin_resize(edge)` to start Mutter's keyboard grab on the
-exact window that raised the menu. The context works once, expires after five
-seconds, and is available only during that event callback. It is revoked on
-session lock or runtime/config teardown. App-menu requests have no context.
+For `menu_type == "wm"`, Lua receives a [`grant`](/shell-api/grants) in `event.grant`.
+In that callback, call `window:begin_move(event.grant)` or
+`window:begin_resize(edge, event.grant)` on the window that raised the menu
+(`event.grant.window`) to start Mutter's keyboard grab on it.
 
-`gnoblinctl lua` wraps this token as opaque `event.menu_context` userdata.
-Call `event.menu_context:begin_move()` or
-`event.menu_context:begin_resize(edge)` from the event callback. The console
+- The grant works once, for one move or one resize.
+- It expires after five seconds, and is available only during that event callback.
+- A bad edge is a Lua error that spends nothing.
+- It is revoked on session lock or runtime/config teardown.
+- App-menu requests have no grant.
+
+`gnoblinctl lua` wraps the socket token the same way: a `Grant` in `event.grant`,
+used as `window:begin_move(event.grant)`. The console
 hides the token and sends the operation over the event's connection. App-menu
-events do not receive a `MenuContext`.
+events get no grant.
 
-The token expires after five seconds and is consumed on every matching attempt,
+On the socket, the `menu_context` token expires after five seconds and is consumed on every matching attempt,
 including malformed arguments. The [compositor bridge](/bridge/)
 documents the socket form. Gnoblin rechecks the window and lock state before
 using a fresh Mutter timestamp.

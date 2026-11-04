@@ -246,30 +246,14 @@ int lua_cli_windows_list(lua_State* state) {
 int lua_cli_windows_snap_context(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1)
-        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
-    LuaCliFocusContext* context = lua_cli_test_focus_context(state, 1);
-    if (!context)
-        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
-    if (context->consumed)
-        return luaL_error(state, "gnoblin.windows.snap_context cannot reuse a consumed context");
-    if (!context->subscription || !context->subscription->active ||
-        !context->subscription->connection || context->subscription->cli != cli)
-        return luaL_error(state,
-                          "gnoblin.windows.snap_context requires its active event connection");
-
-    JsonObject* arguments = json_object_new();
-    json_object_set_string_member(arguments, "focus_context", context->token);
-    context->consumed = TRUE;
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
-        context->subscription, "window.snap_context", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "window.snap_context failed: %s",
-                          call_error ? call_error->message : "compositor request failed");
+        return luaL_error(state, "gnoblin.windows.snap_context takes one Grant");
+    CliLuaEventSubscription* subscription = NULL;
+    g_autoptr(JsonNode) result =
+        lua_cli_grant_request(state, cli, 1, LUA_CLI_GRANT_SNAP_CONTEXT, "window.snap_context",
+                              NULL, NULL, &subscription);
     if (!JSON_NODE_HOLDS_OBJECT(result))
         return luaL_error(state, "window.snap_context returned an invalid result");
-    lua_cli_push_snap_context(state, context->subscription, json_node_get_object(result));
+    lua_cli_push_snap_context(state, subscription, json_node_get_object(result));
     return 1;
 }
 
@@ -423,28 +407,6 @@ void cli_lua_event_subscription_free(gpointer data) {
         g_string_free(subscription->pending, TRUE);
     g_free(subscription->event_name);
     g_free(subscription);
-}
-
-void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription* subscription,
-                                const char* token) {
-    LuaCliFocusContext* context = lua_newuserdatauv(state, sizeof *context, 0);
-    context->magic = LUA_CLI_FOCUS_CONTEXT_MAGIC;
-    context->subscription = subscription;
-    context->token = g_strdup(token);
-    context->consumed = FALSE;
-    luaL_getmetatable(state, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
-    lua_setmetatable(state, -2);
-}
-
-void lua_cli_push_menu_context(lua_State* state, CliLuaEventSubscription* subscription,
-                               const char* token) {
-    LuaCliMenuContext* context = lua_newuserdatauv(state, sizeof *context, 0);
-    context->magic = LUA_CLI_MENU_CONTEXT_MAGIC;
-    context->subscription = subscription;
-    context->token = g_strdup(token);
-    context->consumed = FALSE;
-    luaL_getmetatable(state, GNOBLINCTL_MENU_CONTEXT_METATABLE);
-    lua_setmetatable(state, -2);
 }
 
 static JsonNode* lua_cli_output_snapshot(lua_State* state, Cli* cli, const char* operation) {

@@ -346,30 +346,37 @@ int lua_windows_focused(lua_State* state) {
     return 1;
 }
 
+/* Push the window with this stable ID, or return FALSE and push nothing. */
+gboolean lua_push_window_by_id(lua_State* state, LuaConfig* config, const char* id) {
+    if (!config || !config->window_snapshot)
+        return FALSE;
+    g_autoptr(GVariant) windows = lua_window_array(config);
+    if (!windows)
+        return FALSE;
+    for (gsize i = 0; i < g_variant_n_children(windows); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(windows, i);
+        g_autoptr(GVariant) window = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
+                                         ? g_variant_get_variant(wrapped)
+                                         : g_variant_ref(wrapped);
+        const char* window_id = NULL;
+        if (g_variant_lookup(window, "id", "&s", &window_id) && g_str_equal(id, window_id)) {
+            push_variant(state, window);
+            push_readonly_copy(state, -1);
+            lua_remove(state, -2);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 int lua_windows_by_id(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
         return luaL_error(state, "gnoblin.windows.by_id requires one string ID");
-    const char* id = lua_tostring(state, 1);
     if (!config || !config->window_snapshot)
         return luaL_error(state, "native window snapshot is unavailable");
-    g_autoptr(GVariant) windows = lua_window_array(config);
-    if (windows) {
-        for (gsize i = 0; i < g_variant_n_children(windows); i++) {
-            g_autoptr(GVariant) wrapped = g_variant_get_child_value(windows, i);
-            g_autoptr(GVariant) window = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
-                                             ? g_variant_get_variant(wrapped)
-                                             : g_variant_ref(wrapped);
-            const char* window_id = NULL;
-            if (g_variant_lookup(window, "id", "&s", &window_id) && g_str_equal(id, window_id)) {
-                push_variant(state, window);
-                push_readonly_copy(state, -1);
-                lua_remove(state, -2);
-                return 1;
-            }
-        }
-    }
-    lua_pushnil(state);
+    if (!lua_push_window_by_id(state, config, lua_tostring(state, 1)))
+        lua_pushnil(state);
     return 1;
 }
 

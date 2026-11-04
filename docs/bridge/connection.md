@@ -165,3 +165,4 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.89            | Changes the results of the session power methods to the real logind answer or error                               |
 | 1.90            | Ends every runtime override at a reload; `monitors.set_privacy_screen` fails when no output has a privacy screen  |
 | 1.91            | Adds the `input.grab` Lua runtime operations and the `gnoblin.input.grab.*` events                                |
+| 1.92            | A `focus_context` token lasts for its whole gesture: each operation can use it once, not the first one only       |

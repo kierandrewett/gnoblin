@@ -147,7 +147,7 @@ char* gnoblin_config_take_runtime_callback_error(void);
  * only after delivering the decision. */
 GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error);
 /* Dispatch a trusted native shortcut event with a private, userdata-only
- * focus context. The context is never added to the public event payload. */
+ * grant. The proof is never added to the public event payload. */
 GVariant* gnoblin_config_dispatch_shortcut_event(const char* event, GVariant* payload,
                                                  guint64 context_handle, guint64 native_generation,
                                                  gint64 expires_at_us, GError** error);
@@ -156,9 +156,13 @@ guint64 gnoblin_config_runtime_generation(void);
  * Used only by a replacement runtime worker. */
 gboolean gnoblin_config_seed_runtime_counters(guint64 settings_revision, guint64 runtime_generation,
                                               guint64 operation_id_watermark, GError** error);
+/* Size of the buffer for the window a Lua grant was narrowed to (a stable window ID, or ""). */
+#define GNOBLIN_GRANT_WINDOW_ID_SIZE 24
+/* The grant behind queued operation `request_id`, once. `grant_window` is that window ID, or "". */
 gboolean gnoblin_config_take_focus_context(gint64 request_id, guint64* context_handle,
                                            guint64* generation, guint64* native_generation,
-                                           gint64* expires_at_us);
+                                           gint64* expires_at_us,
+                                           char grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE]);
 /* The compositor host schedules deferred Lua callbacks on its main loop and
  * dispatches them through the normal config validation/operation path. */
 typedef void (*GnoblinConfigRuntimeWakeupFunc)(gpointer user_data);

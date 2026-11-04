@@ -408,10 +408,16 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                                 "Lua runtime emitted a malformed operation");
             return FALSE;
         }
+        /* A window menu request names its own capability in the arguments; the compositor
+         * holds it, so such an operation has no gesture context to attach. */
+        g_autoptr(GVariant) menu_handle =
+            g_variant_lookup_value(arguments, "_menu_context_handle", NULL);
         gboolean needs_focus_context =
-            g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
-            g_str_equal(method, "window.begin_resize") ||
-            g_str_equal(method, "input.text_target") || g_str_equal(method, "window.snap_context");
+            !menu_handle &&
+            (g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
+             g_str_equal(method, "window.begin_resize") ||
+             g_str_equal(method, "input.text_target") ||
+             g_str_equal(method, "window.snap_context"));
         /* Fields the compositor needs beside the operation itself. Only the operation that a
          * socket client's call created carries that client's ID. */
         gboolean needs_generation =
@@ -426,18 +432,20 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
         guint64 handle = 0;
         guint64 native_generation = 0;
         gint64 expires_at_us = 0;
+        char grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE] = {0};
         if (needs_focus_context) {
             guint64 runtime_generation = 0;
             if (!gnoblin_config_take_focus_context(request_id, &handle, &runtime_generation,
-                                                   &native_generation, &expires_at_us) ||
+                                                   &native_generation, &expires_at_us,
+                                                   grant_window) ||
                 !handle || !native_generation || expires_at_us <= g_get_monotonic_time()) {
                 g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "Lua focus operation lost its one-use native context");
+                                    "Lua grant operation lost its native context");
                 return FALSE;
             }
             if (runtime_generation != gnoblin_config_runtime_generation()) {
                 g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "Lua focus operation belongs to an old runtime generation");
+                                    "Lua grant operation belongs to an old runtime generation");
                 return FALSE;
             }
         }
@@ -461,6 +469,9 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                 g_variant_builder_add(&operation_builder, "{sv}", "focus_context_expires_at_us",
                                       g_variant_new_int64(expires_at_us));
             }
+            if (needs_focus_context && grant_window[0])
+                g_variant_builder_add(&operation_builder, "{sv}", "grant_window",
+                                      g_variant_new_string(grant_window));
             if (needs_generation)
                 g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
                                       g_variant_new_uint64(gnoblin_config_runtime_generation()));

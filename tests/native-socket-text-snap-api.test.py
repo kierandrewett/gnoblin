@@ -916,7 +916,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("MAX_TEXT_TARGETS", text_target)
         self.assertIn("MAX_SNAP_CONTEXTS", snap_context)
 
-    def test_text_target_requires_and_consumes_the_connection_focus_grant(self):
+    def test_text_target_requires_the_connection_focus_grant_and_takes_only_its_scope(self):
         source = control_source()
         take_grant = function_body(
             source,
@@ -928,15 +928,60 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* native_socket_create_text_target(",
             "GVariant* native_socket_insert_text(",
         )
-
-        self.assertLess(
-            take_grant.index("g_hash_table_remove(client->focus_grants"),
-            take_grant.index("revoke_focus_grants_for_handle"),
+        text_target = function_body(
+            source,
+            "GVariant* gnoblin_native_control_create_text_target(",
+            "GVariant* native_insert_text_owned(",
         )
+
+        # A token survives a use, so one gesture can take each operation once; the connection that
+        # used it keeps the gesture and every other connection loses its token for it.
+        self.assertNotIn("g_hash_table_remove(client->focus_grants", take_grant)
+        self.assertIn("revoke_other_focus_grants_for_handle", take_grant)
         self.assertLess(
             create.index("native_socket_take_focus_grant"), create.index("gnoblin_native_control_create_text_target")
         )
         self.assertIn("target->socket_owner_client_id = client->client_id", create)
+        self.assertIn("FOCUS_SCOPE_TEXT_TARGET", text_target)
+
+    def test_every_gesture_operation_takes_its_own_scope_once(self):
+        source = control_source()
+        claim = function_body(
+            source,
+            "NativeFocusClaim native_focus_context_claim(",
+            "gboolean native_grant_window_allows(",
+        )
+        self.assertIn("stored->used_scopes & scope", claim)
+        self.assertIn("FOCUS_SCOPE_ALL", claim)
+        for scope, signature, end in (
+            (
+                "FOCUS_SCOPE_FOCUS",
+                "GVariant* gnoblin_native_control_focus_window(",
+                "gboolean native_text_modifiers_allowed(",
+            ),
+            (
+                "FOCUS_SCOPE_SNAP_CONTEXT",
+                "GVariant* gnoblin_native_control_create_snap_context(",
+                "GVariant* native_socket_create_snap_context(",
+            ),
+            (
+                "FOCUS_SCOPE_BEGIN_MOVE",
+                "GVariant* gnoblin_native_control_begin_window_grab(",
+                "GVariant* gnoblin_native_control_begin_menu_window_grab(",
+            ),
+        ):
+            body = function_body(source, signature, end)
+            self.assertIn(scope, body)
+            self.assertIn("native_focus_context_claim", body)
+            self.assertIn("native_grant_window_allows", body)
+            self.assertNotIn("g_hash_table_remove(control->focus_contexts", body)
+        grab = function_body(
+            source,
+            "GVariant* gnoblin_native_control_begin_window_grab(",
+            "GVariant* gnoblin_native_control_begin_menu_window_grab(",
+        )
+        self.assertIn("FOCUS_SCOPE_BEGIN_RESIZE", grab)
+        self.assertIn("meta_wayland_session_lock_is_active", grab)
 
     def test_text_target_owner_check_precedes_consumption_and_invalid_fields_consume(self):
         source = control_source()
@@ -1255,8 +1300,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         lua_dispatch = function_body(
             LUA.read_text(),
+            "void push_event_table(",
             "static GVariant* gnoblin_config_dispatch_event_internal(",
-            "GVariant* gnoblin_config_dispatch_shortcut_event(",
         )
 
         self.assertIn("issue_focus_context_for_session_key", capture)
@@ -1272,8 +1317,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_event)
         self.assertIn('g_str_equal(field_name, "focus_context_handle")', runtime_event)
         self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_handler)
-        self.assertIn('g_str_equal(event_names[event_index], "gnoblin.shortcut.session.key")', lua_dispatch)
-        self.assertIn("focus_context_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
+        self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', lua_dispatch)
+        self.assertIn("grant_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
 
     def test_strict_activation_denial_event_is_versioned_and_routed(self):
         source = control_source()

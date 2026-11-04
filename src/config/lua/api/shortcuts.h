@@ -93,7 +93,7 @@ function Shortcut:unbind() end
 function Shortcut:end_session(session_id) end
 
 ---Call fn(shortcut, event) on a signal of this shortcut. The event is the one the compositor
----sent (see the gnoblin.shortcut events), with a focus_context on a real activation.
+---sent (see the gnoblin.shortcut events), with a `grant` on a real activation.
 ---
 ---  - "activated": the accelerator was pressed, or released for a release trigger. A held
 ---    binding reports its first activation only; its later repeats are session events.

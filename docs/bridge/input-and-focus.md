@@ -263,12 +263,12 @@ validated a second config.
 
 ### API 1.68: modal key focus contexts
 
-- Lua listeners may receive a `FocusContext` userdata. API 1.68 socket clients
-  may receive `focus_context`, a one-use token bound to their connection.
+- Lua listeners may receive a [`Grant`](/shell-api/grants). API 1.68 socket clients
+  may receive `focus_context`, a token bound to their connection.
 - Gnoblin issues a context only for real, non-repeated key presses and
   releases. Synthetic and input-method events are excluded.
-- A context expires after five seconds and authorizes one focus-sensitive
-  compositor operation.
+- A context expires after five seconds. Since API 1.92 each focus-sensitive
+  compositor operation can use it once; before, the first operation used it up.
 - Gnoblin still delivers the key event if no context is available.
 
 If the Lua runtime stops while a socket client owns the active session, Gnoblin

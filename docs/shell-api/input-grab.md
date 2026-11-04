@@ -132,7 +132,7 @@ runtime. The compositor gives the keyboard back in every case.
   `gnoblin.shortcuts.capture`, and they cannot start while a grab holds the keyboard. The grab ends when the compositor
   answers, with a reason that says so. Bare `Super` and every other shortcut stop working until the grab ends, because the grab takes
   the keys before the shortcuts see them.
-- Its key events carry no `focus_context`. A grab cannot move, resize or focus a window with the keys it holds, which a
+- Its key events carry no `grant`. A grab cannot move, resize or focus a window with the keys it holds, which a
   trusted shortcut can.
 - It does not change the focus. The focused window stays focused, but it gets no keys.
 - A key that is held when the grab starts has its release go to the grab, so the focused application can see a key that
@@ -145,10 +145,10 @@ the grab lease.
 
 A session belongs to a gesture of the user: it starts when the user holds a key and ends when the user lets go. The 10
 seconds only guard against a lost key release. No script owns a session, so nothing can renew it. Its events carry a
-`focus_context` for a trusted shortcut.
+[`grant`](/shell-api/grants) for a trusted shortcut.
 
 The two cannot share a lease. A lease that a script renews would let a script hold a session open for ever, and a grab
-that gives a `focus_context` would let a script move windows without a user gesture. They have different owners and
+that gives a `grant` would let a script move windows without a user gesture. They have different owners and
 different trust, so they share Mutter's one key-capture slot and nothing else.
 
 ## Keyboard grabs in `gnoblinctl lua`

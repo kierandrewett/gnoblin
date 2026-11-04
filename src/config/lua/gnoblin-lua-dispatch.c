@@ -236,7 +236,7 @@ static GVariant* input_gesture_event(LuaConfig* config, GVariant* payload) {
 }
 
 /* Push the table a listener of `event` receives: the payload fields, the event name, and the
- * drag, focus context or menu context the event carries. */
+ * drag or the grant (a gesture, or a window menu request) the event carries. */
 void push_event_table(lua_State* state, const char* event, GVariant* payload) {
     push_variant(state, payload);
     push_readonly_event_fields(state, payload, -1);
@@ -247,29 +247,29 @@ void push_event_table(lua_State* state, const char* event, GVariant* payload) {
         push_window_drag(state, payload);
         lua_setfield(state, -2, "drag");
     }
-    gboolean focus_context_event = g_str_equal(event, "gnoblin.shortcut.activated") ||
-                                   g_str_equal(event, "gnoblin.shortcut.session.key") ||
-                                   g_str_equal(event, "gnoblin.pointer.binding-activated");
+    gboolean grant_event = g_str_equal(event, "gnoblin.shortcut.activated") ||
+                           g_str_equal(event, "gnoblin.shortcut.session.key") ||
+                           g_str_equal(event, "gnoblin.pointer.binding-activated");
     if (g_str_equal(event, "gnoblin.shortcut.binding-activated")) {
         lua_getfield(state, -1, "first");
-        focus_context_event = lua_toboolean(state, -1);
+        grant_event = lua_toboolean(state, -1);
         lua_pop(state, 1);
     }
-    if (focus_context_event && active_runtime->config.dispatch_focus_handle) {
-        push_focus_context(state, active_runtime->config.dispatch_focus_handle,
-                           active_runtime->config.dispatch_focus_generation,
-                           active_runtime->config.dispatch_native_focus_generation,
-                           active_runtime->config.dispatch_focus_expires_at_us);
-        lua_setfield(state, -2, "focus_context");
+    if (grant_event && active_runtime->config.dispatch_focus_handle) {
+        push_grant(state, active_runtime->config.dispatch_focus_handle,
+                   active_runtime->config.dispatch_focus_generation,
+                   active_runtime->config.dispatch_native_focus_generation,
+                   active_runtime->config.dispatch_focus_expires_at_us, FALSE, NULL);
+        lua_setfield(state, -2, "grant");
     }
     if (g_str_equal(event, "gnoblin.window.menu-requested") &&
         active_runtime->config.dispatch_menu_handle) {
-        push_menu_context(state, active_runtime->config.dispatch_menu_handle,
-                          active_runtime->config.dispatch_menu_generation,
-                          active_runtime->config.dispatch_native_menu_generation,
-                          active_runtime->config.dispatch_menu_expires_at_us,
-                          active_runtime->config.dispatch_menu_window_id);
-        lua_setfield(state, -2, "menu_context");
+        push_grant(state, active_runtime->config.dispatch_menu_handle,
+                   active_runtime->config.dispatch_menu_generation,
+                   active_runtime->config.dispatch_native_menu_generation,
+                   active_runtime->config.dispatch_menu_expires_at_us, TRUE,
+                   active_runtime->config.dispatch_menu_window_id);
+        lua_setfield(state, -2, "grant");
     }
 }
 
@@ -560,9 +560,9 @@ GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error) {
         lua_pushliteral(state, "gnoblin.input");
         lua_setfield(state, -2, "name");
         if (has_focus) {
-            push_focus_context(state, focus_handle, active_runtime->generation, native_generation,
-                               focus_expiry);
-            lua_setfield(state, -2, "focus_context");
+            push_grant(state, focus_handle, active_runtime->generation, native_generation,
+                       focus_expiry, FALSE, NULL);
+            lua_setfield(state, -2, "grant");
         }
         /* A handler that throws or returns an invalid value decides nothing. It stays registered
          * and the handlers after it still run. */
@@ -706,9 +706,10 @@ gboolean gnoblin_config_seed_runtime_counters(guint64 settings_revision, guint64
 
 gboolean gnoblin_config_take_focus_context(gint64 request_id, guint64* context_handle,
                                            guint64* generation, guint64* native_generation,
-                                           gint64* expires_at_us) {
+                                           gint64* expires_at_us,
+                                           char grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE]) {
     if (!active_runtime || request_id <= 0 || !context_handle || !generation ||
-        !native_generation || !expires_at_us)
+        !native_generation || !expires_at_us || !grant_window)
         return FALSE;
     g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, request_id);
     LuaFocusOperation* operation =
@@ -723,6 +724,7 @@ gboolean gnoblin_config_take_focus_context(gint64 request_id, guint64* context_h
         *generation = operation->generation;
         *native_generation = operation->native_generation;
         *expires_at_us = operation->expires_at_us;
+        g_strlcpy(grant_window, operation->window_id, GNOBLIN_GRANT_WINDOW_ID_SIZE);
     }
     g_hash_table_remove(active_runtime->config.focus_operations, key);
     return valid;

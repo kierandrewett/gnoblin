@@ -59,6 +59,7 @@ void lua_runtime_free(LuaRuntime* runtime) {
         g_clear_pointer(&runtime->config.operations, g_hash_table_unref);
     }
     g_clear_pointer(&runtime->config.focus_operations, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.grant_spent, g_hash_table_unref);
     /* Timers hold registry references into this state; remove their sources before it closes. */
     g_clear_pointer(&runtime->config.timers, g_hash_table_unref);
     g_clear_pointer(&runtime->config.processes, g_hash_table_unref);
@@ -543,6 +544,8 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     runtime->config.requests = runtime_requests_new();
     runtime->config.focus_operations =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    runtime->config.grant_spent =
+        g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_free);
     runtime->config.focus_history_ids = g_ptr_array_new_with_free_func(g_free);
     runtime->config.active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     runtime->config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);

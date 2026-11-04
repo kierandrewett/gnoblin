@@ -70,8 +70,7 @@ int run_lua_console(Cli* cli, const char* file) {
     luaL_openlibs(state);
     register_lua_cli_readonly_table(state);
     register_lua_cli_event_subscription(state);
-    register_lua_cli_focus_context(state);
-    register_lua_cli_menu_context(state);
+    register_lua_cli_grant(state);
     register_lua_cli_snap_context(state);
     register_lua_cli_text_target(state);
     register_lua_cli_window_record(state);

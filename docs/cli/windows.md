@@ -28,11 +28,11 @@ an explicit ID.
 returns the window to its normal size.
 
 `gnoblinctl window focus` is rejected because the command cannot create the
-one-use trusted context required to focus a window. A Lua script can act on a
+grant required to focus a window. A Lua script can act on a
 trusted shortcut event by subscribing to `gnoblin.shortcut.activated` and
-passing `event.focus_context` to the typed `Window` methods. The compositor
-still validates and consumes the context. Interactive move or resize requires
-pointer interaction or a trusted shortcut context.
+passing `event.grant` to the typed `Window` methods. The compositor
+still validates the grant and lets each operation run once. Interactive move or resize requires
+pointer interaction or a grant.
 
 To see the exact identity and title used by `gnoblin.window_rule`, run:
 

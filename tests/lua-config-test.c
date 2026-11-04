@@ -1594,12 +1594,30 @@ int main(void) {
         "end)\n"
         "g.on('gnoblin.shortcut.binding-activated', function(event)\n"
         "  assert(event.first==true)\n"
-        "  if event.focus_context~=nil then\n"
-        "    assert(type(event.focus_context)=='userdata')\n"
+        "  if event.grant~=nil then\n"
+        "    assert(type(event.grant)=='userdata' and tostring(event.grant)=='Grant')\n"
+        "    assert(event.focus_context==nil and event.menu_context==nil)\n"
         "    local window=g.windows.by_id('window-1')\n"
         "    if window then\n"
-        "      local operation=window:focus(event.focus_context)\n"
+        "      local grant=event.grant\n"
+        "      assert(#grant.scope==5 and grant.window==nil and grant.alive)\n"
+        "      assert(grant.expires_at_us>0 and not pcall(function() grant.scope=1 end))\n"
+        "      local move_only=grant:narrow('begin_move', window)\n"
+        "      assert(#move_only.scope==1 and move_only.scope[1]=='begin_move')\n"
+        "      assert(move_only.window.id=='window-1')\n"
+        "      assert(not pcall(function() return move_only:narrow({'begin_move','focus'}) end))\n"
+        "      assert(not pcall(function() return move_only:narrow('begin_move','other') end))\n"
+        "      assert(not pcall(function() return grant:narrow('nonsense') end))\n"
+        "      assert(not pcall(function() return window:focus(move_only) end))\n"
+        "      assert(not pcall(function() return window:begin_move({}) end))\n"
+        "      local operation=window:focus(grant)\n"
         "      assert(operation.method=='window.focus' and operation.status=='pending')\n"
+        "      assert(not pcall(function() return window:focus(grant) end))\n"
+        "      local move=window:begin_move(move_only)\n"
+        "      assert(move.method=='window.begin_move' and move.status=='pending')\n"
+        "      assert(not pcall(function() return window:begin_move(grant) end))\n"
+        "      assert(#grant.scope==3 and not move_only.alive)\n"
+        "      assert(not pcall(function() return grant:narrow('focus') end))\n"
         "    end\n"
         "  end\n"
         "  assert(event.focus_context_handle==nil and event.focus_context_generation==nil)\n"
@@ -1762,7 +1780,7 @@ int main(void) {
     g_assert_no_error(error);
     g_assert_nonnull(dispatched_document);
     g_autoptr(GVariant) focus_operations = gnoblin_config_drain_runtime_operations();
-    g_assert_cmpuint(g_variant_n_children(focus_operations), ==, 1);
+    g_assert_cmpuint(g_variant_n_children(focus_operations), ==, 2);
     g_autoptr(GVariant) focus_operation = g_variant_get_child_value(focus_operations, 0);
     gint64 focus_request_id = 0;
     const char* focus_method = NULL;
@@ -1778,13 +1796,32 @@ int main(void) {
     guint64 focus_generation = 0;
     guint64 native_focus_generation = 0;
     gint64 focus_expires_at_us = 0;
+    char focus_grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE];
     g_assert_true(gnoblin_config_take_focus_context(focus_request_id, &focus_handle,
                                                     &focus_generation, &native_focus_generation,
-                                                    &focus_expires_at_us));
+                                                    &focus_expires_at_us, focus_grant_window));
+    g_assert_cmpstr(focus_grant_window, ==, "");
     g_assert_cmpuint(focus_handle, ==, 1);
     g_assert_cmpuint(focus_generation, ==, gnoblin_config_runtime_generation());
     g_assert_cmpuint(native_focus_generation, ==, 1);
     g_assert_cmpint(focus_expires_at_us, >, g_get_monotonic_time());
+    /* The second operation of the gesture carries the window its Grant was narrowed to. */
+    g_autoptr(GVariant) move_operation = g_variant_get_child_value(focus_operations, 1);
+    gint64 move_request_id = 0;
+    const char* move_method = NULL;
+    g_assert_true(g_variant_lookup(move_operation, "request_id", "x", &move_request_id));
+    g_assert_true(g_variant_lookup(move_operation, "method", "&s", &move_method));
+    g_assert_cmpstr(move_method, ==, "window.begin_move");
+    guint64 move_handle = 0, move_generation = 0, move_native_generation = 0;
+    gint64 move_expires_at_us = 0;
+    g_assert_true(gnoblin_config_take_focus_context(move_request_id, &move_handle, &move_generation,
+                                                    &move_native_generation, &move_expires_at_us,
+                                                    focus_grant_window));
+    g_assert_cmpuint(move_handle, ==, focus_handle);
+    g_assert_cmpstr(focus_grant_window, ==, "window-1");
+    g_assert_false(gnoblin_config_take_focus_context(move_request_id, &move_handle,
+                                                     &move_generation, &move_native_generation,
+                                                     &move_expires_at_us, focus_grant_window));
     gnoblin_config_finish_event(TRUE);
 
     g_clear_pointer(&dispatched_document, g_variant_unref);

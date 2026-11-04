@@ -78,8 +78,8 @@ def run_event_subscription(
         return result
 
 
-def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
-    with tempfile.TemporaryDirectory(prefix="focus-context-", dir=build_directory) as temporary:
+def run_grant_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="grant-", dir=build_directory) as temporary:
         root = Path(temporary)
         socket_path = str(root / "s")
         script_path = root / "focus.lua"
@@ -88,33 +88,34 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             'assert(window and window.id == "window-1")\n'
             "local subscription\n"
             'gnoblin.once("gnoblin.shortcut.activated", function(event)\n'
-            '  assert(type(event.focus_context) == "userdata")\n'
-            "  assert(not pcall(function() window:focus(tostring(event.focus_context)) end))\n"
-            '  assert(not pcall(function() event.focus_context.token = "forged" end))\n'
+            '  assert(type(event.grant) == "userdata" and event.focus_context == nil)\n'
+            "  assert(not pcall(function() window:focus(tostring(event.grant)) end))\n"
+            '  assert(not pcall(function() event.grant.token = "forged" end))\n'
+            '  assert(not pcall(function() event.grant.scope = {"focus"} end))\n'
             "  local original_metatable = getmetatable(subscription)\n"
-            "  debug.setmetatable(subscription, getmetatable(event.focus_context))\n"
+            "  debug.setmetatable(subscription, getmetatable(event.grant))\n"
             "  assert(not pcall(function() window:focus(subscription) end))\n"
             "  debug.setmetatable(subscription, original_metatable)\n"
-            "  local result = window:focus(event.focus_context)\n"
+            "  local result = window:focus(event.grant)\n"
             "  assert(result.id == window.id)\n"
-            '  assert(tostring(event.focus_context) == "FocusContext<consumed>")\n'
-            "  assert(not pcall(function() window:focus(event.focus_context) end))\n"
-            '  print("FOCUS_CONTEXT_ONCE_OK")\n'
+            '  assert(tostring(event.grant) == "Grant" and #event.grant.scope == 4)\n'
+            "  assert(not pcall(function() window:focus(event.grant) end))\n"
+            '  print("GRANT_ONCE_OK")\n'
             "end)\n"
             "local count = 0\n"
             'subscription = gnoblin.on("gnoblin.shortcut.activated", function(event)\n'
-            '  assert(type(event.focus_context) == "userdata")\n'
+            '  assert(type(event.grant) == "userdata")\n'
             "  local result\n"
             '  if event.action == "move" then\n'
-            "    result = window:begin_move(event.focus_context)\n"
+            "    result = window:begin_move(event.grant)\n"
             "    assert(result.started)\n"
-            '    print("FOCUS_CONTEXT_MOVE_OK")\n'
+            '    print("GRANT_MOVE_OK")\n'
             '  elseif event.action == "resize" then\n'
-            '    result = window:begin_resize("north_east", event.focus_context)\n'
+            '    result = window:begin_resize("north_east", event.grant)\n'
             "    assert(result.started)\n"
-            '    print("FOCUS_CONTEXT_RESIZE_OK")\n'
+            '    print("GRANT_RESIZE_OK")\n'
             '  elseif event.action == "snap" then\n'
-            "    local snap = gnoblin.windows.snap_context(event.focus_context)\n"
+            "    local snap = gnoblin.windows.snap_context(event.grant)\n"
             '    assert(type(snap) == "userdata" and snap.window_id == window.id)\n'
             '    assert(snap.monitor_id == "HDMI-1" and snap.monitor.width == 1920)\n'
             "    assert(snap.work_area.height == 1040 and snap.context == nil)\n"
@@ -126,13 +127,13 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             "    result = snap:commit(target)\n"
             "    assert(result.committed and result.window_id == window.id)\n"
             "    assert(not pcall(function() snap:commit(target) end))\n"
-            '    print("FOCUS_CONTEXT_SNAP_OK")\n'
+            '    print("GRANT_SNAP_OK")\n'
             '  elseif event.action == "text" then\n'
-            "    local original_metatable = debug.getmetatable(event.focus_context)\n"
-            "    debug.setmetatable(event.focus_context, debug.getmetatable(subscription))\n"
-            "    assert(not pcall(function() gnoblin.input.text_target(event.focus_context) end))\n"
-            "    debug.setmetatable(event.focus_context, original_metatable)\n"
-            "    local target = gnoblin.input.text_target(event.focus_context)\n"
+            "    local original_metatable = debug.getmetatable(event.grant)\n"
+            "    debug.setmetatable(event.grant, debug.getmetatable(subscription))\n"
+            "    assert(not pcall(function() gnoblin.input.text_target(event.grant) end))\n"
+            "    debug.setmetatable(event.grant, original_metatable)\n"
+            "    local target = gnoblin.input.text_target(event.grant)\n"
             '    assert(type(target) == "userdata" and target.window_id == window.id)\n'
             "    assert(target.caret.x == 4.5 and target.caret.height == 18)\n"
             "    assert(target.target == nil and target.token == nil)\n"
@@ -143,20 +144,42 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             "    assert(inserted.inserted)\n"
             "    assert(not pcall(function() inserted.inserted = false end))\n"
             '    assert(not pcall(function() target:insert_text("again") end))\n'
-            '    assert(tostring(event.focus_context) == "FocusContext<consumed>")\n'
-            '    print("FOCUS_CONTEXT_TEXT_OK")\n'
+            '    assert(tostring(event.grant) == "Grant" and #event.grant.scope == 4)\n'
+            '    print("GRANT_TEXT_OK")\n'
             '  elseif event.action == "text-invalid" then\n'
-            "    local target = gnoblin.input.text_target(event.focus_context)\n"
+            "    local target = gnoblin.input.text_target(event.grant)\n"
             '    assert(tostring(target) == "TextTarget<unknown>")\n'
             "    assert(target.window_id == nil)\n"
             "    assert(target.caret == nil)\n"
             "    local ok, err = pcall(function() target:insert_text('bad\\ntext') end)\n"
             '    assert(not ok and err:match("without control characters"))\n'
             '    assert(not pcall(function() target:insert_text("again") end))\n'
-            '    print("FOCUS_CONTEXT_TEXT_INVALID_OK")\n'
+            '    print("GRANT_TEXT_INVALID_OK")\n'
+            '  elseif event.action == "scopes" then\n'
+            "    -- One gesture, several operations: a narrowed Grant takes its own scopes once.\n"
+            "    local grant = event.grant\n"
+            "    assert(#grant.scope == 5 and grant.alive)\n"
+            '    local narrowed = grant:narrow({"focus", "begin_move"}, window)\n'
+            '    assert(#narrowed.scope == 2 and tostring(narrowed) == "Grant")\n'
+            '    assert(not pcall(function() narrowed:narrow("text_target") end))\n'
+            '    assert(not pcall(function() narrowed:narrow({"focus", "begin_resize"}) end))\n'
+            '    assert(not pcall(function() narrowed:narrow("focus", "other-window") end))\n'
+            '    assert(not pcall(function() grant:narrow("nonsense") end))\n'
+            '    assert(not pcall(function() window:begin_resize("north", narrowed) end))\n'
+            '    local other = grant:narrow("focus", "other-window")\n'
+            "    assert(not pcall(function() window:focus(other) end))\n"
+            "    local focused = window:focus(narrowed)\n"
+            "    assert(focused.id == window.id)\n"
+            "    assert(not pcall(function() window:focus(narrowed) end))\n"
+            "    assert(not pcall(function() window:focus(grant) end))\n"
+            "    local moved = window:begin_move(narrowed)\n"
+            "    assert(moved.started)\n"
+            "    assert(not narrowed.alive and #narrowed.scope == 0 and #grant.scope == 3)\n"
+            '    assert(not pcall(function() grant:narrow("focus") end))\n'
+            '    print("GRANT_SCOPES_OK")\n'
             '  else error("unexpected action: " .. tostring(event.action)) end\n'
             "  count = count + 1\n"
-            "  if count == 5 then subscription:unsubscribe() end\n"
+            "  if count == 6 then subscription:unsubscribe() end\n"
             "end)\n",
             encoding="utf-8",
         )
@@ -190,13 +213,13 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                 if server in readable:
                     unexpected, _ = server.accept()
                     unexpected.close()
-                    raise AssertionError("FocusContext request opened a different socket connection")
+                    raise AssertionError("Grant request opened a different socket connection")
                 if connection in readable:
                     chunk = connection.recv(4096)
                     if not chunk:
-                        raise AssertionError("FocusContext socket closed before its API request")
+                        raise AssertionError("Grant socket closed before its API request")
                     buffered += chunk
-            raise AssertionError("timed out waiting for FocusContext API request")
+            raise AssertionError("timed out waiting for Grant API request")
 
         def serve() -> None:
             try:
@@ -280,6 +303,11 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                                     "action": "text-invalid",
                                     "focus_context": "invalid-text-token",
                                 },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "scopes",
+                                    "focus_context": "scopes-token",
+                                },
                             )
                         )
                     )
@@ -340,6 +368,16 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                                 "target": "c" * 64,
                             },
                         ),
+                        (
+                            "window.focus",
+                            {"id": "window-1", "focus_context": "scopes-token"},
+                            {"id": "window-1"},
+                        ),
+                        (
+                            "window.begin_move",
+                            {"id": "window-1", "focus_context": "scopes-token"},
+                            {"started": True},
+                        ),
                     ):
                         request, on_buffer = read_bound_request(server, on_connection, on_buffer)
                         assert request["op"] == "api" and request["method"] == expected_method, request
@@ -356,18 +394,19 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
 
         thread = threading.Thread(target=serve, daemon=True)
         thread.start()
-        assert ready.wait(5), f"FocusContext fixture did not start: {errors}"
+        assert ready.wait(5), f"Grant fixture did not start: {errors}"
         result = run(binary, "--socket", socket_path, "lua", str(script_path))
         thread.join(8)
-        assert not thread.is_alive(), "FocusContext fixture did not finish"
+        assert not thread.is_alive(), "Grant fixture did not finish"
         assert not errors, errors
         assert result.returncode == 0, result.stderr
-        assert "FOCUS_CONTEXT_ONCE_OK" in result.stdout, result.stdout
-        assert "FOCUS_CONTEXT_MOVE_OK" in result.stdout, result.stdout
-        assert "FOCUS_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
-        assert "FOCUS_CONTEXT_SNAP_OK" in result.stdout, result.stdout
-        assert "FOCUS_CONTEXT_TEXT_OK" in result.stdout, result.stdout
-        assert "FOCUS_CONTEXT_TEXT_INVALID_OK" in result.stdout, result.stdout
+        assert "GRANT_ONCE_OK" in result.stdout, result.stdout
+        assert "GRANT_MOVE_OK" in result.stdout, result.stdout
+        assert "GRANT_RESIZE_OK" in result.stdout, result.stdout
+        assert "GRANT_SNAP_OK" in result.stdout, result.stdout
+        assert "GRANT_TEXT_OK" in result.stdout, result.stdout
+        assert "GRANT_TEXT_INVALID_OK" in result.stdout, result.stdout
+        assert "GRANT_SCOPES_OK" in result.stdout, result.stdout
         return result
 
 
@@ -430,41 +469,45 @@ def run_appearance_color_scheme_cli_test(binary: str, build_directory: str) -> N
             assert result.returncode == 0, result.stderr
 
 
-def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
-    with tempfile.TemporaryDirectory(prefix="menu-context-", dir=build_directory) as temporary:
+def run_menu_grant_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="menu-grant-", dir=build_directory) as temporary:
         root = Path(temporary)
         socket_path = str(root / "s")
         script_path = root / "menu.lua"
         script_path.write_text(
+            'local window = gnoblin.windows.by_id("window-1")\n'
             "local subscription\n"
             'subscription = gnoblin.on("gnoblin.window.menu-requested", function(event)\n'
             '  if event.menu_type == "wm" then\n'
-            '    assert(type(event.menu_context) == "userdata")\n'
-            "    assert(event.menu_context.token == nil)\n"
+            '    assert(type(event.grant) == "userdata" and event.menu_context == nil)\n'
+            "    assert(event.grant.token == nil and #event.grant.scope == 2)\n"
             "    local original = debug.getmetatable(subscription)\n"
-            "    debug.setmetatable(subscription, debug.getmetatable(event.menu_context))\n"
-            "    assert(not pcall(function() subscription:begin_move() end))\n"
+            "    debug.setmetatable(subscription, debug.getmetatable(event.grant))\n"
+            "    assert(not pcall(function() window:begin_move(subscription) end))\n"
             "    debug.setmetatable(subscription, original)\n"
+            "    assert(not pcall(function() window:focus(event.grant) end))\n"
+            '    assert(not pcall(function() event.grant:narrow("focus") end))\n'
             '    if event.action == "move" then\n'
-            "      local result = event.menu_context:begin_move()\n"
+            "      local result = window:begin_move(event.grant)\n"
             "      assert(result.started)\n"
-            '      assert(tostring(event.menu_context) == "MenuContext<consumed>")\n'
-            "      assert(not pcall(function() event.menu_context:begin_move() end))\n"
-            '      print("MENU_CONTEXT_MOVE_OK")\n'
+            "      assert(not event.grant.alive and #event.grant.scope == 0)\n"
+            "      assert(not pcall(function() window:begin_move(event.grant) end))\n"
+            '      assert(not pcall(function() window:begin_resize("north", event.grant) end))\n'
+            '      print("MENU_GRANT_MOVE_OK")\n'
             '    elseif event.action == "resize" then\n'
-            '      local result = event.menu_context:begin_resize("south_west")\n'
+            '      local result = window:begin_resize("south_west", event.grant)\n'
             "      assert(result.started)\n"
-            '      assert(tostring(event.menu_context) == "MenuContext<consumed>")\n'
-            '      print("MENU_CONTEXT_RESIZE_OK")\n'
+            "      assert(not pcall(function() window:begin_move(event.grant) end))\n"
+            '      print("MENU_GRANT_RESIZE_OK")\n'
             '    elseif event.action == "detach" then\n'
-            "      local saved = event.menu_context\n"
+            "      local saved = event.grant\n"
             "      subscription:unsubscribe()\n"
-            "      assert(not pcall(function() saved:begin_move() end))\n"
-            '      print("MENU_CONTEXT_INACTIVE_SUBSCRIPTION_REJECTED")\n'
+            "      assert(not pcall(function() window:begin_move(saved) end))\n"
+            '      print("MENU_GRANT_INACTIVE_SUBSCRIPTION_REJECTED")\n'
             '    else error("unexpected WM menu action") end\n'
             '  elseif event.menu_type == "app" then\n'
-            "    assert(event.menu_context == nil)\n"
-            '    print("MENU_CONTEXT_APP_HAS_NO_AUTHORITY")\n'
+            "    assert(event.grant == nil and event.menu_context == nil)\n"
+            '    print("MENU_GRANT_APP_HAS_NO_AUTHORITY")\n'
             '  else error("unexpected menu type") end\n'
             "end)\n",
             encoding="utf-8",
@@ -499,20 +542,39 @@ def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.C
                 if server in readable:
                     unexpected, _ = server.accept()
                     unexpected.close()
-                    raise AssertionError("MenuContext request used a different socket connection")
+                    raise AssertionError("Menu grant request used a different socket connection")
                 if connection in readable:
                     chunk = connection.recv(4096)
                     if not chunk:
                         raise AssertionError("menu event connection closed before API request")
                     buffered += chunk
-            raise AssertionError("timed out waiting for MenuContext API request")
+            raise AssertionError("timed out waiting for Menu grant API request")
 
         def serve() -> None:
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
-                    server.listen(2)
+                    server.listen(4)
                     ready.set()
+
+                    # The script reads its Window record before it subscribes.
+                    preamble, _ = server.accept()
+                    with preamble:
+                        preamble_buffer = b""
+                        request, preamble_buffer = read_line(preamble, preamble_buffer)
+                        assert request["op"] == "events", request
+                        send(preamble, {"event": "subscribed", "events": request["events"]})
+                        request, preamble_buffer = read_line(preamble, preamble_buffer)
+                        assert request["op"] == "api" and request["method"] == "windows.list", request
+                        send(
+                            preamble,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": [{"id": "window-1", "title": "Test window"}],
+                            },
+                        )
+
                     connection, _ = server.accept()
                     with connection:
                         buffered = b""
@@ -535,6 +597,7 @@ def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.C
                                 {
                                     "event": "gnoblin.window.menu-requested",
                                     "menu_type": "wm",
+                                    "window_id": "window-1",
                                     "menu_context": token,
                                     "action": action,
                                 },
@@ -562,6 +625,7 @@ def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.C
                             {
                                 "event": "gnoblin.window.menu-requested",
                                 "menu_type": "wm",
+                                "window_id": "window-1",
                                 "menu_context": "detached-token",
                                 "action": "detach",
                             },
@@ -573,16 +637,16 @@ def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.C
 
         thread = threading.Thread(target=serve, daemon=True)
         thread.start()
-        assert ready.wait(5), f"MenuContext fixture did not start: {errors}"
+        assert ready.wait(5), f"Menu grant fixture did not start: {errors}"
         result = run(binary, "--socket", socket_path, "lua", str(script_path))
         thread.join(8)
-        assert not thread.is_alive(), "MenuContext fixture did not finish"
+        assert not thread.is_alive(), "Menu grant fixture did not finish"
         assert not errors, f"{errors}; gnoblinctl exited {result.returncode}: {result.stderr}"
         assert result.returncode == 0, result.stderr
-        assert "MENU_CONTEXT_MOVE_OK" in result.stdout, result.stdout
-        assert "MENU_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
-        assert "MENU_CONTEXT_APP_HAS_NO_AUTHORITY" in result.stdout, result.stdout
-        assert "MENU_CONTEXT_INACTIVE_SUBSCRIPTION_REJECTED" in result.stdout, result.stdout
+        assert "MENU_GRANT_MOVE_OK" in result.stdout, result.stdout
+        assert "MENU_GRANT_RESIZE_OK" in result.stdout, result.stdout
+        assert "MENU_GRANT_APP_HAS_NO_AUTHORITY" in result.stdout, result.stdout
+        assert "MENU_GRANT_INACTIVE_SUBSCRIPTION_REJECTED" in result.stdout, result.stdout
         return result
 
 
@@ -1260,13 +1324,13 @@ def main() -> int:
     assert mutter_result.returncode == 0, mutter_result.stderr
     assert "MUTTER:mutter.test.signal" in mutter_result.stdout, mutter_result.stdout
 
-    focus_context_result = run_focus_context_cli_test(binary, build_directory)
-    assert focus_context_result.returncode == 0, focus_context_result.stderr
+    grant_result = run_grant_cli_test(binary, build_directory)
+    assert grant_result.returncode == 0, grant_result.stderr
 
     run_appearance_color_scheme_cli_test(binary, build_directory)
 
-    menu_context_result = run_menu_context_cli_test(binary, build_directory)
-    assert menu_context_result.returncode == 0, menu_context_result.stderr
+    menu_grant_result = run_menu_grant_cli_test(binary, build_directory)
+    assert menu_grant_result.returncode == 0, menu_grant_result.stderr
 
     location_authorization_result = run_location_authorization_cli_test(binary, build_directory)
     assert location_authorization_result.returncode == 0, location_authorization_result.stderr
@@ -2323,7 +2387,7 @@ def main() -> int:
             'assert(gnoblin.windows.by_id("missing") == nil)\n'
             'assert(window:set_minimized(true).id == "42")\n'
             "local focus_ok, focus_error = pcall(function() window:focus() end)\n"
-            'assert(not focus_ok and focus_error:match("FocusContext"))\n'
+            'assert(not focus_ok and focus_error:match("Grant"))\n'
             "local workspaces = gnoblin.workspaces.list()\n"
             'assert(#workspaces == 1 and workspaces[1].id == "codex-probe")\n'
             "local workspace = workspaces[1]\n"

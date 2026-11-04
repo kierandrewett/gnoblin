@@ -199,7 +199,10 @@ static gboolean focus_token_exists(GnoblinNativeControl* control, const char* to
     return FALSE;
 }
 
-void revoke_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle) {
+/* Drop every connection's token for `handle` except the one named `keep_token`, so the first
+ * connection that uses a gesture owns the rest of it. */
+void revoke_other_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle,
+                                          const char* keep_token) {
     if (!control || !control->clients)
         return;
     GHashTableIter clients;
@@ -210,14 +213,45 @@ void revoke_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handl
         if (!client->focus_grants)
             continue;
         GHashTableIter grants;
-        gpointer grant_value;
+        gpointer grant_key, grant_value;
         g_hash_table_iter_init(&grants, client->focus_grants);
-        while (g_hash_table_iter_next(&grants, NULL, &grant_value)) {
+        while (g_hash_table_iter_next(&grants, &grant_key, &grant_value)) {
             NativeFocusGrant* grant = grant_value;
-            if (grant->handle == handle)
+            if (grant->handle == handle &&
+                (!keep_token || !g_str_equal((const char*)grant_key, keep_token)))
                 g_hash_table_iter_remove(&grants);
         }
     }
+}
+
+void revoke_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle) {
+    revoke_other_focus_grants_for_handle(control, handle, NULL);
+}
+
+/* Take one scope of a gesture. The scope is spent even when the operation then fails, as the
+ * whole context was before. The context ends with its last scope. */
+NativeFocusClaim native_focus_context_claim(GnoblinNativeControl* control, guint64 handle,
+                                            NativeFocusScope scope, NativeFocusContext* out) {
+    if (!control || control->stopping || !control->focus_contexts || !handle)
+        return FOCUS_CLAIM_MISSING;
+    prune_focus_contexts(control, g_get_monotonic_time());
+    NativeFocusContext* stored = g_hash_table_lookup(control->focus_contexts, &handle);
+    if (!stored)
+        return FOCUS_CLAIM_MISSING;
+    if (stored->used_scopes & scope)
+        return FOCUS_CLAIM_USED;
+    stored->used_scopes |= scope;
+    *out = *stored;
+    if ((stored->used_scopes & FOCUS_SCOPE_ALL) == FOCUS_SCOPE_ALL) {
+        g_hash_table_remove(control->focus_contexts, &handle);
+        revoke_focus_grants_for_handle(control, handle);
+    }
+    return FOCUS_CLAIM_OK;
+}
+
+/* A Lua grant narrowed to one window names it; the operation must act on that window. */
+gboolean native_grant_window_allows(const char* grant_window, const char* window_id) {
+    return !grant_window || !*grant_window || (window_id && g_str_equal(grant_window, window_id));
 }
 
 void revoke_focus_contexts(GnoblinNativeControl* control) {

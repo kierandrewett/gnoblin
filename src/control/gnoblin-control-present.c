@@ -125,7 +125,7 @@ gboolean gnoblin_control_present_window(GnoblinNativeControl* control, gint64 op
         !gnoblin_control_process_for_pid(control, meta_window_get_pid(target))) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
                             "window.present needs a window of a process started with "
-                            "gnoblin.process.spawn; use Window:focus with a FocusContext");
+                            "gnoblin.process.spawn; use Window:focus with a Grant");
         return FALSE;
     }
     PendingPresent* present = g_new0(PendingPresent, 1);

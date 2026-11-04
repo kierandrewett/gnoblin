@@ -173,8 +173,8 @@ Gesture events include `dx`, `dy`, and `fingers`; pinch events also include
 
 Touch events include the integer `slot` identifying their current contact.
 
-A button press over a window can include a typed `window` and trusted
-`focus_context` for window operations. The window is absent over the desktop or a
+A button press over a window can include a typed `window` and a [`grant`](/shell-api/grants)
+for window operations. The window is absent over the desktop or a
 layer surface. Check for both fields before starting a window operation.
 
 Configuration changes and new input registrations are unavailable inside a raw
@@ -207,17 +207,17 @@ handler, read its output, or wait for its exit.
 
 ## Insert text into the focused Wayland client
 
-Use `gnoblin.input.text_target(context)` from a shortcut event callback to
+Use `gnoblin.input.text_target(grant)` from a shortcut event callback to
 request a one-use text target. It returns an operation; on success, its value
 is an opaque `TextTarget`:
 
 ```lua
 gnoblin.on("gnoblin.shortcut.activated", function(event)
-    if not event.focus_context then
+    if not event.grant then
         return
     end
 
-    gnoblin.input.text_target(event.focus_context):on_complete(function(target, err)
+    gnoblin.input.text_target(event.grant):on_complete(function(target, err)
         if err then
             return
         end
@@ -231,11 +231,11 @@ callback. Save this as `insert-text.lua` and run it from a Gnoblin session:
 
 ```lua
 gnoblin.once("gnoblin.shortcut.activated", function(event)
-    if not event.focus_context then
+    if not event.grant then
         return
     end
 
-    local target = gnoblin.input.text_target(event.focus_context)
+    local target = gnoblin.input.text_target(event.grant)
     target:insert_text("hello from Gnoblin")
 end)
 ```
@@ -247,10 +247,11 @@ gnoblinctl lua insert-text.lua
 The console returns completed results synchronously. It keeps the target token
 private and sends both requests over the connection that delivered the event.
 
-The compositor consumes the `FocusContext` when it handles the request. It
-creates a target only when the same Wayland surface and client still have
-keyboard focus and have an active text-input-v3 session. The target expires
-with its five-second `FocusContext` deadline. Locking the session, reloading
+The compositor spends the `text_target` scope of the [grant](/shell-api/grants) when it
+handles the request. It creates a target only when the same Wayland surface and client
+still have keyboard focus and have an active text-input-v3 session.
+
+The target expires with the five-second deadline of the gesture. Locking the session, reloading
 the runtime, losing focus, or closing the runtime revokes it. X11 clients are
 not supported.
 

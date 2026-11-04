@@ -123,7 +123,7 @@ gnoblin.configure {
                         and "north" or "south"
                     local horizontal = event.pointer.x < frame.x + frame.width / 2
                         and "west" or "east"
-                    window:begin_resize(vertical .. "_" .. horizontal, event.focus_context)
+                    window:begin_resize(vertical .. "_" .. horizontal, event.grant)
                 end,
             },
         },
@@ -151,7 +151,7 @@ To disable an imported binding, set its named declaration to
 the earlier callback.
 
 The event contains the window under the pointer, its frame geometry, and the
-pointer's stage coordinates `pointer.x` and `pointer.y`. Its one-use `focus_context` authorizes
+pointer's stage coordinates `pointer.x` and `pointer.y`. Its [`grant`](/shell-api/grants) authorizes
 a move or resize of that window during the trusted input interaction.
 
 These gestures operate on Wayland and Xwayland application windows,

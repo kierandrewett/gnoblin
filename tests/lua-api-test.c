@@ -284,15 +284,26 @@ int main(void) {
         "local menu_calls=0\n"
         "g.on('gnoblin.window.menu-requested', function(event)\n"
         "  assert(event._menu_context_handle==nil and event._menu_context_expires_at_us==nil)\n"
+        "  assert(event.menu_context==nil)\n"
         "  if event.menu_type=='wm' then\n"
-        "    assert(type(event.menu_context)=='userdata')\n"
-        "    local context=event.menu_context\n"
+        "    assert(type(event.grant)=='userdata')\n"
+        "    local grant=event.grant\n"
+        "    local window=g.windows.by_id(event.window_id)\n"
+        "    assert(#grant.scope==2 and grant.window.id=='42' and grant.alive)\n"
+        "    assert(not pcall(function() grant:narrow('focus') end))\n"
+        "    assert(not pcall(function() grant:narrow('begin_move', 'other') end))\n"
+        "    assert(not pcall(function() window:focus(grant) end))\n"
         "    menu_calls=menu_calls+1\n"
-        "    if menu_calls==1 then context:begin_resize('south_east')\n"
-        "    else context:begin_resize(42) end\n"
-        "    assert(not pcall(function() context:begin_move() end))\n"
+        "    if menu_calls==1 then window:begin_resize('south_east', grant)\n"
+        "    else\n"
+        "      assert(not pcall(function() window:begin_resize(42, grant) end))\n"
+        "      assert(not pcall(function() window:begin_resize('sideways', grant) end))\n"
+        "      window:begin_move(grant)\n"
+        "    end\n"
+        "    assert(not pcall(function() window:begin_move(grant) end))\n"
+        "    assert(not grant.alive and #grant.scope==0)\n"
         "  else\n"
-        "    assert(event.menu_context==nil)\n"
+        "    assert(event.grant==nil and event.menu_context==nil)\n"
         "  end\n"
         "end)\n"
         "assert(g.window == nil)\n"
@@ -851,6 +862,25 @@ int main(void) {
     g_assert_cmpuint(g_variant_n_children(invalid_thumbnail_operations), ==, 0);
     gnoblin_config_finish_event(TRUE);
 
+    GVariantBuilder menu_window;
+    g_variant_builder_init(&menu_window, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&menu_window, "{sv}", "id", g_variant_new_string("42"));
+    GVariantBuilder menu_frame;
+    g_variant_builder_init(&menu_frame, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&menu_frame, "{sv}", "x", g_variant_new_int64(0));
+    g_variant_builder_add(&menu_frame, "{sv}", "y", g_variant_new_int64(0));
+    g_variant_builder_add(&menu_frame, "{sv}", "width", g_variant_new_int64(800));
+    g_variant_builder_add(&menu_frame, "{sv}", "height", g_variant_new_int64(600));
+    g_variant_builder_add(&menu_window, "{sv}", "frame", g_variant_builder_end(&menu_frame));
+    GVariantBuilder menu_windows;
+    g_variant_builder_init(&menu_windows, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&menu_windows, "v", g_variant_builder_end(&menu_window));
+    GVariantBuilder menu_snapshot;
+    g_variant_builder_init(&menu_snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&menu_snapshot, "{sv}", "windows", g_variant_builder_end(&menu_windows));
+    g_autoptr(GVariant) menu_snapshot_value =
+        g_variant_ref_sink(g_variant_builder_end(&menu_snapshot));
+    gnoblin_config_update_window_snapshot(menu_snapshot_value, 1);
     GVariantBuilder menu_event;
     g_variant_builder_init(&menu_event, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&menu_event, "{sv}", "window_id", g_variant_new_string("42"));
@@ -902,12 +932,17 @@ int main(void) {
     g_autoptr(GVariant) malformed_operations = gnoblin_config_drain_runtime_operations();
     g_assert_cmpuint(g_variant_n_children(malformed_operations), ==, 1);
     g_autoptr(GVariant) malformed_operation = g_variant_get_child_value(malformed_operations, 0);
+    g_autoptr(GVariant) malformed_method =
+        g_variant_lookup_value(malformed_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(malformed_method, NULL), ==, "window.begin_move");
     g_autoptr(GVariant) malformed_arguments =
         g_variant_lookup_value(malformed_operation, "arguments", G_VARIANT_TYPE_VARDICT);
-    g_autoptr(GVariant) malformed_marker =
-        g_variant_lookup_value(malformed_arguments, "_malformed", G_VARIANT_TYPE_BOOLEAN);
-    g_assert_nonnull(malformed_marker);
-    g_assert_true(g_variant_get_boolean(malformed_marker));
+    /* A bad edge is a Lua error and spends nothing: the grant then starts the move. */
+    g_assert_null(g_variant_lookup_value(malformed_arguments, "_malformed", NULL));
+    g_autoptr(GVariant) malformed_handle =
+        g_variant_lookup_value(malformed_arguments, "_menu_context_handle", G_VARIANT_TYPE_UINT64);
+    g_assert_nonnull(malformed_handle);
+    g_assert_cmpuint(g_variant_get_uint64(malformed_handle), ==, 78);
     gnoblin_config_finish_event(TRUE);
 
     GVariantBuilder app_menu;

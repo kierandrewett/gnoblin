@@ -52,11 +52,11 @@ Records here are copies, not [live objects](/shell-api/windows#live-window-objec
 and the console has no `gnoblin.tween()`. A tween's callbacks run in the Lua
 configuration, which outlives a console script, so build tweens in your config.
 
-`focus`, `begin_move`, and `begin_resize` require a trusted `FocusContext` from
+`focus`, `begin_move`, and `begin_resize` require a [`Grant`](/shell-api/grants) from
 an event callback. The ordinary REPL cannot create one or call these methods.
 
-The same context authorizes keyboard snapping. Inside the event callback, call
-`gnoblin.windows.snap_context(event.focus_context)`, then
+The same grant authorizes keyboard snapping. Inside the event callback, call
+`gnoblin.windows.snap_context(event.grant)`, then
 `context:commit({monitor_id, frame})` to apply its frame.
 
 In `gnoblinctl lua`, both calls wait for their results on the event connection.
@@ -395,9 +395,11 @@ The example ends the active modal session, removes its temporary binding, and
 lets the CLI exit. If you stop the process first, its connection closes and
 Gnoblin removes the binding.
 
-A Lua event listener can use a `FocusContext` delivered with a trusted event to
-focus a window or start an interactive move or resize. The context is an opaque,
-one-use value and the console sends the request on the event's connection.
+A Lua event listener can use the `Grant` delivered with a trusted event to
+focus a window or start an interactive move or resize. The grant is an opaque
+value that works once for each operation, and the console sends the request on the event's connection.
+`grant:narrow(scope, window?)` runs in the `gnoblinctl` process: the socket
+carries no narrowing, and a grant here has no `expires_at_us`.
 
 For example, save this as `focus.lua`, replacing the ID with one from
 `gnoblinctl window list`:
@@ -407,8 +409,8 @@ local window = gnoblin.windows.by_id("replace-with-window-id")
 assert(window, "window no longer exists")
 
 gnoblin.on("gnoblin.shortcut.activated", function(event)
-    if event.focus_context then
-        window:focus(event.focus_context)
+    if event.grant then
+        window:focus(event.grant)
     end
 end)
 ```
@@ -416,8 +418,9 @@ end)
 Run it with `gnoblinctl lua ./focus.lua` while a configured shortcut emits
 `gnoblin.shortcut.activated`. Press Ctrl+C to stop the listener.
 
-WM window-menu requests carry an opaque `MenuContext` in
-`event.menu_context`. Call `:begin_move()` or `:begin_resize(edge)` on that
-value to use the one-time authority for the window that raised the menu. The
-console keeps its token private and sends the operation over the event's
-connection. Application-menu requests have no `MenuContext`.
+WM window-menu requests carry a `Grant` in `event.grant`. It has the scopes
+`begin_move` and `begin_resize` for the window that raised the menu, and works once.
+
+Call `window:begin_move(event.grant)` or `window:begin_resize(edge, event.grant)` on that window.
+The console keeps its token private and sends the operation over the event's
+connection. Application-menu requests have no grant.

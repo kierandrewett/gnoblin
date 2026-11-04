@@ -445,7 +445,7 @@ int lua_generic_api_action(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     if (g_str_equal(method, "window.begin_move") || g_str_equal(method, "window.begin_resize"))
-        return luaL_error(state, "%s requires a Window record and trusted FocusContext", method);
+        return luaL_error(state, "%s requires a Window record and a Grant", method);
     lua_check_operation_context(state, config);
 
     if ((g_str_equal(method, "privacy.stop_sharing") ||

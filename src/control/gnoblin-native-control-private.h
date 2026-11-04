@@ -173,6 +173,23 @@ typedef struct {
     guint timeout_ms;
     guint64 revision;
 } NativeLaunch;
+/* What one gesture proves. Each operation takes its own scope once, so one key press can focus a
+ * window and then begin a move. */
+typedef enum {
+    FOCUS_SCOPE_FOCUS = 1 << 0,
+    FOCUS_SCOPE_BEGIN_MOVE = 1 << 1,
+    FOCUS_SCOPE_BEGIN_RESIZE = 1 << 2,
+    FOCUS_SCOPE_SNAP_CONTEXT = 1 << 3,
+    FOCUS_SCOPE_TEXT_TARGET = 1 << 4,
+} NativeFocusScope;
+#define FOCUS_SCOPE_ALL                                                                            \
+    (FOCUS_SCOPE_FOCUS | FOCUS_SCOPE_BEGIN_MOVE | FOCUS_SCOPE_BEGIN_RESIZE |                       \
+     FOCUS_SCOPE_SNAP_CONTEXT | FOCUS_SCOPE_TEXT_TARGET)
+typedef enum {
+    FOCUS_CLAIM_OK,
+    FOCUS_CLAIM_MISSING, /* expired, revoked or fully used */
+    FOCUS_CLAIM_USED,    /* this scope was taken already */
+} NativeFocusClaim;
 typedef struct {
     guint64 generation;
     gint64 expires_at_us;
@@ -187,6 +204,8 @@ typedef struct {
     guint64 pointer_target_sequence;
     double pointer_x;
     double pointer_y;
+    /* Operations of this gesture already taken, as NativeFocusScope bits. */
+    guint used_scopes;
 } NativeFocusContext;
 typedef struct {
     guint64 generation;
@@ -282,6 +301,11 @@ void native_trusted_shortcut_activated(MetaDisplay* display, guint action,
                                        const ClutterEvent* event, gpointer user_data);
 gboolean focus_token_random(char token[65]);
 void revoke_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle);
+void revoke_other_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle,
+                                          const char* keep_token);
+NativeFocusClaim native_focus_context_claim(GnoblinNativeControl* control, guint64 handle,
+                                            NativeFocusScope scope, NativeFocusContext* out);
+gboolean native_grant_window_allows(const char* grant_window, const char* window_id);
 void revoke_focus_contexts(GnoblinNativeControl* control);
 void native_menu_context_free(gpointer data);
 void revoke_menu_contexts(GnoblinNativeControl* control);

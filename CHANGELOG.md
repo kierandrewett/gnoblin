@@ -4,6 +4,18 @@
 
 ### Changed
 
+- `FocusContext` and `MenuContext` are one scoped `Grant` (bridge API 1.92). A shortcut, pointer binding,
+  shortcut session key, input event or window menu request carries `event.grant`. `grant:narrow(scope, window?)`
+  returns a grant for fewer operations (`focus`, `begin_move`, `begin_resize`, `snap_context`, `text_target`)
+  and one window; nothing widens a grant. Each operation of a gesture can run once, so one key press can focus a
+  window and then begin a move; before, the first operation used up the whole gesture. Expiry (five seconds),
+  reload and lock rules stay, and timers and other events have no grant. `Window:focus`, `begin_move`,
+  `begin_resize`, `gnoblin.windows.snap_context` and `gnoblin.input.text_target` take a `Grant`;
+  `event.focus_context` and `event.menu_context` are gone from Lua and from `gnoblinctl lua`. The default
+  pointer bindings use `event.grant`. Socket clients keep `focus_context` and the method names; their token now
+  lasts for the gesture and each operation uses it once. A Lua window menu move or resize failed before
+  because the session demanded a gesture context for it; it now works. See `docs/shell-api/grants.md`.
+
 - One chord grammar for every shortcut mechanism (no wire change). A key combination is zero or
   more modifiers in angle brackets, then one key, such as `<Super><Alt>F9` or `XF86AudioMute`.
   One parser (`src/control/gnoblin-chord.h`) reads it in the configuration validators, in the

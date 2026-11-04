@@ -62,20 +62,30 @@ typedef struct {
 typedef struct {
     CliLuaEventSubscription* subscription;
 } LuaCliEventSubscriptionHandle;
+/* The operations one gesture can authorise, as the Lua runtime names them. The compositor
+ * enforces nothing on the wire but the one-use scope of each operation; narrowing happens here. */
+typedef enum {
+    LUA_CLI_GRANT_FOCUS = 1 << 0,
+    LUA_CLI_GRANT_BEGIN_MOVE = 1 << 1,
+    LUA_CLI_GRANT_BEGIN_RESIZE = 1 << 2,
+    LUA_CLI_GRANT_SNAP_CONTEXT = 1 << 3,
+    LUA_CLI_GRANT_TEXT_TARGET = 1 << 4,
+} LuaCliGrantScope;
+#define LUA_CLI_GRANT_ALL 0x1f
+typedef struct {
+    guint used; /* LuaCliGrantScope bits taken from the gesture, shared by narrowed Grants */
+    guint refs;
+} LuaCliGrantSpent;
 typedef struct {
     guint64 magic;
     CliLuaEventSubscription* subscription;
     char* token;
-    gboolean consumed;
-} LuaCliFocusContext;
-#define LUA_CLI_FOCUS_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f424c494e46)
-typedef struct {
-    guint64 magic;
-    CliLuaEventSubscription* subscription;
-    char* token;
-    gboolean consumed;
-} LuaCliMenuContext;
-#define LUA_CLI_MENU_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f424d454e55)
+    gboolean menu; /* token is a WM menu_context, not a focus_context */
+    guint scope;
+    char window_id[24];
+    LuaCliGrantSpent* spent;
+} LuaCliGrant;
+#define LUA_CLI_GRANT_MAGIC G_GUINT64_CONSTANT(0x474e4f424c494e46)
 typedef struct {
     guint64 magic;
     CliLuaEventSubscription* subscription;
@@ -118,8 +128,7 @@ typedef struct {
 #define GNOBLINCTL_CAPABILITY_RECORD_METATABLE "gnoblinctl.Capability"
 #define GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE "gnoblinctl.SessionStatus"
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
-#define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
-#define GNOBLINCTL_MENU_CONTEXT_METATABLE "gnoblinctl.MenuContext"
+#define GNOBLINCTL_GRANT_METATABLE "gnoblinctl.Grant"
 #define GNOBLINCTL_SNAP_CONTEXT_METATABLE "gnoblinctl.SnapContext"
 #define GNOBLINCTL_TEXT_TARGET_METATABLE "gnoblinctl.TextTarget"
 
@@ -197,10 +206,12 @@ int lua_cli_animations_inspect(lua_State* state);
 int lua_cli_animations_surfaces(lua_State* state);
 int lua_cli_launches_read(lua_State* state);
 int lua_cli_launches_begin(lua_State* state);
-LuaCliFocusContext* lua_cli_test_focus_context(lua_State* state, int index);
-LuaCliMenuContext* lua_cli_test_menu_context(lua_State* state, int index);
-int lua_cli_menu_context_begin_move(lua_State* state);
-int lua_cli_menu_context_begin_resize(lua_State* state);
+LuaCliGrant* lua_cli_test_grant(lua_State* state, int index);
+/* Take `scope` from the Grant at `index` and send `method`; raises a Lua error when the Grant may
+ * not take it or the compositor refuses. The caller owns the result. */
+JsonNode* lua_cli_grant_request(lua_State* state, Cli* cli, int index, LuaCliGrantScope scope,
+                                const char* method, const char* window_id, const char* edge,
+                                CliLuaEventSubscription** subscription);
 void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object);
 int lua_cli_snap_context_gc(lua_State* state);
 int lua_cli_snap_context_newindex(lua_State* state);
@@ -266,15 +277,12 @@ int lua_cli_windows_by_id(lua_State* state);
 void cli_lua_event_subscription_detach(CliLuaEventSubscription* subscription);
 gboolean cli_lua_shortcut_owner_dispatch(CliLuaEventSubscription* owner, JsonNode* event);
 void cli_lua_event_subscription_free(gpointer data);
-void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription* subscription,
-                                const char* token);
-void lua_cli_push_menu_context(lua_State* state, CliLuaEventSubscription* subscription,
-                               const char* token);
+void lua_cli_push_grant(lua_State* state, CliLuaEventSubscription* subscription, const char* token,
+                        gboolean menu, const char* window_id);
 gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode* event);
 gboolean cli_lua_shortcut_owner_ensure(Cli* cli, GError** error);
 int lua_cli_events_subscribe(lua_State* state);
-void register_lua_cli_focus_context(lua_State* state);
-void register_lua_cli_menu_context(lua_State* state);
+void register_lua_cli_grant(lua_State* state);
 void register_lua_cli_snap_context(lua_State* state);
 void register_lua_cli_text_target(lua_State* state);
 void register_lua_cli_event_subscription(lua_State* state);

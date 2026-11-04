@@ -281,16 +281,17 @@ static int lua_record_method(lua_State* state) {
     gboolean begin_move = g_str_equal(method, "window.begin_move");
     gboolean begin_resize = g_str_equal(method, "window.begin_resize");
     if (focus || begin_move || begin_resize) {
-        int context_index = begin_resize ? 3 : 2;
-        LuaFocusContext* context =
-            luaL_testudata(state, context_index, LUA_FOCUS_CONTEXT_METATABLE);
         if ((focus && supplied != 1) || (begin_move && supplied != 1) ||
-            (begin_resize && supplied != 2) || !context)
-            return luaL_error(state, "%s requires a FocusContext from a shortcut event", method);
+            (begin_resize && supplied != 2))
+            return luaL_error(state,
+                              "%s requires %sa Grant from a shortcut, pointer or window "
+                              "menu event as its last argument",
+                              method, begin_resize ? "an edge and " : "");
+        const char* edge = NULL;
         if (begin_resize) {
             if (lua_type(state, 2) != LUA_TSTRING)
                 return luaL_error(state, "window:begin_resize requires an edge string");
-            const char* edge = lua_tostring(state, 2);
+            edge = lua_tostring(state, 2);
             static const char* const edges[] = {"north",      "south",      "east",
                                                 "west",       "north_east", "north_west",
                                                 "south_east", "south_west", NULL};
@@ -299,49 +300,8 @@ static int lua_record_method(lua_State* state) {
                 valid_edge |= g_str_equal(edge, edges[i]);
             if (!valid_edge)
                 return luaL_error(state, "window:begin_resize edge is not a valid ResizeEdge");
-            lua_pushvalue(state, 2);
-            lua_setfield(state, arguments, "edge");
         }
-        if (!config || !active_runtime || config != &active_runtime->config ||
-            !config->dispatching || config->api_calling)
-            return luaL_error(state, "%s is available only in a runtime event callback", method);
-        if (context->consumed || !context->handle ||
-            context->generation != active_runtime->generation ||
-            context->expires_at_us <= g_get_monotonic_time())
-            return luaL_error(state,
-                              "FocusContext is expired, consumed, or belongs to an old runtime");
-        if (!config->runtime_actions || config->runtime_actions->len >= 256 ||
-            config->actions_in_dispatch >= 64)
-            return luaL_error(state, "too many pending Gnoblin session actions");
-
-        guint64 request_id = allocate_operation_id();
-        if (!request_id)
-            return luaL_error(state, "Gnoblin operation request ID space is exhausted");
-        GVariantBuilder focus_arguments;
-        g_variant_builder_init(&focus_arguments, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&focus_arguments, "{sv}", "id", g_variant_new_string(id));
-        if (begin_resize)
-            g_variant_builder_add(&focus_arguments, "{sv}", "edge",
-                                  g_variant_new_string(lua_tostring(state, 2)));
-        GVariantBuilder action;
-        g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
-        g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
-        g_variant_builder_add(&action, "{sv}", "arguments",
-                              g_variant_builder_end(&focus_arguments));
-        g_ptr_array_add(config->runtime_actions,
-                        g_variant_ref_sink(g_variant_builder_end(&action)));
-        g_autofree char* key = g_strdup_printf("%" G_GUINT64_FORMAT, request_id);
-        LuaFocusOperation* operation = g_new0(LuaFocusOperation, 1);
-        operation->handle = context->handle;
-        operation->generation = context->generation;
-        operation->native_generation = context->native_generation;
-        operation->expires_at_us = context->expires_at_us;
-        g_hash_table_replace(config->focus_operations, g_strdup(key), operation);
-        context->consumed = TRUE;
-        config->actions_in_dispatch++;
-        push_operation_handle(state, config, request_id, method);
-        return 1;
+        return lua_window_grant_operation(state, config, method, id, begin_resize ? 3 : 2, edge);
     }
     if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
         g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
