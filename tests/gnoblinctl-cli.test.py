@@ -1290,7 +1290,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(101):
+                    for _ in range(100):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -2590,13 +2590,8 @@ def main() -> int:
         assert session_status_result.returncode == 0, session_status_result.stderr
         session_activity_file = Path(temporary) / "session-activity.lua"
         session_activity_file.write_text(
-            "local activity = gnoblin.session.activity()\n"
-            'assert(tostring(activity) == "SessionActivity" and activity.available and activity.idle)\n'
-            "assert(activity.threshold_ms == 300000 and activity.idle_for_ms >= 1000)\n"
-            "assert(activity.revision == 7)\n"
-            "assert(not pcall(function() activity.idle = false end))\n"
-            'assert(not pcall(function() rawset(activity, "idle", false) end))\n'
-            "assert(not pcall(function() gnoblin.session.activity(true) end))\n",
+            "assert(not pcall(function() return gnoblin.session.activity() end))\n"
+            "assert(not pcall(function() return gnoblin.idle.watch(1) end))\n",
             encoding="utf-8",
         )
         session_activity_result = run(binary, "--socket", socket_path, "lua", str(session_activity_file))
@@ -2875,8 +2870,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 101
-        assert len(subscriptions) == 101
+        assert len(received) == 100
+        assert len(subscriptions) == 100
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -2986,16 +2981,16 @@ def main() -> int:
         assert received[56]["method"] == "layer.animation_policy"
         assert received[56]["api_version"] == {"major": 1, "minor": 31}
         assert received[56]["arguments"] == {"namespace": "bingux-panel"}
-        assert received[91]["method"] == "input.orientation_lock"
+        assert received[90]["method"] == "input.orientation_lock"
+        assert received[90]["api_version"] == {"major": 1, "minor": 66}
+        assert received[90]["arguments"] == {}
+        assert received[91]["method"] == "input.set_orientation_lock"
         assert received[91]["api_version"] == {"major": 1, "minor": 66}
-        assert received[91]["arguments"] == {}
-        assert received[92]["method"] == "input.set_orientation_lock"
-        assert received[92]["api_version"] == {"major": 1, "minor": 66}
-        assert received[92]["arguments"] == {"value": True}
-        assert received[93]["method"] == "input.orientation_lock"
-        assert received[94]["method"] == "input.set_orientation_lock"
-        assert received[94]["api_version"] == {"major": 1, "minor": 66}
-        assert received[94]["arguments"] == {"value": True}
+        assert received[91]["arguments"] == {"value": True}
+        assert received[92]["method"] == "input.orientation_lock"
+        assert received[93]["method"] == "input.set_orientation_lock"
+        assert received[93]["api_version"] == {"major": 1, "minor": 66}
+        assert received[93]["arguments"] == {"value": True}
         privacy_screen_requests = [
             request
             for request in received
@@ -3023,9 +3018,6 @@ def main() -> int:
         assert received[60]["method"] == "session.status"
         assert received[60]["api_version"] == {"major": 1, "minor": 76}
         assert received[60]["arguments"] == {}
-        assert received[61]["method"] == "session.activity"
-        assert received[61]["api_version"] == {"major": 1, "minor": 24}
-        assert received[61]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {

@@ -348,7 +348,8 @@ static int lua_record_method(lua_State* state) {
         g_str_equal(method, "window.restore_or_minimize") ||
         g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
         g_str_equal(method, "workspace.switch") || g_str_equal(method, "shortcut.unbind") ||
-        g_str_equal(method, "launch.end") || g_str_equal(method, "input.select")) {
+        g_str_equal(method, "launch.end") || g_str_equal(method, "input.select") ||
+        g_str_equal(method, "idle.cancel")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "window.set_minimized")) {
@@ -462,6 +463,9 @@ static int lua_record_method(lua_State* state) {
     /* A shortcut ends when the compositor has unbound it. */
     if (config && g_str_equal(method, "shortcut.unbind"))
         lua_object_end_after(state, config, -1, "Shortcut", 1, TRUE);
+    /* An idle watch ends when the compositor has removed it. */
+    if (config && g_str_equal(method, "idle.cancel"))
+        lua_object_end_after(state, config, -1, "IdleWatch", 1, TRUE);
     return 1;
 }
 
@@ -554,6 +558,9 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
                                backing_field_type(state, backing, "name") == LUA_TSTRING &&
                                backing_field_type(state, backing, "current") == LUA_TBOOLEAN;
     lua_pop(state, 1);
+    /* An idle watch has the seconds it waits for and whether the session is idle for them. */
+    gboolean is_idle_watch = backing_field_type(state, backing, "seconds") == LUA_TNUMBER &&
+                             backing_field_type(state, backing, "idle") == LUA_TBOOLEAN;
     const char* kind = is_window              ? "Window"
                        : is_animation_preview ? "AnimationPreview"
                        : is_workspace         ? "Workspace"
@@ -561,6 +568,7 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
                        : is_output            ? "Output"
                        : is_shortcut          ? "Shortcut"
                        : is_input_source      ? "InputSource"
+                       : is_idle_watch        ? "IdleWatch"
                                               : NULL;
     if (kind)
         add_record_methods(state, method_table, kind);

@@ -35,11 +35,26 @@ These methods take no arguments and return operations:
 - `gnoblin.session.reboot()` asks logind to reboot.
 - `gnoblin.session.poweroff()` asks logind to power off.
 
-The native session supervisor checks the matching logind capability before
-requesting the action. Logind may answer `yes` or `challenge`; other answers
-and failed method calls are errors. The operation confirms that Gnoblin
-accepted the request. The machine may stop the Lua runtime as the action
-begins.
+The compositor reads the matching logind capability, then asks logind for the
+action. The operation finishes with logind's answer, so it does not report
+success before logind replies. It succeeds with `{accepted = true}` when
+logind accepts the request. The Lua runtime keeps running after a suspend or
+hibernate. For a reboot or power off, logind ends the session after it
+accepts.
+
+A refused or failed request ends the operation with an error:
+
+- `denied`: the capability answer is `no`, or polkit denies the action (`AccessDenied`).
+- `unsupported`: the capability answer is `na`, or logind has no such action.
+- `busy`: logind is already running another power action.
+- `unavailable`: logind is not on the system bus.
+- `timed_out`: logind did not answer in time (5 seconds for the capability, 30 for the action).
+- `internal`: any other D-Bus error from logind.
+
+The message names the D-Bus error, for example
+`logind could not suspend: org.freedesktop.DBus.Error.AccessDenied: ...`.
+Logind may answer `challenge` to the capability query. Gnoblin then asks for
+interactive authorization with the action.
 
 The focus reads are available as `gnoblin.focus.history(filter)` and
 `gnoblin.focus.policy()`. See [Focus and activation](/shell-api/focus-activation)

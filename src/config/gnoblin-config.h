@@ -121,8 +121,6 @@ void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision)
 void gnoblin_config_update_animation_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache native privacy availability and activity fields for immediate Lua reads. */
 void gnoblin_config_update_privacy_snapshot(GVariant* snapshot, guint64 revision);
-/* Cache the current session activity state for immediate Lua reads. */
-void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the compositor's current lock availability and state for status reads. */
 void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision);
 void gnoblin_config_update_session_lifecycle_snapshot(GVariant* snapshot, guint64 revision);

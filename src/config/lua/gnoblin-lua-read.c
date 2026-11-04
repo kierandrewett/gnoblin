@@ -337,7 +337,6 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "focus.policy",
         "config.path",
         "config.default",
-        "session.activity",
         "session.status",
         "runtime.status",
         "launch.status",
@@ -466,9 +465,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "settings")) {
         lua_getfield(state, -1, "settings");
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "session.activity") || g_str_equal(method, "session.status")) {
+    } else if (g_str_equal(method, "session.status")) {
         lua_getfield(state, -1, "session");
-        lua_getfield(state, -1, g_str_equal(method, "session.status") ? "status" : "activity");
+        lua_getfield(state, -1, "status");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "runtime.status")) {

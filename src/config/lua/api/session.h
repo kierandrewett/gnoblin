@@ -11,13 +11,6 @@
 ---@field session_state? "starting"|"running"|"stopping" Session lifecycle state when supported.
 ---@field session_revision? integer Lifecycle revision, present with session_state.
 
----@class SessionActivity
----@field available boolean Whether idle activity data is available.
----@field idle boolean Whether the session has been idle for at least threshold_ms.
----@field threshold_ms integer Idle threshold in milliseconds.
----@field idle_for_ms integer Time since the last activity in milliseconds.
----@field revision integer Activity snapshot revision.
-
 ---@class RuntimeStatus
 ---@field state "starting"|"running"|"restarting"|"unavailable" Runtime worker state.
 ---@field generation integer Active runtime generation.
@@ -71,10 +64,6 @@
 ---@return SessionStatus
 function gnoblin.session.status() end
 
----Read the session idle state and elapsed idle time.
----@return SessionActivity
-function gnoblin.session.activity() end
-
 ---Request that the compositor lock the session.
 ---@return Operation<SessionLockResult>
 function gnoblin.session.lock() end
@@ -83,19 +72,23 @@ function gnoblin.session.lock() end
 ---@return Operation<AcceptedResult>
 function gnoblin.session.logout() end
 
----Request that the session suspend through the native session supervisor and logind.
+---Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds
+---when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or
+---`internal` (the D-Bus error is in the message).
 ---@return Operation<AcceptedResult>
 function gnoblin.session.suspend() end
 
----Request that the session hibernate through the native session supervisor and logind.
+---Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.hibernate() end
 
----Request that the machine reboot through the native session supervisor and logind.
+---Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.reboot() end
 
----Request that the machine power off through the native session supervisor and logind.
+---Ask logind to power off the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.poweroff() end
 

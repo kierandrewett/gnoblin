@@ -369,6 +369,7 @@ struct _GnoblinNativeControl {
     guint pending_input_source_ops;
     guint pending_ibus_queries;
     guint pending_thumbnail_count;
+    guint pending_power_calls; /* logind calls in flight (gnoblin-control-power.c) */
     GVariant* session_activity_snapshot;
     guint64 session_activity_revision;
     GVariant* orientation_lock_snapshot;
@@ -377,10 +378,8 @@ struct _GnoblinNativeControl {
     gboolean orientation_lock_config_value;
     gboolean orientation_lock_runtime_override;
     gboolean orientation_lock_notifications_suppressed;
-    guint session_activity_subscription_id;
-    guint session_activity_owner_subscription_id;
-    guint pending_activity_queries;
-    guint64 session_activity_generation;
+    gpointer session_activity_watch; /* the compositor's own idle watch (session-activity.c) */
+    GHashTable* idle_watches;        /* idle watch ID -> IdleWatch, Lua's (session-activity.c) */
     char* path;
     dev_t device;
     ino_t inode;
@@ -492,6 +491,11 @@ G_GNUC_INTERNAL GVariant* gnoblin_control_tween_control(GnoblinNativeControl* co
 G_GNUC_INTERNAL void gnoblin_control_tweens_cancel(GnoblinNativeControl* control,
                                                    const char* outcome);
 
+/* gnoblin-control-power.c: session.suspend, hibernate, reboot and poweroff through logind. */
+G_GNUC_INTERNAL gboolean gnoblin_control_power_action(GnoblinNativeControl* control,
+                                                      gint64 operation_id, const char* method,
+                                                      GVariant* arguments, GError** error);
+
 /* gnoblin-control-privacy.c: privacy snapshot and location authorization glue. */
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,
                                                               gboolean changed);
@@ -505,8 +509,16 @@ G_GNUC_INTERNAL void gnoblin_control_privacy_new_handle(MetaRemoteAccessControll
 G_GNUC_INTERNAL GVariant* gnoblin_control_stop_privacy_sessions(GnoblinNativeControl* control,
                                                                 gboolean recording, GError** error);
 
-/* gnoblin-control-session-activity.c: session activity. */
+/* gnoblin-control-session-activity.c: session activity and Lua's idle watches. */
 G_GNUC_INTERNAL void gnoblin_control_activity_watch(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_activity_stop(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_idle_watches_clear(GnoblinNativeControl* control);
+G_GNUC_INTERNAL GVariant* gnoblin_control_idle_watch(GnoblinNativeControl* control,
+                                                     gint64 operation_id, GVariant* arguments,
+                                                     guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_idle_cancel(GnoblinNativeControl* control,
+                                                      GVariant* arguments, guint64 owner_generation,
+                                                      GError** error);
 G_GNUC_INTERNAL void gnoblin_control_activity_publish(GnoblinNativeControl* control,
                                                       gboolean available, gboolean idle,
                                                       guint64 threshold_ms, guint64 idle_for_ms);

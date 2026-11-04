@@ -91,7 +91,6 @@ int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_privacy_state_record(state);
     register_lua_cli_capability_record(state);
     register_lua_cli_session_status_record(state);
-    register_lua_cli_session_activity_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

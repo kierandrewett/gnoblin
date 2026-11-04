@@ -215,11 +215,6 @@ int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_session_status, 1);
         return 1;
     }
-    if (g_str_equal(prefix, "session") && g_str_equal(name, "activity")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_session_activity, 1);
-        return 1;
-    }
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
@@ -300,6 +295,11 @@ int lua_api_index(lua_State* state) {
             return 1;
         }
     }
+    if (g_str_equal(prefix, "idle"))
+        return luaL_error(state,
+                          "gnoblin.idle.%s needs a configuration to hold the watch; a gnoblinctl "
+                          "script ends before the session is idle",
+                          name);
     static const char* const removed[][2] = {
         {"monitor.list", "gnoblin.outputs.list"},
         {"monitors.list", "gnoblin.outputs.list"},
@@ -327,6 +327,8 @@ int lua_api_index(lua_State* state) {
         {"launches.finish", "launch:finish"},
         {"shortcuts.unbind", "shortcut:unbind"},
         {"shortcuts.end_session", "shortcut:end_session"},
+        {"session.activity",
+         "gnoblin.idle.watch in a configuration, or `gnoblinctl session activity`"},
         {NULL, NULL},
     };
     g_autofree char* qualified = g_strdup_printf("%s.%s", prefix, name);

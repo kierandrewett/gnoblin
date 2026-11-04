@@ -89,7 +89,6 @@ void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.launch_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.animation_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.privacy_snapshot, g_variant_unref);
-    g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_lock_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_lifecycle_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.settings_document, g_variant_unref);
@@ -395,37 +394,6 @@ void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision)
     }
 }
 
-void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision) {
-    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
-        return;
-    if (snapshot) {
-        const struct {
-            const char* key;
-            const GVariantType* type;
-        } fields[] = {{"available", G_VARIANT_TYPE_BOOLEAN},
-                      {"idle", G_VARIANT_TYPE_BOOLEAN},
-                      {"threshold_ms", G_VARIANT_TYPE_UINT64},
-                      {"idle_for_ms", G_VARIANT_TYPE_UINT64}};
-        for (guint i = 0; i < G_N_ELEMENTS(fields); i++) {
-            g_autoptr(GVariant) value =
-                g_variant_lookup_value(snapshot, fields[i].key, fields[i].type);
-            if (!value)
-                return;
-        }
-    }
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
-    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
-        LuaRuntime* runtime = runtimes[i];
-        if (!runtime || (i == 1 && runtime == runtimes[0]))
-            continue;
-        g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
-        runtime->config.session_activity_revision = snapshot ? revision : 0;
-        runtime->config.session_activity_sampled_at_us = snapshot ? g_get_monotonic_time() : 0;
-        if (snapshot)
-            runtime->config.session_activity_snapshot = g_variant_ref(snapshot);
-    }
-}
-
 void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
@@ -657,14 +625,6 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     if (snapshot_source && snapshot_source->config.privacy_snapshot) {
         runtime->config.privacy_snapshot = g_variant_ref(snapshot_source->config.privacy_snapshot);
         runtime->config.privacy_revision = snapshot_source->config.privacy_revision;
-    }
-    if (snapshot_source && snapshot_source->config.session_activity_snapshot) {
-        runtime->config.session_activity_snapshot =
-            g_variant_ref(snapshot_source->config.session_activity_snapshot);
-        runtime->config.session_activity_revision =
-            snapshot_source->config.session_activity_revision;
-        runtime->config.session_activity_sampled_at_us =
-            snapshot_source->config.session_activity_sampled_at_us;
     }
     if (snapshot_source && snapshot_source->config.session_lock_snapshot) {
         runtime->config.session_lock_snapshot =

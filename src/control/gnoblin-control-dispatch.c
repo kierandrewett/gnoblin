@@ -153,7 +153,7 @@ void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
     /* Runtime abort can precede compositor teardown while async callbacks drain. */
     if (!control || !control->stopping || !control->teardown_complete ||
         control->pending_input_source_ops != 0 || control->pending_ibus_queries != 0 ||
-        control->pending_thumbnail_count != 0 || control->pending_activity_queries != 0)
+        control->pending_thumbnail_count != 0 || control->pending_power_calls != 0)
         return;
     gnoblin_control_input_sources_release(control);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);

@@ -279,6 +279,7 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     gnoblin_runtime_reader_reset(control->runtime_reader);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_states);
     gnoblin_control_tweens_cancel(control, "cancelled");
+    gnoblin_control_idle_watches_clear(control);
     gnoblin_control_window_visuals_reset(control);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_events);
     native_runtime_fail_pending_requests(control, "Lua worker restarted before replying");
@@ -372,10 +373,6 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     g_autoptr(GVariant) shortcuts = native_shortcut_snapshot(control);
     native_publish_runtime_snapshot(control, "shortcuts", shortcuts, revision);
     gnoblin_control_publish_privacy_snapshot(control, FALSE);
-    if (control->session_activity_snapshot)
-        native_publish_runtime_snapshot(control, "session-activity",
-                                        control->session_activity_snapshot,
-                                        control->session_activity_revision);
     if (control->session_lifecycle_supported && control->session_lifecycle_snapshot)
         native_publish_runtime_snapshot(control, "session-lifecycle",
                                         control->session_lifecycle_snapshot,
@@ -632,6 +629,14 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
         result = gnoblin_control_tween_control(control, method, arguments, owner_generation,
                                                &operation_error);
+    } else if (g_str_equal(method, "idle.watch") || g_str_equal(method, "idle.cancel")) {
+        guint64 owner_generation = 0;
+        g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+        result = g_str_equal(method, "idle.watch")
+                     ? gnoblin_control_idle_watch(control, operation_id, arguments,
+                                                  owner_generation, &operation_error)
+                     : gnoblin_control_idle_cancel(control, arguments, owner_generation,
+                                                   &operation_error);
     } else if (g_str_equal(method, "window.set_visual")) {
         guint64 owner_generation = 0;
         g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
@@ -752,15 +757,14 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         }
     } else if (g_str_equal(method, "session.suspend") || g_str_equal(method, "session.hibernate") ||
                g_str_equal(method, "session.reboot") || g_str_equal(method, "session.poweroff")) {
-        if (g_variant_n_children(arguments) != 0) {
-            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                        "%s takes no arguments", method);
-        } else {
-            GVariantBuilder accepted;
-            g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-            result = g_variant_ref_sink(g_variant_builder_end(&accepted));
-        }
+        /* The Operation completes with logind's answer, not with acceptance. */
+        guint64* operation_key = g_new(guint64, 1);
+        *operation_key = (guint64)operation_id;
+        g_hash_table_add(control->runtime_operation_ids, operation_key);
+        if (gnoblin_control_power_action(control, operation_id, method, arguments,
+                                         &operation_error))
+            return TRUE;
+        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
     } else if (g_str_equal(method, "config.restore_default")) {
         if (g_variant_n_children(arguments) != 0) {
             g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -1224,6 +1228,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                     g_clear_pointer(&control->input_policy_error, g_free);
                     gnoblin_control_cancel_window_drags(control, "config_reloaded");
                     gnoblin_control_tweens_cancel(control, "cancelled");
+                    gnoblin_control_idle_watches_clear(control);
                     gnoblin_control_window_visuals_reset(control);
                     revoke_focus_contexts(control);
                 }

@@ -207,12 +207,16 @@ const LuaApiEntry lua_api[] = {
     {"Launch:on", NULL, lua_object_on},
     {"Launch:watch", NULL, lua_object_watch},
 
+    {"idle.watch", NULL, lua_idle_watch, TRUE},
+    {"IdleWatch:cancel", "idle.cancel", NULL},
+    {"IdleWatch:on", NULL, lua_object_on},
+    {"IdleWatch:watch", NULL, lua_object_watch},
+
     {"privacy.state", NULL, lua_privacy_state},
     {"privacy.stop_sharing", "privacy.stop_sharing", NULL},
     {"privacy.stop_recording", "privacy.stop_recording", NULL},
 
     {"session.status", "session.status", lua_session_status},
-    {"session.activity", "session.activity", lua_session_activity},
     {"session.lock", "session.lock", NULL},
     {"session.logout", "session.logout", NULL},
     {"session.suspend", "session.suspend", NULL},

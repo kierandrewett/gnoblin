@@ -10,6 +10,7 @@ gnoblin.capabilities = {}
 gnoblin.config = {}
 gnoblin.console = {}
 gnoblin.focus = {}
+gnoblin.idle = {}
 gnoblin.input = {}
 gnoblin.launches = {}
 gnoblin.layers = {}
@@ -415,6 +416,48 @@ function gnoblin.focus.history(filter) end
 ---@return FocusPolicy
 function gnoblin.focus.policy() end
 
+---A watch on how long the session has had no input. It is the same object for as long as it is
+---alive. It is not idle when it starts. When the user does nothing for `seconds`, `idle` becomes
+---true and the "idle" signal runs; the next input makes `idle` false and runs "active". The
+---watch repeats for every idle period until it is cancelled. Mutter's idle monitor counts the
+---time, and an idle inhibitor of the session delays "idle" as it delays the screen blank.
+---A runtime reload ends every watch.
+---@class IdleWatch
+---@field id string Identifier, "idle-" and the number of the request that made it.
+---@field alive boolean False once the watch has ended.
+---@field seconds number How long without input makes the session idle.
+---@field idle boolean Whether the session has been idle for `seconds` and has not had input since.
+
+---@class IdleCancelResult
+---@field cancelled boolean True when the compositor removed the watch.
+
+---Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches
+---can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not
+---idle; if the compositor refuses it, it ends and its "closed" listeners get the reason.
+---@param seconds number Idle time above 0 and at most 86400. Fractions are allowed.
+---@return IdleWatch
+function gnoblin.idle.watch(seconds) end
+
+---Stop this watch. The IdleWatch ends, and its "closed" listeners run, when the compositor has
+---removed it. A watch that has ended fails with `not_found`.
+---@return Operation<IdleCancelResult>
+function IdleWatch:cancel() end
+
+---Call fn(watch) on a signal of this watch: "idle" when the session has been idle for its
+---seconds, "active" for the first input after that, or "closed" when the watch ended. A watch
+---that the compositor refused passes the reason as a second argument to "closed". Listening
+---ends after "closed".
+---@param signal "idle"|"active"|"closed"
+---@param fn fun(watch: IdleWatch, reason?: string)
+---@return {unsubscribe: fun()}
+function IdleWatch:on(signal, fn) end
+
+---Call fn(watch, value, old) when one field of this watch changes.
+---@param property string A field of IdleWatch, such as "idle".
+---@param fn fun(watch: IdleWatch, value: any, old: any)
+---@return {unsubscribe: fun()}
+function IdleWatch:watch(property, fn) end
+
 ---@class InputDevice
 ---@field id string Stable ID for this compositor device instance.
 ---@field name string Device name; may be empty.
@@ -784,13 +827,6 @@ function Process:kill(signal) end
 ---@field session_state? "starting"|"running"|"stopping" Session lifecycle state when supported.
 ---@field session_revision? integer Lifecycle revision, present with session_state.
 
----@class SessionActivity
----@field available boolean Whether idle activity data is available.
----@field idle boolean Whether the session has been idle for at least threshold_ms.
----@field threshold_ms integer Idle threshold in milliseconds.
----@field idle_for_ms integer Time since the last activity in milliseconds.
----@field revision integer Activity snapshot revision.
-
 ---@class RuntimeStatus
 ---@field state "starting"|"running"|"restarting"|"unavailable" Runtime worker state.
 ---@field generation integer Active runtime generation.
@@ -844,10 +880,6 @@ function Process:kill(signal) end
 ---@return SessionStatus
 function gnoblin.session.status() end
 
----Read the session idle state and elapsed idle time.
----@return SessionActivity
-function gnoblin.session.activity() end
-
 ---Request that the compositor lock the session.
 ---@return Operation<SessionLockResult>
 function gnoblin.session.lock() end
@@ -856,19 +888,23 @@ function gnoblin.session.lock() end
 ---@return Operation<AcceptedResult>
 function gnoblin.session.logout() end
 
----Request that the session suspend through the native session supervisor and logind.
+---Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds
+---when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or
+---`internal` (the D-Bus error is in the message).
 ---@return Operation<AcceptedResult>
 function gnoblin.session.suspend() end
 
----Request that the session hibernate through the native session supervisor and logind.
+---Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.hibernate() end
 
----Request that the machine reboot through the native session supervisor and logind.
+---Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.reboot() end
 
----Request that the machine power off through the native session supervisor and logind.
+---Ask logind to power off the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.poweroff() end
 

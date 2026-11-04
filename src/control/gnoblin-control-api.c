@@ -284,7 +284,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
             g_unix_fd_add(control->runtime_fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
                           native_runtime_fd_ready, control);
     }
-    gnoblin_control_activity_publish(control, FALSE, FALSE, 120000, 0);
+    gnoblin_control_activity_watch(control);
     start_native_session_bus(control);
     g_signal_connect(control->display, "gnoblin-native-event", G_CALLBACK(native_native_event),
                      control);
@@ -493,6 +493,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     gnoblin_control_present_clear(control);
     gnoblin_control_tweens_cancel(control, "cancelled");
     g_clear_pointer(&control->tweens, g_hash_table_unref);
+    gnoblin_control_activity_stop(control);
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,

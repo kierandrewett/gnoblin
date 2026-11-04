@@ -498,7 +498,6 @@ gboolean start_native_session_bus(GnoblinNativeControl* control) {
         g_warning("gnoblin-native-control: session D-Bus unavailable: %s", error->message);
         return FALSE;
     }
-    gnoblin_control_activity_watch(control);
     return TRUE;
 }
 
@@ -522,18 +521,7 @@ void stop_native_session_bus(GnoblinNativeControl* control) {
     g_clear_object(&control->ibus_bus);
     if (!control->session_bus)
         return;
-    if (control->session_activity_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->session_activity_subscription_id);
-        control->session_activity_subscription_id = 0;
-    }
-    if (control->session_activity_owner_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->session_activity_owner_subscription_id);
-        control->session_activity_owner_subscription_id = 0;
-    }
     g_clear_object(&control->session_bus);
-    g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
 }
 
 void native_shortcut_free(gpointer data) {

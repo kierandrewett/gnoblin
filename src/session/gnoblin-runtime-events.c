@@ -193,20 +193,11 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
                                 g_str_equal(method, "session.logout") &&
                                 g_variant_lookup(payload, "ok", "b", &succeeded) && succeeded;
     matching_success = matching_success && operation_result && logout_accepted;
-    int power_exit_status = 0;
     gboolean restore_requested = FALSE;
     if (g_variant_lookup(payload, "method", "&s", &method) &&
         g_variant_lookup(payload, "ok", "b", &succeeded) && succeeded && operation_result &&
         g_variant_lookup(operation_result, "accepted", "b", &logout_accepted) && logout_accepted) {
-        if (g_str_equal(method, "session.suspend"))
-            power_exit_status = EXIT_POWER_SUSPEND;
-        else if (g_str_equal(method, "session.hibernate"))
-            power_exit_status = EXIT_POWER_HIBERNATE;
-        else if (g_str_equal(method, "session.reboot"))
-            power_exit_status = EXIT_POWER_REBOOT;
-        else if (g_str_equal(method, "session.poweroff"))
-            power_exit_status = EXIT_POWER_POWEROFF;
-        else if (g_str_equal(method, "config.restore_default"))
+        if (g_str_equal(method, "config.restore_default"))
             restore_requested = TRUE;
     }
 
@@ -231,10 +222,6 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
             runtime->exit_status = EXIT_SUCCESS;
             g_main_loop_quit(runtime->loop);
         }
-    }
-    if (power_exit_status) {
-        runtime->exit_status = power_exit_status;
-        g_main_loop_quit(runtime->loop);
     }
     if (restore_requested) {
         runtime->exit_status = EXIT_CONFIG_RESTORE;
@@ -436,8 +423,6 @@ gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error) {
         update = gnoblin_config_update_launch_snapshot;
     else if (g_str_equal(name, "privacy"))
         update = gnoblin_config_update_privacy_snapshot;
-    else if (g_str_equal(name, "session-activity"))
-        update = gnoblin_config_update_session_activity_snapshot;
     else if (g_str_equal(name, "session-lock"))
         update = gnoblin_config_update_session_lock_snapshot;
     else if (g_str_equal(name, "session-lifecycle"))

@@ -112,9 +112,6 @@ typedef struct {
     guint64 animation_revision;
     GVariant* privacy_snapshot;
     guint64 privacy_revision;
-    GVariant* session_activity_snapshot;
-    guint64 session_activity_revision;
-    gint64 session_activity_sampled_at_us;
     GVariant* session_lock_snapshot;
     guint64 session_lock_revision;
     GVariant* session_lifecycle_snapshot;
@@ -349,7 +346,6 @@ int lua_output_set_privacy_screen(lua_State* state);
 int lua_layers_list(lua_State* state);
 int lua_capabilities_list(lua_State* state);
 int lua_privacy_state(lua_State* state);
-int lua_session_activity(lua_State* state);
 int lua_session_status(lua_State* state);
 int lua_runtime_status(lua_State* state);
 int lua_input_devices(lua_State* state);
@@ -364,6 +360,7 @@ int lua_launches_snapshot(lua_State* state);
 int call_launch_operation(lua_State* state, const char* method, int arguments);
 int lua_launches_begin(lua_State* state);
 int lua_shortcuts_bind(lua_State* state);
+int lua_idle_watch(lua_State* state);
 int lua_shortcut_actions(lua_State* state);
 gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, gboolean root,
                        GError** error);

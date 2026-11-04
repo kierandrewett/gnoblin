@@ -127,6 +127,15 @@ static const ApiMember api_fields_FocusPolicy[] = {
     {"auto_raise_delay", "integer", FALSE, "Delay in milliseconds before automatic raise."},
     {"revision", "integer", FALSE, "Revision of the committed settings snapshot."},
 };
+static const ApiMember api_fields_IdleCancelResult[] = {
+    {"cancelled", "boolean", FALSE, "True when the compositor removed the watch."},
+};
+static const ApiMember api_fields_IdleWatch[] = {
+    {"id", "string", FALSE, "Identifier, \"idle-\" and the number of the request that made it."},
+    {"alive", "boolean", FALSE, "False once the watch has ended."},
+    {"seconds", "number", FALSE, "How long without input makes the session idle."},
+    {"idle", "boolean", FALSE, "Whether the session has been idle for `seconds` and has not had input since."},
+};
 static const ApiMember api_fields_InputDevice[] = {
     {"id", "string", FALSE, "Stable ID for this compositor device instance."},
     {"name", "string", FALSE, "Device name; may be empty."},
@@ -327,13 +336,6 @@ static const ApiMember api_fields_Request[] = {
 static const ApiMember api_fields_RuntimeStatus[] = {
     {"state", "\"starting\"|\"running\"|\"restarting\"|\"unavailable\"", FALSE, "Runtime worker state."},
     {"generation", "integer", FALSE, "Active runtime generation."},
-};
-static const ApiMember api_fields_SessionActivity[] = {
-    {"available", "boolean", FALSE, "Whether idle activity data is available."},
-    {"idle", "boolean", FALSE, "Whether the session has been idle for at least threshold_ms."},
-    {"threshold_ms", "integer", FALSE, "Idle threshold in milliseconds."},
-    {"idle_for_ms", "integer", FALSE, "Time since the last activity in milliseconds."},
-    {"revision", "integer", FALSE, "Activity snapshot revision."},
 };
 static const ApiMember api_fields_SessionLockResult[] = {
     {"dispatched", "boolean", FALSE, "Whether the lock request was dispatched."},
@@ -611,6 +613,8 @@ static const ApiClass api_classes[] = {
     {"FocusContext", "", NULL, 0},
     {"FocusHistoryFilter", "", api_fields_FocusHistoryFilter, 3},
     {"FocusPolicy", "", api_fields_FocusPolicy, 7},
+    {"IdleCancelResult", "", api_fields_IdleCancelResult, 1},
+    {"IdleWatch", "A watch on how long the session has had no input. It is the same object for as long as it is alive. It is not idle when it starts. When the user does nothing for `seconds`, `idle` becomes true and the \"idle\" signal runs; the next input makes `idle` false and runs \"active\". The watch repeats for every idle period until it is cancelled. Mutter's idle monitor counts the time, and an idle inhibitor of the session delays \"idle\" as it delays the screen blank. A runtime reload ends every watch.", api_fields_IdleWatch, 4},
     {"InputDevice", "", api_fields_InputDevice, 8},
     {"InputEvent", "", api_fields_InputEvent, 6},
     {"InputHandlerMatch", "", api_fields_InputHandlerMatch, 7},
@@ -640,7 +644,6 @@ static const ApiClass api_classes[] = {
     {"Renderer", "", api_fields_Renderer, 4},
     {"Request", "Something a shell answers: a passphrase prompt, a polkit authentication, a location authorization or a session-lock request. The event that offers it carries it as event.request, and so do its follow-up events. Fields are read-only. Methods exist only on the kinds that use them; calling another raises an error.", api_fields_Request, 4},
     {"RuntimeStatus", "", api_fields_RuntimeStatus, 2},
-    {"SessionActivity", "", api_fields_SessionActivity, 5},
     {"SessionLockResult", "", api_fields_SessionLockResult, 2},
     {"SessionStatus", "", api_fields_SessionStatus, 6},
     {"Shortcut", "A global key binding that this Lua runtime owns. It is the same object for as long as it is bound: every read of one binding returns it. It ends when it is unbound or when the runtime stops; a binding the compositor refused ends at once.", api_fields_Shortcut, 7},
@@ -768,47 +771,50 @@ static const ApiMember api_params_40[] = {
 static const ApiMember api_params_41[] = {
     {"filter", "FocusHistoryFilter", TRUE, ""},
 };
-static const ApiMember api_params_45[] = {
+static const ApiMember api_params_43[] = {
+    {"seconds", "number", FALSE, "Idle time above 0 and at most 86400. Fractions are allowed."},
+};
+static const ApiMember api_params_46[] = {
     {"match", "InputHandlerMatch", FALSE, "Event selectors. type is required; other selectors are optional."},
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
 };
-static const ApiMember api_params_47[] = {
+static const ApiMember api_params_48[] = {
     {"value", "boolean|\"inherit\"", FALSE, "True locks orientation; false unlocks it; \"inherit\" clears the runtime override."},
 };
-static const ApiMember api_params_49[] = {
+static const ApiMember api_params_50[] = {
     {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
 };
-static const ApiMember api_params_50[] = {
+static const ApiMember api_params_51[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
     {"application", "string", FALSE, "Non-empty application identifier, at most 512 characters."},
     {"options", "LaunchBeginOptions", TRUE, ""},
 };
-static const ApiMember api_params_52[] = {
+static const ApiMember api_params_53[] = {
     {"namespace", "string", FALSE, "UTF-8 namespace from 1 to 128 bytes."},
 };
-static const ApiMember api_params_53[] = {
+static const ApiMember api_params_54[] = {
     {"filter", "LayerFilter", TRUE, ""},
 };
-static const ApiMember api_params_54[] = {
+static const ApiMember api_params_55[] = {
     {"a", "number", FALSE, ""},
     {"b", "number", FALSE, ""},
     {"t", "number", FALSE, ""},
 };
-static const ApiMember api_params_55[] = {
+static const ApiMember api_params_56[] = {
     {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories."},
 };
-static const ApiMember api_params_56[] = {
+static const ApiMember api_params_57[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
-static const ApiMember api_params_57[] = {
+static const ApiMember api_params_58[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
 };
-static const ApiMember api_params_58[] = {
+static const ApiMember api_params_59[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
-static const ApiMember api_params_65[] = {
+static const ApiMember api_params_66[] = {
     {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
     {"options", "ProcessOptions", TRUE, ""},
 };
@@ -890,39 +896,39 @@ static const ApiFunction api_functions[] = {
     {"ease", "Return eased progress for t from 0 to 1.", api_params_40, 3, "number"},
     {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_41, 1, "Window[]"},
     {"focus.policy", "Read the committed focus policy.", NULL, 0, "FocusPolicy"},
+    {"idle.watch", "Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not idle; if the compositor refuses it, it ends and its \"closed\" listeners get the reason.", api_params_43, 1, "IdleWatch"},
     {"input.current_source", "Return the selected input source, or nil when there is no current source.", NULL, 0, "InputSource|nil"},
     {"input.devices", "Return available input devices.", NULL, 0, "InputDevice[]"},
-    {"input.on", "Register a Lua policy callback for matching input events.", api_params_45, 2, "string"},
+    {"input.on", "Register a Lua policy callback for matching input events.", api_params_46, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
-    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_47, 1, "Operation<OrientationLock>"},
+    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_48, 1, "Operation<OrientationLock>"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
-    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_49, 1, "Operation<TextTarget>"},
-    {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_50, 3, "Launch"},
+    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_50, 1, "Operation<TextTarget>"},
+    {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_51, 3, "Launch"},
     {"launches.list", "Return the current launch records, each the Launch object for its token.", NULL, 0, "Launch[]"},
-    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_52, 1, "LayerAnimationPolicy"},
-    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_53, 1, "LayerSurface[]"},
-    {"lerp", "Return a + (b - a) * t.", api_params_54, 3, "number"},
-    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_55, 1, "boolean"},
-    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_56, 2, "EventSubscription"},
-    {"once", "Register a callback that is removed after its first event.", api_params_57, 2, "EventSubscription"},
-    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_58, 1, "Output|nil"},
+    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_53, 1, "LayerAnimationPolicy"},
+    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_54, 1, "LayerSurface[]"},
+    {"lerp", "Return a + (b - a) * t.", api_params_55, 3, "number"},
+    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_56, 1, "boolean"},
+    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_57, 2, "EventSubscription"},
+    {"once", "Register a callback that is removed after its first event.", api_params_58, 2, "EventSubscription"},
+    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_59, 1, "Output|nil"},
     {"outputs.list", "Return all current outputs. The list is empty until the first output snapshot is published.", NULL, 0, "Output[]"},
     {"outputs.primary", "Return the primary output, or nil when there is none.", NULL, 0, "Output|nil"},
     {"outputs.renderer", "Return the compositor renderer, or nil until the first output snapshot is published.", NULL, 0, "Renderer|nil"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_65, 2, "Process"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_66, 2, "Process"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
-    {"session.activity", "Read the session idle state and elapsed idle time.", NULL, 0, "SessionActivity"},
-    {"session.hibernate", "Request that the session hibernate through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
+    {"session.hibernate", "Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.lock", "Request that the compositor lock the session.", NULL, 0, "Operation<SessionLockResult>"},
     {"session.logout", "Request that the session log out.", NULL, 0, "Operation<AcceptedResult>"},
-    {"session.poweroff", "Request that the machine power off through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
-    {"session.reboot", "Request that the machine reboot through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
+    {"session.poweroff", "Ask logind to power off the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
+    {"session.reboot", "Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
-    {"session.suspend", "Request that the session suspend through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
+    {"session.suspend", "Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or `internal` (the D-Bus error is in the message).", NULL, 0, "Operation<AcceptedResult>"},
     {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_76, 1, "ShortcutAction[]"},
     {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for; if the compositor refuses the binding (the accelerator is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_77, 3, "Shortcut"},
     {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_78, 1, "Operation<ShortcutCaptureResult>"},

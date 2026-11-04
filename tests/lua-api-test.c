@@ -415,6 +415,43 @@ int main(void) {
         "    local rebound=g.shortcuts.bind('sw', '<Super>space')\n"
         "    assert(rebound~=shortcut and rebound.alive and #g.shortcuts.list()==1)\n"
         "  end\n"
+        "end)\n"
+        "local idle_watch, idle_log, second_watch=nil, {}, nil\n"
+        "local function note(text) idle_log[#idle_log+1]=text end\n"
+        "g.on('test.idle', function(event)\n"
+        "  if event.step=='watch' then\n"
+        "    assert(g.session.activity==nil)\n"
+        "    for _, bad in ipairs({0, -1, 86401, 'x', 0/0}) do\n"
+        "      assert(not pcall(function() g.idle.watch(bad) end))\n"
+        "    end\n"
+        "    assert(not pcall(function() g.idle.watch() end))\n"
+        "    assert(not pcall(function() g.idle.watch(1, 2) end))\n"
+        "    idle_watch=g.idle.watch(90)\n"
+        "    assert(idle_watch.alive and not idle_watch.idle and idle_watch.seconds==90)\n"
+        "    assert(idle_watch.id:match('^idle%-%d+$'))\n"
+        "    second_watch=g.idle.watch(0.5)\n"
+        "    assert(second_watch~=idle_watch and second_watch.seconds==0.5)\n"
+        "    assert(not pcall(function() idle_watch:on('bogus', print) end))\n"
+        "    idle_watch:on('idle', function(w) note('idle:'..tostring(w.idle)) end)\n"
+        "    idle_watch:on('active', function(w) note('active:'..tostring(w.idle)) end)\n"
+        "    idle_watch:watch('idle', function(w, value, old)\n"
+        "      note('watch:'..tostring(old)..'>'..tostring(value))\n"
+        "    end)\n"
+        "    idle_watch:on('closed', function(w, reason) note('closed:'..tostring(reason)) end)\n"
+        "    local refused=g.idle.watch(5)\n"
+        "    refused:on('closed', function(w, reason)\n"
+        "      note('refused:'..tostring(reason)..':'..tostring(w.alive))\n"
+        "    end)\n"
+        "  elseif event.step=='cancel' then\n"
+        "    assert(idle_watch:cancel().method=='idle.cancel')\n"
+        "    assert(idle_watch.alive)\n"
+        "  else\n"
+        "    assert(table.concat(idle_log, ';')=="
+        "'refused:full:false;watch:false>true;idle:true;watch:true>false;active:false;closed:nil', "
+        "table.concat(idle_log, ';'))\n"
+        "    assert(not idle_watch.alive and second_watch.alive)\n"
+        "    assert(not pcall(function() idle_watch:on('idle', print) end))\n"
+        "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
     g_autoptr(GVariant) menu_runtime = gnoblin_config_load_runtime(root, NULL, NULL, &error);
@@ -521,37 +558,12 @@ int main(void) {
     g_autoptr(GVariant) privacy_operations = gnoblin_config_drain_runtime_operations();
     g_assert_cmpuint(g_variant_n_children(privacy_operations), ==, 2);
 
-    GVariantBuilder activity_snapshot_builder;
-    g_variant_builder_init(&activity_snapshot_builder, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "available",
-                          g_variant_new_boolean(TRUE));
-    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "idle", g_variant_new_boolean(TRUE));
-    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "threshold_ms",
-                          g_variant_new_uint64(120000));
-    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "idle_for_ms",
-                          g_variant_new_uint64(5000));
-    g_autoptr(GVariant) activity_snapshot =
-        g_variant_ref_sink(g_variant_builder_end(&activity_snapshot_builder));
-    gnoblin_config_update_session_activity_snapshot(activity_snapshot, 12);
+    /* The fixed 120 second sample is gone from Lua: gnoblin.idle.watch replaces it. */
     g_autoptr(GVariant) session_activity =
         gnoblin_config_read_api("session.activity", api_arguments, &error);
-    g_assert_no_error(error);
-    g_assert_nonnull(session_activity);
-    gboolean activity_available = FALSE;
-    gboolean activity_idle = FALSE;
-    gint64 activity_threshold_ms = 0;
-    gint64 activity_idle_for_ms = 0;
-    gint64 activity_revision = 0;
-    g_assert_true(g_variant_lookup(session_activity, "available", "b", &activity_available));
-    g_assert_true(g_variant_lookup(session_activity, "idle", "b", &activity_idle));
-    g_assert_true(g_variant_lookup(session_activity, "threshold_ms", "x", &activity_threshold_ms));
-    g_assert_true(g_variant_lookup(session_activity, "idle_for_ms", "x", &activity_idle_for_ms));
-    g_assert_true(g_variant_lookup(session_activity, "revision", "x", &activity_revision));
-    g_assert_true(activity_available);
-    g_assert_true(activity_idle);
-    g_assert_cmpint(activity_threshold_ms, ==, 120000);
-    g_assert_cmpint(activity_idle_for_ms, >=, 5000);
-    g_assert_cmpint(activity_revision, ==, 12);
+    g_assert_null(session_activity);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
 
     g_autoptr(GVariant) api_operation =
         gnoblin_config_call_api("workspace.list", api_arguments, &error);
@@ -888,6 +900,42 @@ int main(void) {
     complete_operation(g_array_index(shortcut_ids, gint64, 2), TRUE,
                        g_variant_builder_end(&unbound), NULL);
     g_assert_cmpuint(dispatch_counting_operations("test.shortcuts", step_payload("check")), ==, 1);
+
+    /* Idle watches: one object for each watch; the compositor's idle and active events move it,
+     * a refused watch ends with the reason, and cancelling ends it when the compositor confirms. */
+    g_autoptr(GArray) idle_ids = dispatch_operation_ids("test.idle", step_payload("watch"));
+    g_assert_cmpuint(idle_ids->len, ==, 3);
+    complete_operation(g_array_index(idle_ids, gint64, 2), FALSE, NULL, "full");
+    g_autofree char* watch_id =
+        g_strdup_printf("idle-%" G_GINT64_FORMAT, g_array_index(idle_ids, gint64, 0));
+    GVariantBuilder watch_record;
+    g_variant_builder_init(&watch_record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&watch_record, "{sv}", "id", g_variant_new_string(watch_id));
+    g_variant_builder_add(&watch_record, "{sv}", "seconds", g_variant_new_double(90));
+    g_variant_builder_add(&watch_record, "{sv}", "idle", g_variant_new_boolean(FALSE));
+    complete_operation(g_array_index(idle_ids, gint64, 0), TRUE,
+                       g_variant_builder_end(&watch_record), NULL);
+    for (guint step = 0; step < 2; step++) {
+        GVariantBuilder idle_record, idle_event;
+        g_variant_builder_init(&idle_record, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&idle_record, "{sv}", "id", g_variant_new_string(watch_id));
+        g_variant_builder_add(&idle_record, "{sv}", "seconds", g_variant_new_double(90));
+        g_variant_builder_add(&idle_record, "{sv}", "idle", g_variant_new_boolean(step == 0));
+        g_variant_builder_init(&idle_event, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&idle_event, "{sv}", "watch", g_variant_builder_end(&idle_record));
+        g_assert_cmpuint(dispatch_counting_operations(step == 0 ? "gnoblin.idle.watch-idle"
+                                                                : "gnoblin.idle.watch-active",
+                                                      g_variant_builder_end(&idle_event)),
+                         ==, 0);
+    }
+    g_autoptr(GArray) cancel_ids = dispatch_operation_ids("test.idle", step_payload("cancel"));
+    g_assert_cmpuint(cancel_ids->len, ==, 1);
+    GVariantBuilder cancelled;
+    g_variant_builder_init(&cancelled, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&cancelled, "{sv}", "cancelled", g_variant_new_boolean(TRUE));
+    complete_operation(g_array_index(cancel_ids, gint64, 0), TRUE,
+                       g_variant_builder_end(&cancelled), NULL);
+    g_assert_cmpuint(dispatch_counting_operations("test.idle", step_payload("check")), ==, 0);
 
     g_unlink(root);
     g_unlink(component);

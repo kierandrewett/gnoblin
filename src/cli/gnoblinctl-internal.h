@@ -117,7 +117,6 @@ typedef struct {
 #define GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE "gnoblinctl.PrivacyState"
 #define GNOBLINCTL_CAPABILITY_RECORD_METATABLE "gnoblinctl.Capability"
 #define GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE "gnoblinctl.SessionStatus"
-#define GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE "gnoblinctl.SessionActivity"
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
 #define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
 #define GNOBLINCTL_MENU_CONTEXT_METATABLE "gnoblinctl.MenuContext"
@@ -245,8 +244,6 @@ int lua_cli_capabilities_list(lua_State* state);
 int lua_cli_version(lua_State* state);
 void register_lua_cli_session_status_record(lua_State* state);
 int lua_cli_session_status(lua_State* state);
-void register_lua_cli_session_activity_record(lua_State* state);
-int lua_cli_session_activity(lua_State* state);
 int lua_cli_focus_policy_property(lua_State* state);
 int lua_cli_config_path(lua_State* state);
 int lua_cli_config_default(lua_State* state);

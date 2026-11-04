@@ -57,43 +57,6 @@ int lua_privacy_state(lua_State* state) {
     return 1;
 }
 
-int lua_session_activity(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.session.activity takes no arguments");
-    if (!config || !config->session_activity_snapshot)
-        return luaL_error(state, "native session activity snapshot is unavailable");
-    gboolean available = FALSE;
-    gboolean idle = FALSE;
-    guint64 threshold_ms = 0;
-    guint64 idle_for_ms = 0;
-    g_variant_lookup(config->session_activity_snapshot, "available", "b", &available);
-    g_variant_lookup(config->session_activity_snapshot, "idle", "b", &idle);
-    g_variant_lookup(config->session_activity_snapshot, "threshold_ms", "t", &threshold_ms);
-    g_variant_lookup(config->session_activity_snapshot, "idle_for_ms", "t", &idle_for_ms);
-    if (available && idle && config->session_activity_sampled_at_us > 0) {
-        guint64 elapsed_ms =
-            (guint64)MAX(0, g_get_monotonic_time() - config->session_activity_sampled_at_us) / 1000;
-        idle_for_ms =
-            G_MAXUINT64 - idle_for_ms < elapsed_ms ? G_MAXUINT64 : idle_for_ms + elapsed_ms;
-    }
-    GVariantBuilder snapshot_builder;
-    g_variant_builder_init(&snapshot_builder, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&snapshot_builder, "{sv}", "available", g_variant_new_boolean(available));
-    g_variant_builder_add(&snapshot_builder, "{sv}", "idle", g_variant_new_boolean(idle));
-    g_variant_builder_add(&snapshot_builder, "{sv}", "threshold_ms",
-                          g_variant_new_uint64(threshold_ms));
-    g_variant_builder_add(&snapshot_builder, "{sv}", "idle_for_ms",
-                          g_variant_new_uint64(idle_for_ms));
-    g_variant_builder_add(&snapshot_builder, "{sv}", "revision",
-                          g_variant_new_uint64(config->session_activity_revision));
-    g_autoptr(GVariant) snapshot = g_variant_ref_sink(g_variant_builder_end(&snapshot_builder));
-    push_variant(state, snapshot);
-    push_readonly_copy(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
 int lua_session_status(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
@@ -324,6 +287,45 @@ int lua_shortcuts_bind(lua_State* state) {
     push_readonly_copy(state, record);
     lua_object_hold(state, "Shortcut", -1);
     lua_object_end_after(state, config, operation, "Shortcut", -1, FALSE);
+    return 1;
+}
+
+/* gnoblin.idle.watch: ask the compositor for an idle watch and return the IdleWatch. The watch
+ * exists before the compositor confirms it, not idle; when the compositor refuses it, it ends and
+ * its "closed" listeners get the reason. Its ID is "idle-" and the ID of the request. */
+int lua_idle_watch(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    static const char* const fields[] = {"seconds", NULL};
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1) || !table_fields_allowed(state, 1, fields))
+        return luaL_error(state, "gnoblin.idle.watch takes the idle time in seconds");
+    lua_getfield(state, 1, "seconds");
+    double seconds = lua_isnumber(state, -1) ? lua_tonumber(state, -1) : 0;
+    if (lua_type(state, -1) != LUA_TNUMBER || !(seconds > 0) || seconds > 86400)
+        return luaL_error(state, "gnoblin.idle.watch needs seconds above 0 and at most 86400");
+    lua_settop(state, 0);
+    lua_createtable(state, 0, 1);
+    lua_pushnumber(state, seconds);
+    lua_setfield(state, 1, "seconds");
+    lua_pushlightuserdata(state, config);
+    lua_pushstring(state, "idle.watch");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_pushvalue(state, 1);
+    lua_call(state, 1, 1);
+    int operation = lua_gettop(state);
+
+    lua_createtable(state, 0, 3);
+    int record = lua_gettop(state);
+    lua_getfield(state, operation, "id");
+    lua_pushfstring(state, "idle-%I", (lua_Integer)lua_tointeger(state, -1));
+    lua_setfield(state, record, "id");
+    lua_pop(state, 1);
+    lua_pushnumber(state, seconds);
+    lua_setfield(state, record, "seconds");
+    lua_pushboolean(state, FALSE);
+    lua_setfield(state, record, "idle");
+    push_readonly_copy(state, record);
+    lua_object_hold(state, "IdleWatch", -1);
+    lua_object_end_after(state, config, operation, "IdleWatch", -1, FALSE);
     return 1;
 }
 

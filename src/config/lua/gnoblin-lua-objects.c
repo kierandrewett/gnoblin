@@ -1,5 +1,5 @@
 /* Live handles for the things a shell touches: windows, workspaces, layer surfaces, outputs,
- * shortcuts, launches and input sources.
+ * shortcuts, launches, input sources and idle watches.
  *
  * A record of one of these kinds is interned by kind and key, so every read of the same window
  * returns the same userdata and that userdata always shows the newest state the runtime has seen.
@@ -32,6 +32,7 @@ static const char* const shortcut_signals[] = {"activated",   "deactivated",   "
                                                NULL};
 static const char* const launch_signals[] = {"changed", "started", "timed_out", "closed", NULL};
 static const char* const input_source_signals[] = {"changed", "selected", "closed", NULL};
+static const char* const idle_watch_signals[] = {"idle", "active", "closed", NULL};
 static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
 static const char* const none[] = {NULL};
 
@@ -43,6 +44,7 @@ static const LuaObjectKind object_kinds[] = {
     {"Shortcut", shortcut_signals, none, NULL},
     {"Launch", launch_signals, none, "token", TRUE},
     {"InputSource", input_source_signals, none, NULL, FALSE},
+    {"IdleWatch", idle_watch_signals, none, NULL, FALSE},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
@@ -74,6 +76,8 @@ static const struct {
     {"gnoblin.launch.changed", "Launch", "launch", "started", NULL, "started", NULL},
     {"gnoblin.launch.changed", "Launch", "launch", "timed_out", NULL, "timed_out", NULL},
     {"gnoblin.launch.changed", "Launch", "launch", "closed", NULL, NULL, "pending"},
+    {"gnoblin.idle.watch-idle", "IdleWatch", "watch", "idle", "idle", NULL, NULL},
+    {"gnoblin.idle.watch-active", "IdleWatch", "watch", "active", "idle", NULL, NULL},
 };
 
 /* Events that raise a signal on an object without changing its record: the payload names the
