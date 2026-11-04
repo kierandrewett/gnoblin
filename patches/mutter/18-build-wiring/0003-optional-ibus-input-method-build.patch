@@ -56,31 +56,3 @@ index 3d1433e8ff..a0c2e78727 100644
  option('opengl',
    type: 'boolean',
    value: true,
-diff --git a/src/meson.build b/src/meson.build
-index 2dcb32f0c9..8b60dd9828 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -11,6 +11,9 @@ mutter_includes = [
- mutter_lib_deps = [
-   m_dep,
- ]
-+if have_ibus
-+  mutter_lib_deps += ibus_dep
-+endif
- if have_hyprcursor
-   mutter_lib_deps += hyprcursor_dep
- endif
-@@ -380,6 +383,13 @@ if have_hyprcursor
-   mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
- endif
- 
-+if have_ibus
-+  mutter_sources += [
-+    'backends/gnoblin-ibus-input-method.c',
-+    'backends/gnoblin-ibus-input-method.h',
-+  ]
-+endif
-+
- if have_xwayland
-   mutter_sources += [
-     'compositor/meta-window-actor-x11.c',

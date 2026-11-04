@@ -11,9 +11,8 @@ Subject: [PATCH] cursor: load Hyprcursor themes and support global launch
  src/backends/meta-cursor-theme.c   |  6 +++++
  src/backends/meta-cursor-tracker.c | 40 ++++++++++++++++++++++++++++++
  src/backends/meta-cursor-xcursor.c | 15 +++++++++++
- src/meson.build                    |  7 ++++++
  src/meta/meta-cursor-tracker.h     |  7 ++++++
- 8 files changed, 89 insertions(+)
+ 7 files changed, 82 insertions(+)
 
 diff --git a/config.h.meson b/config.h.meson
 index 5e7e09b10..420e749b1 100644
@@ -191,31 +190,6 @@ index 2f0acfc69..70783fe3e 100644
    for (i = 0; i < G_N_ELEMENTS (cursor_names); i++)
      {
        xcursor_images =
-diff --git a/src/meson.build b/src/meson.build
-index 2960cc433..cfc4bebdb 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -11,6 +11,9 @@ mutter_includes = [
- mutter_lib_deps = [
-   m_dep,
- ]
-+if have_hyprcursor
-+  mutter_lib_deps += hyprcursor_dep
-+endif
- 
- mutter_pkg_deps = [
-   gio_unix_dep,
-@@ -372,6 +375,10 @@ mutter_sources = [
-   'core/workspace-private.h',
- ]
- 
-+if have_hyprcursor
-+  mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
-+endif
-+
- if have_xwayland
-   mutter_sources += [
-     'compositor/meta-window-actor-x11.c',
 diff --git a/src/meta/meta-cursor-tracker.h b/src/meta/meta-cursor-tracker.h
 index 60c16f5d6..bdd5b944f 100644
 --- a/src/meta/meta-cursor-tracker.h

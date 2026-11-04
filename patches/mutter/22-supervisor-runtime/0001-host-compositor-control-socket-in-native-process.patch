@@ -53,23 +53,3 @@ index 7471966f2..5acd5c4a5 100644
 +  gnoblin_native_control_stop (native_control);
    return EXIT_SUCCESS;
  }
-diff --git a/src/meson.build b/src/meson.build
-index 8a31d5b84..c4977682e 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -1211,13 +1211,14 @@ libmutter_dep = declare_dependency(
- mutter = executable('mutter',
-   sources: [
-     files('core/mutter.c'),
-+    files('core/gnoblin-native-control.c'),
-   ],
-   include_directories: mutter_includes,
-   c_args: [
-     mutter_c_args,
-     '-DG_LOG_DOMAIN="mutter"',
-   ],
--  dependencies: [libmutter_dep],
-+  dependencies: [libmutter_dep, dependency('json-glib-1.0')],
-   install_dir: bindir,
-   install: true,
- )

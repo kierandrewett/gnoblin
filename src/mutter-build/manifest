@@ -1,0 +1,3 @@
+# project source destination
+mutter wiring.meson src/gnoblin-wiring/meson.build
+mutter executable.meson src/gnoblin-executable/meson.build

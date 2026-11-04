@@ -72,6 +72,8 @@ tree (Mutter or the GNOME portal backend).
   IBus input sources, and dynamic shortcut bindings.
     - `method/` — the IBus input method that gives Wayland text-input clients
       preedit and commit, built when `libibus` is available.
+- `mutter-build/` — the Meson fragments that add Gnoblin's sources, protocols and the `gnoblin` executable to Mutter's
+  build.
 - `portal/` — portal support.
     - `interfaces/` — the portal D-Bus interface XML.
     - `backend/` — Gnoblin portal policy, identity, file chooser, email and

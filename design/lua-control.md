@@ -60,7 +60,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Keyboard input
 
-- **Mutter or Gnoblin mechanism (file and function):** `native_input_event_type`, `native_input_send_head`, and `native_input_forward_all` in `src/control/gnoblin-control-input-routing.c`; interception/replay in `patches/mutter/21-input-routing/0003-lua-input-policy-event-routing.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `native_input_event_type`, `native_input_send_head`, and `native_input_forward_all` in `src/control/gnoblin-control-input-routing.c`; interception/replay in `patches/mutter/21-input-routing/0002-lua-input-policy-event-routing.patch`
 - **Current Lua access:** Full for matched events' forward-or-consume decision; shortcut capture/bind, key source selection, and text insertion are exposed. No synthetic remapping
 - **What is needed:** Add validated remapping only with delivered modifier/key state transitions and release pairing. Preserve lock and capture embargoes.
 

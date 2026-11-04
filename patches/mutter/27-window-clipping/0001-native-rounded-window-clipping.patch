@@ -51,16 +51,3 @@ index c32c8b77d..89054bf60 100644
 +                                                 double           radius,
 +                                                 double           exponent,
 +                                                 gboolean         automatic);
-diff --git a/src/meson.build b/src/meson.build
-index 8a31d5b84..3cc855a9c 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -484,6 +484,8 @@ if have_remote_desktop
- endif
- 
- mutter_sources += [
-+  'compositor/meta-gnoblin-window-effects.c',
-+  'compositor/meta-gnoblin-window-effects.h',
-   'compositor/meta-surface-actor-wayland.c',
-   'compositor/meta-surface-actor-wayland.h',
-   'compositor/meta-window-actor-wayland.c',

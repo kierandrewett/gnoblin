@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 17:16:04 +0000
+Subject: [PATCH] mutter: include the Gnoblin Meson fragments
+
+Everything Gnoblin adds to src/meson.build lives in two overlay fragments,
+src/gnoblin-wiring/meson.build and src/gnoblin-executable/meson.build, that
+the Gnoblin source overlay copies in before the patches apply. This patch is
+the whole upstream side: include the wiring fragment before the Wayland
+protocols are generated, hand its sources and libraries to libmutter, and
+replace Mutter's own executable by the Gnoblin one. The IBus and Hyprcursor
+libraries join mutter_lib_deps here because that list is read before any
+fragment can run.
+---
+ src/meson.build | 24 +++++++++++-------------
+ 1 file changed, 11 insertions(+), 13 deletions(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 60970cef..3ce67428 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -11,6 +11,12 @@ mutter_includes = [
+ mutter_lib_deps = [
+   m_dep,
+ ]
++if have_ibus
++  mutter_lib_deps += ibus_dep
++endif
++if have_hyprcursor
++  mutter_lib_deps += hyprcursor_dep
++endif
+ 
+ mutter_pkg_deps = [
+   gio_unix_dep,
+@@ -1057,6 +1063,8 @@ else
+   ]
+ endif
+ 
++subdir('gnoblin-wiring')
++
+ protocol_xmls = files()
+ 
+ foreach p: wayland_protocols
+@@ -1114,6 +1122,7 @@ subdir('third_party')
+ libmutter = library(libmutter_name,
+   mutter_sources,
+   mutter_built_sources,
++  gnoblin_libmutter_sources,
+   version: '0.0.0',
+   soversion: 0,
+   gnu_symbol_visibility: 'hidden',
+@@ -1127,6 +1136,7 @@ libmutter = library(libmutter_name,
+     libmutter_clutter_dep,
+     mutter_deps,
+     gvdb_dep,
++    gnoblin_libmutter_deps,
+   ],
+   install_rpath: pkglibdir,
+   install_dir: libdir,
+@@ -1144,19 +1154,7 @@ libmutter_dep = declare_dependency(
+   ],
+ )
+ 
+-mutter = executable('mutter',
+-  sources: [
+-    files('core/mutter.c'),
+-  ],
+-  include_directories: mutter_includes,
+-  c_args: [
+-    mutter_c_args,
+-    '-DG_LOG_DOMAIN="mutter"',
+-  ],
+-  dependencies: [libmutter_dep],
+-  install_dir: bindir,
+-  install: true,
+-)
++subdir('gnoblin-executable')
+ 
+ if have_introspection
+   mutter_introspected_sources = []
+-- 
+2.55.0
+

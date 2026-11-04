@@ -31,15 +31,3 @@ index 7f45e61bd..b9931eafb 100644
    display_signals[WINDOW_CREATED] =
      g_signal_new ("window-created",
                    G_TYPE_FROM_CLASS (klass),
-diff --git a/src/meson.build b/src/meson.build
-index 383f02c46..1625da510 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -368,6 +368,7 @@ mutter_sources = [
-   'core/startup-notification.c',
-   'core/startup-notification-private.h',
-   'core/util.c',
-+  'core/gnoblin-animation.c',
-   'core/util-private.h',
-   'core/window.c',
-   'core/window-private.h',

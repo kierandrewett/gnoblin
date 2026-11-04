@@ -242,4 +242,30 @@ and the static patch tests match the baseline, and a nested-session smoke runs t
 
 ## Results
 
-Filled in by the last commit of this series.
+Phases 1 to 4 are done, each in its own commit. Phases 5 (test files) and 6 (portal) are not done: they are planned
+above and left for a later change.
+
+| Project                    | Patches before | Patches after |
+| -------------------------- | -------------- | ------------- |
+| `mutter`                   | 237            | 176           |
+| `xdg-desktop-portal-gnome` | 14             | 14            |
+| `portal-dependencies`      | 1              | 1             |
+
+- **Animation** (phase 2): `src/compositor/animation/gnoblin-animation.{c,h}`. 12 patches deleted, 4 kept as hooks.
+  The patched tree plus overlay equalled the old tree file for file; the overlay was then clang-formatted, which
+  changed whitespace only.
+- **Native dispatch** (phase 3): `src/control/gnoblin-native-dispatch.{c,h}`. 27 patches that touched only `util.c`
+  are deleted, `util.c` is back to upstream and keeps no hook. The added lines of the old `util.c` and the body of the
+  new file differ by one blank line. `meta/util.h` keeps the window frame and native event declarations in one small
+  patch.
+- **Meson** (phase 4): `src/mutter-build/wiring.meson` and `executable.meson` (installed as
+  `src/gnoblin-wiring/meson.build` and `src/gnoblin-executable/meson.build`). One patch,
+  `18-build-wiring/0001-include-gnoblin-meson-fragments`, replaces 23 wiring patches and the `src/meson.build` hunks
+  of 14 others. It keeps the IBus and Hyprcursor `mutter_lib_deps` lines because that list is read before any fragment
+  can run. The root `meson.build`, `meson.options` and `config.h.meson` patches stay: they define options and feature
+  flags. The four plugin `meson.build` edits cancelled out (one blank line) and are gone.
+- Compiled sources after phase 4: the target list of `meson introspect` equals the baseline except that
+  `libmutter` gains `native-dispatch.c` (phase 3); the `compile_commands.json` flags differ only in the build
+  directory of the `gnoblin` executable. The 1091 exported `libmutter` symbols are unchanged after every phase.
+- Tests that read patch text now read the overlay (`native-socket-text-snap-api`, `session-lock-api`,
+  `location-agent-contract`, `session-environment`). `ctest` stays at 19 of 20 (`gnoblinctl-cli` needs the portal).

@@ -78,29 +78,6 @@ index ee1ac466..208a09a6 100644
    if (clip)
      {
        MtkRectangle tmp_clip;
-diff --git a/src/meson.build b/src/meson.build
-index d1985c21..d3040817 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -597,8 +597,10 @@ mutter_sources += [
-   # at build time; registered via meta_gnoblin_init_protocols)
-   'wayland/meta-gnoblin-protocols.c',
-   'wayland/meta-gnoblin-protocols.h',
-   'wayland/meta-gnoblin-live-protocols.c',
-   'wayland/meta-gnoblin-live-protocols.h',
-+  'wayland/meta-gnoblin-window-frame.c',
-+  'wayland/meta-gnoblin-window-frame.h',
-   'wayland/meta-wayland-blur-fade.c',
-   'wayland/meta-wayland-blur-fade.h',
-   'wayland/meta-wayland-idle-notify.c',
-@@ -1071,6 +1073,7 @@ wayland_protocols = [
-   ['viewporter', 'stable', ],
-   ['xdg-activation', 'staging', 1, ],
-   ['xdg-dialog', 'staging', 1, ],
-+  ['xdg-decoration', 'unstable', 1, ],
-   ['xdg-foreign', 'unstable', 1, ],
-   ['xdg-foreign', 'unstable', 2, ],
-   ['xdg-output', 'unstable', 1, ],
 diff --git a/src/wayland/meta-wayland-window-configuration.c b/src/wayland/meta-wayland-window-configuration.c
 index df309b9c..d17d9f35 100644
 --- a/src/wayland/meta-wayland-window-configuration.c

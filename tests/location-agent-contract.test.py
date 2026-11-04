@@ -7,7 +7,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import patch_series  # noqa: E402
 from _sources import control_header, control_source, overlay_manifests, CONFIG_SOURCES, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,10 +67,8 @@ class LocationAgentContractTests(unittest.TestCase):
         manifest = overlay_manifests()
         self.assertIn("mutter gnoblin-location-agent.c src/core/gnoblin-location-agent.c", manifest)
         self.assertIn("mutter gnoblin-location-agent.h src/core/gnoblin-location-agent.h", manifest)
-        patch_path = patch_series.find("mutter", "build-location-agent")
-        patch = patch_path.read_text()
-        self.assertIn("From: kierandrewett <kieran@drewett.dev>", patch)
-        self.assertIn("files('core/gnoblin-location-agent.c')", patch)
+        wiring = (ROOT / "src/mutter-build/wiring.meson").read_text()
+        self.assertIn("'../core/gnoblin-location-agent.c'", wiring)
 
     def test_authorization_is_brokered_to_lua_with_bounded_one_use_requests(self):
         api_minor = next(
