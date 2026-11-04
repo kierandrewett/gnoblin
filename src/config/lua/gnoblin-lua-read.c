@@ -458,9 +458,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
     } else if (g_str_equal(method, "windows.list") || g_str_equal(method, "window.list") ||
                g_str_equal(method, "window.match")) {
-        lua_getfield(state, -1, "windows");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        /* The wire read keeps the exact-match filter; Lua selects with gnoblin.find. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_windows, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "settings")) {
         lua_getfield(state, -1, "settings");
@@ -505,9 +505,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_pushcclosure(state, lua_read_privacy_screen, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "layers.list") || g_str_equal(method, "layer.list")) {
-        lua_getfield(state, -1, "layers");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_layers, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "launches.list")) {
         lua_getfield(state, -1, "launches");

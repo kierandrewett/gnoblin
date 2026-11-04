@@ -5,8 +5,8 @@
 ---@class Workspace
 ---@field alive boolean False once the workspace has been removed. Every read of one workspace
 returns this same object, updated with each change.
----@field id? string Stable workspace ID. The current native workspace snapshot does not provide
-this field.
+---@field id string Stable workspace ID: the one declared in `gnoblin.configure.workspaces`, the
+one `create` was given, or the session ID `@session-N` that Gnoblin assigns.
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
@@ -17,8 +17,8 @@ workspace list, so a rename gives a higher number.
 
 ---@class WorkspaceCreateOptions
 ---@field id? string Optional ID. Must start with a letter or number and contain only letters,
-numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor
-rejects it.
+numbers, '.', '_' or '-'; at most 64 characters. The workspace keeps it for the session only;
+an ID declared in `gnoblin.configure.workspaces` lasts across sessions.
 ---@field activate? boolean Activate the new workspace after creation. Default false.
 
 ---@class WorkspaceMoveOptions
@@ -32,8 +32,9 @@ function gnoblin.workspaces.list() end
 ---@return Workspace|nil
 function gnoblin.workspaces.active() end
 
----Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace
-snapshots omit IDs, so this returns nil there.
+---Find a workspace by its stable ID. Returns nil when no workspace has it. The ID comes from
+---`gnoblin.configure.workspaces` or `create`, or is the session ID `@session-N` that Gnoblin gave
+---it.
 ---@param id string Stable workspace ID.
 ---@return Workspace|nil
 function gnoblin.workspaces.by_id(id) end

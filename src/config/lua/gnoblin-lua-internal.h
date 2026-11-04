@@ -236,6 +236,14 @@ extern const LuaApiEntry lua_api[];
 const LuaApiEntry* lua_api_find_call(const char* method);
 gsize lua_api_parameter_names(const char* path, const char** names, gsize capacity);
 gboolean lua_push_workspace_selector(lua_State* state, int index);
+gboolean lua_push_monitor_id(lua_State* state, int index);
+void push_document(lua_State* state);
+LuaConfig* lua_state_config(lua_State* state);
+void set_document(lua_State* state, GVariant* document);
+gboolean lua_in_runtime(lua_State* state);
+void push_configure_operation(lua_State* state, LuaConfig* config);
+void finish_configure_operations(lua_State* state, LuaConfig* config, gboolean ok,
+                                 const char* message);
 int lua_gnoblin_version(lua_State* state);
 int lua_config_path(lua_State* state);
 int lua_config_default(lua_State* state);
@@ -311,6 +319,11 @@ void lua_object_update(lua_State* state, const char* kind, int handle, int chang
 void push_readonly_record(lua_State* state, int index, const char* forced_kind);
 gboolean lua_api_class_field_observable(const char* class_name, const char* field);
 char* lua_api_class_observable_names(const char* class_name);
+gboolean lua_api_class_field_scalar(const char* class_name, const char* field);
+char* lua_api_class_scalar_names(const char* class_name);
+int lua_find(lua_State* state);
+int lua_read_windows(lua_State* state);
+int lua_read_layers(lua_State* state);
 gboolean lua_object_is(lua_State* state, int index, const char* kind);
 int lua_ease(lua_State* state);
 int lua_lerp(lua_State* state);

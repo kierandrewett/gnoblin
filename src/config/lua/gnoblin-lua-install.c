@@ -179,6 +179,67 @@ static int lua_positional_call(lua_State* state) {
     return lua_gettop(state) - table;
 }
 
+#define LUA_CONFIG_STATE_KEY "gnoblin.config_state"
+
+/* The LuaConfig of the runtime that owns `state`. */
+LuaConfig* lua_state_config(lua_State* state) {
+    lua_getfield(state, LUA_REGISTRYINDEX, LUA_CONFIG_STATE_KEY);
+    LuaConfig* config = lua_touserdata(state, -1);
+    lua_pop(state, 1);
+    return config;
+}
+
+/* Whether the runtime of `state` is handling an event, a callback or a console or API call, as
+ * opposed to loading config files. Changes to the configuration mean something else then: they are
+ * committed to the live session. */
+gboolean lua_in_runtime(lua_State* state) {
+    LuaConfig* config = lua_state_config(state);
+    return config && (config->dispatching || config->api_calling);
+}
+
+/* The document that config files and run-time calls build: the settings in the form the compositor
+ * reads. Lua code cannot reach it. It reads the committed settings with gnoblin.settings, the
+ * document built so far while the config loads with gnoblin.snapshot(), and changes it with
+ * gnoblin.configure. */
+#define LUA_DOCUMENT_KEY "gnoblin.document"
+
+/* Push the document under construction; an empty one on first use. */
+void push_document(lua_State* state) {
+    if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_DOCUMENT_KEY) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, LUA_REGISTRYINDEX, LUA_DOCUMENT_KEY);
+    }
+}
+
+/* Make `document` the one under construction, as when a failed change is undone. */
+void set_document(lua_State* state, GVariant* document) {
+    push_variant(state, document);
+    lua_setfield(state, LUA_REGISTRYINDEX, LUA_DOCUMENT_KEY);
+}
+
+/* gnoblin.config.<name>: the three functions, and a clear error for anything else. */
+static int lua_config_index(lua_State* state) {
+    lua_pushvalue(state, 2);
+    lua_rawget(state, lua_upvalueindex(1));
+    if (!lua_isnil(state, -1))
+        return 1;
+    return luaL_error(state,
+                      "gnoblin.config holds path(), default() and restore_default(), not the "
+                      "settings. Read gnoblin.snapshot() while the config loads and "
+                      "gnoblin.settings at run time.");
+}
+
+static int lua_config_newindex(lua_State* state) {
+    return luaL_error(state,
+                      "gnoblin.config cannot be assigned to. Declare settings with "
+                      "gnoblin.configure {...}: it merges them while the config loads and, at run "
+                      "time, returns an Operation that finishes when the change is committed. "
+                      "gnoblin.settings.override(path, value) layers a value over one setting and "
+                      "returns an Override you can revoke.");
+}
+
 static void install_api(lua_State* state, LuaConfig* config) {
     luaL_openlibs(state);
     const char* blocked[] = {"os", "io", "debug", "package", "dofile", "loadfile", NULL};
@@ -186,9 +247,13 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_pushnil(state);
         lua_setglobal(state, blocked[i]);
     }
+    lua_pushlightuserdata(state, config);
+    lua_setfield(state, LUA_REGISTRYINDEX, LUA_CONFIG_STATE_KEY);
     lua_newtable(state);
     int gnoblin = lua_absindex(state, -1);
-    /* gnoblin.config holds the saved settings, so its functions live on its metatable. */
+    /* gnoblin.config holds only the functions that act on the configuration files. The settings
+     * are not in it: Lua reads them with gnoblin.snapshot() and gnoblin.settings and writes them
+     * with gnoblin.configure, so no assignment changes them unseen. */
     lua_newtable(state);
     int config_table = lua_absindex(state, -1);
     lua_newtable(state);
@@ -220,7 +285,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_pop(state, 1);
     }
     lua_pushvalue(state, config_methods);
+    lua_pushcclosure(state, lua_config_index, 1);
     lua_setfield(state, config_metatable, "__index");
+    lua_pushcfunction(state, lua_config_newindex);
+    lua_setfield(state, config_metatable, "__newindex");
     lua_pushvalue(state, config_metatable);
     lua_setmetatable(state, config_table);
     lua_pushvalue(state, config_table);
@@ -314,10 +382,9 @@ gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, g
         g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, FALSE, FALSE, &conversion);
         ok = value != NULL && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
         if (ok) {
-            lua_getglobal(state, "gnoblin");
-            lua_getfield(state, -1, "config");
-            merge_table(state, -1, -3, NULL, TRUE);
-            lua_pop(state, 3);
+            push_document(state);
+            merge_table(state, -1, -2, NULL, TRUE);
+            lua_pop(state, 2);
         } else {
             lua_pop(state, 1);
             if (conversion)
@@ -376,10 +443,9 @@ gboolean evaluate_embedded_path(lua_State* state, LuaConfig* config, const char*
         g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, FALSE, FALSE, &conversion);
         ok = value != NULL && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
         if (ok) {
-            lua_getglobal(state, "gnoblin");
-            lua_getfield(state, -1, "config");
-            merge_table(state, -1, -3, NULL, TRUE);
-            lua_pop(state, 3);
+            push_document(state);
+            merge_table(state, -1, -2, NULL, TRUE);
+            lua_pop(state, 2);
         } else {
             lua_pop(state, 1);
             if (conversion)
@@ -520,12 +586,11 @@ int protected_eval(lua_State* state) {
         if (!evaluate_path(state, run->config, run->path, TRUE, &run->error))
             return 0;
     }
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
+    push_document(state);
     finish_named_entries(state, -1, "shortcuts");
     finish_named_entries(state, -1, "autostart");
     run->result = variant_from_lua(state, -1, 0, FALSE, 0, &run->error);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     return 0;
 }
 

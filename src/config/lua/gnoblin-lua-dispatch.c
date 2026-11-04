@@ -161,10 +161,9 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error) {
     if (dispatched == 0)
         return NULL;
 
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
+    push_document(state);
     GVariant* document = variant_from_lua(state, -1, 0, FALSE, 0, error);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
         !gnoblin_config_validate_document(document, error)) {
         g_clear_pointer(&document, g_variant_unref);
@@ -182,16 +181,15 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error) {
         config->rejecting_operations = FALSE;
         config->dispatching = FALSE;
         config->actions_in_dispatch = 0;
-        lua_getglobal(state, "gnoblin");
-        push_variant(state, runtime->document);
-        lua_setfield(state, -2, "config");
-        lua_pop(state, 1);
+        set_document(state, runtime->document);
+        finish_configure_operations(state, config, FALSE, reason);
         g_clear_pointer(&runtime->pending_document, g_variant_unref);
         return NULL;
     }
 
     if (g_variant_equal(document, runtime->document)) {
         g_variant_unref(document);
+        finish_configure_operations(state, config, TRUE, NULL);
         return NULL;
     }
     g_clear_pointer(&runtime->pending_document, g_variant_unref);
@@ -394,18 +392,16 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
     if (!dispatched)
         return NULL;
     if (callback_failed) {
-        lua_getglobal(state, "gnoblin");
-        push_variant(state, active_runtime->document);
-        lua_setfield(state, -2, "config");
-        lua_pop(state, 1);
+        set_document(state, active_runtime->document);
+        finish_configure_operations(state, &active_runtime->config, FALSE,
+                                    "a handler failed, so the configuration change was undone");
         g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
         active_runtime->pending_document = g_variant_ref(active_runtime->document);
         return g_variant_ref(active_runtime->pending_document);
     }
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
+    push_document(state);
     GVariant* document = variant_from_lua(state, -1, 0, FALSE, 0, error);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
         !gnoblin_config_validate_document(document, error)) {
         g_clear_pointer(&document, g_variant_unref);
@@ -424,10 +420,8 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
         active_runtime->config.rejecting_operations = FALSE;
         active_runtime->config.dispatching = FALSE;
         active_runtime->config.actions_in_dispatch = 0;
-        lua_getglobal(state, "gnoblin");
-        push_variant(state, active_runtime->document);
-        lua_setfield(state, -2, "config");
-        lua_pop(state, 1);
+        set_document(state, active_runtime->document);
+        finish_configure_operations(state, &active_runtime->config, FALSE, reason);
         g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
         return NULL;
     }

@@ -46,11 +46,6 @@ static const ApiMember api_fields_AnimationInfo[] = {
     {"target", "string", TRUE, "Animation target hint.", FALSE},
     {"revision", "integer", TRUE, "Configuration revision for this record.", FALSE},
 };
-static const ApiMember api_fields_AnimationInspectOptions[] = {
-    {"target", "string", TRUE, "Target ID; defaults to \"active\".", FALSE},
-    {"event", "string", TRUE, "Lifecycle event override.", FALSE},
-    {"target_type", "\"window\"|\"layer\"|\"namespace\"", TRUE, "Target identifier kind. Default \"window\".", FALSE},
-};
 static const ApiMember api_fields_AnimationInspection[] = {
     {"name", "string", FALSE, "Animation name.", FALSE},
     {"event", "string", FALSE, "Lifecycle event.", FALSE},
@@ -78,20 +73,9 @@ static const ApiMember api_fields_AnimationPreview[] = {
     {"revision", "integer", FALSE, "Configuration revision.", FALSE},
     {"spec", "table", FALSE, "Resolved animation specification.", TRUE},
 };
-static const ApiMember api_fields_AnimationPreviewOptions[] = {
-    {"target", "string", TRUE, "Target ID; defaults to \"active\".", FALSE},
-    {"event", "string", TRUE, "Lifecycle event override.", FALSE},
-    {"target_type", "\"window\"|\"layer\"|\"namespace\"", TRUE, "Target identifier kind. Default \"window\".", FALSE},
-    {"autoplay", "boolean", TRUE, "Start the preview immediately. Default false.", FALSE},
-};
 static const ApiMember api_fields_AnimationStopResult[] = {
     {"ok", "boolean", FALSE, "True when the preview was stopped.", FALSE},
     {"session", "string", FALSE, "Stopped preview session ID.", FALSE},
-};
-static const ApiMember api_fields_AnimationSurface[] = {
-    {"id", "string", FALSE, "Stable surface ID.", FALSE},
-    {"namespace", "string", FALSE, "Layer-shell namespace.", FALSE},
-    {"title", "string", FALSE, "Surface title; may be empty.", FALSE},
 };
 static const ApiMember api_fields_Capability[] = {
     {"id", "string", FALSE, "Capability ID.", FALSE},
@@ -228,11 +212,6 @@ static const ApiMember api_fields_LayerAnimationPolicy[] = {
     {"exit", "any", FALSE, "Exit animation policy.", FALSE},
     {"window_shadow", "any", FALSE, "Shadow policy for windows matching the layer namespace.", FALSE},
     {"revision", "integer", FALSE, "Configuration revision.", FALSE},
-};
-static const ApiMember api_fields_LayerFilter[] = {
-    {"monitor_id", "string", TRUE, "Exact monitor ID.", FALSE},
-    {"namespace", "string", TRUE, "Exact layer namespace.", FALSE},
-    {"layer", "string", TRUE, "Exact layer type.", FALSE},
 };
 static const ApiMember api_fields_LayerSurface[] = {
     {"id", "string", FALSE, "Stable layer surface ID.", FALSE},
@@ -448,16 +427,6 @@ static const ApiMember api_fields_SnapContext[] = {
     {"settings_revision", "integer", FALSE, "Configuration revision captured by the context.", FALSE},
     {"native_generation", "integer", FALSE, "Native session generation captured by the context.", FALSE},
 };
-static const ApiMember api_fields_SnapContextCommitArgs[] = {
-    {"monitor_id", "string", FALSE, "Nonempty UTF-8 monitor ID of at most 128 bytes.", FALSE},
-    {"frame", "SnapContextFrame", FALSE, "Target frame rectangle.", FALSE},
-};
-static const ApiMember api_fields_SnapContextFrame[] = {
-    {"x", "integer", FALSE, "X coordinate, from -100000 to 100000.", FALSE},
-    {"y", "integer", FALSE, "Y coordinate, from -100000 to 100000.", FALSE},
-    {"width", "integer", FALSE, "Width, from 1 to 32768.", FALSE},
-    {"height", "integer", FALSE, "Height, from 1 to 32768.", FALSE},
-};
 static const ApiMember api_fields_Subscription[] = {
     {"unsubscribe", "fun(self: Subscription)", FALSE, "Stop receiving this event.", FALSE},
 };
@@ -527,13 +496,6 @@ static const ApiMember api_fields_Window[] = {
     {"modal", "boolean", FALSE, "Whether the window is a modal dialog.", TRUE},
     {"revision", "integer", FALSE, "State revision for this snapshot.", FALSE},
 };
-static const ApiMember api_fields_WindowFilter[] = {
-    {"app_id", "string", TRUE, "Exact application ID.", FALSE},
-    {"title", "string", TRUE, "Case-insensitive substring of the title.", FALSE},
-    {"focused", "boolean", TRUE, "Include focused windows when true, or unfocused windows when false.", FALSE},
-    {"workspace_id", "string", TRUE, "Exact workspace ID.", FALSE},
-    {"monitor_id", "string", TRUE, "Exact monitor ID.", FALSE},
-};
 static const ApiMember api_fields_WindowFrame[] = {
     {"x", "integer", FALSE, "Frame origin on the compositor layout, from -100000 to 100000.", FALSE},
     {"y", "integer", FALSE, "Frame origin on the compositor layout, from -100000 to 100000.", FALSE},
@@ -541,9 +503,8 @@ static const ApiMember api_fields_WindowFrame[] = {
     {"height", "integer", FALSE, "Frame height, from 1 to 32768.", FALSE},
 };
 static const ApiMember api_fields_WindowRuleAnimation[] = {
-    {"out", "string", TRUE, "Animation used when a layer closes; alias for `layer_close`.", FALSE},
-    {"open", "string", TRUE, "Animation used when a layer opens.", FALSE},
-    {"close", "string", TRUE, "Animation used when a layer closes.", FALSE},
+    {"open", "string", TRUE, "Animation used when a window opens.", FALSE},
+    {"close", "string", TRUE, "Animation used when a window closes.", FALSE},
     {"dialog_open", "string", TRUE, "Animation used when a dialog opens.", FALSE},
     {"dialog_close", "string", TRUE, "Animation used when a dialog closes.", FALSE},
     {"layer_open", "string", TRUE, "Animation used when a layer opens.", FALSE},
@@ -555,7 +516,6 @@ static const ApiMember api_fields_WindowRuleAnimation[] = {
     {"resize", "string", TRUE, "Animation used when a window resizes.", FALSE},
     {"duration", "integer", TRUE, "Animation duration in milliseconds, from 0 to 5000.", FALSE},
     {"easing", "string", TRUE, "Animation easing.", FALSE},
-    {"ease", "string", TRUE, "Alias for `easing`.", FALSE},
 };
 static const ApiMember api_fields_WindowRuleArgs[] = {
     {"match", "WindowRuleMatch", TRUE, "Match patterns; all supplied patterns must match.", FALSE},
@@ -623,12 +583,11 @@ static const ApiMember api_fields_WindowVisual[] = {
     {"opacity", "number", FALSE, "", FALSE},
     {"scale", "number", FALSE, "", FALSE},
     {"rotation", "number", FALSE, "", FALSE},
-    {"offset_x", "number", FALSE, "", FALSE},
-    {"offset_y", "number", FALSE, "", FALSE},
+    {"offset", "{x: number, y: number}", FALSE, "Drawn offset in logical pixels.", FALSE},
 };
 static const ApiMember api_fields_Workspace[] = {
     {"alive", "boolean", FALSE, "False once the workspace has been removed. Every read of one workspace returns this same object, updated with each change.", FALSE},
-    {"id", "string", TRUE, "Stable workspace ID. The current native workspace snapshot does not provide this field.", FALSE},
+    {"id", "string", FALSE, "Stable workspace ID: the one declared in `gnoblin.configure.workspaces`, the one `create` was given, or the session ID `@session-N` that Gnoblin assigns.", FALSE},
     {"number", "integer", FALSE, "One-based workspace number.", TRUE},
     {"name", "string", FALSE, "Workspace name.", TRUE},
     {"active", "boolean", FALSE, "Whether this is the active workspace.", TRUE},
@@ -636,7 +595,7 @@ static const ApiMember api_fields_Workspace[] = {
     {"revision", "integer", FALSE, "State revision of this snapshot; it goes up with every change of the workspace list, so a rename gives a higher number.", FALSE},
 };
 static const ApiMember api_fields_WorkspaceCreateOptions[] = {
-    {"id", "string", TRUE, "Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor rejects it.", FALSE},
+    {"id", "string", TRUE, "Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. The workspace keeps it for the session only; an ID declared in `gnoblin.configure.workspaces` lasts across sessions.", FALSE},
     {"activate", "boolean", TRUE, "Activate the new workspace after creation. Default false.", FALSE},
 };
 static const ApiMember api_fields_WorkspaceMoveOptions[] = {
@@ -649,12 +608,9 @@ static const ApiClass api_classes[] = {
     {"AnimationEaseBezier", "", api_fields_AnimationEaseBezier, 5},
     {"AnimationFrame", "", api_fields_AnimationFrame, 7},
     {"AnimationInfo", "", api_fields_AnimationInfo, 13},
-    {"AnimationInspectOptions", "", api_fields_AnimationInspectOptions, 3},
     {"AnimationInspection", "", api_fields_AnimationInspection, 12},
     {"AnimationPreview", "A preview the compositor plays on one target. It is a live object: the same handle for one id, with `alive`, `on` and `watch`. Each call on it updates this handle with the preview's new state. It is alive until stop() has succeeded, a call on it fails because the preview is gone, or a config reload ends the handle.", api_fields_AnimationPreview, 11},
-    {"AnimationPreviewOptions", "", api_fields_AnimationPreviewOptions, 4},
     {"AnimationStopResult", "", api_fields_AnimationStopResult, 2},
-    {"AnimationSurface", "", api_fields_AnimationSurface, 3},
     {"Capability", "", api_fields_Capability, 5},
     {"ConfigReloadResult", "", api_fields_ConfigReloadResult, 2},
     {"ConsoleToggleResult", "", api_fields_ConsoleToggleResult, 1},
@@ -678,7 +634,6 @@ static const ApiClass api_classes[] = {
     {"LaunchBeginOptions", "", api_fields_LaunchBeginOptions, 1},
     {"LaunchEndResult", "", api_fields_LaunchEndResult, 2},
     {"LayerAnimationPolicy", "", api_fields_LayerAnimationPolicy, 5},
-    {"LayerFilter", "", api_fields_LayerFilter, 3},
     {"LayerSurface", "", api_fields_LayerSurface, 7},
     {"MonitorRect", "", api_fields_MonitorRect, 4},
     {"Operation", "Handle for a request that completes asynchronously. Mutating calls return one; read the result with on_complete.", api_fields_Operation, 5},
@@ -710,24 +665,21 @@ static const ApiClass api_classes[] = {
     {"ShortcutState", "", api_fields_ShortcutState, 7},
     {"ShortcutUnbindResult", "", api_fields_ShortcutUnbindResult, 2},
     {"SnapContext", "", api_fields_SnapContext, 8},
-    {"SnapContextCommitArgs", "", api_fields_SnapContextCommitArgs, 2},
-    {"SnapContextFrame", "", api_fields_SnapContextFrame, 4},
     {"Subscription", "What every subscription returns: gnoblin.on and once, the on and watch of every object, the on of a Request, and gnoblin.input.on. Call sub:unsubscribe() to stop; it may be called again.", api_fields_Subscription, 1},
     {"TextCaret", "", api_fields_TextCaret, 4},
     {"TextTarget", "", api_fields_TextTarget, 2},
     {"Tween", "A timeline of steps that the compositor plays. Steps run one after another; parallel() makes the next step run with the previous one. Build it, then call play(). A Tween is a live object: the same handle for one id, with `alive`, `on` and `watch`. It is alive from gnoblin.tween() until it has ended, and a config reload ends it too. The steps are private to the handle.", api_fields_Tween, 4},
     {"VersionInfo", "", api_fields_VersionInfo, 8},
     {"Window", "", api_fields_Window, 38},
-    {"WindowFilter", "", api_fields_WindowFilter, 5},
     {"WindowFrame", "", api_fields_WindowFrame, 4},
-    {"WindowRuleAnimation", "Animation names by event. The reserved `in` key aliases `layer_open`; `out` aliases `layer_close`.", api_fields_WindowRuleAnimation, 15},
+    {"WindowRuleAnimation", "Animation names by event.", api_fields_WindowRuleAnimation, 13},
     {"WindowRuleArgs", "", api_fields_WindowRuleArgs, 10},
     {"WindowRuleCorners", "", api_fields_WindowRuleCorners, 15},
     {"WindowRuleFrame", "", api_fields_WindowRuleFrame, 9},
     {"WindowRuleMatch", "", api_fields_WindowRuleMatch, 7},
     {"WindowRuleWorkspace", "", api_fields_WindowRuleWorkspace, 2},
     {"WindowShadowLayer", "", api_fields_WindowShadowLayer, 6},
-    {"WindowVisual", "", api_fields_WindowVisual, 6},
+    {"WindowVisual", "", api_fields_WindowVisual, 5},
     {"Workspace", "", api_fields_Workspace, 7},
     {"WorkspaceCreateOptions", "", api_fields_WorkspaceCreateOptions, 2},
     {"WorkspaceMoveOptions", "", api_fields_WorkspaceMoveOptions, 1},
@@ -744,89 +696,94 @@ static const ApiMember api_params_1[] = {
 static const ApiMember api_params_3[] = {
     {"grant", "Grant", FALSE, "From a shortcut, pointer binding, input or window menu event.", FALSE},
 };
-static const ApiMember api_params_6[] = {
+static const ApiMember api_params_4[] = {
+    {"name", "string", FALSE, "Animation name.", FALSE},
+    {"event", "string", TRUE, "Lifecycle event override.", FALSE},
+};
+static const ApiMember api_params_7[] = {
     {"x", "integer", FALSE, "X coordinate, from -100000 to 100000.", FALSE},
     {"y", "integer", FALSE, "Y coordinate, from -100000 to 100000.", FALSE},
 };
-static const ApiMember api_params_7[] = {
-    {"monitor", "string", FALSE, "Monitor ID.", FALSE},
-};
 static const ApiMember api_params_8[] = {
-    {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024.", FALSE},
-    {"options", "WorkspaceMoveOptions", TRUE, "", FALSE},
+    {"monitor", "Output|string", FALSE, "The Output that shows the monitor, or the monitor ID.", FALSE},
 };
 static const ApiMember api_params_9[] = {
+    {"workspace", "Workspace|string|integer", FALSE, "The Workspace, its stable ID, or its one-based number", FALSE},
+    {"options", "WorkspaceMoveOptions", TRUE, "", FALSE},
+};
+static const ApiMember api_params_10[] = {
     {"signal", "\"changed\"|\"focused\"|\"unfocused\"|\"closed\"", FALSE, "", FALSE},
     {"fn", "fun(window: Window, changed?: string[])", FALSE, "", FALSE},
 };
-static const ApiMember api_params_13[] = {
+static const ApiMember api_params_12[] = {
+    {"name", "string", FALSE, "Animation name.", FALSE},
+    {"event", "string", TRUE, "Lifecycle event override.", FALSE},
+    {"autoplay", "boolean", TRUE, "Start the preview immediately. Default false.", FALSE},
+};
+static const ApiMember api_params_15[] = {
     {"width", "integer", FALSE, "Width, from 1 to 32768.", FALSE},
     {"height", "integer", FALSE, "Height, from 1 to 32768.", FALSE},
 };
-static const ApiMember api_params_15[] = {
+static const ApiMember api_params_17[] = {
     {"enabled", "boolean", FALSE, "True to keep above; false to clear.", FALSE},
 };
-static const ApiMember api_params_16[] = {
+static const ApiMember api_params_18[] = {
     {"name", "string", FALSE, "The effect, such as \"blur\".", FALSE},
     {"value", "any", FALSE, "The value for that effect.", FALSE},
 };
-static const ApiMember api_params_17[] = {
+static const ApiMember api_params_19[] = {
     {"enabled", "boolean", FALSE, "True to enter fullscreen; false to leave it.", FALSE},
 };
-static const ApiMember api_params_18[] = {
+static const ApiMember api_params_20[] = {
     {"enabled", "boolean", FALSE, "True to maximize; false to restore.", FALSE},
 };
-static const ApiMember api_params_19[] = {
+static const ApiMember api_params_21[] = {
     {"enabled", "boolean", FALSE, "True to minimize; false to remove minimization.", FALSE},
 };
-static const ApiMember api_params_20[] = {
+static const ApiMember api_params_22[] = {
     {"x", "number", FALSE, "", FALSE},
     {"y", "number", FALSE, "", FALSE},
 };
-static const ApiMember api_params_21[] = {
+static const ApiMember api_params_23[] = {
     {"opacity", "number", FALSE, "", FALSE},
 };
-static const ApiMember api_params_22[] = {
+static const ApiMember api_params_24[] = {
     {"degrees", "number", FALSE, "", FALSE},
 };
-static const ApiMember api_params_23[] = {
+static const ApiMember api_params_25[] = {
     {"scale", "number", FALSE, "", FALSE},
 };
-static const ApiMember api_params_24[] = {
+static const ApiMember api_params_26[] = {
     {"enabled", "boolean", FALSE, "True to make sticky; false to clear.", FALSE},
 };
-static const ApiMember api_params_25[] = {
+static const ApiMember api_params_27[] = {
     {"width", "integer", FALSE, "Thumbnail width from 1 to 480 pixels.", FALSE},
     {"height", "integer", FALSE, "Thumbnail height from 1 to 320 pixels.", FALSE},
 };
-static const ApiMember api_params_26[] = {
+static const ApiMember api_params_28[] = {
     {"property", "string", FALSE, "A field of Window, such as \"title\" or \"frame\".", FALSE},
     {"fn", "fun(window: Window, value: any, old: any)", FALSE, "", FALSE},
 };
-static const ApiMember api_params_27[] = {
+static const ApiMember api_params_29[] = {
     {"animation", "AnimationArgs", FALSE, "", FALSE},
 };
-static const ApiMember api_params_28[] = {
+static const ApiMember api_params_30[] = {
     {"name", "string", FALSE, "Animation name, 1 to 80 ASCII letters, digits, underscores, or hyphens.", FALSE},
 };
-static const ApiMember api_params_29[] = {
-    {"name", "string", FALSE, "Animation name.", FALSE},
-    {"options", "AnimationInspectOptions", TRUE, "", FALSE},
-};
-static const ApiMember api_params_31[] = {
-    {"name", "string", FALSE, "Animation name.", FALSE},
-    {"options", "AnimationPreviewOptions", TRUE, "", FALSE},
-};
-static const ApiMember api_params_34[] = {
+static const ApiMember api_params_33[] = {
     {"values", "table", FALSE, "Array values; numeric keys must form a dense sequence starting at 1 when converted.", FALSE},
 };
-static const ApiMember api_params_39[] = {
+static const ApiMember api_params_38[] = {
     {"settings", "table", FALSE, "Settings table to merge into the active configuration.", FALSE},
 };
-static const ApiMember api_params_41[] = {
+static const ApiMember api_params_40[] = {
     {"name", "string", FALSE, "linear, sine, quad, cubic, quart, quint, expo, circ, back, elastic or bounce.", FALSE},
     {"t", "number", FALSE, "Progress from 0 to 1; values outside are clamped.", FALSE},
     {"direction", "\"in\"|\"out\"|\"in_out\"", TRUE, "Default \"in_out\".", FALSE},
+};
+static const ApiMember api_params_41[] = {
+    {"kind", "FindKind", FALSE, "The kind to search.", FALSE},
+    {"filter", "table|fun(object: any): boolean", TRUE, "Field values to match, or a predicate.", FALSE},
 };
 static const ApiMember api_params_42[] = {
     {"filter", "FocusHistoryFilter", TRUE, "", FALSE},
@@ -850,10 +807,7 @@ static const ApiMember api_params_52[] = {
     {"options", "LaunchBeginOptions", TRUE, "", FALSE},
 };
 static const ApiMember api_params_54[] = {
-    {"namespace", "string", FALSE, "UTF-8 namespace from 1 to 128 bytes.", FALSE},
-};
-static const ApiMember api_params_55[] = {
-    {"filter", "LayerFilter", TRUE, "", FALSE},
+    {"layer", "LayerSurface|string", FALSE, "A layer surface, or a UTF-8 namespace from 1 to 128 bytes.", FALSE},
 };
 static const ApiMember api_params_56[] = {
     {"a", "number", FALSE, "", FALSE},
@@ -905,9 +859,6 @@ static const ApiMember api_params_90[] = {
 static const ApiMember api_params_91[] = {
     {"id", "string", FALSE, "Stable window ID.", FALSE},
 };
-static const ApiMember api_params_93[] = {
-    {"filter", "WindowFilter", TRUE, "", FALSE},
-};
 static const ApiMember api_params_94[] = {
     {"grant", "Grant", FALSE, "From a shortcut, pointer binding or input event.", FALSE},
 };
@@ -924,44 +875,44 @@ static const ApiFunction api_functions[] = {
     {"Window:begin_resize", "Begin an interactive resize. This takes the \"begin_resize\" scope of a Grant.", api_params_1, 2, "Operation<Json>"},
     {"Window:close", "Close this window.", NULL, 0, "Operation<Json>"},
     {"Window:focus", "Focus this window. This takes the \"focus\" scope of a Grant, so the user's key press or click gives focus without the compositor's focus-stealing rules getting in the way.", api_params_3, 1, "Operation<Json>"},
+    {"Window:inspect_animation", "Resolve an animation against this window without starting it.", api_params_4, 2, "Operation<AnimationInspection>"},
     {"Window:kill", "Send SIGKILL to the client process that owns this window. Use it for a window whose `unresponsive` field is true; the client loses unsaved work.", NULL, 0, "Operation<Json>"},
     {"Window:lower", "Lower this window below the others.", NULL, 0, "Operation<Json>"},
-    {"Window:move", "Move this window to a position in the compositor layout.", api_params_6, 2, "Operation<Json>"},
-    {"Window:move_to_monitor", "Move this window to a monitor.", api_params_7, 1, "Operation<Json>"},
-    {"Window:move_to_workspace", "Move this window to a workspace.", api_params_8, 2, "Operation<Json>"},
-    {"Window:on", "Call fn(window, ...) on a signal of this window: \"changed\" (with the list of changed fields), \"focused\", \"unfocused\" or \"closed\". Listening ends after \"closed\".", api_params_9, 2, "Subscription"},
+    {"Window:move", "Move this window to a position in the compositor layout.", api_params_7, 2, "Operation<Json>"},
+    {"Window:move_to_monitor", "Move this window to a monitor.", api_params_8, 1, "Operation<Json>"},
+    {"Window:move_to_workspace", "Move this window to a workspace. from 1 to 1024.", api_params_9, 2, "Operation<Json>"},
+    {"Window:on", "Call fn(window, ...) on a signal of this window: \"changed\" (with the list of changed fields), \"focused\", \"unfocused\" or \"closed\". Listening ends after \"closed\".", api_params_10, 2, "Subscription"},
     {"Window:present", "Focus a window whose program the runtime started with gnoblin.process.spawn. No key press is needed. It waits until the window is shown and no key press or click reached a window for 250 ms, at most 5 seconds, then succeeds when the window has focus.", NULL, 0, "Operation<{id: string, focused: boolean}>"},
+    {"Window:preview_animation", "Start a controllable preview of an animation on this window.", api_params_12, 3, "Operation<AnimationPreview>"},
     {"Window:raise", "Raise this window above the others without focusing it.", NULL, 0, "Operation<Json>"},
     {"Window:reset_visuals", "Draw this window without any visual change the runtime set.", NULL, 0, "Operation<WindowVisual>"},
-    {"Window:resize", "Resize this window.", api_params_13, 2, "Operation<Json>"},
+    {"Window:resize", "Resize this window.", api_params_15, 2, "Operation<Json>"},
     {"Window:restore_or_minimize", "Unmaximize this window, restore the frame it had before a snap, or minimize it, whichever applies first.", NULL, 0, "Operation<Json>"},
-    {"Window:set_above", "Set whether this window stays above other windows.", api_params_15, 1, "Operation<Json>"},
-    {"Window:set_effect", "Layer one window rule effect over this window and return the Override. The effects are those that `gnoblin.window_rule` supports: `opacity` (0 to 1), `blur` (0 to 100), `blur_ignore_shadows`, `shader` (a GLSL file path, or \"\" to clear it), `shader_uniforms`, `frame` and `corners`. The last three take the same table as the rule. The value goes over every rule that matches the window, as one more rule after them, so it changes only what it sets. The latest override of one effect on one window wins; an older one ends with the reason \"replaced\". The override ends when it is revoked, when the window closes, and when a configuration reload commits, and the window then shows what its rules give. This is not `set_opacity`: that call changes how the window actor is drawn, and `opacity` here is the rule's opacity of the window content, which the two multiply. Call this while handling an event, as with every operation.", api_params_16, 2, "Override"},
-    {"Window:set_fullscreen", "Set whether this window is fullscreen.", api_params_17, 1, "Operation<Json>"},
-    {"Window:set_maximized", "Set whether this window is maximized.", api_params_18, 1, "Operation<Json>"},
-    {"Window:set_minimized", "Set whether this window is minimized.", api_params_19, 1, "Operation<Json>"},
-    {"Window:set_offset", "Draw this window moved by an offset in logical pixels, each from -100000 to 100000.", api_params_20, 2, "Operation<WindowVisual>"},
-    {"Window:set_opacity", "Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn and picked, not its frame or what the client sees. The runtime's reload clears them.", api_params_21, 1, "Operation<WindowVisual>"},
-    {"Window:set_rotation", "Draw this window rotated about its centre, in degrees from -3600 to 3600.", api_params_22, 1, "Operation<WindowVisual>"},
-    {"Window:set_scale", "Draw this window scaled about its centre, from 0.01 to 10.", api_params_23, 1, "Operation<WindowVisual>"},
-    {"Window:set_sticky", "Set whether this window appears on every workspace.", api_params_24, 1, "Operation<Json>"},
-    {"Window:thumbnail", "Capture a thumbnail at the requested dimensions.", api_params_25, 2, "Operation<Json>"},
-    {"Window:watch", "Call fn(window, value, old) when one field of this window changes.", api_params_26, 2, "Subscription"},
-    {"animation", "Declare or update a named animation in configuration.", api_params_27, 1, ""},
-    {"animations.get", "Return an animation by name, or nil if it is not registered.", api_params_28, 1, "AnimationInfo|nil"},
-    {"animations.inspect", "Resolve an animation against a visible target without starting it.", api_params_29, 2, "AnimationInspection"},
+    {"Window:set_above", "Set whether this window stays above other windows.", api_params_17, 1, "Operation<Json>"},
+    {"Window:set_effect", "Layer one window rule effect over this window and return the Override. The effects are those that `gnoblin.window_rule` supports: `opacity` (0 to 1), `blur` (0 to 100), `blur_ignore_shadows`, `shader` (a GLSL file path, or \"\" to clear it), `shader_uniforms`, `frame` and `corners`. The last three take the same table as the rule. The value goes over every rule that matches the window, as one more rule after them, so it changes only what it sets. The latest override of one effect on one window wins; an older one ends with the reason \"replaced\". The override ends when it is revoked, when the window closes, and when a configuration reload commits, and the window then shows what its rules give. This is not `set_opacity`: that call changes how the window actor is drawn, and `opacity` here is the rule's opacity of the window content, which the two multiply. Call this while handling an event, as with every operation.", api_params_18, 2, "Override"},
+    {"Window:set_fullscreen", "Set whether this window is fullscreen.", api_params_19, 1, "Operation<Json>"},
+    {"Window:set_maximized", "Set whether this window is maximized.", api_params_20, 1, "Operation<Json>"},
+    {"Window:set_minimized", "Set whether this window is minimized.", api_params_21, 1, "Operation<Json>"},
+    {"Window:set_offset", "Draw this window moved by an offset in logical pixels, each from -100000 to 100000.", api_params_22, 2, "Operation<WindowVisual>"},
+    {"Window:set_opacity", "Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn and picked, not its frame or what the client sees. The runtime's reload clears them.", api_params_23, 1, "Operation<WindowVisual>"},
+    {"Window:set_rotation", "Draw this window rotated about its centre, in degrees from -3600 to 3600.", api_params_24, 1, "Operation<WindowVisual>"},
+    {"Window:set_scale", "Draw this window scaled about its centre, from 0.01 to 10.", api_params_25, 1, "Operation<WindowVisual>"},
+    {"Window:set_sticky", "Set whether this window appears on every workspace.", api_params_26, 1, "Operation<Json>"},
+    {"Window:thumbnail", "Capture a thumbnail at the requested dimensions.", api_params_27, 2, "Operation<Json>"},
+    {"Window:watch", "Call fn(window, value, old) when one field of this window changes.", api_params_28, 2, "Subscription"},
+    {"animation", "Declare or update a named animation in configuration. Like `gnoblin.configure`, it returns an Operation at run time and nothing while the config loads.", api_params_29, 1, "Operation<nil>|nil"},
+    {"animations.get", "Return an animation by name, or nil if it is not registered.", api_params_30, 1, "AnimationInfo|nil"},
     {"animations.list", "Return the configured native animation records.", NULL, 0, "AnimationInfo[]"},
-    {"animations.preview", "Start a controllable preview of an animation on a visible target.", api_params_31, 2, "Operation<AnimationPreview>"},
-    {"animations.surfaces", "List visible layer-shell surfaces that can be targeted by animations.", NULL, 0, "{surfaces: AnimationSurface[]}"},
     {"appearance.color_scheme", "Read the current desktop color scheme, or nil when unavailable.", NULL, 0, "ColorScheme|nil"},
-    {"array", "Mark a table as an array so configuration conversion preserves it as a list.", api_params_34, 1, "table"},
+    {"array", "Mark a table as an array so configuration conversion preserves it as a list.", api_params_33, 1, "table"},
     {"capabilities.list", "Return the native compositor and protocol capabilities as read-only records.", NULL, 0, "Capability[]"},
     {"config.default", "Return the bundled default Lua configuration source.", NULL, 0, "string"},
     {"config.path", "Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.", NULL, 0, "string"},
     {"config.restore_default", "Replace the standard config directory with bundled defaults, save the old directory as a backup, and reload the restored configuration.", NULL, 0, "Operation<AcceptedResult>"},
-    {"configure", "Merge settings into the active Lua configuration.", api_params_39, 1, ""},
+    {"configure", "Merge settings into the configuration. This is the one way to change settings from Lua; there is no assignment to a settings table.  While the config files load it only merges and returns nothing. In an event handler or callback the merged settings are validated and committed after the handler returns, and the call returns an Operation that succeeds when they are committed. It fails with the code \"invalid_argument\" when validation rejects them, or when a handler of the same event raised an error, which undoes every change of that event. A change lasts until the configuration is reloaded. `gnoblin.settings.override(path, value)` is the revocable alternative for one setting.", api_params_38, 1, "Operation<nil>|nil"},
     {"console.toggle", "Toggle the shell console.", NULL, 0, "Operation<ConsoleToggleResult>"},
-    {"ease", "Return eased progress for t from 0 to 1.", api_params_41, 3, "number"},
+    {"ease", "Return eased progress for t from 0 to 1.", api_params_40, 3, "number"},
+    {"find", "Return the live objects of one kind that match a filter, in the order of the kind's list function (`gnoblin.windows.list` for \"Window\", and so on). Every result is the same handle that the list and the events give. A table filter names fields of the kind and keeps the objects whose field equals every value: strings, numbers and booleans, so `{app_id = \"notes\", focused = true}`. A field that the kind does not declare, or that is not a scalar such as `frame`, is an error that names the fields that work. A function filter is called with each object and keeps those for which it returns true; use it for anything but equality, such as a title that contains a word. Without a filter it returns every object.", api_params_41, 2, "any[]"},
     {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_42, 1, "Window[]"},
     {"focus.policy", "Read the committed focus policy.", NULL, 0, "FocusPolicy"},
     {"idle.watch", "Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not idle; if the compositor refuses it, it ends and its \"closed\" listeners get the reason.", api_params_44, 1, "IdleWatch"},
@@ -975,7 +926,7 @@ static const ApiFunction api_functions[] = {
     {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_52, 3, "Launch"},
     {"launches.list", "Return the current launch records, each the Launch object for its token.", NULL, 0, "Launch[]"},
     {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_54, 1, "LayerAnimationPolicy"},
-    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_55, 1, "LayerSurface[]"},
+    {"layers.list", "Return the current layer surface snapshot. Select layer surfaces with `gnoblin.find(\"LayerSurface\", filter)`.", NULL, 0, "LayerSurface[]"},
     {"lerp", "Return a + (b - a) * t.", api_params_56, 3, "number"},
     {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_57, 1, "boolean"},
     {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_58, 2, "Subscription"},
@@ -1005,18 +956,18 @@ static const ApiFunction api_functions[] = {
     {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_82, 1, "Operation<ShortcutCaptureResult>"},
     {"shortcuts.configured", "List the shortcuts that the configuration declares. They are read-only records, not objects: gnoblin.configure.shortcuts changes them.", NULL, 0, "ShortcutState[]"},
     {"shortcuts.list", "List the shortcuts this runtime has bound and not unbound, in ID order. Each is the object that bind returned.", NULL, 0, "Shortcut[]"},
-    {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
+    {"snapshot", "Return a detached copy of the configuration that the files loaded so far have built, with the internal hyphenated names, such as `snapshot()[\"window-rules\"]`. Use it only while the config loads; at run time it is an error, and `gnoblin.settings` holds the committed settings.", NULL, 0, "Json"},
     {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_86, 1, "Operation<nil>"},
     {"timers.now", "Seconds on a monotonic clock. Only differences between two readings are meaningful.", NULL, 0, "number"},
     {"tween", "Create an empty tween.", NULL, 0, "Tween"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_90, 1, ""},
+    {"window_rule", "Append a window rule to the ordered window-rules list. While the config loads this is all it does. In an event handler or callback the change is committed after the handler returns, and the call returns an Operation that finishes when it is.", api_params_90, 1, "Operation<nil>|nil"},
     {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_91, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_93, 1, "Window[]"},
+    {"windows.list", "Return the current window snapshot. Select windows with `gnoblin.find(\"Window\", filter)`.", NULL, 0, "Window[]"},
     {"windows.snap_context", "Return a SnapContext for the focused window and spend the \"snap_context\" scope of a Grant. Callers cannot choose the window. Take it before \"focus\": the context holds only while the window that had focus at the gesture still has it.", api_params_94, 1, "Operation<SnapContext>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_96, 1, "Workspace|nil"},
+    {"workspaces.by_id", "Find a workspace by its stable ID. Returns nil when no workspace has it. The ID comes from `gnoblin.configure.workspaces` or `create`, or is the session ID `@session-N` that Gnoblin gave it.", api_params_96, 1, "Workspace|nil"},
     {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_97, 2, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},

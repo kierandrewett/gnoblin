@@ -56,12 +56,10 @@ effects.
 ---@field button_layout? string[] Native frame buttons, without duplicates; an empty list hides
 them.
 
----Animation names by event. The reserved `in` key aliases `layer_open`; `out` aliases
-`layer_close`.
+---Animation names by event.
 ---@class WindowRuleAnimation
----@field out? string Animation used when a layer closes; alias for `layer_close`.
----@field open? string Animation used when a layer opens.
----@field close? string Animation used when a layer closes.
+---@field open? string Animation used when a window opens.
+---@field close? string Animation used when a window closes.
 ---@field dialog_open? string Animation used when a dialog opens.
 ---@field dialog_close? string Animation used when a dialog closes.
 ---@field layer_open? string Animation used when a layer opens.
@@ -73,7 +71,6 @@ them.
 ---@field resize? string Animation used when a window resizes.
 ---@field duration? integer Animation duration in milliseconds, from 0 to 5000.
 ---@field easing? string Animation easing.
----@field ease? string Alias for `easing`.
 
 ---@class WindowRuleArgs
 ---@field match? WindowRuleMatch Match patterns; all supplied patterns must match.
@@ -87,8 +84,11 @@ them.
 ---@field frame? WindowRuleFrame Frame options.
 ---@field corners? WindowRuleCorners Corner, border, and shadow options.
 
----Append a window rule to the ordered window-rules list.
+---Append a window rule to the ordered window-rules list. While the config loads this is all it
+---does. In an event handler or callback the change is committed after the handler returns, and
+---the call returns an Operation that finishes when it is.
 ---@param rule WindowRuleArgs
+---@return Operation<nil>|nil
 function gnoblin.window_rule(rule) end
 
 ---Load and merge Lua configuration files matching a path or glob.
@@ -103,8 +103,18 @@ converted.
 ---@return table values
 function gnoblin.array(values) end
 
----Merge settings into the active Lua configuration.
+---Merge settings into the configuration. This is the one way to change settings from Lua; there
+---is no assignment to a settings table.
+---
+---While the config files load it only merges and returns nothing. In an event handler or
+---callback the merged settings are validated and committed after the handler returns, and the
+---call returns an Operation that succeeds when they are committed. It fails with the code
+---"invalid_argument" when validation rejects them, or when a handler of the same event raised an
+---error, which undoes every change of that event. A change lasts until the configuration is
+---reloaded. `gnoblin.settings.override(path, value)` is the revocable alternative for one
+---setting.
 ---@param settings table Settings table to merge into the active configuration.
+---@return Operation<nil>|nil
 function gnoblin.configure(settings) end
 
 ---Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.

@@ -120,6 +120,50 @@ char* lua_api_class_observable_names(const char* class_name) {
     return names->len > 1 ? g_strjoinv(", ", (gchar**)names->pdata) : g_strdup("none");
 }
 
+/* Whether the declared type is made only of scalars: strings, numbers, booleans and quoted
+ * literals, with an optional nil. `find` compares such fields by equality. */
+static gboolean api_type_is_scalar(const char* type) {
+    g_auto(GStrv) parts = g_strsplit(type, "|", -1);
+    guint scalars = 0;
+    for (guint i = 0; parts[i]; i++) {
+        g_strstrip(parts[i]);
+        if (g_str_equal(parts[i], "nil"))
+            continue;
+        if (!g_str_equal(parts[i], "string") && !g_str_equal(parts[i], "integer") &&
+            !g_str_equal(parts[i], "number") && !g_str_equal(parts[i], "boolean") &&
+            parts[i][0] != '"')
+            return FALSE;
+        scalars++;
+    }
+    return scalars > 0;
+}
+
+/* Whether the annotated field is a scalar that `find` can match by equality. */
+gboolean lua_api_class_field_scalar(const char* class_name, const char* field) {
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (g_str_equal(type->fields[i].name, field))
+                return api_type_is_scalar(type->fields[i].type);
+    }
+    return FALSE;
+}
+
+/* The scalar fields of the class, comma separated: what `find` can match. */
+char* lua_api_class_scalar_names(const char* class_name) {
+    g_autoptr(GPtrArray) names = g_ptr_array_new();
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (api_type_is_scalar(type->fields[i].type))
+                g_ptr_array_add(names, (gpointer)type->fields[i].name);
+    }
+    g_ptr_array_add(names, NULL);
+    return g_strjoinv(", ", (gchar**)names->pdata);
+}
+
 #define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
 
 /* Remember each annotated C function's signature, keyed by the function itself, so a result shows
@@ -944,6 +988,8 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     if (status != LUA_OK) {
         const char* message = lua_error_text(state);
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s", message);
+        set_document(state, runtime->document);
+        finish_configure_operations(state, config, FALSE, message);
         lua_settop(state, base);
         config->api_calling = FALSE;
         config->actions_in_dispatch = 0;
@@ -952,18 +998,15 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     }
 
     g_autoptr(GError) document_error = NULL;
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
+    push_document(state);
     g_autoptr(GVariant) document = variant_from_lua(state, -1, 0, FALSE, 0, &document_error);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
         !gnoblin_config_validate_document(document, &document_error)) {
-        const char* message =
-            document_error ? document_error->message : "console code left gnoblin.config invalid";
-        lua_getglobal(state, "gnoblin");
-        push_variant(state, runtime->document);
-        lua_setfield(state, -2, "config");
-        lua_pop(state, 1);
+        const char* message = document_error ? document_error->message
+                                             : "console code left the configuration invalid";
+        set_document(state, runtime->document);
+        finish_configure_operations(state, config, FALSE, message);
         console_reject_actions(runtime, action_start, message);
         lua_settop(state, base);
         config->api_calling = FALSE;
@@ -972,12 +1015,14 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
         return NULL;
     }
 
-    /* A valid change to gnoblin.config is applied to the live session like one made by an event
-     * handler: the session commits it and the compositor receives the new settings. It lasts until
-     * the configuration is reloaded. */
+    /* A valid change that gnoblin.configure made is applied to the live session like one made by
+     * an event handler: the session commits it and the compositor receives the new settings. It
+     * lasts until the configuration is reloaded. */
     if (!g_variant_equal(document, runtime->document)) {
         g_clear_pointer(&runtime->pending_document, g_variant_unref);
         runtime->pending_document = g_variant_ref(document);
+    } else {
+        finish_configure_operations(state, config, TRUE, NULL);
     }
 
     int values = lua_gettop(state) - base;

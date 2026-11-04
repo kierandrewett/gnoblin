@@ -46,22 +46,6 @@
 ---@field target? string Animation target hint.
 ---@field revision? integer Configuration revision for this record.
 
----@class AnimationSurface
----@field id string Stable surface ID.
----@field namespace string Layer-shell namespace.
----@field title string Surface title; may be empty.
-
----@class AnimationInspectOptions
----@field target? string Target ID; defaults to "active".
----@field event? string Lifecycle event override.
----@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
-
----@class AnimationPreviewOptions
----@field target? string Target ID; defaults to "active".
----@field event? string Lifecycle event override.
----@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field autoplay? boolean Start the preview immediately. Default false.
-
 ---@class AnimationInspection
 ---@field name string Animation name.
 ---@field event string Lifecycle event.
@@ -98,8 +82,10 @@
 ---@field ok boolean True when the preview was stopped.
 ---@field session string Stopped preview session ID.
 
----Declare or update a named animation in configuration.
+---Declare or update a named animation in configuration. Like `gnoblin.configure`, it returns an
+---Operation at run time and nothing while the config loads.
 ---@param animation AnimationArgs
+---@return Operation<nil>|nil
 function gnoblin.animation(animation) end
 
 ---Return the configured native animation records.
@@ -111,21 +97,31 @@ function gnoblin.animations.list() end
 ---@return AnimationInfo|nil
 function gnoblin.animations.get(name) end
 
----List visible layer-shell surfaces that can be targeted by animations.
----@return {surfaces: AnimationSurface[]}
-function gnoblin.animations.surfaces() end
-
----Resolve an animation against a visible target without starting it.
+---Resolve an animation against this window without starting it.
 ---@param name string Animation name.
----@param options? AnimationInspectOptions
----@return AnimationInspection
-function gnoblin.animations.inspect(name, options) end
+---@param event? string Lifecycle event override.
+---@return Operation<AnimationInspection>
+function Window:inspect_animation(name, event) end
 
----Start a controllable preview of an animation on a visible target.
+---Start a controllable preview of an animation on this window.
 ---@param name string Animation name.
----@param options? AnimationPreviewOptions
+---@param event? string Lifecycle event override.
+---@param autoplay? boolean Start the preview immediately. Default false.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.preview(name, options) end
+function Window:preview_animation(name, event, autoplay) end
+
+---Resolve an animation against this layer surface without starting it.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@return Operation<AnimationInspection>
+function LayerSurface:inspect_animation(name, event) end
+
+---Start a controllable preview of an animation on this layer surface.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@param autoplay? boolean Start the preview immediately. Default false.
+---@return Operation<AnimationPreview>
+function LayerSurface:preview_animation(name, event, autoplay) end
 
 ---Set preview progress from an AnimationPreview record.
 ---@param progress number Progress from 0 to 1.

@@ -16,6 +16,10 @@ static int lua_named_entry_index(lua_State* state) {
 }
 
 static int lua_named_entry_assign(lua_State* state) {
+    if (lua_in_runtime(state))
+        return luaL_error(state,
+                          "named entries cannot be changed at run time; use gnoblin.configure "
+                          "{shortcuts = {name = {...}}} or autostart, which returns an Operation");
     const char* key = luaL_checkstring(state, 2);
     if (!strcmp(key, "name"))
         return luaL_error(state, "named entry name cannot be changed");
@@ -113,6 +117,10 @@ static int lua_named_view_pairs(lua_State* state) {
 }
 
 static int lua_named_view_assign(lua_State* state) {
+    if (lua_in_runtime(state))
+        return luaL_error(state,
+                          "named entries cannot be assigned at run time; use gnoblin.configure "
+                          "{shortcuts = {name = {...}}} or autostart, which returns an Operation");
     const char* name = luaL_checkstring(state, 2);
     luaL_checktype(state, 3, LUA_TTABLE);
     push_settings(state, 3, NULL, 0, 0);
@@ -229,7 +237,7 @@ void finish_named_entries(lua_State* state, int config, const char* key) {
 }
 
 /* Named commands merge in place; ordered rules always append. */
-int lua_declare(lua_State* state) {
+static int declare_entry(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     push_settings(state, 1, NULL, 0, 0);
     int entry = lua_gettop(state);
@@ -272,6 +280,17 @@ int lua_declare(lua_State* state) {
     lua_pushvalue(state, entry);
     lua_rawseti(state, list, count + 1);
     return 0;
+}
+
+/* gnoblin.window_rule(rule) and gnoblin.animation(animation): declare an entry. At run time the
+ * change is committed after the handler returns, so the call returns an Operation, as
+ * gnoblin.configure does. */
+int lua_declare(lua_State* state) {
+    declare_entry(state);
+    if (!lua_in_runtime(state))
+        return 0;
+    push_configure_operation(state, lua_state_config(state));
+    return 1;
 }
 
 static char* embedded_relative_path(const char* current_path, const char* pattern, GError** error) {

@@ -71,6 +71,7 @@ const LuaApiEntry lua_api[] = {
     {"Process:watch", NULL, lua_object_watch},
     {"on", NULL, lua_on},
     {"once", NULL, lua_once},
+    {"find", NULL, lua_find},
 
     {"windows.list", NULL, lua_windows_list},
     {"windows.focused", NULL, lua_windows_focused},
@@ -100,6 +101,8 @@ const LuaApiEntry lua_api[] = {
     {"Window:set_rotation", "window.set_visual", NULL},
     {"Window:set_offset", "window.set_visual", NULL},
     {"Window:reset_visuals", "window.set_visual", NULL},
+    {"Window:inspect_animation", "animation.inspect", NULL},
+    {"Window:preview_animation", "animation.preview", NULL},
     {"Window:set_effect", "window.set_effect", NULL},
     {"Window:on", NULL, lua_object_on},
     {"Window:watch", NULL, lua_object_watch},
@@ -125,15 +128,15 @@ const LuaApiEntry lua_api[] = {
     {"layers.list", NULL, lua_layers_list},
     {"layers.animation_policy", NULL, lua_layers_animation_policy},
     {"LayerSurface:on", NULL, lua_object_on},
+    {"LayerSurface:inspect_animation", "animation.inspect", NULL},
+    {"LayerSurface:preview_animation", "animation.preview", NULL},
     {"LayerSurface:watch", NULL, lua_object_watch},
     {"capabilities.list", NULL, lua_capabilities_list},
     {"appearance.color_scheme", NULL, lua_appearance_color_scheme},
 
     {"animations.list", NULL, lua_animations_list},
     {"animations.get", NULL, lua_animation_get},
-    {"animations.surfaces", "animation.surfaces", NULL},
-    {"animations.inspect", "animation.inspect", NULL, TRUE},
-    {"animations.preview", "animation.preview", NULL, TRUE},
+    /* Lua inspects and previews an animation through Window and LayerSurface. */
     {"AnimationPreview:seek", "animation.seek", lua_animation_preview_method},
     {"AnimationPreview:step", "animation.step", lua_animation_preview_method},
     {"AnimationPreview:play", "animation.play", lua_animation_preview_method},
@@ -198,8 +201,10 @@ const LuaApiEntry lua_api[] = {
 
 /* Wire operations that socket clients call directly but Lua does not install under that name. Lua
  * reaches Request answers through the Request object (gnoblin-lua-request.c), reaches the preview
- * controls through AnimationPreview, window minimize state through Window:set_minimized, and moves
- * a window to a workspace through Window:move_to_workspace. Lua changes the orientation lock and
+ * controls through AnimationPreview, starts one through Window:preview_animation and
+ * LayerSurface:preview_animation, reads layer surfaces through gnoblin.layers, window minimize
+ * state through Window:set_minimized, and moves a window to a workspace through
+ * Window:move_to_workspace. Lua changes the orientation lock and
  * the privacy screen with gnoblin.settings.override; the two wire names stay for socket clients.
  * The launch names are those shells use on the wire. gnoblin_config_call_api accepts them;
  * install_api does not install them. */
@@ -219,6 +224,9 @@ static const LuaApiEntry bridge_operations[] = {
     {"workspace.move_active", "workspace.move_active", NULL},
     {"workspace.move_window", "workspace.move_window", NULL},
     {"animation.seek", "animation.seek", NULL},
+    {"animation.surfaces", "animation.surfaces", NULL},
+    {"animation.inspect", "animation.inspect", NULL},
+    {"animation.preview", "animation.preview", NULL},
     {"animation.step", "animation.step", NULL},
     {"animation.play", "animation.play", NULL},
     {"animation.pause", "animation.pause", NULL},

@@ -18,11 +18,6 @@ request applies to every output.
 gnoblin.settings.override("monitors.privacy_screen", value), the configuration, or the system
 setting.
 
----@class LayerFilter
----@field monitor_id? string Exact monitor ID.
----@field namespace? string Exact layer namespace.
----@field layer? string Exact layer type.
-
 ---@class LayerSurface
 ---@field id string Stable layer surface ID.
 ---@field alive boolean False once the surface has been removed. Every read of one surface returns
@@ -41,10 +36,10 @@ this same object, updated with each change.
 ---@field window_shadow any Shadow policy for windows matching the layer namespace.
 ---@field revision integer Configuration revision.
 
----Return the current layer surface snapshot, optionally filtered.
----@param filter? LayerFilter
+---Return the current layer surface snapshot. Select layer surfaces with
+---`gnoblin.find("LayerSurface", filter)`.
 ---@return LayerSurface[]
-function gnoblin.layers.list(filter) end
+function gnoblin.layers.list() end
 
 ---Call fn(layer, ...) on a signal of this layer surface: "changed" (with the list of changed
 ---fields) or "closed". Listening ends after "closed".
@@ -54,15 +49,15 @@ function gnoblin.layers.list(filter) end
 function LayerSurface:on(signal, fn) end
 
 ---Call fn(layer, value, old) when one field of this layer surface changes.
----@param property string A field of LayerSurface, such as "geometry".
+---@param property string A field of LayerSurface, such as "title" or "layer".
 ---@param fn fun(layer: LayerSurface, value: any, old: any)
 ---@return Subscription
 function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
----@param namespace string UTF-8 namespace from 1 to 128 bytes.
+---@param layer LayerSurface|string A layer surface, or a UTF-8 namespace from 1 to 128 bytes.
 ---@return LayerAnimationPolicy
-function gnoblin.layers.animation_policy(namespace) end
+function gnoblin.layers.animation_policy(layer) end
 
 ---@class OutputMode
 ---@field width integer Width in physical pixels.

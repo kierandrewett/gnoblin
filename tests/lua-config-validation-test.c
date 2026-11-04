@@ -127,7 +127,7 @@ static void test_aliases_and_extensions(void) {
                    " keybindings = {keyboard = {test_key = {binding = '<Super>y',"
                    "  callback = function() return 'forward' end}}}"
                    "}\n"
-                   "gnoblin.config.cursor = {size = 32}\n"
+                   "gnoblin.configure {cursor = {size = 32}}\n"
                    "gnoblin.window_rule {match = {app_id = 'test'}, opacity = 0.9}\n");
     g_autoptr(GVariant) window =
         g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);

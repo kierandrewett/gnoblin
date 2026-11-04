@@ -336,38 +336,36 @@ int lua_window_grant_operation(lua_State* state, LuaConfig* config, const char* 
 int lua_snap_context_commit(lua_State* state) {
     LuaSnapContext* context = luaL_checkudata(state, 1, LUA_SNAP_CONTEXT_METATABLE);
     LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
-    static const char* const fields[] = {"monitor_id", "frame", NULL};
-    if (lua_gettop(state) != 2 || !lua_istable(state, 2) || !table_fields_allowed(state, 2, fields))
-        return luaL_error(state, "SnapContext:commit requires {monitor_id, frame}");
+    if (lua_gettop(state) != 6)
+        return luaL_error(state,
+                          "SnapContext:commit takes a monitor (an Output or its ID), x, y, width "
+                          "and height");
     if (!config || !active_runtime || context->consumed ||
         context->generation != active_runtime->generation || !config->runtime_actions ||
         config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
         return luaL_error(state, "SnapContext is consumed, stale, or operations are unavailable");
-    lua_getfield(state, 2, "monitor_id");
-    const char* monitor_id = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+    if (!lua_push_monitor_id(state, 2))
+        return luaL_error(state, "SnapContext:commit takes an Output or a monitor ID");
+    const char* monitor_id = lua_tostring(state, -1);
     if (!monitor_id || !*monitor_id || strlen(monitor_id) > 128 ||
         !g_utf8_validate(monitor_id, -1, NULL))
-        return luaL_error(state, "SnapContext:commit requires a valid monitor_id");
-    lua_pop(state, 1);
-    lua_getfield(state, 2, "frame");
-    static const char* const rect_fields[] = {"x", "y", "width", "height", NULL};
-    if (!lua_istable(state, -1) || !table_fields_allowed(state, -1, rect_fields))
-        return luaL_error(state, "SnapContext:commit frame requires x, y, width and height");
+        return luaL_error(state, "SnapContext:commit requires a valid monitor ID");
     GVariantBuilder frame;
     g_variant_builder_init(&frame, G_VARIANT_TYPE_VARDICT);
     const char* rect_keys[] = {"x", "y", "width", "height"};
     const lua_Integer lows[] = {-100000, -100000, 1, 1};
     const lua_Integer highs[] = {100000, 100000, 32768, 32768};
     for (guint i = 0; i < G_N_ELEMENTS(rect_keys); i++) {
-        lua_getfield(state, -1, rect_keys[i]);
-        if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < lows[i] ||
-            lua_tointeger(state, -1) > highs[i])
-            return luaL_error(state, "SnapContext frame %s is out of range", rect_keys[i]);
+        int argument = 3 + (int)i;
+        if (!lua_isinteger(state, argument) || lua_tointeger(state, argument) < lows[i] ||
+            lua_tointeger(state, argument) > highs[i]) {
+            g_variant_builder_clear(&frame);
+            return luaL_error(state, "SnapContext %s must be an integer from %d to %d",
+                              rect_keys[i], (int)lows[i], (int)highs[i]);
+        }
         g_variant_builder_add(&frame, "{sv}", rect_keys[i],
-                              g_variant_new_int32((gint32)lua_tointeger(state, -1)));
-        lua_pop(state, 1);
+                              g_variant_new_int32((gint32)lua_tointeger(state, argument)));
     }
-    lua_pop(state, 1);
     GVariantBuilder arguments, action;
     g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&arguments, "{sv}", "context", g_variant_new_string(context->token));

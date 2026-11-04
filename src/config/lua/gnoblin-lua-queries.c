@@ -278,7 +278,9 @@ static gboolean window_matches_filter(GVariant* window, lua_State* state, int fi
     return TRUE;
 }
 
-int lua_windows_list(lua_State* state) {
+/* The windows.list wire read, with the exact-match filter socket clients send. Lua code lists
+ * windows with gnoblin.windows.list() and selects them with gnoblin.find("Window", filter). */
+int lua_read_windows(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.windows.list takes no arguments or one filter table");
@@ -318,6 +320,14 @@ int lua_windows_list(lua_State* state) {
         lua_rawseti(state, -2, result_index++);
     }
     return 1;
+}
+
+int lua_windows_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state,
+                          "gnoblin.windows.list takes no arguments; use gnoblin.find(\"Window\", "
+                          "filter) to select windows");
+    return lua_read_windows(state);
 }
 
 int lua_windows_focused(lua_State* state) {
@@ -664,7 +674,10 @@ static gboolean layer_matches_filter(GVariant* layer, lua_State* state, int filt
     return TRUE;
 }
 
-int lua_layers_list(lua_State* state) {
+/* The layers.list wire read, with the exact-match filter socket clients send. Lua code lists
+ * layer surfaces with gnoblin.layers.list() and selects them with
+ * gnoblin.find("LayerSurface", filter). */
+int lua_read_layers(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.layers.list takes no arguments or one filter table");
@@ -701,4 +714,11 @@ int lua_layers_list(lua_State* state) {
         lua_rawseti(state, -2, result_index++);
     }
     return 1;
+}
+
+int lua_layers_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.layers.list takes no arguments; use "
+                                 "gnoblin.find(\"LayerSurface\", filter) to select layer surfaces");
+    return lua_read_layers(state);
 }

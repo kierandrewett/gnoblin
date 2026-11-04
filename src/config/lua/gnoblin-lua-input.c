@@ -163,7 +163,7 @@ static void remove_input_handler(lua_State* state, const char* id) {
         lua_setfield(state, -2, id);
     }
     lua_pop(state, 1);
-    lua_getfield(state, api, "config");
+    push_document(state);
     lua_getfield(state, -1, "input-handlers");
     if (lua_istable(state, -1)) {
         int handlers = lua_gettop(state);
@@ -537,18 +537,28 @@ GVariant* gnoblin_config_document_warnings(GVariant* document) {
         g_variant_new_strv((const char* const*)warnings->pdata, warnings->len));
 }
 
+/* gnoblin.configure(settings): merge settings into the configuration. While the config files load,
+ * that is all. At run time the change is committed after the handler returns, so the call returns
+ * an Operation that succeeds then, or fails when the compositor's validation rejects it. */
 static int lua_configure(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     luaL_checktype(state, 1, LUA_TTABLE);
     if (config && config->input_dispatching)
         return luaL_error(state,
                           "configuration changes are unavailable in an input policy handler");
+    if (config && config->rejecting_operations)
+        return luaL_error(state,
+                          "runtime operations are unavailable while rejecting a failed event");
     register_pointer_binding_callbacks(state, 1, config);
     register_keyboard_binding_callbacks(state, 1, config);
     push_settings(state, 1, NULL, 0, 0);
     lua_replace(state, 1);
     warn_unknown_configure_sections(state, 1);
-    return lua_set(state);
+    lua_set(state);
+    if (!lua_in_runtime(state))
+        return 0;
+    push_configure_operation(state, config);
+    return 1;
 }
 
 int lua_configure_call(lua_State* state) {
@@ -609,8 +619,7 @@ static int lua_input_register(lua_State* state) {
     lua_setfield(state, -2, id);
     lua_pop(state, 2); /* handler registry, gnoblin */
 
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
+    push_document(state);
     lua_getfield(state, -1, "input-handlers");
     if (!lua_istable(state, -1)) {
         lua_pop(state, 1);
@@ -626,7 +635,7 @@ static int lua_input_register(lua_State* state) {
     push_settings(state, 1, NULL, 0, 0);
     lua_setfield(state, -2, "match");
     lua_rawseti(state, handlers, lua_rawlen(state, handlers) + 1);
-    lua_pop(state, 3); /* handlers, config, gnoblin */
+    lua_pop(state, 2); /* handlers, document */
     lua_pushstring(state, id);
     return 1;
 }
@@ -655,10 +664,7 @@ int lua_input_on(lua_State* state) {
 void push_config_list(lua_State* state) {
     const char* section = lua_tostring(state, lua_upvalueindex(1));
     const char* key = lua_tostring(state, lua_upvalueindex(2));
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    if (!lua_istable(state, -1))
-        luaL_error(state, "gnoblin.config must be a table");
+    push_document(state);
     if (section[0]) {
         lua_getfield(state, -1, section);
         if (lua_isnil(state, -1)) {

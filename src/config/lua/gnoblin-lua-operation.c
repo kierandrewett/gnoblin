@@ -251,6 +251,49 @@ void push_local_operation(lua_State* state, LuaConfig* config, const char* metho
     lua_setmetatable(state, -2);
 }
 
+#define CONFIGURE_OPERATIONS_KEY "gnoblin.configure_operations"
+
+/* Push the Operation of a configuration change made at run time. It stays pending until the
+ * runtime commits the change or rejects it; finish_configure_operations ends it. */
+void push_configure_operation(lua_State* state, LuaConfig* config) {
+    push_local_operation(state, config, "configure");
+    if (lua_getfield(state, LUA_REGISTRYINDEX, CONFIGURE_OPERATIONS_KEY) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, LUA_REGISTRYINDEX, CONFIGURE_OPERATIONS_KEY);
+    }
+    lua_pushvalue(state, -2);
+    lua_rawseti(state, -2, (lua_Integer)lua_rawlen(state, -2) + 1);
+    lua_pop(state, 1);
+}
+
+/* End every pending configuration Operation: they succeed when the change they belong to was
+ * committed, or fail with `message` when it was rejected or undone. */
+void finish_configure_operations(lua_State* state, LuaConfig* config, gboolean ok,
+                                 const char* message) {
+    if (lua_getfield(state, LUA_REGISTRYINDEX, CONFIGURE_OPERATIONS_KEY) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        return;
+    }
+    int pending = lua_absindex(state, -1);
+    lua_pushnil(state);
+    lua_setfield(state, LUA_REGISTRYINDEX, CONFIGURE_OPERATIONS_KEY);
+    lua_Integer count = (lua_Integer)lua_rawlen(state, pending);
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, pending, i);
+        if (ok) {
+            finish_operation(state, config, -1, TRUE, 0, 0);
+        } else {
+            push_operation_error(state, "invalid_argument", message);
+            finish_operation(state, config, -2, FALSE, 0, -1);
+            lua_pop(state, 1);
+        }
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+}
+
 /* Cancel: stop waiting. A timer stops. An action already sent to the compositor still runs, and
  * its result is discarded. */
 static int lua_operation_cancel(lua_State* state) {

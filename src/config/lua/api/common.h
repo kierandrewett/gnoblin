@@ -64,3 +64,21 @@ function gnoblin.timers.after(seconds) end
 ---@return number
 function gnoblin.timers.now() end
 */
+
+/*** lua
+---@alias FindKind
+"Window"|"Workspace"|"LayerSurface"|"Output"|"Shortcut"|"Launch"|"InputSource"|"Process"
+
+---Return the live objects of one kind that match a filter, in the order of the kind's list
+---function (`gnoblin.windows.list` for "Window", and so on). Every result is the same handle that
+---the list and the events give. A table filter names fields of the kind and keeps the objects whose
+---field equals every value: strings, numbers and booleans, so `{app_id = "notes", focused = true}`.
+---A field that the kind does not declare, or that is not a scalar such as `frame`, is an error that
+---names the fields that work. A function filter is called with each object and keeps those for
+---which it returns true; use it for anything but equality, such as a title that contains a word.
+---Without a filter it returns every object.
+---@param kind FindKind The kind to search.
+---@param filter? table|fun(object: any): boolean Field values to match, or a predicate.
+---@return any[]
+function gnoblin.find(kind, filter) end
+*/

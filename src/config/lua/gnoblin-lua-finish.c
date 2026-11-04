@@ -179,8 +179,14 @@ gboolean gnoblin_config_has_pending_document(void) {
 }
 
 void gnoblin_config_finish_event(gboolean commit) {
-    if (!active_runtime || !active_runtime->pending_document)
+    if (!active_runtime)
         return;
+    if (!active_runtime->pending_document) {
+        if (!commit)
+            finish_configure_operations(active_runtime->state, &active_runtime->config, FALSE,
+                                        "the configuration change was not committed");
+        return;
+    }
     if (commit) {
         g_autoptr(GVariant) previous_focus_policy =
             focus_policy_snapshot(active_runtime->document, 0);
@@ -206,13 +212,14 @@ void gnoblin_config_finish_event(gboolean commit) {
         if (settings_changed && settings_changed_callback)
             settings_changed_callback(active_runtime->config.settings_revision,
                                       settings_changed_data);
+        /* The change is the committed document now: its Operations succeed. */
+        finish_configure_operations(active_runtime->state, &active_runtime->config, TRUE, NULL);
         return;
     }
     lua_State* state = active_runtime->state;
-    lua_getglobal(state, "gnoblin");
-    push_variant(state, active_runtime->document);
-    lua_setfield(state, -2, "config");
-    lua_pop(state, 1);
+    set_document(state, active_runtime->document);
+    finish_configure_operations(state, &active_runtime->config, FALSE,
+                                "the configuration change was not committed");
     g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
 }
 

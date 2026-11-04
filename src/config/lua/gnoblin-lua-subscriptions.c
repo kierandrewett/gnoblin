@@ -106,25 +106,26 @@ int lua_gnoblin_index(lua_State* state) {
     return 1;
 }
 
+/* gnoblin.snapshot(): a copy of the configuration the files have built so far. At run time the
+ * committed settings are gnoblin.settings. */
 int lua_snapshot(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "snapshot takes no arguments");
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    if (!lua_istable(state, -1))
-        return luaL_error(state, "gnoblin.config must be a table");
+    if (lua_in_runtime(state))
+        return luaL_error(state,
+                          "gnoblin.snapshot() reads the config while it loads; at run time read "
+                          "gnoblin.settings");
+    push_document(state);
     copy_config_value(state, -1, 0);
     return 1;
 }
 
+/* Merge the table at index 1 into the document. */
 int lua_set(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    if (!lua_istable(state, -1))
-        return luaL_error(state, "gnoblin.config must be a table");
+    push_document(state);
     merge_table(state, -1, 1, NULL, FALSE);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     return 0;
 }
 

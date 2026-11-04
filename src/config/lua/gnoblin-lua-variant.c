@@ -341,8 +341,8 @@ static int lua_record_method(lua_State* state) {
                               "window:move_to_workspace takes a workspace and optional options");
         static const char* const option_fields[] = {"follow", NULL};
         if (!lua_push_workspace_selector(state, 2))
-            return luaL_error(state, "window:move_to_workspace takes a workspace ID string or "
-                                     "number");
+            return luaL_error(state, "window:move_to_workspace takes a Workspace, a workspace ID "
+                                     "string or a number");
         lua_setfield(state, arguments, "workspace");
         if (supplied == 2 && !lua_isnil(state, 3)) {
             if (!lua_istable(state, 3) || !table_fields_allowed(state, 3, option_fields))
@@ -393,10 +393,40 @@ static int lua_record_method(lua_State* state) {
         if (!known)
             return luaL_error(state, "unknown window visual method");
     } else if (g_str_equal(method, "window.move_to_monitor")) {
-        if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING)
-            return luaL_error(state, "window:move_to_monitor takes a monitor ID");
-        lua_pushvalue(state, 2);
+        if (supplied != 1 || !lua_push_monitor_id(state, 2))
+            return luaL_error(state, "window:move_to_monitor takes an Output or a monitor ID");
         lua_setfield(state, arguments, "monitor");
+    } else if (g_str_equal(method, "animation.inspect") ||
+               g_str_equal(method, "animation.preview")) {
+        /* window:inspect_animation(name, event?) and window:preview_animation(name, event?,
+         * autoplay?), and the same on a LayerSurface. The receiver is the target. */
+        gboolean preview = g_str_equal(method, "animation.preview");
+        if (supplied < 1 || supplied > (preview ? 3 : 2) || lua_type(state, 2) != LUA_TSTRING)
+            return luaL_error(state, preview
+                                         ? "preview_animation takes an animation name, an optional "
+                                           "event and an optional autoplay flag"
+                                         : "inspect_animation takes an animation name and an "
+                                           "optional event");
+        if (supplied >= 2 && !lua_isnil(state, 3) && lua_type(state, 3) != LUA_TSTRING)
+            return luaL_error(state, "the animation event must be a string");
+        if (supplied == 3 && !lua_isnil(state, 4) && !lua_isboolean(state, 4))
+            return luaL_error(state, "autoplay must be a boolean");
+        lua_getfield(state, arguments, "id");
+        lua_setfield(state, arguments, "target");
+        lua_pushnil(state);
+        lua_setfield(state, arguments, "id");
+        lua_pushstring(state, lua_object_is(state, 1, "LayerSurface") ? "layer" : "window");
+        lua_setfield(state, arguments, "target_type");
+        lua_pushvalue(state, 2);
+        lua_setfield(state, arguments, "name");
+        if (supplied >= 2 && !lua_isnil(state, 3)) {
+            lua_pushvalue(state, 3);
+            lua_setfield(state, arguments, "event");
+        }
+        if (supplied == 3 && !lua_isnil(state, 4)) {
+            lua_pushvalue(state, 4);
+            lua_setfield(state, arguments, "autoplay");
+        }
     } else if (thumbnail) {
         if (supplied != 2)
             return luaL_error(state, "window:thumbnail takes width and height");
@@ -777,6 +807,21 @@ void push_operation_result(lua_State* state, const char* method, GVariant* value
         return;
     }
     push_variant(state, value);
+    if (g_str_equal(method, "window.set_visual")) {
+        /* The compositor answers with offset_x and offset_y. A Window reads its offset as
+         * {x, y}, so the result says it the same way. */
+        lua_createtable(state, 0, 2);
+        lua_getfield(state, -2, "offset_x");
+        lua_setfield(state, -2, "x");
+        lua_getfield(state, -2, "offset_y");
+        lua_setfield(state, -2, "y");
+        lua_setfield(state, -2, "offset");
+        lua_pushnil(state);
+        lua_setfield(state, -2, "offset_x");
+        lua_pushnil(state);
+        lua_setfield(state, -2, "offset_y");
+        return;
+    }
     if (g_str_has_prefix(method, "animation.") && variant_is_animation_preview(value)) {
         /* The compositor repeats the preview's id as `session`; the id is the one name. */
         lua_pushnil(state);

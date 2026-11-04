@@ -114,6 +114,7 @@ if(GNOBLIN_LUA_FOUND)
     src/config/lua/gnoblin-lua-extension.c
     src/config/lua/gnoblin-lua-install.c
     src/config/lua/gnoblin-lua-merge.c
+    src/config/lua/gnoblin-lua-find.c
     src/config/lua/gnoblin-lua-named.c
     src/config/lua/gnoblin-lua-operation.c
     src/config/lua/gnoblin-lua-objects.c

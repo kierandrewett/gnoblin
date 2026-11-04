@@ -155,15 +155,41 @@ static void input_source_selector_valid_args(lua_State* state) {
     lua_pop(state, 1);
 }
 
-/* Push the selector table for a workspace ID string or workspace number. Returns FALSE and pushes
- * nothing for any other value. */
+/* Push the selector table for a Workspace, a workspace ID string or a workspace number. Returns
+ * FALSE and pushes nothing for any other value. */
 gboolean lua_push_workspace_selector(lua_State* state, int index) {
     index = lua_absindex(state, index);
-    if (lua_type(state, index) != LUA_TSTRING && !lua_isinteger(state, index))
+    gboolean handle = lua_object_is(state, index, "Workspace");
+    if (handle) {
+        lua_getfield(state, index, "id");
+        if (lua_type(state, -1) != LUA_TSTRING) {
+            lua_pop(state, 1);
+            luaL_error(state, "this Workspace has no ID");
+        }
+    } else if (lua_type(state, index) != LUA_TSTRING && !lua_isinteger(state, index)) {
         return FALSE;
+    } else {
+        lua_pushvalue(state, index);
+    }
     lua_createtable(state, 0, 1);
-    lua_pushvalue(state, index);
-    lua_setfield(state, -2, lua_type(state, index) == LUA_TSTRING ? "id" : "number");
+    lua_insert(state, -2);
+    lua_setfield(state, -2, lua_type(state, -1) == LUA_TSTRING ? "id" : "number");
+    return TRUE;
+}
+
+/* Push the monitor ID that the value at `index` names: an Output (the logical monitor that shows
+ * it) or a monitor ID string. Returns FALSE and pushes nothing for any other value. */
+gboolean lua_push_monitor_id(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    if (lua_type(state, index) == LUA_TSTRING) {
+        lua_pushvalue(state, index);
+        return TRUE;
+    }
+    if (!lua_object_is(state, index, "Output"))
+        return FALSE;
+    lua_getfield(state, index, "monitor_id");
+    if (lua_type(state, -1) != LUA_TSTRING)
+        luaL_error(state, "this Output is not enabled, so it shows no monitor");
     return TRUE;
 }
 

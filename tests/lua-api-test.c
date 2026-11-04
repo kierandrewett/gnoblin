@@ -76,6 +76,17 @@ static GVariant* test_output(const char* id, gboolean primary, double scale, gbo
 
 static gsize dispatch_counting_operations(const char* event, GVariant* payload);
 
+/* Run the callbacks that finished Operations queued, and commit what they changed. */
+static void run_deferred_callbacks(void) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) document = gnoblin_config_dispatch_deferred_callbacks(&error);
+    g_assert_no_error(error);
+    if (document)
+        gnoblin_config_finish_event(TRUE);
+    g_autoptr(GVariant) operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(operations), ==, 0);
+}
+
 /* The payload of a test step: {step = name}. */
 static GVariant* step_payload(const char* step) {
     GVariantBuilder builder;
@@ -187,15 +198,16 @@ int main(void) {
     assert_equal(actual, expected);
     g_autoptr(GVariant) reloaded = evaluate(root, source);
     assert_equal(reloaded, expected);
-    g_autoptr(GVariant) cleared = evaluate(
-        root, "gnoblin.load('component.lua')\n"
-              "gnoblin.configure.shortcuts.terminal.enable=false\n"
-              "gnoblin.configure {shortcuts={},window_rules={}}\n"
-              "assert(#gnoblin.config.shortcuts==0 and #gnoblin.config['window-rules']==0)\n"
-              "gnoblin.configure {shortcuts={screenshot={"
-              "command={'grim'},binding={'Print'}}}}\n"
-              "assert(#gnoblin.config.shortcuts==1 and "
-              "gnoblin.config.shortcuts[1].command[1]=='grim')\n");
+    g_autoptr(GVariant) cleared =
+        evaluate(root, "gnoblin.load('component.lua')\n"
+                       "gnoblin.configure.shortcuts.terminal.enable=false\n"
+                       "gnoblin.configure {shortcuts={},window_rules={}}\n"
+                       "assert(#gnoblin.snapshot().shortcuts==0 and "
+                       "#gnoblin.snapshot()['window-rules']==0)\n"
+                       "gnoblin.configure {shortcuts={screenshot={"
+                       "command={'grim'},binding={'Print'}}}}\n"
+                       "assert(#gnoblin.snapshot().shortcuts==1 and "
+                       "gnoblin.snapshot().shortcuts[1].command[1]=='grim')\n");
     g_autoptr(GVariant) named =
         evaluate(root, "gnoblin.load('component.lua')\n"
                        "local snapshot=gnoblin.snapshot()\n"
@@ -204,7 +216,7 @@ int main(void) {
                        "local count=0; for name,entry in pairs(gnoblin.configure.shortcuts) do "
                        "assert(name==entry.name); count=count+1 end; assert(count==2)\n"
                        "snapshot.shortcuts[1].binding='changed'\n"
-                       "assert(gnoblin.config.shortcuts[1].binding=='<Super>Return')\n"
+                       "assert(gnoblin.snapshot().shortcuts[1].binding=='<Super>Return')\n"
                        "gnoblin.configure.shortcuts.keep.enable=false\n"
                        "gnoblin.configure.autostart.waybar={command={'waybar'}}\n"
                        "assert(gnoblin.configure.autostart.waybar.command[1]=='waybar')\n"
@@ -242,8 +254,10 @@ int main(void) {
         "gnoblin.autostart {name=4}",
         "gnoblin.configure {window_management={constrain_drag_to_work_area=true,"
         "['constrain-drag-to-work-area']=false}}",
-        "gnoblin.config.shortcuts=false; gnoblin.shortcut {name='x'}",
-        "gnoblin.config.shortcuts={bad={}}; gnoblin.remove_shortcut('x')",
+        "gnoblin.config.shortcuts=false",
+        "gnoblin.config.compositor={debug=true}",
+        "gnoblin.config.anything=1",
+        "local ignored=gnoblin.config.shortcuts",
         "gnoblin.shortcut {name='x',binding='<Super>x',command={'x'}}; "
         "gnoblin.configure.shortcuts.x.name='renamed'",
         "local t={};t.child=t;gnoblin.configure(t)",
@@ -359,6 +373,71 @@ int main(void) {
         "tostring(err))\n"
         "  local operation=g.settings.override('compositor.visual_bell', false)\n"
         "  assert(operation.alive)\n"
+        "end)\n"
+        "g.on('test.find', function(event)\n"
+        "  local function refused(fragment, ...)\n"
+        "    local ok, err=pcall(g.find, ...)\n"
+        "    assert(not ok and tostring(err):find(fragment, 1, true), tostring(err))\n"
+        "  end\n"
+        "  assert(#g.find('Window')==#g.windows.list() and #g.find('Output')==#g.outputs.list())\n"
+        "  local window=g.windows.by_id('42')\n"
+        "  assert(g.find('Window', {id='42'})[1]==window and #g.find('Window', {id='42'})==1)\n"
+        "  assert(#g.find('Window', {id='42', alive=true})==1)\n"
+        "  assert(#g.find('Window', {id='none'})==0 and #g.find('Window', {title='x'})==0)\n"
+        "  assert(#g.find('Window', function(w) return w.frame.width==800 end)==1)\n"
+        "  assert(#g.find('Window', function(w) return false end)==0)\n"
+        "  assert(g.find('Output', {primary=true})[1]==g.outputs.primary())\n"
+        "  assert(#g.find('Output', {id='HDMI-1'})==1 and #g.find('Output', {id='eDP-1'})==0)\n"
+        "  assert(#g.find('Process')==0 and #g.find('Shortcut')==#g.shortcuts.list())\n"
+        "  refused('has no nonsense field', 'Window', {nonsense=1})\n"
+        "  refused('Window.frame is not a scalar field', 'Window', {frame=1})\n"
+        "  refused('cannot list Tween', 'Tween')\n"
+        "  refused('cannot list banana', 'banana')\n"
+        "  refused('filter must be a table of fields or a function', 'Window', 5)\n"
+        "  refused('compares Window.id with a string, number or boolean', 'Window', {id={}})\n"
+        "  refused('filter keys are field names', 'Window', {'x'})\n"
+        "  refused('takes a kind and an optional filter', 'Window', nil, 1)\n"
+        "  assert(not pcall(g.windows.list, {id='42'}) and not pcall(g.layers.list, {}))\n"
+        "  assert(g.animations.surfaces==nil and g.animations.inspect==nil)\n"
+        "  assert(type(window.inspect_animation)=='function' and "
+        "type(window.preview_animation)=='function')\n"
+        "  assert(not pcall(window.inspect_animation, window))\n"
+        "  assert(not pcall(window.preview_animation, window, 'a', 5))\n"
+        "  assert(not pcall(window.move_to_workspace, window, {}))\n"
+        "  assert(not pcall(window.move_to_monitor, window, 5))\n"
+        "  g.workspaces.next()\n"
+        "end)\n"
+        "local configure_log={}\n"
+        "g.on('test.configure', function(event)\n"
+        "  if event.step=='start' then\n"
+        "    assert(not pcall(function() g.config.compositor={} end))\n"
+        "    assert(not pcall(function() return g.config.compositor end))\n"
+        "    assert(not pcall(g.snapshot))\n"
+        "    assert(type(g.config.path)=='function')\n"
+        "    assert(not pcall(function()\n"
+        "      g.configure.shortcuts.x={binding='<Super>x', command={'x'}}\n"
+        "    end))\n"
+        "    local operation=g.configure {cursor={size=31}}\n"
+        "    assert(operation.status=='pending' and operation.method=='configure')\n"
+        "    operation:on_complete(function(value, err)\n"
+        "      configure_log[#configure_log+1]=err and err.code or 'succeeded'\n"
+        "    end)\n"
+        "    local rule=g.window_rule {match={type='window'}, opacity=0.5}\n"
+        "    assert(rule.status=='pending')\n"
+        "    rule:on_complete(function(value, err)\n"
+        "      configure_log[#configure_log+1]=err and err.code or 'succeeded'\n"
+        "    end)\n"
+        "  elseif event.step=='reject' then\n"
+        "    local operation=g.configure {cursor={size='big'}}\n"
+        "    operation:on_complete(function(value, err)\n"
+        "      configure_log[#configure_log+1]='rejected:'..tostring(err and err.code)\n"
+        "    end)\n"
+        "  else\n"
+        "    assert(table.concat(configure_log, ';')=='succeeded;succeeded;"
+        "rejected:invalid_argument', table.concat(configure_log, ';'))\n"
+        "    assert(g.settings.cursor.size==31)\n"
+        "    g.workspaces.next()\n"
+        "  end\n"
         "end)\n"
         "local launch, launch_log, replaced_log=nil, {}, {}\n"
         "g.on('test.launches', function(event)\n"
@@ -1051,6 +1130,29 @@ int main(void) {
     g_assert_cmpuint(
         dispatch_counting_operations("test.no-privacy", g_variant_builder_end(&no_privacy_step)),
         ==, 1);
+
+    /* gnoblin.find selects live objects by their declared fields. The output snapshot above was
+     * replaced by one with a single output, and the window snapshot holds window 42. */
+    g_assert_cmpuint(dispatch_counting_operations("test.find", step_payload("run")), ==, 1);
+    g_autofree char* find_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_null(find_error);
+
+    /* Configuration is changed by calls that return an Operation, not by assignment. At run time
+     * gnoblin.configure finishes its Operation when the change is committed, or fails it when the
+     * change is rejected. */
+    g_assert_cmpuint(dispatch_counting_operations("test.configure", step_payload("start")), ==, 0);
+    run_deferred_callbacks();
+    g_autoptr(GVariant) reject_payload = g_variant_ref_sink(step_payload("reject"));
+    g_autoptr(GVariant) rejected =
+        gnoblin_config_dispatch_event("test.configure", reject_payload, &error);
+    g_assert_null(rejected);
+    g_assert_nonnull(error);
+    g_clear_error(&error);
+    gnoblin_config_finish_event(FALSE);
+    run_deferred_callbacks();
+    g_assert_cmpuint(dispatch_counting_operations("test.configure", step_payload("check")), ==, 1);
+    g_autofree char* configure_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_null(configure_error);
 
     /* Launches are live objects: the compositor's events move one handle per token. */
     g_autoptr(GArray) launch_ids = dispatch_operation_ids("test.launches", step_payload("begin"));

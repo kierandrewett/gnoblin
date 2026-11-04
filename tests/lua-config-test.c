@@ -536,14 +536,15 @@ int main(void) {
         "local g=require('gnoblin'); local a=require('module'); local b=require('module')\n"
         "if a~=b then error('require cache') end\n"
         "assert(type(g.animation)=='function', 'gnoblin.animation must declare animations')\n"
-        "for _,name in ipairs({'list','get','surfaces','inspect','preview'}) do\n"
+        "for _,name in ipairs({'list','get'}) do\n"
         "  assert(type(g.animations[name])=='function', 'missing gnoblin.animations.'..name)\n"
         "end\n"
-        "for _,name in ipairs({'seek','step','play','pause','stop'}) do\n"
+        "for _,name in ipairs({'surfaces','inspect','preview','seek','step','play','pause',"
+        "'stop'}) do\n"
         "  assert(g.animations[name]==nil, 'duplicate gnoblin.animations.'..name)\n"
         "end\n"
-        "g.configure {shortcuts={}}; "
-        "g.config.autostart={}\n"
+        "assert(type(g.find)=='function', 'gnoblin.find must exist')\n"
+        "g.configure {shortcuts={}, autostart={}}\n"
         "g.animation { name='test-open', event='open', duration=240, from={scale_x=0.8}, "
         "to={scale_x=1} }\n"
         "g.animation { name='test-open', duration=260 }\n"
@@ -1541,7 +1542,7 @@ int main(void) {
         "g.animation {name='test-layer-open', event='layer-open', duration=230}\n"
         "g.animation {name='test-layer-close', event='layer-close', duration=240}\n"
         "g.window_rule {match={type='layer', layer='^test%-layer$'},"
-        "animation={['in']='test-layer-open', out='test-layer-close',"
+        "animation={layer_open='test-layer-open', layer_close='test-layer-close',"
         "duration=321, easing='linear'}}\n"
         "g.window_rule {match={type='window', focused=true},"
         "corners={shadow={x=0, y=8, blur=20, opacity=0.2}}}\n"
@@ -2089,10 +2090,10 @@ int main(void) {
         "error({})\n",
         "while true do end\n",
         "local x = string.rep('x', 16 * 1024 * 1024)\n",
-        "local g=require('gnoblin'); g.config=42\n",
-        "local g=require('gnoblin'); g.config=g.array{1}\n",
-        "local g=require('gnoblin'); g.config=nil; setmetatable(g,{__index=function() error({}) "
-        "end})\n",
+        "local g=require('gnoblin'); g.config.compositor={debug=true}\n",
+        "local g=require('gnoblin'); local settings=g.config.compositor\n",
+        "local g=require('gnoblin'); setmetatable(g,{__index=function() error({}) "
+        "end}); local x=g.unknown_name\n",
         "return {1}\n",
         NULL,
     };

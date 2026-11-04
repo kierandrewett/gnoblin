@@ -124,7 +124,9 @@ function gnoblin.console.toggle() end
 ---@return ColorScheme|nil
 function gnoblin.appearance.color_scheme() end
 
----Return a detached copy of the active Lua configuration table.
+---Return a detached copy of the configuration that the files loaded so far have built, with the
+---internal hyphenated names, such as `snapshot()["window-rules"]`. Use it only while the config
+---loads; at run time it is an error, and `gnoblin.settings` holds the committed settings.
 ---@return Json
 function gnoblin.snapshot() end
 

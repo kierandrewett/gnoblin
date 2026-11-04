@@ -60,15 +60,7 @@ gnoblin.process.by_id(window.process) gives that Process while the runtime knows
 ---@field opacity number
 ---@field scale number
 ---@field rotation number
----@field offset_x number
----@field offset_y number
-
----@class WindowFilter
----@field app_id? string Exact application ID.
----@field title? string Case-insensitive substring of the title.
----@field focused? boolean Include focused windows when true, or unfocused windows when false.
----@field workspace_id? string Exact workspace ID.
----@field monitor_id? string Exact monitor ID.
+---@field offset {x: number, y: number} Drawn offset in logical pixels.
 
 ---@alias GrantScope "focus"|"begin_move"|"begin_resize"|"snap_context"|"text_target"
 
@@ -87,16 +79,6 @@ gnoblin.process.by_id(window.process) gives that Process while the runtime knows
 ---@field expires_at_us integer Monotonic time, in microseconds, when the gesture ends.
 ---@field alive boolean False when the Grant has expired, its runtime ended or it has no scope left.
 
----@class SnapContextFrame
----@field x integer X coordinate, from -100000 to 100000.
----@field y integer Y coordinate, from -100000 to 100000.
----@field width integer Width, from 1 to 32768.
----@field height integer Height, from 1 to 32768.
-
----@class SnapContextCommitArgs
----@field monitor_id string Nonempty UTF-8 monitor ID of at most 128 bytes.
----@field frame SnapContextFrame Target frame rectangle.
-
 ---@class SnapContext
 ---@field window_id string ID of the focused window captured by this context.
 ---@field monitor_id string ID of the monitor containing the focused window.
@@ -107,11 +89,9 @@ gnoblin.process.by_id(window.process) gives that Process while the runtime knows
 ---@field settings_revision integer Configuration revision captured by the context.
 ---@field native_generation integer Native session generation captured by the context.
 
----Return the current window snapshot, optionally filtered by application, title, focus, workspace,
-or monitor.
----@param filter? WindowFilter
+---Return the current window snapshot. Select windows with `gnoblin.find("Window", filter)`.
 ---@return Window[]
-function gnoblin.windows.list(filter) end
+function gnoblin.windows.list() end
 
 ---Return the focused window, or nil when no window has focus.
 ---@return Window|nil
@@ -198,13 +178,14 @@ function Window:move(x, y) end
 function Window:resize(width, height) end
 
 ---Move this window to a workspace.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
+---@param workspace Workspace|string|integer The Workspace, its stable ID, or its one-based number
+---from 1 to 1024.
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<Json>
 function Window:move_to_workspace(workspace, options) end
 
 ---Move this window to a monitor.
----@param monitor string Monitor ID.
+---@param monitor Output|string The Output that shows the monitor, or the monitor ID.
 ---@return Operation<Json>
 function Window:move_to_monitor(monitor) end
 
@@ -293,7 +274,11 @@ function Window:begin_resize(edge, grant) end
 function Window:thumbnail(width, height) end
 
 ---Commit a snap context to a monitor and frame. A context can be committed only once.
----@param request SnapContextCommitArgs
+---@param monitor Output|string The Output that shows the frame, or its monitor ID.
+---@param x integer X coordinate, from -100000 to 100000.
+---@param y integer Y coordinate, from -100000 to 100000.
+---@param width integer Width, from 1 to 32768.
+---@param height integer Height, from 1 to 32768.
 ---@return Operation<Json>
-function SnapContext:commit(request) end
+function SnapContext:commit(monitor, x, y, width, height) end
 */

@@ -68,22 +68,6 @@ gnoblin.workspaces = {}
 ---@field target? string Animation target hint.
 ---@field revision? integer Configuration revision for this record.
 
----@class AnimationSurface
----@field id string Stable surface ID.
----@field namespace string Layer-shell namespace.
----@field title string Surface title; may be empty.
-
----@class AnimationInspectOptions
----@field target? string Target ID; defaults to "active".
----@field event? string Lifecycle event override.
----@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
-
----@class AnimationPreviewOptions
----@field target? string Target ID; defaults to "active".
----@field event? string Lifecycle event override.
----@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field autoplay? boolean Start the preview immediately. Default false.
-
 ---@class AnimationInspection
 ---@field name string Animation name.
 ---@field event string Lifecycle event.
@@ -119,8 +103,10 @@ gnoblin.workspaces = {}
 ---@field ok boolean True when the preview was stopped.
 ---@field session string Stopped preview session ID.
 
----Declare or update a named animation in configuration.
+---Declare or update a named animation in configuration. Like `gnoblin.configure`, it returns an
+---Operation at run time and nothing while the config loads.
 ---@param animation AnimationArgs
+---@return Operation<nil>|nil
 function gnoblin.animation(animation) end
 
 ---Return the configured native animation records.
@@ -132,21 +118,31 @@ function gnoblin.animations.list() end
 ---@return AnimationInfo|nil
 function gnoblin.animations.get(name) end
 
----List visible layer-shell surfaces that can be targeted by animations.
----@return {surfaces: AnimationSurface[]}
-function gnoblin.animations.surfaces() end
-
----Resolve an animation against a visible target without starting it.
+---Resolve an animation against this window without starting it.
 ---@param name string Animation name.
----@param options? AnimationInspectOptions
----@return AnimationInspection
-function gnoblin.animations.inspect(name, options) end
+---@param event? string Lifecycle event override.
+---@return Operation<AnimationInspection>
+function Window:inspect_animation(name, event) end
 
----Start a controllable preview of an animation on a visible target.
+---Start a controllable preview of an animation on this window.
 ---@param name string Animation name.
----@param options? AnimationPreviewOptions
+---@param event? string Lifecycle event override.
+---@param autoplay? boolean Start the preview immediately. Default false.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.preview(name, options) end
+function Window:preview_animation(name, event, autoplay) end
+
+---Resolve an animation against this layer surface without starting it.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@return Operation<AnimationInspection>
+function LayerSurface:inspect_animation(name, event) end
+
+---Start a controllable preview of an animation on this layer surface.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@param autoplay? boolean Start the preview immediately. Default false.
+---@return Operation<AnimationPreview>
+function LayerSurface:preview_animation(name, event, autoplay) end
 
 ---Set preview progress from an AnimationPreview record.
 ---@param progress number Progress from 0 to 1.
@@ -281,6 +277,21 @@ function gnoblin.timers.after(seconds) end
 ---@return number
 function gnoblin.timers.now() end
 
+---@alias FindKind "Window"|"Workspace"|"LayerSurface"|"Output"|"Shortcut"|"Launch"|"InputSource"|"Process"
+
+---Return the live objects of one kind that match a filter, in the order of the kind's list
+---function (`gnoblin.windows.list` for "Window", and so on). Every result is the same handle that
+---the list and the events give. A table filter names fields of the kind and keeps the objects whose
+---field equals every value: strings, numbers and booleans, so `{app_id = "notes", focused = true}`.
+---A field that the kind does not declare, or that is not a scalar such as `frame`, is an error that
+---names the fields that work. A function filter is called with each object and keeps those for
+---which it returns true; use it for anything but equality, such as a title that contains a word.
+---Without a filter it returns every object.
+---@param kind FindKind The kind to search.
+---@param filter? table|fun(object: any): boolean Field values to match, or a predicate.
+---@return any[]
+function gnoblin.find(kind, filter) end
+
 ---@class WindowRuleMatch
 ---@field type? "window"|"layer" Match ordinary windows or layer surfaces.
 ---@field focused? boolean Match windows according to their current focused state.
@@ -330,11 +341,10 @@ function gnoblin.timers.now() end
 ---@field inactive_background? string Inactive frame background color.
 ---@field button_layout? string[] Native frame buttons, without duplicates; an empty list hides them.
 
----Animation names by event. The reserved `in` key aliases `layer_open`; `out` aliases `layer_close`.
+---Animation names by event.
 ---@class WindowRuleAnimation
----@field out? string Animation used when a layer closes; alias for `layer_close`.
----@field open? string Animation used when a layer opens.
----@field close? string Animation used when a layer closes.
+---@field open? string Animation used when a window opens.
+---@field close? string Animation used when a window closes.
 ---@field dialog_open? string Animation used when a dialog opens.
 ---@field dialog_close? string Animation used when a dialog closes.
 ---@field layer_open? string Animation used when a layer opens.
@@ -346,7 +356,6 @@ function gnoblin.timers.now() end
 ---@field resize? string Animation used when a window resizes.
 ---@field duration? integer Animation duration in milliseconds, from 0 to 5000.
 ---@field easing? string Animation easing.
----@field ease? string Alias for `easing`.
 
 ---@class WindowRuleArgs
 ---@field match? WindowRuleMatch Match patterns; all supplied patterns must match.
@@ -360,8 +369,11 @@ function gnoblin.timers.now() end
 ---@field frame? WindowRuleFrame Frame options.
 ---@field corners? WindowRuleCorners Corner, border, and shadow options.
 
----Append a window rule to the ordered window-rules list.
+---Append a window rule to the ordered window-rules list. While the config loads this is all it
+---does. In an event handler or callback the change is committed after the handler returns, and
+---the call returns an Operation that finishes when it is.
 ---@param rule WindowRuleArgs
+---@return Operation<nil>|nil
 function gnoblin.window_rule(rule) end
 
 ---Load and merge Lua configuration files matching a path or glob.
@@ -374,8 +386,18 @@ function gnoblin.load(pattern) end
 ---@return table values
 function gnoblin.array(values) end
 
----Merge settings into the active Lua configuration.
+---Merge settings into the configuration. This is the one way to change settings from Lua; there
+---is no assignment to a settings table.
+---
+---While the config files load it only merges and returns nothing. In an event handler or
+---callback the merged settings are validated and committed after the handler returns, and the
+---call returns an Operation that succeeds when they are committed. It fails with the code
+---"invalid_argument" when validation rejects them, or when a handler of the same event raised an
+---error, which undoes every change of that event. A change lasts until the configuration is
+---reloaded. `gnoblin.settings.override(path, value)` is the revocable alternative for one
+---setting.
 ---@param settings table Settings table to merge into the active configuration.
+---@return Operation<nil>|nil
 function gnoblin.configure(settings) end
 
 ---Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.
@@ -732,11 +754,6 @@ function Launch:watch(property, fn) end
 ---@field requested boolean Whether the session asks for privacy screens to be on. This one request applies to every output.
 ---@field source "runtime"|"system"|"config" What sets the request: a runtime override from gnoblin.settings.override("monitors.privacy_screen", value), the configuration, or the system setting.
 
----@class LayerFilter
----@field monitor_id? string Exact monitor ID.
----@field namespace? string Exact layer namespace.
----@field layer? string Exact layer type.
-
 ---@class LayerSurface
 ---@field id string Stable layer surface ID.
 ---@field alive boolean False once the surface has been removed. Every read of one surface returns this same object, updated with each change.
@@ -753,10 +770,10 @@ function Launch:watch(property, fn) end
 ---@field window_shadow any Shadow policy for windows matching the layer namespace.
 ---@field revision integer Configuration revision.
 
----Return the current layer surface snapshot, optionally filtered.
----@param filter? LayerFilter
+---Return the current layer surface snapshot. Select layer surfaces with
+---`gnoblin.find("LayerSurface", filter)`.
 ---@return LayerSurface[]
-function gnoblin.layers.list(filter) end
+function gnoblin.layers.list() end
 
 ---Call fn(layer, ...) on a signal of this layer surface: "changed" (with the list of changed
 ---fields) or "closed". Listening ends after "closed".
@@ -766,15 +783,15 @@ function gnoblin.layers.list(filter) end
 function LayerSurface:on(signal, fn) end
 
 ---Call fn(layer, value, old) when one field of this layer surface changes.
----@param property string A field of LayerSurface, such as "geometry".
+---@param property string A field of LayerSurface, such as "title" or "layer".
 ---@param fn fun(layer: LayerSurface, value: any, old: any)
 ---@return Subscription
 function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
----@param namespace string UTF-8 namespace from 1 to 128 bytes.
+---@param layer LayerSurface|string A layer surface, or a UTF-8 namespace from 1 to 128 bytes.
 ---@return LayerAnimationPolicy
-function gnoblin.layers.animation_policy(namespace) end
+function gnoblin.layers.animation_policy(layer) end
 
 ---@class OutputMode
 ---@field width integer Width in physical pixels.
@@ -1041,7 +1058,9 @@ function gnoblin.console.toggle() end
 ---@return ColorScheme|nil
 function gnoblin.appearance.color_scheme() end
 
----Return a detached copy of the active Lua configuration table.
+---Return a detached copy of the configuration that the files loaded so far have built, with the
+---internal hyphenated names, such as `snapshot()["window-rules"]`. Use it only while the config
+---loads; at run time it is an error, and `gnoblin.settings` holds the committed settings.
 ---@return Json
 function gnoblin.snapshot() end
 
@@ -1350,15 +1369,7 @@ function Tween:watch(property, fn) end
 ---@field opacity number
 ---@field scale number
 ---@field rotation number
----@field offset_x number
----@field offset_y number
-
----@class WindowFilter
----@field app_id? string Exact application ID.
----@field title? string Case-insensitive substring of the title.
----@field focused? boolean Include focused windows when true, or unfocused windows when false.
----@field workspace_id? string Exact workspace ID.
----@field monitor_id? string Exact monitor ID.
+---@field offset {x: number, y: number} Drawn offset in logical pixels.
 
 ---@alias GrantScope "focus"|"begin_move"|"begin_resize"|"snap_context"|"text_target"
 
@@ -1377,16 +1388,6 @@ function Tween:watch(property, fn) end
 ---@field expires_at_us integer Monotonic time, in microseconds, when the gesture ends.
 ---@field alive boolean False when the Grant has expired, its runtime ended or it has no scope left.
 
----@class SnapContextFrame
----@field x integer X coordinate, from -100000 to 100000.
----@field y integer Y coordinate, from -100000 to 100000.
----@field width integer Width, from 1 to 32768.
----@field height integer Height, from 1 to 32768.
-
----@class SnapContextCommitArgs
----@field monitor_id string Nonempty UTF-8 monitor ID of at most 128 bytes.
----@field frame SnapContextFrame Target frame rectangle.
-
 ---@class SnapContext
 ---@field window_id string ID of the focused window captured by this context.
 ---@field monitor_id string ID of the monitor containing the focused window.
@@ -1397,10 +1398,9 @@ function Tween:watch(property, fn) end
 ---@field settings_revision integer Configuration revision captured by the context.
 ---@field native_generation integer Native session generation captured by the context.
 
----Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.
----@param filter? WindowFilter
+---Return the current window snapshot. Select windows with `gnoblin.find("Window", filter)`.
 ---@return Window[]
-function gnoblin.windows.list(filter) end
+function gnoblin.windows.list() end
 
 ---Return the focused window, or nil when no window has focus.
 ---@return Window|nil
@@ -1487,13 +1487,14 @@ function Window:move(x, y) end
 function Window:resize(width, height) end
 
 ---Move this window to a workspace.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
+---@param workspace Workspace|string|integer The Workspace, its stable ID, or its one-based number
+---from 1 to 1024.
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<Json>
 function Window:move_to_workspace(workspace, options) end
 
 ---Move this window to a monitor.
----@param monitor string Monitor ID.
+---@param monitor Output|string The Output that shows the monitor, or the monitor ID.
 ---@return Operation<Json>
 function Window:move_to_monitor(monitor) end
 
@@ -1581,13 +1582,17 @@ function Window:begin_resize(edge, grant) end
 function Window:thumbnail(width, height) end
 
 ---Commit a snap context to a monitor and frame. A context can be committed only once.
----@param request SnapContextCommitArgs
+---@param monitor Output|string The Output that shows the frame, or its monitor ID.
+---@param x integer X coordinate, from -100000 to 100000.
+---@param y integer Y coordinate, from -100000 to 100000.
+---@param width integer Width, from 1 to 32768.
+---@param height integer Height, from 1 to 32768.
 ---@return Operation<Json>
-function SnapContext:commit(request) end
+function SnapContext:commit(monitor, x, y, width, height) end
 
 ---@class Workspace
 ---@field alive boolean False once the workspace has been removed. Every read of one workspace returns this same object, updated with each change.
----@field id? string Stable workspace ID. The current native workspace snapshot does not provide this field.
+---@field id string Stable workspace ID: the one declared in `gnoblin.configure.workspaces`, the one `create` was given, or the session ID `@session-N` that Gnoblin assigns.
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
@@ -1595,7 +1600,7 @@ function SnapContext:commit(request) end
 ---@field revision integer State revision of this snapshot; it goes up with every change of the workspace list, so a rename gives a higher number.
 
 ---@class WorkspaceCreateOptions
----@field id? string Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor rejects it.
+---@field id? string Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. The workspace keeps it for the session only; an ID declared in `gnoblin.configure.workspaces` lasts across sessions.
 ---@field activate? boolean Activate the new workspace after creation. Default false.
 
 ---@class WorkspaceMoveOptions
@@ -1609,7 +1614,9 @@ function gnoblin.workspaces.list() end
 ---@return Workspace|nil
 function gnoblin.workspaces.active() end
 
----Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.
+---Find a workspace by its stable ID. Returns nil when no workspace has it. The ID comes from
+---`gnoblin.configure.workspaces` or `create`, or is the session ID `@session-N` that Gnoblin gave
+---it.
 ---@param id string Stable workspace ID.
 ---@return Workspace|nil
 function gnoblin.workspaces.by_id(id) end
