@@ -158,6 +158,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->pending_runtime_events = g_queue_new();
     control->pending_input_events = g_queue_new();
     control->held_input_dispositions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    control->pressed_keys = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
     control->privacy_handles =
         g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref, NULL);
     control->privacy_revision = 1;
@@ -707,6 +708,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         control->pending_input_events = NULL;
     }
     g_clear_pointer(&control->held_input_dispositions, g_hash_table_unref);
+    g_clear_pointer(&control->pressed_keys, g_hash_table_unref);
     g_clear_pointer(&control->accepted_input_requests, g_hash_table_unref);
     g_clear_pointer(&control->input_policy_error, g_free);
     control->path = NULL;

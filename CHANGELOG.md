@@ -104,7 +104,7 @@
       `grab:renew()` runs or a key event arrives; each key event starts the timeout again, because
       someone who types still needs the grab.
     - `grab:on("key", fn)` gets `{key, keysym, keycode, modifiers, pressed, repeated, text,
-      composing, time}`. `text` is the character a press types. Gnoblin feeds each press to the
+composing, time}`. `text` is the character a press types. Gnoblin feeds each press to the
       compose table of the locale (xkbcommon), so a dead key or a Compose sequence gives one
       composed character on the key that completes it, and `composing` is true inside the sequence;
       a key that breaks the sequence has its own text.
@@ -114,6 +114,9 @@
     - The grab refuses to start while the session is locked and ends when it locks. It never takes
       the keyboard from a shortcut session or `shortcuts.capture`, and they cannot start while it
       holds the keyboard. Its events carry no `focus_context`.
+    - The grab refuses to start while any key is down. Mutter gives the release of a held key to
+      the grab, so the focused application, which saw the press, would never see the key lift.
+      The refusal names the held key. Start a grab from a key release or a later event.
     - Shortcut sessions keep their fixed 10 second timer. It guards a user gesture against a lost
       key release and nothing owns it, so nothing can renew it; a script-renewed lease would let
       a script hold a session open, and a grab that carries a `focus_context` would let a script

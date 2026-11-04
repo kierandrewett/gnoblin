@@ -812,6 +812,7 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const C
     const char* type = event ? native_input_event_type(event) : NULL;
     if (!control || control->stopping)
         return FALSE;
+    gnoblin_control_track_pressed_key(control, event);
     /* A pointer button pressed while a bare Super session captures keys is a window chord such as
      * Super + drag, not a Super tap. End the session so it neither swallows the button nor fires on
      * Super's release, and the press reaches the compositor's pointer bindings. */

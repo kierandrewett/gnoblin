@@ -178,6 +178,33 @@ static char* press_text(InputGrab* grab, xkb_keysym_t keysym, guint32 state, gbo
     return keysym_text(keysym);
 }
 
+/* Keep the set of keys that are physically down. The stage input filter sees every key event
+ * first, also while a grab or a shortcut capture owns the keyboard, so the set stays true. A grab
+ * reads it: Mutter sends the release of a held key to the grab, and the application that saw the
+ * press would never see the key lift. */
+void gnoblin_control_track_pressed_key(GnoblinNativeControl* control, const ClutterEvent* event) {
+    if (!control->pressed_keys || !event)
+        return;
+    ClutterEventType type = clutter_event_type(event);
+    if (type != CLUTTER_KEY_PRESS && type != CLUTTER_KEY_RELEASE)
+        return;
+    if (clutter_event_get_flags(event) &
+        (CLUTTER_EVENT_FLAG_SYNTHETIC | CLUTTER_EVENT_FLAG_INPUT_METHOD))
+        return;
+    gpointer code = GUINT_TO_POINTER(clutter_event_get_key_code(event));
+    if (type == CLUTTER_KEY_RELEASE) {
+        g_hash_table_remove(control->pressed_keys, code);
+        return;
+    }
+    if (g_hash_table_contains(control->pressed_keys, code))
+        return;
+    xkb_keysym_t keysym = clutter_event_get_key_symbol(event);
+    char name[64] = {0};
+    if (xkb_keysym_get_name(keysym, name, sizeof name) < 0)
+        g_snprintf(name, sizeof name, "0x%x", keysym);
+    g_hash_table_insert(control->pressed_keys, code, g_strdup(name));
+}
+
 /* The native key capture handler's grab branch: `event` is a key event, or NULL when Mutter
  * takes the keyboard back (a popup or other stage grab opened). */
 void gnoblin_control_input_grab_key(GnoblinNativeControl* control, const ClutterEvent* event) {
@@ -292,6 +319,20 @@ GVariant* gnoblin_control_input_grab(GnoblinNativeControl* control, gint64 opera
     if (control->active_shortcut_session || control->shortcut_capture_active) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_BUSY,
                             "a shortcut session or shortcut capture is holding the keyboard");
+        return NULL;
+    }
+    /* Mutter gives the release of a key held now to the grab, so the application that saw the
+     * press would never see the key lift. Refuse until every key is up. */
+    if (control->pressed_keys && g_hash_table_size(control->pressed_keys) > 0) {
+        GHashTableIter held;
+        gpointer name = NULL;
+        g_hash_table_iter_init(&held, control->pressed_keys);
+        g_hash_table_iter_next(&held, NULL, &name);
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_BUSY,
+                    "keyboard input cannot be grabbed while a key is held (%s); its release would "
+                    "go to the grab and the focused application would never see the key lift. "
+                    "Start the grab when every key is up",
+                    (const char*)name);
         return NULL;
     }
     gnoblin_control_input_grab_end(control, "replaced", TRUE);

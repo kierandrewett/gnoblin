@@ -26,7 +26,8 @@ grab:on("closed", function(grab, reason)
 end)
 ```
 
-Call `gnoblin.input.grab` while you handle an event, as with every operation that changes the session.
+Call `gnoblin.input.grab` while you handle an event, as with every operation that changes the session. No key may be
+down when the grab starts. See [what a grab cannot do](#what-a-grab-cannot-do).
 
 ## The lease
 
@@ -135,8 +136,10 @@ runtime. The compositor gives the keyboard back in every case.
 - Its key events carry no `grant`. A grab cannot move, resize or focus a window with the keys it holds, which a
   trusted shortcut can.
 - It does not change the focus. The focused window stays focused, but it gets no keys.
-- A key that is held when the grab starts has its release go to the grab, so the focused application can see a key that
-  never lifts. Start a grab from a key release, or when no key is down.
+- It refuses to start while any key is down. Mutter would give the release of that key to the grab, and the focused
+  application, which saw the press, would never see the key lift. The `Grab` ends when the compositor answers, with a
+  reason that names the key that is held. A shortcut that fires on a press has its keys down, so start the grab from a
+  key release, from a timer, or from a later event.
 
 ## Why shortcut sessions keep their own timer
 

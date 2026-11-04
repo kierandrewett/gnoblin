@@ -610,10 +610,12 @@ function TextTarget:insert_text(text) end
 
 ---Take the keyboard and return the Grab. The Grab exists at once; if the compositor refuses it
 ---(the session is locked, or a modal or capture_input shortcut session or a shortcut capture
----holds the keyboard), it ends and its "closed" listeners get the reason. The grab starts with
----its timeout running, so renew it if the script has nothing to receive for a while. A key held
----when the grab starts has its release go to the grab, so start a grab from a key release or when
----no key is down. Call this while handling an event, as with every operation.
+---holds the keyboard, or any key is held down), it ends and its "closed" listeners get the
+---reason. A key held when a grab starts would have its release go to the grab, and the focused
+---application would never see the key lift, so the compositor refuses a grab while a key is down:
+---start it from a key release, or later. The grab starts with its timeout running, so renew it if
+---the script has nothing to receive for a while. Call this while handling an event, as with every
+---operation.
 ---@param options? GrabOptions
 ---@return Grab
 function gnoblin.input.grab(options) end
