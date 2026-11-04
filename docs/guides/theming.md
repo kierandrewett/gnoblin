@@ -36,7 +36,7 @@ loaded, then replaces the window-rule list with the current palette each time
 GNOME reports a change:
 
 ```lua
-local base_rules = gnoblin.snapshot().window_rules or {}
+local base_rules = gnoblin.snapshot()["window-rules"] or {}
 
 gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
     local rules = {}
@@ -50,6 +50,10 @@ gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
     gnoblin.configure {window_rules = rules}
 end)
 ```
+
+The example takes the snapshot while the config loads, because `gnoblin.snapshot()`
+raises an error at run time. Inside the handler, `gnoblin.configure` returns an
+`Operation` that succeeds when the compositor commits the rules.
 
 The event reports changes after the subscription starts; it does not replay the
 current preference. Add an initial window rule to the config if you want a

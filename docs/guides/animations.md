@@ -283,13 +283,13 @@ Layer surfaces use `layer-open` and `layer-close`. Match a namespace in a
 ```lua
 gnoblin.window_rule {
     match = {type = "layer", layer = "^my-panel$"},
-    animation = { ["in"] = "gnoblin-layer-open", out = "gnoblin-layer-close" },
+    animation = {layer_open = "gnoblin-layer-open", layer_close = "gnoblin-layer-close"},
 }
 ```
 
 For custom motion, register separate `soft-layer-open` and `soft-layer-close`
 animations with events `layer-open` and `layer-close`. Use their names in the
-`in` and `out` fields.
+`layer_open` and `layer_close` fields.
 
 The layer's anchors determine the default slide direction. Explicit `x` and
 `y` keyframes can override it. Select a preview target by layer ID or namespace.

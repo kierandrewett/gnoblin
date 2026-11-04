@@ -25,27 +25,28 @@ The Lua runtime exposes animation controls through `gnoblin.animations`. Keep
 `gnoblin.animation { ... }` for declaring or updating a named animation in
 configuration.
 
-| Method                                       | Arguments                                      | Successful result                            |
-| -------------------------------------------- | ---------------------------------------------- | -------------------------------------------- |
-| `gnoblin.animations.list()`                  | None                                           | Read-only `AnimationInfo[]`                  |
-| `gnoblin.animations.get(name)`               | Animation name                                 | Read-only `AnimationInfo` or `nil`           |
-| `gnoblin.animations.surfaces()`              | None                                           | `{surfaces = {Surface, ...}}`                |
-| `gnoblin.animations.inspect(name, options?)` | Name; options `target`, `event`, `target_type` | Animation details and resolved specification |
-| `gnoblin.animations.preview(name, options?)` | Name; the inspect options and `autoplay`       | `AnimationPreview` record                    |
+| Method                                              | Arguments                  | Successful result                  |
+| --------------------------------------------------- | -------------------------- | ---------------------------------- |
+| `gnoblin.animations.list()`                         | None                       | Read-only `AnimationInfo[]`        |
+| `gnoblin.animations.get(name)`                      | Animation name             | Read-only `AnimationInfo` or `nil` |
+| `target:inspect_animation(name, event?)`            | Name; optional event       | `Operation<AnimationInspection>`   |
+| `target:preview_animation(name, event?, autoplay?)` | Name; optional event; flag | `Operation<AnimationPreview>`      |
+
+`target` is a `Window` or a `LayerSurface`. Find one with `gnoblin.windows.active()`,
+`gnoblin.find("Window", filter)` or `gnoblin.find("LayerSurface", filter)`. The calls take no
+window ID, layer ID or target type: the object you call is the target.
 
 `gnoblinctl lua` supports the same preview record methods. The CLI waits for each
 operation and returns the updated read-only preview, or the stop result.
 
-| Field         | Accepted value                                  | Meaning                                       |
-| ------------- | ----------------------------------------------- | --------------------------------------------- |
-| `target_type` | `window` (default), `layer`, or `namespace`     | Selects how to resolve `target`.              |
-| `target`      | `"active"` or window ID; layer ID; or namespace | Identifies the preview target.                |
-| `name`        | 1–80 ASCII letters, digits, `_` or `-`          | Selects an animation.                         |
-| `event`       | Optional lowercase kebab-case event name        | Selects an event supported by that animation. |
-| `autoplay`    | Boolean; default `false`                        | Starts a preview immediately when `true`.     |
+| Argument   | Accepted value                           | Meaning                                       |
+| ---------- | ---------------------------------------- | --------------------------------------------- |
+| `name`     | 1–80 ASCII letters, digits, `_` or `-`   | Selects an animation.                         |
+| `event`    | Optional lowercase kebab-case event name | Selects an event supported by that animation. |
+| `autoplay` | Boolean; default `false`                 | Starts a preview immediately when `true`.     |
 
 See the [animation guide](/guides/animations) for supported animation events.
-In Lua, `gnoblin.animations.preview(name, options?)` returns an `Operation`. Its
+In Lua, `window:preview_animation(name, event?, autoplay?)` returns an `Operation`. Its
 successful value is an `AnimationPreview`, a live object like a
 [window](/shell-api/windows#live-window-objects): one handle for one `id`, which each call
 on it updates. The compositor names a preview by its `id`; the record has no other name for it.
@@ -75,11 +76,7 @@ then play from there:
 
 ```lua
 gnoblin.on("gnoblin.window.created", function(event)
-    local request = gnoblin.animations.preview("gnome-open", {
-        event = "open",
-        target = event.window.id,
-        target_type = "window",
-    })
+    local request = event.window:preview_animation("gnome-open", "open")
 
     request:on_complete(function(preview, error)
         if error then

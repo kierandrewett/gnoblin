@@ -4,20 +4,32 @@
 
 The native Mutter runtime exposes the window state directly:
 
-| Lua call                        | Arguments                                                                   | Result                   |
-| ------------------------------- | --------------------------------------------------------------------------- | ------------------------ |
-| `gnoblin.windows.list(filter?)` | Optional `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` filters | `Window` objects         |
-| `gnoblin.windows.focused()`     | None                                                                        | `Window` object or `nil` |
-| `gnoblin.windows.by_id(id)`     | Stable string window ID                                                     | `Window` object or `nil` |
+| Lua call                          | Arguments                               | Result                   |
+| --------------------------------- | --------------------------------------- | ------------------------ |
+| `gnoblin.windows.list()`          | None                                    | `Window` objects         |
+| `gnoblin.windows.focused()`       | None                                    | `Window` object or `nil` |
+| `gnoblin.windows.by_id(id)`       | Stable string window ID                 | `Window` object or `nil` |
+| `gnoblin.find("Window", filter?)` | A table of field values, or a predicate | `Window` objects         |
 
-Window filter values:
+`gnoblin.windows.list()` takes no filter. To select windows, call `gnoblin.find("Window", filter)`.
 
-- `title` takes a string and matches a case-insensitive substring.
-- `focused` takes a boolean.
-- `app_id`, `workspace_id`, and `monitor_id` take strings and match exactly.
+- A table filter keeps the windows whose fields equal every value you give. It accepts any scalar field of
+  `Window`, such as `app_id`, `title`, `focused`, `workspace_id` or `monitor_id`.
+- A predicate filter is a function that receives each window and returns `true` to keep it.
 
-Unknown filter names or values of the wrong type raise a Lua error. These reads
-use a cached native snapshot and return immediately; they do not create an
+See [find](/shell-api/find).
+
+```lua
+local terminals = gnoblin.find("Window", {app_id = "org.gnome.Console"})
+local drafts = gnoblin.find("Window", function(window)
+    return window.title:find("draft", 1, true) ~= nil
+end)
+```
+
+A filter that names a field `Window` does not have, or a field that is not a scalar such as `frame`, raises a Lua
+error that lists the fields that work.
+
+These reads use a cached native snapshot and return immediately. They do not create an
 `Operation`. Each object includes a state revision.
 
 Gnoblin refreshes both collections in one coalesced main-loop publication. A
@@ -68,22 +80,22 @@ Window and workspace objects expose methods that queue the corresponding
 typed operation. Call them with colon syntax from a runtime event callback.
 Each method returns an `Operation` handle.
 
-| Window method                                   | Arguments                                 | Effect                                                       |
-| ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
-| `window:close()`                                | None                                      | Ask the application to close.                                |
-| `window:kill()`                                 | None                                      | Kill the client process; use it when `unresponsive` is true. |
-| `window:set_minimized(enabled)`                 | Boolean                                   | Minimize the window, or remove minimization.                 |
-| `window:restore_or_minimize()`                  | None                                      | Unmaximize, restore the pre-snap frame, or minimize.         |
-| `window:set_maximized(enabled)`                 | Boolean                                   | Set maximization.                                            |
-| `window:set_fullscreen(enabled)`                | Boolean                                   | Set fullscreen.                                              |
-| `window:set_above(enabled)`                     | Boolean                                   | Set the above state.                                         |
-| `window:set_sticky(enabled)`                    | Boolean                                   | Set visibility across workspaces.                            |
-| `window:move(x, y)`                             | Integers from −100000 to 100000           | Move in logical desktop pixels.                              |
-| `window:resize(width, height)`                  | Integers from 1 to 32768                  | Resize in logical pixels.                                    |
-| `window:move_to_workspace(workspace, options?)` | Workspace ID or number; option `follow`   | Move this window and optionally activate the destination.    |
-| `window:move_to_monitor(monitor)`               | Monitor connector ID                      | Move this window to an active monitor.                       |
-| `window:thumbnail(width, height)`               | Width from 1 to 480, height from 1 to 320 | Capture a bounded compositor-rendered PNG preview.           |
-| `window:present()`                              | None                                      | Focus a window of a process the runtime started.             |
+| Window method                                   | Arguments                                          | Effect                                                       |
+| ----------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| `window:close()`                                | None                                               | Ask the application to close.                                |
+| `window:kill()`                                 | None                                               | Kill the client process; use it when `unresponsive` is true. |
+| `window:set_minimized(enabled)`                 | Boolean                                            | Minimize the window, or remove minimization.                 |
+| `window:restore_or_minimize()`                  | None                                               | Unmaximize, restore the pre-snap frame, or minimize.         |
+| `window:set_maximized(enabled)`                 | Boolean                                            | Set maximization.                                            |
+| `window:set_fullscreen(enabled)`                | Boolean                                            | Set fullscreen.                                              |
+| `window:set_above(enabled)`                     | Boolean                                            | Set the above state.                                         |
+| `window:set_sticky(enabled)`                    | Boolean                                            | Set visibility across workspaces.                            |
+| `window:move(x, y)`                             | Integers from −100000 to 100000                    | Move in logical desktop pixels.                              |
+| `window:resize(width, height)`                  | Integers from 1 to 32768                           | Resize in logical pixels.                                    |
+| `window:move_to_workspace(workspace, options?)` | `Workspace`, its ID or its number; option `follow` | Move this window and optionally activate the destination.    |
+| `window:move_to_monitor(monitor)`               | `Output`, or a monitor connector ID                | Move this window to an active monitor.                       |
+| `window:thumbnail(width, height)`               | Width from 1 to 480, height from 1 to 320          | Capture a bounded compositor-rendered PNG preview.           |
+| `window:present()`                              | None                                               | Focus a window of a process the runtime started.             |
 
 Record properties remain read-only. In the native runtime,
 `Window:focus(grant)` requests focus with the [`grant`](/shell-api/grants) of
@@ -184,7 +196,7 @@ used as `window:begin_move(event.grant)`. The console
 hides the token and sends the operation over the event's connection. App-menu
 events get no grant.
 
-On the socket, the `menu_context` token expires after five seconds and is consumed on every matching attempt,
+On the socket, the wire event carries a `menu_context` token in place of the `grant`. It expires after five seconds and is consumed on every matching attempt,
 including malformed arguments. The [compositor bridge](/bridge/)
 documents the socket form. Gnoblin rechecks the window and lock state before
 using a fresh Mutter timestamp.

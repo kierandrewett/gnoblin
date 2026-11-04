@@ -30,6 +30,14 @@ These methods return immediately:
 | `gnoblin.workspaces.active()`  | None                | Active workspace or `nil`       |
 | `gnoblin.workspaces.by_id(id)` | String workspace ID | Matching workspace or `nil`     |
 
+To select workspaces by field, call `gnoblin.find("Workspace", filter)`. A table filter matches
+declared scalar fields such as `id`, `number`, `name` and `active`, and a predicate function
+also works. See [find](/shell-api/find).
+
+```lua
+local active = gnoblin.find("Workspace", {active = true})[1]
+```
+
 Like [window objects](/shell-api/windows#live-window-objects), every read of
 one workspace returns the same object, updated with each change:
 
@@ -55,12 +63,13 @@ under its session ID.
 
 Change one workspace through its object, and move a window with
 `window:move_to_workspace(workspace, options?)`. A workspace argument there is a
-workspace ID string or a one-based workspace number from 1 to 1024:
+`Workspace` object, its ID string or a one-based workspace number from 1 to 1024:
 
 ```lua
 gnoblin.workspaces.list()[2]:activate()
 gnoblin.workspaces.by_id("mail"):rename("Mail")
 gnoblin.windows.focused():move_to_workspace(3, {follow = true})
+gnoblin.windows.focused():move_to_workspace(gnoblin.workspaces.by_id("mail"))
 ```
 
 Mutations return operation handles and complete asynchronously. For socket

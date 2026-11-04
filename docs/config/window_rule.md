@@ -117,17 +117,17 @@ shadow layers.
 Choose a built-in or registered animation name. To select names by event, use
 a table:
 
-- `in` and `out` alias `layer-open` and `layer-close`.
-- `duration` and `easing` (or `ease`) override the selected animation.
+- Use `layer_open` and `layer_close` for layer surfaces.
+- `duration` and `easing` override the selected animation.
 
 See the [animation guide](/guides/animations#register-a-custom-animation) for
 supported events and presets.
 
-| Field                              | Values                                                     |
-| ---------------------------------- | ---------------------------------------------------------- |
-| `animation["in"]`, `animation.out` | Built-in or registered animation name                      |
-| `animation.duration`               | 0–5000 ms                                                  |
-| `animation.easing`                 | Same easing values as `gnoblin.configure` shell animations |
+| Field                                                                                | Values                                                     |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| `animation.open`, `animation.close`, `animation.layer_open`, `animation.layer_close` | Built-in or registered animation name                      |
+| `animation.duration`                                                                 | 0–5000 ms                                                  |
+| `animation.easing`                                                                   | Same easing values as `gnoblin.configure` shell animations |
 
 Omitted values inherit shell settings. `in` needs brackets because it is a Lua keyword.
 
@@ -223,7 +223,6 @@ gnoblin.window_rule {
     shader = string?,
     shader_uniforms = {string = number}?,
     animation = string | {
-        ["in"] = string?, out = string?,
         open = string?, close = string?,
         dialog_open = string?, dialog_close = string?,
         layer_open = string?, layer_close = string?,
@@ -232,7 +231,6 @@ gnoblin.window_rule {
         resize = string?,
         duration = integer?, -- 0–5000 ms
         easing = string?,
-        ease = string?, -- alias for easing
     }?,
     workspace = {id = string} | {number = integer}?,
     corners = {

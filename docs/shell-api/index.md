@@ -2,11 +2,12 @@
 
 Use the Lua runtime API to read compositor state, handle events, and request session actions from a shell integration.
 
-The supervised Lua runtime is available in the standalone Gnoblin session. Its API version is `1.81` in the current source. Callback code runs outside Mutter's compositor thread; keep event callbacks short and nonblocking.
+The supervised Lua runtime is available in the standalone Gnoblin session. Its API version is `1.92` in the current source. Callback code runs outside Mutter's compositor thread; keep event callbacks short and nonblocking.
 
 ## API domains
 
-- [Windows](/shell-api/windows): snapshots, window actions, menu and focus contexts.
+- [Windows](/shell-api/windows): live window objects, window actions, menu requests and grants.
+- [Find objects](/shell-api/find): select windows, workspaces, outputs and other objects by field or by predicate.
 - [Focus and activation](/shell-api/focus-activation): focus policy, history, activation tokens, and trusted contexts.
 - [Workspaces](/shell-api/workspaces): state and operations.
 - [Outputs](/shell-api/outputs): display outputs, modes, and renderer state.
@@ -32,7 +33,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 
 ## Shared conventions
 
-Read-only calls return detached snapshots. Runtime mutations return an `Operation` handle and complete asynchronously. See [Operations, errors and timers](/shell-api/errors) and [shared runtime types](/shell-api/types).
+Read-only calls return live objects or detached snapshots. Runtime mutations return an `Operation` handle and complete asynchronously. See [Operations, errors and timers](/shell-api/errors) and [shared runtime types](/shell-api/types).
 
 Subscribe with `gnoblin.on(name, callback)`, or `gnoblin.once(name, callback)` for one event. See the [event reference](/events/).
 
@@ -50,7 +51,11 @@ print(focus_mode, gnoblin.settings.revision)
 `gnoblin.settings.override(path, value)` layers a value over one committed setting without changing this snapshot. See
 [overrides](/shell-api/overrides).
 
-`gnoblin.snapshot()` returns a detached copy of the Lua configuration view. Use `gnoblin.settings` for immutable reads of committed settings.
+`gnoblin.snapshot()` returns a detached copy of the configuration that the files loaded so far have built. It works only while the config loads; at run time it raises an error. Use `gnoblin.settings` to read committed settings.
+
+`gnoblin.config` is not a settings table. It holds `path()`, `default()` and `restore_default()`, and assigning to it raises an error. Declare settings with `gnoblin.configure`.
+
+At run time, the declaration calls return an `Operation` that succeeds when the compositor commits the change. These are `gnoblin.configure`, `gnoblin.window_rule` and `gnoblin.animation`.
 
 `gnoblin.version()` returns an immutable record with string fields `gnoblin`, `gnome`, `mutter`, `lua`, `api`, `git_remote`, `git_sha`, and `build_id`. Missing values are returned as `"unknown"`. User information, query strings, and fragments are removed from remote URLs.
 

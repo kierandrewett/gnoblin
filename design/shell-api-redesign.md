@@ -1,7 +1,8 @@
 # Shell API redesign: gaps and plan
 
 Status: implemented on `refactor/lua-api-table`: the `lua_api[]` descriptor table and phases 1 to 4, plus the object
-model (live objects, window visual transforms and native tweens). Phase 5 below stays open by design. The findings come from six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and
+model (live objects, window visual transforms and native tweens). Phase 5 and round 2 are done; the open items are
+listed under "Open decisions". The findings come from six read-only audits of the Lua API stubs (`src/config/lua/api/*.h`), the runtime and
 control code, and the docs; items the auditors could not confirm in source were checked before implementation.
 
 ## The pattern behind the original bug
@@ -94,7 +95,8 @@ Each phase leaves the tree working and is its own pull request.
    shell process answered it.
 4. **Conventions. Done.** Positional signatures driven by the annotations (`named_arguments` in `lua_api[]`, one
    adapter); duplicate Lua names removed while their wire names stay for shells. `configure`, `animation`,
-   `window_rule` and `array` keep a table because they declare data; filters stay trailing option tables.
+   `window_rule` and `array` keep a table because they declare data. `gnoblin.find(kind, filter?)` selects objects, and
+   `gnoblin.focus.history(filter?)` keeps a trailing filter because its result has an order and a limit.
 5. **Overrides, input grabs, idle.** Gaps 8, 9, 11.
 
 **Object model. Done.** Windows, workspaces and layer surfaces are interned live objects with `alive`, `on` and
@@ -126,9 +128,10 @@ and gap 7 are done (see the end of this list).
   the `monitors.*` wire reads stay for socket clients only. Privacy screen is one global
   request: Mutter applies a single setting to every capable monitor and syncs the hotkey back
   to it, so a per-output request would need a Mutter patch. A method on one `Output` that
-  changes the other outputs was misleading, so the write is `gnoblin.outputs.set_privacy_screen(value)`
-  (`true`, `false` or `"inherit"`; `true` and `false` fail when no output has the hardware) and
-  `Output` keeps only the `privacy_screen` read property, its `watch` and the `changed` signal.
+  changes the other outputs was misleading, so `Output` keeps only the `privacy_screen` read property, its
+  `watch` and the `changed` signal. The session-wide write was `gnoblin.outputs.set_privacy_screen(value)` at this
+  step; gap 8 replaced it with `gnoblin.settings.override("monitors.privacy_screen", value)`, which fails for
+  `true` and `false` when no output has the hardware.
 - Step (c), done. `shortcuts.bind` returns a `Shortcut` and `launches.begin` returns a `Launch`
   (both interned, with `alive`, `on`; a `Launch` also has `watch`). `unbind`, `end_session` and
   `finish` are methods; `shortcuts.unbind`, `shortcuts.end_session` and `launches.finish` are
@@ -240,12 +243,12 @@ and gap 7 are done (see the end of this list).
       worker ends its grabs with `runtime_stopped` when its main loop returns. A restarted worker loses its
       grab with no signal; the compositor gives the keyboard back.
     - Boundaries kept. The call refuses while the session is locked (Mutter does not call the capture
-      handler during a lock either). Grab events carry no `focus_context`, so a script cannot focus or move a
-      window with held keys. A grab never takes the capture slot from a shortcut session or
+      handler during a lock either). Grab events carry no `Grant` (gap 7 renamed `focus_context`), so a script
+      cannot focus or move a window with held keys. A grab never takes the capture slot from a shortcut session or
       `shortcuts.capture`, and they cannot start while it holds it.
     - Decision: shortcut sessions do not move to the lease. A session is a user gesture: it starts and ends
       with a held modifier, nothing owns it to renew it, and its 10 s guards a lost release. Its key events
-      carry a one-use `focus_context`, which a script-renewed lease must not carry. They share the capture
+      carry a `Grant`, which a script-renewed lease must not carry. They share the capture
       slot and nothing else.
     - Not done: a grab that also takes pointer input, and a key the grab lets through to the focused window.
 
@@ -266,6 +269,33 @@ and gap 7 are done (see the end of this list).
       unplayed tween is alive at a commit.
     - `scripts/audit-lua-annotations.py` derives the record classes from the annotations and checks the hand-built
       methods (`Operation`, `Request`, `Grant`, `TextTarget`, `SnapContext`) in both directions.
+
+- Objects as arguments, `find` and read-only config (round 2, audit items 1, 2, 6, 10, 11, 15, 16), done.
+    - `gnoblin.find(kind, filter?)` (`gnoblin-lua-find.c`) is the one lookup. It lists the kinds that have a list
+      (`Window`, `Workspace`, `LayerSurface`, `Output`, `Shortcut`, `Launch`, `InputSource`, `Process`) and filters
+      the result: a table filter must name scalar fields that the annotated class declares
+      (`lua_api_class_scalar_names`), a function is a predicate. The per-type filter code is wire-only now:
+      `windows.list` and `layers.list` take no argument in Lua, and the socket reads keep their filters.
+    - `gnoblin.config` is `path()`, `default()` and `restore_default()`. The working document moved out of it into a
+      registry table, so an assignment, or a read of any other key, raises an error that points to `configure` and
+      `settings.override`. `gnoblin.snapshot()` is a load-time read. At run time `configure`, `window_rule` and
+      `animation` return an `Operation` that succeeds when the runtime commits and fails with `invalid_argument`
+      when it rejects the change. Not exercised: the path through the reload machinery in
+      `gnoblin-runtime-events.c`.
+    - `Window:move_to_workspace` takes a `Workspace`, `Window:move_to_monitor` an `Output`,
+      `layers.animation_policy` a `LayerSurface`. `animations.surfaces`, `inspect` and `preview`, and
+      `AnimationSurface`, are gone from Lua; `inspect_animation` and `preview_animation` are methods of `Window` and
+      `LayerSurface`. The wire names stay.
+    - `SnapContext:commit(monitor, x, y, width, height)` is positional.
+    - `WindowVisual.offset` is `{x, y}`. The `in`, `out` and `ease` aliases of the layer animation rule are gone,
+      also from the typed-window-api patch 0027. `Window.monitor` held the origin `{x, y}` of the monitor, not an
+      index, so it is `Window.monitor_origin`. The control publication keeps the native name and adds the new name,
+      as it does for `appId` and `app_id`; `window.list` on the socket still says `monitor`. Dropping it would have
+      changed that legacy output.
+    - `Workspace.id` is required in the stub.
+    - Console parity is not done: `gnoblinctl lua` still has the old forms of `windows.list` filters,
+      `animations.inspect`, `animations.preview` and `animations.surfaces`, the table form of `SnapContext:commit`,
+      and `gnoblin.config` and `snapshot` writes. That is the next wave (audit item 5).
 
 - Gap 7, done. `FocusContext` and `MenuContext` are one `Grant` (bridge API 1.92): `event.grant` on a
   shortcut, pointer binding, shortcut session key, input event and WM menu request.
@@ -300,13 +330,14 @@ and gap 7 are done (see the end of this list).
 ## Open decisions
 
 - A change made while a lifecycle animation plays is overwritten when that animation restores its saved state.
+- `gnoblinctl lua` has not caught up with round 2 (audit item 5): see the console parity note under "Objects as arguments".
 - `gnoblinctl lua` has the visual methods but no tweens and no live objects: tween callbacks and object signals
   run in the configuration runtime, which outlives a console script.
 
 ## Windows as objects you can transform
 
-The base primitive is not an animation API. It is a window you can change. `Window` and layer surface records are
-detached, read-only snapshots, and Lua runs behind a separate channel. So a write must look like what it is: an explicit
+The base primitive is not an animation API. It is a window you can change. `Window` and layer surface objects show
+read-only state, and Lua runs behind a separate channel. So a write must look like what it is: an explicit
 call that returns an Operation, never a hidden assignment.
 
 ```lua
@@ -370,7 +401,8 @@ Three layers, each usable alone:
   ends early and still reports `finished`.
 - Named lifecycle animations (`gnoblin.animation`) stay declarative and run natively, so a window opening never waits on
   Lua. They share the easing and property names above. A later `tween:play(name)` can reuse their tracks.
-- The preview session API (`preview`, `seek`, `step`, `play`, `pause`, `stop`) and `inspect` stay as they are for now.
-  They appear to inspect a configured animation on a visible target, not to run a user-owned animation, but that is not
-  verified. Check the lifecycle in `patches/mutter/99-typed-window-api/0024-native-animation-runtime.patch` before
+- The preview session API (`preview`, `seek`, `step`, `play`, `pause`, `stop`) and `inspect` stay separate from tweens.
+  In Lua they are `inspect_animation` and `preview_animation` on `Window` and `LayerSurface`, and the methods of
+  `AnimationPreview`. They appear to inspect a configured animation on a visible target, not to run a user-owned
+  animation, but that is not verified. Check the lifecycle in `patches/mutter/99-typed-window-api/0024-native-animation-runtime.patch` before
   merging any of it with tweens. Runtime tweens are a separate, additive capability.

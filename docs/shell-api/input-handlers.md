@@ -40,7 +40,8 @@ Match selectors are:
 - `button`: integer button number, 1–32, for button or tablet events.
 - `accelerator`: a chord in the [chord syntax](/guides/shortcuts#chord-syntax);
   for `"button"` events a pointer chord such as `<Super>Button1`. Omitted by
-  default. This selector applies only to key and button events.
+  default. This selector applies only to key and button events. Another form
+  is an error that names the form to write.
 - `modifiers`: exact integer modifier mask; omitted by default. Prefer
   `accelerator` for ordinary shortcuts.
 - `allow_when_shortcuts_inhibited`: false by default. Set true to handle

@@ -161,6 +161,7 @@ export const NAV: NavSection[] = [
                 items: [
                     { label: "Windows", slug: "shell-api/windows" },
                     { label: "Focus and activation", slug: "shell-api/focus-activation" },
+                    { label: "Find objects", slug: "shell-api/find" },
                     { label: "Workspaces", slug: "shell-api/workspaces" },
                     { label: "Outputs", slug: "shell-api/outputs" },
                     { label: "Layer surfaces", slug: "shell-api/layer-surfaces" },

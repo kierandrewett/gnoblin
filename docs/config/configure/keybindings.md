@@ -50,7 +50,7 @@ Release triggers reserve and consume the physical press/release pair.
 Returning forward cannot undo that reservation; use a press trigger for
 conditional forwarding.
 
-For device selectors and lower-level events, see [Input handlers](/shell-api/input#input-handlers).
+For device selectors and lower-level events, see [Input handlers](/shell-api/input-handlers).
 
 ## Mutter action overrides
 

@@ -4,6 +4,37 @@
 
 ### Changed
 
+- `gnoblin.find`, a read-only `gnoblin.config` and handle arguments (round 2; no wire change except one added
+  key, see the last bullet).
+    - `gnoblin.find(kind, filter?)` lists the live objects of `Window`, `Workspace`, `LayerSurface`, `Output`,
+      `Shortcut`, `Launch`, `InputSource` or `Process`. A table filter matches declared scalar fields
+      (`gnoblin.find("Window", {app_id = "notes", focused = true})`); a function filter is a predicate. An unknown
+      kind, an unknown field or a field that is not a scalar is an error that names what works.
+      `gnoblin.windows.list` and `gnoblin.layers.list` take no argument in Lua now. `gnoblin.focus.history`
+      keeps its filter, because its result has an order and a limit. Socket and `gnoblinctl` reads keep theirs.
+      See `docs/shell-api/find.md`.
+    - `gnoblin.config` holds only `path()`, `default()` and `restore_default()`. Assigning to it, or reading any
+      other key, raises an error that points to `gnoblin.configure` and `gnoblin.settings.override`, while the
+      config loads as well as at run time. `gnoblin.snapshot()` works only while the config loads and raises an
+      error at run time; `gnoblin.settings` reads the committed values. Assigning to a named shortcut or
+      autostart entry at run time is an error. At run time `gnoblin.configure`, `gnoblin.window_rule` and
+      `gnoblin.animation` return an `Operation` that succeeds when the runtime commits the change, and fails with
+      `invalid_argument` when the change is rejected.
+    - `Window:move_to_workspace` takes a `Workspace`, `Window:move_to_monitor` takes an `Output`, and
+      `gnoblin.layers.animation_policy` takes a `LayerSurface`; IDs and numbers still work.
+      `gnoblin.animations.surfaces`, `inspect` and `preview` and the `AnimationSurface` record are gone: use
+      `window:inspect_animation(name, event?)` and `window:preview_animation(name, event?, autoplay?)`, or the
+      same methods on a `LayerSurface`. The wire methods `animation.surfaces`, `animation.inspect` and
+      `animation.preview` stay.
+    - `SnapContext:commit(monitor, x, y, width, height)` replaces `commit({monitor_id = ..., frame = {...}})`.
+      `monitor` is an `Output` or a monitor ID.
+    - `Window.monitor` is now `Window.monitor_origin`, `{x, y}`: the field always held the origin of the monitor
+      that holds the window, and not a monitor index. `Window.offset` is `{x, y}` in the Lua record.
+    - The layer animation rule loses the `in`, `out` and `ease` aliases. Use `layer_open`, `layer_close` and
+      `easing`.
+    - The generated stub is corrected: `Workspace.id` is required, and `create` accepts an ID.
+    - The control events and `window.list` keep `monitor`, and the window records of the control events gain
+      `monitor_origin` next to it, in the way they already carry `appId` next to `app_id`.
 - `Tween`, `Process` and `AnimationPreview` are live objects, and every subscription has one shape (no wire change;
   the tween track gains an optional `target_kind`).
     - Each has `id`, `alive`, `revision`, `on` and `watch`, and one handle per id. `tween:on("finished")` runs when
@@ -164,12 +195,12 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
     - Every read of one display returns the same `Output`, with `alive`, `on` and `watch`.
     - An output also has its logical monitor's index, size and work area, and its privacy
       screen state.
-    - `gnoblin.outputs.set_privacy_screen(value)` sets the privacy screen request for the whole
-      session. The compositor keeps one request and applies it to every output that has a privacy
-      screen, so the write is a session call and an `Output` has no method for it. `true` and
-      `false` raise an error when no output has a privacy screen; `"inherit"` is always accepted.
-      `output.privacy_screen` and `output:watch("privacy_screen", fn)` read the state. The wire
-      call `monitors.set_privacy_screen` is unchanged.
+    - The privacy screen request covers the whole session, because the compositor keeps one request and applies it
+      to every output that has a privacy screen. An `Output` has no method for it.
+      `output.privacy_screen` and `output:watch("privacy_screen", fn)` read the state. Bridge API 1.90 replaced
+      the first write call, `gnoblin.outputs.set_privacy_screen(value)`, with
+      `gnoblin.settings.override("monitors.privacy_screen", value)`. The wire call
+      `monitors.set_privacy_screen` is unchanged.
     - New events tell Lua and shell processes when a display is added, changes or is removed.
     - Monitor events and monitor reads stay for shell processes only.
 - `gnoblin.idle.watch(seconds)` returns a live `IdleWatch` for any idle time from above 0 up to
