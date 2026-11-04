@@ -18,49 +18,49 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Window move
 
-- **Mutter or Gnoblin mechanism (file and function):** `patches/mutter/99-typed-window-api/0001-dispatch-typed-window-operations.patch`: `meta_window_move_frame`; Gnoblin handler in `src/control/gnoblin-control-requests.c`
+- **Mutter or Gnoblin mechanism (file and function):** `patches/mutter/20-native-window-api/0005-dispatch-typed-window-operations.patch`: `meta_window_move_frame`; Gnoblin handler in `src/control/gnoblin-control-requests.c`
 - **Current Lua access:** Full for 2D logical position: `Window:move(position)`; interactive move is context-bound
 - **What is needed:** Nothing beyond the existing 2D behavior.
 
 ### Window resize
 
-- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/99-typed-window-api/0065-native-window-resize-user-operation.patch` and `0076-animate-typed-window-resizes.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/20-native-window-api/0010-native-window-resize-user-operation.patch` and `patches/mutter/26-animation/0014-animate-typed-window-resizes.patch`
 - **Current Lua access:** Full for 2D frame size; interactive resize requires a live shortcut context
 - **What is needed:** Nothing beyond the existing 2D behavior.
 
 ### Focus and activation policy
 
-- **Mutter or Gnoblin mechanism (file and function):** `src/control/gnoblin-control-focus.c` context/token validation; Mutter `meta_window_activate_full` in `patches/mutter/52-focus-transfer/0001-honour-app-activation.patch`; policy preferences are applied from Gnoblin config
+- **Mutter or Gnoblin mechanism (file and function):** `src/control/gnoblin-control-focus.c` context/token validation; Mutter `meta_window_activate_full` in `patches/mutter/09-focus-activation/0001-honour-app-activation.patch`; policy preferences are applied from Gnoblin config
 - **Current Lua access:** Partial: `Window:focus(context)` and `begin_move` are trusted-context operations; Lua can read `gnoblin.focus.policy()` and `gnoblin.focus.history(filter)`. No general runtime setter or activation-policy callback
 - **What is needed:** Add an explicit focus-policy declaration/runtime update. Keep activation tokens and one-use user contexts as mandatory authorization inputs; do not expose unconditional focus-stealing.
 
 ### Stacking and layers
 
-- **Mutter or Gnoblin mechanism (file and function):** Mutter restack signal `display_restacked` in `src/control/gnoblin-control-api.c`; `meta_window_raise` is used by `patches/mutter/30-layer-shell/0002-layer-shell-honor-wlr-stacking-layers.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Mutter restack signal `display_restacked` in `src/control/gnoblin-control-api.c`; `meta_window_raise` is used by `patches/mutter/03-layer-shell/0002-layer-shell-honor-wlr-stacking-layers.patch`
 - **Current Lua access:** Partial: inspect layers/windows; set window above/sticky; no arbitrary stack index or layer assignment
 - **What is needed:** Add typed raise/lower/relative-order operations where Mutter permits them, plus explicit z-order rules for spatial surfaces. Preserve layer-shell protocol ownership and activation rules.
 
 ### Workspaces
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `patches/mutter/90-native-workspaces/0001-list-and-switch-workspaces-in-native-compositor.patch` and `91-native-workspace-management/0001-manage-numeric-workspaces-in-native-compositor.patch`; handlers in `src/control/windows/gnoblin-control-workspaces.c`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `patches/mutter/24-native-workspaces/0001-list-and-switch-workspaces-in-native-compositor.patch` and `patches/mutter/24-native-workspaces/0002-manage-numeric-workspaces-in-native-compositor.patch`; handlers in `src/control/windows/gnoblin-control-workspaces.c`
 - **Current Lua access:** Full for current model: create, remove, rename, activate, next/previous, move windows; workspace records are revisioned
 - **What is needed:** Nothing beyond the current model. Retain stable workspace IDs rather than using position as identity.
 
 ### Monitor and output configuration
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `patches/mutter/99-typed-window-api/0007-native-monitor-snapshot-records.patch`; stable connector lookup in `0006-stable-monitor-connector-ids.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `patches/mutter/22-native-monitor-layer-api/0003-native-monitor-snapshot-records.patch`; stable connector lookup in `patches/mutter/22-native-monitor-layer-api/0002-stable-monitor-connector-ids.patch`
 - **Current Lua access:** Read only for topology, current geometry, scale, refresh rate, and transform; partial runtime override for privacy screen and tablet mapping. No output profile/mode/enable/arrangement API
 - **What is needed:** Integrate the output configuration API with Lua and transactional validation/rollback.
 
 ### Layer-shell arrangement
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_wayland_init_layer_shell` in `patches/mutter/30-layer-shell/0001-layer-shell-wire-wlr-layer-shell-into-the-build.patch`; snapshot getter and Lua `lua_layers_list` in `src/config/lua/gnoblin-lua-queries.c`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_wayland_init_layer_shell` in `patches/mutter/03-layer-shell/0001-layer-shell-wire-wlr-layer-shell-into-the-build.patch`; snapshot getter and Lua `lua_layers_list` in `src/config/lua/gnoblin-lua-queries.c`
 - **Current Lua access:** Read only for layer snapshots and animation policy; partial configuration through window rules and `preserve_active_window`. Anchors, exclusive zones, size, and surface role remain client/protocol state
 - **What is needed:** Add compositor-mediated surface placement and docking targets for Lua policy, with protocol constraints and configure/ack lifecycle.
 
 ### Keyboard input
 
-- **Mutter or Gnoblin mechanism (file and function):** `native_input_event_type`, `native_input_send_head`, and `native_input_forward_all` in `src/control/gnoblin-control-input-routing.c`; interception/replay in `patches/mutter/99-typed-window-api/0103-lua-input-policy-event-routing.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `native_input_event_type`, `native_input_send_head`, and `native_input_forward_all` in `src/control/gnoblin-control-input-routing.c`; interception/replay in `patches/mutter/21-input-routing/0003-lua-input-policy-event-routing.patch`
 - **Current Lua access:** Full for matched events' forward-or-consume decision; shortcut capture/bind, key source selection, and text insertion are exposed. No synthetic remapping
 - **What is needed:** Add validated remapping only with delivered modifier/key state transitions and release pairing. Preserve lock and capture embargoes.
 
@@ -78,25 +78,25 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Gestures
 
-- **Mutter or Gnoblin mechanism (file and function):** `patches/mutter/78-touchpad-events/0001-forward-touchpad-gesture-events.patch`; `src/control/gnoblin-control-events.c` (`filter_native_touchpad_gestures`, `run_native_touchpad_action`); input router encodes gesture fields
+- **Mutter or Gnoblin mechanism (file and function):** `patches/mutter/21-input-routing/0001-forward-touchpad-gesture-events.patch`; `src/control/gnoblin-control-events.c` (`filter_native_touchpad_gestures`, `run_native_touchpad_action`); input router encodes gesture fields
 - **Current Lua access:** Partial: touchpad gestures are observable and configuration can bind supported native actions; event-policy hooks can consume/forward matched gestures. Lua cannot register a general gesture recognizer with accumulated motion state
 - **What is needed:** Add a gesture-session object with start/update/end/cancel, device identity, normalized deltas, and timeout/reload cancellation.
 
 ### Tablet and pen
 
-- **Mutter or Gnoblin mechanism (file and function):** `input_device_record` and `normalize_input_value` in `src/control/gnoblin-control-input-routing.c` and `src/control/gnoblin-control-input-config.c`; tablet output patch `0090-lua-tablet-output-mapping.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `input_device_record` and `normalize_input_value` in `src/control/gnoblin-control-input-routing.c` and `src/control/gnoblin-control-input-config.c`; tablet output patch `patches/mutter/14-input-settings/0019-lua-tablet-output-mapping.patch`
 - **Current Lua access:** Partial: device inspection, tablet/stylus/pad preferences and output mapping, pad-help event; no full pen pose/pressure routing or controller abstraction
 - **What is needed:** Add normalized pen/tablet event fields and per-device policy hooks; add controller devices through the same explicit device/capability model rather than pretending they are mice.
 
 ### Cursor
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_prefs_set_gnoblin_cursor_config` in `patches/mutter/70-config-preferences/0002-live-gnoblin-cursor-preferences.patch`; preference application is config-driven
+- **Mutter or Gnoblin mechanism (file and function):** `meta_prefs_set_gnoblin_cursor_config` in `patches/mutter/07-cursor/0003-live-gnoblin-cursor-preferences.patch`; preference application is config-driven
 - **Current Lua access:** Partial: theme/size config, launch busy-cursor feedback, locate-pointer event. No runtime theme/size setter or cursor positioning/shape API
 - **What is needed:** Add typed cursor preference override plus per-seat cursor image/visibility operations; leave actual rendering and seat authority native.
 
 ### Animation and effects
 
-- **Mutter or Gnoblin mechanism (file and function):** Lua methods in `src/config/lua/gnoblin-lua-animation.c`; compositor runtime in `patches/mutter/99-typed-window-api/0024-native-animation-runtime.patch`; effect rules in `src/control/windows/gnoblin-control-window-rules.c` (`native_apply_window_rules`)
+- **Mutter or Gnoblin mechanism (file and function):** Lua methods in `src/config/lua/gnoblin-lua-animation.c`; compositor runtime in `patches/mutter/26-animation/0001-native-animation-runtime.patch`; effect rules in `src/control/windows/gnoblin-control-window-rules.c` (`native_apply_window_rules`)
 - **Current Lua access:** Partial: named lifecycle animations and preview controls; rules can set opacity, blur, shader, corners, shadows, and frames. No general live effect graph or frame-by-frame Lua callback
 - **What is needed:** Add bounded runtime effect properties and an animation timeline/event contract. Keep GPU work and frame pacing in Mutter; Lua supplies policy/targets, never executes on the render thread.
 
@@ -108,7 +108,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Decorations and frames
 
-- **Mutter or Gnoblin mechanism (file and function):** Native renderer service in `patches/mutter/61-window-frames/`; Gnoblin `native_apply_window_rules` in `src/control/windows/gnoblin-control-window-rules.c`; rule schema in `src/config/lua/api/config.h`
+- **Mutter or Gnoblin mechanism (file and function):** Native renderer service in `patches/mutter/11-window-frames/`; Gnoblin `native_apply_window_rules` in `src/control/windows/gnoblin-control-window-rules.c`; rule schema in `src/config/lua/api/config.h`
 - **Current Lua access:** Partial: config-time frame renderer registry, per-window frame/corner/shadow rules; no general runtime frame style setter or renderer lifecycle control
 - **What is needed:** Add revisioned runtime decoration properties and renderer capability/ready/failure events; keep client-side decoration negotiation explicit.
 
@@ -126,13 +126,13 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Clipboard
 
-- **Mutter or Gnoblin mechanism (file and function):** `data_device_set_selection` and `primary_device_set_selection` in `patches/mutter/73-session-lock-privacy/0001-session-lock-embargo-clipboard-and-drag-offers.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `data_device_set_selection` and `primary_device_set_selection` in `patches/mutter/16-session-lock/0009-session-lock-embargo-clipboard-and-drag-offers.patch`
 - **Current Lua access:** None as a Lua clipboard read/write API. Permission rules can describe remote-desktop clipboard grants; text insertion is a separate trusted target operation
 - **What is needed:** Add a permission-gated clipboard broker with MIME, size, origin, and lock-state rules; do not expose raw selection objects.
 
 ### Screen capture
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_wayland_init_screencopy` in `patches/mutter/30-screencopy/0001-screencopy-wire-wlr-screencopy-into-the-build.patch`; bounded `native_runtime_begin_thumbnail` / `native_thumbnail_idle` in `src/control/gnoblin-native-control.c`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_wayland_init_screencopy` in `patches/mutter/04-wayland-protocols/0001-screencopy-wire-wlr-screencopy-into-the-build.patch`; bounded `native_runtime_begin_thumbnail` / `native_thumbnail_idle` in `src/control/gnoblin-native-control.c`
 - **Current Lua access:** Partial: capture protocol can be enabled/disabled; Lua can request a bounded window thumbnail and inspect privacy state. No stream/frame API or output capture operation
 - **What is needed:** Add a permission-aware capture session API with bounded buffers, cancellation, damage/revision metadata, and explicit CPU/GPU path reporting. Do not treat a thumbnail as a capture stream.
 
@@ -150,7 +150,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Per-frame hooks
 
-- **Mutter or Gnoblin mechanism (file and function):** Mutter plugin lifecycle callbacks in `src/compositor/plugin/gnoblin-plugin.c` (`map`, `minimize`, `unminimize`, `destroy`, `size_changed`, effect cancellation, workspace cancellation); layer frame callback patch `patches/mutter/30-layer-shell/0005-layer-shell-emit-frame-callbacks-for-visible-layer-surfaces.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Mutter plugin lifecycle callbacks in `src/compositor/plugin/gnoblin-plugin.c` (`map`, `minimize`, `unminimize`, `destroy`, `size_changed`, effect cancellation, workspace cancellation); layer frame callback patch `patches/mutter/03-layer-shell/0005-layer-shell-emit-frame-callbacks-for-visible-layer-surfaces.patch`
 - **Current Lua access:** None. Lua gets lifecycle and input events, not a frame-clock callback
 - **What is needed:** Keep Lua off the paint path.
     - If frame policy is required, expose declarative frame-boundary state or sampled notifications with strict rate/budget limits; never synchronously call Lua per rendered frame.

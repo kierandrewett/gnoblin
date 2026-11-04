@@ -77,7 +77,7 @@ files before implementation:
   rejects creation while inhibited and closes existing sessions on inhibition.
   Sessions belong to the creating peer; closing the capture's private bus
   connection also handles cancellation before a creation reply arrives.
-- Gnoblin's [lock capture overlay](../../patches/mutter/71-session-lock-capture/0001-session-lock-embargo-capture-and-remote-input.patch)
+- Gnoblin's [lock capture overlay](../../patches/mutter/16-session-lock/0002-session-lock-embargo-capture-and-remote-input.patch)
   rejects area capture while locked and covers active area streams during lock.
   The new backend does not modify or bypass that boundary.
 - [Upstream wlr-screencopy XML](https://github.com/swaywm/wlr-protocols/blob/master/unstable/wlr-screencopy-unstable-v1.xml)

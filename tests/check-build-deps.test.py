@@ -125,7 +125,7 @@ bundled_dep = dependency('bundled-lib')
         self.assertIn("gnome-bg-4", modules)
 
     def test_pinned_portal_wrap_includes_gtk4_minimum(self):
-        patch = (ROOT / "patches/portal-dependencies/libgxdp/0001-gtk-4.20-compat.patch").read_text()
+        patch = (ROOT / "patches/portal-dependencies/01-libgxdp/0001-gtk-4.20-compat.patch").read_text()
         floor = re.search(r"^\+gtk_dep = dependency\('gtk4', version: '([^']+)'\)$", patch, re.MULTILINE)
         self.assertIsNotNone(floor)
         self.assertEqual(

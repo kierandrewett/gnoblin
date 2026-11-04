@@ -8,12 +8,12 @@ gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* context,
         meta_prefs_apply_gnoblin_input_preferences(control->backend, NULL);
         control->orientation_lock_configured = FALSE;
         control->orientation_lock_config_value = FALSE;
-        control->orientation_lock_runtime_override = FALSE;
         control->orientation_lock_notifications_suppressed = TRUE;
         if (control->orientation_manager)
             meta_orientation_manager_clear_orientation_lock_override(control->orientation_manager);
         control->orientation_lock_notifications_suppressed = FALSE;
         native_orientation_lock_publish(control);
+        gnoblin_control_overrides_reapply(control, TRUE, FALSE);
         return TRUE;
     }
     if (!g_variant_is_of_type(input, G_VARIANT_TYPE_VARDICT)) {
@@ -100,7 +100,6 @@ gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* context,
             : meta_backend_get_orientation_manager(meta_context_get_backend(context));
     control->orientation_lock_configured = orientation_set;
     control->orientation_lock_config_value = orientation_locked;
-    control->orientation_lock_runtime_override = FALSE;
     control->orientation_lock_notifications_suppressed = TRUE;
     if (orientation) {
         if (orientation_set)
@@ -110,6 +109,7 @@ gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* context,
     }
     control->orientation_lock_notifications_suppressed = FALSE;
     native_orientation_lock_publish(control);
+    gnoblin_control_overrides_reapply(control, TRUE, FALSE);
     return TRUE;
 
 invalid_input:

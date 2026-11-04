@@ -63,7 +63,7 @@ checks coexistence and removal before it publishes.
 
 ### 3. The Mutter source has two paths that drift
 
-- `./build.sh` resets Mutter to the upstream tag and applies `patches/mutter/`.
+- `./build.sh` resets Mutter to the upstream tag and applies `patches/mutter/` in the order of `patches/mutter/series`.
 - `scripts/make-tarball.sh mutter` does not apply patches. It archives the pinned
   fork commit and copies the overlay. The portal path applies patches; the Mutter
   path does not.
@@ -269,10 +269,10 @@ every target that did not pass; and an `issues` job that prints "would create" o
 
 ### A. Where does the Mutter source come from at release time?
 
-Decided by the rule above: the release tarball applies `patches/mutter/` and the overlay
+Decided by the rule above: the release tarball applies `patches/mutter/` (in series order) and the overlay
 to the upstream tag, as `./build.sh` does and as the portal already did. The fork no
 longer has to carry the patched commits. Done in `81876e39`; two runs of
-`scripts/make-tarball.sh mutter` gave byte-identical archives with all 221 patches.
+`scripts/make-tarball.sh mutter` gave byte-identical archives with every patch of the series applied.
 
 ### B. What happens to builds from `main`?
 

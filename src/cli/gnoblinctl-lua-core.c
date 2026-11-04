@@ -1,7 +1,5 @@
 #include "gnoblinctl-internal.h"
 
-static int lua_cli_animation_preview_method(lua_State* state);
-
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
  * while returning the backing table from __pairs would expose mutable state. */
@@ -196,16 +194,7 @@ void lua_cli_push_animation_preview_record(lua_State* state, Cli* cli, JsonObjec
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    static const char* const methods[][2] = {
-        {"seek", "animation.seek"},   {"step", "animation.step"}, {"play", "animation.play"},
-        {"pause", "animation.pause"}, {"stop", "animation.stop"}, {NULL, NULL},
-    };
-    for (guint i = 0; methods[i][0]; i++) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushstring(state, methods[i][1]);
-        lua_pushcclosure(state, lua_cli_animation_preview_method, 2);
-        lua_setfield(state, -2, methods[i][0]);
-    }
+    lua_cli_add_record_methods(state, cli, "AnimationPreview");
     lua_setiuservalue(state, record, 2);
     lua_pushstring(state, session);
     lua_setiuservalue(state, record, 3);
@@ -224,7 +213,17 @@ JsonObject* lua_cli_table_object(lua_State* state, int index, const char* descri
     return json_object_ref(json_node_get_object(node));
 }
 
-static int lua_cli_animation_preview_method(lua_State* state) {
+JsonObject* lua_cli_optional_options(lua_State* state, int index, const char* function) {
+    if (lua_gettop(state) > index)
+        luaL_error(state, "%s takes at most %d arguments", function, index);
+    if (lua_gettop(state) < index || lua_isnil(state, index))
+        return json_object_new();
+    if (!lua_istable(state, index))
+        luaL_error(state, "%s requires options (argument %d) to be a table", function, index);
+    return lua_cli_table_object(state, index, function);
+}
+
+int lua_cli_animation_preview_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     int supplied = lua_gettop(state) - 1;

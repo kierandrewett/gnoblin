@@ -127,7 +127,6 @@ static gboolean policy_animation_supports(GVariant* document, const char* name, 
 static GVariant* policy_layer_phase(GVariant* document, const char* namespace, gboolean opening,
                                     GError** error) {
     const char* event = opening ? "layer-open" : "layer-close";
-    const char* alias = opening ? "in" : "out";
     const char* selected = "none";
     g_autoptr(GVariant) animations = g_variant_lookup_value(document, "animations", NULL);
     for (gsize i = 0; animations && i < g_variant_n_children(animations); i++) {
@@ -172,8 +171,6 @@ static GVariant* policy_layer_phase(GVariant* document, const char* namespace, g
                 phase_name =
                     g_variant_lookup_value(animation, opening ? "layer_open" : "layer_close", NULL);
             }
-            if (!phase_name)
-                phase_name = g_variant_lookup_value(animation, alias, NULL);
             if (!phase_name || !g_variant_is_of_type(phase_name, G_VARIANT_TYPE_STRING))
                 continue;
             name = g_variant_get_string(phase_name, NULL);
@@ -188,9 +185,7 @@ static GVariant* policy_layer_phase(GVariant* document, const char* namespace, g
         g_clear_pointer(&selected_easing, g_variant_unref);
         if (has_override) {
             selected_duration = g_variant_lookup_value(animation, "duration", NULL);
-            selected_easing = g_variant_lookup_value(animation, "ease", NULL);
-            if (!selected_easing)
-                selected_easing = g_variant_lookup_value(animation, "easing", NULL);
+            selected_easing = g_variant_lookup_value(animation, "easing", NULL);
         }
     }
 
@@ -257,9 +252,17 @@ static GVariant* layer_animation_policy(LuaConfig* config, const char* namespace
 
 int lua_layers_animation_policy(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
-        return luaL_error(state, "gnoblin.layers.animation_policy requires one namespace string");
-    const char* namespace = lua_tostring(state, 1);
+    if (lua_gettop(state) != 1)
+        return luaL_error(state,
+                          "gnoblin.layers.animation_policy takes a LayerSurface or a namespace");
+    if (lua_object_is(state, 1, "LayerSurface"))
+        lua_getfield(state, 1, "namespace");
+    else
+        lua_pushvalue(state, 1);
+    if (lua_type(state, -1) != LUA_TSTRING)
+        return luaL_error(state,
+                          "gnoblin.layers.animation_policy takes a LayerSurface or a namespace");
+    const char* namespace = lua_tostring(state, -1);
     gsize length = strlen(namespace);
     if (length == 0 || length > 128 || !g_utf8_validate(namespace, length, NULL))
         return luaL_error(state, "layer namespace must be 1 to 128 bytes of UTF-8");

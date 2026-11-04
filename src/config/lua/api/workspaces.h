@@ -3,47 +3,26 @@
 
 /*** lua
 ---@class Workspace
----@field id? string Stable workspace ID. The current native workspace snapshot does not provide
-this field.
+---@field alive boolean False once the workspace has been removed. Every read of one workspace
+returns this same object, updated with each change.
+---@field id string Stable workspace ID: the one declared in `gnoblin.configure.workspaces`, the
+one `create` was given, or the session ID `@session-N` that Gnoblin assigns.
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
----@field windows integer Number of windows on this workspace.
+---@field window_count integer Number of windows on this workspace.
+---@field revision integer State revision of this snapshot; it goes up with every change of the
+workspace list, so a rename gives a higher number.
+---@observable number name active window_count
 
----@class WorkspaceCreateArgs
----@field name string Nonempty UTF-8 name of at most 80 characters.
+---@class WorkspaceCreateOptions
 ---@field id? string Optional ID. Must start with a letter or number and contain only letters,
-numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor
-rejects it.
+numbers, '.', '_' or '-'; at most 64 characters. The workspace keeps it for the session only;
+an ID declared in `gnoblin.configure.workspaces` lasts across sessions.
 ---@field activate? boolean Activate the new workspace after creation. Default false.
-
----@class WorkspaceRenameArgs
----@field id? string Stable workspace ID; provide exactly one of id or number.
----@field number? integer One-based workspace number from 1 to 1024; provide exactly one of id or
-number.
----@field name string Nonempty UTF-8 name of at most 80 characters.
-
----@class WorkspaceSelector
----@field id? string Stable workspace ID; provide exactly one of id or number.
----@field number? integer One-based workspace number from 1 to 1024; provide exactly one of id or
-number.
 
 ---@class WorkspaceMoveOptions
 ---@field follow? boolean Activate the destination workspace after moving. Default false.
-
----@class WorkspaceMoveActiveArgs
----@field workspace WorkspaceSelector Destination workspace.
----@field follow? boolean Activate the destination after moving. Default false.
-
----@class WorkspaceMoveWindowArgs
----@field window string Stable window ID, or "active" for the focused window.
----@field workspace WorkspaceSelector Destination workspace.
----@field follow? boolean Activate the destination after moving. Default false.
-
----@class WorkspaceMoveResult
----@field workspace Workspace Destination workspace snapshot.
----@field window string ID of the moved window.
----@field follow boolean Whether the destination workspace was activated.
 
 ---Return the current workspace snapshot.
 ---@return Workspace[]
@@ -53,32 +32,18 @@ function gnoblin.workspaces.list() end
 ---@return Workspace|nil
 function gnoblin.workspaces.active() end
 
----Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace
-snapshots omit IDs, so this returns nil there.
+---Find a workspace by its stable ID. Returns nil when no workspace has it. The ID comes from
+---`gnoblin.configure.workspaces` or `create`, or is the session ID `@session-N` that Gnoblin gave
+---it.
 ---@param id string Stable workspace ID.
 ---@return Workspace|nil
 function gnoblin.workspaces.by_id(id) end
 
 ---Create a workspace with a name and optional activation.
----@param workspace WorkspaceCreateArgs
+---@param name string Nonempty UTF-8 name of at most 80 characters.
+---@param options? WorkspaceCreateOptions
 ---@return Operation<Workspace>
-function gnoblin.workspaces.create(workspace) end
-
----Rename a workspace selected by ID or one-based number.
----@param workspace WorkspaceRenameArgs
----@return Operation<Workspace>
-function gnoblin.workspaces.rename(workspace) end
-
----Remove an inactive, empty workspace when at least one other workspace remains.
----@param workspace WorkspaceSelector
----@return Operation<Workspace>
-function gnoblin.workspaces.remove(workspace) end
-
----Activate a workspace selected by ID or one-based number. The current native compositor supports
-number selectors and rejects ID selectors.
----@param workspace WorkspaceSelector
----@return Operation<Workspace>
-function gnoblin.workspaces.activate(workspace) end
+function gnoblin.workspaces.create(name, options) end
 
 ---Activate the next workspace, wrapping to the first.
 ---@return Operation<Workspace>
@@ -87,16 +52,6 @@ function gnoblin.workspaces.next() end
 ---Activate the previous workspace, wrapping to the last.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.previous() end
-
----Move the focused window to a workspace.
----@param request WorkspaceMoveActiveArgs
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_active(request) end
-
----Move a window to a workspace.
----@param request WorkspaceMoveWindowArgs
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_window(request) end
 
 ---Activate this workspace.
 ---@return Operation<Workspace>
@@ -111,9 +66,16 @@ function Workspace:rename(name) end
 ---@return Operation<Workspace>
 function Workspace:remove() end
 
----Move a window into this workspace.
----@param window Window|string Window snapshot or stable window ID.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function Workspace:move_here(window, options) end
+---Call fn(workspace, ...) on a signal of this workspace: "changed" (with the list of changed
+---fields), "activated" or "closed". Listening ends after "closed".
+---@param signal "changed"|"activated"|"closed"
+---@param fn fun(workspace: Workspace, changed?: string[])
+---@return Subscription
+function Workspace:on(signal, fn) end
+
+---Call fn(workspace, value, old) when one field of this workspace changes.
+---@param property string A field of Workspace, such as "name" or "active".
+---@param fn fun(workspace: Workspace, value: any, old: any)
+---@return Subscription
+function Workspace:watch(property, fn) end
 */

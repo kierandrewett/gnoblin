@@ -6,8 +6,9 @@
 # RemoteDesktop. Every tap must fire, and the time from the key event to the running command must stay under a generous
 # bound, so that QEMU jitter does not fail the test but a delay of the size the issue describes does.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 F="$HOME/.config/gnoblin/config/99-test-shortcut-latency.lua"
 BOUND_MS=150
@@ -24,10 +25,10 @@ check() {
     fi
 }
 
-cat > "$F" <<'LUA'
+cat >"$F" <<'LUA'
 local function stamp(name)
     return function()
-        gnoblin.commands.run({"sh", "-c", "echo " .. name .. " $(date +%s%N) >> /tmp/latency.log"})
+        gnoblin.process.spawn({"sh", "-c", "echo " .. name .. " $(date +%s%N) >> /tmp/latency.log"})
     end
 end
 gnoblin.configure {
@@ -40,7 +41,7 @@ LUA
 "$G" config reload >/dev/null 2>&1
 sleep 3
 
-cat > /tmp/press-timed.py <<'PY'
+cat >/tmp/press-timed.py <<'PY'
 import sys
 import time
 
@@ -71,14 +72,15 @@ call(session, iface, "Stop", None)
 PY
 
 rm -f /tmp/latency.log /tmp/latency.sent
-for i in 1 2 3 4 5; do
+for _ in 1 2 3 4 5; do
     for kind in media plain; do
-        python3 /tmp/press-timed.py "$kind" >> /tmp/latency.sent
+        python3 /tmp/press-timed.py "$kind" >>/tmp/latency.sent
         sleep 1.5
     done
 done
 
-report="$(python3 - "$BOUND_MS" <<'PY'
+report="$(
+    python3 - "$BOUND_MS" <<'PY'
 import collections
 import sys
 

@@ -67,7 +67,7 @@ esac
 check "GetActive says no with the session unlocked" "$(screensaver GetActive)" "b false"
 
 cat >"$SHELL_LUA" <<'LUA'
-gnoblin.events.on("gnoblin.session.lock-requested", function(event)
+gnoblin.on("gnoblin.session.lock-requested", function(event)
     local file = io.open("/tmp/lock-requests.txt", "a")
     file:write("requested\n")
     file:close()

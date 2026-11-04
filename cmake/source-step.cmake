@@ -3,7 +3,7 @@
 #   cmake -DACTION=<action> [-D<NAME>=<value> ...] -P cmake/source-step.cmake
 #
 # Actions and their arguments:
-#   apply-patches        PROJECT                      Reset to the pinned tag, copy the overlay, apply patches/<PROJECT>/
+#   apply-patches        PROJECT                      Reset to the pinned tag, copy the overlay, apply patches/<PROJECT>/series
 #   overlay              PROJECT SOURCE_DIR MODE      MODE is copy, list or remove. SOURCE_DIR is the tree to change
 #   state-check          PROJECT TAG                  Fail unless the submodule may be reset
 #   state-record         PROJECT TAG                  Record the state of a patched submodule

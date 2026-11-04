@@ -132,6 +132,8 @@ void runtime_reload_finish(Runtime* runtime, gboolean commit, const char* messag
     if (!reload)
         return;
     runtime->pending_reload = NULL;
+    if (!commit)
+        gnoblin_config_reload_in_flight(FALSE); /* the old runtime stays */
     gnoblin_config_finish_deferred_load(commit);
     if (commit) {
         gboolean recovered_snapshot = reload->startup && runtime->recovery_snapshot;
@@ -255,14 +257,30 @@ gboolean runtime_reload_timeout(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+/* Whether an operation that the compositor has not completed holds the reload back. A playing
+ * tween does not: the compositor stops it when the new configuration takes effect. */
+static gboolean runtime_operations_block_reload(Runtime* runtime) {
+    GHashTableIter iter;
+    gpointer key;
+    g_hash_table_iter_init(&iter, runtime->pending_operation_ids);
+    while (g_hash_table_iter_next(&iter, &key, NULL))
+        if (!gnoblin_config_operation_survives_reload(*(guint64*)key))
+            return TRUE;
+    return FALSE;
+}
+
 static gboolean runtime_reload_progress(gpointer user_data) {
     Runtime* runtime = user_data;
     runtime->reload_progress_id = 0;
     RuntimeReload* reload = runtime->pending_reload;
     if (!reload || runtime->failed)
         return G_SOURCE_REMOVE;
-    if (g_hash_table_size(runtime->pending_operation_ids) != 0 ||
-        !g_queue_is_empty(&runtime->policy_events) ||
+    /* The compositor has the candidate configuration. The completion of a playing tween that its
+     * commit stops arrives before the acknowledgement and schedules this again: send nothing
+     * twice, because the compositor rejects a second packet for one generation. */
+    if (reload->sent)
+        return G_SOURCE_REMOVE;
+    if (runtime_operations_block_reload(runtime) || !g_queue_is_empty(&runtime->policy_events) ||
         gnoblin_config_runtime_pending_operations() != 0)
         return G_SOURCE_REMOVE;
     g_autoptr(GVariant) active_document = gnoblin_config_current_document();
@@ -277,6 +295,7 @@ static gboolean runtime_reload_progress(gpointer user_data) {
         return G_SOURCE_REMOVE;
     }
     reload->sent = TRUE;
+    gnoblin_config_reload_in_flight(TRUE);
     return G_SOURCE_REMOVE;
 }
 
@@ -408,28 +427,40 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                                 "Lua runtime emitted a malformed operation");
             return FALSE;
         }
+        /* A window menu request names its own capability in the arguments; the compositor
+         * holds it, so such an operation has no gesture context to attach. */
+        g_autoptr(GVariant) menu_handle =
+            g_variant_lookup_value(arguments, "_menu_context_handle", NULL);
+        const GnoblinApiOperation* operation_row = gnoblin_api_operation_find(method);
         gboolean needs_focus_context =
-            g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
-            g_str_equal(method, "window.begin_resize") ||
-            g_str_equal(method, "input.text_target") || g_str_equal(method, "window.snap_context");
-        g_autoptr(GVariant) packet = NULL;
+            !menu_handle && operation_row && (operation_row->flags & GN_OP_GRANT);
+        /* Fields the compositor needs beside the operation itself. Only the operation that a
+         * socket client's call created carries that client's ID. */
+        gboolean needs_generation = operation_row && (operation_row->flags & GN_OP_GENERATION);
+        gboolean needs_client =
+            runtime->current_client_id && request_id == runtime->current_client_operation_id;
+        guint64 handle = 0;
+        guint64 native_generation = 0;
+        gint64 expires_at_us = 0;
+        char grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE] = {0};
         if (needs_focus_context) {
-            guint64 handle = 0;
             guint64 runtime_generation = 0;
-            guint64 native_generation = 0;
-            gint64 expires_at_us = 0;
             if (!gnoblin_config_take_focus_context(request_id, &handle, &runtime_generation,
-                                                   &native_generation, &expires_at_us) ||
+                                                   &native_generation, &expires_at_us,
+                                                   grant_window) ||
                 !handle || !native_generation || expires_at_us <= g_get_monotonic_time()) {
                 g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "Lua focus operation lost its one-use native context");
+                                    "Lua grant operation lost its native context");
                 return FALSE;
             }
             if (runtime_generation != gnoblin_config_runtime_generation()) {
                 g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "Lua focus operation belongs to an old runtime generation");
+                                    "Lua grant operation belongs to an old runtime generation");
                 return FALSE;
             }
+        }
+        g_autoptr(GVariant) packet = NULL;
+        if (needs_focus_context || needs_generation || needs_client) {
             GVariantBuilder operation_builder;
             GVariantIter fields;
             const char* field_name;
@@ -440,63 +471,28 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
                 g_autoptr(GVariant) value = field_value;
                 g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
             }
-            g_variant_builder_add(&operation_builder, "{sv}", "focus_context_handle",
-                                  g_variant_new_uint64(handle));
-            g_variant_builder_add(&operation_builder, "{sv}", "focus_context_generation",
-                                  g_variant_new_uint64(native_generation));
-            g_variant_builder_add(&operation_builder, "{sv}", "focus_context_expires_at_us",
-                                  g_variant_new_int64(expires_at_us));
-            if (g_str_equal(method, "window.snap_context"))
+            if (needs_focus_context) {
+                g_variant_builder_add(&operation_builder, "{sv}", "focus_context_handle",
+                                      g_variant_new_uint64(handle));
+                g_variant_builder_add(&operation_builder, "{sv}", "focus_context_generation",
+                                      g_variant_new_uint64(native_generation));
+                g_variant_builder_add(&operation_builder, "{sv}", "focus_context_expires_at_us",
+                                      g_variant_new_int64(expires_at_us));
+            }
+            if (needs_focus_context && grant_window[0])
+                g_variant_builder_add(&operation_builder, "{sv}", "grant_window",
+                                      g_variant_new_string(grant_window));
+            if (needs_generation)
                 g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
                                       g_variant_new_uint64(gnoblin_config_runtime_generation()));
-            packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.thumbnail") && runtime->current_client_id) {
-            GVariantBuilder operation_builder;
-            GVariantIter fields;
-            const char* field_name;
-            GVariant* field_value;
-            g_variant_builder_init(&operation_builder, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&fields, operation);
-            while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
-                g_autoptr(GVariant) value = field_value;
-                g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
-            }
-            g_variant_builder_add(&operation_builder, "{sv}", "client_id",
-                                  g_variant_new_uint64(runtime->current_client_id));
-            packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.snap.offer") || g_str_equal(method, "command.run") ||
-                   g_str_equal(method, "command.capture")) {
-            GVariantBuilder operation_builder;
-            GVariantIter fields;
-            const char* field_name;
-            GVariant* field_value;
-            g_variant_builder_init(&operation_builder, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&fields, operation);
-            while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
-                g_autoptr(GVariant) value = field_value;
-                g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
-            }
-            g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
-                                  g_variant_new_uint64(gnoblin_config_runtime_generation()));
-            packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.snap")) {
-            GVariantBuilder operation_builder;
-            GVariantIter fields;
-            const char* field_name;
-            GVariant* field_value;
-            g_variant_builder_init(&operation_builder, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&fields, operation);
-            while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
-                g_autoptr(GVariant) value = field_value;
-                g_variant_builder_add(&operation_builder, "{sv}", field_name, value);
-            }
-            g_variant_builder_add(&operation_builder, "{sv}", "runtime_generation",
-                                  g_variant_new_uint64(gnoblin_config_runtime_generation()));
+            if (needs_client)
+                g_variant_builder_add(&operation_builder, "{sv}", "client_id",
+                                      g_variant_new_uint64(runtime->current_client_id));
             packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
         } else {
             packet = g_variant_ref(operation);
         }
-        gboolean logout_operation = g_str_equal(method, "session.logout");
+        gboolean logout_operation = operation_row && operation_row->id == GNOBLIN_OP_SESSION_LOGOUT;
         if (logout_operation && is_pending_logout(runtime, (guint64)request_id)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                 "Lua runtime reused a pending session logout request ID");

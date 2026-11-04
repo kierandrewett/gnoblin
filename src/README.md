@@ -56,8 +56,8 @@ tree (Mutter or the GNOME portal backend).
     - `gnoblin-control-runtime-channel.c` — the channel to the runtime worker: dispatch, flush and republish.
     - `gnoblin-control-api.c` — the public `gnoblin_native_control_*` functions.
     - `gnoblin-control-runtime.c` — runtime worker protocol helpers: reload document comparison, resume matching, config results, queue flushing and request cancel.
-    - `gnoblin-control-command.c` — command spawning: the single spawn worker, child-exit watches, and `command.run` argument parsing.
-    - `gnoblin-control-capture.c` — the `command.capture` operation.
+    - `gnoblin-control-command.c` — command spawning for shortcuts and touchpad gestures: the single spawn worker and child-exit watches.
+    - `gnoblin-control-process.c` — `process.spawn` and `process.kill` for Lua: process groups, captured output, timeouts and the exit event.
     - `windows/` — window rules, window drag and snap offers, workspace and
       monitor snapshots, and layer snapshots with their events.
 - `cursor/` — cursor theme and Hyprcursor support.

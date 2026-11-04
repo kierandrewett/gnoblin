@@ -10,6 +10,9 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 UPSTREAM = ROOT / "subprojects/xdg-desktop-portal-gnome"
 
@@ -17,7 +20,12 @@ UPSTREAM = ROOT / "subprojects/xdg-desktop-portal-gnome"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--upstream", type=Path, default=UPSTREAM, help="prepared portal source tree before patch 49")
+    parser.add_argument(
+        "--upstream",
+        type=Path,
+        default=UPSTREAM,
+        help="prepared portal source tree before the access-dialog lifecycle patch",
+    )
     parser.add_argument("--source", type=Path, help="override access.c in the prepared source tree")
     parser.add_argument("--baseline", action="store_true")
     args = parser.parse_args()
@@ -35,10 +43,7 @@ def main():
     )
     shutil.copy2(source, work / "access.c")
     if not args.baseline:
-        patch = (
-            ROOT
-            / "patches/xdg-desktop-portal-gnome/49-access-dialog-lifecycle/0001-release-dialogs-with-their-requests.patch"
-        )
+        patch = patch_series.find("xdg-desktop-portal-gnome", "release-dialogs-with-their-requests")
         subprocess.run(["patch", "--batch", "--forward", str(work / "access.c"), str(patch)], check=True)
     (work / "config.h").write_text('#define GETTEXT_PACKAGE "gnoblin"\n')
     subprocess.run(

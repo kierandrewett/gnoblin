@@ -1,158 +1,28 @@
 #include "gnoblinctl-internal.h"
 
-static JsonNode* lua_cli_monitor_snapshot(lua_State* state, Cli* cli, const char* operation) {
-    JsonObject* arguments = json_object_new();
-    g_autoptr(GError) call_error = NULL;
-    JsonNode* result = call_compositor(cli, "api", "monitors.list", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        luaL_error(state, "gnoblin.monitors.%s failed: %s", operation, call_error->message);
-    if (!JSON_NODE_HOLDS_ARRAY(result)) {
-        json_node_unref(result);
-        luaL_error(state, "gnoblin.monitors.%s returned an invalid snapshot", operation);
-    }
-    return result;
-}
-
-int lua_cli_monitors_list(lua_State* state) {
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.list takes no arguments");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    g_autoptr(JsonNode) result = lua_cli_monitor_snapshot(state, cli, "list");
-    JsonArray* monitors = json_node_get_array(result);
-    lua_createtable(state, json_array_get_length(monitors), 0);
-    for (guint i = 0; i < json_array_get_length(monitors); i++) {
-        JsonObject* monitor = json_array_get_object_element(monitors, i);
-        if (!monitor)
-            return luaL_error(state, "gnoblin.monitors.list returned an invalid monitor record");
-        lua_cli_push_monitor_record(state, monitor);
-        lua_rawseti(state, -2, i + 1);
-    }
+int lua_cli_output_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "Output<%s>", id ? id : "unknown");
     return 1;
 }
 
-int lua_cli_monitors_primary(lua_State* state) {
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.primary takes no arguments");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    g_autoptr(JsonNode) result = lua_cli_monitor_snapshot(state, cli, "primary");
-    JsonArray* monitors = json_node_get_array(result);
-    for (guint i = 0; i < json_array_get_length(monitors); i++) {
-        JsonObject* monitor = json_array_get_object_element(monitors, i);
-        if (monitor && json_object_get_boolean_member_with_default(monitor, "primary", FALSE)) {
-            lua_cli_push_monitor_record(state, monitor);
-            return 1;
-        }
-    }
-    lua_pushnil(state);
-    return 1;
-}
-
-static gboolean lua_cli_monitor_privacy_screen_snapshot_valid(JsonObject* snapshot) {
-    static const char* const snapshot_fields[] = {"requested_enabled", "source", "revision",
-                                                  "monitors", NULL};
-    static const char* const monitor_fields[] = {"id", "available", "enabled", "locked", NULL};
-    if (!snapshot || !lua_cli_workspace_object_has_only_keys(snapshot, snapshot_fields))
-        return FALSE;
-    JsonNode* requested = json_object_get_member(snapshot, "requested_enabled");
-    JsonNode* source = json_object_get_member(snapshot, "source");
-    JsonNode* revision = json_object_get_member(snapshot, "revision");
-    JsonNode* monitors_node = json_object_get_member(snapshot, "monitors");
-    const char* source_name =
-        source && JSON_NODE_HOLDS_VALUE(source) && json_node_get_value_type(source) == G_TYPE_STRING
-            ? json_node_get_string(source)
-            : NULL;
-    if (!requested || !JSON_NODE_HOLDS_VALUE(requested) ||
-        json_node_get_value_type(requested) != G_TYPE_BOOLEAN || !source_name ||
-        !(g_str_equal(source_name, "runtime") || g_str_equal(source_name, "config") ||
-          g_str_equal(source_name, "system")) ||
-        !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
-        (json_node_get_value_type(revision) != G_TYPE_INT &&
-         json_node_get_value_type(revision) != G_TYPE_INT64 &&
-         json_node_get_value_type(revision) != G_TYPE_UINT &&
-         json_node_get_value_type(revision) != G_TYPE_UINT64) ||
-        (json_node_get_value_type(revision) != G_TYPE_UINT &&
-         json_node_get_value_type(revision) != G_TYPE_UINT64 && json_node_get_int(revision) < 0) ||
-        !monitors_node || !JSON_NODE_HOLDS_ARRAY(monitors_node))
-        return FALSE;
-
-    JsonArray* monitors = json_node_get_array(monitors_node);
-    for (guint i = 0; i < json_array_get_length(monitors); i++) {
-        JsonNode* monitor_node = json_array_get_element(monitors, i);
-        if (!monitor_node || !JSON_NODE_HOLDS_OBJECT(monitor_node))
-            return FALSE;
-        JsonObject* monitor = json_node_get_object(monitor_node);
-        if (!lua_cli_workspace_object_has_only_keys(monitor, monitor_fields))
-            return FALSE;
-        const char* id = member_string(monitor, "id", NULL);
-        JsonNode* available = json_object_get_member(monitor, "available");
-        if (!id || !*id || !available || !JSON_NODE_HOLDS_VALUE(available) ||
-            json_node_get_value_type(available) != G_TYPE_BOOLEAN)
-            return FALSE;
-        gboolean supports_privacy_screen = json_node_get_boolean(available);
-        const char* const state_fields[] = {"enabled", "locked", NULL};
-        for (guint field = 0; state_fields[field]; field++) {
-            JsonNode* value = json_object_get_member(monitor, state_fields[field]);
-            if (supports_privacy_screen) {
-                if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
-                    json_node_get_value_type(value) != G_TYPE_BOOLEAN)
-                    return FALSE;
-            } else if (value) {
-                return FALSE;
-            }
-        }
-    }
-    return TRUE;
-}
-
-int lua_cli_monitors_privacy_screen(lua_State* state) {
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.privacy_screen takes no arguments");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    JsonObject* arguments = json_object_new();
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "monitors.privacy_screen", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "gnoblin.monitors.privacy_screen failed: %s",
-                          call_error ? call_error->message : "unknown compositor error");
-    if (!JSON_NODE_HOLDS_OBJECT(result) ||
-        !lua_cli_monitor_privacy_screen_snapshot_valid(json_node_get_object(result)))
-        return luaL_error(state, "gnoblin.monitors.privacy_screen returned an invalid snapshot");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
-int lua_cli_monitors_set_privacy_screen(lua_State* state) {
-    if (lua_gettop(state) != 1 ||
-        (!lua_isboolean(state, 1) &&
-         !(lua_type(state, 1) == LUA_TSTRING && g_str_equal(lua_tostring(state, 1), "inherit"))))
-        return luaL_error(state,
-                          "gnoblin.monitors.set_privacy_screen requires true, false, or 'inherit'");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    JsonObject* arguments = json_object_new();
-    if (lua_isboolean(state, 1))
-        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 1));
-    else
-        json_object_set_string_member(arguments, "value", "inherit");
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "monitors.set_privacy_screen", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "gnoblin.monitors.set_privacy_screen failed: %s",
-                          call_error ? call_error->message : "unknown compositor error");
-    if (!JSON_NODE_HOLDS_OBJECT(result) ||
-        !lua_cli_monitor_privacy_screen_snapshot_valid(json_node_get_object(result)))
-        return luaL_error(state,
-                          "gnoblin.monitors.set_privacy_screen returned an invalid snapshot");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
-    return 1;
+static void lua_cli_push_output_record(lua_State* state, Cli* cli, JsonNode* node) {
+    if (!JSON_NODE_HOLDS_OBJECT(node) || !member_string(json_node_get_object(node), "id", NULL))
+        luaL_error(state, "gnoblin.outputs returned an output without a stable id");
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_cli_add_record_methods(state, cli, "Output");
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_OUTPUT_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
 }
 
 int lua_cli_workspaces_list(lua_State* state) {
@@ -293,66 +163,46 @@ static gboolean lua_cli_workspace_record_valid(JsonObject* object) {
            json_node_get_value_type(persistent) == G_TYPE_BOOLEAN;
 }
 
-static int lua_cli_workspace_operation_error(lua_State* state, JsonObject* arguments,
-                                             const char* message) {
-    json_object_unref(arguments);
-    return luaL_error(state, "%s", message);
+static char* lua_cli_workspace_function_name(const char* method) {
+    return g_strdup_printf("gnoblin.workspaces.%s", method + strlen("workspace."));
 }
 
 int lua_cli_workspaces_operation(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
-    gboolean takes_no_arguments =
-        g_str_equal(method, "workspace.next") || g_str_equal(method, "workspace.previous");
-    if (takes_no_arguments ? lua_gettop(state) != 0
-                           : lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "%s has invalid arguments", method);
+    g_autofree char* function = lua_cli_workspace_function_name(method);
+    int top = lua_gettop(state);
 
-    JsonObject* arguments = takes_no_arguments
-                                ? json_object_new()
-                                : lua_cli_table_object(state, 1, "workspace options");
-    gboolean valid = FALSE;
-    static const char* const create_fields[] = {"id", "name", "activate", NULL};
-    static const char* const selector_fields[] = {"id", "number", NULL};
-    static const char* const rename_fields[] = {"id", "number", "name", NULL};
-    static const char* const move_active_fields[] = {"workspace", "follow", NULL};
-    static const char* const move_window_fields[] = {"window", "workspace", "follow", NULL};
-
-    if (g_str_equal(method, "workspace.create")) {
+    JsonObject* arguments = NULL;
+    if (!g_str_equal(method, "workspace.create")) {
+        if (top != 0)
+            return luaL_error(state, "%s takes no arguments", function);
+        arguments = json_object_new();
+    } else {
+        static const char* const create_fields[] = {"id", "name", "activate", NULL};
+        if (top < 1 || top > 2 || lua_type(state, 1) != LUA_TSTRING)
+            return luaL_error(state, "%s requires name (string) and optional options", function);
+        arguments = lua_cli_optional_options(state, 2, function);
+        if (json_object_has_member(arguments, "name")) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s takes name as argument 1, not in options", function);
+        }
+        json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
         const char* name = member_string(arguments, "name", NULL);
         const char* id = member_string(arguments, "id", NULL);
-        valid = lua_cli_workspace_object_has_only_keys(arguments, create_fields) && name && *name &&
-                g_utf8_validate(name, -1, NULL) && g_utf8_strlen(name, -1) <= 80 &&
-                lua_cli_workspace_string_member_valid(arguments, "id") &&
-                (!id || g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id, 0, 0)) &&
-                lua_cli_workspace_boolean_member_valid(arguments, "activate");
-    } else if (g_str_equal(method, "workspace.rename")) {
-        const char* name = member_string(arguments, "name", NULL);
-        valid = lua_cli_workspace_object_has_only_keys(arguments, rename_fields) &&
-                lua_cli_workspace_selector_valid(arguments) && name && *name &&
-                lua_cli_workspace_string_member_valid(arguments, "name") &&
-                g_utf8_validate(name, -1, NULL) && g_utf8_strlen(name, -1) <= 80;
-    } else if (g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
-        valid = lua_cli_workspace_object_has_only_keys(arguments, selector_fields) &&
-                lua_cli_workspace_selector_valid(arguments);
-    } else if (g_str_equal(method, "workspace.move_active") ||
-               g_str_equal(method, "workspace.move_window")) {
-        gboolean moving_active = g_str_equal(method, "workspace.move_active");
-        JsonObject* workspace = member_object(arguments, "workspace");
-        const char* window = member_string(arguments, "window", NULL);
-        valid = lua_cli_workspace_object_has_only_keys(
-                    arguments, moving_active ? move_active_fields : move_window_fields) &&
-                workspace && json_object_get_size(workspace) == 1 &&
-                lua_cli_workspace_selector_valid(workspace) &&
-                lua_cli_workspace_boolean_member_valid(arguments, "follow") &&
-                (moving_active || lua_cli_workspace_string_member_valid(arguments, "window")) &&
-                (moving_active || (window && *window && g_utf8_validate(window, -1, NULL)));
-    } else if (takes_no_arguments) {
-        valid = TRUE;
+        gboolean valid =
+            lua_cli_workspace_object_has_only_keys(arguments, create_fields) && name && *name &&
+            g_utf8_validate(name, -1, NULL) && g_utf8_strlen(name, -1) <= 80 &&
+            lua_cli_workspace_string_member_valid(arguments, "id") &&
+            (!id || g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id, 0, 0)) &&
+            lua_cli_workspace_boolean_member_valid(arguments, "activate");
+        if (!valid) {
+            g_autofree char* message = g_strdup_printf(
+                "%s received invalid arguments (check name and option values)", function);
+            json_object_unref(arguments);
+            return luaL_error(state, "%s", message);
+        }
     }
-    if (!valid)
-        return lua_cli_workspace_operation_error(state, arguments,
-                                                 "workspace operation received invalid arguments");
 
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
@@ -360,19 +210,6 @@ int lua_cli_workspaces_operation(lua_State* state) {
     if (!result)
         return luaL_error(state, "%s failed: %s", method, call_error->message);
     JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
-    if (g_str_equal(method, "workspace.move_active") ||
-        g_str_equal(method, "workspace.move_window")) {
-        JsonObject* workspace = member_object(object, "workspace");
-        const char* window = member_string(object, "window", NULL);
-        JsonNode* follow = object ? json_object_get_member(object, "follow") : NULL;
-        if (!lua_cli_workspace_record_valid(workspace) || !window || !*window || !follow ||
-            !JSON_NODE_HOLDS_VALUE(follow) || json_node_get_value_type(follow) != G_TYPE_BOOLEAN)
-            return luaL_error(state, "%s returned an invalid WorkspaceMove", method);
-        json_to_lua(state, result);
-        lua_cli_push_readonly_value(state, -1);
-        lua_remove(state, -2);
-        return 1;
-    }
     if (!lua_cli_workspace_record_valid(object)) {
         g_autofree char* encoded = json_to_string(result, TRUE);
         return luaL_error(state, "%s returned an invalid Workspace record: %s", method, encoded);
@@ -383,10 +220,10 @@ int lua_cli_workspaces_operation(lua_State* state) {
 
 int lua_cli_windows_list(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
-        return luaL_error(state, "gnoblin.windows.list accepts one optional filter table");
-    JsonObject* arguments =
-        lua_gettop(state) ? lua_cli_table_object(state, 1, "window filter") : json_object_new();
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.windows.list takes no arguments; select windows with "
+                                 "gnoblin.find(\"Window\", filter)");
+    JsonObject* arguments = json_object_new();
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result =
         call_compositor(cli, "api", "windows.list", arguments, &call_error);
@@ -410,30 +247,14 @@ int lua_cli_windows_list(lua_State* state) {
 int lua_cli_windows_snap_context(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1)
-        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
-    LuaCliFocusContext* context = lua_cli_test_focus_context(state, 1);
-    if (!context)
-        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
-    if (context->consumed)
-        return luaL_error(state, "gnoblin.windows.snap_context cannot reuse a consumed context");
-    if (!context->subscription || !context->subscription->active ||
-        !context->subscription->connection || context->subscription->cli != cli)
-        return luaL_error(state,
-                          "gnoblin.windows.snap_context requires its active event connection");
-
-    JsonObject* arguments = json_object_new();
-    json_object_set_string_member(arguments, "focus_context", context->token);
-    context->consumed = TRUE;
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
-        context->subscription, "window.snap_context", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "window.snap_context failed: %s",
-                          call_error ? call_error->message : "compositor request failed");
+        return luaL_error(state, "gnoblin.windows.snap_context takes one Grant");
+    CliLuaEventSubscription* subscription = NULL;
+    g_autoptr(JsonNode) result =
+        lua_cli_grant_request(state, cli, 1, LUA_CLI_GRANT_SNAP_CONTEXT, "window.snap_context",
+                              NULL, NULL, &subscription);
     if (!JSON_NODE_HOLDS_OBJECT(result))
         return luaL_error(state, "window.snap_context returned an invalid result");
-    lua_cli_push_snap_context(state, context->subscription, json_node_get_object(result));
+    lua_cli_push_snap_context(state, subscription, json_node_get_object(result));
     return 1;
 }
 
@@ -523,8 +344,6 @@ void cli_lua_event_subscription_detach(CliLuaEventSubscription* subscription) {
     if (!subscription || !subscription->active)
         return;
     subscription->active = FALSE;
-    if (subscription->location_requests)
-        g_hash_table_remove_all(subscription->location_requests);
     if (subscription->source_id) {
         g_source_remove(subscription->source_id);
         subscription->source_id = 0;
@@ -582,33 +401,10 @@ void cli_lua_event_subscription_free(gpointer data) {
         subscription->callback_ref = LUA_NOREF;
     }
     g_clear_object(&subscription->connection);
-    g_clear_pointer(&subscription->location_requests, g_hash_table_unref);
     if (subscription->pending)
         g_string_free(subscription->pending, TRUE);
     g_free(subscription->event_name);
     g_free(subscription);
-}
-
-void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription* subscription,
-                                const char* token) {
-    LuaCliFocusContext* context = lua_newuserdatauv(state, sizeof *context, 0);
-    context->magic = LUA_CLI_FOCUS_CONTEXT_MAGIC;
-    context->subscription = subscription;
-    context->token = g_strdup(token);
-    context->consumed = FALSE;
-    luaL_getmetatable(state, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
-    lua_setmetatable(state, -2);
-}
-
-void lua_cli_push_menu_context(lua_State* state, CliLuaEventSubscription* subscription,
-                               const char* token) {
-    LuaCliMenuContext* context = lua_newuserdatauv(state, sizeof *context, 0);
-    context->magic = LUA_CLI_MENU_CONTEXT_MAGIC;
-    context->subscription = subscription;
-    context->token = g_strdup(token);
-    context->consumed = FALSE;
-    luaL_getmetatable(state, GNOBLINCTL_MENU_CONTEXT_METATABLE);
-    lua_setmetatable(state, -2);
 }
 
 static JsonNode* lua_cli_output_snapshot(lua_State* state, Cli* cli, const char* operation) {
@@ -631,9 +427,12 @@ int lua_cli_outputs_list(lua_State* state) {
         return luaL_error(state, "gnoblin.outputs.list takes no arguments");
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     g_autoptr(JsonNode) result = lua_cli_output_snapshot(state, cli, "list");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
+    JsonArray* outputs = json_node_get_array(result);
+    lua_createtable(state, (int)json_array_get_length(outputs), 0);
+    for (guint i = 0; i < json_array_get_length(outputs); i++) {
+        lua_cli_push_output_record(state, cli, json_array_get_element(outputs, i));
+        lua_rawseti(state, -2, i + 1);
+    }
     return 1;
 }
 
@@ -652,11 +451,7 @@ int lua_cli_outputs_find(lua_State* state, gboolean by_id) {
         if (output &&
             ((by_id && g_str_equal(member_string(output, "id", ""), id)) ||
              (!by_id && json_object_get_boolean_member_with_default(output, "primary", FALSE)))) {
-            JsonNode* copy = json_node_copy(json_array_get_element(outputs, i));
-            json_to_lua(state, copy);
-            json_node_unref(copy);
-            lua_cli_push_readonly_value(state, -1);
-            lua_remove(state, -2);
+            lua_cli_push_output_record(state, cli, json_array_get_element(outputs, i));
             return 1;
         }
     }

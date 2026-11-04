@@ -69,6 +69,7 @@ jobs:
       - name: Check the patch series and the contract tests
         run: |
           python3 scripts/manage-patches.py check
+          python3 tests/patch-series.test.py
           python3 tests/native-socket-text-snap-api.test.py
           python3 tests/hyprcursor-session-predicate.test.py
           python3 tests/session-lock-api.test.py

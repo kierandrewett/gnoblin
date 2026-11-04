@@ -17,10 +17,10 @@ gnoblin.configure {
 }
 ```
 
-| Field     | Accepted values            | Effect                                                                                                     |
-| --------- | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `binding` | One GTK accelerator string | Runs the command when the key is pressed.                                                                  |
-| `command` | Array of strings           | Starts the first item as the program and passes the remaining items as arguments, without shell expansion. |
+| Field     | Accepted values                                                | Effect                                                                                                     |
+| --------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `binding` | One chord (see [chord syntax](/guides/shortcuts#chord-syntax)) | Runs the command when the key is pressed.                                                                  |
+| `command` | Array of strings                                               | Starts the first item as the program and passes the remaining items as arguments, without shell expansion. |
 
 Changes apply on config reload. The [shortcut reference](/config/configure/shortcuts)
 documents built-in actions and other fields.

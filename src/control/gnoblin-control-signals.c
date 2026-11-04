@@ -74,7 +74,7 @@ static gboolean publish_windows(gpointer user_data) {
         gnoblin_control_monitor_snapshot_json(control, TRUE, &monitor_error);
     g_autoptr(GError) output_error = NULL;
     g_autoptr(JsonNode) output_json =
-        gnoblin_control_output_snapshot_json(control, TRUE, &output_error);
+        gnoblin_control_output_snapshot_json(control, monitor_json, TRUE, &output_error);
     g_autoptr(GError) layer_error = NULL;
     g_autoptr(JsonNode) layer_json =
         gnoblin_control_layer_snapshot_json(control, TRUE, &layer_error);
@@ -98,6 +98,11 @@ static gboolean publish_windows(gpointer user_data) {
     else
         g_warning("gnoblin-native-control: cannot publish monitors: %s",
                   monitor_error ? monitor_error->message : "monitor listing unavailable");
+    if (output_json)
+        gnoblin_control_publish_output_changes(control, output_json, revision);
+    else
+        g_warning("gnoblin-native-control: cannot publish outputs: %s",
+                  output_error ? output_error->message : "output listing unavailable");
     if (layer_json)
         publish_layer_changes(control, layer_json, revision);
     else
@@ -135,6 +140,15 @@ void schedule_windows(GnoblinNativeControl* control) {
         control->state_revision++;
         control->publish_id = g_idle_add(publish_windows, control);
     }
+}
+
+/* Publish the window and workspace state now, in place of any queued publication, so an event
+ * sent next describes the state after it. */
+void publish_windows_now(GnoblinNativeControl* control) {
+    if (control->publish_id)
+        g_clear_handle_id(&control->publish_id, g_source_remove);
+    control->state_revision++;
+    publish_windows(control);
 }
 
 static void window_changed(MetaWindow* window, gpointer user_data) {
@@ -561,6 +575,7 @@ static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     g_hash_table_remove(control->window_signal_handler_ids, window);
     g_signal_handlers_disconnect_by_data(window, control);
     g_hash_table_remove(control->snap_restore_frames, window);
+    gnoblin_control_overrides_window_closed(control, window_id);
     g_hash_table_remove(control->windows, window);
     schedule_windows(control);
 }
@@ -667,6 +682,7 @@ void input_device_added(ClutterSeat* seat, ClutterInputDevice* device, gpointer 
 void input_device_removed(ClutterSeat* seat, ClutterInputDevice* device, gpointer user_data) {
     (void)seat;
     GnoblinNativeControl* control = user_data;
+    gnoblin_control_forget_pressed_keys(control, device);
     if (control->pending_input_events && !g_queue_is_empty(control->pending_input_events))
         native_input_cancel_pending(
             control, !(control->wayland_compositor &&

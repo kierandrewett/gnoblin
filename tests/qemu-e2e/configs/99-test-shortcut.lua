@@ -1,5 +1,5 @@
 local function log(text)
-    gnoblin.commands.run({"sh", "-c", 'echo "$1" >> /tmp/shortcut-events.log', "sh", text})
+    gnoblin.process.spawn({ "sh", "-c", "echo \"$1\" >> /tmp/shortcut-events.log", "sh", text })
 end
 
 gnoblin.on("gnoblin.shortcut.binding-activated", function(event)
@@ -11,6 +11,6 @@ gnoblin.on("gnoblin.shortcut.binding-deactivated", function(event)
 end)
 
 gnoblin.on("gnoblin.config.reloaded", function(event)
-    gnoblin.shortcuts.bind {id = "regression-shortcut", accelerator = "<Super><Alt>F9"}
+    gnoblin.shortcuts.bind("regression-shortcut", "<Super><Alt>F9")
     log("bound regression-shortcut")
 end)

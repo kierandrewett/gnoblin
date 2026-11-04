@@ -26,25 +26,27 @@ The `state` values mean:
 - `pending`: Mutter is watching for the application window.
 - `started`: a matching mapped window appears or becomes focused.
 - `timed_out`: the deadline passes before a window is observed.
-- `ended`: `finish()` runs while the launch is still `pending`.
+- `ended`: `launch:finish()` runs while the launch is still `pending`.
 
 Mutter cannot report failures from an external process launcher.
 
-Set these fields in `gnoblin.launches.begin`:
+`gnoblin.launches.begin(token, application, options?)` takes these arguments:
 
-| Field         | Type or accepted values                | Default  |
-| ------------- | -------------------------------------- | -------- |
-| `token`       | Non-empty string, up to 128 characters | Required |
-| `application` | Non-empty string, up to 512 characters | Required |
-| `timeout_ms`  | Integer from 100 to 10000              | 3000     |
+| Argument             | Type or accepted values                | Default  |
+| -------------------- | -------------------------------------- | -------- |
+| `token`              | Non-empty string, up to 128 characters | Required |
+| `application`        | Non-empty string, up to 512 characters | Required |
+| `options.timeout_ms` | Integer from 100 to 10000              | 3000     |
 
 ```lua
-gnoblin.launches.begin {
-    token = "launcher-42",
-    application = "org.example.Editor",
-    timeout_ms = 5000,
-}
+local launch = gnoblin.launches.begin("launcher-42", "org.example.Editor", {timeout_ms = 5000})
+launch:on("started", function() print("the editor has a window") end)
+launch:on("timed_out", function() print("no window appeared") end)
 ```
+
+`begin` returns the `Launch` object. It raises `changed`, `started`, `timed_out`
+and `closed` signals for the events above; see
+[Launch feedback](/shell-api/launch-feedback).
 
 Shortcut capture also completes through `gnoblin.operation.completed`:
 

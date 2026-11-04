@@ -6,6 +6,8 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import patch_series  # noqa: E402
 from _sources import LUA_SOURCES  # noqa: E402
 
 
@@ -19,8 +21,8 @@ class FocusPolicyContractTests(unittest.TestCase):
         self.assertIn('{"focus-new-windows", "prevent"}', source)
 
     def test_mutter_uses_strict_for_omitted_settings_and_initial_state(self):
-        preferences = (ROOT / "patches/mutter/70-config-preferences/0001-native-gnoblin-preferences.patch").read_text()
-        initial = (ROOT / "patches/mutter/99-typed-window-api/0060-default-strict-new-window-focus.patch").read_text()
+        preferences = patch_series.find("mutter", "native-gnoblin-preferences").read_text()
+        initial = patch_series.find("mutter", "default-strict-new-window-focus").read_text()
         self.assertIn(
             'APPLY_ENUM ("focus-new-windows", focus_new_windows, new_window_modes, '
             "G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT, META_PREF_FOCUS_NEW_WINDOWS);",

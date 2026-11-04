@@ -1,13 +1,14 @@
 """The Shell cutover may observe only the compositor's real protocol gate."""
 
 from pathlib import Path
-
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCH = (ROOT / "patches/mutter/70-session-lock-capability/"
-         "0001-backend-expose-Gnoblin-lock-capability.patch").read_text()
-HEADER = (ROOT / "src/protocols/session-lock/"
-          "meta-wayland-session-lock.h").read_text()
+sys.path.insert(0, str(ROOT / "scripts"))
+import patch_series  # noqa: E402
+
+PATCH = patch_series.find("mutter", "backend-expose-Gnoblin-lock-capability").read_text()
+HEADER = (ROOT / "src/protocols/session-lock/meta-wayland-session-lock.h").read_text()
 
 
 def test_backend_reads_manager_capability_not_policy_or_launcher_state():

@@ -102,6 +102,37 @@ static void test_invalid_document_preserves_snapshot(void) {
     g_assert_true(gnoblin_runtime_cache_get_bool(cache, "test", "enabled", FALSE));
 }
 
+static void test_overlay_layers_over_committed_document(void) {
+    const char* names[] = {"base", NULL};
+    g_autoptr(GnoblinRuntimeCache) cache = gnoblin_runtime_cache_new();
+    g_autoptr(GVariant) committed = make_document(FALSE, 1, 1.0, "base", names);
+    g_autoptr(GVariant) layered = make_document(TRUE, 99, 1.0, "base", names);
+    g_autoptr(GError) error = NULL;
+
+    g_assert_true(gnoblin_runtime_cache_replace(cache, committed, 5, &error));
+    g_assert_no_error(error);
+    gnoblin_runtime_cache_set_overlay(cache, layered);
+    /* Every reader sees the layer; the committed document stays what the Lua owner sent. */
+    g_assert_true(gnoblin_runtime_cache_get_bool(cache, "test", "enabled", FALSE));
+    g_assert_cmpint(gnoblin_runtime_cache_get_int(cache, "test", "count", 0), ==, 99);
+    g_autoptr(GVariant) effective = gnoblin_runtime_cache_get_document(cache);
+    g_autoptr(GVariant) owned = gnoblin_runtime_cache_get_committed_document(cache);
+    g_assert_true(g_variant_equal(effective, layered));
+    g_assert_true(g_variant_equal(owned, committed));
+    g_assert_cmpuint(gnoblin_runtime_cache_get_settings_revision(cache), ==, 5);
+
+    /* Removing the layer restores the committed values. */
+    gnoblin_runtime_cache_set_overlay(cache, NULL);
+    g_assert_false(gnoblin_runtime_cache_get_bool(cache, "test", "enabled", TRUE));
+    g_assert_cmpint(gnoblin_runtime_cache_get_int(cache, "test", "count", 0), ==, 1);
+
+    /* A new committed document starts without a layer. */
+    gnoblin_runtime_cache_set_overlay(cache, layered);
+    g_assert_true(gnoblin_runtime_cache_replace(cache, committed, 6, &error));
+    g_assert_no_error(error);
+    g_assert_cmpint(gnoblin_runtime_cache_get_int(cache, "test", "count", 0), ==, 1);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/runtime-cache/initial-state-and-defaults", test_initial_state_and_defaults);
@@ -110,5 +141,7 @@ int main(int argc, char** argv) {
     g_test_add_func("/runtime-cache/replacement-and-revision", test_replacement_and_revision);
     g_test_add_func("/runtime-cache/invalid-document-preserves-snapshot",
                     test_invalid_document_preserves_snapshot);
+    g_test_add_func("/runtime-cache/overlay-layers-over-committed-document",
+                    test_overlay_layers_over_committed_document);
     return g_test_run();
 }

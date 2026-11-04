@@ -31,8 +31,10 @@ iteration on disposable prepared source, use `--source-tree DIRECTORY`.
 ## Candidate behavior
 
 The new patch is
-`patches/mutter/99-typed-window-api/0124-preserve-layer-activation-context.patch`.
-It follows the existing typed API patches, including 0050 and 0076. It changes
+`patches/mutter/03-layer-shell/0011-preserve-layer-activation-context.patch`.
+It follows the existing focus-activation patches, including
+`09-focus-activation/0003-focus-with-xdg-activation-token.patch` and
+`09-focus-activation/0005-report-xdg-activation-denied.patch`. It changes
 activation handling and adds small input-delivery hooks; it does not retain a
 surface reference, keyboard grab, or invisible popup.
 

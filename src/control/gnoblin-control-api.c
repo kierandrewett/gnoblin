@@ -137,7 +137,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_int64_hash, g_int64_equal, g_free, gnoblin_control_pending_location_authorization_free);
     gnoblin_control_auth_init(control);
     gnoblin_control_prompts_init(control);
-    gnoblin_control_capture_init(control);
+    gnoblin_control_process_init(control);
+    gnoblin_control_present_init(control);
     control->runtime_operation_ids =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
     control->runtime_cancelled_operation_ids =
@@ -157,6 +158,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->pending_runtime_events = g_queue_new();
     control->pending_input_events = g_queue_new();
     control->held_input_dispositions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    control->pressed_keys = gnoblin_control_pressed_keys_new();
     control->privacy_handles =
         g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref, NULL);
     control->privacy_revision = 1;
@@ -283,7 +285,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
             g_unix_fd_add(control->runtime_fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
                           native_runtime_fd_ready, control);
     }
-    gnoblin_control_activity_publish(control, FALSE, FALSE, 120000, 0);
+    gnoblin_control_activity_watch(control);
     start_native_session_bus(control);
     g_signal_connect(control->display, "gnoblin-native-event", G_CALLBACK(native_native_event),
                      control);
@@ -371,10 +373,13 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->monitor_state_initialized = TRUE;
     }
     g_clear_error(&monitor_error);
-    initial_outputs = gnoblin_control_output_snapshot_json(control, TRUE, &monitor_error);
+    initial_outputs =
+        gnoblin_control_output_snapshot_json(control, initial_monitors, TRUE, &monitor_error);
     if (!initial_outputs)
         g_warning("gnoblin-native-control: cannot seed output snapshot: %s",
                   monitor_error ? monitor_error->message : "output listing unavailable");
+    else
+        gnoblin_control_publish_output_changes(control, initial_outputs, control->state_revision);
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
     g_signal_connect(control->display, "show-pad-osd", G_CALLBACK(native_show_pad_osd_requested),
                      control);
@@ -485,11 +490,16 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->location_agent, gnoblin_location_agent_free);
     gnoblin_control_auth_stop(control);
     gnoblin_control_prompts_stop(control);
-    gnoblin_control_capture_clear(control);
+    gnoblin_control_process_clear(control);
+    gnoblin_control_present_clear(control);
+    gnoblin_control_tweens_cancel(control, "cancelled");
+    g_clear_pointer(&control->tweens, g_hash_table_unref);
+    gnoblin_control_activity_stop(control);
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,
                                      "compositor_stopped");
+    gnoblin_control_input_grab_end(control, "runtime_stopped", FALSE);
     gnoblin_control_corner_toolkit_cache_shutdown(control);
 #ifdef HAVE_REMOTE_DESKTOP
     g_clear_pointer(&control->pipewire_monitor, gnoblin_pipewire_monitor_free);
@@ -620,6 +630,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_hash_table_unref(control->workspace_state);
     if (control->monitor_state)
         g_hash_table_unref(control->monitor_state);
+    if (control->output_state)
+        g_hash_table_unref(control->output_state);
     if (control->input_device_state)
         g_hash_table_unref(control->input_device_state);
     if (control->input_device_ids)
@@ -660,12 +672,15 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_free(control->path);
     g_clear_pointer(&control->native_touchpad_gestures, g_variant_unref);
     g_clear_pointer(&control->touchpad_router, gnoblin_touchpad_router_free);
+    gnoblin_control_overrides_free(control);
+    gnoblin_control_input_grab_free(control);
     g_clear_pointer(&control->runtime_cache, gnoblin_runtime_cache_free);
     g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref);
     g_clear_pointer(&control->pending_location_authorizations, g_hash_table_unref);
     g_clear_pointer(&control->pending_auth, g_hash_table_unref);
     g_clear_pointer(&control->pending_prompts, g_hash_table_unref);
-    g_clear_pointer(&control->pending_captures, g_hash_table_unref);
+    g_clear_pointer(&control->processes, g_hash_table_unref);
+    g_clear_pointer(&control->presents, g_hash_table_unref);
     g_clear_pointer(&control->runtime_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_cancelled_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
@@ -693,9 +708,9 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         control->pending_input_events = NULL;
     }
     g_clear_pointer(&control->held_input_dispositions, g_hash_table_unref);
+    g_clear_pointer(&control->pressed_keys, g_hash_table_unref);
     g_clear_pointer(&control->accepted_input_requests, g_hash_table_unref);
     g_clear_pointer(&control->input_policy_error, g_free);
     control->path = NULL;
-    control->teardown_complete = TRUE;
-    native_control_maybe_free_stopped(control);
+    native_control_finish_teardown(control);
 }

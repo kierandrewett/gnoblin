@@ -1,5 +1,9 @@
 # Patch audit, 2026-10-20
 
+> The patch paths in this audit predate the 2026-11 topic-directory layout of `patches/`.
+> `design/patches-layout-mapping.tsv` maps the paths that existed just before it to the current ones; paths of patches
+> retired earlier have no entry. `patches/README.md` describes the current layout.
+
 Audit of every patch series under `patches/` at main `79c06815`. One row per
 patch: what it changes, why it exists (introducing commit), whether anything
 still needs it, a verdict and a confidence. Verdicts: `keep`, `keep-weak`

@@ -1104,14 +1104,23 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     g_autoptr(GVariant) rules =
         document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
 
-    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
-        g_autoptr(GVariant) boxed_rule = g_variant_get_child_value(rules, i);
-        g_autoptr(GVariant) rule = g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
+    /* The effects the Lua runtime set on this window are one more rule after the configured
+     * ones (gnoblin-control-overrides.c). It needs no match: it belongs to this window. */
+    g_autoptr(GVariant) override_rule = gnoblin_control_window_effect_rule(control, window);
+    const gsize n_configured_rules = rules ? g_variant_n_children(rules) : 0;
+
+    for (gsize i = 0; i < n_configured_rules + (override_rule ? 1 : 0); i++) {
+        g_autoptr(GVariant) boxed_rule =
+            i < n_configured_rules ? g_variant_get_child_value(rules, i) : NULL;
+        g_autoptr(GVariant) rule = !boxed_rule ? g_variant_ref(override_rule)
+                                   : g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
                                        ? g_variant_get_variant(boxed_rule)
                                        : g_variant_ref(boxed_rule);
-        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
-        if (!match || !native_window_rule_matches(match, window, control))
-            continue;
+        if (boxed_rule) {
+            g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+            if (!match || !native_window_rule_matches(match, window, control))
+                continue;
+        }
 
         g_autoptr(GVariant) shader = g_variant_lookup_value(rule, "shader", NULL);
         if (shader && g_variant_is_of_type(shader, G_VARIANT_TYPE_STRING)) {

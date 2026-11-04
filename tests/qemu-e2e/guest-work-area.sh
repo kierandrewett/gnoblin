@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Guest: each monitor record carries a work_area, and the monitor-changed event reports it.
+# Guest: each monitor record carries a work_area, and the output-changed event reports it.
 #
 # Without a panel the work area is the whole monitor. With Waybar (a 30 px exclusive zone on top) it loses the top
 # strip. When Waybar closes it is the whole monitor again. The Lua listener in configs/99-test-workarea.lua logs the
-# changed list of every gnoblin.monitor.changed event.
+# changed list of every gnoblin.output.changed event.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+uid="$(id -u)"
+export XDG_RUNTIME_DIR="/run/user/$uid"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 LISTENER="$HOME/.config/gnoblin/config/99-test-workarea.lua"
@@ -38,10 +39,10 @@ print("OK" if not bad else "; ".join(bad))' "$1"
 cp /tmp/99-test-workarea.lua "$LISTENER"
 "$G" config reload >/dev/null
 sleep 3
-: > /tmp/workarea-events.log
+: >/tmp/workarea-events.log
 
 check "no panel: the work area is the whole monitor" "$(areas 0)" "OK"
-nohup waybar >/dev/null 2>&1 < /dev/null &
+nohup waybar >/dev/null 2>&1 </dev/null &
 sleep 5
 check "Waybar running: the work area loses its 30 px top strip" "$(areas 30)" "OK"
 events_with_panel="$(cat /tmp/workarea-events.log)"
@@ -50,8 +51,11 @@ sleep 3
 check "Waybar closed: the work area is the whole monitor again" "$(areas 0)" "OK"
 
 case "$events_with_panel" in
-    *work_area*) echo "PASS gnoblin.monitor.changed reported work_area when the panel appeared" ;;
-    *) echo "FAIL no monitor-changed event listed work_area (log: $events_with_panel)"; fail=$((fail + 1)) ;;
+    *work_area*) echo "PASS gnoblin.output.changed reported work_area when the panel appeared" ;;
+    *)
+        echo "FAIL no output-changed event listed work_area (log: $events_with_panel)"
+        fail=$((fail + 1))
+        ;;
 esac
 
 rm -f "$LISTENER"

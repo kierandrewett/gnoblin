@@ -15,43 +15,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         json_builder_set_member_name(builder, "method");
         json_builder_add_string_value(builder, method_name);
     }
-    if (g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "layer.list") ||
-        g_str_equal(method_name, "window.restore_or_minimize") ||
-        g_str_equal(method_name, "input.devices") || g_str_equal(method_name, "input.sources") ||
-        g_str_equal(method_name, "input.current_source") ||
-        g_str_equal(method_name, "input.select") || g_str_equal(method_name, "shortcut.actions") ||
-        g_str_equal(method_name, "shortcuts.actions") ||
-        g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
-        g_str_equal(method_name, "privacy.state") || g_str_equal(method_name, "version") ||
-        g_str_equal(method_name, "session.status") || g_str_equal(method_name, "session.logout") ||
-        g_str_equal(method_name, "session.suspend") ||
-        g_str_equal(method_name, "session.hibernate") ||
-        g_str_equal(method_name, "session.reboot") ||
-        g_str_equal(method_name, "session.poweroff") ||
-        g_str_equal(method_name, "config.restore_default") ||
-        g_str_equal(method_name, "session.activity") || g_str_equal(method_name, "session.lock") ||
-        g_str_equal(method_name, "privacy.stop_sharing") ||
-        g_str_equal(method_name, "privacy.stop_recording") ||
-        g_str_equal(method_name, "launch.status") ||
-        g_str_equal(method_name, "launches.snapshot") ||
-        g_str_equal(method_name, "shortcuts.actions") ||
-        g_str_equal(method_name, "shortcuts.list") ||
-        g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
-        g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
-        g_str_equal(method_name, "outputs.list") || g_str_equal(method_name, "outputs.renderer") ||
-        g_str_equal(method_name, "monitors.privacy_screen") ||
-        g_str_equal(method_name, "monitors.set_privacy_screen") ||
-        g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
-        g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
-        g_str_equal(method_name, "appearance.color_scheme") ||
-        g_str_equal(method_name, "layer.animation_policy") ||
-        g_str_equal(method_name, "runtime.reload_config") ||
-        g_str_equal(method_name, "runtime.status") || g_str_equal(method_name, "launch.begin") ||
-        g_str_equal(method_name, "launch.end") ||
-        g_str_equal(method_name, "input.orientation_lock") ||
-        g_str_equal(method_name, "input.set_orientation_lock") ||
-        g_str_has_prefix(method_name, "window.") || g_str_has_prefix(method_name, "workspace.") ||
-        g_str_has_prefix(method_name, "animation.")) {
+    if (gnoblin_api_operation_has(method_name, GN_OP_VERSIONED)) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
         json_builder_set_member_name(builder, "major");
@@ -96,12 +60,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         payload = g_strconcat(encoded, "\n", NULL);
     }
 
-    gboolean waits_for_operation = g_str_equal(method_name, "window.thumbnail") ||
-                                   g_str_equal(method_name, "input.select") ||
-                                   g_str_equal(method_name, "input.set_orientation_lock") ||
-                                   g_str_equal(method_name, "monitors.set_privacy_screen") ||
-                                   g_str_equal(method_name, "shortcut.capture") ||
-                                   g_str_equal(method_name, "animation.preview");
+    gboolean waits_for_operation = gnoblin_api_operation_has(method_name, GN_OP_WAITS);
     guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2 : 0);
     g_autoptr(GSocketClient) client = g_socket_client_new();
     g_socket_client_set_timeout(client, wait_timeout);

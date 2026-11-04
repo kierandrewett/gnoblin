@@ -2,6 +2,7 @@
 
 struct _GnoblinRuntimeCache {
     GVariant* document;
+    GVariant* overlay; /* the document with runtime overrides applied, or NULL */
     guint64 settings_revision;
 };
 
@@ -21,6 +22,7 @@ void gnoblin_runtime_cache_free(GnoblinRuntimeCache* cache) {
     if (!cache)
         return;
     g_clear_pointer(&cache->document, g_variant_unref);
+    g_clear_pointer(&cache->overlay, g_variant_unref);
     g_free(cache);
 }
 
@@ -37,12 +39,29 @@ gboolean gnoblin_runtime_cache_replace(GnoblinRuntimeCache* cache, GVariant* doc
 
     GVariant* replacement = g_variant_ref(document);
     g_clear_pointer(&cache->document, g_variant_unref);
+    /* A new committed document starts without overrides; the owner layers them again. */
+    g_clear_pointer(&cache->overlay, g_variant_unref);
     cache->document = replacement;
     cache->settings_revision = settings_revision;
     return TRUE;
 }
 
+void gnoblin_runtime_cache_set_overlay(GnoblinRuntimeCache* cache, GVariant* overlay) {
+    g_return_if_fail(cache != NULL);
+    g_return_if_fail(!overlay || g_variant_is_of_type(overlay, G_VARIANT_TYPE_VARDICT));
+    GVariant* next = overlay ? g_variant_ref_sink(overlay) : NULL;
+    g_clear_pointer(&cache->overlay, g_variant_unref);
+    cache->overlay = next;
+}
+
 GVariant* gnoblin_runtime_cache_get_document(GnoblinRuntimeCache* cache) {
+    if (!cache)
+        return NULL;
+    GVariant* document = cache->overlay ? cache->overlay : cache->document;
+    return document ? g_variant_ref(document) : NULL;
+}
+
+GVariant* gnoblin_runtime_cache_get_committed_document(GnoblinRuntimeCache* cache) {
     return cache && cache->document ? g_variant_ref(cache->document) : NULL;
 }
 
@@ -51,10 +70,11 @@ guint64 gnoblin_runtime_cache_get_settings_revision(GnoblinRuntimeCache* cache) 
 }
 
 static GVariant* lookup_setting(GnoblinRuntimeCache* cache, const char* section, const char* key) {
-    if (!cache || !cache->document || !section || !key)
+    GVariant* document = cache ? (cache->overlay ? cache->overlay : cache->document) : NULL;
+    if (!document || !section || !key)
         return NULL;
     g_autoptr(GVariant) section_value =
-        g_variant_lookup_value(cache->document, section, G_VARIANT_TYPE_VARDICT);
+        g_variant_lookup_value(document, section, G_VARIANT_TYPE_VARDICT);
     if (!section_value)
         return NULL;
     return g_variant_lookup_value(section_value, key, NULL);

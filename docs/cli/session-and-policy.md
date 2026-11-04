@@ -138,9 +138,9 @@ supervisor.
 
 ## Shortcut capture
 
-`shortcut capture` waits for one key press and prints the normalized
-accelerator. Escape cancels. For shortcut configuration examples, see the
-[shortcuts guide](/guides/shortcuts#key-names).
+`shortcut capture` waits for one key press and prints the chord in the
+[chord syntax](/guides/shortcuts#chord-syntax). Escape cancels. For shortcut
+configuration examples, see the [shortcuts guide](/guides/shortcuts).
 
 ## Capabilities
 

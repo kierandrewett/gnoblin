@@ -63,6 +63,10 @@ add_executable(autostart-protocol-test
   src/control/gnoblin-runtime-protocol.c)
 target_link_libraries(autostart-protocol-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME autostart-protocol COMMAND autostart-protocol-test)
+add_executable(chord-test tests/chord-test.c)
+target_include_directories(chord-test PRIVATE src/control)
+target_link_libraries(chord-test PRIVATE PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_XKBCOMMON)
+add_test(NAME chord COMMAND chord-test)
 add_executable(runtime-cache-test
   tests/runtime-cache-test.c
   src/control/gnoblin-runtime-cache.c)
@@ -110,12 +114,18 @@ if(GNOBLIN_LUA_FOUND)
     src/config/lua/gnoblin-lua-extension.c
     src/config/lua/gnoblin-lua-install.c
     src/config/lua/gnoblin-lua-merge.c
+    src/config/lua/gnoblin-lua-find.c
     src/config/lua/gnoblin-lua-named.c
+    src/config/lua/gnoblin-lua-operation.c
+    src/config/lua/gnoblin-lua-objects.c
     src/config/lua/gnoblin-lua-operations.c
+    src/config/lua/gnoblin-lua-process.c
     src/config/lua/gnoblin-lua-queries.c
     src/config/lua/gnoblin-lua-read.c
+    src/config/lua/gnoblin-lua-request.c
     src/config/lua/gnoblin-lua-runtime.c
     src/config/lua/gnoblin-lua-state-queries.c
+    src/config/lua/gnoblin-lua-tween.c
     src/config/lua/gnoblin-lua-subscriptions.c
     src/config/lua/gnoblin-lua-variant.c
     src/config/lua/gnoblin-lua.c
@@ -132,7 +142,7 @@ if(GNOBLIN_LUA_FOUND)
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_XKBCOMMON
     PkgConfig::GNOBLIN_LUA m)
 
-  foreach(test_name IN ITEMS lua-config lua-config-validation lua-dropins lua-api glob-config)
+  foreach(test_name IN ITEMS lua-config lua-config-validation lua-dropins lua-api api-operations glob-config)
     add_executable(${test_name}-test tests/${test_name}-test.c)
     target_link_libraries(${test_name}-test PRIVATE gnoblin-config-core)
     add_test(NAME ${test_name} COMMAND ${test_name}-test)
@@ -197,6 +207,9 @@ add_test(NAME cursor-config-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/cursor-config-contract.test.py")
 add_test(NAME window-button-layout-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/window-button-layout-contract.test.py")
+add_test(NAME native-control-safety
+  COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/native-control-safety.py")
+set_tests_properties(native-control-safety PROPERTIES TIMEOUT 120)
 option(GNOBLIN_WITH_PORTAL "Build and report the GTK-based portal backend" ON)
 add_custom_target(gnoblinctl-identity
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build-identity.py"

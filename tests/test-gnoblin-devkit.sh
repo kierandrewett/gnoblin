@@ -135,14 +135,14 @@ gnoblin.configure {
         {id = "chat", name = "Chat"},
     },
 }
-gnoblin.events.on("gnoblin.session.state-changed", function(event)
+gnoblin.on("gnoblin.session.state-changed", function(event)
     assert(event.state == "starting" or event.state == "running" or event.state == "stopping")
     local status = gnoblin.session.status()
     assert(status.session_state == event.state)
     assert(status.session_revision == event.revision)
     print("SESSION_LIFECYCLE:" .. event.state)
 end)
-gnoblin.events.once("gnoblin.config.reloaded", function(event)
+gnoblin.once("gnoblin.config.reloaded", function(event)
     assert(type(event.sequence) == "number" and event.sequence > 0)
     assert(type(event.time) == "number" and event.time > 0)
     assert(type(gnoblin.settings) == "userdata")
@@ -158,7 +158,7 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
     assert(type(gnoblin.windows.list()) == "table")
-    assert(type(gnoblin.monitors.list()) == "table")
+    assert(type(gnoblin.outputs.list()) == "table")
     assert(type(gnoblin.focus.history()) == "table")
     local session_status = gnoblin.session.status()
     print(string.format("SESSION_STATUS_AT_RELOAD:state=%s revision=%s session_state=%s session_revision=%s",
@@ -179,25 +179,24 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     print("LUA_API:runtime-status")
     print("LUA_API:snapshots")
 end)
-gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+gnoblin.on("gnoblin.shortcut.session.activated", function(event)
     if event.id == "shell_input_capture" then
         assert(type(event.session_id) == "number" and event.session_id > 0)
         assert(event.trigger == "release")
         print("SHORTCUT_CAPTURE:session-activated")
     end
 end)
-gnoblin.events.on("gnoblin.shortcut.session.key", function(event)
+gnoblin.on("gnoblin.shortcut.session.key", function(event)
     if event.id == "shell_input_capture" then
         assert(event.phase == "press" or event.phase == "release")
         print("SHORTCUT_CAPTURE:key")
     end
 end)
-gnoblin.events.once("gnoblin.session.activity-changed", function(event)
-    local activity = gnoblin.session.activity()
+gnoblin.once("gnoblin.session.activity-changed", function(event)
+    assert(gnoblin.session.activity == nil, "gnoblin.session.activity() was replaced by gnoblin.idle.watch")
     assert(type(event.revision) == "number" and event.revision > 0)
-    assert(activity.revision >= event.revision,
-        "session activity snapshot must be current before its event is delivered")
-    print("LUA_API:activity-event-snapshot")
+    assert(type(event.available) == "boolean" and event.threshold_ms == 120000)
+    print("LUA_API:activity-event")
 end)
 LUA
 
@@ -245,7 +244,7 @@ print("LUA_API:workspace-config")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/workspaces.lua"
 cat > "$XDG_RUNTIME_DIR/shortcuts.lua" <<'LUA'
-for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
+for _, shortcut in ipairs(gnoblin.shortcuts.configured()) do
     assert(shortcut.name ~= "shell_input_capture",
         "capture-only config must be represented through shortcut-session events")
 end
@@ -435,6 +434,37 @@ gnoblin.configure {
 }
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-cleared.txt"
+# A reload normalises the committed input document again, so a string list it already holds as
+# "as" must pass. Before, this reload failed with "input.keyboard.xkb-options: invalid value".
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    input = {
+        keyboard = {
+            xkb_options = {"caps:escape"},
+        },
+    },
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/xkb-options-set.txt"
+gnoblinctl --json config show > "$XDG_RUNTIME_DIR/xkb-options-show.json"
+grep -Fq 'caps:escape' "$XDG_RUNTIME_DIR/xkb-options-show.json"
+printf 'INPUT:xkb-options-reload\n'
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/xkb-options-cleared.txt"
 cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
 assert(#gnoblin.input.sources() == 0)
 print("INPUT_SOURCE:cleared-with-lua-config")
@@ -443,7 +473,7 @@ gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
 cat > "$XDG_RUNTIME_DIR/lua-api.lua" <<'LUA'
 assert(type(gnoblin.windows.list()) == "table")
 assert(type(gnoblin.workspaces.list()) == "table")
-assert(type(gnoblin.monitors.list()) == "table")
+assert(type(gnoblin.outputs.list()) == "table")
 assert(type(gnoblin.focus.history()) == "table")
 local status = gnoblin.runtime.status()
 assert(status.state == "running" and status.generation > 0)
@@ -465,7 +495,7 @@ event_script = runtime_dir / "mutter-event.lua"
 request_path = runtime_dir / "mutter-event-client-request"
 request_path.unlink(missing_ok=True)
 event_script.write_text(
-    'gnoblin.events.mutter.once("mutter.display.window-created", function(event)\n'
+    'gnoblin.once("mutter.display.window-created", function(event)\n'
     '  assert(event.event == "mutter.display.window-created")\n'
     '  assert(event.source == "display" and event.signal == "window-created")\n'
     '  assert(type(event.sequence) == "number" and event.sequence > 0)\n'
@@ -540,8 +570,8 @@ local function report_workspace_animation(event)
         print("LUA_WORKSPACE_ANIMATION:" .. event.name)
     end
 end
-gnoblin.events.on("gnoblin.animation.started", report_workspace_animation)
-gnoblin.events.on("gnoblin.animation.finished", report_workspace_animation)
+gnoblin.on("gnoblin.animation.started", report_workspace_animation)
+gnoblin.on("gnoblin.animation.finished", report_workspace_animation)
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 python3 "$GNOBLIN_TEST_ROOT/tests/test-workspace-animation-events.py"
@@ -566,7 +596,7 @@ local function layer_from_snapshot(id)
         if layer.id == id then return layer end
     end
 end
-gnoblin.events.on("gnoblin.layer.created", function(event)
+gnoblin.on("gnoblin.layer.created", function(event)
     if event.layer.namespace ~= namespace then return end
     local current = layer_from_snapshot(event.layer.id)
     assert(current and current.namespace == namespace,
@@ -574,7 +604,7 @@ gnoblin.events.on("gnoblin.layer.created", function(event)
     assert(current.mapped == false, "new layer role should first appear unmapped")
     print("LUA_LAYER:created-snapshot")
 end)
-gnoblin.events.on("gnoblin.layer.changed", function(event)
+gnoblin.on("gnoblin.layer.changed", function(event)
     if event.layer.namespace ~= namespace then return end
     local saw_mapped = false
     for _, field in ipairs(event.changed) do
@@ -586,7 +616,7 @@ gnoblin.events.on("gnoblin.layer.changed", function(event)
         "mapped callback must see the updated state in gnoblin.layers.list()")
     print(current.mapped and "LUA_LAYER:mapped-snapshot" or "LUA_LAYER:unmapped-snapshot")
 end)
-gnoblin.events.on("gnoblin.layer.removed", function(event)
+gnoblin.on("gnoblin.layer.removed", function(event)
     if event.last.namespace ~= namespace then return end
     assert(layer_from_snapshot(event.layer_id) == nil,
         "removed callback must see the layer absent from gnoblin.layers.list()")
@@ -958,6 +988,7 @@ require_output 'INPUT_SOURCE:xkb-to-ibus'
 require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
 require_output 'INPUT_SOURCE:cleared-with-lua-config'
+require_output 'INPUT:xkb-options-reload'
 require_output 'CONFIG_RELOAD:stable'
 require_output 'XWAYLAND:xsettings-live-scaling-selection-loss'
 require_output 'LUA_API:runtime-status'
@@ -983,7 +1014,7 @@ done
 printf '%s\n' 'PASS: Lua layer lifecycle callbacks see current layer snapshots'
 if [[ ! -S /run/dbus/system_bus_socket ]]; then
     printf '%s\n' 'SKIP: the idle service needs logind on the system bus, which this host does not have'
-elif ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
+elif ! grep -Fq 'LUA_API:activity-event' "$fixture_root/state/devkit-last.log"; then
     echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
     tail -n 80 "$fixture_root/state/devkit-last.log" >&2
     exit 1

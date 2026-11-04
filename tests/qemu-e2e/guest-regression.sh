@@ -38,20 +38,20 @@ check "capability prompt-broker present" "$caps" "prompt-broker"
 check "privacy state" "$("$G" privacy 2>&1)" "microphone_in_use"
 check "version commit" "$("$G" --version 2>&1)" "Commit"
 
-echo "-- capture"
-: >/tmp/capture-events.log
-install_config 99-test-capture.lua
+echo "-- process"
+: >/tmp/process-events.log
+install_config 99-test-process.lua
 sleep 15
-log="$(cat /tmp/capture-events.log)"
-check "capture echo" "$log" "echo exit=0 stdout=[hello"
-check "capture exit code" "$log" "exit3 exit=3"
-check "capture stdin" "$log" "stdin exit=0 stdout=[from-stdin]"
-check "capture timeout" "$log" "timeout error=command timed out"
-check "capture output limit" "$log" "big error=command output exceeded"
-check "capture missing program" "$log" "missing error="
-check "capture signal" "$log" "signal exit=-15"
-check "capture finished" "$log" "all steps done"
-disable_config 99-test-capture.lua
+log="$(cat /tmp/process-events.log)"
+check "process echo" "$log" "echo exit=0 signal=nil timed_out=false bytes=6 truncated=false stdout=[hello"
+check "process exit code" "$log" "exit3 exit=3"
+check "process stdin" "$log" "stdin exit=0 signal=nil timed_out=false bytes=10 truncated=false stdout=[from-stdin]"
+check "process timeout" "$log" "timeout exit=nil signal=term timed_out=true"
+check "process output limit" "$log" "big exit=0 signal=nil timed_out=false bytes=65536 truncated=true"
+check "process missing program" "$log" "missing error=Failed to execute child process"
+check "process signal" "$log" "signal exit=nil signal=term timed_out=false"
+check "process finished" "$log" "all steps done"
+disable_config 99-test-process.lua
 
 echo "-- polkit"
 : >/tmp/doc-events.log

@@ -5,7 +5,7 @@ GVariant* native_socket_create_snap_context(Client* client, JsonObject* argument
     if (!native_socket_take_focus_grant(client, arguments, &grant, error))
         return NULL;
     GVariant* result = gnoblin_native_control_create_snap_context(
-        client->control->display, grant.handle, grant.generation, grant.expires_at_us, error);
+        client->control->display, grant.handle, grant.generation, grant.expires_at_us, NULL, error);
     if (!result)
         return NULL;
 
@@ -182,7 +182,7 @@ GVariant* native_socket_commit_snap_context(Client* client, JsonObject* json_arg
 
 GVariant* gnoblin_native_control_create_text_target(MetaDisplay* display, guint64 context_handle,
                                                     guint64 generation, gint64 expires_at_us,
-                                                    GError** error) {
+                                                    const char* grant_window, GError** error) {
     GnoblinNativeControl* control =
         display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
     if (!control || control->stopping || !control->wayland_compositor ||
@@ -194,16 +194,16 @@ GVariant* gnoblin_native_control_create_text_target(MetaDisplay* display, guint6
         return NULL;
     }
 
-    prune_focus_contexts(control, g_get_monotonic_time());
-    NativeFocusContext* stored = g_hash_table_lookup(control->focus_contexts, &context_handle);
-    if (!stored) {
+    NativeFocusContext context;
+    NativeFocusClaim claim =
+        native_focus_context_claim(control, context_handle, FOCUS_SCOPE_TEXT_TARGET, &context);
+    if (claim != FOCUS_CLAIM_OK) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                            "text target requires an unused shortcut FocusContext");
+                            claim == FOCUS_CLAIM_USED
+                                ? "text target was already taken from this gesture"
+                                : "text target requires an unused shortcut grant");
         return NULL;
     }
-    NativeFocusContext context = *stored;
-    g_hash_table_remove(control->focus_contexts, &context_handle);
-    revoke_focus_grants_for_handle(control, context_handle);
     if (g_hash_table_size(control->text_targets) >= MAX_TEXT_TARGETS) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
                             "too many active text targets; retry after one expires");
@@ -218,13 +218,22 @@ GVariant* gnoblin_native_control_create_text_target(MetaDisplay* display, guint6
         (context.modifiers & (CLUTTER_CONTROL_MASK | CLUTTER_MOD1_MASK | CLUTTER_SHIFT_MASK |
                               CLUTTER_LOCK_MASK | CLUTTER_META_MASK | CLUTTER_HYPER_MASK))) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                            "text target FocusContext is expired or no longer matches focus");
+                            "text target grant is expired or no longer matches focus");
         return NULL;
     }
     if (meta_wayland_session_lock_is_active(control->wayland_compositor)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
                             "text insertion is unavailable while the session is locked");
         return NULL;
+    }
+    if (grant_window && *grant_window) {
+        MetaWindow* focused = meta_display_get_focus_window(display);
+        g_autofree char* focused_id = focused ? native_window_id(focused) : NULL;
+        if (!native_grant_window_allows(grant_window, focused_id)) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                                "input.text_target grant is narrowed to another window");
+            return NULL;
+        }
     }
 
     graphene_rect_t caret;
@@ -342,7 +351,8 @@ GVariant* gnoblin_native_control_insert_text(MetaDisplay* display, GVariant* arg
 
 GVariant* gnoblin_native_control_begin_window_grab(MetaDisplay* display, const char* method,
                                                    GVariant* arguments, guint64 context_handle,
-                                                   guint64 generation, GError** error) {
+                                                   guint64 generation, const char* grant_window,
+                                                   GError** error) {
     GnoblinNativeControl* control =
         display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
     if (!control || control->stopping || !control->focus_contexts || !context_handle ||
@@ -353,16 +363,19 @@ GVariant* gnoblin_native_control_begin_window_grab(MetaDisplay* display, const c
         return NULL;
     }
 
-    prune_focus_contexts(control, g_get_monotonic_time());
-    NativeFocusContext* stored = g_hash_table_lookup(control->focus_contexts, &context_handle);
-    if (!stored) {
+    gboolean resize_scope = g_str_equal(method, "window.begin_resize");
+    NativeFocusContext context;
+    NativeFocusClaim claim = native_focus_context_claim(
+        control, context_handle, resize_scope ? FOCUS_SCOPE_BEGIN_RESIZE : FOCUS_SCOPE_BEGIN_MOVE,
+        &context);
+    if (claim != FOCUS_CLAIM_OK) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                            "interactive window operation context was already used or revoked");
+                            claim == FOCUS_CLAIM_USED
+                                ? "interactive window operation was already taken from this gesture"
+                                : "interactive window operation context was already used or "
+                                  "revoked");
         return NULL;
     }
-    NativeFocusContext context = *stored;
-    g_hash_table_remove(control->focus_contexts, &context_handle);
-    revoke_focus_grants_for_handle(control, context_handle);
     if (context.generation != generation ||
         context.generation != native_config_generation(control) ||
         context.expires_at_us <= g_get_monotonic_time()) {
@@ -389,6 +402,11 @@ GVariant* gnoblin_native_control_begin_window_grab(MetaDisplay* display, const c
         g_set_error_literal(
             error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
             "interactive window operation requires a stable window ID and valid arguments");
+        return NULL;
+    }
+    if (!native_grant_window_allows(grant_window, wanted_id)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                            "interactive window operation grant is narrowed to another window");
         return NULL;
     }
 

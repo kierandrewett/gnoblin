@@ -70,10 +70,11 @@ gboolean native_runtime_dispatch_event(GnoblinNativeControl* control, const char
 }
 
 static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control,
-                                                   const char* method, GVariant* arguments,
-                                                   gint64 operation_id, GError** error) {
+                                                   const GnoblinApiOperation* operation,
+                                                   GVariant* arguments, gint64 operation_id,
+                                                   GError** error) {
     const char* id = NULL;
-    if (g_str_equal(method, "shortcut.session.end")) {
+    if (operation->id == GNOBLIN_OP_SHORTCUT_SESSION_END) {
         gint64 signed_session_id = 0;
         if (!g_variant_lookup(arguments, "id", "&s", &id) ||
             !gnoblin_control_dynamic_shortcut_id_valid(id) ||
@@ -101,7 +102,7 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
         g_variant_builder_add(&result, "{sv}", "ended", g_variant_new_boolean(TRUE));
         return g_variant_ref_sink(g_variant_builder_end(&result));
     }
-    if (g_str_equal(method, "shortcut.unbind")) {
+    if (operation->id == GNOBLIN_OP_SHORTCUT_UNBIND) {
         if (!g_variant_lookup(arguments, "id", "&s", &id) ||
             !gnoblin_control_dynamic_shortcut_id_valid(id)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -125,17 +126,24 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
         return g_variant_ref_sink(g_variant_builder_end(&result));
     }
 
-    const char* accelerator = NULL;
+    const char* requested = NULL;
+    g_autofree char* accelerator = NULL;
     const char* hold = "none";
     const char* trigger = "press";
     const char* mode = "passive";
     gboolean capture_input = FALSE;
     if (!g_variant_lookup(arguments, "id", "&s", &id) ||
         !gnoblin_control_dynamic_shortcut_id_valid(id) ||
-        !g_variant_lookup(arguments, "accelerator", "&s", &accelerator) ||
-        !gnoblin_control_dynamic_shortcut_accelerator_valid(accelerator)) {
+        !g_variant_lookup(arguments, "accelerator", "&s", &requested)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "shortcut.bind requires a valid id and accelerator");
+        return NULL;
+    }
+    g_autofree char* chord_error = NULL;
+    accelerator = gnoblin_control_dynamic_shortcut_chord(requested, &chord_error);
+    if (!accelerator) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "shortcut.bind accelerator %s",
+                    chord_error);
         return NULL;
     }
     g_variant_lookup(arguments, "hold", "&s", &hold);
@@ -278,6 +286,11 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     gnoblin_runtime_writer_reset(control->runtime_writer);
     gnoblin_runtime_reader_reset(control->runtime_reader);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_states);
+    gnoblin_control_tweens_cancel(control, "cancelled");
+    gnoblin_control_idle_watches_clear(control);
+    gnoblin_control_window_visuals_reset(control);
+    gnoblin_control_overrides_clear(control, FALSE);
+    gnoblin_control_input_grab_end(control, "runtime_restarted", FALSE);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_events);
     native_runtime_fail_pending_requests(control, "Lua worker restarted before replying");
     gnoblin_control_cancel_window_drags(control, "runtime_restarted");
@@ -340,7 +353,7 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
 
     g_clear_error(&snapshot_error);
     g_autoptr(JsonNode) outputs =
-        gnoblin_control_output_snapshot_json(control, TRUE, &snapshot_error);
+        gnoblin_control_output_snapshot_json(control, monitors, TRUE, &snapshot_error);
     g_autoptr(GVariant) output_value = outputs ? variant_from_json(outputs) : NULL;
     native_publish_runtime_snapshot(control, "outputs", output_value, revision);
     native_monitor_privacy_screen_publish(control);
@@ -370,10 +383,6 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     g_autoptr(GVariant) shortcuts = native_shortcut_snapshot(control);
     native_publish_runtime_snapshot(control, "shortcuts", shortcuts, revision);
     gnoblin_control_publish_privacy_snapshot(control, FALSE);
-    if (control->session_activity_snapshot)
-        native_publish_runtime_snapshot(control, "session-activity",
-                                        control->session_activity_snapshot,
-                                        control->session_activity_revision);
     if (control->session_lifecycle_supported && control->session_lifecycle_snapshot)
         native_publish_runtime_snapshot(control, "session-lifecycle",
                                         control->session_lifecycle_snapshot,
@@ -435,80 +444,49 @@ static gboolean native_runtime_handle_session_lifecycle_state(GnoblinNativeContr
     return TRUE;
 }
 
-static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVariant* arguments,
-                                             GError** error) {
+/* The socket wire methods input.set_orientation_lock and monitors.set_privacy_screen take
+ * {value = true | false | "inherit"}. Lua uses gnoblin.settings.override for the same settings;
+ * a socket client has no object to hold, so its value is an override with no runtime owner that
+ * lasts until "inherit" or a reload (gnoblin-control-overrides.c). */
+static gboolean native_socket_override_value(GVariant* arguments, const char* method,
+                                             GVariant** value, GError** error) {
     if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
         g_variant_n_children(arguments) != 1) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "input.set_orientation_lock requires only value");
-        return NULL;
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s requires only value",
+                    method);
+        return FALSE;
     }
-    if (!control->orientation_manager) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                            "orientation lock is unavailable on this backend");
-        return NULL;
+    g_autoptr(GVariant) given = g_variant_lookup_value(arguments, "value", NULL);
+    if (given && g_variant_is_of_type(given, G_VARIANT_TYPE_BOOLEAN)) {
+        *value = g_steal_pointer(&given);
+        return TRUE;
     }
+    if (given && g_variant_is_of_type(given, G_VARIANT_TYPE_STRING) &&
+        g_str_equal(g_variant_get_string(given, NULL), "inherit")) {
+        *value = NULL;
+        return TRUE;
+    }
+    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                "%s value must be boolean or 'inherit'", method);
+    return FALSE;
+}
 
-    g_autoptr(GVariant) value = g_variant_lookup_value(arguments, "value", NULL);
-    if (!value) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "input.set_orientation_lock requires value");
+static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVariant* arguments,
+                                             GError** error) {
+    g_autoptr(GVariant) value = NULL;
+    if (!native_socket_override_value(arguments, "input.set_orientation_lock", &value, error) ||
+        !gnoblin_control_override_socket_set(control, "input", "orientation-lock", value, error))
         return NULL;
-    }
-
-    if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
-        control->orientation_lock_runtime_override = TRUE;
-        control->orientation_lock_notifications_suppressed = TRUE;
-        meta_orientation_manager_set_orientation_locked(control->orientation_manager,
-                                                        g_variant_get_boolean(value));
-    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
-               g_str_equal(g_variant_get_string(value, NULL), "inherit")) {
-        control->orientation_lock_runtime_override = FALSE;
-        control->orientation_lock_notifications_suppressed = TRUE;
-        if (control->orientation_lock_configured)
-            meta_orientation_manager_set_orientation_locked(control->orientation_manager,
-                                                            control->orientation_lock_config_value);
-        else
-            meta_orientation_manager_clear_orientation_lock_override(control->orientation_manager);
-    } else {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "input.set_orientation_lock value must be boolean or 'inherit'");
-        return NULL;
-    }
-
-    control->orientation_lock_notifications_suppressed = FALSE;
-    native_orientation_lock_publish(control);
-    return g_variant_ref(control->orientation_lock_snapshot);
+    return control->orientation_lock_snapshot ? g_variant_ref(control->orientation_lock_snapshot)
+                                              : NULL;
 }
 
 static GVariant* native_set_monitor_privacy_screen(GnoblinNativeControl* control,
                                                    GVariant* arguments, GError** error) {
-    if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
-        g_variant_n_children(arguments) != 1) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "monitors.set_privacy_screen requires only value");
+    g_autoptr(GVariant) value = NULL;
+    if (!native_socket_override_value(arguments, "monitors.set_privacy_screen", &value, error) ||
+        !gnoblin_control_override_socket_set(control, "monitors", "privacy-screen", value, error))
         return NULL;
-    }
-
-    g_autoptr(GVariant) value = g_variant_lookup_value(arguments, "value", NULL);
-    if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
-        control->monitor_privacy_screen_runtime_override = TRUE;
-        control->monitor_privacy_screen_runtime_value = g_variant_get_boolean(value);
-    } else if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
-               g_str_equal(g_variant_get_string(value, NULL), "inherit")) {
-        control->monitor_privacy_screen_runtime_override = FALSE;
-        control->monitor_privacy_screen_runtime_value = FALSE;
-    } else {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "monitors.set_privacy_screen value must be boolean or 'inherit'");
-        return NULL;
-    }
-
-    MetaSettings* settings = meta_backend_get_settings(control->backend);
-    meta_settings_apply_gnoblin_privacy_screen_runtime_override(
-        settings, control->monitor_privacy_screen_runtime_override,
-        control->monitor_privacy_screen_runtime_value);
-    native_monitor_privacy_screen_publish(control);
     return control->monitor_privacy_screen_snapshot
                ? g_variant_ref(control->monitor_privacy_screen_snapshot)
                : native_monitor_privacy_screen_snapshot(control,
@@ -545,8 +523,11 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     g_autoptr(GError) operation_error = NULL;
     g_autoptr(GVariant) result = NULL;
     gboolean pending = FALSE;
-    if (g_str_equal(method, "window.thumbnail") || g_str_equal(method, "location.authorize_app") ||
-        g_str_has_prefix(method, "auth.") || g_str_has_prefix(method, "prompt."))
+    const GnoblinApiOperation* operation = gnoblin_api_operation_find(method);
+    GnoblinApiDispatch dispatch = operation ? operation->dispatch : GN_DISPATCH_NATIVE;
+    /* The pending operations complete later; the ID is remembered until they do. */
+    guint64* operation_key = NULL;
+    if (operation && (operation->flags & GN_OP_CLIENT_ID))
         g_variant_lookup(packet->payload, "client_id", "t", &client_id);
     guint64 input_request_id = 0;
     g_autoptr(GVariant) input_scope =
@@ -559,43 +540,23 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     }
     if (operation_error) {
         /* Report a normal operation failure; late input is not a protocol fault. */
-    } else if (g_str_equal(method, "command.run")) {
+    } else if (operation && (operation->flags & GN_OP_PROCESS_GATE)) {
         guint64 operation_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &operation_generation) ||
             !operation_generation || operation_generation != control->runtime_generation) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.run belongs to a stale runtime generation");
+            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                        "%s belongs to a stale runtime generation", method);
         } else if (control->runtime_worker_suspended || control->runtime_recovery_failed) {
             g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
                                 "Lua runtime is unavailable for command execution");
+        } else if (operation->id == GNOBLIN_OP_PROCESS_KILL) {
+            /* Ending a process stays allowed while the session is locked. */
         } else if (control->wayland_compositor &&
                    meta_wayland_session_lock_is_active(control->wayland_compositor)) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.run is unavailable while the session is locked");
-        } else {
-            g_auto(GStrv) argv = gnoblin_control_command_run_argv(arguments, &operation_error);
-            if (argv && gnoblin_control_queue_command("command", argv[0], argv, &operation_error)) {
-                GVariantBuilder accepted;
-                g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
-                g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-                result = g_variant_ref_sink(g_variant_builder_end(&accepted));
-            }
+            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                        "%s is unavailable while the session is locked", method);
         }
-    } else if (g_str_equal(method, "command.capture")) {
-        guint64 operation_generation = 0;
-        if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &operation_generation) ||
-            !operation_generation || operation_generation != control->runtime_generation) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.capture belongs to a stale runtime generation");
-        } else if (control->runtime_worker_suspended || control->runtime_recovery_failed) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
-                                "Lua runtime is unavailable for command execution");
-        } else if (control->wayland_compositor &&
-                   meta_wayland_session_lock_is_active(control->wayland_compositor)) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                "command.capture is unavailable while the session is locked");
-        }
-    } else if (g_str_equal(method, "window.snap") || g_str_equal(method, "window.snap_context")) {
+    } else if (operation && (operation->flags & GN_OP_SNAP_GATE)) {
         guint64 operation_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &operation_generation) ||
             !operation_generation || operation_generation != control->runtime_generation) {
@@ -605,241 +566,351 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     }
     if (operation_error) {
         /* Return a normal operation failure; do not tear down the private channel. */
-    } else if (g_str_equal(method, "command.run")) {
-        /* The command was accepted by the asynchronous executor above. */
-    } else if (g_str_equal(method, "command.capture")) {
-        guint64* operation_key = g_new(guint64, 1);
-        *operation_key = (guint64)operation_id;
-        g_hash_table_add(control->runtime_operation_ids, operation_key);
-        if (gnoblin_control_capture_begin(control, operation_id, arguments, &operation_error))
-            return TRUE;
-        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
-    } else if (g_str_equal(method, "window.snap.offer")) {
-        guint64 owner_generation = 0;
-        if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation) ||
-            !gnoblin_control_runtime_window_snap_offer(control, arguments, owner_generation,
-                                                       &operation_error)) {
-            if (!operation_error)
-                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "window.snap.offer requires the active runtime generation");
-        } else {
-            GVariantBuilder accepted;
-            g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-            result = g_variant_ref_sink(g_variant_builder_end(&accepted));
-        }
-    } else if (g_str_equal(method, "window.restore_or_minimize")) {
-        result = gnoblin_native_control_restore_or_minimize_window(control->display, arguments,
-                                                                   &operation_error);
-    } else if (g_str_equal(method, "window.snap")) {
-        result = gnoblin_native_control_commit_snap_context(control->display, arguments,
-                                                            &operation_error);
-    } else if (g_str_equal(method, "window.focus") || g_str_equal(method, "window.snap_context") ||
-               g_str_equal(method, "window.begin_move") ||
-               g_str_equal(method, "window.begin_resize") ||
-               g_str_equal(method, "input.text_target")) {
-        guint64 menu_handle = 0;
-        guint64 menu_generation = 0;
-        gboolean has_menu_handle =
-            g_variant_lookup(arguments, "_menu_context_handle", "t", &menu_handle);
-        gboolean has_menu_generation =
-            g_variant_lookup(arguments, "_menu_context_generation", "t", &menu_generation);
-        if ((g_str_equal(method, "window.begin_move") ||
-             g_str_equal(method, "window.begin_resize")) &&
-            (has_menu_handle || has_menu_generation)) {
-            GVariantBuilder clean;
-            GVariantIter iter;
-            const char* key;
-            GVariant* value;
-            g_variant_builder_init(&clean, G_VARIANT_TYPE_VARDICT);
-            g_variant_iter_init(&iter, arguments);
-            while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
-                g_autoptr(GVariant) field = value;
-                if (g_str_equal(key, "_menu_context_handle") ||
-                    g_str_equal(key, "_menu_context_generation"))
-                    continue;
-                g_variant_builder_add(&clean, "{sv}", key, field);
-            }
-            g_autoptr(GVariant) menu_arguments = g_variant_ref_sink(g_variant_builder_end(&clean));
-            if (!has_menu_handle || !menu_handle || !has_menu_generation || !menu_generation) {
-                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "operation has malformed WM menu capability metadata");
+    } else {
+        switch (dispatch) {
+        case GN_DISPATCH_PROCESS_SPAWN:
+            operation_key = g_new(guint64, 1);
+            *operation_key = (guint64)operation_id;
+            g_hash_table_add(control->runtime_operation_ids, operation_key);
+            if (gnoblin_control_process_spawn(control, operation_id, arguments, &operation_error))
+                return TRUE;
+            g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+            break;
+        case GN_DISPATCH_PROCESS_KILL:
+            result = gnoblin_control_process_kill(control, arguments, &operation_error);
+            break;
+        case GN_DISPATCH_PRESENT:
+            operation_key = g_new(guint64, 1);
+            *operation_key = (guint64)operation_id;
+            g_hash_table_add(control->runtime_operation_ids, operation_key);
+            if (gnoblin_control_present_window(control, operation_id, arguments, &operation_error))
+                return TRUE;
+            g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+            break;
+        case GN_DISPATCH_SNAP_OFFER: {
+            guint64 owner_generation = 0;
+            if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation) ||
+                !gnoblin_control_runtime_window_snap_offer(control, arguments, owner_generation,
+                                                           &operation_error)) {
+                if (!operation_error)
+                    g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                                        "window.snap.offer requires the active runtime generation");
             } else {
-                result = gnoblin_native_control_begin_menu_window_grab(
-                    control->display, method, menu_arguments, menu_handle, menu_generation, 0,
-                    &operation_error);
+                GVariantBuilder accepted;
+                g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
+                g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
+                result = g_variant_ref_sink(g_variant_builder_end(&accepted));
             }
-        } else {
-            guint64 handle = 0;
-            guint64 generation = 0;
-            gint64 expires_at_us = 0;
-            if (!g_variant_lookup(packet->payload, "focus_context_handle", "t", &handle) ||
-                !handle ||
-                !g_variant_lookup(packet->payload, "focus_context_generation", "t", &generation) ||
-                !generation ||
-                !g_variant_lookup(packet->payload, "focus_context_expires_at_us", "x",
-                                  &expires_at_us) ||
-                expires_at_us <= g_get_monotonic_time()) {
-                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-                                    "operation requires a live shortcut focus context");
-            } else if (g_str_equal(method, "input.text_target")) {
-                result = gnoblin_native_control_create_text_target(
-                    control->display, handle, generation, expires_at_us, &operation_error);
-            } else if (g_str_equal(method, "window.snap_context")) {
-                result = gnoblin_native_control_create_snap_context(
-                    control->display, handle, generation, expires_at_us, &operation_error);
-            } else if (g_str_equal(method, "window.focus")) {
-                result = gnoblin_native_control_focus_window(control->display, arguments, handle,
-                                                             generation, &operation_error);
-            } else {
-                result = gnoblin_native_control_begin_window_grab(
-                    control->display, method, arguments, handle, generation, &operation_error);
-            }
+            break;
         }
-    } else if (g_str_equal(method, "console.toggle")) {
-        if (g_variant_n_children(arguments) != 0) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "console.toggle takes no arguments");
-        } else if (gnoblin_native_control_toggle_console(control->display, &operation_error)) {
-            GVariantBuilder toggled;
-            g_variant_builder_init(&toggled, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&toggled, "{sv}", "toggled", g_variant_new_boolean(TRUE));
-            result = g_variant_ref_sink(g_variant_builder_end(&toggled));
+        case GN_DISPATCH_TWEEN_PLAY: {
+            guint64 owner_generation = 0;
+            g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+            operation_key = g_new(guint64, 1);
+            *operation_key = (guint64)operation_id;
+            g_hash_table_add(control->runtime_operation_ids, operation_key);
+            if (gnoblin_control_tween_play(control, operation_id, arguments, owner_generation,
+                                           &operation_error))
+                return TRUE;
+            g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+            break;
         }
-    } else if (g_str_equal(method, "privacy.stop_sharing") ||
-               g_str_equal(method, "privacy.stop_recording")) {
-        if (g_variant_n_children(arguments) != 0) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "privacy stop methods take no arguments");
-        } else {
-            result = gnoblin_control_stop_privacy_sessions(
-                control, g_str_equal(method, "privacy.stop_recording"), &operation_error);
-        }
-    } else if (g_str_equal(method, "location.authorize_app")) {
-        result =
-            native_location_authorize_operation(control, arguments, client_id, &operation_error);
-    } else if (g_str_has_prefix(method, "auth.")) {
-        result =
-            gnoblin_control_auth_operation(control, method, arguments, client_id, &operation_error);
-    } else if (g_str_has_prefix(method, "prompt.")) {
-        result = gnoblin_control_prompts_operation(control, method, arguments, client_id,
+        case GN_DISPATCH_TWEEN_CONTROL: {
+            guint64 owner_generation = 0;
+            g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+            result = gnoblin_control_tween_control(control, method, arguments, owner_generation,
                                                    &operation_error);
-    } else if (g_str_equal(method, "input.set_orientation_lock")) {
-        result = native_set_orientation_lock(control, arguments, &operation_error);
-    } else if (g_str_equal(method, "monitors.set_privacy_screen")) {
-        result = native_set_monitor_privacy_screen(control, arguments, &operation_error);
-    } else if (g_str_equal(method, "session.lock")) {
-        result = gnoblin_native_control_request_session_lock(control->display, arguments,
-                                                             &operation_error);
-    } else if (g_str_equal(method, "session.logout")) {
-        if (g_variant_n_children(arguments) != 0) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "session.logout takes no arguments");
-        } else {
-            GVariantBuilder logout_result;
-            g_variant_builder_init(&logout_result, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&logout_result, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-            result = g_variant_ref_sink(g_variant_builder_end(&logout_result));
+            break;
         }
-    } else if (g_str_equal(method, "session.suspend") || g_str_equal(method, "session.hibernate") ||
-               g_str_equal(method, "session.reboot") || g_str_equal(method, "session.poweroff")) {
-        if (g_variant_n_children(arguments) != 0) {
-            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                        "%s takes no arguments", method);
-        } else {
-            GVariantBuilder accepted;
-            g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-            result = g_variant_ref_sink(g_variant_builder_end(&accepted));
+        case GN_DISPATCH_IDLE: {
+            guint64 owner_generation = 0;
+            g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+            result = operation->id == GNOBLIN_OP_IDLE_WATCH
+                         ? gnoblin_control_idle_watch(control, operation_id, arguments,
+                                                      owner_generation, &operation_error)
+                         : gnoblin_control_idle_cancel(control, arguments, owner_generation,
+                                                       &operation_error);
+            break;
         }
-    } else if (g_str_equal(method, "config.restore_default")) {
-        if (g_variant_n_children(arguments) != 0) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "config.restore_default takes no arguments");
-        } else {
-            GVariantBuilder accepted;
-            g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
-            result = g_variant_ref_sink(g_variant_builder_end(&accepted));
-        }
-    } else if (g_str_equal(method, "input.insert_text")) {
-        result = gnoblin_native_control_insert_text(control->display, arguments, &operation_error);
-    } else if (g_str_equal(method, "shortcut.session.arm")) {
-        const char* binding_id = NULL;
-        const char* owner_id = NULL;
-        const char* trigger = NULL;
-        guint64 session_id = 0;
-        guint32 modifiers = 0;
-        gboolean capture_input = FALSE;
-        if (!g_variant_lookup(arguments, "binding_id", "&s", &binding_id) ||
-            !g_variant_lookup(arguments, "owner_id", "&s", &owner_id) ||
-            !g_variant_lookup(arguments, "session_id", "t", &session_id) || !session_id ||
-            !g_variant_lookup(arguments, "trigger", "&s", &trigger) ||
-            !g_str_equal(trigger, "release") ||
-            !g_variant_lookup(arguments, "modifiers", "u", &modifiers) || modifiers != 0 ||
-            !g_variant_lookup(arguments, "capture_input", "b", &capture_input) || !capture_input) {
-            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "shortcut.session.arm requires a bare Super release binding");
-        } else {
-            NativeDynamicShortcut* armed = gnoblin_control_arm_bare_super_shortcut(
-                control, binding_id, owner_id, NULL, session_id, &operation_error);
-            if (armed) {
-                GVariantBuilder armed_result;
-                g_variant_builder_init(&armed_result, G_VARIANT_TYPE_VARDICT);
-                g_variant_builder_add(&armed_result, "{sv}", "armed", g_variant_new_boolean(TRUE));
-                g_variant_builder_add(&armed_result, "{sv}", "session_id",
-                                      g_variant_new_uint64(session_id));
-                result = g_variant_ref_sink(g_variant_builder_end(&armed_result));
-            }
-        }
-    } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind") ||
-               g_str_equal(method, "shortcut.session.end")) {
-        result = native_runtime_shortcut_operation(control, method, arguments, operation_id,
-                                                   &operation_error);
-    } else if (g_str_has_prefix(method, "launch.")) {
-        result = gnoblin_native_control_dispatch_launch(control->display, method, arguments,
-                                                        &operation_error);
-    } else if (g_str_equal(method, "input.select") || g_str_equal(method, "input.select_source") ||
-               g_str_equal(method, "shortcut.capture")) {
-        guint64* operation_key = g_new(guint64, 1);
-        *operation_key = (guint64)operation_id;
-        g_hash_table_add(control->runtime_operation_ids, operation_key);
-        if (g_str_equal(method, "input.select") || g_str_equal(method, "input.select_source")) {
-            pending = gnoblin_native_control_select_input_source(
-                control->display, arguments, operation_id, method, &operation_error);
-        } else {
-            pending = gnoblin_native_control_begin_shortcut_capture(control->display, arguments,
-                                                                    operation_id, &operation_error);
-        }
-        if (pending)
-            return TRUE;
-        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
-    } else if (g_str_equal(method, "window.thumbnail")) {
-        pending = native_runtime_begin_thumbnail(control, operation_id, arguments, client_id,
-                                                 &operation_error);
-        if (pending)
-            return TRUE;
-    } else if (g_str_equal(method, "window.set_maximized")) {
-        gboolean enabled = FALSE;
-        const char* window_id = NULL;
-        if (g_variant_lookup(arguments, "enabled", "b", &enabled) && enabled &&
-            g_variant_lookup(arguments, "id", "&s", &window_id) && window_id) {
-            MetaWindow* window = native_window_by_stable_id(control, window_id);
-            if (window)
-                result = meta_gnoblin_dispatch_native_api(control->display, method, arguments,
+        case GN_DISPATCH_GRAB: {
+            guint64 owner_generation = 0;
+            g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+            if (operation->id == GNOBLIN_OP_INPUT_GRAB)
+                result = gnoblin_control_input_grab(control, operation_id, arguments,
+                                                    owner_generation, &operation_error);
+            else if (operation->id == GNOBLIN_OP_INPUT_GRAB_RENEW)
+                result = gnoblin_control_input_grab_renew(control, arguments, owner_generation,
                                                           &operation_error);
             else
-                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                                    "window.set_maximized target is unavailable");
-            if (result)
-                g_hash_table_remove(control->snap_restore_frames, window);
-        } else {
+                result = gnoblin_control_input_grab_release(control, arguments, owner_generation,
+                                                            &operation_error);
+            break;
+        }
+        case GN_DISPATCH_OVERRIDE: {
+            guint64 owner_generation = 0;
+            g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+            if (operation->id == GNOBLIN_OP_SETTINGS_OVERRIDE)
+                result = gnoblin_control_override_setting(control, operation_id, arguments,
+                                                          owner_generation, &operation_error);
+            else if (operation->id == GNOBLIN_OP_WINDOW_SET_EFFECT)
+                result = gnoblin_control_override_window_effect(control, operation_id, arguments,
+                                                                owner_generation, &operation_error);
+            else
+                result = gnoblin_control_override_revoke(control, arguments, owner_generation,
+                                                         &operation_error);
+            break;
+        }
+        case GN_DISPATCH_SET_VISUAL: {
+            guint64 owner_generation = 0;
+            g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+            result = gnoblin_control_window_set_visual(control, arguments, owner_generation,
+                                                       &operation_error);
+            break;
+        }
+        case GN_DISPATCH_RESTORE_OR_MINIMIZE:
+            result = gnoblin_native_control_restore_or_minimize_window(control->display, arguments,
+                                                                       &operation_error);
+            break;
+        case GN_DISPATCH_SNAP_COMMIT:
+            result = gnoblin_native_control_commit_snap_context(control->display, arguments,
+                                                                &operation_error);
+            break;
+        case GN_DISPATCH_GRANT: {
+            guint64 menu_handle = 0;
+            guint64 menu_generation = 0;
+            gboolean has_menu_handle =
+                g_variant_lookup(arguments, "_menu_context_handle", "t", &menu_handle);
+            gboolean has_menu_generation =
+                g_variant_lookup(arguments, "_menu_context_generation", "t", &menu_generation);
+            gboolean window_grab = operation->id == GNOBLIN_OP_WINDOW_BEGIN_MOVE ||
+                                   operation->id == GNOBLIN_OP_WINDOW_BEGIN_RESIZE;
+            if (window_grab && (has_menu_handle || has_menu_generation)) {
+                GVariantBuilder clean;
+                GVariantIter iter;
+                const char* key;
+                GVariant* value;
+                g_variant_builder_init(&clean, G_VARIANT_TYPE_VARDICT);
+                g_variant_iter_init(&iter, arguments);
+                while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+                    g_autoptr(GVariant) field = value;
+                    if (g_str_equal(key, "_menu_context_handle") ||
+                        g_str_equal(key, "_menu_context_generation"))
+                        continue;
+                    g_variant_builder_add(&clean, "{sv}", key, field);
+                }
+                g_autoptr(GVariant) menu_arguments =
+                    g_variant_ref_sink(g_variant_builder_end(&clean));
+                if (!has_menu_handle || !menu_handle || !has_menu_generation || !menu_generation) {
+                    g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                                        "operation has malformed WM menu capability metadata");
+                } else {
+                    result = gnoblin_native_control_begin_menu_window_grab(
+                        control->display, method, menu_arguments, menu_handle, menu_generation, 0,
+                        &operation_error);
+                }
+            } else {
+                guint64 handle = 0;
+                guint64 generation = 0;
+                gint64 expires_at_us = 0;
+                const char* grant_window = NULL;
+                g_variant_lookup(packet->payload, "grant_window", "&s", &grant_window);
+                if (!g_variant_lookup(packet->payload, "focus_context_handle", "t", &handle) ||
+                    !handle ||
+                    !g_variant_lookup(packet->payload, "focus_context_generation", "t",
+                                      &generation) ||
+                    !generation ||
+                    !g_variant_lookup(packet->payload, "focus_context_expires_at_us", "x",
+                                      &expires_at_us) ||
+                    expires_at_us <= g_get_monotonic_time()) {
+                    g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                                        "operation requires a live shortcut focus context");
+                } else if (operation->id == GNOBLIN_OP_INPUT_TEXT_TARGET) {
+                    result = gnoblin_native_control_create_text_target(
+                        control->display, handle, generation, expires_at_us, grant_window,
+                        &operation_error);
+                } else if (operation->id == GNOBLIN_OP_WINDOW_SNAP_CONTEXT) {
+                    result = gnoblin_native_control_create_snap_context(
+                        control->display, handle, generation, expires_at_us, grant_window,
+                        &operation_error);
+                } else if (operation->id == GNOBLIN_OP_WINDOW_FOCUS) {
+                    result = gnoblin_native_control_focus_window(control->display, arguments,
+                                                                 handle, generation, grant_window,
+                                                                 &operation_error);
+                } else {
+                    result = gnoblin_native_control_begin_window_grab(
+                        control->display, method, arguments, handle, generation, grant_window,
+                        &operation_error);
+                }
+            }
+            break;
+        }
+        case GN_DISPATCH_CONSOLE_TOGGLE:
+            if (g_variant_n_children(arguments) != 0) {
+                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "console.toggle takes no arguments");
+            } else if (gnoblin_native_control_toggle_console(control->display, &operation_error)) {
+                GVariantBuilder toggled;
+                g_variant_builder_init(&toggled, G_VARIANT_TYPE_VARDICT);
+                g_variant_builder_add(&toggled, "{sv}", "toggled", g_variant_new_boolean(TRUE));
+                result = g_variant_ref_sink(g_variant_builder_end(&toggled));
+            }
+            break;
+        case GN_DISPATCH_PRIVACY_STOP:
+            if (g_variant_n_children(arguments) != 0) {
+                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "privacy stop methods take no arguments");
+            } else {
+                result = gnoblin_control_stop_privacy_sessions(
+                    control, operation->id == GNOBLIN_OP_PRIVACY_STOP_RECORDING, &operation_error);
+            }
+            break;
+        case GN_DISPATCH_LOCATION:
+            result = native_location_authorize_operation(control, arguments, client_id,
+                                                         &operation_error);
+            break;
+        case GN_DISPATCH_AUTH:
+            result = gnoblin_control_auth_operation(control, method, arguments, client_id,
+                                                    &operation_error);
+            break;
+        case GN_DISPATCH_PROMPT:
+            result = gnoblin_control_prompts_operation(control, method, arguments, client_id,
+                                                       &operation_error);
+            break;
+        case GN_DISPATCH_ORIENTATION_LOCK:
+            result = native_set_orientation_lock(control, arguments, &operation_error);
+            break;
+        case GN_DISPATCH_MONITOR_PRIVACY:
+            result = native_set_monitor_privacy_screen(control, arguments, &operation_error);
+            break;
+        case GN_DISPATCH_SESSION_LOCK:
+            result = gnoblin_native_control_request_session_lock(control->display, arguments,
+                                                                 &operation_error);
+            break;
+        case GN_DISPATCH_SESSION_LOGOUT:
+            if (g_variant_n_children(arguments) != 0) {
+                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "session.logout takes no arguments");
+            } else {
+                GVariantBuilder logout_result;
+                g_variant_builder_init(&logout_result, G_VARIANT_TYPE_VARDICT);
+                g_variant_builder_add(&logout_result, "{sv}", "accepted",
+                                      g_variant_new_boolean(TRUE));
+                result = g_variant_ref_sink(g_variant_builder_end(&logout_result));
+            }
+            break;
+        case GN_DISPATCH_POWER:
+            /* The Operation completes with logind's answer, not with acceptance. */
+            operation_key = g_new(guint64, 1);
+            *operation_key = (guint64)operation_id;
+            g_hash_table_add(control->runtime_operation_ids, operation_key);
+            if (gnoblin_control_power_action(control, operation_id, method, arguments,
+                                             &operation_error))
+                return TRUE;
+            g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+            break;
+        case GN_DISPATCH_RESTORE_DEFAULT:
+            if (g_variant_n_children(arguments) != 0) {
+                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "config.restore_default takes no arguments");
+            } else {
+                GVariantBuilder accepted;
+                g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
+                g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
+                result = g_variant_ref_sink(g_variant_builder_end(&accepted));
+            }
+            break;
+        case GN_DISPATCH_INSERT_TEXT:
+            result =
+                gnoblin_native_control_insert_text(control->display, arguments, &operation_error);
+            break;
+        case GN_DISPATCH_SHORTCUT_ARM: {
+            const char* binding_id = NULL;
+            const char* owner_id = NULL;
+            const char* trigger = NULL;
+            guint64 session_id = 0;
+            guint32 modifiers = 0;
+            gboolean capture_input = FALSE;
+            if (!g_variant_lookup(arguments, "binding_id", "&s", &binding_id) ||
+                !g_variant_lookup(arguments, "owner_id", "&s", &owner_id) ||
+                !g_variant_lookup(arguments, "session_id", "t", &session_id) || !session_id ||
+                !g_variant_lookup(arguments, "trigger", "&s", &trigger) ||
+                !g_str_equal(trigger, "release") ||
+                !g_variant_lookup(arguments, "modifiers", "u", &modifiers) || modifiers != 0 ||
+                !g_variant_lookup(arguments, "capture_input", "b", &capture_input) ||
+                !capture_input) {
+                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "shortcut.session.arm requires a bare Super release binding");
+            } else {
+                NativeDynamicShortcut* armed = gnoblin_control_arm_bare_super_shortcut(
+                    control, binding_id, owner_id, NULL, session_id, &operation_error);
+                if (armed) {
+                    GVariantBuilder armed_result;
+                    g_variant_builder_init(&armed_result, G_VARIANT_TYPE_VARDICT);
+                    g_variant_builder_add(&armed_result, "{sv}", "armed",
+                                          g_variant_new_boolean(TRUE));
+                    g_variant_builder_add(&armed_result, "{sv}", "session_id",
+                                          g_variant_new_uint64(session_id));
+                    result = g_variant_ref_sink(g_variant_builder_end(&armed_result));
+                }
+            }
+            break;
+        }
+        case GN_DISPATCH_SHORTCUT:
+            result = native_runtime_shortcut_operation(control, operation, arguments, operation_id,
+                                                       &operation_error);
+            break;
+        case GN_DISPATCH_LAUNCH:
+            result = gnoblin_native_control_dispatch_launch(control->display, method, arguments,
+                                                            &operation_error);
+            break;
+        case GN_DISPATCH_INPUT_SELECT:
+        case GN_DISPATCH_SHORTCUT_CAPTURE:
+            operation_key = g_new(guint64, 1);
+            *operation_key = (guint64)operation_id;
+            g_hash_table_add(control->runtime_operation_ids, operation_key);
+            if (dispatch == GN_DISPATCH_INPUT_SELECT) {
+                pending = gnoblin_native_control_select_input_source(
+                    control->display, arguments, operation_id, method, &operation_error);
+            } else {
+                pending = gnoblin_native_control_begin_shortcut_capture(
+                    control->display, arguments, operation_id, &operation_error);
+            }
+            if (pending)
+                return TRUE;
+            g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+            break;
+        case GN_DISPATCH_THUMBNAIL:
+            pending = native_runtime_begin_thumbnail(control, operation_id, arguments, client_id,
+                                                     &operation_error);
+            if (pending)
+                return TRUE;
+            break;
+        case GN_DISPATCH_SET_MAXIMIZED: {
+            gboolean enabled = FALSE;
+            const char* window_id = NULL;
+            if (g_variant_lookup(arguments, "enabled", "b", &enabled) && enabled &&
+                g_variant_lookup(arguments, "id", "&s", &window_id) && window_id) {
+                MetaWindow* window = native_window_by_stable_id(control, window_id);
+                if (window)
+                    result = meta_gnoblin_dispatch_native_api(control->display, method, arguments,
+                                                              &operation_error);
+                else
+                    g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                                        "window.set_maximized target is unavailable");
+                if (result)
+                    g_hash_table_remove(control->snap_restore_frames, window);
+            } else {
+                result = meta_gnoblin_dispatch_native_api(control->display, method, arguments,
+                                                          &operation_error);
+            }
+            break;
+        }
+        case GN_DISPATCH_NATIVE:
+        default:
             result = meta_gnoblin_dispatch_native_api(control->display, method, arguments,
                                                       &operation_error);
+            break;
         }
-    } else {
-        result =
-            meta_gnoblin_dispatch_native_api(control->display, method, arguments, &operation_error);
     }
     GVariantBuilder completion;
     g_variant_builder_init(&completion, G_VARIANT_TYPE_VARDICT);
@@ -1075,7 +1146,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
             guint64 previous_runtime_generation = control->runtime_generation;
             gboolean runtime_generation_changed = FALSE;
             g_autoptr(GVariant) previous_document =
-                gnoblin_runtime_cache_get_document(control->runtime_cache);
+                gnoblin_runtime_cache_get_committed_document(control->runtime_cache);
             g_autoptr(GVariant) previous_bootstrap_document =
                 bootstrap_runtime_cache
                     ? gnoblin_runtime_cache_get_document(bootstrap_runtime_cache)
@@ -1194,6 +1265,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                                                           control->display, &rollback_error))
                                 rollback_failed = TRUE;
                             native_settings_changed(previous_revision, control);
+                            gnoblin_control_overrides_reapply(control, FALSE, TRUE);
                         }
                         handled = FALSE;
                     }
@@ -1214,6 +1286,11 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                     control->input_policy_bypassed = FALSE;
                     g_clear_pointer(&control->input_policy_error, g_free);
                     gnoblin_control_cancel_window_drags(control, "config_reloaded");
+                    gnoblin_control_tweens_cancel(control, "cancelled");
+                    gnoblin_control_idle_watches_clear(control);
+                    gnoblin_control_window_visuals_reset(control);
+                    gnoblin_control_overrides_clear(control, TRUE);
+                    gnoblin_control_input_grab_end(control, "config_reloaded", FALSE);
                     revoke_focus_contexts(control);
                 }
                 if (handled && revision > previous_revision) {

@@ -100,14 +100,14 @@ on exit. These software-VM checks do not replace hardware or scaled-output
 verification.
 
 For command-priority changes, run `python3 tests/command-child-priority.py`.
-The probe links the real command and capture sources without a compositor.
+The probe links the real command and process sources without a compositor.
 It checks repeated launches, the caller's priority, and a shared GTask worker.
 Use `--build-only /var/tmp/command-priority` to keep the executable for a
 separate run at nice `-5`. A run with nonnegative nice does not prove that
 commands drop an inherited boost; the probe reports that missing check.
 
 In a disposable session, also launch an unclassified helper through
-`gnoblin.commands.run` and `gnoblin.commands.capture`. Record its actual nice
+`gnoblin.process.spawn`. Record its actual nice
 and scheduler policy, the compositor's per-thread priorities, and the loaded
 runtime identity before and after the change. External priority rules can
 override both the observer and the helper. This check proves command priority
@@ -121,12 +121,17 @@ Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
 configuration.
 
 Export a committed subproject change through `scripts/manage-patches.py` so its
-mail header uses the Gnoblin patch identity:
+mail header uses the Gnoblin patch identity. The export appends the patch to the
+project's `patches/<project>/series`, the file that orders the patches:
 
 ```sh
 scripts/manage-patches.py export mutter HEAD \
-  patches/mutter/90-example/0001-example.patch
+  patches/mutter/<NN>-<topic>/<NNNN>-<slug>.patch
+scripts/manage-patches.py check
 ```
+
+[`patches/README.md`](patches/README.md) describes the layout, how to insert or
+reorder a patch (`renumber`) and what `check` rejects.
 
 The source build patches Mutter and `xdg-desktop-portal-gnome`; it does not
 build or patch GNOME Shell. For uncommitted tracked changes, use
@@ -134,7 +139,8 @@ build or patch GNOME Shell. For uncommitted tracked changes, use
 For a patch that follows existing patches on the same lines, use a temporary
 subproject worktree. Apply the earlier patches, stage that state as the baseline,
 make the new edit, then export with `--source-tree WORKTREE --against-index`.
-The `apply-patches` step (`cmake/source-step.cmake`) checks every patch header before use.
+The `apply-patches` step (`cmake/source-step.cmake`) runs `scripts/manage-patches.py check`, then applies the patches in
+series order.
 
 ## Packaging
 
@@ -202,7 +208,14 @@ See the [TypeSafe API reference](https://api.typesafe.ai/docs) and
 for provider details. Agents only run Jev automatically when `.env` opts
 in with `GNOBLIN_DOCS_JEV_PROVIDER`.
 
-## Lua API annotations
+## Lua API registration and annotations
+
+Every function the Lua runtime installs is one row of `lua_api[]` in
+`src/config/lua/gnoblin-lua.c`. A row names the Lua path (`windows.list`, or `Window:close` for a
+method on a record), the operation it sends to the compositor, and the C function that runs it in
+the runtime when it does not send an operation. `install_api`, the record methods and
+`gnoblin_config_call_api` read the table, so a new runtime function needs one row there. Wire
+operations still need their compositor handler, and socket reads still have their own lists.
 
 The signatures the console and editors show for `gnoblin.*` functions come from LuaCATS
 annotations in `src/config/lua/api/*.h`. Each block is a C comment that opens with `/*** lua`
@@ -222,6 +235,10 @@ This rewrites `src/config/lua/gnoblin-lua-signatures.inc`, which the console com
 the script with `--check` and fails when either file is stale. Use `--validate` to check the
 annotations without writing anything. A C function without an annotation shows as plain `fn` in the
 console, so annotate every public function.
+
+`python3 scripts/audit-lua-annotations.py`, also a pre-commit hook, compares `lua_api[]` with the
+annotations. It fails when an installed function has no annotation, or when an annotated
+`gnoblin.*` function or record method is not installed.
 
 ## Issues and commit hooks
 

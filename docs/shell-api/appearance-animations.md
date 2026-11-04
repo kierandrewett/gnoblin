@@ -25,38 +25,46 @@ The Lua runtime exposes animation controls through `gnoblin.animations`. Keep
 `gnoblin.animation { ... }` for declaring or updating a named animation in
 configuration.
 
-| Method                             | Arguments                                         | Successful result                            |
-| ---------------------------------- | ------------------------------------------------- | -------------------------------------------- |
-| `gnoblin.animations.list()`        | None                                              | Read-only `AnimationInfo[]`                  |
-| `gnoblin.animations.get(name)`     | Animation name                                    | Read-only `AnimationInfo` or `nil`           |
-| `gnoblin.animations.surfaces()`    | None                                              | `{surfaces = {Surface, ...}}`                |
-| `gnoblin.animations.inspect(args)` | `name`, `target`; optional `event`, `target_type` | Animation details and resolved specification |
-| `gnoblin.animations.preview(args)` | Same as inspect; optional `autoplay`              | `AnimationPreview` record                    |
-| `gnoblin.animations.seek(args)`    | `session`; `progress` from 0 to 1                 | Updated `AnimationPreview` record            |
-| `gnoblin.animations.step(args)`    | `session`; `milliseconds` from 1 to 60000         | Updated `AnimationPreview` record            |
-| `gnoblin.animations.play(args)`    | `session`                                         | Updated `AnimationPreview` record            |
-| `gnoblin.animations.pause(args)`   | `session`                                         | Updated `AnimationPreview` record            |
-| `gnoblin.animations.stop(args)`    | `session`                                         | `{ok = true, session = string}`              |
+| Method                                              | Arguments                  | Successful result                  |
+| --------------------------------------------------- | -------------------------- | ---------------------------------- |
+| `gnoblin.animations.list()`                         | None                       | Read-only `AnimationInfo[]`        |
+| `gnoblin.animations.get(name)`                      | Animation name             | Read-only `AnimationInfo` or `nil` |
+| `target:inspect_animation(name, event?)`            | Name; optional event       | `Operation<AnimationInspection>`   |
+| `target:preview_animation(name, event?, autoplay?)` | Name; optional event; flag | `Operation<AnimationPreview>`      |
 
-`gnoblinctl lua` supports the five controls that take an explicit session
-table. Use the `id` from an `AnimationPreview` as the `session` value. The CLI
-waits for each operation and returns the updated read-only preview, or the
-stop result.
+`target` is a `Window` or a `LayerSurface`. Find one with `gnoblin.windows.active()`,
+`gnoblin.find("Window", filter)` or `gnoblin.find("LayerSurface", filter)`. The calls take no
+window ID, layer ID or target type: the object you call is the target.
 
-| Field         | Accepted value                                  | Meaning                                       |
-| ------------- | ----------------------------------------------- | --------------------------------------------- |
-| `target_type` | `window` (default), `layer`, or `namespace`     | Selects how to resolve `target`.              |
-| `target`      | `"active"` or window ID; layer ID; or namespace | Identifies the preview target.                |
-| `name`        | 1–80 ASCII letters, digits, `_` or `-`          | Selects an animation.                         |
-| `event`       | Optional lowercase kebab-case event name        | Selects an event supported by that animation. |
-| `autoplay`    | Boolean; default `false`                        | Starts a preview immediately when `true`.     |
+`gnoblinctl lua` supports the same preview record methods. The CLI waits for each
+operation and returns the updated read-only preview, or the stop result.
+
+| Argument   | Accepted value                           | Meaning                                       |
+| ---------- | ---------------------------------------- | --------------------------------------------- |
+| `name`     | 1–80 ASCII letters, digits, `_` or `-`   | Selects an animation.                         |
+| `event`    | Optional lowercase kebab-case event name | Selects an event supported by that animation. |
+| `autoplay` | Boolean; default `false`                 | Starts a preview immediately when `true`.     |
 
 See the [animation guide](/guides/animations) for supported animation events.
-In Lua, `gnoblin.animations.preview(spec)` returns an `Operation`. Its
-successful value is an immutable preview record.
+In Lua, `window:preview_animation(name, event?, autoplay?)` returns an `Operation`. Its
+successful value is an `AnimationPreview`, a live object like a
+[window](/shell-api/windows#live-window-objects): one handle for one `id`, which each call
+on it updates. The compositor names a preview by its `id`; the record has no other name for it.
 
-The record methods are `seek`, `step`, `play`, `pause`, and `stop`. They return
-new operations. The stop result contains an `ok` flag and a `session` ID.
+- `preview.alive` is `false` once `stop()` has succeeded, a call on the preview has failed
+  because it is gone, or a config reload has ended the handle.
+- `preview:on(signal, fn)` takes `"changed"`, with the list of changed fields, or `"closed"`,
+  with the reason when there is one. It returns a subscription.
+- `preview:watch(field, fn)` calls `fn(preview, value, old)` when `event`, `progress`,
+  `playing`, `paused` or `spec` changes.
+
+Control a preview with the methods of its record. They return new operations:
+
+- `preview:seek(progress)` takes a value from 0 to 1.
+- `preview:step(milliseconds)` takes 1 to 60000.
+- `preview:play()`, `preview:pause()` and `preview:stop()` take no argument.
+
+The stop result contains an `ok` flag and the `session` ID of the stopped preview, which is its `id`.
 
 Configured `open` and `close` animations run for normal windows during their
 map and destroy lifecycles. The compositor starts built-in or registered
@@ -67,15 +75,10 @@ For example, inspect a new window's `open` animation, seek to its midpoint,
 then play from there:
 
 ```lua
-gnoblin.events.on("gnoblin.window.created", function(event)
-    local request = gnoblin.animations.preview {
-        name = "gnome-open",
-        event = "open",
-        target = event.window.id,
-        target_type = "window",
-    }
+gnoblin.on("gnoblin.window.created", function(event)
+    local operation = event.window:preview_animation("gnome-open", "open")
 
-    request:on_complete(function(preview, error)
+    operation:on_complete(function(preview, error)
         if error then
             print(error.message)
             return

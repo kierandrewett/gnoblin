@@ -153,11 +153,21 @@ void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
     /* Runtime abort can precede compositor teardown while async callbacks drain. */
     if (!control || !control->stopping || !control->teardown_complete ||
         control->pending_input_source_ops != 0 || control->pending_ibus_queries != 0 ||
-        control->pending_thumbnail_count != 0 || control->pending_activity_queries != 0)
+        control->pending_thumbnail_count != 0 || control->pending_power_calls != 0)
         return;
     gnoblin_control_input_sources_release(control);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
     g_free(control);
+}
+
+/* The compositor side of the control is gone. The state is freed here, or by the last async
+ * callback still holding it, never before: teardown_complete is set first so that a callback
+ * running between a runtime abort and this call cannot free what stop is still tearing down. */
+void native_control_finish_teardown(GnoblinNativeControl* control) {
+    if (!control)
+        return;
+    control->teardown_complete = TRUE;
+    native_control_maybe_free_stopped(control);
 }
 
 /* Exported names for static helpers that gnoblin-control-session-activity.c calls. */
@@ -259,6 +269,10 @@ gboolean native_shortcut_hold_family_pressed(GnoblinNativeControl* control, guin
 
 void native_shortcut_capture_key(const ClutterEvent* event, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
+    if (control->input_grab) {
+        gnoblin_control_input_grab_key(control, event);
+        return;
+    }
     if (control->shortcut_session_capture_active && control->active_shortcut_session) {
         NativeDynamicShortcut* shortcut = control->active_shortcut_session;
         if (!event) {
@@ -563,6 +577,7 @@ void native_session_lock_changed(MetaWaylandCompositor* compositor,
         g_hash_table_remove_all(control->snap_contexts);
         if (control->active_shortcut_session)
             dynamic_shortcut_end_session(control, control->active_shortcut_session, "locked");
+        gnoblin_control_input_grab_end(control, "locked", TRUE);
         stop_native_shortcut_capture(user_data, TRUE, FALSE, NULL, "denied",
                                      "shortcut capture cancelled because the session locked");
     }
@@ -632,6 +647,13 @@ GVariant* gnoblin_native_control_request_session_lock(MetaDisplay* display, GVar
             g_hash_table_contains(client->event_subscriptions, event_name))
             listeners++;
     }
+    /* A config that listens for lock requests answers them as well as socket shells do. */
+    gboolean runtime_listens =
+        control->supervised_runtime && !control->runtime_worker_suspended &&
+        control->runtime_event_subscriptions &&
+        g_hash_table_contains(control->runtime_event_subscriptions, event_name);
+    if (runtime_listens)
+        listeners++;
     if (listeners == 0) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
                             "no session-lock client is subscribed to lock requests");
@@ -647,6 +669,14 @@ GVariant* gnoblin_native_control_request_session_lock(MetaDisplay* display, GVar
     json_object_set_int_member(object, "sequence", sequence);
     json_object_set_int_member(object, "time", time);
     publish_native_socket_event(control, event);
+    if (runtime_listens) {
+        GVariantBuilder payload;
+        g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&payload, "{sv}", "sequence", g_variant_new_int64(sequence));
+        g_variant_builder_add(&payload, "{sv}", "time", g_variant_new_int64(time));
+        g_autoptr(GVariant) runtime_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
+        native_runtime_dispatch_event(control, event_name, runtime_payload);
+    }
 
     GVariantBuilder result;
     g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);

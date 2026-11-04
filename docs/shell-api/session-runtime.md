@@ -35,11 +35,26 @@ These methods take no arguments and return operations:
 - `gnoblin.session.reboot()` asks logind to reboot.
 - `gnoblin.session.poweroff()` asks logind to power off.
 
-The native session supervisor checks the matching logind capability before
-requesting the action. Logind may answer `yes` or `challenge`; other answers
-and failed method calls are errors. The operation confirms that Gnoblin
-accepted the request. The machine may stop the Lua runtime as the action
-begins.
+The compositor reads the matching logind capability, then asks logind for the
+action. The operation finishes with logind's answer, so it does not report
+success before logind replies. It succeeds with `{accepted = true}` when
+logind accepts the request. The Lua runtime keeps running after a suspend or
+hibernate. For a reboot or power off, logind ends the session after it
+accepts.
+
+A refused or failed request ends the operation with an error:
+
+- `denied`: the capability answer is `no`, or polkit denies the action (`AccessDenied`).
+- `unsupported`: the capability answer is `na`, or logind has no such action.
+- `busy`: logind is already running another power action.
+- `unavailable`: logind is not on the system bus.
+- `timed_out`: logind did not answer in time (5 seconds for the capability, 30 for the action).
+- `internal`: any other D-Bus error from logind.
+
+The message names the D-Bus error, for example
+`logind could not suspend: org.freedesktop.DBus.Error.AccessDenied: ...`.
+Logind may answer `challenge` to the capability query. Gnoblin then asks for
+interactive authorization with the action.
 
 The focus reads are available as `gnoblin.focus.history(filter)` and
 `gnoblin.focus.policy()`. See [Focus and activation](/shell-api/focus-activation)
@@ -89,7 +104,7 @@ republishing state, or a new configuration generation is accepted. Failed or
 rolled-back reloads do not change the reported generation.
 
 ```lua
-gnoblin.events.on("gnoblin.runtime.status-changed", function(event)
+gnoblin.on("gnoblin.runtime.status-changed", function(event)
     print(event.state, event.generation)
 end)
 ```
@@ -156,37 +171,34 @@ errors still fail the reload and keep the previous config active.
 
 ## Locking
 
-`gnoblin.session.lock()` asks a subscribed external shell client to show its
-lock UI. The client owns that UI and must use Mutter's lock protocol; this Lua
-method does not lock the session by itself. It takes no arguments and returns
-an `Operation<LockRequest>`.
+`gnoblin.session.lock()` asks a subscribed client to show its lock UI. A client
+is a shell process that subscribed to `gnoblin.session.lock-requested` on the
+socket, or a Lua configuration that listens for that event with `gnoblin.on`.
 
-On success, `dispatched` is `true`. `subscribers` counts connected clients
+The client owns the lock UI and must use Mutter's lock protocol; this Lua
+method does not lock the session by itself. It takes no arguments and returns
+an `Operation<LockRequest>`. `gnoblinctl session lock` makes the same request.
+
+On success, `dispatched` is `true`. `subscribers` counts the clients
 subscribed when Gnoblin targets the request. A slow connection may close before
 it handles the event, so these fields do not confirm that the client showed its
 UI or that the session locked. The operation fails when compositor locking is
 unavailable or no client is subscribed. No Lua unlock method is provided.
+
+A Lua listener receives a [`Request`](/shell-api/requests) of kind `"lock"`.
+See [Session lock](/session-lock) for a listener that starts a locker.
 
 The lock state is `unlocked`, `covering`, `locked`, or `failsafe`. Only
 `locked` confirms the compositor's lock transition. See the
 [compositor bridge](/bridge/#api-version-121-session-locking)
 for socket subscription and request details.
 
-`gnoblin.session.activity()` returns the native idle-monitor sample.
-Its fields are `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
-`revision`. Gnoblin uses a fixed threshold of 120 seconds. Idle inhibitors and
-desktop idle-timeout preferences do not change it.
-
-When the sample is available and idle, `idle_for_ms` advances from the last
-sample using the supervisor's monotonic clock. If monitoring is unavailable,
-`idle` is false and `idle_for_ms` is zero.
-
-`gnoblin.session.activity-changed` is emitted when availability or idle state
-changes. Its `idle_for_ms` is sampled at that transition and does not update
-continuously. The event also carries `threshold_ms`, `revision`, `sequence`,
-and monotonic-clock `time`.
+To react to the session being idle, use an [idle watch](/shell-api/idle).
+Socket clients read the idle-monitor sample with the `session.activity` call
+and receive `gnoblin.session.activity-changed`; see the
+[compositor bridge](/bridge/session-and-windows#session-activity).
 
 Native sessions provide immediate reads through `gnoblin.windows`,
-`gnoblin.workspaces`, `gnoblin.monitors`, `gnoblin.layers`,
+`gnoblin.workspaces`, `gnoblin.outputs`, `gnoblin.layers`,
 `gnoblin.input.devices()`, and `gnoblin.capabilities`. See
 [Lua events](/events/) for event names and callback behavior.

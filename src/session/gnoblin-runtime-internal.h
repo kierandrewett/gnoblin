@@ -4,6 +4,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include "../control/gnoblin-api-operations.h"
 #include "../control/gnoblin-runtime-protocol.h"
 #include "../input/gnoblin-input-config.h"
 #include "gnoblin-runtime-spawn.h"
@@ -44,10 +45,6 @@
 #define WORKER_MAX_RESTARTS 5
 #define WORKER_STABLE_RESET_MS 60000
 #define EXIT_RESUME_REJECTED 75
-#define EXIT_POWER_SUSPEND 80
-#define EXIT_POWER_HIBERNATE 81
-#define EXIT_POWER_REBOOT 82
-#define EXIT_POWER_POWEROFF 83
 #define EXIT_CONFIG_RESTORE 84
 #define GUARDIAN_STATUS_STARTED 1
 #define GUARDIAN_STATUS_READY 2
@@ -75,6 +72,9 @@ typedef struct {
     guint deferred_callback_idle_id;
     guint64 event_sequence;
     guint64 current_client_id;
+    /* The operation a socket client's call created; only it carries current_client_id, so the
+     * compositor checks that client's right to answer a request. */
+    gint64 current_client_operation_id;
     /* Nonzero only while draining operations emitted by one INPUT callback. */
     guint64 active_input_request_id;
     GPid compositor_pid;

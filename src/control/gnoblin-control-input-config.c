@@ -52,18 +52,21 @@ static gboolean native_action_target(GVariant* action, const GnoblinKeybindingCa
            meta_keybindings_gnoblin_action_supported(*group, *native_name);
 }
 
-static GVariant* native_binding_array(GVariant* bindings) {
+/* The accelerators of a built-in action as strings in the one chord form (gnoblin-chord.h), or NULL
+ * with `chord_error` set when one is not a chord. */
+static GVariant* native_binding_array(GVariant* bindings, char** chord_error) {
     if (!bindings || !g_variant_is_of_type(bindings, G_VARIANT_TYPE("av")))
         return NULL;
     g_auto(GStrv) strings = g_new0(char*, g_variant_n_children(bindings) + 1);
     for (gsize i = 0; i < g_variant_n_children(bindings); i++) {
         g_autoptr(GVariant) boxed = g_variant_get_child_value(bindings, i);
         g_autoptr(GVariant) binding = g_variant_get_variant(boxed);
+        GnoblinChord chord;
         if (!g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING) ||
-            !*g_variant_get_string(binding, NULL) ||
-            strlen(g_variant_get_string(binding, NULL)) > 160)
+            !gnoblin_chord_parse(g_variant_get_string(binding, NULL), GNOBLIN_CHORD_KEY, &chord,
+                                 chord_error))
             return NULL;
-        strings[i] = g_variant_dup_string(binding, NULL);
+        strings[i] = gnoblin_chord_format(&chord);
     }
     return g_variant_ref_sink(g_variant_new_strv((const char* const*)strings, -1));
 }
@@ -94,10 +97,15 @@ static gboolean merge_native_action(GVariantDict* groups, GVariant* entry,
             "named built-in actions cannot have command, trigger, or input capture");
         return FALSE;
     }
-    native_bindings = native_binding_array(binding);
+    g_autofree char* chord_error = NULL;
+    native_bindings = native_binding_array(binding, &chord_error);
     if (!native_bindings) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "named built-in action needs an array of accelerators");
+        if (chord_error)
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "shortcut binding: %s",
+                        chord_error);
+        else
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "named built-in action needs an array of accelerators");
         return FALSE;
     }
     existing_group = g_variant_dict_lookup_value(groups, group, G_VARIANT_TYPE_VARDICT);
@@ -158,13 +166,24 @@ gboolean apply_native_keybindings(GnoblinNativeControl* control, GVariant* docum
         g_autoptr(GVariant) match =
             g_variant_lookup_value(handler, "match", G_VARIANT_TYPE_VARDICT);
         const char *accelerator = NULL, *type = NULL;
-        if (match && g_variant_lookup(match, "accelerator", "&s", &accelerator) &&
-            (!g_variant_lookup(match, "type", "&s", &type) ||
-             !meta_keybindings_gnoblin_accelerator_valid(control->display, accelerator,
-                                                         g_str_equal(type, "button")))) {
-            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                        "invalid input handler accelerator: %s", accelerator);
-            return FALSE;
+        if (match && g_variant_lookup(match, "accelerator", "&s", &accelerator)) {
+            gboolean pointer =
+                g_variant_lookup(match, "type", "&s", &type) && g_str_equal(type, "button");
+            g_autofree char* chord_error = NULL;
+            if (!type || !gnoblin_chord_parse(accelerator,
+                                              pointer ? GNOBLIN_CHORD_POINTER : GNOBLIN_CHORD_KEY,
+                                              NULL, &chord_error)) {
+                g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "invalid input handler accelerator: %s",
+                            chord_error ? chord_error : accelerator);
+                return FALSE;
+            }
+            if (!meta_keybindings_gnoblin_accelerator_valid(control->display, accelerator,
+                                                            pointer)) {
+                g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "invalid input handler accelerator: %s", accelerator);
+                return FALSE;
+            }
         }
     }
     g_autoptr(GVariant) configured =
@@ -240,10 +259,16 @@ gboolean apply_native_keybindings(GnoblinNativeControl* control, GVariant* docum
                     g_variant_builder_clear(&actions);
                     goto invalid_keybindings;
                 }
-                g_autoptr(GVariant) native_bindings = native_binding_array(bindings);
+                g_autofree char* chord_error = NULL;
+                g_autoptr(GVariant) native_bindings = native_binding_array(bindings, &chord_error);
                 if (!native_bindings) {
-                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "keybindings.%s.%s needs an array of accelerators", group, name);
+                    if (chord_error)
+                        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "keybindings.%s.%s: %s", group, name, chord_error);
+                    else
+                        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "keybindings.%s.%s needs an array of accelerators", group,
+                                    name);
                     g_variant_builder_clear(&actions);
                     goto invalid_keybindings;
                 }
@@ -298,6 +323,9 @@ gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* documen
         g_autoptr(GVariant) trigger_value = NULL;
         g_autoptr(GVariant) capture_value = NULL;
         g_autoptr(GVariant) action_value = NULL;
+        g_autofree char* canonical = NULL;
+        g_autofree char* chord_error = NULL;
+        GnoblinChord chord;
         const char* name = NULL;
         const char* binding = NULL;
         const char* trigger = "press";
@@ -342,9 +370,15 @@ gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* documen
                 goto invalid_shortcut;
             }
             binding_value = g_variant_lookup_value(entry, "binding", NULL);
-            g_autoptr(GVariant) native_bindings = native_binding_array(binding_value);
-            if (!native_bindings)
+            g_autofree char* action_chord_error = NULL;
+            g_autoptr(GVariant) native_bindings =
+                native_binding_array(binding_value, &action_chord_error);
+            if (!native_bindings) {
+                if (action_chord_error)
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "shortcuts.%s.binding: %s", name, action_chord_error);
                 goto invalid_shortcut;
+            }
             NativeShortcut* shortcut = g_new0(NativeShortcut, 1);
             shortcut->name = g_strdup(name);
             shortcut->action_id = g_strdup_printf("%s.%s", group, native_name);
@@ -360,8 +394,13 @@ gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* documen
         if (!binding_value || !g_variant_is_of_type(binding_value, G_VARIANT_TYPE_STRING))
             goto invalid_shortcut;
         binding = g_variant_get_string(binding_value, NULL);
-        if (!*binding || strlen(binding) > 160)
+        if (!gnoblin_chord_parse(binding, GNOBLIN_CHORD_KEY, &chord, &chord_error)) {
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "shortcuts.%s.binding: %s",
+                        name, chord_error);
             goto invalid_shortcut;
+        }
+        canonical = gnoblin_chord_format(&chord);
+        binding = canonical;
         trigger_value = g_variant_lookup_value(entry, "trigger", NULL);
         if (trigger_value) {
             if (!g_variant_is_of_type(trigger_value, G_VARIANT_TYPE_STRING))
@@ -874,6 +913,11 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value,
         }
         return g_variant_ref_sink(g_variant_new_strv((const char* const*)strings, -1));
     }
+    /* A reload normalises the document again: it holds the "as" that the first normalisation made.
+     * The second pass must give the same value. Before, it refused the value and a reload failed
+     * with "input.keyboard.xkb-options: invalid value". */
+    if (field->kind == INPUT_STRINGS && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING_ARRAY))
+        return g_variant_ref_sink(g_variant_ref(value));
     return NULL;
 }
 
@@ -1086,17 +1130,25 @@ void native_orientation_lock_publish(GnoblinNativeControl* control) {
     native_runtime_dispatch_event(control, "gnoblin.input.orientation-lock-changed", event_payload);
 }
 
-GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, guint64 revision) {
+/* The privacy screen state the session asks every capable panel for, and where that request
+ * comes from: a runtime override, the configuration or the system setting. Mutter applies one
+ * request to all outputs; there is no per-output request. */
+gboolean native_monitor_privacy_screen_request(GnoblinNativeControl* control, const char** source) {
     MetaSettings* settings = meta_backend_get_settings(control->backend);
-    const char* source = control->monitor_privacy_screen_runtime_override ? "runtime" : "system";
+    *source = control->monitor_privacy_screen_runtime_override ? "runtime" : "system";
     gboolean configured = FALSE;
     g_autoptr(GVariant) document = gnoblin_runtime_cache_get_document(control->runtime_cache);
     g_autoptr(GVariant) preferences =
         document ? g_variant_lookup_value(document, "monitors", G_VARIANT_TYPE_VARDICT) : NULL;
     if (!control->monitor_privacy_screen_runtime_override && preferences &&
         g_variant_lookup(preferences, "privacy-screen", "b", &configured))
-        source = "config";
+        *source = "config";
+    return settings && meta_settings_is_privacy_screen_enabled(settings);
+}
 
+GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, guint64 revision) {
+    const char* source = NULL;
+    gboolean requested = native_monitor_privacy_screen_request(control, &source);
     GVariantBuilder monitors;
     g_variant_builder_init(&monitors, G_VARIANT_TYPE("av"));
     GList* logical_monitors =
@@ -1136,9 +1188,7 @@ GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, 
 
     GVariantBuilder snapshot;
     g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(
-        &snapshot, "{sv}", "requested_enabled",
-        g_variant_new_boolean(settings && meta_settings_is_privacy_screen_enabled(settings)));
+    g_variant_builder_add(&snapshot, "{sv}", "requested_enabled", g_variant_new_boolean(requested));
     g_variant_builder_add(&snapshot, "{sv}", "source", g_variant_new_string(source));
     g_variant_builder_add(&snapshot, "{sv}", "revision", g_variant_new_uint64(revision));
     g_variant_builder_add(&snapshot, "{sv}", "monitors", g_variant_builder_end(&monitors));
@@ -1168,6 +1218,10 @@ void native_monitor_privacy_screen_publish(GnoblinNativeControl* control) {
     if (!initialized)
         return;
 
+    /* Each Output record carries its privacy screen state, so publish the outputs again; Lua
+     * sees the change as gnoblin.output.changed. The event below is for socket clients. */
+    schedule_windows(control);
+
     guint64 sequence = ++control->event_sequence;
     gint64 time = g_get_monotonic_time();
     GVariantBuilder event_builder;
@@ -1188,7 +1242,6 @@ void native_monitor_privacy_screen_publish(GnoblinNativeControl* control) {
     g_autoptr(JsonNode) json = json_from_variant(event_payload);
     if (JSON_NODE_HOLDS_OBJECT(json))
         publish_native_socket_event(control, json);
-    native_runtime_dispatch_event(control, "gnoblin.monitor.privacy-screen-changed", event_payload);
 }
 
 void native_orientation_manager_notified(GObject* manager, GParamSpec* property,

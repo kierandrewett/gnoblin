@@ -10,8 +10,9 @@ local settings = gnoblin.snapshot()
 print(settings.compositor["locate-pointer"])
 ```
 
-Use this to inspect earlier settings while a config is loading. For runtime
-reads, prefer the immutable [`gnoblin.settings`](/shell-api/) snapshot.
+Use this only while a config loads, to inspect earlier settings. At run time
+`gnoblin.snapshot()` raises an error. Read the committed settings from the
+[`gnoblin.settings`](/shell-api/) snapshot instead.
 For named entries you want to edit or loop over, use
 [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) or
 [`gnoblin.configure.autostart`](/config/configure/autostart). See
@@ -20,5 +21,5 @@ For named entries you want to edit or loop over, use
 ## Type definition
 
 ```lua
-local settings = gnoblin.snapshot() -- returns a detached config table
+local settings = gnoblin.snapshot() -- returns a detached config table; load time only
 ```

@@ -21,7 +21,7 @@ and location activity in `state`. Activity appears only for available sources.
 The native runtime monitors screen sharing, PipeWire microphone and camera
 activity, and GeoClue location activity. GeoClue authorization requests arrive
 through `gnoblin.location.authorization-requested`; answer them with
-`gnoblin.location.authorize_app`. See [Privacy](/shell-api/privacy)
+`event.request:answer()`. See [Privacy](/shell-api/privacy)
 for accuracy levels, deadlines, and the authorization rules.
 
 `gnoblin.capability.changed` fires when a monitored native capability becomes
@@ -31,8 +31,9 @@ Unavailable monitor capabilities report one of these reasons:
 - `remote_desktop_disabled`: Mutter was built without remote-desktop support.
 - `pipewire_unavailable`: the monitor is disconnected or could not connect.
 
-Pass `focus_context` to `Window:focus(context)` to use the authority granted to
-that event. Lua cannot inspect or create the protected value.
+Pass `grant` to `Window:focus(grant)` to use the authority granted to
+that event. Lua cannot inspect or create the protected value. See
+[grants](/shell-api/grants).
 
 The compositor socket and its directory are accessible only to the current
 user. Any process running as that user can subscribe. Treat same-user socket

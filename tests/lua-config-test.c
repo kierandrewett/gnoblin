@@ -258,6 +258,134 @@ static void dispatch_gesture_sequence_event(gint64 source_sequence) {
     gnoblin_config_finish_event(TRUE);
 }
 
+typedef struct {
+    guint failures;
+    guint first_traceback;
+    guint first_named_event;
+} FaultLog;
+
+static void capture_fault_warning(const gchar* domain, GLogLevelFlags level, const gchar* message,
+                                  gpointer user_data) {
+    FaultLog* log = user_data;
+    (void)domain;
+    (void)level;
+    if (!strstr(message, "Lua event 'test.fault' failed:") &&
+        !strstr(message, "Lua input handler 'input-1' failed:"))
+        return;
+    log->failures++;
+    if (strstr(message, "stack traceback:"))
+        log->first_traceback++;
+    if (strstr(message, "test.fault") || strstr(message, "input-1"))
+        log->first_named_event++;
+}
+
+static void dispatch_fault_event(FaultLog* log, guint* next, guint* previous) {
+    g_autoptr(GError) error = NULL;
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
+    guint handler = g_log_set_handler(NULL, G_LOG_LEVEL_WARNING, capture_fault_warning, log);
+    g_autoptr(GVariant) document = gnoblin_config_dispatch_event("test.fault", payload, &error);
+    g_log_remove_handler(NULL, handler);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) operations = gnoblin_config_drain_runtime_operations();
+    *next = *previous = 0;
+    for (gsize i = 0; i < g_variant_n_children(operations); i++) {
+        g_autoptr(GVariant) operation = g_variant_get_child_value(operations, i);
+        const char* method = NULL;
+        g_assert_true(g_variant_lookup(operation, "method", "&s", &method));
+        if (g_str_equal(method, "workspace.next"))
+            (*next)++;
+        else if (g_str_equal(method, "workspace.previous"))
+            (*previous)++;
+    }
+    gnoblin_config_finish_event(TRUE);
+}
+
+/* A handler that throws is logged and stays registered; it never stops the other handlers of
+ * the event, and a runaway loop in one cannot starve the ones after it. */
+static void test_handler_fault_isolation(const char* path) {
+    const char* source =
+        "local g=require('gnoblin')\n"
+        "local calls = 0\n"
+        "g.on('test.fault', function()\n"
+        "  calls = calls + 1\n"
+        "  if calls == 1 then error('first event fails') end\n"
+        "  g.workspaces.next()\n"
+        "end)\n"
+        "g.on('test.fault', function() g.workspaces.previous() end)\n"
+        "g.on('test.fault', function() while true do end end)\n"
+        "g.on('test.fault', function() g.workspaces.previous() end)\n"
+        "local inputs = 0\n"
+        "g.input.on({type='key', accelerator='F11'}, function()\n"
+        "  inputs = inputs + 1\n"
+        "  if inputs == 1 then error('first input fails') end\n"
+        "end)\n"
+        "g.input.on({type='key', accelerator='F11'}, function() return 'consume' end)\n";
+    g_autoptr(GError) error = NULL;
+    g_assert_true(g_file_set_contents(path, source, -1, &error));
+    g_assert_no_error(error);
+    g_autoptr(GVariant) document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    gnoblin_config_finish_load(TRUE);
+
+    FaultLog log = {0};
+    guint next = 0, previous = 0;
+    /* Event 1: the first handler and the runaway handler fail; both siblings still run. */
+    dispatch_fault_event(&log, &next, &previous);
+    g_assert_cmpuint(next, ==, 0);
+    g_assert_cmpuint(previous, ==, 2);
+    g_assert_cmpuint(log.failures, ==, 2);
+    g_assert_cmpuint(log.first_traceback, ==, 2);
+    g_assert_cmpuint(log.first_named_event, ==, 2);
+    g_autofree char* notice = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(notice);
+    g_assert_nonnull(strstr(notice, "stays active"));
+    /* Event 2: the first handler runs again and now acts; the runaway handler fails again. */
+    dispatch_fault_event(&log, &next, &previous);
+    g_assert_cmpuint(next, ==, 1);
+    g_assert_cmpuint(previous, ==, 2);
+    g_assert_cmpuint(log.failures, ==, 3);
+    g_assert_null(gnoblin_config_take_runtime_callback_error());
+    /* The log is bounded: a handler that keeps failing is logged three times, then rarely. */
+    for (guint i = 0; i < 5; i++)
+        dispatch_fault_event(&log, &next, &previous);
+    g_assert_cmpuint(log.failures, ==, 4);
+    g_assert_cmpuint(next, ==, 1);
+    g_assert_cmpuint(previous, ==, 2);
+
+    const char* handler_ids[] = {"input-1", "input-2", NULL};
+    GVariantBuilder input_builder, event_builder;
+    g_variant_builder_init(&input_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_init(&event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_builder, "{sv}", "event", g_variant_builder_end(&event_builder));
+    g_variant_builder_add(&input_builder, "{sv}", "handler_ids",
+                          g_variant_new_strv(handler_ids, -1));
+    g_autoptr(GVariant) input = g_variant_ref_sink(g_variant_builder_end(&input_builder));
+    guint input_handler = g_log_set_handler(NULL, G_LOG_LEVEL_WARNING, capture_fault_warning, &log);
+    for (guint round = 0; round < 2; round++) {
+        g_autoptr(GVariant) decision = gnoblin_config_dispatch_input(input, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(decision);
+        const char* action = NULL;
+        const char* selected = NULL;
+        g_assert_true(g_variant_lookup(decision, "action", "&s", &action));
+        g_assert_true(g_variant_lookup(decision, "handler_id", "&s", &selected));
+        /* The second handler decides even though the first threw, and the first runs again. */
+        g_assert_cmpstr(action, ==, "consume");
+        g_assert_cmpstr(selected, ==, "input-2");
+        const char* failure = NULL;
+        g_assert_cmpint(g_variant_lookup(decision, "error", "&s", &failure), ==, round == 0);
+    }
+    g_log_remove_handler(NULL, input_handler);
+    g_assert_cmpuint(log.failures, ==, 5);
+    g_autofree char* input_notice = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(input_notice);
+    g_assert_nonnull(strstr(input_notice, "first input fails"));
+}
+
 /* A last-good document that an older Gnoblin saved can hold deprecated enum spellings. Mutter would
  * read an unknown name as its fallback, so the loader must refuse such a document and accept the
  * same setting with its new name. */
@@ -380,6 +508,7 @@ int main(void) {
     g_assert_true(g_file_set_contents(runtime_root, "return {}\n", -1, &error));
     g_assert_no_error(error);
     test_runtime_document_ownership(runtime_root);
+    test_handler_fault_isolation(runtime_root);
     GVariantBuilder unhandled_gesture_builder;
     g_variant_builder_init(&unhandled_gesture_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&unhandled_gesture_builder, "{sv}", "gesture",
@@ -407,12 +536,15 @@ int main(void) {
         "local g=require('gnoblin'); local a=require('module'); local b=require('module')\n"
         "if a~=b then error('require cache') end\n"
         "assert(type(g.animation)=='function', 'gnoblin.animation must declare animations')\n"
-        "for _,name in ipairs({'list','get','surfaces','inspect','preview',\n"
-        "    'seek','step','play','pause','stop'}) do\n"
+        "for _,name in ipairs({'list','get'}) do\n"
         "  assert(type(g.animations[name])=='function', 'missing gnoblin.animations.'..name)\n"
         "end\n"
-        "g.configure {shortcuts={}}; "
-        "g.config.autostart={}\n"
+        "for _,name in ipairs({'surfaces','inspect','preview','seek','step','play','pause',"
+        "'stop'}) do\n"
+        "  assert(g.animations[name]==nil, 'duplicate gnoblin.animations.'..name)\n"
+        "end\n"
+        "assert(type(g.find)=='function', 'gnoblin.find must exist')\n"
+        "g.configure {shortcuts={}, autostart={}}\n"
         "g.animation { name='test-open', event='open', duration=240, from={scale_x=0.8}, "
         "to={scale_x=1} }\n"
         "g.animation { name='test-open', duration=260 }\n"
@@ -1398,20 +1530,19 @@ int main(void) {
         "assert(g.workspace == nil)\n"
         "assert(type(g.workspaces.list)=='function')\n"
         "assert(type(g.workspaces.create)=='function')\n"
-        "assert(type(g.workspaces.rename)=='function')\n"
-        "assert(type(g.workspaces.remove)=='function')\n"
-        "assert(type(g.workspaces.activate)=='function')\n"
+        "assert(g.workspaces.rename==nil and g.workspaces.remove==nil)\n"
+        "assert(g.workspaces.activate==nil and not pcall(function() return g.events end))\n"
         "assert(type(g.workspaces.next)=='function')\n"
         "assert(type(g.workspaces.previous)=='function')\n"
-        "assert(type(g.workspaces.move_active)=='function')\n"
-        "assert(type(g.workspaces.move_window)=='function')\n"
-        "assert(type(g.launches.finish)=='function')\n"
-        "assert(type(g.launches['end'])=='function')\n"
+        "assert(g.workspaces.move_active==nil and g.workspaces.move_window==nil)\n"
+        "assert(type(g.once)=='function' and g.launches.snapshot==nil)\n"
+        "assert(g.launches.finish==nil and g.shortcuts.unbind==nil and "
+        "g.shortcuts.end_session==nil)\n"
         "g.animation {name='test-open', event='open', duration=240}\n"
         "g.animation {name='test-layer-open', event='layer-open', duration=230}\n"
         "g.animation {name='test-layer-close', event='layer-close', duration=240}\n"
         "g.window_rule {match={type='layer', layer='^test%-layer$'},"
-        "animation={['in']='test-layer-open', out='test-layer-close',"
+        "animation={layer_open='test-layer-open', layer_close='test-layer-close',"
         "duration=321, easing='linear'}}\n"
         "g.window_rule {match={type='window', focused=true},"
         "corners={shadow={x=0, y=8, blur=20, opacity=0.2}}}\n"
@@ -1464,22 +1595,42 @@ int main(void) {
         "end)\n"
         "g.on('gnoblin.shortcut.binding-activated', function(event)\n"
         "  assert(event.first==true)\n"
-        "  if event.focus_context~=nil then\n"
-        "    assert(type(event.focus_context)=='userdata')\n"
+        "  if event.grant~=nil then\n"
+        "    assert(type(event.grant)=='userdata' and tostring(event.grant)=='Grant')\n"
+        "    assert(event.focus_context==nil and event.menu_context==nil)\n"
         "    local window=g.windows.by_id('window-1')\n"
         "    if window then\n"
-        "      local operation=window:focus(event.focus_context)\n"
+        "      local grant=event.grant\n"
+        "      assert(#grant.scope==5 and grant.window==nil and grant.alive)\n"
+        "      assert(grant.expires_at_us>0 and not pcall(function() grant.scope=1 end))\n"
+        "      local move_only=grant:narrow('begin_move', window)\n"
+        "      assert(#move_only.scope==1 and move_only.scope[1]=='begin_move')\n"
+        "      assert(move_only.window.id=='window-1')\n"
+        "      assert(not pcall(function() return move_only:narrow({'begin_move','focus'}) end))\n"
+        "      assert(not pcall(function() return move_only:narrow('begin_move','other') end))\n"
+        "      assert(not pcall(function() return grant:narrow('nonsense') end))\n"
+        "      assert(not pcall(function() return window:focus(move_only) end))\n"
+        "      assert(not pcall(function() return window:begin_move({}) end))\n"
+        "      local operation=window:focus(grant)\n"
         "      assert(operation.method=='window.focus' and operation.status=='pending')\n"
+        "      assert(not pcall(function() return window:focus(grant) end))\n"
+        "      local move=window:begin_move(move_only)\n"
+        "      assert(move.method=='window.begin_move' and move.status=='pending')\n"
+        "      assert(not pcall(function() return window:begin_move(grant) end))\n"
+        "      assert(#grant.scope==3 and not move_only.alive)\n"
+        "      assert(not pcall(function() return grant:narrow('focus') end))\n"
         "    end\n"
         "  end\n"
         "  assert(event.focus_context_handle==nil and event.focus_context_generation==nil)\n"
         "end)\n"
         "g.on('test.shortcut.register', function()\n"
-        "  g.shortcuts.bind {id='test-switcher', accelerator='<Super>space', hold='super', "
-        "mode='modal'}\n"
+        "  g.shortcuts.bind('test-switcher', '<Super>space', {hold='super', mode='modal'})\n"
         "end)\n"
         "g.on('test.shortcut.end', function()\n"
-        "  g.shortcuts.end_session {id='test-switcher', session_id=9}\n"
+        "  local bound=g.shortcuts.list()[1]\n"
+        "  assert(bound.id=='test-switcher' and bound.alive and bound.hold=='super')\n"
+        "  assert(not pcall(function() bound:end_session(0) end))\n"
+        "  bound:end_session(9)\n"
         "end)\n"
         "g.on('test.callback.failure', function()\n"
         "  error('intentional callback failure')\n"
@@ -1494,9 +1645,9 @@ int main(void) {
     g_assert_nonnull(runtime_document);
     gnoblin_config_finish_load(TRUE);
 
-    /* A callback failure must be contained. It is reported once and that
-     * subscription is disabled, leaving later events and the active document
-     * usable. */
+    /* A callback failure must be contained. The user notice is raised on the first failure of a
+     * run, the handler stays active, and later events and the active document stay usable. The
+     * isolation itself is covered by test_handler_fault_isolation. */
     GVariantBuilder callback_failure_builder;
     g_variant_builder_init(&callback_failure_builder, G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) callback_failure_payload =
@@ -1630,7 +1781,7 @@ int main(void) {
     g_assert_no_error(error);
     g_assert_nonnull(dispatched_document);
     g_autoptr(GVariant) focus_operations = gnoblin_config_drain_runtime_operations();
-    g_assert_cmpuint(g_variant_n_children(focus_operations), ==, 1);
+    g_assert_cmpuint(g_variant_n_children(focus_operations), ==, 2);
     g_autoptr(GVariant) focus_operation = g_variant_get_child_value(focus_operations, 0);
     gint64 focus_request_id = 0;
     const char* focus_method = NULL;
@@ -1646,13 +1797,32 @@ int main(void) {
     guint64 focus_generation = 0;
     guint64 native_focus_generation = 0;
     gint64 focus_expires_at_us = 0;
+    char focus_grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE];
     g_assert_true(gnoblin_config_take_focus_context(focus_request_id, &focus_handle,
                                                     &focus_generation, &native_focus_generation,
-                                                    &focus_expires_at_us));
+                                                    &focus_expires_at_us, focus_grant_window));
+    g_assert_cmpstr(focus_grant_window, ==, "");
     g_assert_cmpuint(focus_handle, ==, 1);
     g_assert_cmpuint(focus_generation, ==, gnoblin_config_runtime_generation());
     g_assert_cmpuint(native_focus_generation, ==, 1);
     g_assert_cmpint(focus_expires_at_us, >, g_get_monotonic_time());
+    /* The second operation of the gesture carries the window its Grant was narrowed to. */
+    g_autoptr(GVariant) move_operation = g_variant_get_child_value(focus_operations, 1);
+    gint64 move_request_id = 0;
+    const char* move_method = NULL;
+    g_assert_true(g_variant_lookup(move_operation, "request_id", "x", &move_request_id));
+    g_assert_true(g_variant_lookup(move_operation, "method", "&s", &move_method));
+    g_assert_cmpstr(move_method, ==, "window.begin_move");
+    guint64 move_handle = 0, move_generation = 0, move_native_generation = 0;
+    gint64 move_expires_at_us = 0;
+    g_assert_true(gnoblin_config_take_focus_context(move_request_id, &move_handle, &move_generation,
+                                                    &move_native_generation, &move_expires_at_us,
+                                                    focus_grant_window));
+    g_assert_cmpuint(move_handle, ==, focus_handle);
+    g_assert_cmpstr(focus_grant_window, ==, "window-1");
+    g_assert_false(gnoblin_config_take_focus_context(move_request_id, &move_handle,
+                                                     &move_generation, &move_native_generation,
+                                                     &move_expires_at_us, focus_grant_window));
     gnoblin_config_finish_event(TRUE);
 
     g_clear_pointer(&dispatched_document, g_variant_unref);
@@ -1920,10 +2090,10 @@ int main(void) {
         "error({})\n",
         "while true do end\n",
         "local x = string.rep('x', 16 * 1024 * 1024)\n",
-        "local g=require('gnoblin'); g.config=42\n",
-        "local g=require('gnoblin'); g.config=g.array{1}\n",
-        "local g=require('gnoblin'); g.config=nil; setmetatable(g,{__index=function() error({}) "
-        "end})\n",
+        "local g=require('gnoblin'); g.config.compositor={debug=true}\n",
+        "local g=require('gnoblin'); local settings=g.config.compositor\n",
+        "local g=require('gnoblin'); setmetatable(g,{__index=function() error({}) "
+        "end}); local x=g.unknown_name\n",
         "return {1}\n",
         NULL,
     };
@@ -2030,21 +2200,18 @@ int main(void) {
         "end)\n"
         "g.on('test.snapshot_methods', function()\n"
         "  local sources=g.input.sources()\n"
-        "  local legacy_sources=g.input.list()\n"
-        "  assert(sources[1].id=='us' and legacy_sources[1].id=='us')\n"
-        "  assert(sources[1].revision==7 and legacy_sources[1].revision==7)\n"
-        "  assert(g.input.current_source().id=='us' and g.input.current().id=='us')\n"
+        "  assert(sources[1].id=='us' and sources[1].revision==7)\n"
+        "  assert(g.input.current_source().id=='us')\n"
         "  local window=assert(g.windows.by_id('window-1'))\n"
         "  assert(window:set_above(true).method=='window.set_above')\n"
-        "  assert(window:unminimize().method=='window.unminimize')\n"
+        "  assert(window:set_minimized(false).method=='window.unminimize')\n"
+        "  assert(window:set_minimized(true).method=='window.minimize')\n"
         "  local workspace=assert(g.workspaces.active())\n"
         "  assert(workspace.id=='workspace-1' and workspace.name=='Main')\n"
         "  assert(g.workspaces.by_id('workspace-1'):rename('Work').method=='workspace.rename')\n"
         "  assert(g.workspaces.list()[1]:activate().method=='workspace.switch')\n"
         "  assert(workspace:remove().method=='workspace.remove')\n"
-        "  assert(workspace:move_here(window,{follow=true}).method=='workspace.move_window')\n"
-        "  "
-        "assert(g.workspaces.create({name='Terminal',id='terminal',activate=true}).method=='"
+        "  assert(g.workspaces.create('Terminal',{id='terminal',activate=true}).method=='"
         "workspace.create')\n"
         "  assert(g.workspaces.next().method=='workspace.next')\n"
         "  assert(g.workspaces.previous().method=='workspace.previous')\n"
@@ -2165,8 +2332,8 @@ int main(void) {
     g_assert_nonnull(snapshot_methods_result);
     g_autoptr(GVariant) snapshot_method_operations = gnoblin_config_drain_runtime_operations();
     const char* const expected_snapshot_methods[] = {
-        "window.set_above", "window.unminimize", "workspace.rename",
-        "workspace.switch", "workspace.remove",  "workspace.move_window",
+        "window.set_above", "window.unminimize", "window.minimize",
+        "workspace.rename", "workspace.switch",  "workspace.remove",
         "workspace.create", "workspace.next",    "workspace.previous",
     };
     g_assert_cmpuint(g_variant_n_children(snapshot_method_operations), ==,

@@ -4,6 +4,8 @@ Use `org.gnoblin.SessionIdle` to read idle state and receive activity changes.
 
 The interface is exported on the session bus at `/org/gnoblin/SessionIdle` by the service name `org.freedesktop.ScreenSaver`. It reports the idle state that Gnoblin derives from Mutter's idle monitor.
 
+Programs outside the Lua runtime use this interface. A Lua configuration makes an [idle watch](/shell-api/idle) with the time it needs.
+
 | Member            | Arguments                                                                            | Result                                                                               | Errors                                                               |
 | ----------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
 | `GetActivity`     | None                                                                                 | `available: boolean`, `idle: boolean`, `threshold_ms: uint64`, `idle_for_ms: uint64` | Returns a D-Bus error if Gnoblin cannot read the current idle state. |

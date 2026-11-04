@@ -10,6 +10,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import patch_series  # noqa: E402
 from _sources import RUNTIME_SOURCES  # noqa: E402
 
 
@@ -109,7 +111,7 @@ class SessionEnvironmentTests(unittest.TestCase):
         # only removes the old separate runtime helper.
         self.assertNotIn("add_executable(gnoblin\n", cmake)
         self.assertNotIn("add_custom_target(gnoblin-runtime ", cmake)
-        monolithic = (ROOT / "patches/mutter/zz-monolithic-compositor/0001-build-monolithic-gnoblin.patch").read_text()
+        monolithic = patch_series.find("mutter", "build-monolithic-gnoblin").read_text()
         self.assertIn("gnoblin_root / 'src/session/gnoblin-runtime.c'", monolithic)
         self.assertIn("gnoblin = executable('gnoblin',", monolithic)
         self.assertIn("libexec/gnoblin-runtime", installer)

@@ -11,7 +11,7 @@
 # The list names no version: the version floors come from the pinned Meson files, which scripts/check-build-deps.py
 # reads before ./build.sh compiles. A package on the optional list is installed when the index of the branch has it, and
 # left out with a message when it does not. Glycin is optional: the portal backend builds without it
-# (patches/xdg-desktop-portal-gnome/zz-older-systems), and Alpine 3.23 and older have no libglycin-dev.
+# (patches/xdg-desktop-portal-gnome/06-older-systems), and Alpine 3.23 and older have no libglycin-dev.
 set -euo pipefail
 
 with_test_tools=false

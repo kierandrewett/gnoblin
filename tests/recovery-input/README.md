@@ -59,7 +59,7 @@ staying clear of the recovery notice.
 
 ## Candidate
 
-`0125-route-diagnostic-input-before-wayland.patch` adds a private callback to
+`patches/mutter/31-diagnostic-console/0001-route-diagnostic-input-before-wayland.patch` adds a private callback to
 Mutter's existing event filter. The callback runs after the existing session
 lock, input capture, consumed-replay, keybinding, and stage-grab checks and
 after the Wayland seat update. It precedes window click handling and Wayland
@@ -81,7 +81,7 @@ UI directly from `GNOBLIN_SOURCE_ROOT/src/compositor/plugin`.
 On a prepared disposable integration tree, the normal CMake `mutter` target
 applies source changes, copies overlays, and builds both artifacts. Use the
 existing configured build directory and staging prefix. For an already
-patched manual native tree, copy the manifest overlays, apply patch 0125 once,
+patched manual native tree, copy the manifest overlays, apply the route-diagnostic-input patch once,
 then build both `src/gnoblin` and `src/libmutter-51.so.0.0.0` with Ninja. Do not
 reset a shared or dirty submodule to prepare this candidate.
 
@@ -89,7 +89,7 @@ The saved `astra-warning-crash-native-build.log` identifies main's native
 build as `/home/luna/dev/gnoblin/build/make/mutter` and its executable source
 root as `/home/kieran/dev/gnoblin`. Main must integrate the four changed plugin
 files and new header into that executable source root, copy the header through
-the overlay manifest into the native Mutter source, and apply 0125 to that
+the overlay manifest into the native Mutter source, and apply that patch to that
 source. After those steps, the targeted native build command is:
 
 ```sh

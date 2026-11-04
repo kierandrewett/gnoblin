@@ -71,14 +71,24 @@ window:
 ```
 
 `window.focus` accepts exactly the string fields `id` and `focus_context`.
-Every attempt with a valid connection token consumes it, including requests
+Every attempt with a valid connection token takes the `focus` scope of its gesture, including requests
 with an invalid window ID or unknown argument. API 1.12 also accepts this token
-for one interactive move or resize operation. The request fails if the token
-expired, was already used, belongs to another connection, or was revoked.
+for an interactive move or resize operation.
+
+Since API 1.92 the token is not used up by its first operation. These operations each use it once, so one
+key press can focus a window and then begin a move:
+
+- `window.focus`
+- `window.begin_move` and `window.begin_resize`
+- `window.snap_context`
+- `input.text_target`
+
+The request fails if the token expired, its scope was already used, it belongs to another connection, or it
+was revoked. The first connection that uses a gesture keeps it; other connections lose their tokens for it.
 
 Config reloads, session locks, subscription changes, and disconnects revoke
-socket tokens. Native Lua `Window:focus(context)` uses its protected Lua
-context instead of a socket token.
+socket tokens. Native Lua `Window:focus(grant)` uses its protected
+[`Grant`](/shell-api/grants) instead of a socket token.
 
 Any compositor-socket client can focus a listed window with an XDG Activation
 token. The client must create the token after user input on one of its Wayland
@@ -96,9 +106,11 @@ Use `shortcut.bind` to register a connection-owned global accelerator. The
 `arguments` object accepts only `id` and `accelerator`.
 
 - IDs contain 1 to 64 letters, digits, underscores, or hyphens.
-- Accelerators use Mutter's GTK accelerator syntax and are limited to 128 bytes.
-- Mutter rejects invalid accelerators and bindings already claimed by another
-  owner.
+- The accelerator is a chord in the [chord syntax](/guides/shortcuts#chord-syntax),
+  of at most 128 bytes. The response and the events give it in the written
+  form: modifiers in the order `<Shift><Control><Alt><Meta><Super><Hyper>`.
+  The compositor refuses any other form and the error names the form to write.
+- Mutter rejects bindings already claimed by another owner.
 - Bare `Super` is the overlay key and is not accepted by this method.
 - Bindings activate on key press and ignore autorepeat.
 - Each connection can register up to 32 bindings. The compositor accepts 128

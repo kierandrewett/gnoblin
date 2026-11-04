@@ -12,7 +12,7 @@
 # packages in its own way. The list names no version: the version floors come from the pinned Meson files, which
 # scripts/check-build-deps.py reads before ./build.sh compiles. A package on the optional list is installed when the
 # release has it, and left out with a message when it does not. Glycin is optional: the portal backend builds without it
-# (patches/xdg-desktop-portal-gnome/zz-older-systems), and Leap 16.0 has no Glycin package.
+# (patches/xdg-desktop-portal-gnome/06-older-systems), and Leap 16.0 has no Glycin package.
 set -euo pipefail
 
 with_test_tools=false

@@ -145,6 +145,8 @@ static GVariant* legacy_window_list_from_lua(GVariant* windows, GError** error) 
                   {"type", "type"},
                   {"maximized", "maximized"},
                   {"fullscreen", "fullscreen"},
+                  {"pid", "pid"},
+                  {"process", "process"},
                   {"frame", "geometry"}};
     if (!windows || !g_variant_is_of_type(windows, G_VARIANT_TYPE("av"))) {
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
@@ -304,6 +306,26 @@ static GVariant* legacy_layer_list_from_lua(GVariant* layers, GError** error) {
     return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 
+/* A field of a monitor record that went through Lua, in the type monitor.list replies use. Lua
+ * integers come back as int64 and whole numbers can come back as either kind, so convert numbers
+ * that fit; any other field must already have the wanted type. */
+static GVariant* legacy_monitor_field(GVariant* monitor, const char* key,
+                                      const GVariantType* type) {
+    g_autoptr(GVariant) value = g_variant_lookup_value(monitor, key, NULL);
+    if (!value)
+        return NULL;
+    gboolean is_int64 = g_variant_is_of_type(value, G_VARIANT_TYPE_INT64);
+    if (g_variant_type_equal(type, G_VARIANT_TYPE_INT32) && is_int64) {
+        gint64 number = g_variant_get_int64(value);
+        if (number < G_MININT32 || number > G_MAXINT32)
+            return NULL;
+        return g_variant_ref_sink(g_variant_new_int32((gint32)number));
+    }
+    if (g_variant_type_equal(type, G_VARIANT_TYPE_DOUBLE) && is_int64)
+        return g_variant_ref_sink(g_variant_new_double((double)g_variant_get_int64(value)));
+    return g_variant_is_of_type(value, type) ? g_steal_pointer(&value) : NULL;
+}
+
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
         "version",
@@ -315,7 +337,6 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "focus.policy",
         "config.path",
         "config.default",
-        "session.activity",
         "session.status",
         "runtime.status",
         "launch.status",
@@ -437,16 +458,16 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
     } else if (g_str_equal(method, "windows.list") || g_str_equal(method, "window.list") ||
                g_str_equal(method, "window.match")) {
-        lua_getfield(state, -1, "windows");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        /* The wire read keeps the exact-match filter; Lua selects with gnoblin.find. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_windows, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "settings")) {
         lua_getfield(state, -1, "settings");
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "session.activity") || g_str_equal(method, "session.status")) {
+    } else if (g_str_equal(method, "session.status")) {
         lua_getfield(state, -1, "session");
-        lua_getfield(state, -1, g_str_equal(method, "session.status") ? "status" : "activity");
+        lua_getfield(state, -1, "status");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "runtime.status")) {
@@ -465,9 +486,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "monitor.list") || g_str_equal(method, "monitors.list")) {
-        lua_getfield(state, -1, "monitors");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        /* Wire reads only: Lua reads displays as Output objects. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_monitors, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "outputs.list") || g_str_equal(method, "output.list")) {
         lua_getfield(state, -1, "outputs");
@@ -480,14 +501,12 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "monitors.privacy_screen")) {
-        lua_getfield(state, -1, "monitors");
-        lua_getfield(state, -1, "privacy_screen");
-        lua_remove(state, -2);
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_privacy_screen, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "layers.list") || g_str_equal(method, "layer.list")) {
-        lua_getfield(state, -1, "layers");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_layers, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "launches.list")) {
         lua_getfield(state, -1, "launches");
@@ -495,14 +514,14 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "launches.snapshot") || g_str_equal(method, "launch.status")) {
-        lua_getfield(state, -1, "launches");
-        lua_getfield(state, -1, "snapshot");
-        lua_remove(state, -2);
+        /* A wire read only: Lua reads each Launch's own revision. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_launches_snapshot, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "shortcuts.list")) {
-        lua_getfield(state, -1, "shortcuts");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        /* A wire read of the configured shortcuts; Lua lists the shortcuts it bound itself. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_shortcuts_configured, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "shortcuts.actions")) {
         lua_getfield(state, -1, "shortcuts");
@@ -645,7 +664,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
                         {"primary", G_VARIANT_TYPE_BOOLEAN}, {"scale", G_VARIANT_TYPE_DOUBLE},
                     };
                     g_autoptr(GVariant) index =
-                        g_variant_lookup_value(monitor, "index", G_VARIANT_TYPE_INT32);
+                        legacy_monitor_field(monitor, "index", G_VARIANT_TYPE_INT32);
                     if (!index) {
                         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                             "Lua monitor record has no integer index");
@@ -656,8 +675,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
                     g_variant_builder_add(&record, "{sv}", "id", index);
                     gboolean valid = TRUE;
                     for (guint field = 0; field < G_N_ELEMENTS(fields); field++) {
-                        g_autoptr(GVariant) field_value = g_variant_lookup_value(
-                            monitor, fields[field].source, fields[field].type);
+                        g_autoptr(GVariant) field_value =
+                            legacy_monitor_field(monitor, fields[field].source, fields[field].type);
                         if (!field_value) {
                             valid = FALSE;
                             break;

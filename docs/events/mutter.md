@@ -78,7 +78,7 @@ the [compositor bridge](/bridge/). Raw Mutter signal names and
 payloads can change with the pinned Mutter version.
 
 ```lua
-gnoblin.events.on("gnoblin.input.gesture", function(event)
+gnoblin.on("gnoblin.input.gesture", function(event)
     if event.gesture == "swipe" and event.phase == "update" then
         print(event.sequence, event.time, event.dx, event.dy)
     end

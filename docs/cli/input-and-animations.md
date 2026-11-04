@@ -71,9 +71,6 @@ gnoblinctl input orientation-lock on
 gnoblinctl input orientation-lock inherit
 ```
 
-The Lua-only aliases `gnoblin.input.list()` and `gnoblin.input.current()` are
-not socket methods. Socket clients use the names above.
-
 ## Animations
 
 Use animation previews to inspect registered curves for compatible window and
@@ -109,25 +106,22 @@ playback immediately.
 `animation surfaces` prints layer surface IDs, namespaces, and titles. Layer
 surfaces are not included in `window list`.
 
-The Lua console exposes the same snapshot through
-`gnoblin.animations.surfaces()`. Its `surfaces` array and nested records are
-read-only:
+The Lua console reads the same surfaces as read-only `LayerSurface` records
+through `gnoblin.layers.list()`, or `gnoblin.find("LayerSurface", filter)` for
+some of them:
 
 ```lua
-for _, surface in ipairs(gnoblin.animations.surfaces().surfaces) do
+for _, surface in ipairs(gnoblin.layers.list()) do
     print(surface.id, surface.namespace, surface.title)
 end
 ```
 
 Inspect the resolved animation for a visible target with
-`gnoblin.animations.inspect {name, target, event?, target_type?}`. The result
-and its nested tables are read-only:
+`target:inspect_animation(name, event?)` on a `Window` or `LayerSurface`. The
+result and its nested tables are read-only:
 
 ```lua
-local inspection = gnoblin.animations.inspect {
-    name = "gnome-open",
-    target = "active",
-}
+local inspection = gnoblin.windows.focused():inspect_animation("gnome-open")
 print(inspection.event, inspection.duration)
 ```
 

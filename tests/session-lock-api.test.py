@@ -7,12 +7,14 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import patch_series  # noqa: E402
 from _sources import control_header, control_source, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
-DISPATCH_PATCH = ROOT / "patches/mutter/99-typed-window-api/0032-dispatch-shell-session-lock-request.patch"
+DISPATCH_PATCH = patch_series.find("mutter", "dispatch-shell-session-lock-request")
 BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 
@@ -28,7 +30,7 @@ class SessionLockApiTests(unittest.TestCase):
         self.assertIsNotNone(api_minor)
         self.assertGreaterEqual(int(api_minor.group(1)), 21)
         self.assertIn('"session.lock",', control)
-        self.assertIn('g_str_equal(method, "session.lock") && client->api_minor < 21', control)
+        self.assertRegex(control, r'X\(SESSION_LOCK, "session\.lock", 21,')
 
     def test_request_requires_available_compositor_and_subscribed_client(self):
         source = control_source()

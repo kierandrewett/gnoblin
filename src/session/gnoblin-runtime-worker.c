@@ -337,6 +337,7 @@ int runtime_worker_main(int argc, char** argv) {
                   runtime_channel_ready, &runtime);
     runtime.startup_timeout_id = g_timeout_add(STARTUP_TIMEOUT_MS, startup_timeout, &runtime);
     g_main_loop_run(runtime.loop);
+    gnoblin_config_stop_runtime();
     if (runtime.startup_timeout_id)
         g_source_remove(runtime.startup_timeout_id);
     if (runtime.write_watch_id)

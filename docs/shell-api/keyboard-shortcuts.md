@@ -1,30 +1,38 @@
 # Keyboard shortcuts
 
-`gnoblin.shortcuts.list()` returns native command and action shortcuts. It
-omits shortcuts owned by shell clients. A configured entry with
-`capture_input = true` starts a shortcut session and sends events to Lua
-listeners. It has no `ShortcutState` record. Socket clients receive session
-events for dynamic bindings they register and subscribe to. Each read-only
-record contains:
+`gnoblin.shortcuts.configured()` returns the command and action shortcuts that
+the configuration declares. It omits shortcuts owned by shell clients. A
+configured entry with `capture_input = true` starts a shortcut session and sends
+events to Lua listeners. It has no `ShortcutState` record. Socket clients
+receive session events for dynamic bindings they register and subscribe to.
+Each read-only record contains:
 
 - `name`, `binding`, `enabled`, `trigger`, and `revision`.
 - Either `command` (an argument array) or `action` (a `group.key` identifier).
 - `binding` as a string for one accelerator or an array for multiple bindings.
 
 `enabled` is false for a configured built-in action with no bindings. Disabled
-shortcut declarations are omitted.
+shortcut declarations are omitted. These records are not objects: change them
+with `gnoblin.configure.shortcuts`. The socket request `shortcuts.list` returns
+the same records.
 
 ```lua
-for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
+for _, shortcut in ipairs(gnoblin.shortcuts.configured()) do
     print(shortcut.name, shortcut.binding)
 end
 ```
 
-Use `gnoblin.shortcuts.list()` from Lua; see the [compositor bridge](/bridge/) for socket request details.
+See the [compositor bridge](/bridge/) for socket request details.
 
-`gnoblin.shortcuts.bind` accepts
-`id` and `accelerator`, with optional `hold`, `trigger`, `mode`, and
-`capture_input` fields:
+`gnoblin.shortcuts.bind(id, accelerator, options?)` registers a binding and
+returns a `Shortcut`.
+
+`accelerator` is a chord in the [chord syntax](/guides/shortcuts#chord-syntax),
+such as `<Super><Alt>F9`. A chord in another form, such as `Super+Alt+F9`, is
+an error that names the form to write. The `Shortcut` reports the chord in its
+written form.
+
+The optional `options` table takes these fields:
 
 - `hold` accepts `none`, `super`, `control`, or `alt`. It defaults to `none`.
 - `trigger` accepts `press` or `release`. It defaults to `press`.
@@ -35,45 +43,83 @@ Use `gnoblin.shortcuts.list()` from Lua; see the [compositor bridge](/bridge/) f
   binding also requires `trigger: "release"`, `hold: "none"`, and an available
   compositor early modifier hook.
 
-`shortcut.unbind` accepts only the binding `id`.
+Every binding is a `Shortcut` object. It has these fields:
 
-`gnoblin.shortcuts.end_session` accepts the binding `id` and the
-`session_id` from that binding's `gnoblin.shortcut.session.activated` event.
-Ending a session releases its keyboard capture while keeping the binding
-registered. A stale session ID or a binding owned by another connection is
-rejected. The matching ended event uses reason `cancelled`.
+- `id`, `accelerator`, `hold`, `trigger`, `mode` and `capture_input`.
+- `alive`, which is false once the binding has ended.
 
-Lua uses the same operation as `gnoblin.shortcuts.end_session`:
+`bind` returns the object at once with the values you asked for. If the
+compositor refuses the binding, for example because another client holds the
+accelerator, the shortcut ends and its `closed` listeners receive the reason as
+a second argument. An ID that this runtime already binds is an error: unbind it
+first.
+
+`gnoblin.shortcuts.list()` returns the shortcuts that this runtime has bound
+and not unbound, in ID order. They are the same objects that `bind` returned.
+
+A `Shortcut` raises these signals. Use `shortcut:on(signal, fn)`; `fn` receives
+the shortcut and the event:
+
+| Signal              | When                                                      | Event                                  |
+| ------------------- | --------------------------------------------------------- | -------------------------------------- |
+| `activated`         | The accelerator fires (on release for a release trigger). | `gnoblin.shortcut.binding-activated`   |
+| `deactivated`       | A press-triggered binding is released.                    | `gnoblin.shortcut.binding-deactivated` |
+| `session_activated` | A held or modal binding starts its session.               | `gnoblin.shortcut.session.activated`   |
+| `session_key`       | A session receives a key.                                 | `gnoblin.shortcut.session.key`         |
+| `session_ended`     | A session ends.                                           | `gnoblin.shortcut.session.ended`       |
+| `closed`            | The binding has ended.                                    | None                                   |
+
+The global events stay for code that watches every binding. The `activated`
+event carries a [`grant`](/shell-api/grants) on a real activation.
+
+`shortcut:unbind()` removes the binding and returns an `Operation`. The
+`Shortcut` ends, and its `closed` listeners run, when the compositor has removed
+the binding. Listening ends after `closed`, and `alive` is false. Binding the
+same ID again makes a new object.
+
+`shortcut:end_session(session_id)` takes the `session_id` from the binding's
+`session_activated` signal or `gnoblin.shortcut.session.activated` event. It is
+a method of the shortcut because the shortcut owns the session.
+
+- It releases the session's keyboard capture and keeps the binding registered.
+- A stale session ID, or a binding owned by another connection, is rejected.
+- The matching ended event uses reason `cancelled`.
+
+Socket clients keep the wire names `shortcut.unbind` and `shortcut.session.end`.
+
+This binding ends each of its sessions when the session starts:
 
 ```lua
-gnoblin.shortcuts.bind {
-    id = "switcher",
-    accelerator = "<Alt>Tab",
-    hold = "alt",
-    mode = "modal",
-}
+local switcher = gnoblin.shortcuts.bind("switcher", "<Alt>Tab", {hold = "alt", mode = "modal"})
 
-gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
-    if event.id == "switcher" then
-        gnoblin.shortcuts.end_session {
-            id = event.id,
-            session_id = event.session_id,
-        }
-    end
+switcher:on("session_activated", function(shortcut, event)
+    shortcut:end_session(event.session_id)
+end)
+
+switcher:on("closed", function(shortcut, reason)
+    print("switcher ended", reason)
 end)
 ```
 
-Dynamic registrations belong to the client that created them. Active sessions
-end on modifier
-release, unbind, config reload, session lock, capture preemption, owner
-disconnect, or after ten seconds.
+Dynamic registrations belong to the Lua runtime that created them. They end
+when the runtime stops or reloads, and the `"closed"` listeners of a `Shortcut`
+run with the reason `"config_reloaded"` or `"runtime_stopped"`. Active sessions end on modifier release,
+unbind, config reload, session lock, capture preemption, owner disconnect, or
+after ten seconds.
 
-Lua listeners can subscribe to these shortcut session events:
+The ten seconds are a fixed guard against a lost key release, not a lease:
+nothing renews it. To take the keyboard for a script, with a lease and composed
+text, use a [keyboard grab](/shell-api/input-grab), which also explains why
+sessions do not use it.
+
+Lua listeners can subscribe to these shortcut session events. A `Shortcut` raises
+the same events on its own object as `session_activated`, `session_key` and
+`session_ended`:
 
 - `gnoblin.shortcut.session.activated` when a held binding starts.
 - `gnoblin.shortcut.session.key` for captured keyboard input. Fields include
   `keyval`, `keycode`, `modifiers`, `phase` (`press` or `release`), and `time`.
-  Real key presses and releases can carry a one-use `focus_context`; repeated
+  Real key presses and releases can carry a `grant`; repeated
   events do not carry one.
 - `gnoblin.shortcut.session.ended` when a session ends. Reasons are `released`,
   `unbound`, `owner_disconnected`, `config_changed`, `locked`, `preempted`,
@@ -82,13 +128,13 @@ Lua listeners can subscribe to these shortcut session events:
   sent to a socket client when the Lua runtime stops while that client owns the
   active session.
 
-Lua listeners receive the same authority as an opaque `event.focus_context`
-userdata on real, non-repeated `session.key` events. Synthetic and input-method
-events are excluded. The context expires after five seconds and authorizes one
-focus-sensitive compositor operation. Gnoblin still delivers the key event if
-it cannot issue a context.
+Lua listeners receive the same authority as a [`Grant`](/shell-api/grants)
+in `event.grant` on real, non-repeated `session.key` events. Synthetic and input-method
+events are excluded. The gesture ends after five seconds, and each focus-sensitive
+operation can take its scope from it once. Gnoblin still delivers the key event if
+it cannot issue a grant.
 
-`gnoblin.shortcut.binding-activated` can carry a one-use `focus_context` on
+`gnoblin.shortcut.binding-activated` can carry a `grant` on
 trusted activation. `gnoblin.shortcut.binding-deactivated` is emitted for
 press-triggered bindings. The event contains:
 
@@ -165,11 +211,11 @@ The socket capability and request contract are documented in the
 [compositor bridge](/bridge/).
 
 ```lua
-gnoblin.events.once("gnoblin.window.focused", function()
+gnoblin.once("gnoblin.window.focused", function()
     local operation = gnoblin.shortcuts.capture({timeout = 10})
     operation:on_complete(function(value, err)
         if err then
-            print("Shortcut capture failed: " .. err)
+            print("Shortcut capture failed: " .. err.message)
         else
             print(value.accelerator)
         end

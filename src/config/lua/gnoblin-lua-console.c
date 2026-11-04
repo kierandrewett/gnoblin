@@ -46,6 +46,7 @@ typedef struct {
     const char* type;
     gboolean optional;
     const char* description;
+    gboolean observable; /* a field `watch` accepts: it changes while its object is alive */
 } ApiMember;
 
 typedef struct {
@@ -64,6 +65,104 @@ typedef struct {
 } ApiFunction;
 
 #include "gnoblin-lua-signatures.inc"
+
+/* The annotated parameter names of a gnoblin API path, in order; returns how many it wrote. The
+ * annotations are the one declaration of each function's Lua parameters. */
+gsize lua_api_parameter_names(const char* path, const char** names, gsize capacity) {
+    for (const ApiFunction* function = api_functions; function->path; function++) {
+        if (!g_str_equal(function->path, path))
+            continue;
+        gsize count = MIN(function->n_params, capacity);
+        for (gsize i = 0; i < count; i++)
+            names[i] = function->params[i].name;
+        return count;
+    }
+    return 0;
+}
+
+/* Whether the annotated class declares `field`: the property schema of live objects. */
+gboolean lua_api_class_has_field(const char* class_name, const char* field) {
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (g_str_equal(type->fields[i].name, field))
+                return TRUE;
+        return FALSE;
+    }
+    return FALSE;
+}
+
+/* Whether `watch` accepts the annotated field: one that changes while its object is alive. */
+gboolean lua_api_class_field_observable(const char* class_name, const char* field) {
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (g_str_equal(type->fields[i].name, field))
+                return type->fields[i].observable;
+        return FALSE;
+    }
+    return FALSE;
+}
+
+/* The observable fields of the class, comma separated; "none" when it has none. */
+char* lua_api_class_observable_names(const char* class_name) {
+    g_autoptr(GPtrArray) names = g_ptr_array_new();
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (type->fields[i].observable)
+                g_ptr_array_add(names, (gpointer)type->fields[i].name);
+    }
+    g_ptr_array_add(names, NULL);
+    return names->len > 1 ? g_strjoinv(", ", (gchar**)names->pdata) : g_strdup("none");
+}
+
+/* Whether the declared type is made only of scalars: strings, numbers, booleans and quoted
+ * literals, with an optional nil. `find` compares such fields by equality. */
+static gboolean api_type_is_scalar(const char* type) {
+    g_auto(GStrv) parts = g_strsplit(type, "|", -1);
+    guint scalars = 0;
+    for (guint i = 0; parts[i]; i++) {
+        g_strstrip(parts[i]);
+        if (g_str_equal(parts[i], "nil"))
+            continue;
+        if (!g_str_equal(parts[i], "string") && !g_str_equal(parts[i], "integer") &&
+            !g_str_equal(parts[i], "number") && !g_str_equal(parts[i], "boolean") &&
+            parts[i][0] != '"')
+            return FALSE;
+        scalars++;
+    }
+    return scalars > 0;
+}
+
+/* Whether the annotated field is a scalar that `find` can match by equality. */
+gboolean lua_api_class_field_scalar(const char* class_name, const char* field) {
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (g_str_equal(type->fields[i].name, field))
+                return api_type_is_scalar(type->fields[i].type);
+    }
+    return FALSE;
+}
+
+/* The scalar fields of the class, comma separated: what `find` can match. */
+char* lua_api_class_scalar_names(const char* class_name) {
+    g_autoptr(GPtrArray) names = g_ptr_array_new();
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (api_type_is_scalar(type->fields[i].type))
+                g_ptr_array_add(names, (gpointer)type->fields[i].name);
+    }
+    g_ptr_array_add(names, NULL);
+    return g_strjoinv(", ", (gchar**)names->pdata);
+}
 
 #define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
 
@@ -889,6 +988,8 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     if (status != LUA_OK) {
         const char* message = lua_error_text(state);
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s", message);
+        set_document(state, runtime->document);
+        finish_configure_operations(state, config, FALSE, message);
         lua_settop(state, base);
         config->api_calling = FALSE;
         config->actions_in_dispatch = 0;
@@ -897,18 +998,15 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     }
 
     g_autoptr(GError) document_error = NULL;
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
+    push_document(state);
     g_autoptr(GVariant) document = variant_from_lua(state, -1, 0, FALSE, 0, &document_error);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
         !gnoblin_config_validate_document(document, &document_error)) {
-        const char* message =
-            document_error ? document_error->message : "console code left gnoblin.config invalid";
-        lua_getglobal(state, "gnoblin");
-        push_variant(state, runtime->document);
-        lua_setfield(state, -2, "config");
-        lua_pop(state, 1);
+        const char* message = document_error ? document_error->message
+                                             : "console code left the configuration invalid";
+        set_document(state, runtime->document);
+        finish_configure_operations(state, config, FALSE, message);
         console_reject_actions(runtime, action_start, message);
         lua_settop(state, base);
         config->api_calling = FALSE;
@@ -917,12 +1015,14 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
         return NULL;
     }
 
-    /* A valid change to gnoblin.config is applied to the live session like one made by an event
-     * handler: the session commits it and the compositor receives the new settings. It lasts until
-     * the configuration is reloaded. */
+    /* A valid change that gnoblin.configure made is applied to the live session like one made by
+     * an event handler: the session commits it and the compositor receives the new settings. It
+     * lasts until the configuration is reloaded. */
     if (!g_variant_equal(document, runtime->document)) {
         g_clear_pointer(&runtime->pending_document, g_variant_unref);
         runtime->pending_document = g_variant_ref(document);
+    } else {
+        finish_configure_operations(state, config, TRUE, NULL);
     }
 
     int values = lua_gettop(state) - base;
@@ -965,12 +1065,8 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
             "Gnoblin API call requires an active Lua runtime, method, and argument table");
         return NULL;
     }
-    gboolean known = FALSE;
-    for (guint i = 0; api_methods[i]; i++)
-        known |= g_str_equal(api_methods[i], method);
-    for (guint i = 0; i < api_aliases_count; i++)
-        known |= g_str_equal(api_aliases[i].public_name, method);
-    if (!known) {
+    const LuaApiEntry* entry = lua_api_find_call(method);
+    if (!entry) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "unknown Gnoblin API method '%s'",
                     method);
         return NULL;
@@ -986,63 +1082,20 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
                             "too many pending Gnoblin session actions");
         return NULL;
     }
-    /* Wire methods use operation names; Lua exposes them under public collection names such
-     * as gnoblin.animations.preview. Look the function up by its public name. */
-    const char* lookup = method;
-    for (guint i = 0; i < api_aliases_count; i++)
-        if (g_str_equal(api_aliases[i].operation, method)) {
-            lookup = api_aliases[i].public_name;
-            break;
-        }
-    const char* separator = strchr(lookup, '.');
-    g_autofree char* domain = NULL;
-    const char* operation = NULL;
-    if (g_str_equal(method, "shortcut.capture")) {
-        domain = g_strdup("shortcuts");
-        operation = "capture";
-    } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {
-        domain = g_strdup("shortcuts");
-        operation = g_str_equal(method, "shortcut.bind") ? "bind" : "unbind";
-    } else if (g_str_equal(method, "shortcut.session.end")) {
-        domain = g_strdup("shortcuts");
-        operation = "end_session";
-    } else {
-        domain = g_strndup(lookup, separator - lookup);
-        operation = separator + 1;
-    }
     lua_State* state = active_runtime->state;
     guint action_start = config->runtime_actions->len;
     config->actions_in_dispatch = 0;
     config->api_calling = TRUE;
-    gboolean native_operation =
-        g_str_has_prefix(method, "workspace.") || g_str_has_prefix(method, "window.") ||
-        g_str_equal(method, "input.select") || g_str_equal(method, "command.run") ||
-        g_str_equal(method, "command.capture");
     int stack_base = lua_gettop(state);
-    if (native_operation) {
-        lua_pushlightuserdata(state, config);
-        lua_pushstring(state, method);
-        lua_pushcclosure(state,
-                         g_str_has_prefix(method, "workspace.") ? lua_workspace_action
-                                                                : lua_generic_api_action,
-                         2);
+    lua_pushlightuserdata(state, config);
+    if (entry->function) {
+        lua_pushcclosure(state, entry->function, 1);
     } else {
-        /* An unregistered domain is a nil, and indexing it outside a protected call would abort
-         * the whole Lua worker. Walk the path only through tables. */
-        lua_getglobal(state, "gnoblin");
-        if (lua_istable(state, -1))
-            lua_getfield(state, -1, domain);
-        if (lua_istable(state, -1))
-            lua_getfield(state, -1, operation);
-        else
-            lua_pushnil(state);
-    }
-    if (!lua_isfunction(state, -1)) {
-        lua_settop(state, stack_base);
-        config->api_calling = FALSE;
-        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                    "Lua API method '%s' is not registered", method);
-        return NULL;
+        lua_pushstring(state, entry->operation->name);
+        lua_pushcclosure(state,
+                         entry->operation->flags & GN_OP_WORKSPACE ? lua_workspace_action
+                                                                   : lua_generic_api_action,
+                         2);
     }
     int argument_count = g_variant_n_children(arguments) ? 1 : 0;
     if (argument_count)

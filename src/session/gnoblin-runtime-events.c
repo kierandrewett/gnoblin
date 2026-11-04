@@ -7,6 +7,11 @@ static gboolean commit_event_result(Runtime* runtime, GVariant* document, GError
     if (!document)
         return TRUE;
     gnoblin_config_finish_event(TRUE);
+    /* The compositor has the candidate configuration of a reload, and the runtime that ran this
+     * event goes away with it. Its generation is stale to the compositor: send no document. This
+     * happens when the compositor stops a playing tween as it commits and reports the end. */
+    if (runtime->pending_reload && runtime->pending_reload->sent)
+        return TRUE;
     g_autoptr(GVariant) committed = gnoblin_config_current_document();
     if (!committed) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
@@ -190,23 +195,14 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
         g_variant_lookup(operation_result, "accepted", "b", &logout_accepted);
     gboolean matching_success = logout_operation &&
                                 g_variant_lookup(payload, "method", "&s", &method) &&
-                                g_str_equal(method, "session.logout") &&
+                                gnoblin_api_operation_is(method, GNOBLIN_OP_SESSION_LOGOUT) &&
                                 g_variant_lookup(payload, "ok", "b", &succeeded) && succeeded;
     matching_success = matching_success && operation_result && logout_accepted;
-    int power_exit_status = 0;
     gboolean restore_requested = FALSE;
     if (g_variant_lookup(payload, "method", "&s", &method) &&
         g_variant_lookup(payload, "ok", "b", &succeeded) && succeeded && operation_result &&
         g_variant_lookup(operation_result, "accepted", "b", &logout_accepted) && logout_accepted) {
-        if (g_str_equal(method, "session.suspend"))
-            power_exit_status = EXIT_POWER_SUSPEND;
-        else if (g_str_equal(method, "session.hibernate"))
-            power_exit_status = EXIT_POWER_HIBERNATE;
-        else if (g_str_equal(method, "session.reboot"))
-            power_exit_status = EXIT_POWER_REBOOT;
-        else if (g_str_equal(method, "session.poweroff"))
-            power_exit_status = EXIT_POWER_POWEROFF;
-        else if (g_str_equal(method, "config.restore_default"))
+        if (gnoblin_api_operation_is(method, GNOBLIN_OP_CONFIG_RESTORE_DEFAULT))
             restore_requested = TRUE;
     }
 
@@ -231,10 +227,6 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
             runtime->exit_status = EXIT_SUCCESS;
             g_main_loop_quit(runtime->loop);
         }
-    }
-    if (power_exit_status) {
-        runtime->exit_status = power_exit_status;
-        g_main_loop_quit(runtime->loop);
     }
     if (restore_requested) {
         runtime->exit_status = EXIT_CONFIG_RESTORE;
@@ -436,8 +428,6 @@ gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error) {
         update = gnoblin_config_update_launch_snapshot;
     else if (g_str_equal(name, "privacy"))
         update = gnoblin_config_update_privacy_snapshot;
-    else if (g_str_equal(name, "session-activity"))
-        update = gnoblin_config_update_session_activity_snapshot;
     else if (g_str_equal(name, "session-lock"))
         update = gnoblin_config_update_session_lock_snapshot;
     else if (g_str_equal(name, "session-lifecycle"))
@@ -486,6 +476,9 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
         result = gnoblin_config_read_api(method, arguments, &api_error);
     } else if (g_str_equal(kind, "call")) {
         result = gnoblin_config_call_api(method, arguments, &api_error);
+        runtime->current_client_operation_id = 0;
+        if (result)
+            g_variant_lookup(result, "request_id", "x", &runtime->current_client_operation_id);
     } else if (g_str_equal(kind, "console")) {
         const char* source = NULL;
         if ((!g_str_equal(method, "console.eval") && !g_str_equal(method, "console.complete")) ||
@@ -501,7 +494,7 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
                 !commit_event_result(runtime, result, &api_error))
                 g_clear_pointer(&result, g_variant_unref);
         }
-    } else if (!g_str_equal(method, "runtime.reload_config") ||
+    } else if (!gnoblin_api_operation_is(method, GNOBLIN_OP_RUNTIME_RELOAD_CONFIG) ||
                g_variant_n_children(arguments) != 0) {
         g_set_error_literal(&api_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "invalid runtime config reload request");
@@ -562,6 +555,7 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
                     runtime->pending_reload = reload;
                     runtime_schedule_reload_progress(runtime);
                     runtime->current_client_id = 0;
+                    runtime->current_client_operation_id = 0;
                     return TRUE;
                 }
             } else {
@@ -602,10 +596,12 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
     if (!startup_request && !send_api_response(runtime, request_id, result,
                                                api_error ? api_error->message : NULL, error)) {
         runtime->current_client_id = 0;
+        runtime->current_client_operation_id = 0;
         return FALSE;
     }
     gboolean sent = (!g_str_equal(kind, "call") && !g_str_equal(kind, "console")) ||
                     send_pending_operations(runtime, error);
     runtime->current_client_id = 0;
+    runtime->current_client_operation_id = 0;
     return sent;
 }

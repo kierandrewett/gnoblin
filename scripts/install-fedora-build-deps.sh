@@ -11,7 +11,7 @@
 # The list names no version. dnf installs the newest package of the release, and the version floors come from the pinned
 # Meson files: scripts/check-build-deps.py reads them and ./build.sh runs it before it compiles, so a release that is too
 # old stops there with the library and the version it lacks. Glycin is optional: the portal backend builds without it
-# (patches/xdg-desktop-portal-gnome/zz-older-systems), so a release that has no Glycin package installs the rest.
+# (patches/xdg-desktop-portal-gnome/06-older-systems), so a release that has no Glycin package installs the rest.
 #
 # --with-test-tools also installs what the CTest suites and the end-to-end jobs run besides the build. --allowerasing lets
 # dnf replace an installed package that conflicts with one the build needs.

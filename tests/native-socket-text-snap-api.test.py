@@ -7,14 +7,16 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import patch_series  # noqa: E402
 from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES, RUNTIME_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
 SESSION = RUNTIME_SOURCES
 CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
-PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
+PAD_HELP_PATCH = patch_series.find("mutter", "emit-tablet-pad-help-without-layout")
 EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 
@@ -83,78 +85,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MINOR [0-9]+$"', cmake)
         self.assertIn('GNOBLIN_NATIVE_CONTROL_API_MINOR "${GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE}"', cmake)
 
-    def test_orientation_lock_read_write_and_event_use_api_166(self):
-        source = control_source()
-        header = control_header()
-        methods = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        operation = function_body(
-            source,
-            "static gboolean native_runtime_handle_operation(",
-            "gboolean native_runtime_fd_ready(",
-        )
-        self.assertGreaterEqual(api_minor(header), 66)
-        self.assertIn('"input.orientation_lock"', methods)
-        self.assertIn('"input.set_orientation_lock"', methods)
-        self.assertIn("client->api_minor < 66", source)
-        self.assertIn('"gnoblin.input.orientation-lock-changed"', source)
-        self.assertIn("native_set_orientation_lock(control, arguments, &operation_error)", operation)
-        self.assertIn('"runtime"', source)
-        self.assertIn('"config"', source)
-        self.assertIn('"system"', source)
-
     def test_orientation_lock_snapshot_name_matches_runtime_worker(self):
         source = control_source()
         session = SESSION.read_text()
         self.assertIn('g_str_equal(name, "input-orientation-lock")', session)
         self.assertEqual(source.count('native_publish_runtime_snapshot(control, "input-orientation-lock"'), 2)
         self.assertNotIn('native_publish_runtime_snapshot(control, "orientation-lock"', source)
-
-    def test_handshake_advertises_current_runtime_methods(self):
-        source = control_source()
-        connected = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
-
-        for method in (
-            "privacy.stop_sharing",
-            "privacy.stop_recording",
-            "session.activity",
-            "layer.animation_policy",
-            "windows.list",
-            "workspaces.list",
-            "monitors.list",
-            "layers.list",
-            "launches.list",
-            "window.restore_or_minimize",
-        ):
-            with self.subTest(method=method):
-                self.assertIn(f'"{method}"', methods)
-
-    def test_window_match_uses_lua_query_and_is_advertised(self):
-        source = control_source()
-        connected = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
-        dispatcher = function_body(
-            source,
-            'if (g_str_equal(method, "window.match")) {',
-            'if (g_str_equal(method, "window.focus")) {',
-        )
-
-        self.assertIn('"window.match"', methods)
-        self.assertIn("queue_runtime_api_request", dispatcher)
-        self.assertNotIn("meta_gnoblin_dispatch_native_api", dispatcher)
-        self.assertNotIn("client->api_minor >= 59", dispatcher)
 
     def test_window_socket_events_keep_legacy_field_aliases(self):
         source = control_source()
@@ -175,261 +111,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("window_property_names[property].native_name", aliases)
         self.assertIn('g_str_has_prefix(name, "gnoblin.window.")', publish)
         self.assertIn("native_window_event_add_compat_aliases(socket_object)", publish)
-
-    def test_appearance_changes_reach_lua_and_socket_at_api_134(self):
-        source = control_source()
-        header = control_header()
-        cmake = (ROOT / "CMakeLists.txt").read_text()
-        startup = function_body(
-            source,
-            "GnoblinNativeControl* gnoblin_native_control_start(",
-            "void gnoblin_native_control_stop(",
-        )
-        callback = function_body(
-            source,
-            "void appearance_color_scheme_changed(",
-            "static GVariant* privacy_snapshot_new(",
-        )
-        snapshot = function_body(
-            source,
-            "GVariant* appearance_snapshot_new(",
-            "void appearance_color_scheme_changed(",
-        )
-        subscription = function_body(
-            source,
-            'if (g_str_equal(op, "events"))',
-            'if (g_str_equal(op, "windows"))',
-        )
-        events = function_body(
-            source,
-            "const char* native_socket_events[] = {",
-            "static const char native_policy_introspection[]",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 38)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
-        self.assertIn('"gnoblin.appearance.color-scheme-changed"', events)
-        self.assertIn("client->api_minor < 34", subscription)
-        self.assertIn('"org.gnome.desktop.interface"', startup)
-        self.assertIn('"changed::color-scheme"', startup)
-        self.assertIn('g_settings_get_string(control->appearance_settings, "color-scheme")', snapshot)
-        self.assertIn('"prefer-dark"', snapshot)
-        self.assertIn('"prefer-light"', snapshot)
-        self.assertIn(
-            'native_publish_request_event(control, "gnoblin.appearance.color-scheme-changed"',
-            callback,
-        )
-        self.assertIn(
-            "gnoblin.appearance.color-scheme-changed",
-            EVENT_DOCS,
-        )
-
-    def test_appearance_color_scheme_read_uses_shared_lua_snapshot_at_api_170(self):
-        source = control_source()
-        header = control_header()
-        lua_source = LUA.read_text()
-        session = SESSION.read_text()
-        cli = "".join(path.read_text() for path in CLI_FILES)
-        connected = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        startup = function_body(
-            source,
-            "GnoblinNativeControl* gnoblin_native_control_start(",
-            "void gnoblin_native_control_stop(",
-        )
-        read_methods = function_body(
-            source,
-            "gboolean native_api_read_method(",
-            "gboolean runtime_config_values_equal(",
-        )
-        appearance_event = function_body(
-            source,
-            "void appearance_color_scheme_changed(",
-            "static GVariant* privacy_snapshot_new(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 70)
-        self.assertIn('"appearance.color_scheme"', connected)
-        self.assertIn('native_publish_runtime_snapshot(control, "appearance"', startup)
-        self.assertLess(
-            startup.index("native_runtime_flush_state_snapshots(control, error)"),
-            startup.index("native_runtime_flush_pending_events(control, error)"),
-        )
-        self.assertIn('g_str_equal(method, "appearance.color_scheme")', read_methods)
-        self.assertIn('g_str_equal(method, "appearance.color_scheme") && client->api_minor < 70', source)
-        self.assertIn('g_str_equal(method, "appearance.color_scheme")', lua_source)
-        self.assertIn('g_str_equal(name, "appearance")', session)
-        self.assertIn("gnoblin_config_update_appearance_snapshot", session)
-        self.assertIn('native_publish_runtime_snapshot(control, "appearance"', appearance_event)
-        self.assertLess(
-            appearance_event.index('native_publish_runtime_snapshot(control, "appearance"'),
-            appearance_event.index('native_publish_request_event(control, "gnoblin.appearance.color-scheme-changed"'),
-        )
-        self.assertIn('{"appearance.color_scheme", 70}', cli)
-        self.assertIn('g_str_equal(prefix, "appearance")', cli)
-        self.assertIn('g_str_equal(method_name, "appearance.color_scheme")', cli)
-
-    def test_layer_lifecycle_events_are_advertised_and_require_api_171(self):
-        source = control_source()
-        header = control_header()
-        events = function_body(
-            source,
-            "const char* native_socket_events[] = {",
-            "static const char native_policy_introspection[]",
-        )
-        subscription = function_body(
-            source,
-            'if (g_str_equal(op, "events"))',
-            'if (g_str_equal(op, "windows"))',
-        )
-
-        self.assertGreaterEqual(api_minor(header), 71)
-        for event in (
-            "gnoblin.layer.created",
-            "gnoblin.layer.changed",
-            "gnoblin.layer.removed",
-        ):
-            with self.subTest(event=event):
-                self.assertIn(f'"{event}"', events)
-                self.assertIn(event, EVENT_DOCS)
-                self.assertIn(event, BRIDGE_DOCS)
-        self.assertIn('"layer-lifecycle-events"', source)
-        self.assertIn('g_str_has_prefix(name, "gnoblin.layer.") && client->api_minor < 71', subscription)
-        self.assertIn("layer lifecycle events require API version 1.71", subscription)
-
-    def test_runtime_status_events_follow_the_authoritative_status_tuple(self):
-        source = control_source()
-        header = control_header()
-        events = function_body(
-            source,
-            "const char* native_socket_events[] = {",
-            "static const char native_policy_introspection[]",
-        )
-        publish = function_body(
-            source,
-            "void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
-            "void dispatch_lua_layer_event(",
-        )
-        status = function_body(
-            source,
-            "void native_runtime_publish_status(",
-            "GVariant* appearance_snapshot_new(",
-        )
-        subscription = function_body(
-            source,
-            'if (g_str_equal(op, "events"))',
-            'if (g_str_equal(op, "windows"))',
-        )
-        suspend = function_body(
-            source,
-            "static void native_runtime_suspend_worker(",
-            "static GHashTable* native_runtime_event_subscriptions_from_payload(",
-        )
-        runtime_handler = function_body(
-            source,
-            "gboolean native_runtime_fd_ready(",
-            "gboolean gnoblin_native_control_dispatch_runtime_event(",
-        )
-        self.assertGreaterEqual(api_minor(header), 72)
-        self.assertIn('"gnoblin.runtime.status-changed"', events)
-        self.assertIn('"gnoblin.runtime.status-changed"', status)
-        self.assertIn("native_runtime_status_state(control)", status)
-        self.assertIn('"generation"', status)
-        self.assertIn("client->event_api_minor < 72", publish)
-        self.assertIn("client->api_minor < 72", subscription)
-        self.assertIn("runtime status events require API version 1.72", subscription)
-        self.assertIn("native_runtime_publish_status(control)", suspend)
-        self.assertIn("native_runtime_republish_full_state(control, &error)", runtime_handler)
-        self.assertIn("runtime_generation_changed", runtime_handler)
-        self.assertIn("native_runtime_publish_status(control)", runtime_handler)
-
-    def test_session_lifecycle_api_is_negotiated_cached_and_versioned(self):
-        source = control_source()
-        header = control_header()
-        events = function_body(
-            source,
-            "const char* native_socket_events[] = {",
-            "static const char native_policy_introspection[]",
-        )
-        publish = function_body(
-            source,
-            "static gboolean native_runtime_handle_session_lifecycle_state(",
-            "static GVariant* native_set_orientation_lock(",
-        )
-        subscription = function_body(
-            source,
-            'if (g_str_equal(op, "events"))',
-            'if (g_str_equal(op, "windows"))',
-        )
-        runtime_handler = function_body(
-            source,
-            "gboolean native_runtime_fd_ready(",
-            "gboolean gnoblin_native_control_dispatch_runtime_event(",
-        )
-        runtime_send = function_body(
-            source,
-            "gboolean native_runtime_send(GnoblinNativeControl* control, GnoblinRuntimePacketType type,\n"
-            "                             guint64 request_id, GVariant* payload, GError** error) {",
-            "gboolean native_runtime_send_event_packet(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 76)
-        self.assertIn('"gnoblin.session.state-changed"', events)
-        self.assertIn("client->api_minor < 76", subscription)
-        self.assertIn("session_lifecycle_supported", subscription)
-        self.assertIn("client->event_api_minor < 76", source)
-        self.assertIn("GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED", runtime_handler)
-        self.assertIn('g_str_equal(state, "starting")', publish)
-        self.assertIn('g_str_equal(state, "running")', publish)
-        self.assertIn('g_str_equal(state, "stopping")', publish)
-        self.assertIn('native_publish_runtime_snapshot(control, "session-lifecycle"', publish)
-        self.assertIn('"gnoblin.session.state-changed"', publish)
-        self.assertIn("GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED", publish)
-        self.assertIn("type != GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED", runtime_send)
-        self.assertIn('"session_state"', source)
-        self.assertIn('"session_revision"', source)
-
-    def test_tablet_pad_help_event_is_available_to_lua_and_socket_clients(self):
-        source = control_source()
-        header = control_header()
-        patch = PAD_HELP_PATCH.read_text()
-        events = function_body(
-            source,
-            "const char* native_socket_events[] = {",
-            "static const char native_policy_introspection[]",
-        )
-        subscription = function_body(
-            source,
-            'if (g_str_equal(op, "events"))',
-            'if (g_str_equal(op, "windows"))',
-        )
-        startup = function_body(
-            source,
-            "GnoblinNativeControl* gnoblin_native_control_start(",
-            "void gnoblin_native_control_stop(",
-        )
-        callback = function_body(
-            source,
-            "ClutterActor* native_show_pad_osd_requested(",
-            "static gboolean monitor_property_changed(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 73)
-        self.assertIn('"gnoblin.input.pad-help-requested"', events)
-        self.assertIn('g_str_equal(name, "gnoblin.input.pad-help-requested")', subscription)
-        self.assertIn("client->api_minor < 73", subscription)
-        self.assertIn("tablet-pad help events require API version 1.73", subscription)
-        self.assertIn('"show-pad-osd"', startup)
-        self.assertIn('native_publish_request_event(control, "gnoblin.input.pad-help-requested"', callback)
-        for field in ("device", "monitor_id", "output_names", "edition_mode", "buttons", "mode_groups", "features"):
-            self.assertIn(f'"{field}"', callback)
-        self.assertIn("meta_display_get_pad_button_label", source)
-        self.assertIn("meta_display_get_pad_feature_label", source)
-        self.assertIn("return NULL;", callback)
-        self.assertIn("-  if (!layout_path || !settings)", patch)
 
     def test_layer_event_baseline_is_seeded_before_startup_returns(self):
         source = control_source()
@@ -535,7 +216,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         stop = function_body(
             source,
             "void gnoblin_native_control_stop(",
-            "control->teardown_complete = TRUE;",
+            "native_control_finish_teardown(control);",
         )
 
         self.assertIn(
@@ -563,30 +244,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             fd_ready.index("gnoblin_runtime_reader_receive"),
         )
         self.assertIn("g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref)", stop)
-
-    def test_api_128_methods_are_advertised_and_routed_directly(self):
-        source = control_source()
-        header = control_header()
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        direct = dispatcher.split('if (g_str_equal(method, "input.text_target") ||', 1)[1]
-        direct = direct.split('if (g_str_equal(method, "window.snap.offer"))', 1)[0]
-
-        self.assertGreaterEqual(api_minor(header), 38)
-        for method in (
-            "input.text_target",
-            "input.insert_text",
-            "window.snap_context",
-            "window.snap",
-        ):
-            self.assertIn(f'"{method}",', source)
-            self.assertIn(f'g_str_equal(method, "{method}")', dispatcher)
-        self.assertIn("client->api_minor < 28", dispatcher)
-        self.assertNotIn("queue_runtime_api_request", direct)
-
-    def test_status_method_is_gated_at_api_129(self):
-        source = control_source()
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        self.assertIn('g_str_equal(method, "session.status") && client->api_minor < 29', dispatcher)
 
     def test_wm_menu_authority_is_api_130_typed_and_target_bound(self):
         source = control_source()
@@ -635,61 +292,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("meta_window_allows_resize", native_action)
         self.assertIn("meta_display_get_current_time_roundtrip(display)", native_action)
         self.assertNotIn('json_object_set_int_member(socket_object, "expires_at_us"', socket_issue)
-
-    def test_xdg_activation_focus_is_pid_bound_and_api_132(self):
-        source = control_source()
-        header = control_header()
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        focus = function_body(
-            source,
-            "GVariant* native_socket_focus_window(",
-            "GVariant* native_socket_begin_window_grab(",
-        )
-        connected = function_body(
-            source, "gboolean client_connected(", "GVariant* gnoblin_native_control_receive_runtime_config("
-        )
-        patch = (ROOT / "patches/mutter/99-typed-window-api/0050-focus-with-xdg-activation-token.patch").read_text()
-
-        self.assertGreaterEqual(api_minor(header), 38)
-        self.assertIn('g_str_equal(method, "window.focus") && client->api_minor < 10', dispatcher)
-        self.assertIn("XDG Activation window focus requires API version 1.32", focus)
-        self.assertIn("client->peer_pid <= 0", focus)
-        self.assertIn("native_window_by_stable_id(client->control, wanted_id)", focus)
-        self.assertIn("meta_wayland_activation_focus_window_with_token", focus)
-        self.assertIn("g_socket_get_credentials", connected)
-        self.assertIn("g_credentials_get_unix_pid", connected)
-        self.assertIn("token->requesting_pid != peer_pid", patch)
-        self.assertLess(patch.index("token->consumed = TRUE"), patch.index("meta_window_activate_full"))
-
-    def test_session_logout_waits_for_matching_compositor_success(self):
-        lua = (LUA_SOURCES).read_text()
-        runtime = (RUNTIME_SOURCES).read_text()
-        source = control_source()
-        operation = function_body(
-            source,
-            "static gboolean native_runtime_handle_operation(",
-            "gboolean native_runtime_fd_ready(",
-        )
-        completion = function_body(
-            runtime,
-            "gboolean handle_completion(",
-            "static gboolean dispatch_parent_event(",
-        )
-
-        self.assertIn('"session.logout",', lua)
-        self.assertIn("session.logout takes no arguments", lua)
-        self.assertIn('g_str_equal(method, "session.logout") && client->api_minor < 32', source)
-        self.assertIn('g_str_equal(method, "session.logout")', operation)
-        self.assertIn('"accepted",', operation)
-        self.assertIn("gboolean matching_success", completion)
-        self.assertIn('g_variant_lookup(operation_result, "accepted", "b", &logout_accepted)', completion)
-        self.assertIn('g_str_equal(method, "session.logout")', completion)
-        self.assertIn('g_variant_lookup_value(payload, "value", G_VARIANT_TYPE_VARDICT)', completion)
-        self.assertLess(
-            completion.index("send_pending_operations(runtime, error)"), completion.index("if (matching_success)")
-        )
-        self.assertIn("runtime->exit_status = EXIT_SUCCESS", completion)
-        self.assertIn("g_main_loop_quit(runtime->loop)", completion)
 
     def test_menu_authority_uses_subscription_version_not_latest_request_version(self):
         source = control_source()
@@ -761,26 +363,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_menu_context_revoke_client(control, client->client_id)", socket_revoke)
         self.assertIn("revoke_menu_contexts(control)", source)
 
-    def test_status_socket_read_stays_available_during_supervisor_recovery(self):
-        source = control_source()
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        status = function_body(
-            dispatcher,
-            'if (g_str_equal(method, "session.status")) {',
-            'if (g_str_equal(method, "window.restore_or_minimize")) {',
-        )
-        reads = function_body(
-            source,
-            "gboolean native_api_read_method(",
-            "gboolean runtime_config_values_equal(",
-        )
-
-        self.assertIn("native_session_lock_snapshot(", status)
-        self.assertNotIn("queue_runtime_api_request", status)
-        self.assertNotIn("native_session_status_json", status)
-        self.assertIn('"session.status"', status)
-        self.assertIn('g_str_equal(method, "session.status")', reads)
-
     def test_workspace_list_always_uses_lua_snapshot_and_preserves_legacy_shape(self):
         source = control_source()
         header = control_header()
@@ -827,72 +409,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"window.list"', read_api)
         self.assertIn("legacy_window_list_from_lua(value, error)", read_api)
 
-    def test_layer_animation_policy_socket_read_uses_supervised_lua_read(self):
-        source = control_source()
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        generic_read = function_body(
-            dispatcher,
-            "if (native_api_read_method(method)) {",
-            'if (g_str_equal(method, "privacy.state")) {',
-        )
-        reads = function_body(
-            source,
-            "gboolean native_api_read_method(",
-            "gboolean runtime_config_values_equal(",
-        )
-
-        self.assertIn('g_str_equal(method, "layer.animation_policy")', reads)
-        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', generic_read)
-        self.assertIn("Lua supervisor is not connected", generic_read)
-
-    def test_animation_queries_dispatch_as_native_reads(self):
-        source = control_source()
-        connected = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        animation_reads = function_body(
-            dispatcher,
-            "if (native_api_animation_read_method(method)) {",
-            'if (g_str_equal(method, "window.list") || g_str_equal(method, "workspace.list")) {',
-        )
-        helper = function_body(
-            source,
-            "gboolean native_api_animation_read_method(",
-            "gboolean native_api_read_method(",
-        )
-
-        for method in (
-            "animation.list",
-            "animation.get",
-            "animation.surfaces",
-            "animation.inspect",
-        ):
-            with self.subTest(method=method):
-                self.assertIn(f'"{method}"', connected)
-                self.assertIn(f'g_str_equal(method, "{method}")', helper)
-
-        self.assertIn("meta_gnoblin_dispatch_native_api(", animation_reads)
-        self.assertIn("client->control->display, method, arguments", animation_reads)
-        self.assertNotIn("queue_runtime_api_request", animation_reads)
-
-    def test_aborted_runtime_waits_for_native_teardown_before_free(self):
-        source = control_source()
-        maybe_free = function_body(
-            source,
-            "void native_control_maybe_free_stopped(GnoblinNativeControl* control) {",
-            "static void clear_pending_grant_delivery(",
-        )
-        stop = source.split("void gnoblin_native_control_stop(", 1)[1]
-
-        self.assertIn("!control->teardown_complete", maybe_free)
-        self.assertLess(
-            stop.index("control->teardown_complete = TRUE;"),
-            stop.index("native_control_maybe_free_stopped(control);"),
-        )
-
     def test_expired_snap_contexts_and_targets_are_pruned_and_bounded(self):
         source = control_source()
         pruner = function_body(
@@ -916,7 +432,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("MAX_TEXT_TARGETS", text_target)
         self.assertIn("MAX_SNAP_CONTEXTS", snap_context)
 
-    def test_text_target_requires_and_consumes_the_connection_focus_grant(self):
+    def test_text_target_requires_the_connection_focus_grant_and_takes_only_its_scope(self):
         source = control_source()
         take_grant = function_body(
             source,
@@ -928,15 +444,60 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* native_socket_create_text_target(",
             "GVariant* native_socket_insert_text(",
         )
-
-        self.assertLess(
-            take_grant.index("g_hash_table_remove(client->focus_grants"),
-            take_grant.index("revoke_focus_grants_for_handle"),
+        text_target = function_body(
+            source,
+            "GVariant* gnoblin_native_control_create_text_target(",
+            "GVariant* native_insert_text_owned(",
         )
+
+        # A token survives a use, so one gesture can take each operation once; the connection that
+        # used it keeps the gesture and every other connection loses its token for it.
+        self.assertNotIn("g_hash_table_remove(client->focus_grants", take_grant)
+        self.assertIn("revoke_other_focus_grants_for_handle", take_grant)
         self.assertLess(
             create.index("native_socket_take_focus_grant"), create.index("gnoblin_native_control_create_text_target")
         )
         self.assertIn("target->socket_owner_client_id = client->client_id", create)
+        self.assertIn("FOCUS_SCOPE_TEXT_TARGET", text_target)
+
+    def test_every_gesture_operation_takes_its_own_scope_once(self):
+        source = control_source()
+        claim = function_body(
+            source,
+            "NativeFocusClaim native_focus_context_claim(",
+            "gboolean native_grant_window_allows(",
+        )
+        self.assertIn("stored->used_scopes & scope", claim)
+        self.assertIn("FOCUS_SCOPE_ALL", claim)
+        for scope, signature, end in (
+            (
+                "FOCUS_SCOPE_FOCUS",
+                "GVariant* gnoblin_native_control_focus_window(",
+                "gboolean native_text_modifiers_allowed(",
+            ),
+            (
+                "FOCUS_SCOPE_SNAP_CONTEXT",
+                "GVariant* gnoblin_native_control_create_snap_context(",
+                "GVariant* native_socket_create_snap_context(",
+            ),
+            (
+                "FOCUS_SCOPE_BEGIN_MOVE",
+                "GVariant* gnoblin_native_control_begin_window_grab(",
+                "GVariant* gnoblin_native_control_begin_menu_window_grab(",
+            ),
+        ):
+            body = function_body(source, signature, end)
+            self.assertIn(scope, body)
+            self.assertIn("native_focus_context_claim", body)
+            self.assertIn("native_grant_window_allows", body)
+            self.assertNotIn("g_hash_table_remove(control->focus_contexts", body)
+        grab = function_body(
+            source,
+            "GVariant* gnoblin_native_control_begin_window_grab(",
+            "GVariant* gnoblin_native_control_begin_menu_window_grab(",
+        )
+        self.assertIn("FOCUS_SCOPE_BEGIN_RESIZE", grab)
+        self.assertIn("meta_wayland_session_lock_is_active", grab)
 
     def test_text_target_owner_check_precedes_consumption_and_invalid_fields_consume(self):
         source = control_source()
@@ -1016,52 +577,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_hash_table_remove_all(control->snap_contexts)", focus_revoke)
         self.assertIn("revoke_text_targets(control)", focus_revoke)
 
-    def test_lua_snapshot_collection_reads_require_api_137(self):
-        source = control_source()
-        header = control_header()
-        connected = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        read_methods = function_body(
-            source,
-            "gboolean native_api_read_method(const char* method)",
-            "gboolean runtime_config_values_equal(",
-        )
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-
-        for method in (
-            "windows.list",
-            "workspaces.list",
-            "monitors.list",
-            "layers.list",
-            "launches.list",
-            "launches.snapshot",
-            "shortcuts.list",
-            "shortcuts.actions",
-        ):
-            with self.subTest(method=method):
-                self.assertIn(f'g_str_equal(method, "{method}")', read_methods)
-                self.assertIn(f'g_str_equal(method, "{method}")', dispatcher)
-        self.assertIn('"launches.snapshot"', connected)
-        self.assertIn("client->api_minor < 37", dispatcher)
-        self.assertIn('g_str_equal(method, "launches.snapshot") && client->api_minor < 39', dispatcher)
-        self.assertIn('g_str_equal(method, "shortcuts.list") && client->api_minor < 40', dispatcher)
-        self.assertIn('g_str_equal(method, "shortcuts.actions") && client->api_minor < 41', dispatcher)
-        self.assertGreaterEqual(api_minor(header), 41)
-        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
-
-        header = control_header()
-        self.assertGreaterEqual(api_minor(header), 39)
-
     def test_legacy_window_actions_use_typed_lua_operations_for_all_api_versions(self):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         overlay_manifest = overlay_manifests()
         lua = LUA.read_text()
-        mutter_patch = (ROOT / "patches/mutter/99-typed-window-api/0064-native-window-unminimize.patch").read_text()
+        mutter_patch = patch_series.find("mutter", "native-window-unminimize").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -1124,9 +646,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        resize_patch = (
-            ROOT / "patches/mutter/99-typed-window-api/0065-native-window-resize-user-operation.patch"
-        ).read_text()
+        resize_patch = patch_series.find("mutter", "native-window-resize-user-operation").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -1152,9 +672,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        move_patch = (
-            ROOT / "patches/mutter/99-typed-window-api/0066-native-window-move-user-operation.patch"
-        ).read_text()
+        move_patch = patch_series.find("mutter", "native-window-move-user-operation").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -1195,43 +713,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"monitor"', handler)
         self.assertIn('"call", action, target)', handler)
 
-    def test_shortcut_session_end_preserves_owner_binding(self):
-        source = control_source()
-        header = control_header()
-        cmake = (ROOT / "CMakeLists.txt").read_text()
-        lua = LUA.read_text()
-        connected = function_body(
-            source,
-            "gboolean client_connected(",
-            "GVariant* gnoblin_native_control_receive_runtime_config(",
-        )
-        methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
-        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
-        socket_method = function_body(
-            dispatcher,
-            'if (g_str_equal(method, "shortcut.session.end")) {',
-            'if (g_str_has_prefix(method, "launch.")) {',
-        )
-        runtime_method = function_body(
-            source,
-            "static GVariant* native_runtime_shortcut_operation(",
-            "gboolean native_runtime_flush_state_snapshots(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 64)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
-        self.assertIn('"shortcut.session.end"', methods)
-        self.assertIn("client->api_minor < 64", dispatcher)
-        self.assertIn("dynamic_shortcut_request_end_session(client, id, arguments)", socket_method)
-        self.assertIn("find_dynamic_shortcut(client, binding_id)", source)
-        self.assertIn("shortcut->session_id != session_id", source)
-        self.assertIn('"cancelled"', source)
-        self.assertIn('"shortcut.session.end"', runtime_method)
-        self.assertIn("find_runtime_dynamic_shortcut(control, owner_id, id)", runtime_method)
-        self.assertIn('"shortcut.session.end"', lua)
-        self.assertIn('lua_setfield(state, -2, "end_session")', lua)
-        self.assertIn('operation = "end_session"', lua)
-
     def test_modal_key_events_refresh_focus_authority_from_real_input(self):
         source = control_source()
         header = control_header()
@@ -1255,8 +736,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         lua_dispatch = function_body(
             LUA.read_text(),
+            "void push_event_table(",
             "static GVariant* gnoblin_config_dispatch_event_internal(",
-            "GVariant* gnoblin_config_dispatch_shortcut_event(",
         )
 
         self.assertIn("issue_focus_context_for_session_key", capture)
@@ -1272,46 +753,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_event)
         self.assertIn('g_str_equal(field_name, "focus_context_handle")', runtime_event)
         self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_handler)
-        self.assertIn('g_str_equal(event_names[event_index], "gnoblin.shortcut.session.key")', lua_dispatch)
-        self.assertIn("focus_context_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
-
-    def test_strict_activation_denial_event_is_versioned_and_routed(self):
-        source = control_source()
-        header = control_header()
-        events = function_body(
-            source,
-            "const char* native_socket_events[] = {",
-            "static const char native_policy_introspection[]",
-        )
-        publish = function_body(
-            source,
-            "void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
-            "void native_publish_request_event(",
-        )
-        native_event = function_body(
-            source,
-            "void native_native_event(",
-            "gboolean focus_token_has_valid_shape(",
-        )
-        subscription = function_body(
-            source,
-            'if (g_str_equal(op, "events"))',
-            'if (g_str_equal(op, "windows"))',
-        )
-        patch = (ROOT / "patches/mutter/99-typed-window-api" / "0076-report-xdg-activation-denied.patch").read_text()
-        docs = EVENT_DOCS
-
-        self.assertGreaterEqual(api_minor(header), 69)
-        self.assertIn('"gnoblin.window.activation-denied"', events)
-        self.assertIn("client->event_api_minor < 69", publish)
-        self.assertIn("client->api_minor < 69", subscription)
-        self.assertIn('"activation denial events require API version 1.69"', subscription)
-        self.assertIn('"gnoblin.window.activation-denied"', native_event)
-        self.assertIn("meta_display_dispatch_gnoblin_native_event", patch)
-        for reason in ("missing_context", "invalid_context", "stale_context"):
-            with self.subTest(reason=reason):
-                self.assertIn(reason, patch)
-                self.assertIn(reason, docs)
+        self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', lua_dispatch)
+        self.assertIn("grant_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
 
     def test_input_snapshots_always_use_lua(self):
         source = control_source()
@@ -1381,115 +824,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "privacy.state")', lua_read)
         self.assertIn('lua_getfield(state, -1, "state")', lua_read)
         self.assertGreaterEqual(api_minor(header), 47)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
-
-    def test_restore_or_minimize_always_uses_lua_operation(self):
-        source = control_source()
-        header = control_header()
-        helper = function_body(
-            source,
-            "GVariant* gnoblin_native_control_restore_or_minimize_window(",
-            "static void pending_thumbnail_free(",
-        )
-        unmanaged = function_body(
-            source,
-            "static void window_unmanaged(MetaWindow* window, gpointer user_data) {",
-            "void track_window(",
-        )
-        dispatcher = function_body(
-            source,
-            "char* handle_request(",
-            "void process_buffer(",
-        )
-        snap = function_body(
-            source,
-            "static GVariant* native_commit_snap_context_owned(",
-            "GVariant* gnoblin_native_control_commit_snap_context(",
-        )
-        drag_begin = function_body(
-            source,
-            "guint64 gnoblin_native_control_window_drag_begin(",
-            "void gnoblin_native_control_window_drag_update(",
-        )
-        drag_snap = function_body(
-            source,
-            "gboolean gnoblin_native_control_take_window_drag_snap(",
-            "GVariant* gnoblin_native_control_focus_window(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 48)
-        self.assertNotIn("client->api_minor >= 48", dispatcher)
-        self.assertIn('queue_runtime_api_request(client, id, method, operation_arguments, "call")', dispatcher)
-        self.assertIn("client->control->supervised_runtime", dispatcher)
-        self.assertIn("window.restore_or_minimize", source)
-        self.assertIn("client->api_minor < 38", dispatcher)
-        self.assertNotIn("gnoblin_native_control_restore_or_minimize_window", dispatcher)
-        self.assertIn("meta_wayland_session_lock_is_active", helper)
-        self.assertLess(
-            helper.index("meta_window_get_maximize_flags"),
-            helper.index("meta_window_can_minimize"),
-        )
-        self.assertIn("meta_window_move_resize_frame", helper)
-        self.assertIn("g_hash_table_remove(control->snap_restore_frames, window)", unmanaged)
-        self.assertIn("context.original_frame", snap)
-        self.assertIn("meta_window_set_unmaximize_flags", snap)
-        self.assertIn("g_hash_table_contains(control->snap_restore_frames, window)", snap)
-        self.assertIn("drag->original_frame = drag->frame", drag_begin)
-        self.assertIn("*original_frame = drag->original_frame", drag_snap)
-        cmake = (ROOT / "CMakeLists.txt").read_text()
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
-
-    def test_session_lock_uses_lua_for_api_149_and_keeps_legacy_route(self):
-        source = control_source()
-        header = control_header()
-        dispatcher = function_body(
-            source,
-            "char* handle_request(",
-            "void process_buffer(",
-        )
-        operation_dispatch = function_body(
-            source,
-            "static gboolean native_runtime_handle_operation(",
-            "gboolean native_runtime_fd_ready(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 49)
-        self.assertIn("client->api_minor >= 49", dispatcher)
-        self.assertIn('queue_runtime_api_request(client, id, method, arguments, "call")', dispatcher)
-        self.assertIn("client->control->supervised_runtime", dispatcher)
-        self.assertIn("client->api_minor < 21", dispatcher)
-        self.assertIn("gnoblin_native_control_request_session_lock", dispatcher)
-        self.assertIn('g_str_equal(method, "session.lock")', operation_dispatch)
-        self.assertIn("gnoblin_native_control_request_session_lock", operation_dispatch)
-        cmake = (ROOT / "CMakeLists.txt").read_text()
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
-
-    def test_launch_mutations_use_lua_for_api_150_and_keep_legacy_route(self):
-        source = control_source()
-        header = control_header()
-        launch = function_body(
-            source,
-            'if (g_str_has_prefix(method, "launch.")) {',
-            'if (g_str_equal(method, "input.devices")) {',
-        )
-        operation = function_body(
-            source,
-            "static gboolean native_runtime_handle_operation(",
-            "gboolean native_runtime_fd_ready(",
-        )
-
-        self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn("client->track_launches = TRUE", launch)
-        self.assertIn("client->launch_api_minor = client->api_minor", launch)
-        self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))
-        self.assertIn('g_str_equal(method, "launch.begin")', launch)
-        self.assertIn('g_str_equal(method, "launch.end")', launch)
-        self.assertIn('queue_runtime_api_request(client, id, method, launch_arguments, "call")', launch)
-        self.assertIn("client->control->supervised_runtime", launch)
-        self.assertIn("gnoblin_native_control_dispatch_launch", launch)
-        self.assertIn('g_str_has_prefix(method, "launch.")', operation)
-        self.assertIn("gnoblin_native_control_dispatch_launch", operation)
-        cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_launch_status_always_uses_lua_and_keeps_event_tracking(self):

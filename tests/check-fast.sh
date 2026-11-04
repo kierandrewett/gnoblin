@@ -11,6 +11,7 @@ run() {
 
 run ./scripts/gnome-versions.py check
 run ./scripts/manage-patches.py check
+run python3 tests/patch-series.test.py
 
 printf '+ bash -n scripts/*.sh tests/*.sh tests/packages/*.sh src/tools/*.sh\n'
 for file in scripts/*.sh tests/*.sh tests/packages/*.sh src/tools/*.sh; do

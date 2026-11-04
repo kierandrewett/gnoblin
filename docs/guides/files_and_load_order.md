@@ -199,7 +199,7 @@ Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.
 
 For event-driven compositor behavior, load a Lua module that registers a
-callback with `gnoblin.events.on`. See [Lua event handlers](/user-scripts) and
+callback with `gnoblin.on`. See [Lua event handlers](/user-scripts) and
 the [event reference](/events/). Keep presentation in separate
 Wayland clients; the runtime API controls compositor state.
 

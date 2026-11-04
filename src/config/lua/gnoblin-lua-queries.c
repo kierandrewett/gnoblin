@@ -278,7 +278,9 @@ static gboolean window_matches_filter(GVariant* window, lua_State* state, int fi
     return TRUE;
 }
 
-int lua_windows_list(lua_State* state) {
+/* The windows.list wire read, with the exact-match filter socket clients send. Lua code lists
+ * windows with gnoblin.windows.list() and selects them with gnoblin.find("Window", filter). */
+int lua_read_windows(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.windows.list takes no arguments or one filter table");
@@ -320,6 +322,14 @@ int lua_windows_list(lua_State* state) {
     return 1;
 }
 
+int lua_windows_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state,
+                          "gnoblin.windows.list takes no arguments; use gnoblin.find(\"Window\", "
+                          "filter) to select windows");
+    return lua_read_windows(state);
+}
+
 int lua_windows_focused(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
@@ -346,30 +356,37 @@ int lua_windows_focused(lua_State* state) {
     return 1;
 }
 
+/* Push the window with this stable ID, or return FALSE and push nothing. */
+gboolean lua_push_window_by_id(lua_State* state, LuaConfig* config, const char* id) {
+    if (!config || !config->window_snapshot)
+        return FALSE;
+    g_autoptr(GVariant) windows = lua_window_array(config);
+    if (!windows)
+        return FALSE;
+    for (gsize i = 0; i < g_variant_n_children(windows); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(windows, i);
+        g_autoptr(GVariant) window = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
+                                         ? g_variant_get_variant(wrapped)
+                                         : g_variant_ref(wrapped);
+        const char* window_id = NULL;
+        if (g_variant_lookup(window, "id", "&s", &window_id) && g_str_equal(id, window_id)) {
+            push_variant(state, window);
+            push_readonly_copy(state, -1);
+            lua_remove(state, -2);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 int lua_windows_by_id(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
         return luaL_error(state, "gnoblin.windows.by_id requires one string ID");
-    const char* id = lua_tostring(state, 1);
     if (!config || !config->window_snapshot)
         return luaL_error(state, "native window snapshot is unavailable");
-    g_autoptr(GVariant) windows = lua_window_array(config);
-    if (windows) {
-        for (gsize i = 0; i < g_variant_n_children(windows); i++) {
-            g_autoptr(GVariant) wrapped = g_variant_get_child_value(windows, i);
-            g_autoptr(GVariant) window = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
-                                             ? g_variant_get_variant(wrapped)
-                                             : g_variant_ref(wrapped);
-            const char* window_id = NULL;
-            if (g_variant_lookup(window, "id", "&s", &window_id) && g_str_equal(id, window_id)) {
-                push_variant(state, window);
-                push_readonly_copy(state, -1);
-                lua_remove(state, -2);
-                return 1;
-            }
-        }
-    }
-    lua_pushnil(state);
+    if (!lua_push_window_by_id(state, config, lua_tostring(state, 1)))
+        lua_pushnil(state);
     return 1;
 }
 
@@ -431,32 +448,35 @@ int lua_workspaces_active(lua_State* state) {
     return 1;
 }
 
+/* Push the Workspace handle for `id` from the current workspace snapshot; FALSE and nothing when
+ * the snapshot has no such workspace. */
+gboolean lua_push_workspace_by_id(lua_State* state, LuaConfig* config, const char* id) {
+    g_autoptr(GVariant) workspaces = lua_workspace_array(config);
+    for (gsize i = 0; workspaces && i < g_variant_n_children(workspaces); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(workspaces, i);
+        g_autoptr(GVariant) workspace = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
+                                            ? g_variant_get_variant(wrapped)
+                                            : g_variant_ref(wrapped);
+        const char* workspace_id = NULL;
+        if (g_variant_lookup(workspace, "id", "&s", &workspace_id) &&
+            g_str_equal(id, workspace_id)) {
+            push_variant(state, workspace);
+            push_readonly_copy(state, -1);
+            lua_remove(state, -2);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 int lua_workspaces_by_id(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
         return luaL_error(state, "gnoblin.workspaces.by_id requires one string ID");
-    const char* id = lua_tostring(state, 1);
     if (!config || !config->workspace_snapshot)
         return luaL_error(state, "native workspace snapshot is unavailable");
-
-    g_autoptr(GVariant) workspaces = lua_workspace_array(config);
-    if (workspaces) {
-        for (gsize i = 0; i < g_variant_n_children(workspaces); i++) {
-            g_autoptr(GVariant) wrapped = g_variant_get_child_value(workspaces, i);
-            g_autoptr(GVariant) workspace = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
-                                                ? g_variant_get_variant(wrapped)
-                                                : g_variant_ref(wrapped);
-            const char* workspace_id = NULL;
-            if (g_variant_lookup(workspace, "id", "&s", &workspace_id) &&
-                g_str_equal(id, workspace_id)) {
-                push_variant(state, workspace);
-                push_readonly_copy(state, -1);
-                lua_remove(state, -2);
-                return 1;
-            }
-        }
-    }
-    lua_pushnil(state);
+    if (!lua_push_workspace_by_id(state, config, lua_tostring(state, 1)))
+        lua_pushnil(state);
     return 1;
 }
 
@@ -466,10 +486,11 @@ static GVariant* lua_monitor_array(LuaConfig* config) {
     return g_variant_lookup_value(config->monitor_snapshot, "monitors", G_VARIANT_TYPE("av"));
 }
 
-int lua_monitors_list(lua_State* state) {
+/* The monitors.list wire read. Lua reads displays as Output objects (gnoblin.outputs). */
+int lua_read_monitors(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.list takes no arguments");
+        return luaL_error(state, "monitors.list takes no arguments");
     if (!config || !config->monitor_snapshot)
         return luaL_error(state, "native monitor snapshot is unavailable");
 
@@ -482,8 +503,6 @@ int lua_monitors_list(lua_State* state) {
                                           ? g_variant_get_variant(wrapped)
                                           : g_variant_ref(wrapped);
         push_variant(state, monitor);
-        push_readonly_copy(state, -1);
-        lua_remove(state, -2);
         lua_rawseti(state, -2, i + 1);
     }
     return 1;
@@ -576,64 +595,60 @@ int lua_outputs_renderer(lua_State* state) {
     return 1;
 }
 
-int lua_monitors_primary(lua_State* state) {
+/* The monitors.privacy_screen wire read. Lua reads Output.privacy_screen. */
+int lua_read_privacy_screen(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.primary takes no arguments");
-    if (!config || !config->monitor_snapshot)
-        return luaL_error(state, "native monitor snapshot is unavailable");
-
-    g_autoptr(GVariant) monitors = lua_monitor_array(config);
-    for (gsize i = 0; monitors && i < g_variant_n_children(monitors); i++) {
-        g_autoptr(GVariant) wrapped = g_variant_get_child_value(monitors, i);
-        g_autoptr(GVariant) monitor = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
-                                          ? g_variant_get_variant(wrapped)
-                                          : g_variant_ref(wrapped);
-        gboolean primary = FALSE;
-        if (g_variant_lookup(monitor, "primary", "b", &primary) && primary) {
-            push_variant(state, monitor);
-            push_readonly_copy(state, -1);
-            lua_remove(state, -2);
-            return 1;
-        }
-    }
-    lua_pushnil(state);
-    return 1;
-}
-
-int lua_monitors_privacy_screen(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.privacy_screen takes no arguments");
+        return luaL_error(state, "monitors.privacy_screen takes no arguments");
     if (!config || !config->monitor_privacy_screen_snapshot)
         return luaL_error(state, "native monitor privacy-screen snapshot is unavailable");
     push_variant(state, config->monitor_privacy_screen_snapshot);
-    push_readonly_copy(state, -1);
-    lua_remove(state, -2);
     return 1;
 }
 
+static gboolean privacy_screen_value_valid(lua_State* state, int value) {
+    return lua_isboolean(state, value) || (lua_type(state, value) == LUA_TSTRING &&
+                                           g_str_equal(lua_tostring(state, value), "inherit"));
+}
+
+/* Queue monitors.set_privacy_screen with the value at `value`: true, false or "inherit". */
+static int push_privacy_screen_operation(lua_State* state, LuaConfig* config, int value,
+                                         const char* caller) {
+    if (!privacy_screen_value_valid(state, value))
+        return luaL_error(state, "%s requires true, false, or 'inherit'", caller);
+    lua_pushlightuserdata(state, config);
+    lua_pushstring(state, "monitors.set_privacy_screen");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_newtable(state);
+    lua_pushvalue(state, value);
+    lua_setfield(state, -2, "value");
+    lua_call(state, 1, 1);
+    return 1;
+}
+
+/* The monitors.set_privacy_screen wire call: {value = true|false|"inherit"}. */
 int lua_monitors_set_privacy_screen(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (config && config->api_calling && lua_gettop(state) == 1 && lua_istable(state, 1)) {
-        static const char* const fields[] = {"value", NULL};
-        if (!table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "monitors.set_privacy_screen accepts only value");
-        lua_getfield(state, 1, "value");
-        lua_replace(state, 1);
-        lua_settop(state, 1);
-    }
-    if (lua_gettop(state) != 1 ||
-        (!lua_isboolean(state, 1) &&
-         !(lua_type(state, 1) == LUA_TSTRING && g_str_equal(lua_tostring(state, 1), "inherit"))))
-        return luaL_error(state,
-                          "gnoblin.monitors.set_privacy_screen requires true, false, or 'inherit'");
+    static const char* const fields[] = {"value", NULL};
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1) || !table_fields_allowed(state, 1, fields))
+        return luaL_error(state, "monitors.set_privacy_screen accepts only value");
+    lua_getfield(state, 1, "value");
+    return push_privacy_screen_operation(state, config, lua_gettop(state),
+                                         "monitors.set_privacy_screen");
+}
 
-    lua_newtable(state);
-    lua_pushvalue(state, 1);
-    lua_setfield(state, -2, "value");
-    int arguments = lua_absindex(state, -1);
-    return call_launch_operation(state, "monitors.set_privacy_screen", arguments);
+gboolean any_output_has_privacy_screen(LuaConfig* config) {
+    g_autoptr(GVariant) outputs = lua_output_array(config);
+    for (gsize i = 0; outputs && i < g_variant_n_children(outputs); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(outputs, i);
+        g_autoptr(GVariant) output = g_variant_get_variant(wrapped);
+        g_autoptr(GVariant) privacy =
+            g_variant_lookup_value(output, "privacy_screen", G_VARIANT_TYPE_VARDICT);
+        gboolean available = FALSE;
+        if (privacy && g_variant_lookup(privacy, "available", "b", &available) && available)
+            return TRUE;
+    }
+    return FALSE;
 }
 
 static GVariant* lua_layer_array(LuaConfig* config) {
@@ -662,7 +677,10 @@ static gboolean layer_matches_filter(GVariant* layer, lua_State* state, int filt
     return TRUE;
 }
 
-int lua_layers_list(lua_State* state) {
+/* The layers.list wire read, with the exact-match filter socket clients send. Lua code lists
+ * layer surfaces with gnoblin.layers.list() and selects them with
+ * gnoblin.find("LayerSurface", filter). */
+int lua_read_layers(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.layers.list takes no arguments or one filter table");
@@ -699,4 +717,11 @@ int lua_layers_list(lua_State* state) {
         lua_rawseti(state, -2, result_index++);
     }
     return 1;
+}
+
+int lua_layers_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.layers.list takes no arguments; use "
+                                 "gnoblin.find(\"LayerSurface\", filter) to select layer surfaces");
+    return lua_read_layers(state);
 }

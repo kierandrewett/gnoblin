@@ -22,7 +22,24 @@ char* monitor_snapshot(GnoblinNativeControl* control) {
     return g_strconcat(encoded, "\n", NULL);
 }
 
-JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
+/* The record in the `monitors` snapshot array whose id is `id`, or NULL. */
+static JsonObject* output_monitor_record(JsonNode* monitors, const char* id) {
+    if (!id || !JSON_NODE_HOLDS_OBJECT(monitors) ||
+        !json_object_has_member(json_node_get_object(monitors), "monitors"))
+        return NULL;
+    JsonArray* records = json_object_get_array_member(json_node_get_object(monitors), "monitors");
+    for (guint i = 0; records && i < json_array_get_length(records); i++) {
+        JsonNode* record = json_array_get_element(records, i);
+        if (JSON_NODE_HOLDS_OBJECT(record) &&
+            g_strcmp0(json_object_get_string_member_with_default(json_node_get_object(record), "id",
+                                                                 NULL),
+                      id) == 0)
+            return json_node_get_object(record);
+    }
+    return NULL;
+}
+
+JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control, JsonNode* monitors,
                                                gboolean update_lua_snapshot, GError** error) {
     g_autoptr(GVariant) result = gnoblin_control_output_list(control->display, error);
     if (!result) {
@@ -36,12 +53,29 @@ JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
         return NULL;
     JsonObject* object = json_node_get_object(json);
     json_object_set_int_member(object, "revision", control->state_revision);
+    const char* privacy_source = NULL;
+    gboolean privacy_requested = native_monitor_privacy_screen_request(control, &privacy_source);
+    /* An output shows its logical monitor's place in the layout and the area windows may use. */
+    static const char* const monitor_fields[] = {"index", "width", "height", "work_area"};
     JsonArray* outputs = json_object_get_array_member(object, "outputs");
     for (guint i = 0; outputs && i < json_array_get_length(outputs); i++) {
         JsonNode* item = json_array_get_element(outputs, i);
-        if (JSON_NODE_HOLDS_OBJECT(item))
-            json_object_set_int_member(json_node_get_object(item), "revision",
-                                       control->state_revision);
+        if (!JSON_NODE_HOLDS_OBJECT(item))
+            continue;
+        JsonObject* output = json_node_get_object(item);
+        json_object_set_int_member(output, "revision", control->state_revision);
+        if (json_object_has_member(output, "privacy_screen")) {
+            JsonObject* privacy = json_object_get_object_member(output, "privacy_screen");
+            json_object_set_boolean_member(privacy, "requested", privacy_requested);
+            json_object_set_string_member(privacy, "source", privacy_source);
+        }
+        JsonObject* monitor = output_monitor_record(
+            monitors, json_object_get_string_member_with_default(output, "monitor_id", NULL));
+        for (guint field = 0; monitor && field < G_N_ELEMENTS(monitor_fields); field++)
+            if (json_object_has_member(monitor, monitor_fields[field]))
+                json_object_set_member(
+                    output, monitor_fields[field],
+                    json_node_copy(json_object_get_member(monitor, monitor_fields[field])));
     }
     if (update_lua_snapshot) {
         g_autoptr(GVariant) snapshot = gnoblin_control_variant_from_json(json);
@@ -49,6 +83,96 @@ JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
                                                  control->state_revision);
     }
     return g_steal_pointer(&json);
+}
+
+static void dispatch_output_event(GnoblinNativeControl* control, guint64 revision,
+                                  const char* event, const char* id, JsonNode* output,
+                                  JsonNode* last, JsonArray* changed) {
+    g_autoptr(JsonNode) root = json_node_new(JSON_NODE_OBJECT);
+    JsonObject* object = json_object_new();
+    json_node_take_object(root, object);
+    json_object_set_string_member(object, "name", event);
+    json_object_set_int_member(object, "revision", revision);
+    json_object_set_int_member(object, "sequence", ++control->event_sequence);
+    json_object_set_int_member(object, "time", g_get_monotonic_time());
+    json_object_set_string_member(object, "output_id", id);
+    if (last)
+        json_object_set_member(object, "last", json_node_copy(last));
+    else
+        json_object_set_member(object, "output", json_node_copy(output));
+    if (changed)
+        json_object_set_array_member(object, "changed", json_array_ref(changed));
+    publish_native_socket_event(control, root);
+    g_autoptr(GVariant) payload = variant_from_json(root);
+    if (payload)
+        native_runtime_dispatch_event(control, event, payload);
+}
+
+/* The top-level fields, other than the revision, whose values differ between two records. */
+static JsonArray* changed_output_fields(JsonObject* previous, JsonObject* current) {
+    JsonArray* changed = json_array_new();
+    g_autoptr(GHashTable) names = g_hash_table_new(g_str_hash, g_str_equal);
+    JsonObject* records[] = {current, previous};
+    for (guint record = 0; record < G_N_ELEMENTS(records); record++) {
+        g_autoptr(GList) members = json_object_get_members(records[record]);
+        for (GList* item = members; item; item = item->next) {
+            const char* name = item->data;
+            if (g_str_equal(name, "revision") || !g_hash_table_add(names, (gpointer)name))
+                continue;
+            JsonNode* before = json_object_get_member(previous, name);
+            JsonNode* after = json_object_get_member(current, name);
+            if (!before || !after || !json_node_equal(before, after))
+                json_array_add_string_element(changed, name);
+        }
+    }
+    return changed;
+}
+
+void gnoblin_control_publish_output_changes(GnoblinNativeControl* control, JsonNode* snapshot,
+                                            guint64 revision) {
+    GHashTable* current = gnoblin_control_output_state_from_snapshot(snapshot);
+    if (control->output_state_initialized) {
+        GHashTableIter iter;
+        gpointer key;
+        gpointer value;
+        g_hash_table_iter_init(&iter, current);
+        while (g_hash_table_iter_next(&iter, &key, &value)) {
+            NativeMonitorState* state = value;
+            NativeMonitorState* previous = g_hash_table_lookup(control->output_state, key);
+            if (previous && g_str_equal(previous->json, state->json))
+                continue;
+            g_autoptr(JsonNode) record = json_from_string(state->json, NULL);
+            if (!JSON_NODE_HOLDS_OBJECT(record))
+                continue;
+            if (!previous) {
+                dispatch_output_event(control, revision, "gnoblin.output.added", key, record, NULL,
+                                      NULL);
+                continue;
+            }
+            g_autoptr(JsonNode) old_record = json_from_string(previous->json, NULL);
+            if (!JSON_NODE_HOLDS_OBJECT(old_record))
+                continue;
+            JsonArray* changed = changed_output_fields(json_node_get_object(old_record),
+                                                       json_node_get_object(record));
+            if (json_array_get_length(changed) > 0)
+                dispatch_output_event(control, revision, "gnoblin.output.changed", key, record,
+                                      NULL, changed);
+            json_array_unref(changed);
+        }
+        g_hash_table_iter_init(&iter, control->output_state);
+        while (g_hash_table_iter_next(&iter, &key, &value)) {
+            if (g_hash_table_contains(current, key))
+                continue;
+            g_autoptr(JsonNode) last = json_from_string(((NativeMonitorState*)value)->json, NULL);
+            if (JSON_NODE_HOLDS_OBJECT(last))
+                dispatch_output_event(control, revision, "gnoblin.output.removed", key, NULL, last,
+                                      NULL);
+        }
+    }
+    if (control->output_state)
+        g_hash_table_unref(control->output_state);
+    control->output_state = current;
+    control->output_state_initialized = TRUE;
 }
 
 char* native_monitor_id_for_index(JsonNode* snapshot, int monitor_index) {
@@ -678,6 +802,22 @@ GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error) {
                 &mode_record, "{sv}", "refresh_rate",
                 g_variant_new_double(mode ? meta_monitor_mode_get_refresh_rate(mode) : 0));
             g_variant_builder_add(&record, "{sv}", "mode", g_variant_builder_end(&mode_record));
+            MetaPrivacyScreenState privacy = meta_monitor_get_privacy_screen_state(monitor);
+            GVariantBuilder privacy_record;
+            g_variant_builder_init(&privacy_record, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(
+                &privacy_record, "{sv}", "available",
+                g_variant_new_boolean(privacy != META_PRIVACY_SCREEN_UNAVAILABLE));
+            if (privacy != META_PRIVACY_SCREEN_UNAVAILABLE) {
+                g_variant_builder_add(
+                    &privacy_record, "{sv}", "enabled",
+                    g_variant_new_boolean(!!(privacy & META_PRIVACY_SCREEN_ENABLED)));
+                g_variant_builder_add(
+                    &privacy_record, "{sv}", "locked",
+                    g_variant_new_boolean(!!(privacy & META_PRIVACY_SCREEN_LOCKED)));
+            }
+            g_variant_builder_add(&record, "{sv}", "privacy_screen",
+                                  g_variant_builder_end(&privacy_record));
             if (logical) {
                 MtkRectangle rect = meta_logical_monitor_get_layout(logical);
                 const char* logical_id = id;
