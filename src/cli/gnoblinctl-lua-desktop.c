@@ -254,7 +254,7 @@ int lua_cli_input_snapshot(lua_State* state) {
         gint64 revision = json_object_get_int_member_with_default(snapshot, "revision", -1);
         if (revision < 0)
             return luaL_error(state, "%s returned an invalid revision", method);
-        lua_cli_push_input_record(state, source, revision, FALSE);
+        lua_cli_push_input_record(state, cli, source, revision, FALSE);
         return 1;
     }
 
@@ -269,7 +269,7 @@ int lua_cli_input_snapshot(lua_State* state) {
         JsonObject* record = json_array_get_object_element(records, i);
         if (!record)
             return luaL_error(state, "%s returned an invalid record", method);
-        lua_cli_push_input_record(state, record, revision, is_device);
+        lua_cli_push_input_record(state, cli, record, revision, is_device);
         lua_rawseti(state, -2, i + 1);
     }
     return 1;
@@ -311,35 +311,6 @@ int lua_cli_appearance_color_scheme(lua_State* state) {
         !g_str_equal(color_scheme, "prefer-light"))
         return luaL_error(state, "gnoblin.appearance.color_scheme returned an unsupported value");
     lua_pushstring(state, color_scheme);
-    return 1;
-}
-
-int lua_cli_input_select_source(lua_State* state) {
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING ||
-        lua_type(state, 2) != LUA_TSTRING)
-        return luaL_error(state, "input.select_source requires type (string) and id (string)");
-    const char* type = lua_tostring(state, 1);
-    const char* id = lua_tostring(state, 2);
-    if (!*type || !*id || (!g_str_equal(type, "xkb") && !g_str_equal(type, "ibus")))
-        return luaL_error(state, "input.select_source requires type xkb or ibus and a nonempty id");
-
-    JsonObject* arguments = json_object_new();
-    json_object_set_string_member(arguments, "type", type);
-    json_object_set_string_member(arguments, "id", id);
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "input.select", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "input.select_source failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return luaL_error(state, "input.select_source returned an invalid InputSource");
-    JsonObject* source = json_node_get_object(result);
-    gint64 revision = json_object_get_int_member_with_default(source, "revision", -1);
-    if (revision < 0)
-        return luaL_error(state, "input.select_source returned an invalid InputSource");
-    lua_cli_push_input_record(state, source, revision, FALSE);
     return 1;
 }
 

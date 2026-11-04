@@ -14,6 +14,8 @@
 #define MAX_PROCESS_OUTPUT_LIMIT (4 * 1024 * 1024)
 #define MAX_PROCESS_TIMEOUT_SECONDS 86400.0
 
+static void run_process_closed(lua_State* state, int process);
+
 static LuaConfig* process_config(lua_State* state, const char* name) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (!config || !config->processes || !config->runtime_actions ||
@@ -185,6 +187,7 @@ static int lua_process_started(lua_State* state) {
         lua_setfield(state, process, "status");
         forget_process(state, config, process);
         finish_operation(state, config, exit, FALSE, 0, 2);
+        run_process_closed(state, process);
         return 0;
     }
     lua_getfield(state, process, "status");
@@ -230,11 +233,103 @@ static int lua_process_kill(lua_State* state) {
     return 1;
 }
 
+/* A Process is alive from spawn until it exits or fails to start. */
+static gboolean process_alive(lua_State* state, int process) {
+    lua_getfield(state, process, "status");
+    const char* status = lua_tostring(state, -1);
+    gboolean alive = g_strcmp0(status, "starting") == 0 || g_strcmp0(status, "running") == 0;
+    lua_pop(state, 1);
+    return alive;
+}
+
+static int lua_process_unsubscribe(lua_State* state) {
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_pushboolean(state, FALSE);
+    lua_setfield(state, -2, "active");
+    return 0;
+}
+
+/* Process:on("closed", fn): fn(process) once the process has ended, however it ended. The
+ * name matches Window, Workspace and Output; status, exit_code and signal say how, and wait()
+ * carries the captured output. */
+static int lua_process_on(lua_State* state) {
+    luaL_checkudata(state, 1, LUA_PROCESS_METATABLE);
+    const char* signal = luaL_checkstring(state, 2);
+    luaL_checktype(state, 3, LUA_TFUNCTION);
+    if (lua_gettop(state) != 3)
+        return luaL_error(state, "Process:on takes a signal and a function");
+    if (!g_str_equal(signal, "closed"))
+        return luaL_error(state, "a Process has no %s signal", signal);
+    lua_getiuservalue(state, 1, 1);
+    int backing = lua_absindex(state, -1);
+    if (!process_alive(state, backing))
+        return luaL_error(state, "this Process has ended");
+    if (lua_getfield(state, backing, "_listeners") != LUA_TTABLE) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, backing, "_listeners");
+    }
+    int listeners = lua_absindex(state, -1);
+    lua_createtable(state, 0, 2);
+    int entry = lua_absindex(state, -1);
+    lua_pushvalue(state, 3);
+    lua_setfield(state, entry, "fn");
+    lua_pushboolean(state, TRUE);
+    lua_setfield(state, entry, "active");
+    lua_pushvalue(state, entry);
+    lua_rawseti(state, listeners, (lua_Integer)lua_rawlen(state, listeners) + 1);
+    lua_createtable(state, 0, 1);
+    lua_pushvalue(state, entry);
+    lua_pushcclosure(state, lua_process_unsubscribe, 1);
+    lua_setfield(state, -2, "unsubscribe");
+    return 1;
+}
+
+/* Run the "closed" listeners of the Process whose backing table is at `process`. */
+static void run_process_closed(lua_State* state, int process) {
+    process = lua_absindex(state, process);
+    if (lua_getfield(state, process, "_listeners") != LUA_TTABLE) {
+        lua_pop(state, 1);
+        return;
+    }
+    int listeners = lua_absindex(state, -1);
+    lua_pushnil(state);
+    lua_setfield(state, process, "_listeners");
+    lua_Integer count = (lua_Integer)lua_rawlen(state, listeners);
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, listeners, i);
+        lua_getfield(state, -1, "active");
+        gboolean active = lua_toboolean(state, -1);
+        lua_pop(state, 1);
+        if (active) {
+            lua_getfield(state, -1, "fn");
+            /* The handle the script holds is the userdata; its metatable reads this backing. */
+            lua_getfield(state, process, "_handle");
+            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
+                g_warning("Lua Process closed callback failed: %s", lua_error_text(state));
+                lua_pop(state, 1);
+            }
+        }
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+}
+
 /* Reads come from the backing table, except the private _exit Operation; writes are refused. */
 static int lua_process_index(lua_State* state) {
     const char* key = lua_tostring(state, 2);
     if (key && g_str_equal(key, "wait")) {
         lua_pushcfunction(state, lua_process_wait);
+        return 1;
+    }
+    if (key && g_str_equal(key, "on")) {
+        lua_pushcfunction(state, lua_process_on);
+        return 1;
+    }
+    if (key && g_str_equal(key, "alive")) {
+        lua_getiuservalue(state, 1, 1);
+        lua_pushboolean(state, process_alive(state, -1));
         return 1;
     }
     if (key && g_str_equal(key, "kill")) {
@@ -305,6 +400,8 @@ int lua_process_spawn(lua_State* state) {
     int process = lua_absindex(state, -1);
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, process, 1);
+    lua_pushvalue(state, process);
+    lua_setfield(state, backing, "_handle");
     push_process_metatable(state, config);
     lua_setmetatable(state, process);
 
@@ -392,5 +489,6 @@ void process_exited(lua_State* state, LuaConfig* config, GVariant* payload) {
     lua_setfield(state, process, "signal");
     lua_getfield(state, process, "_exit");
     finish_operation(state, config, -1, TRUE, result, 0);
+    run_process_closed(state, process);
     lua_settop(state, base);
 }

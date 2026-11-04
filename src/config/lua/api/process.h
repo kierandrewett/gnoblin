@@ -15,6 +15,7 @@
 ---A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.
 ---@class Process
 ---@field id integer Identifier for this process within the session.
+---@field alive boolean True from spawn until the process has exited or failed to start.
 ---@field argv string[] The command line it was started with.
 ---@field pid integer|nil Process ID, once the process has started.
 ---@field status "starting"|"running"|"exited"|"failed" "failed" means it could not be started.
@@ -42,6 +43,16 @@ function gnoblin.process.spawn(argv, options) end
 ---and fails when the process could not be started. Every call returns the same Operation.
 ---@return Operation<ProcessExit>
 function Process:wait() end
+
+---Call fn(process) when the process has ended, however it ended: it exited, was killed, or
+---could not be started. The signal is called "closed", as on Window, Workspace and Output, so
+---code can treat every object alike; status, exit_code and signal say how it ended, and wait()
+---has the captured output. Listening ends after "closed", and on fails once the process has
+---ended.
+---@param signal "closed"
+---@param fn fun(process: Process)
+---@return {unsubscribe: fun()}
+function Process:on(signal, fn) end
 
 ---Send a signal to the process group.
 ---@param signal? "term"|"kill"|"int"|"hup"|"usr1"|"usr2"|"stop"|"cont" The default is "term".

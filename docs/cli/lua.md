@@ -220,8 +220,8 @@ compositor rejects removal of configured, active, or nonempty workspaces.
 
 Input devices and sources are read-only `InputDevice` and `InputSource`
 records. Each record includes the revision of its snapshot. The current source
-is `nil` when Gnoblin cannot identify one. Select a listed source by passing
-its `type` and `id`:
+is `nil` when Gnoblin cannot identify one. An `InputSource` has `select()`; a
+console record is a snapshot with no `on` signal:
 
 ```lua
 for _, source in ipairs(gnoblin.input.sources()) do
@@ -230,7 +230,7 @@ for _, source in ipairs(gnoblin.input.sources()) do
     end
 end
 
-local selected = gnoblin.input.select_source("xkb", "us")
+local selected = gnoblin.input.current_source():select()
 print(selected.name)
 ```
 

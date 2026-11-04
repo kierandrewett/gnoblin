@@ -46,13 +46,29 @@ the active group of four when you select a listed source outside that group.
 the current configured IBus engine, or nil when the active source is unknown
 or is not configured in Gnoblin.
 
-`gnoblin.input.select_source("xkb", "us")` requests a listed XKB source and
-returns an operation handle. The operation completes after Mutter confirms the
-keymap change. Use `gnoblin.input.select_source("ibus", "engine-id")` to select
-a listed IBus source. Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
-the session bus and completes when IBus accepts the request. XKB selection
-changes the seat's keyboard layout; IBus selection changes the session's
-global input method.
+Each listed source is an `InputSource` object, one for each type and ID. Every
+read of one source returns the same object, and the compositor's events update
+it. `source:select()` requests that source and returns an operation handle.
+
+- For an XKB source, the operation completes after Mutter confirms the keymap
+  change. It changes the seat's keyboard layout.
+- For an IBus engine, Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
+  the session bus and completes when IBus accepts the request. It changes the
+  session's global input method.
+
+An `InputSource` has `alive`, which is false once the source has left the list.
+`source:watch("current", fn)` follows its selection. `source:on(signal, fn)`
+takes these signals:
+
+- `changed`, with the list of changed fields.
+- `selected`, when the source becomes the current one.
+- `closed`, when the source leaves the configured list.
+
+```lua
+for _, source in ipairs(gnoblin.input.sources()) do
+    source:on("selected", function() print("now typing", source.name) end)
+end
+```
 
 Set `input_sources.per_window` to:
 
@@ -323,14 +339,11 @@ listener, no overlay appears.
 | Lua method                                  | Arguments                       | Successful result                       |
 | ------------------------------------------- | ------------------------------- | --------------------------------------- |
 | `gnoblin.input.devices()`                   | None                            | Physical input-device records           |
-| `gnoblin.input.sources()`                   | None                            | Configured XKB input-source records     |
-| `gnoblin.input.current_source()`            | None                            | Current XKB source, or `nil`            |
-| `gnoblin.input.select_source(type, id)`     | Source type and ID              | Operation returning the selected source |
+| `gnoblin.input.sources()`                   | None                            | Configured `InputSource` objects        |
+| `gnoblin.input.current_source()`            | None                            | Current `InputSource`, or `nil`         |
+| `source:select()`                           | None                            | Operation returning the selected source |
 | `gnoblin.input.orientation_lock()`          | None                            | Immutable `OrientationLock` record      |
 | `gnoblin.input.set_orientation_lock(value)` | `true`, `false`, or `"inherit"` | `Operation<OrientationLock>`            |
 
-Pass a source's `type` and `id` from `gnoblin.input.sources()` to
-`gnoblin.input.select_source()`.
-
-The socket operation `input.select` is exposed in Lua as
-`gnoblin.input.select_source()`.
+The socket operation `input.select` takes a source's `type` and `id`. In Lua it
+is `source:select()`.

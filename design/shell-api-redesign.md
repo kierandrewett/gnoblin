@@ -133,7 +133,12 @@ and gap 7 stay open.
   when it refuses. `shortcuts.list` lists this runtime's bindings; configured shortcuts moved to
   `shortcuts.configured`. A `Launch` does not link to a window or `Process`, because the
   compositor does not record the match. No wire change.
-- Step (d) is not done: `input.select_source` and the `Process` `alive`/`on` verbs.
+- Step (d), done. `InputSource:select()` replaces `input.select_source`; `input.sources` and
+  `input.current_source` return live `InputSource` handles (keyed by type and id), moved by the
+  existing `gnoblin.input.source-changed` and `sources-changed` events (`changed`, `selected`,
+  `closed`). `Process` has `alive` and `on("closed")`; the end signal is `closed`, not `exited`,
+  so every object ends the same way, and `gnoblin.process.exited` stays the wire event. No wire
+  change.
 
 ## Decisions
 

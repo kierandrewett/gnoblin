@@ -22,6 +22,14 @@
       objects. A `Launch` has no link to a window or `Process`: the compositor does not record
       which window answered a launch.
     - `gnoblinctl lua` returns `Shortcut` and `Launch` records with the same methods.
+- `gnoblin.input.select_source(type, id)` is gone from Lua: `InputSource:select()` replaces it.
+  `input.sources()` and `input.current_source()` return `InputSource` objects, one for each type
+  and ID, with `alive`, `on` and `watch` and the signals `changed`, `selected` and `closed`. The
+  events `gnoblin.input.source-changed` and `gnoblin.input.sources-changed` move them. The wire
+  method `input.select` stays; no API bump.
+- A `Process` has `alive` and `on("closed", fn)`. The end signal is `closed`, as on Window,
+  Workspace and Output, so code can treat every object alike; `status`, `exit_code` and `signal`
+  say how it ended, and `wait()` and `kill()` stay.
 
 ### Added
 

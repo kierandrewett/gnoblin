@@ -280,7 +280,7 @@ int main(void) {
 
     const char* menu_runtime_source =
         "local g=require('gnoblin')\n"
-        "assert(g.input.select==nil and type(g.input.select_source)=='function')\n"
+        "assert(g.input.select==nil and g.input.select_source==nil)\n"
         "local menu_calls=0\n"
         "g.on('gnoblin.window.menu-requested', function(event)\n"
         "  assert(event._menu_context_handle==nil and event._menu_context_expires_at_us==nil)\n"

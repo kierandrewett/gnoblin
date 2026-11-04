@@ -31,6 +31,7 @@ static const char* const shortcut_signals[] = {"activated",   "deactivated",   "
                                                "session_key", "session_ended", "closed",
                                                NULL};
 static const char* const launch_signals[] = {"changed", "started", "timed_out", "closed", NULL};
+static const char* const input_source_signals[] = {"changed", "selected", "closed", NULL};
 static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
 static const char* const none[] = {NULL};
 
@@ -41,6 +42,7 @@ static const LuaObjectKind object_kinds[] = {
     {"Output", changed_closed, none, NULL},
     {"Shortcut", shortcut_signals, none, NULL},
     {"Launch", launch_signals, none, "token", TRUE},
+    {"InputSource", input_source_signals, none, NULL, FALSE},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
@@ -137,9 +139,21 @@ static gboolean push_handle_key(lua_State* state, int index, const char* kind) {
         lua_getfield(state, backing, type && type->key ? type->key : "id") == LUA_TSTRING
             ? lua_tostring(state, -1)
             : NULL;
-    if (!id) {
+    /* Two input sources of different types can share an id. */
+    gboolean typed = g_str_equal(kind, "InputSource");
+    const char* source_type = NULL;
+    if (id && typed)
+        source_type =
+            lua_getfield(state, backing, "type") == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+    if (!id || (typed && !source_type)) {
         lua_settop(state, base);
         return FALSE;
+    }
+    if (typed) {
+        lua_pushfstring(state, "%s:%s:%s", kind, source_type, id);
+        lua_replace(state, base + 1);
+        lua_settop(state, base + 1);
+        return TRUE;
     }
     lua_pushfstring(state, "%s:%s", kind, id);
     lua_replace(state, base + 1);
@@ -629,10 +643,130 @@ static void collect_field_changes(lua_State* state, int before, int handle, GPtr
     lua_pop(state, 1);
 }
 
+/* The handles of every live input source: pushes {handles, copies, keys}, three tables holding
+ * each handle, a copy of its fields before the event, and its registry key. Returns the count. */
+static guint push_input_source_state(lua_State* state) {
+    int handles_table = push_registry_table(state, LUA_OBJECT_HANDLES_KEY, TRUE);
+    lua_newtable(state);
+    int handles = lua_absindex(state, -1);
+    lua_newtable(state);
+    int copies = lua_absindex(state, -1);
+    lua_newtable(state);
+    int keys = lua_absindex(state, -1);
+    guint count = 0;
+    lua_pushnil(state);
+    while (lua_next(state, handles_table)) {
+        const char* key = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
+        if (key && g_str_has_prefix(key, "InputSource:") && !handle_closed(state, -1)) {
+            count++;
+            lua_pushvalue(state, -1);
+            lua_rawseti(state, handles, count);
+            push_field_copy(state, -1);
+            lua_rawseti(state, copies, count);
+            lua_pushstring(state, key);
+            lua_rawseti(state, keys, count);
+        }
+        lua_pop(state, 1);
+    }
+    lua_remove(state, handles_table);
+    return count;
+}
+
+/* The source list and the selected source move InputSource handles: a source that left the list
+ * ends, one whose fields changed raises "changed", and the one that became current raises
+ * "selected". Returns TRUE when a callback ran. */
+static gboolean dispatch_input_source_event(lua_State* state, const char* event,
+                                            GVariant* payload) {
+    gboolean listed = g_str_equal(event, "gnoblin.input.sources-changed");
+    if (!listed && !g_str_equal(event, "gnoblin.input.source-changed"))
+        return FALSE;
+    int base = lua_gettop(state);
+    guint count = push_input_source_state(state);
+    int handles = base + 1, copies = base + 2, keys = base + 3;
+    g_autoptr(GHashTable) seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_autofree char* current_key = NULL;
+    if (listed) {
+        g_autoptr(GVariant) sources = g_variant_lookup_value(payload, "sources", NULL);
+        if (sources) {
+            push_variant(state, sources);
+            push_readonly_copy(state, -1);
+            lua_pop(state, 2);
+        }
+        /* The names of the sources the list holds. */
+        for (gsize i = 0; sources && i < g_variant_n_children(sources); i++) {
+            g_autoptr(GVariant) wrapped = g_variant_get_child_value(sources, i);
+            g_autoptr(GVariant) record = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
+                                             ? g_variant_get_variant(wrapped)
+                                             : g_variant_ref(wrapped);
+            const char* type = NULL;
+            const char* id = NULL;
+            if (g_variant_lookup(record, "type", "&s", &type) &&
+                g_variant_lookup(record, "id", "&s", &id))
+                g_hash_table_add(seen, g_strdup_printf("InputSource:%s:%s", type, id));
+        }
+    } else {
+        g_autoptr(GVariant) source =
+            g_variant_lookup_value(payload, "source", G_VARIANT_TYPE_VARDICT);
+        if (source) {
+            push_variant(state, source);
+            push_readonly_copy(state, -1);
+            if (push_handle_key(state, -1, "InputSource")) {
+                current_key = g_strdup(lua_tostring(state, -1));
+                lua_pop(state, 1);
+            }
+            lua_pop(state, 2);
+        }
+    }
+    guint ran = 0;
+    for (guint i = 1; i <= count; i++) {
+        lua_rawgeti(state, keys, i);
+        const char* key = lua_tostring(state, -1);
+        gboolean gone = listed && !g_hash_table_contains(seen, key);
+        gboolean is_current = current_key && g_str_equal(key, current_key);
+        lua_pop(state, 1);
+        lua_rawgeti(state, handles, i);
+        int handle = lua_absindex(state, -1);
+        if (gone) {
+            lua_object_end(state, "InputSource", handle, NULL);
+            lua_pop(state, 1);
+            continue;
+        }
+        if (!listed && !is_current) {
+            /* Only one source is current. */
+            lua_getiuservalue(state, handle, 1);
+            lua_pushboolean(state, FALSE);
+            lua_setfield(state, -2, "current");
+            lua_pop(state, 1);
+        }
+        lua_rawgeti(state, copies, i);
+        g_autoptr(GPtrArray) names = g_ptr_array_new_with_free_func(g_free);
+        collect_field_changes(state, -1, handle, names);
+        lua_pop(state, 1);
+        if (names->len) {
+            gboolean selected = FALSE;
+            for (guint name = 0; name < names->len; name++)
+                selected |= g_str_equal(g_ptr_array_index(names, name), "current");
+            ran += raise_signals(state, handle, "InputSource", names, "changed");
+            lua_getiuservalue(state, handle, 1);
+            lua_getfield(state, -1, "current");
+            selected = selected && lua_type(state, -1) == LUA_TBOOLEAN && lua_toboolean(state, -1);
+            lua_pop(state, 2);
+            if (selected) {
+                g_autoptr(GPtrArray) no_names = g_ptr_array_new();
+                ran += raise_signals(state, handle, "InputSource", no_names, "selected");
+            }
+        }
+        lua_pop(state, 1);
+    }
+    lua_settop(state, base);
+    return ran > 0;
+}
+
 /* Update the live object an event names and run its signals and watches. Returns TRUE when a
  * callback ran. */
 gboolean lua_object_dispatch_event(lua_State* state, const char* event, GVariant* payload) {
     gboolean ran_any = dispatch_signal_event(state, event, payload);
+    ran_any |= dispatch_input_source_event(state, event, payload);
     for (gsize i = 0; i < G_N_ELEMENTS(object_events); i++) {
         if (!g_str_equal(object_events[i].event, event))
             continue;

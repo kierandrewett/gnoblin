@@ -138,7 +138,34 @@ static gboolean lua_cli_input_device_valid(JsonObject* object) {
     return TRUE;
 }
 
-void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revision,
+/* InputSource:select(): switch to this source and return the confirmed source. */
+static int lua_cli_input_source_select(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    luaL_checkudata(state, 1, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "source:select takes no arguments");
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "type");
+    lua_getfield(state, -2, "id");
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "type", lua_tostring(state, -2));
+    json_object_set_string_member(arguments, "id", lua_tostring(state, -1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "input.select", arguments, &call_error);
+    if (!result)
+        return luaL_error(state, "input.select failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "input.select returned an invalid InputSource");
+    JsonObject* source = json_node_get_object(result);
+    gint64 revision = json_object_get_int_member_with_default(source, "revision", -1);
+    if (revision < 0)
+        return luaL_error(state, "input.select returned an invalid InputSource");
+    lua_cli_push_input_record(state, cli, source, revision, FALSE);
+    return 1;
+}
+
+void lua_cli_push_input_record(lua_State* state, Cli* cli, JsonObject* object, gint64 revision,
                                gboolean is_device) {
     gboolean valid =
         is_device ? lua_cli_input_device_valid(object) : lua_cli_input_source_valid(object);
@@ -165,6 +192,11 @@ void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revi
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
+    if (!is_device) {
+        lua_pushlightuserdata(state, cli);
+        lua_pushcclosure(state, lua_cli_input_source_select, 1);
+        lua_setfield(state, -2, "select");
+    }
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, is_device ? GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE
                                        : GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);

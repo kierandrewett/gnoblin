@@ -2436,10 +2436,10 @@ def main() -> int:
             "assert(sources[1].revision == 5 and not pcall(function() sources[1].current = false end))\n"
             "local current = gnoblin.input.current_source()\n"
             'assert(current.id == "us" and current.current and current.revision == 5)\n'
-            'local selected = gnoblin.input.select_source("xkb", "us")\n'
+            "local selected = current:select()\n"
             'assert(selected.id == "us" and selected.current and selected.revision == 5)\n'
-            'assert(not pcall(function() gnoblin.input.select_source("xkb", "us", "extra") end))\n'
-            'assert(not pcall(function() gnoblin.input.select_source("bad", "us") end))\n'
+            "assert(not pcall(function() current:select(true) end))\n"
+            "assert(not pcall(function() return gnoblin.input.select_source end))\n"
             "assert(not pcall(function() return gnoblin.input.list end))\n"
             "assert(not pcall(function() return gnoblin.input.current end))\n"
             "assert(not pcall(function() return gnoblin.monitor.list end))\n"

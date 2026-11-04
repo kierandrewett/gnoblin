@@ -260,11 +260,6 @@ int lua_api_index(lua_State* state) {
             lua_pushcclosure(state, lua_cli_input_snapshot, 2);
             return 1;
         }
-        if (g_str_equal(name, "select_source")) {
-            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-            lua_pushcclosure(state, lua_cli_input_select_source, 1);
-            return 1;
-        }
         if (g_str_equal(name, "set_orientation_lock")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushcclosure(state, lua_cli_input_set_orientation_lock, 1);
@@ -326,6 +321,7 @@ int lua_api_index(lua_State* state) {
         {"animations.play", "preview:play"},
         {"animations.pause", "preview:pause"},
         {"animations.stop", "preview:stop"},
+        {"input.select_source", "source:select"},
         {"launches.snapshot", "gnoblin.launches.list"},
         {"launches.end", "launch:finish"},
         {"launches.finish", "launch:finish"},

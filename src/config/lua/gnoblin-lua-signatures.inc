@@ -158,7 +158,8 @@ static const ApiMember api_fields_InputHandlerResult[] = {
     {"action", "\"forward\"|\"consume\"", FALSE, "Whether to pass the event onward or consume it."},
 };
 static const ApiMember api_fields_InputSource[] = {
-    {"id", "string", FALSE, "Source ID used by select_source."},
+    {"id", "string", FALSE, "Source ID."},
+    {"alive", "boolean", FALSE, "False once the source has left the configured list."},
     {"type", "\"xkb\"|\"ibus\"", FALSE, "Source implementation."},
     {"short_name", "string", FALSE, "Short display name."},
     {"name", "string", FALSE, "Display name."},
@@ -286,6 +287,7 @@ static const ApiMember api_fields_PrivacyStopResult[] = {
 };
 static const ApiMember api_fields_Process[] = {
     {"id", "integer", FALSE, "Identifier for this process within the session."},
+    {"alive", "boolean", FALSE, "True from spawn until the process has exited or failed to start."},
     {"argv", "string[]", FALSE, "The command line it was started with."},
     {"pid", "integer|nil", FALSE, "Process ID, once the process has started."},
     {"status", "\"starting\"|\"running\"|\"exited\"|\"failed\"", FALSE, "\"failed\" means it could not be started."},
@@ -613,7 +615,7 @@ static const ApiClass api_classes[] = {
     {"InputEvent", "", api_fields_InputEvent, 6},
     {"InputHandlerMatch", "", api_fields_InputHandlerMatch, 7},
     {"InputHandlerResult", "", api_fields_InputHandlerResult, 1},
-    {"InputSource", "", api_fields_InputSource, 6},
+    {"InputSource", "An XKB layout or IBus engine. The same object stands for one source (its type and id) for as long as the source is listed: every read returns it and the compositor's events update it.", api_fields_InputSource, 7},
     {"Launch", "A launch the compositor is watching for. It is the same object for as long as the launch exists: every read of one token returns it, and the compositor's changes update it. It is alive while state is \"pending\". It ends when its window appears (\"started\"), when the deadline passes (\"timed_out\"), or when it is finished (\"ended\"). The compositor does not record which window or Process answered a launch, so a Launch has no link to either; match the window by its app_id.", api_fields_Launch, 7},
     {"LaunchBeginOptions", "", api_fields_LaunchBeginOptions, 1},
     {"LaunchEndResult", "", api_fields_LaunchEndResult, 2},
@@ -632,7 +634,7 @@ static const ApiClass api_classes[] = {
     {"PrivacyAvailability", "", api_fields_PrivacyAvailability, 5},
     {"PrivacyState", "", api_fields_PrivacyState, 7},
     {"PrivacyStopResult", "", api_fields_PrivacyStopResult, 1},
-    {"Process", "A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.", api_fields_Process, 6},
+    {"Process", "A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.", api_fields_Process, 7},
     {"ProcessExit", "How a process ended, the value of Process:wait().", api_fields_ProcessExit, 7},
     {"ProcessOptions", "Options for gnoblin.process.spawn. Every field is optional.", api_fields_ProcessOptions, 7},
     {"Renderer", "", api_fields_Renderer, 4},
@@ -771,79 +773,75 @@ static const ApiMember api_params_45[] = {
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
 };
 static const ApiMember api_params_47[] = {
-    {"type", "\"xkb\"|\"ibus\"", FALSE, "Source implementation."},
-    {"id", "string", FALSE, "Non-empty source ID."},
-};
-static const ApiMember api_params_48[] = {
     {"value", "boolean|\"inherit\"", FALSE, "True locks orientation; false unlocks it; \"inherit\" clears the runtime override."},
 };
-static const ApiMember api_params_50[] = {
+static const ApiMember api_params_49[] = {
     {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
 };
-static const ApiMember api_params_51[] = {
+static const ApiMember api_params_50[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
     {"application", "string", FALSE, "Non-empty application identifier, at most 512 characters."},
     {"options", "LaunchBeginOptions", TRUE, ""},
 };
-static const ApiMember api_params_53[] = {
+static const ApiMember api_params_52[] = {
     {"namespace", "string", FALSE, "UTF-8 namespace from 1 to 128 bytes."},
 };
-static const ApiMember api_params_54[] = {
+static const ApiMember api_params_53[] = {
     {"filter", "LayerFilter", TRUE, ""},
 };
-static const ApiMember api_params_55[] = {
+static const ApiMember api_params_54[] = {
     {"a", "number", FALSE, ""},
     {"b", "number", FALSE, ""},
     {"t", "number", FALSE, ""},
 };
-static const ApiMember api_params_56[] = {
+static const ApiMember api_params_55[] = {
     {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories."},
 };
-static const ApiMember api_params_57[] = {
+static const ApiMember api_params_56[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
-static const ApiMember api_params_58[] = {
+static const ApiMember api_params_57[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
 };
-static const ApiMember api_params_59[] = {
+static const ApiMember api_params_58[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
-static const ApiMember api_params_66[] = {
+static const ApiMember api_params_65[] = {
     {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
     {"options", "ProcessOptions", TRUE, ""},
 };
-static const ApiMember api_params_77[] = {
+static const ApiMember api_params_76[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
 };
-static const ApiMember api_params_78[] = {
+static const ApiMember api_params_77[] = {
     {"id", "string", FALSE, "Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens."},
     {"accelerator", "string", FALSE, "Valid accelerator. Bare \"Super\" requires capture_input=true, trigger=\"release\", and hold=\"none\"."},
     {"options", "ShortcutBindOptions", TRUE, ""},
 };
-static const ApiMember api_params_79[] = {
+static const ApiMember api_params_78[] = {
     {"options", "ShortcutCaptureOptions", TRUE, ""},
 };
-static const ApiMember api_params_83[] = {
+static const ApiMember api_params_82[] = {
     {"seconds", "number", FALSE, "From 0 to 86400."},
 };
-static const ApiMember api_params_87[] = {
+static const ApiMember api_params_86[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
-static const ApiMember api_params_88[] = {
+static const ApiMember api_params_87[] = {
     {"id", "string", FALSE, "Stable window ID."},
 };
-static const ApiMember api_params_90[] = {
+static const ApiMember api_params_89[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_91[] = {
+static const ApiMember api_params_90[] = {
     {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
 };
-static const ApiMember api_params_93[] = {
+static const ApiMember api_params_92[] = {
     {"id", "string", FALSE, "Stable workspace ID."},
 };
-static const ApiMember api_params_94[] = {
+static const ApiMember api_params_93[] = {
     {"name", "string", FALSE, "Nonempty UTF-8 name of at most 80 characters."},
     {"options", "WorkspaceCreateOptions", TRUE, ""},
 };
@@ -896,26 +894,25 @@ static const ApiFunction api_functions[] = {
     {"input.devices", "Return available input devices.", NULL, 0, "InputDevice[]"},
     {"input.on", "Register a Lua policy callback for matching input events.", api_params_45, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
-    {"input.select_source", "Select an XKB layout or IBus engine.", api_params_47, 2, "Operation<InputSource>"},
-    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_48, 1, "Operation<OrientationLock>"},
+    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_47, 1, "Operation<OrientationLock>"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
-    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_50, 1, "Operation<TextTarget>"},
-    {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_51, 3, "Launch"},
+    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_49, 1, "Operation<TextTarget>"},
+    {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_50, 3, "Launch"},
     {"launches.list", "Return the current launch records, each the Launch object for its token.", NULL, 0, "Launch[]"},
-    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_53, 1, "LayerAnimationPolicy"},
-    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_54, 1, "LayerSurface[]"},
-    {"lerp", "Return a + (b - a) * t.", api_params_55, 3, "number"},
-    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_56, 1, "boolean"},
-    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_57, 2, "EventSubscription"},
-    {"once", "Register a callback that is removed after its first event.", api_params_58, 2, "EventSubscription"},
-    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_59, 1, "Output|nil"},
+    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_52, 1, "LayerAnimationPolicy"},
+    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_53, 1, "LayerSurface[]"},
+    {"lerp", "Return a + (b - a) * t.", api_params_54, 3, "number"},
+    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_55, 1, "boolean"},
+    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_56, 2, "EventSubscription"},
+    {"once", "Register a callback that is removed after its first event.", api_params_57, 2, "EventSubscription"},
+    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_58, 1, "Output|nil"},
     {"outputs.list", "Return all current outputs. The list is empty until the first output snapshot is published.", NULL, 0, "Output[]"},
     {"outputs.primary", "Return the primary output, or nil when there is none.", NULL, 0, "Output|nil"},
     {"outputs.renderer", "Return the compositor renderer, or nil until the first output snapshot is published.", NULL, 0, "Renderer|nil"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_66, 2, "Process"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_65, 2, "Process"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.activity", "Read the session idle state and elapsed idle time.", NULL, 0, "SessionActivity"},
@@ -926,24 +923,24 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Request that the machine reboot through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Request that the session suspend through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
-    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_77, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for; if the compositor refuses the binding (the accelerator is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_78, 3, "Shortcut"},
-    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_79, 1, "Operation<ShortcutCaptureResult>"},
+    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_76, 1, "ShortcutAction[]"},
+    {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for; if the compositor refuses the binding (the accelerator is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_77, 3, "Shortcut"},
+    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_78, 1, "Operation<ShortcutCaptureResult>"},
     {"shortcuts.configured", "List the shortcuts that the configuration declares. They are read-only records, not objects: gnoblin.configure.shortcuts changes them.", NULL, 0, "ShortcutState[]"},
     {"shortcuts.list", "List the shortcuts this runtime has bound and not unbound, in ID order. Each is the object that bind returned.", NULL, 0, "Shortcut[]"},
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
-    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_83, 1, "Operation<nil>"},
+    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_82, 1, "Operation<nil>"},
     {"timers.now", "Seconds on a monotonic clock. Only differences between two readings are meaningful.", NULL, 0, "number"},
     {"tween", "Create an empty tween.", NULL, 0, "Tween"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_87, 1, ""},
-    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_88, 1, "Window|nil"},
+    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_86, 1, ""},
+    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_87, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_90, 1, "Window[]"},
-    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_91, 1, "Operation<SnapContext>"},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_89, 1, "Window[]"},
+    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_90, 1, "Operation<SnapContext>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_93, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_94, 2, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_92, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_93, 2, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},

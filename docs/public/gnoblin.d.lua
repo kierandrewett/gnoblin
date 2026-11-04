@@ -425,8 +425,11 @@ function gnoblin.focus.policy() end
 ---@field capabilities string[] Supported input capabilities.
 ---@field revision integer Input snapshot revision.
 
+---An XKB layout or IBus engine. The same object stands for one source (its type and id) for as
+---long as the source is listed: every read returns it and the compositor's events update it.
 ---@class InputSource
----@field id string Source ID used by select_source.
+---@field id string Source ID.
+---@field alive boolean False once the source has left the configured list.
 ---@field type "xkb"|"ibus" Source implementation.
 ---@field short_name string Short display name.
 ---@field name string Display name.
@@ -485,11 +488,25 @@ function gnoblin.input.sources() end
 ---@return InputSource|nil
 function gnoblin.input.current_source() end
 
----Select an XKB layout or IBus engine.
----@param type "xkb"|"ibus" Source implementation.
----@param id string Non-empty source ID.
+---Select this source: the compositor switches to this XKB layout or IBus engine. The Operation
+---succeeds with this source once the switch is confirmed.
 ---@return Operation<InputSource>
-function gnoblin.input.select_source(type, id) end
+function InputSource:select() end
+
+---Call fn(source, ...) on a signal of this source: "changed" (with the list of changed fields),
+---"selected" when it becomes the current source, or "closed" when it leaves the configured list.
+---Listening ends after "closed". The compositor reports the current source with
+---gnoblin.input.source-changed and the list with gnoblin.input.sources-changed.
+---@param signal "changed"|"selected"|"closed"
+---@param fn fun(source: InputSource, changed?: string[])
+---@return {unsubscribe: fun()}
+function InputSource:on(signal, fn) end
+
+---Call fn(source, value, old) when one field of this source changes, such as "current".
+---@param property string A field of InputSource.
+---@param fn fun(source: InputSource, value: any, old: any)
+---@return {unsubscribe: fun()}
+function InputSource:watch(property, fn) end
 
 ---Return the current orientation lock state.
 ---@return OrientationLock
@@ -715,6 +732,7 @@ function Output:watch(property, fn) end
 ---A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.
 ---@class Process
 ---@field id integer Identifier for this process within the session.
+---@field alive boolean True from spawn until the process has exited or failed to start.
 ---@field argv string[] The command line it was started with.
 ---@field pid integer|nil Process ID, once the process has started.
 ---@field status "starting"|"running"|"exited"|"failed" "failed" means it could not be started.
@@ -742,6 +760,16 @@ function gnoblin.process.spawn(argv, options) end
 ---and fails when the process could not be started. Every call returns the same Operation.
 ---@return Operation<ProcessExit>
 function Process:wait() end
+
+---Call fn(process) when the process has ended, however it ended: it exited, was killed, or
+---could not be started. The signal is called "closed", as on Window, Workspace and Output, so
+---code can treat every object alike; status, exit_code and signal say how it ended, and wait()
+---has the captured output. Listening ends after "closed", and on fails once the process has
+---ended.
+---@param signal "closed"
+---@param fn fun(process: Process)
+---@return {unsubscribe: fun()}
+function Process:on(signal, fn) end
 
 ---Send a signal to the process group.
 ---@param signal? "term"|"kill"|"int"|"hup"|"usr1"|"usr2"|"stop"|"cont" The default is "term".

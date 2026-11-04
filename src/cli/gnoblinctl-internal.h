@@ -217,7 +217,7 @@ void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* objec
 int lua_cli_output_tostring(lua_State* state);
 int lua_cli_layer_surface_tostring(lua_State* state);
 void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object);
-void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revision,
+void lua_cli_push_input_record(lua_State* state, Cli* cli, JsonObject* object, gint64 revision,
                                gboolean is_device);
 int lua_cli_shortcuts_list(lua_State* state);
 int lua_cli_shortcuts_configured(lua_State* state);
@@ -252,7 +252,6 @@ int lua_cli_config_path(lua_State* state);
 int lua_cli_config_default(lua_State* state);
 int lua_cli_input_snapshot(lua_State* state);
 int lua_cli_appearance_color_scheme(lua_State* state);
-int lua_cli_input_select_source(lua_State* state);
 int lua_cli_input_set_orientation_lock(lua_State* state);
 int lua_cli_layers_list(lua_State* state);
 void register_lua_cli_layer_surface_record(lua_State* state);

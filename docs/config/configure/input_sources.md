@@ -77,9 +77,8 @@ the next or previous configured source. This avoids two clients claiming the
 same global shortcut.
 
 Without Bingux, select a source with `gnoblinctl input select xkb us` or bind a
-callback in your own config with `keybindings.keyboard`. The callback can read
-`gnoblin.input.sources()` and select a source with
-`gnoblin.input.select_source("xkb", "gb")`. See the
+callback in your own config with `keybindings.keyboard`. The callback finds the
+source in `gnoblin.input.sources()` and calls its `select()` method. See the
 [keyboard shortcut guide](/guides/shortcuts) for callback syntax.
 
 ## Share or keep sources per window

@@ -46,6 +46,7 @@ When `timeout` passes, Gnoblin sends SIGTERM to the process group and SIGKILL tw
 | Field       | Value                                                                         |
 | ----------- | ----------------------------------------------------------------------------- |
 | `id`        | Identifier for this process in the session.                                   |
+| `alive`     | True from spawn until the process has exited or failed to start.              |
 | `argv`      | The command line it was started with.                                         |
 | `pid`       | The process ID once it has started, otherwise `nil`.                          |
 | `status`    | `"starting"`, `"running"`, `"exited"`, or `"failed"` when it could not start. |
@@ -53,6 +54,19 @@ When `timeout` passes, Gnoblin sends SIGTERM to the process group and SIGKILL tw
 | `signal`    | The signal that ended it, such as `"term"` or `"kill"`, after it was killed.  |
 
 The fields are read-only and change as the process runs.
+
+`process:on("closed", fn)` calls `fn(process)` once the process has ended, however
+it ended: it exited, was killed, or could not be started.
+
+- The end signal is called `closed`, as on `Window`, `Workspace` and `Output`, so
+  code can treat every object alike.
+- The fields above say how it ended, and `wait()` has the captured output.
+- `on` fails once the process has ended, and listening ends after `closed`.
+
+```lua
+local job = gnoblin.process.spawn({"sleep", "1"})
+job:on("closed", function(p) print(p.status, p.exit_code) end)
+```
 
 `process:wait()` returns an Operation that succeeds when the process ends, whatever its exit status. Every call returns
 the same Operation. Its value has these fields:

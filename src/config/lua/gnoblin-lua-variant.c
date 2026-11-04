@@ -267,6 +267,11 @@ static int lua_record_method(lua_State* state) {
     int arguments = lua_absindex(state, -1);
     lua_pushstring(state, id);
     lua_setfield(state, arguments, key_field);
+    if (g_str_equal(method, "input.select")) {
+        /* An input source is named by its type and id. */
+        lua_getfield(state, backing, "type");
+        lua_setfield(state, arguments, "type");
+    }
     lua_remove(state, -2); /* id */
     lua_remove(state, -2); /* backing */
     arguments = lua_gettop(state);
@@ -343,7 +348,7 @@ static int lua_record_method(lua_State* state) {
         g_str_equal(method, "window.restore_or_minimize") ||
         g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
         g_str_equal(method, "workspace.switch") || g_str_equal(method, "shortcut.unbind") ||
-        g_str_equal(method, "launch.end")) {
+        g_str_equal(method, "launch.end") || g_str_equal(method, "input.select")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "window.set_minimized")) {
@@ -537,16 +542,25 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
     is_output &= lua_istable(state, -1) ||
                  luaL_testudata(state, -1, LUA_READONLY_SNAPSHOT_METATABLE) != NULL;
     lua_pop(state, 1);
-    /* A shortcut binding has an accelerator and a hold. */
+    /* A shortcut binding has an accelerator and a hold; an input source has a type and whether it
+     * is current. */
     gboolean is_shortcut = backing_field_type(state, backing, "accelerator") == LUA_TSTRING &&
                            backing_field_type(state, backing, "hold") == LUA_TSTRING &&
                            backing_field_type(state, backing, "capture_input") == LUA_TBOOLEAN;
+    lua_getfield(state, backing, "type");
+    gboolean is_input_source = lua_type(state, -1) == LUA_TSTRING &&
+                               (g_str_equal(lua_tostring(state, -1), "xkb") ||
+                                g_str_equal(lua_tostring(state, -1), "ibus")) &&
+                               backing_field_type(state, backing, "name") == LUA_TSTRING &&
+                               backing_field_type(state, backing, "current") == LUA_TBOOLEAN;
+    lua_pop(state, 1);
     const char* kind = is_window              ? "Window"
                        : is_animation_preview ? "AnimationPreview"
                        : is_workspace         ? "Workspace"
                        : is_layer             ? "LayerSurface"
                        : is_output            ? "Output"
                        : is_shortcut          ? "Shortcut"
+                       : is_input_source      ? "InputSource"
                                               : NULL;
     if (kind)
         add_record_methods(state, method_table, kind);
@@ -763,8 +777,9 @@ void push_operation_result(lua_State* state, const char* method, GVariant* value
     }
     push_variant(state, value);
     /* These return the live object they started or changed. */
-    gboolean live_result =
-        g_str_equal(method, "shortcut.bind") || g_str_equal(method, "launch.begin");
+    gboolean live_result = g_str_equal(method, "shortcut.bind") ||
+                           g_str_equal(method, "launch.begin") ||
+                           g_str_equal(method, "input.select");
     if (!live_result &&
         (!g_str_has_prefix(method, "animation.") || !variant_is_animation_preview(value)))
         return;
