@@ -31,6 +31,8 @@ the runtime has seen. All live objects share these members:
 `on` and `watch` return a subscription, and so do `gnoblin.on`, `gnoblin.once`, `Request:on` and
 `gnoblin.input.on`. Call `subscription:unsubscribe()` to stop; calling it again does nothing.
 
+Select objects of one kind with [`gnoblin.find`](/shell-api/find), by field value or by a predicate function.
+
 `watch` accepts only a field that the class marks observable, which is one that changes while the object is alive.
 `id`, `alive`, `revision` and the fields that never move are refused with an error that lists the fields that work.
 

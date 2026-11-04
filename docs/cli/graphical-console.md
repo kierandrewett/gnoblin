@@ -51,28 +51,23 @@ control.
 
 ## Change settings
 
-Assign to `gnoblin.config` to change a setting in the running session:
-
-```lua
-gnoblin.config.compositor.debug = true
-```
-
-A setting the configuration has not declared is not in `gnoblin.config` yet, so assigning to it fails
-with "attempt to index a nil value". Use `gnoblin.configure` instead, which also covers keys you have
-not set:
+Call `gnoblin.configure` to change a setting in the running session:
 
 ```lua
 gnoblin.configure { window_management = { focus_mode = "sloppy" } }
 ```
 
-The change applies at once and lasts until the configuration is reloaded, so it does not edit your
-config files. A value the configuration does not accept is rejected with the reason, and the
-settings stay as they were.
+The call returns an `Operation`. It succeeds when the compositor commits the change. The change applies at once and
+lasts until the configuration is reloaded, so it does not edit your config files. A value the configuration does not
+accept is rejected with the reason, and the settings stay as they were.
+
+Assigning to `gnoblin.config` raises an error that points to `gnoblin.configure`. Read the committed settings from
+`gnoblin.settings`. For a value that you want to take back, use `gnoblin.settings.override(path, value)`.
 
 Suggestions appear below the input as you type. Completion supports globals and dotted member
 names, such as `gnoblin.windows.`. It does not evaluate the input or call Lua getters.
 
-Each function in the list shows its signature, such as `(filter?: WindowFilter): Window[]`, and
+Each function in the list shows its signature, such as `(id: string): Window|nil`, and
 a panel below the list describes the highlighted one, including the keys of a table argument.
 
 Typing a call, for example `gnoblin.workspaces.create(`, shows that function's parameters under the

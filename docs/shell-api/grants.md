@@ -10,7 +10,7 @@ window, read the focused window for a snap, or type into the focused client.
 local switch = gnoblin.shortcuts.bind("switch-notes", "<Super>n")
 
 switch:on("activated", function(shortcut, event)
-    local notes = gnoblin.windows.list({app_id = "notes"})[1]
+    local notes = gnoblin.find("Window", {app_id = "notes"})[1]
     if not notes or not event.grant then
         return
     end

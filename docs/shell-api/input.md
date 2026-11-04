@@ -125,116 +125,11 @@ Handle local pointer, keyboard and gesture events with `gnoblin.input.on(match, 
 
 ## Insert text into the focused Wayland client
 
-Use `gnoblin.input.text_target(grant)` from a shortcut event callback to
-request a one-use text target. It returns an operation; on success, its value
-is an opaque `TextTarget`:
-
-```lua
-gnoblin.on("gnoblin.shortcut.activated", function(event)
-    if not event.grant then
-        return
-    end
-
-    gnoblin.input.text_target(event.grant):on_complete(function(target, err)
-        if err then
-            return
-        end
-        target:insert_text("😀")
-    end)
-end)
-```
-
-The `gnoblinctl lua` console can use the same capability inside an event
-callback. Save this as `insert-text.lua` and run it from a Gnoblin session:
-
-```lua
-gnoblin.once("gnoblin.shortcut.activated", function(event)
-    if not event.grant then
-        return
-    end
-
-    local target = gnoblin.input.text_target(event.grant)
-    target:insert_text("hello from Gnoblin")
-end)
-```
-
-```sh
-gnoblinctl lua insert-text.lua
-```
-
-The console returns completed results synchronously. It keeps the target token
-private and sends both requests over the connection that delivered the event.
-
-The compositor spends the `text_target` scope of the [grant](/shell-api/grants) when it
-handles the request. It creates a target only when the same Wayland surface and client
-still have keyboard focus and have an active text-input-v3 session.
-
-The target expires with the five-second deadline of the gesture. Locking the session, reloading
-the runtime, losing focus, or closing the runtime revokes it. X11 clients are
-not supported.
-
-`TextTarget.window_id` is the focused window's stable ID when the surface
-belongs to a window. `TextTarget.caret` is an optional rectangle in
-compositor logical coordinates. These fields are for shell presentation; only
-the opaque target authorizes insertion.
-
-Call `target:insert_text(text)` once. It returns an operation and consumes the
-target on the first attempt. Text must contain 1 to 256 bytes of valid UTF-8
-without NUL or control characters.
-
-Insertion succeeds only while the same surface, client, focus epoch, and active
-text input remain current. The session must be unlocked. Mutter commits the
-text through its focused input-method path.
-
-Modifiers held when the shortcut activated may remain held. Adding another
-modifier invalidates the target. Ctrl, Alt, Shift, Lock, Meta, and Hyper state
-prevents target creation. Gnoblin keeps at most 128 active text targets per
-compositor; creation fails while the limit is full.
+See [text insertion](/shell-api/text-insertion).
 
 ## Pointer and keyboard snapping
 
-Lua pointer callbacks receive a read-only `event.drag` record on the started
-and updated events. It contains window and drag IDs, settings revision, pointer
-coordinates, modifiers, monitor and work-area rectangles, the window frame,
-and maximized state.
-
-Call `event.drag:offer_targets(targets)` during the callback. An offer can
-contain 1 to 128 targets. Each target has:
-
-- a unique `id`;
-- pointer `hit` and destination `frame` rectangles;
-- optional `maximize`, `required_modifiers`, and `forbidden_modifiers` fields.
-
-Rectangles use integer logical coordinates and `{x, y, width, height}` fields.
-Both must fit in the current work area. Modifier arrays accept only `control`,
-which cannot be both required and forbidden.
-
-On release, Mutter checks the last accepted offer against the actual pointer
-and modifiers. A match applies its frame; otherwise Mutter completes the
-normal move or tile-preview behavior. The shell owns snap guides and other
-presentation.
-
-Drag records expire on release, lock, config reload, window loss, or compositor
-teardown. An old runtime cannot replace an offer after reload.
-
-Socket clients can offer pointer snap targets through the compositor bridge.
-Lua callbacks use `event.drag:offer_targets()` as described above.
-
-### Keyboard snapping
-
-For keyboard-selected layouts, call `gnoblin.windows.snap_context(context)` in
-a trusted shortcut callback. It consumes the one-use focus context and returns
-an `Operation<SnapContext>` for the focused window; callers cannot provide a
-window ID.
-
-Commit once with a monitor ID and frame rectangle. Gnoblin checks the window,
-monitor, lock state, runtime generation, and work-area bounds again. The
-operation resolves to `{window_id, monitor_id, committed = true}`. The context
-expires with its source focus context and is revoked by lock or config reload.
-
-The context is available only in a trusted shortcut callback. It expires
-after five seconds and is revoked by session lock or config reload. See the
-[compositor bridge](/bridge/) for the socket contract.
+See [window snapping](/shell-api/window-snapping).
 
 ## Tablet-pad help
 
