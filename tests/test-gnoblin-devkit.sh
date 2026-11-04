@@ -434,6 +434,37 @@ gnoblin.configure {
 }
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-cleared.txt"
+# A reload normalises the committed input document again, so a string list it already holds as
+# "as" must pass. Before, this reload failed with "input.keyboard.xkb-options: invalid value".
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    input = {
+        keyboard = {
+            xkb_options = {"caps:escape"},
+        },
+    },
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/xkb-options-set.txt"
+gnoblinctl --json config show > "$XDG_RUNTIME_DIR/xkb-options-show.json"
+grep -Fq 'caps:escape' "$XDG_RUNTIME_DIR/xkb-options-show.json"
+printf 'INPUT:xkb-options-reload\n'
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/xkb-options-cleared.txt"
 cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
 assert(#gnoblin.input.sources() == 0)
 print("INPUT_SOURCE:cleared-with-lua-config")
@@ -957,6 +988,7 @@ require_output 'INPUT_SOURCE:xkb-to-ibus'
 require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
 require_output 'INPUT_SOURCE:cleared-with-lua-config'
+require_output 'INPUT:xkb-options-reload'
 require_output 'CONFIG_RELOAD:stable'
 require_output 'XWAYLAND:xsettings-live-scaling-selection-loss'
 require_output 'LUA_API:runtime-status'

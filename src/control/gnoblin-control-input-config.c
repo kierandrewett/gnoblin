@@ -913,6 +913,11 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value,
         }
         return g_variant_ref_sink(g_variant_new_strv((const char* const*)strings, -1));
     }
+    /* A reload normalises the document again: it holds the "as" that the first normalisation made.
+     * The second pass must give the same value. Before, it refused the value and a reload failed
+     * with "input.keyboard.xkb-options: invalid value". */
+    if (field->kind == INPUT_STRINGS && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING_ARRAY))
+        return g_variant_ref_sink(g_variant_ref(value));
     return NULL;
 }
 

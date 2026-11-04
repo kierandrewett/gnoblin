@@ -244,6 +244,10 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
 
 ### Fixed
 
+- `gnoblinctl config reload` accepted `input.keyboard.xkb_options = {"caps:escape"}` in the first
+  load but refused it on reload with `input.keyboard.xkb-options: invalid value`, because the
+  second normalisation of the input document read only the unnormalised string list. The same code
+  is on `main`. A reload now keeps the option.
 - The portal backend now destroys and releases each ScreenCast consent dialog
   and its hidden parent window when the session ends. Before, the dialog's
   widget tree stayed alive after every screen cast.
