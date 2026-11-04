@@ -172,3 +172,6 @@
 05-window-drag/0007-apply-drag-work-area-constraint.patch
 28-xwayland/0006-fix-xdnd-atom-names.patch
 28-xwayland/0007-keep-session-when-xwayland-exits.patch
+11-window-frames/0007-frame-x11-windows-from-the-compositor.patch
+11-window-frames/0008-x11-net-frame-extents-from-the-compositor.patch
+11-window-frames/0009-sync-x11-window-actor-with-the-frame.patch

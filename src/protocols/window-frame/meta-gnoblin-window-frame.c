@@ -552,6 +552,20 @@ void meta_gnoblin_window_frame_x11_set_declared_extents(MetaWindow* window,
 }
 
 /**
+ * meta_gnoblin_window_frame_x11_get_declared_extents:
+ * @window: Xwayland window
+ * @extents: (out): what the client declared with _GTK_FRAME_EXTENTS
+ *
+ * Returns: whether the client declared any
+ */
+gboolean meta_gnoblin_window_frame_x11_get_declared_extents(MetaWindow* window,
+                                                            MetaFrameBorder* extents) {
+    FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
+    *extents = state && state->has_declared ? state->declared : (MetaFrameBorder){0};
+    return state && state->has_declared;
+}
+
+/**
  * meta_gnoblin_window_frame_x11_get_border:
  * @window: (nullable): Xwayland window, or %NULL for a window that is not managed yet
  * @border: (out): server border in logical pixels

@@ -1,0 +1,224 @@
+From acc9c643a41b584d87f6f77bfba11ffbeab9075e Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 18:30:59 +0000
+Subject: [PATCH] x11: tell clients the compositor's frame extents
+
+_NET_FRAME_EXTENTS is the border the compositor draws around the client, in
+protocol pixels, written before the first map and again when the border or
+the Xwayland scale changes. A _NET_REQUEST_FRAME_EXTENTS answers with the
+window's border, or the border of the last framed window when the client asks
+before it is managed. Gravity uses the same border as the visible frame.
+---
+ src/wayland/meta-window-xwayland.c |  2 +
+ src/x11/events.c                   | 25 ++++++++++
+ src/x11/window-x11-private.h       |  8 +++
+ src/x11/window-x11.c               | 79 +++++++++++++++---------------
+ 4 files changed, 74 insertions(+), 40 deletions(-)
+
+diff --git a/src/wayland/meta-window-xwayland.c b/src/wayland/meta-window-xwayland.c
+index d4a02f2be2..7b74a6ec55 100644
+--- a/src/wayland/meta-window-xwayland.c
++++ b/src/wayland/meta-window-xwayland.c
+@@ -554,6 +554,8 @@ meta_window_xwayland_viewport_changed (MetaWindow *window)
+   meta_window_x11_update_shape_region (window);
+   meta_window_x11_update_input_region (window);
+   meta_window_load_initial_properties (window);
++  /* The compositor's border is the same in stage pixels but not in protocol pixels. */
++  meta_window_x11_update_net_frame_extents (window, FALSE);
+   meta_window_frame_size_changed (window);
+   meta_window_update_visibility (window);
+ }
+diff --git a/src/x11/events.c b/src/x11/events.c
+index 64f7b75001..ed22443b2b 100644
+--- a/src/x11/events.c
++++ b/src/x11/events.c
+@@ -52,6 +52,7 @@
+ #include "x11/window-x11.h"
+ #include "x11/window-x11-private.h"
+ #include "x11/xprops.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-xwayland-private.h"
+ #include "wayland/meta-xwayland.h"
+@@ -994,8 +995,32 @@ process_request_frame_extents (MetaX11Display *x11_display,
+ {
+   /* The X window whose frame extents will be set. */
+   Window xwindow = event->xclient.window;
++  MetaWindow *window = meta_x11_display_lookup_x_window (x11_display, xwindow);
++  MetaFrameBorder border;
+   unsigned long data[4] = { 0, 0, 0, 0 };
+ 
++  /* A client that asks before it is mapped has no window and no rules yet:
++   * tell it the border the compositor gave the last window it framed. */
++  if (window && !window->override_redirect)
++    {
++      meta_window_x11_update_net_frame_extents (window, TRUE);
++      return;
++    }
++
++  if (!window && meta_gnoblin_window_frame_x11_get_border (NULL, &border))
++    {
++      MetaContext *context = meta_display_get_context (x11_display->display);
++      MetaWaylandCompositor *wayland_compositor =
++        meta_context_get_wayland_compositor (context);
++      int scale =
++        meta_xwayland_get_effective_scale (&wayland_compositor->xwayland_manager);
++
++      data[0] = border.left * scale;
++      data[1] = border.right * scale;
++      data[2] = border.top * scale;
++      data[3] = border.bottom * scale;
++    }
++
+   meta_topic (META_DEBUG_GEOMETRY,
+               "Setting _NET_FRAME_EXTENTS on unmanaged window 0x%lx",
+               xwindow);
+diff --git a/src/x11/window-x11-private.h b/src/x11/window-x11-private.h
+index cc246f42b9..913a4b765e 100644
+--- a/src/x11/window-x11-private.h
++++ b/src/x11/window-x11-private.h
+@@ -103,6 +103,11 @@ struct _MetaWindowX11Private
+   MetaFrame *frame;
+ 
+   gboolean has_custom_frame_extents;
++
++  /* Last _NET_FRAME_EXTENTS value written, in protocol pixels (left, right, top, bottom) */
++  gboolean net_frame_extents_set;
++  int net_frame_extents[4];
++
+   MetaSyncCounter sync_counter;
+ 
+   char *wm_client_machine;
+@@ -133,6 +138,9 @@ void meta_window_x11_group_leader_changed (MetaWindow *window);
+ 
+ gboolean meta_window_x11_is_ssd (MetaWindow *window);
+ 
++void meta_window_x11_update_net_frame_extents (MetaWindow *window,
++                                               gboolean    force);
++
+ META_EXPORT_TEST
+ gboolean meta_window_x11_get_frame_borders (MetaWindow       *window,
+                                             MetaFrameBorders *borders);
+diff --git a/src/x11/window-x11.c b/src/x11/window-x11.c
+index 15a60e49b1..88a86d33fd 100644
+--- a/src/x11/window-x11.c
++++ b/src/x11/window-x11.c
+@@ -408,7 +408,7 @@ adjust_for_gravity (MetaWindow   *window,
+   int bw;
+   int child_x, child_y;
+   int frame_width, frame_height;
+-  MetaFrameBorders borders;
++  MetaFrameBorder border;
+ 
+   /* We're computing position to pass to window_move, which is
+    * the position of the client window (META_GRAVITY_STATIC basically)
+@@ -426,12 +426,13 @@ adjust_for_gravity (MetaWindow   *window,
+   else
+     bw = 0;
+ 
+-  meta_frame_calc_borders (priv->frame, &borders);
++  /* The frame is the compositor's border around the client. */
++  meta_gnoblin_window_frame_x11_get_border (window, &border);
+ 
+-  child_x = borders.visible.left;
+-  child_y = borders.visible.top;
+-  frame_width = child_x + rect->width + borders.visible.right;
+-  frame_height = child_y + rect->height + borders.visible.bottom;
++  child_x = border.left;
++  child_y = border.top;
++  frame_width = child_x + rect->width + border.right;
++  frame_height = child_y + rect->height + border.bottom;
+ 
+   /* Calculate the the reference point, which is the corner of the
+    * outer window specified by the gravity. So, META_GRAVITY_NORTH_EAST
+@@ -1095,33 +1096,44 @@ meta_window_x11_grab_op_ended (MetaWindow *window,
+   META_WINDOW_CLASS (meta_window_x11_parent_class)->grab_op_ended (window, op);
+ }
+ 
+-static void
+-update_net_frame_extents (MetaWindow *window)
++/* _NET_FRAME_EXTENTS is the compositor's border around the client in protocol
++ * pixels. A window that never had a border does not get the property; once it
++ * had one, it keeps being told, even when the border goes away. */
++void
++meta_window_x11_update_net_frame_extents (MetaWindow *window,
++                                          gboolean    force)
+ {
+   MetaWindowX11 *window_x11 = META_WINDOW_X11 (window);
+   MetaWindowX11Private *priv = meta_window_x11_get_instance_private (window_x11);
+   MetaX11Display *x11_display = window->display->x11_display;
+-  int left, right, top, bottom;
++  MetaFrameBorder border;
++  int values[4];
+   unsigned long data[4];
+-  MetaFrameBorders borders;
+   Window xwindow = meta_window_x11_get_xwindow (window);
+ 
+-  meta_frame_calc_borders (priv->frame, &borders);
+-  meta_window_stage_to_protocol_size (window,
+-                                      borders.visible.left,
+-                                      borders.visible.right,
+-                                      &left,
+-                                      &right);
+-  meta_window_stage_to_protocol_size (window,
+-                                      borders.visible.top,
+-                                      borders.visible.bottom,
+-                                      &top,
+-                                      &bottom);
++  if (window->override_redirect || window->unmanaging)
++    return;
+ 
+-  data[0] = left;
+-  data[1] = right;
+-  data[2] = top;
+-  data[3] = bottom;
++  if (!meta_gnoblin_window_frame_x11_get_border (window, &border) &&
++      !priv->net_frame_extents_set && !force)
++    return;
++
++  meta_window_stage_to_protocol_size (window, border.left, border.right,
++                                      &values[0], &values[1]);
++  meta_window_stage_to_protocol_size (window, border.top, border.bottom,
++                                      &values[2], &values[3]);
++
++  if (priv->net_frame_extents_set && !force &&
++      memcmp (priv->net_frame_extents, values, sizeof values) == 0)
++    return;
++
++  memcpy (priv->net_frame_extents, values, sizeof values);
++  priv->net_frame_extents_set = TRUE;
++
++  data[0] = values[0];
++  data[1] = values[1];
++  data[2] = values[2];
++  data[3] = values[3];
+ 
+   meta_topic (META_DEBUG_X11,
+               "Setting _NET_FRAME_EXTENTS on managed window 0x%lx "
+@@ -1364,21 +1376,8 @@ meta_window_x11_move_resize_internal (MetaWindow                *window,
+       priv->client_rect.height = client_rect.height;
+     }
+ 
+-  /* If frame extents have changed, fill in other frame fields and
+-     change frame's extents property. */
+-  if (priv->frame &&
+-      (priv->frame->child_x != borders.total.left ||
+-       priv->frame->child_y != borders.total.top ||
+-       priv->frame->right_width != borders.total.right ||
+-       priv->frame->bottom_height != borders.total.bottom))
+-    {
+-      priv->frame->child_x = borders.total.left;
+-      priv->frame->child_y = borders.total.top;
+-      priv->frame->right_width = borders.total.right;
+-      priv->frame->bottom_height = borders.total.bottom;
+-
+-      update_net_frame_extents (window);
+-    }
++  /* The compositor's border may have changed since the last configure. */
++  meta_window_x11_update_net_frame_extents (window, FALSE);
+ 
+   /* See ICCCM 4.1.5 for when to send ConfigureNotify */
+ 
+-- 
+2.55.0
+
