@@ -259,6 +259,10 @@ gboolean native_shortcut_hold_family_pressed(GnoblinNativeControl* control, guin
 
 void native_shortcut_capture_key(const ClutterEvent* event, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
+    if (control->input_grab) {
+        gnoblin_control_input_grab_key(control, event);
+        return;
+    }
     if (control->shortcut_session_capture_active && control->active_shortcut_session) {
         NativeDynamicShortcut* shortcut = control->active_shortcut_session;
         if (!event) {
@@ -563,6 +567,7 @@ void native_session_lock_changed(MetaWaylandCompositor* compositor,
         g_hash_table_remove_all(control->snap_contexts);
         if (control->active_shortcut_session)
             dynamic_shortcut_end_session(control, control->active_shortcut_session, "locked");
+        gnoblin_control_input_grab_end(control, "locked", TRUE);
         stop_native_shortcut_capture(user_data, TRUE, FALSE, NULL, "denied",
                                      "shortcut capture cancelled because the session locked");
     }

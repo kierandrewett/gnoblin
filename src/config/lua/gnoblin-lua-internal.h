@@ -366,6 +366,7 @@ int call_launch_operation(lua_State* state, const char* method, int arguments);
 int lua_launches_begin(lua_State* state);
 int lua_shortcuts_bind(lua_State* state);
 int lua_idle_watch(lua_State* state);
+int lua_input_grab(lua_State* state);
 int lua_settings_override(lua_State* state);
 int lua_window_set_effect(lua_State* state, LuaConfig* config, const char* window_id,
                           int name_index, int value_index);

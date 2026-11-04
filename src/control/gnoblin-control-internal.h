@@ -382,6 +382,8 @@ struct _GnoblinNativeControl {
     gpointer session_activity_watch; /* the compositor's own idle watch (session-activity.c) */
     GHashTable* idle_watches;        /* idle watch ID -> IdleWatch, Lua's (session-activity.c) */
     GPtrArray* overrides;            /* runtime overrides, oldest first (overrides.c) */
+    gpointer input_grab;             /* the one leased keyboard grab, Lua's (grabs.c) */
+    gpointer compose_table;          /* the compose table of the locale, for grab text (grabs.c) */
     char* path;
     dev_t device;
     ino_t inode;
@@ -551,6 +553,24 @@ G_GNUC_INTERNAL void gnoblin_control_overrides_window_closed(GnoblinNativeContro
 G_GNUC_INTERNAL GVariant* gnoblin_control_window_effect_rule(GnoblinNativeControl* control,
                                                              MetaWindow* window);
 G_GNUC_INTERNAL void gnoblin_control_overrides_free(GnoblinNativeControl* control);
+
+/* gnoblin-control-grabs.c: the leased keyboard grab of the Lua runtime. */
+G_GNUC_INTERNAL GVariant* gnoblin_control_input_grab(GnoblinNativeControl* control,
+                                                     gint64 operation_id, GVariant* arguments,
+                                                     guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_input_grab_renew(GnoblinNativeControl* control,
+                                                           GVariant* arguments,
+                                                           guint64 owner_generation,
+                                                           GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_input_grab_release(GnoblinNativeControl* control,
+                                                             GVariant* arguments,
+                                                             guint64 owner_generation,
+                                                             GError** error);
+G_GNUC_INTERNAL void gnoblin_control_input_grab_key(GnoblinNativeControl* control,
+                                                    const ClutterEvent* event);
+G_GNUC_INTERNAL void gnoblin_control_input_grab_end(GnoblinNativeControl* control,
+                                                    const char* reason, gboolean publish);
+G_GNUC_INTERNAL void gnoblin_control_input_grab_free(GnoblinNativeControl* control);
 
 /* gnoblin-control-input-sources.c: XKB and IBus input sources. */
 G_GNUC_INTERNAL void gnoblin_control_window_input_source_free(gpointer data);

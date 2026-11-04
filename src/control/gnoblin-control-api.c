@@ -498,6 +498,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,
                                      "compositor_stopped");
+    gnoblin_control_input_grab_end(control, "runtime_stopped", FALSE);
     gnoblin_control_corner_toolkit_cache_shutdown(control);
 #ifdef HAVE_REMOTE_DESKTOP
     g_clear_pointer(&control->pipewire_monitor, gnoblin_pipewire_monitor_free);
@@ -671,6 +672,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->native_touchpad_gestures, g_variant_unref);
     g_clear_pointer(&control->touchpad_router, gnoblin_touchpad_router_free);
     gnoblin_control_overrides_free(control);
+    gnoblin_control_input_grab_free(control);
     g_clear_pointer(&control->runtime_cache, gnoblin_runtime_cache_free);
     g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref);
     g_clear_pointer(&control->pending_location_authorizations, g_hash_table_unref);

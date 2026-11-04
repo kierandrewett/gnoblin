@@ -348,6 +348,50 @@ int lua_idle_watch(lua_State* state) {
     return 1;
 }
 
+/* gnoblin.input.grab: ask the compositor for the keyboard and return the Grab. The Grab exists
+ * before the compositor confirms it; when the compositor refuses it (the session is locked, a
+ * shortcut session holds the keyboard) it ends and its "closed" listeners get the reason. Its ID
+ * is "grab-" and the ID of the request. */
+int lua_input_grab(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    static const char* const fields[] = {"timeout", NULL};
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1) || !table_fields_allowed(state, 1, fields))
+        return luaL_error(state, "gnoblin.input.grab takes an optional table with a timeout");
+    lua_Integer timeout = 10;
+    if (lua_getfield(state, 1, "timeout") != LUA_TNIL) {
+        int valid = 0;
+        timeout = lua_tointegerx(state, -1, &valid);
+        if (!valid || timeout < 1 || timeout > 60)
+            return luaL_error(state, "gnoblin.input.grab timeout is a whole number of seconds "
+                                     "from 1 to 60");
+    }
+    lua_settop(state, 0);
+    lua_createtable(state, 0, 1);
+    lua_pushinteger(state, timeout);
+    lua_setfield(state, 1, "timeout");
+    lua_pushlightuserdata(state, config);
+    lua_pushstring(state, "input.grab");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_pushvalue(state, 1);
+    lua_call(state, 1, 1);
+    int operation = lua_gettop(state);
+
+    lua_createtable(state, 0, 3);
+    int record = lua_gettop(state);
+    lua_getfield(state, operation, "id");
+    lua_pushfstring(state, "grab-%I", (lua_Integer)lua_tointeger(state, -1));
+    lua_setfield(state, record, "id");
+    lua_pop(state, 1);
+    lua_pushinteger(state, timeout);
+    lua_setfield(state, record, "timeout");
+    lua_pushliteral(state, "keyboard");
+    lua_setfield(state, record, "device");
+    push_readonly_copy(state, record);
+    lua_object_hold(state, "Grab", -1);
+    lua_object_end_after(state, config, operation, "Grab", -1, FALSE);
+    return 1;
+}
+
 /* gnoblin.shortcuts.list: the Shortcuts this runtime has bound and not unbound. */
 int lua_shortcuts_list(lua_State* state) {
     if (lua_gettop(state) != 0)

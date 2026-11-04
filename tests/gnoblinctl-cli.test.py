@@ -2591,7 +2591,8 @@ def main() -> int:
         session_activity_file = Path(temporary) / "session-activity.lua"
         session_activity_file.write_text(
             "assert(not pcall(function() return gnoblin.session.activity() end))\n"
-            "assert(not pcall(function() return gnoblin.idle.watch(1) end))\n",
+            "assert(not pcall(function() return gnoblin.idle.watch(1) end))\n"
+            "assert(not pcall(function() return gnoblin.input.grab() end))\n",
             encoding="utf-8",
         )
         session_activity_result = run(binary, "--socket", socket_path, "lua", str(session_activity_file))

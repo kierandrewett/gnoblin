@@ -84,6 +84,30 @@
 
 ### Added
 
+- `gnoblin.input.grab(options?)` takes the keyboard and returns a live `Grab` (bridge API 1.91). See
+  [keyboard grabs](docs/shell-api/input-grab.md). Before, the only keyboard capture was the
+  shortcut session of a `modal` or `capture_input` shortcut: one slot, a fixed 10 second timer,
+  and key events without text.
+    - The grab is a lease. It expires after `timeout` idle seconds (1 to 60, default 10) unless
+      `grab:renew()` runs or a key event arrives; each key event starts the timeout again, because
+      someone who types still needs the grab.
+    - `grab:on("key", fn)` gets `{key, keysym, keycode, modifiers, pressed, repeated, text,
+      composing, time}`. `text` is the character a press types. Gnoblin feeds each press to the
+      compose table of the locale (xkbcommon), so a dead key or a Compose sequence gives one
+      composed character on the key that completes it, and `composing` is true inside the sequence;
+      a key that breaks the sequence has its own text.
+    - `grab:on("closed", fn)` gets the reason: `released`, `expired`, `replaced` (a second grab
+      takes the one slot), `locked`, `preempted` (Mutter gave the keyboard to a popup or other
+      grab), `config_reloaded`, `runtime_stopped`, or the message of the compositor when it refused.
+    - The grab refuses to start while the session is locked and ends when it locks. It never takes
+      the keyboard from a shortcut session or `shortcuts.capture`, and they cannot start while it
+      holds the keyboard. Its events carry no `focus_context`.
+    - Shortcut sessions keep their fixed 10 second timer. It guards a user gesture against a lost
+      key release and nothing owns it, so nothing can renew it; a script-renewed lease would let
+      a script hold a session open, and a grab that carries a `focus_context` would let a script
+      move windows without a gesture.
+    - `gnoblin.input.grab` raises an error in `gnoblinctl lua`: a console script has no runtime
+      to receive keys.
 - `gnoblin.settings.override(path, value)` and `window:set_effect(name, value)` return a live
   `Override` that layers a value over the committed configuration, or an effect over the window
   rules of one window, until it is taken back (bridge API 1.90). See

@@ -24,6 +24,7 @@ void native_runtime_abort(GnoblinNativeControl* control) {
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session, "runtime_stopped");
     gnoblin_control_clear_runtime_dynamic_shortcuts(control, "runtime_stopped");
+    gnoblin_control_input_grab_end(control, "runtime_stopped", FALSE);
     g_clear_pointer(&control->window_shader_files, g_hash_table_unref);
     stop_native_shortcut_capture(control, FALSE, FALSE, NULL, NULL, NULL);
     gnoblin_control_cancel_window_drags(control, "runtime_stopped");

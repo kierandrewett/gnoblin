@@ -174,6 +174,7 @@ export const NAV: NavSection[] = [
                     { label: "Processes", slug: "shell-api/processes" },
                     { label: "Idle watches", slug: "shell-api/idle" },
                     { label: "Overrides", slug: "shell-api/overrides" },
+                    { label: "Keyboard grabs", slug: "shell-api/input-grab" },
                     { label: "Session and runtime health", slug: "shell-api/session-runtime" },
                     { label: "Requests", slug: "shell-api/requests" },
                     { label: "Privacy", slug: "shell-api/privacy" },

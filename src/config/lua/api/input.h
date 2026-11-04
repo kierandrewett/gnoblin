@@ -1,6 +1,7 @@
 /* Annotations for input APIs implemented in src/config/lua/gnoblin-lua-state-queries.c,
- * src/config/lua/gnoblin-lua-contexts.c, src/config/lua/gnoblin-lua-input.c, and
- * src/control/gnoblin-control-runtime-channel.c. */
+ * src/config/lua/gnoblin-lua-contexts.c, src/config/lua/gnoblin-lua-input.c,
+ * src/config/lua/gnoblin-lua-objects.c, src/control/gnoblin-control-runtime-channel.c and
+ * src/control/gnoblin-control-grabs.c. */
 
 /*** lua
 ---@class InputDevice
@@ -117,4 +118,75 @@ function gnoblin.input.on(match, handler) end
 ---@param text string UTF-8 text from 1 to 256 bytes, without control characters.
 ---@return Operation<boolean>
 function TextTarget:insert_text(text) end
+
+---A lease on the keyboard. While a Grab is alive, every key press and release goes to it: no
+---application, no shortcut and no other handler sees a key. The Grab ends by itself when it has
+---had no key and no `renew()` for its `timeout` seconds, so a script that stops cannot keep the
+---keyboard. There is one Grab for the whole compositor: a new one ends the old one with
+---"replaced". It is the same object for as long as it is alive.
+---@class Grab
+---@field id string Identifier, "grab-" and the number of the request that made it.
+---@field alive boolean False once the grab has ended.
+---@field timeout integer Seconds without a key or a renewal after which the grab expires.
+---@field device "keyboard" What the grab holds.
+
+---A key event that a Grab received.
+---@class GrabKey
+---@field key string Name of the keysym, such as "a", "A", "Return", "Escape" or "dead_acute".
+---@field keysym integer The keysym number.
+---@field keycode integer Hardware key code.
+---@field modifiers integer Modifier mask when the key came, as in InputEvent (Shift 1, Control 4,
+Alt 8, Super 67108864).
+---@field pressed boolean True for a press, false for a release.
+---@field repeated boolean True for a press made by key repeat.
+---@field text? string What a press types: one character, or the composed character that a dead
+key or Compose sequence completes. Absent on a release, on a key that types nothing (a modifier,
+Return, Tab, an arrow) and on a key pressed with Control, Alt or Super.
+---@field composing boolean True while a dead key or Compose sequence is in progress: the keys
+inside the sequence have no `text`, and the key that completes it has the composed text.
+---@field time integer Event time in milliseconds.
+
+---@class GrabOptions
+---@field timeout? integer Seconds without a key or a renewal after which the grab expires, from
+1 to 60. Default 10.
+
+---@class GrabRenewResult
+---@field id string The grab that was renewed.
+---@field renewed boolean True when the compositor restarted the timeout.
+
+---@class GrabReleaseResult
+---@field id string The grab that was released.
+---@field released boolean True when the compositor gave the keyboard back.
+
+---Take the keyboard and return the Grab. The Grab exists at once; if the compositor refuses it
+---(the session is locked, or a modal or capture_input shortcut session or a shortcut capture
+---holds the keyboard), it ends and its "closed" listeners get the reason. The grab starts with
+---its timeout running, so renew it if the script has nothing to receive for a while. A key held
+---when the grab starts has its release go to the grab, so start a grab from a key release or when
+---no key is down. Call this while handling an event, as with every operation.
+---@param options? GrabOptions
+---@return Grab
+function gnoblin.input.grab(options) end
+
+---Restart the timeout of this grab. A key event does the same. A grab that has ended fails with
+---`not_found`.
+---@return Operation<GrabRenewResult>
+function Grab:renew() end
+
+---Give the keyboard back. The Grab ends, and its "closed" listeners run with the reason
+---"released", when the compositor has done it. A grab that has ended fails with `not_found`.
+---@return Operation<GrabReleaseResult>
+function Grab:release() end
+
+---Call fn(grab, key) for each key event, or fn(grab, reason) when the grab ends. The reason is
+---"released", "expired" (the timeout ran out), "replaced" (another grab took the keyboard),
+---"locked" (the session locked), "preempted" (Mutter gave the keyboard to a popup or other
+---grab), "config_reloaded" (a reload committed), "runtime_stopped" (the Lua worker is shutting
+---down), or the message of the compositor when it refused the grab. On "config_reloaded" and
+---"runtime_stopped" the listener runs as the old runtime goes, so it can read but cannot start an
+---operation. Listening ends after "closed".
+---@param signal "key"|"closed"
+---@param fn fun(grab: Grab, detail: GrabKey|string|nil)
+---@return {unsubscribe: fun()}
+function Grab:on(signal, fn) end
 */

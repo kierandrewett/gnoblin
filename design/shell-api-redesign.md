@@ -223,6 +223,32 @@ and gap 7 stay open.
       handles any input event; `shortcuts.bind` is a run-time object with held-modifier sessions.
       `keybindings.keyboard` and `.pointer` are sugar over `input.on`, kept for their names.
 
+- Gap 9, leased keyboard grab. `gnoblin.input.grab(options?)` returns a live `Grab` (`alive`, `timeout`, `on`
+  with `key` and `closed`, `renew()`, `release()`; bridge API 1.91).
+    - Before: the only keyboard grab was the shortcut session (`modal` or `capture_input`): one slot
+      (`control->active_shortcut_session`), a fixed 10 s timer in two places, and key events with a
+      keysym and no text.
+    - New `gnoblin-control-grabs.c`: one grab slot, owned by a runtime generation, on Mutter's one native key
+      capture slot. A lease: it expires after `timeout` idle seconds; each key event and `input.grab.renew`
+      restart the timeout. Key events carry the keysym name, key code, modifier mask, press or release,
+      repeat, and `text`, from the keysym and the compose table of the locale (libxkbcommon). A dead key or
+      Compose sequence gives `composing = true`, then one composed character on the completing key. Control,
+      Alt and Super make a press a command with no text.
+    - Ends: `released`, `expired`, `replaced` (a second grab), `locked` (the lock state change), `preempted`
+      (Mutter cancels the capture, for example for a popup grab), `config_reloaded` and `runtime_stopped`.
+      The reload reason comes from the Lua runtime before it frees the old state, as for overrides, and the
+      worker ends its grabs with `runtime_stopped` when its main loop returns. A restarted worker loses its
+      grab with no signal; the compositor gives the keyboard back.
+    - Boundaries kept. The call refuses while the session is locked (Mutter does not call the capture
+      handler during a lock either). Grab events carry no `focus_context`, so a script cannot focus or move a
+      window with held keys. A grab never takes the capture slot from a shortcut session or
+      `shortcuts.capture`, and they cannot start while it holds it.
+    - Decision: shortcut sessions do not move to the lease. A session is a user gesture: it starts and ends
+      with a held modifier, nothing owns it to renew it, and its 10 s guards a lost release. Its key events
+      carry a one-use `focus_context`, which a script-renewed lease must not carry. They share the capture
+      slot and nothing else.
+    - Not done: a grab that also takes pointer input, and a key the grab lets through to the focused window.
+
 ## Decisions
 
 - Hard cutover, no compatibility wrappers (`design/lua-api-goal.md`).

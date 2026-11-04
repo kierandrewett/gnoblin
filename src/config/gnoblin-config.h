@@ -83,6 +83,9 @@ void gnoblin_config_finish_load(gboolean commit);
  * current runtime before the candidate replaces it. */
 gboolean gnoblin_config_defer_load_commit(void);
 void gnoblin_config_finish_deferred_load(gboolean commit);
+/* End the runtime's live handles that cannot outlive it, with the reason "runtime_stopped".
+ * The Lua worker calls this when it shuts down. */
+void gnoblin_config_stop_runtime(void);
 guint64 gnoblin_config_deferred_runtime_generation(void);
 /* The committed runtime document; returns a new reference or NULL. */
 GVariant* gnoblin_config_current_document(void);

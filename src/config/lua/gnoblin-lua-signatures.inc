@@ -127,6 +127,34 @@ static const ApiMember api_fields_FocusPolicy[] = {
     {"auto_raise_delay", "integer", FALSE, "Delay in milliseconds before automatic raise."},
     {"revision", "integer", FALSE, "Revision of the committed settings snapshot."},
 };
+static const ApiMember api_fields_Grab[] = {
+    {"id", "string", FALSE, "Identifier, \"grab-\" and the number of the request that made it."},
+    {"alive", "boolean", FALSE, "False once the grab has ended."},
+    {"timeout", "integer", FALSE, "Seconds without a key or a renewal after which the grab expires."},
+    {"device", "\"keyboard\"", FALSE, "What the grab holds."},
+};
+static const ApiMember api_fields_GrabKey[] = {
+    {"key", "string", FALSE, "Name of the keysym, such as \"a\", \"A\", \"Return\", \"Escape\" or \"dead_acute\"."},
+    {"keysym", "integer", FALSE, "The keysym number."},
+    {"keycode", "integer", FALSE, "Hardware key code."},
+    {"modifiers", "integer", FALSE, "Modifier mask when the key came, as in InputEvent (Shift 1, Control 4, Alt 8, Super 67108864)."},
+    {"pressed", "boolean", FALSE, "True for a press, false for a release."},
+    {"repeated", "boolean", FALSE, "True for a press made by key repeat."},
+    {"text", "string", TRUE, "What a press types: one character, or the composed character that a dead key or Compose sequence completes. Absent on a release, on a key that types nothing (a modifier, Return, Tab, an arrow) and on a key pressed with Control, Alt or Super."},
+    {"composing", "boolean", FALSE, "True while a dead key or Compose sequence is in progress: the keys inside the sequence have no `text`, and the key that completes it has the composed text."},
+    {"time", "integer", FALSE, "Event time in milliseconds."},
+};
+static const ApiMember api_fields_GrabOptions[] = {
+    {"timeout", "integer", TRUE, "Seconds without a key or a renewal after which the grab expires, from 1 to 60. Default 10."},
+};
+static const ApiMember api_fields_GrabReleaseResult[] = {
+    {"id", "string", FALSE, "The grab that was released."},
+    {"released", "boolean", FALSE, "True when the compositor gave the keyboard back."},
+};
+static const ApiMember api_fields_GrabRenewResult[] = {
+    {"id", "string", FALSE, "The grab that was renewed."},
+    {"renewed", "boolean", FALSE, "True when the compositor restarted the timeout."},
+};
 static const ApiMember api_fields_IdleCancelResult[] = {
     {"cancelled", "boolean", FALSE, "True when the compositor removed the watch."},
 };
@@ -624,6 +652,11 @@ static const ApiClass api_classes[] = {
     {"FocusContext", "", NULL, 0},
     {"FocusHistoryFilter", "", api_fields_FocusHistoryFilter, 3},
     {"FocusPolicy", "", api_fields_FocusPolicy, 7},
+    {"Grab", "A lease on the keyboard. While a Grab is alive, every key press and release goes to it: no application, no shortcut and no other handler sees a key. The Grab ends by itself when it has had no key and no `renew()` for its `timeout` seconds, so a script that stops cannot keep the keyboard. There is one Grab for the whole compositor: a new one ends the old one with \"replaced\". It is the same object for as long as it is alive.", api_fields_Grab, 4},
+    {"GrabKey", "A key event that a Grab received.", api_fields_GrabKey, 9},
+    {"GrabOptions", "", api_fields_GrabOptions, 1},
+    {"GrabReleaseResult", "", api_fields_GrabReleaseResult, 2},
+    {"GrabRenewResult", "", api_fields_GrabRenewResult, 2},
     {"IdleCancelResult", "", api_fields_IdleCancelResult, 1},
     {"IdleWatch", "A watch on how long the session has had no input. It is the same object for as long as it is alive. It is not idle when it starts. When the user does nothing for `seconds`, `idle` becomes true and the \"idle\" signal runs; the next input makes `idle` false and runs \"active\". The watch repeats for every idle period until it is cancelled. Mutter's idle monitor counts the time, and an idle inhibitor of the session delays \"idle\" as it delays the screen blank. A runtime reload ends every watch.", api_fields_IdleWatch, 4},
     {"InputDevice", "", api_fields_InputDevice, 8},
@@ -792,80 +825,83 @@ static const ApiMember api_params_44[] = {
     {"seconds", "number", FALSE, "Idle time above 0 and at most 86400. Fractions are allowed."},
 };
 static const ApiMember api_params_47[] = {
+    {"options", "GrabOptions", TRUE, ""},
+};
+static const ApiMember api_params_48[] = {
     {"match", "InputHandlerMatch", FALSE, "Event selectors. type is required; other selectors are optional."},
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
 };
-static const ApiMember api_params_50[] = {
+static const ApiMember api_params_51[] = {
     {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
 };
-static const ApiMember api_params_51[] = {
+static const ApiMember api_params_52[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
     {"application", "string", FALSE, "Non-empty application identifier, at most 512 characters."},
     {"options", "LaunchBeginOptions", TRUE, ""},
 };
-static const ApiMember api_params_53[] = {
+static const ApiMember api_params_54[] = {
     {"namespace", "string", FALSE, "UTF-8 namespace from 1 to 128 bytes."},
 };
-static const ApiMember api_params_54[] = {
+static const ApiMember api_params_55[] = {
     {"filter", "LayerFilter", TRUE, ""},
 };
-static const ApiMember api_params_55[] = {
+static const ApiMember api_params_56[] = {
     {"a", "number", FALSE, ""},
     {"b", "number", FALSE, ""},
     {"t", "number", FALSE, ""},
 };
-static const ApiMember api_params_56[] = {
+static const ApiMember api_params_57[] = {
     {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories."},
 };
-static const ApiMember api_params_57[] = {
+static const ApiMember api_params_58[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
-static const ApiMember api_params_58[] = {
+static const ApiMember api_params_59[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
 };
-static const ApiMember api_params_59[] = {
+static const ApiMember api_params_60[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
-static const ApiMember api_params_66[] = {
+static const ApiMember api_params_67[] = {
     {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
     {"options", "ProcessOptions", TRUE, ""},
 };
-static const ApiMember api_params_76[] = {
+static const ApiMember api_params_77[] = {
     {"path", "string", FALSE, "The setting, such as \"compositor.visual_bell\"."},
     {"value", "boolean|number|string", FALSE, "The value to layer."},
 };
-static const ApiMember api_params_77[] = {
+static const ApiMember api_params_78[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
 };
-static const ApiMember api_params_78[] = {
+static const ApiMember api_params_79[] = {
     {"id", "string", FALSE, "Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens."},
     {"accelerator", "string", FALSE, "A chord such as \"<Super><Alt>F9\" (see the chord syntax). Any other form is an error that names the form to write. Bare \"Super\" requires capture_input=true, trigger=\"release\", and hold=\"none\"."},
     {"options", "ShortcutBindOptions", TRUE, ""},
 };
-static const ApiMember api_params_79[] = {
+static const ApiMember api_params_80[] = {
     {"options", "ShortcutCaptureOptions", TRUE, ""},
 };
-static const ApiMember api_params_83[] = {
+static const ApiMember api_params_84[] = {
     {"seconds", "number", FALSE, "From 0 to 86400."},
 };
-static const ApiMember api_params_87[] = {
+static const ApiMember api_params_88[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
-static const ApiMember api_params_88[] = {
+static const ApiMember api_params_89[] = {
     {"id", "string", FALSE, "Stable window ID."},
 };
-static const ApiMember api_params_90[] = {
+static const ApiMember api_params_91[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_91[] = {
+static const ApiMember api_params_92[] = {
     {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
 };
-static const ApiMember api_params_93[] = {
+static const ApiMember api_params_94[] = {
     {"id", "string", FALSE, "Stable workspace ID."},
 };
-static const ApiMember api_params_94[] = {
+static const ApiMember api_params_95[] = {
     {"name", "string", FALSE, "Nonempty UTF-8 name of at most 80 characters."},
     {"options", "WorkspaceCreateOptions", TRUE, ""},
 };
@@ -918,26 +954,27 @@ static const ApiFunction api_functions[] = {
     {"idle.watch", "Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not idle; if the compositor refuses it, it ends and its \"closed\" listeners get the reason.", api_params_44, 1, "IdleWatch"},
     {"input.current_source", "Return the selected input source, or nil when there is no current source.", NULL, 0, "InputSource|nil"},
     {"input.devices", "Return available input devices.", NULL, 0, "InputDevice[]"},
-    {"input.on", "Register a Lua policy callback for matching input events.", api_params_47, 2, "string"},
+    {"input.grab", "Take the keyboard and return the Grab. The Grab exists at once; if the compositor refuses it (the session is locked, or a modal or capture_input shortcut session or a shortcut capture holds the keyboard), it ends and its \"closed\" listeners get the reason. The grab starts with its timeout running, so renew it if the script has nothing to receive for a while. A key held when the grab starts has its release go to the grab, so start a grab from a key release or when no key is down. Call this while handling an event, as with every operation.", api_params_47, 1, "Grab"},
+    {"input.on", "Register a Lua policy callback for matching input events.", api_params_48, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
-    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_50, 1, "Operation<TextTarget>"},
-    {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_51, 3, "Launch"},
+    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_51, 1, "Operation<TextTarget>"},
+    {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_52, 3, "Launch"},
     {"launches.list", "Return the current launch records, each the Launch object for its token.", NULL, 0, "Launch[]"},
-    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_53, 1, "LayerAnimationPolicy"},
-    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_54, 1, "LayerSurface[]"},
-    {"lerp", "Return a + (b - a) * t.", api_params_55, 3, "number"},
-    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_56, 1, "boolean"},
-    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_57, 2, "EventSubscription"},
-    {"once", "Register a callback that is removed after its first event.", api_params_58, 2, "EventSubscription"},
-    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_59, 1, "Output|nil"},
+    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_54, 1, "LayerAnimationPolicy"},
+    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_55, 1, "LayerSurface[]"},
+    {"lerp", "Return a + (b - a) * t.", api_params_56, 3, "number"},
+    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_57, 1, "boolean"},
+    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_58, 2, "EventSubscription"},
+    {"once", "Register a callback that is removed after its first event.", api_params_59, 2, "EventSubscription"},
+    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_60, 1, "Output|nil"},
     {"outputs.list", "Return all current outputs. The list is empty until the first output snapshot is published.", NULL, 0, "Output[]"},
     {"outputs.primary", "Return the primary output, or nil when there is none.", NULL, 0, "Output|nil"},
     {"outputs.renderer", "Return the compositor renderer, or nil until the first output snapshot is published.", NULL, 0, "Renderer|nil"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_66, 2, "Process"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_67, 2, "Process"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.hibernate", "Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
@@ -947,25 +984,25 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or `internal` (the D-Bus error is in the message).", NULL, 0, "Operation<AcceptedResult>"},
-    {"settings.override", "Layer a value over one committed setting, for this runtime, and return the Override. The path is \"section.key\" with the names of the configuration, such as `window_management.focus_mode`. Only a setting that can change while the session runs is accepted: `window_management.*`, `compositor.*`, `cursor.theme`, `cursor.size`, `layer_shell.preserve_active_window`, `monitors.privacy_screen` and `input.orientation_lock`. Any other path raises an error that says why it cannot change at runtime. The value is checked the way the configuration checks it, so a value the configuration would refuse raises an error too. The orientation lock and the privacy screen take `true` or `false`; a privacy screen needs an output that has one. If the compositor refuses the override, it ends and its \"closed\" listeners get the reason. Call this while handling an event, as with every operation.", api_params_76, 2, "Override"},
-    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_77, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for, and its accelerator is the chord in its written form; if the compositor refuses the binding (the chord is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_78, 3, "Shortcut"},
-    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_79, 1, "Operation<ShortcutCaptureResult>"},
+    {"settings.override", "Layer a value over one committed setting, for this runtime, and return the Override. The path is \"section.key\" with the names of the configuration, such as `window_management.focus_mode`. Only a setting that can change while the session runs is accepted: `window_management.*`, `compositor.*`, `cursor.theme`, `cursor.size`, `layer_shell.preserve_active_window`, `monitors.privacy_screen` and `input.orientation_lock`. Any other path raises an error that says why it cannot change at runtime. The value is checked the way the configuration checks it, so a value the configuration would refuse raises an error too. The orientation lock and the privacy screen take `true` or `false`; a privacy screen needs an output that has one. If the compositor refuses the override, it ends and its \"closed\" listeners get the reason. Call this while handling an event, as with every operation.", api_params_77, 2, "Override"},
+    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_78, 1, "ShortcutAction[]"},
+    {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for, and its accelerator is the chord in its written form; if the compositor refuses the binding (the chord is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_79, 3, "Shortcut"},
+    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_80, 1, "Operation<ShortcutCaptureResult>"},
     {"shortcuts.configured", "List the shortcuts that the configuration declares. They are read-only records, not objects: gnoblin.configure.shortcuts changes them.", NULL, 0, "ShortcutState[]"},
     {"shortcuts.list", "List the shortcuts this runtime has bound and not unbound, in ID order. Each is the object that bind returned.", NULL, 0, "Shortcut[]"},
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
-    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_83, 1, "Operation<nil>"},
+    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_84, 1, "Operation<nil>"},
     {"timers.now", "Seconds on a monotonic clock. Only differences between two readings are meaningful.", NULL, 0, "number"},
     {"tween", "Create an empty tween.", NULL, 0, "Tween"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_87, 1, ""},
-    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_88, 1, "Window|nil"},
+    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_88, 1, ""},
+    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_89, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_90, 1, "Window[]"},
-    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_91, 1, "Operation<SnapContext>"},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_91, 1, "Window[]"},
+    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_92, 1, "Operation<SnapContext>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_93, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_94, 2, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_94, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_95, 2, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},

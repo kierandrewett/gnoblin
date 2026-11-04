@@ -106,6 +106,11 @@ when the runtime stops or reloads. Active sessions end on modifier release,
 unbind, config reload, session lock, capture preemption, owner disconnect, or
 after ten seconds.
 
+The ten seconds are a fixed guard against a lost key release, not a lease:
+nothing renews it. To take the keyboard for a script, with a lease and composed
+text, use a [keyboard grab](/shell-api/input-grab), which also explains why
+sessions do not use it.
+
 Lua listeners can subscribe to these shortcut session events. A `Shortcut` raises
 the same events on its own object as `session_activated`, `session_key` and
 `session_ended`:

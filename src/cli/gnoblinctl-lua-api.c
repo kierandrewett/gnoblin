@@ -242,6 +242,9 @@ int lua_api_index(lua_State* state) {
         return 1;
     }
     if (g_str_equal(prefix, "input")) {
+        if (g_str_equal(name, "grab"))
+            return luaL_error(state, "gnoblin.input.grab needs a configuration to hold the grab; a "
+                                     "gnoblinctl script has no runtime to receive its keys");
         if (g_str_equal(name, "text_target")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushcclosure(state, lua_cli_input_text_target, 1);

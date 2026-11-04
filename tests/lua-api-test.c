@@ -539,6 +539,48 @@ int main(void) {
         "    assert(ov.corners.alive and ov.uniforms.alive)\n"
         "    assert(not pcall(function() ov.bell:on('closed', print) end))\n"
         "  end\n"
+        "end)\n"
+        "local grab, grab_log, refused_grab, doomed = nil, {}, nil, nil\n"
+        "local function gnote(text) grab_log[#grab_log+1]=text end\n"
+        "g.on('test.grab', function(event)\n"
+        "  if event.step=='make' then\n"
+        "    for _, bad in ipairs({0, 61, 1.5, 'x', {}, -1}) do\n"
+        "      assert(not pcall(g.input.grab, {timeout=bad}))\n"
+        "    end\n"
+        "    assert(not pcall(g.input.grab, {bogus=1}))\n"
+        "    assert(not pcall(g.input.grab, 5))\n"
+        "    assert(not pcall(g.input.grab, {timeout=5}, 1))\n"
+        "    grab=g.input.grab()\n"
+        "    assert(grab.alive and grab.timeout==10 and grab.device=='keyboard')\n"
+        "    assert(grab.id:match('^grab%-%d+$'))\n"
+        "    assert(not pcall(function() grab:on('bogus', print) end))\n"
+        "    grab:on('key', function(gr, key)\n"
+        "      assert(gr==grab and key.name=='gnoblin.input.grab.key')\n"
+        "      gnote('key:'..key.key..':'..tostring(key.text)..':'..tostring(key.pressed)..':'..\n"
+        "            tostring(key.composing)..':'..key.modifiers)\n"
+        "    end)\n"
+        "    grab:on('closed', function(gr, reason) gnote('closed:'..tostring(reason)) end)\n"
+        "    refused_grab=g.input.grab({timeout=3})\n"
+        "    assert(refused_grab~=grab and refused_grab.timeout==3)\n"
+        "    refused_grab:on('closed', function(gr, reason)\n"
+        "      gnote('refused:'..tostring(reason)..':'..tostring(gr.alive))\n"
+        "    end)\n"
+        "  elseif event.step=='renew' then\n"
+        "    assert(grab:renew().method=='input.grab.renew' and grab.alive)\n"
+        "  elseif event.step=='release' then\n"
+        "    assert(grab:release().method=='input.grab.release' and grab.alive)\n"
+        "  elseif event.step=='doomed' then\n"
+        "    doomed=g.input.grab({timeout=7})\n"
+        "    doomed:on('closed', function(gr, reason) error('GRAB '..tostring(reason)) end)\n"
+        "  else\n"
+        "    assert(table.concat(grab_log, ';')=="
+        "'refused:busy:false;key:a:a:true:false:0;key:A:A:true:false:1;"
+        "key:dead_acute:nil:true:true:0;key:e:\\195\\169:true:false:0;key:a:nil:false:false:0;"
+        "closed:released', "
+        "table.concat(grab_log, ';'))\n"
+        "    assert(not grab.alive and not refused_grab.alive)\n"
+        "    assert(not pcall(function() grab:on('key', print) end))\n"
+        "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
     g_autoptr(GVariant) menu_runtime = gnoblin_config_load_runtime(root, NULL, NULL, &error);
@@ -1141,6 +1183,87 @@ int main(void) {
     g_autofree char* reload_error = gnoblin_config_take_runtime_callback_error();
     g_assert_nonnull(reload_error);
     g_assert_nonnull(strstr(reload_error, "MARK config_reloaded"));
+
+    /* Keyboard grabs: one object for each grab; the compositor's key events reach its "key"
+     * listeners, a refused grab ends with the reason, and the compositor ends the rest. */
+    g_autoptr(GArray) grab_ids = dispatch_operation_ids("test.grab", step_payload("make"));
+    g_assert_cmpuint(grab_ids->len, ==, 2);
+    complete_operation(g_array_index(grab_ids, gint64, 1), FALSE, NULL, "busy");
+    g_autofree char* grab_id =
+        g_strdup_printf("grab-%" G_GINT64_FORMAT, g_array_index(grab_ids, gint64, 0));
+    GVariantBuilder grab_record;
+    g_variant_builder_init(&grab_record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&grab_record, "{sv}", "id", g_variant_new_string(grab_id));
+    g_variant_builder_add(&grab_record, "{sv}", "timeout", g_variant_new_int64(10));
+    complete_operation(g_array_index(grab_ids, gint64, 0), TRUE,
+                       g_variant_builder_end(&grab_record), NULL);
+    const struct {
+        const char* key;
+        guint32 keysym;
+        guint32 modifiers;
+        gboolean pressed;
+        gboolean composing;
+        const char* text;
+    } grab_keys[] = {
+        {"a", 0x61, 0, TRUE, FALSE, "a"},
+        {"A", 0x41, 1, TRUE, FALSE, "A"},
+        {"dead_acute", 0xfe51, 0, TRUE, TRUE, NULL},
+        {"e", 0x65, 0, TRUE, FALSE, "\xc3\xa9"},
+        {"a", 0x61, 0, FALSE, FALSE, NULL},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(grab_keys); i++) {
+        GVariantBuilder key_event;
+        g_variant_builder_init(&key_event, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&key_event, "{sv}", "id", g_variant_new_string(grab_id));
+        g_variant_builder_add(&key_event, "{sv}", "key", g_variant_new_string(grab_keys[i].key));
+        g_variant_builder_add(&key_event, "{sv}", "keysym",
+                              g_variant_new_uint32(grab_keys[i].keysym));
+        g_variant_builder_add(&key_event, "{sv}", "keycode", g_variant_new_uint32(38));
+        g_variant_builder_add(&key_event, "{sv}", "modifiers",
+                              g_variant_new_uint32(grab_keys[i].modifiers));
+        g_variant_builder_add(&key_event, "{sv}", "pressed",
+                              g_variant_new_boolean(grab_keys[i].pressed));
+        g_variant_builder_add(&key_event, "{sv}", "repeated", g_variant_new_boolean(FALSE));
+        g_variant_builder_add(&key_event, "{sv}", "composing",
+                              g_variant_new_boolean(grab_keys[i].composing));
+        if (grab_keys[i].text)
+            g_variant_builder_add(&key_event, "{sv}", "text",
+                                  g_variant_new_string(grab_keys[i].text));
+        g_variant_builder_add(&key_event, "{sv}", "time", g_variant_new_int64(1000 + i));
+        g_assert_cmpuint(dispatch_counting_operations("gnoblin.input.grab.key",
+                                                      g_variant_builder_end(&key_event)),
+                         ==, 0);
+    }
+    g_autoptr(GArray) renew_ids = dispatch_operation_ids("test.grab", step_payload("renew"));
+    g_assert_cmpuint(renew_ids->len, ==, 1);
+    g_autoptr(GArray) release_ids = dispatch_operation_ids("test.grab", step_payload("release"));
+    g_assert_cmpuint(release_ids->len, ==, 1);
+    GVariantBuilder grab_closed;
+    g_variant_builder_init(&grab_closed, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&grab_closed, "{sv}", "id", g_variant_new_string(grab_id));
+    g_variant_builder_add(&grab_closed, "{sv}", "reason", g_variant_new_string("released"));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.input.grab.closed",
+                                                  g_variant_builder_end(&grab_closed)),
+                     ==, 0);
+    g_assert_cmpuint(dispatch_counting_operations("test.grab", step_payload("check")), ==, 0);
+
+    /* A worker that shuts down in order tells the grab that is left; so does a reload. */
+    g_autoptr(GArray) stop_ids = dispatch_operation_ids("test.grab", step_payload("doomed"));
+    g_assert_cmpuint(stop_ids->len, ==, 1);
+    g_free(gnoblin_config_take_runtime_callback_error());
+    gnoblin_config_stop_runtime();
+    g_autofree char* stop_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(stop_error);
+    g_assert_nonnull(strstr(stop_error, "GRAB runtime_stopped"));
+    g_autoptr(GArray) reload_ids = dispatch_operation_ids("test.grab", step_payload("doomed"));
+    g_assert_cmpuint(reload_ids->len, ==, 1);
+    g_autoptr(GVariant) grab_reloaded = gnoblin_config_load_runtime(root, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(grab_reloaded);
+    gnoblin_config_finish_load(TRUE);
+    g_autofree char* grab_reload_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(grab_reload_error);
+    g_assert_nonnull(strstr(grab_reload_error, "GRAB config_reloaded"));
 
     g_unlink(root);
     g_unlink(component);

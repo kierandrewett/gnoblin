@@ -349,7 +349,8 @@ static int lua_record_method(lua_State* state) {
         g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
         g_str_equal(method, "workspace.switch") || g_str_equal(method, "shortcut.unbind") ||
         g_str_equal(method, "launch.end") || g_str_equal(method, "input.select") ||
-        g_str_equal(method, "idle.cancel") || g_str_equal(method, "override.revoke")) {
+        g_str_equal(method, "idle.cancel") || g_str_equal(method, "override.revoke") ||
+        g_str_equal(method, "input.grab.renew") || g_str_equal(method, "input.grab.release")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "window.set_minimized")) {
@@ -573,7 +574,14 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
                             g_str_equal(lua_tostring(state, -1), "window")) &&
                            backing_field_type(state, backing, "name") == LUA_TSTRING;
     lua_pop(state, 1);
+    /* A keyboard grab has the idle timeout of its lease and names the device it holds. */
+    lua_getfield(state, backing, "device");
+    gboolean is_grab = lua_type(state, -1) == LUA_TSTRING &&
+                       g_str_equal(lua_tostring(state, -1), "keyboard") &&
+                       backing_field_type(state, backing, "timeout") == LUA_TNUMBER;
+    lua_pop(state, 1);
     const char* kind = is_override            ? "Override"
+                       : is_grab              ? "Grab"
                        : is_window            ? "Window"
                        : is_animation_preview ? "AnimationPreview"
                        : is_workspace         ? "Workspace"

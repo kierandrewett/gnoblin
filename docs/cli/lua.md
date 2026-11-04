@@ -170,6 +170,9 @@ if status.lock_available then
 end
 ```
 
+`gnoblin.input.grab` needs a configuration to receive the keys, so
+`gnoblinctl lua` cannot use it. See [Keyboard grabs](/shell-api/input-grab).
+
 `gnoblin.idle.watch(seconds)` needs a configuration to hold the watch, so
 `gnoblinctl lua` cannot use it. Read the idle-monitor sample from a terminal
 with `gnoblinctl session activity`. See [Idle watches](/shell-api/idle).

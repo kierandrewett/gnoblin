@@ -289,6 +289,7 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     gnoblin_control_idle_watches_clear(control);
     gnoblin_control_window_visuals_reset(control);
     gnoblin_control_overrides_clear(control, FALSE);
+    gnoblin_control_input_grab_end(control, "runtime_restarted", FALSE);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_events);
     native_runtime_fail_pending_requests(control, "Lua worker restarted before replying");
     gnoblin_control_cancel_window_drags(control, "runtime_restarted");
@@ -614,6 +615,19 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                                                   owner_generation, &operation_error)
                      : gnoblin_control_idle_cancel(control, arguments, owner_generation,
                                                    &operation_error);
+    } else if (g_str_equal(method, "input.grab") || g_str_equal(method, "input.grab.renew") ||
+               g_str_equal(method, "input.grab.release")) {
+        guint64 owner_generation = 0;
+        g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+        if (g_str_equal(method, "input.grab"))
+            result = gnoblin_control_input_grab(control, operation_id, arguments, owner_generation,
+                                                &operation_error);
+        else if (g_str_equal(method, "input.grab.renew"))
+            result = gnoblin_control_input_grab_renew(control, arguments, owner_generation,
+                                                      &operation_error);
+        else
+            result = gnoblin_control_input_grab_release(control, arguments, owner_generation,
+                                                        &operation_error);
     } else if (g_str_equal(method, "settings.override") ||
                g_str_equal(method, "window.set_effect") || g_str_equal(method, "override.revoke")) {
         guint64 owner_generation = 0;
@@ -1222,6 +1236,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                     gnoblin_control_idle_watches_clear(control);
                     gnoblin_control_window_visuals_reset(control);
                     gnoblin_control_overrides_clear(control, TRUE);
+                    gnoblin_control_input_grab_end(control, "config_reloaded", FALSE);
                     revoke_focus_contexts(control);
                 }
                 if (handled && revision > previous_revision) {

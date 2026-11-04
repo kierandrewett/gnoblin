@@ -9,7 +9,7 @@ diff --git a/src/meson.build b/src/meson.build
 index ec738dd17..0a473b24a 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1204,6 +1204,11 @@ libmutter = library(libmutter_name,
+@@ -1204,6 +1204,12 @@ libmutter = library(libmutter_name,
    files('core/gnoblin-auth-agent.c'),
    files('core/gnoblin-control-auth.c'),
 -  files('core/gnoblin-control-capture.c'),
@@ -19,6 +19,7 @@ index ec738dd17..0a473b24a 100644
 +  files('core/gnoblin-control-tweens.c'),
 +  files('core/gnoblin-control-power.c'),
 +  files('core/gnoblin-control-overrides.c'),
++  files('core/gnoblin-control-grabs.c'),
    files('core/gnoblin-control-privacy.c'),
    files('core/gnoblin-control-session-activity.c'),
    files('core/gnoblin-control-prompts.c'),

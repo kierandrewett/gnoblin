@@ -190,6 +190,10 @@ const LuaApiEntry lua_api[] = {
     {"input.text_target", "input.text_target", lua_input_text_target},
     {"input.orientation_lock", NULL, lua_input_orientation_lock},
     {"input.on", NULL, lua_input_on},
+    {"input.grab", NULL, lua_input_grab, TRUE},
+    {"Grab:renew", "input.grab.renew", NULL},
+    {"Grab:release", "input.grab.release", NULL},
+    {"Grab:on", NULL, lua_object_on},
 
     {"shortcuts.actions", NULL, lua_shortcut_actions},
     {"shortcuts.configured", NULL, lua_shortcuts_configured},

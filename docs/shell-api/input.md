@@ -340,13 +340,14 @@ The event provides labels when available, but no image or popup. Draw and
 dismiss the overlay in your shell. Each help press sends a new event; without a
 listener, no overlay appears.
 
-| Lua method                         | Arguments | Successful result                       |
-| ---------------------------------- | --------- | --------------------------------------- |
-| `gnoblin.input.devices()`          | None      | Physical input-device records           |
-| `gnoblin.input.sources()`          | None      | Configured `InputSource` objects        |
-| `gnoblin.input.current_source()`   | None      | Current `InputSource`, or `nil`         |
-| `source:select()`                  | None      | Operation returning the selected source |
-| `gnoblin.input.orientation_lock()` | None      | Immutable `OrientationLock` record      |
+| Lua method                         | Arguments | Successful result                                          |
+| ---------------------------------- | --------- | ---------------------------------------------------------- |
+| `gnoblin.input.devices()`          | None      | Physical input-device records                              |
+| `gnoblin.input.sources()`          | None      | Configured `InputSource` objects                           |
+| `gnoblin.input.current_source()`   | None      | Current `InputSource`, or `nil`                            |
+| `source:select()`                  | None      | Operation returning the selected source                    |
+| `gnoblin.input.orientation_lock()` | None      | Immutable `OrientationLock` record                         |
+| `gnoblin.input.grab(options?)`     | `timeout` | A live `Grab`, see [Keyboard grabs](/shell-api/input-grab) |
 
 The socket operation `input.select` takes a source's `type` and `id`. In Lua it
 is `source:select()`.

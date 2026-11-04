@@ -1,5 +1,5 @@
 /* Live handles for the things a shell touches: windows, workspaces, layer surfaces, outputs,
- * shortcuts, launches, input sources, idle watches and overrides.
+ * shortcuts, launches, input sources, idle watches, overrides and keyboard grabs.
  *
  * A record of one of these kinds is interned by kind and key, so every read of the same window
  * returns the same userdata and that userdata always shows the newest state the runtime has seen.
@@ -34,6 +34,7 @@ static const char* const launch_signals[] = {"changed", "started", "timed_out", 
 static const char* const input_source_signals[] = {"changed", "selected", "closed", NULL};
 static const char* const idle_watch_signals[] = {"idle", "active", "closed", NULL};
 static const char* const closed_only[] = {"closed", NULL};
+static const char* const grab_signals[] = {"key", "closed", NULL};
 static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
 static const char* const none[] = {NULL};
 
@@ -47,6 +48,7 @@ static const LuaObjectKind object_kinds[] = {
     {"InputSource", input_source_signals, none, NULL, FALSE},
     {"IdleWatch", idle_watch_signals, none, NULL, FALSE},
     {"Override", closed_only, none, NULL, FALSE},
+    {"Grab", grab_signals, none, NULL, FALSE},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
@@ -94,6 +96,17 @@ static const struct {
     {"gnoblin.shortcut.session.activated", "Shortcut", "session_activated"},
     {"gnoblin.shortcut.session.key", "Shortcut", "session_key"},
     {"gnoblin.shortcut.session.ended", "Shortcut", "session_ended"},
+    {"gnoblin.input.grab.key", "Grab", "key"},
+};
+
+/* Events that end an object the compositor ended: the payload names it by "id" and gives the
+ * reason. */
+static const struct {
+    const char* event;
+    const char* kind;
+} closed_events[] = {
+    {"gnoblin.override.closed", "Override"},
+    {"gnoblin.input.grab.closed", "Grab"},
 };
 
 static const LuaObjectKind* object_kind(const char* kind) {
@@ -592,23 +605,27 @@ static gboolean dispatch_signal_event(lua_State* state, const char* event, GVari
     return FALSE;
 }
 
-/* gnoblin.override.closed {id, reason}: the compositor ended an override this runtime made,
- * because a newer one replaced it, its window closed, or it was revoked. Returns TRUE when a
- * handle ended. */
-static gboolean dispatch_override_event(lua_State* state, const char* event, GVariant* payload) {
-    const char* id = NULL;
-    const char* reason = NULL;
-    if (!g_str_equal(event, "gnoblin.override.closed") ||
-        !g_variant_lookup(payload, "id", "&s", &id))
-        return FALSE;
-    g_variant_lookup(payload, "reason", "&s", &reason);
-    g_autofree char* key = g_strdup_printf("Override:%s", id);
-    int base = lua_gettop(state);
-    gboolean ended = push_registered_handle(state, key) && !handle_closed(state, -1);
-    if (ended)
-        lua_object_end(state, "Override", -1, reason);
-    lua_settop(state, base);
-    return ended;
+/* gnoblin.override.closed and gnoblin.input.grab.closed {id, reason}: the compositor ended an
+ * object this runtime made, because a newer one replaced it, its window closed, it was revoked or
+ * released, or its lease ran out. Returns TRUE when a handle ended. */
+static gboolean dispatch_closed_event(lua_State* state, const char* event, GVariant* payload) {
+    for (gsize i = 0; i < G_N_ELEMENTS(closed_events); i++) {
+        if (!g_str_equal(closed_events[i].event, event))
+            continue;
+        const char* id = NULL;
+        const char* reason = NULL;
+        if (!g_variant_lookup(payload, "id", "&s", &id))
+            return FALSE;
+        g_variant_lookup(payload, "reason", "&s", &reason);
+        g_autofree char* key = g_strdup_printf("%s:%s", closed_events[i].kind, id);
+        int base = lua_gettop(state);
+        gboolean ended = push_registered_handle(state, key) && !handle_closed(state, -1);
+        if (ended)
+            lua_object_end(state, closed_events[i].kind, -1, reason);
+        lua_settop(state, base);
+        return ended;
+    }
+    return FALSE;
 }
 
 /* End every live handle of `kind` with `reason`, in the order of their keys. The runtime calls
@@ -800,7 +817,7 @@ static gboolean dispatch_input_source_event(lua_State* state, const char* event,
 gboolean lua_object_dispatch_event(lua_State* state, const char* event, GVariant* payload) {
     gboolean ran_any = dispatch_signal_event(state, event, payload);
     ran_any |= dispatch_input_source_event(state, event, payload);
-    ran_any |= dispatch_override_event(state, event, payload);
+    ran_any |= dispatch_closed_event(state, event, payload);
     for (gsize i = 0; i < G_N_ELEMENTS(object_events); i++) {
         if (!g_str_equal(object_events[i].event, event))
             continue;
