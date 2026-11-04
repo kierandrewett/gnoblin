@@ -119,7 +119,10 @@ sources at testing or edge and upgrades), and reboots.
    `XDG_SESSION_TYPE=wayland` runs the `Exec` line of `/usr/share/wayland-sessions/gnoblin.desktop`. This is how a
    display manager starts a session: a logind session of type wayland on seat0, with a user systemd instance. The
    command runs through `/bin/sh -c exec`, as `gdm-wayland-session` runs it, because SELinux does not let the user
-   domain enter a file under `/usr/lib`. Alpine has no systemd: an autologin on tty1 starts the same command.
+   domain enter a file under `/usr/lib`. Alpine has no systemd: init starts util-linux `login -p -f` on tty1 with
+   `XDG_SESSION_TYPE=wayland`. Its PAM stack has `pam_elogind`, which opens the logind session (busybox login has no
+   PAM, and Gnoblin refuses to start without `XDG_SESSION_ID`). eudev replaces mdev, because mutter finds the GPU in
+   the udev database. The login shell starts a D-Bus session bus at `$XDG_RUNTIME_DIR/bus` and then the session.
 6. The checks run (below). Then the harness collects the logs and stops the guest.
 
 The guest renders with Mesa's llvmpipe through the virtio GPU's KMS driver. QEMU reads the scanout for `screendump`,
@@ -283,12 +286,21 @@ The arm64 runners have no `/dev/kvm`: GitHub closed the request for nested virtu
 times slower than KVM, so one release can take hours. The guest data sets the job timeout: `timeout_minutes` is 150
 for amd64 and 345 for arm64, under the 360-minute limit of a hosted job. The harness deadline is the job timeout
 less 20 minutes, so the evidence is uploaded. With TCG the harness waits longer by default: 1800 s for the boot,
-3600 s for an install and 600 s for the session to start. An arm64 target whose guest does not finish in time fails
-its graphical stage, and its packages are not published.
+7200 s for an install, 600 s for the session to start and 300 s for the test client. An arm64 target whose guest does
+not finish in time fails its graphical stage, and its packages are not published.
 
-The aarch64 guest path (machine `virt`, UEFI pflash, `virtio-gpu-pci`) has not run yet: the machine that wrote it
-has no `qemu-system-aarch64` and no aarch64 UEFI firmware. `tests/graphical/harness.test.py` checks the QEMU command
-line it makes. Its first CI run is the first proof.
+Two more settings apply to a guest without KVM:
+
+- systemd waits 90 s for each device of `/etc/fstab`, and an emulated guest can need longer (Fedora 43 aarch64 went
+  to emergency mode). The harness passes a systemd credential in SMBIOS type 11 that gives every device unit a
+  10-minute wait (`systemd.unit-dropin.dev-.device`, systemd 256 and newer). The cloud image is not changed.
+- A guest whose serial console shows emergency mode, a frozen PID 1 or a kernel panic fails `boot` at once, not
+  after the boot timeout. An emulated guest then boots once more from a fresh disk, with the reason printed and kept
+  in `result.json` (`boot_retry`). The first boot races the host's speed (Fedora 44 aarch64 froze after a soft
+  lockup in one run and passed in the runs before), so a second boot is a new draw. A KVM guest is not booted again.
+
+The aarch64 guests run on the CPU model `max,pauth-impdef=on`, which is much faster under TCG than `max`. Every
+arm64 graphical target has run in CI.
 
 ## Issues
 
@@ -319,8 +331,7 @@ It does not prove:
 - Real input hardware: touchpads, tablets, touch screens, gestures or keyboard layouts other than the default.
 - Display manager integration (GDM, SDDM). The test starts the session itself.
 - Applications, portals, screen capture, Xwayland or the shell.
-- arm64 on real hardware. The arm64 guest is emulated (TCG), and its path has not run yet (see KVM and TCG).
-- Alpine. Its OpenRC path (elogind, autologin on tty1) is written but not run yet.
+- arm64 on real hardware. The arm64 guest is emulated (TCG).
 
 End of life is read from endoflife.date at run time. A release that reaches its end of life stops getting issues on
 the next run.

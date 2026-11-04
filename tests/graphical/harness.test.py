@@ -280,6 +280,93 @@ class TcgCpu(unittest.TestCase):
         )
 
 
+class DeviceWait(unittest.TestCase):
+    """An emulated guest gets a systemd credential (SMBIOS type 11) that gives every device unit a 10-minute wait."""
+
+    def command(self, accel):
+        return harness.qemu_command(shipped_guest("arm64"), accel, 4096, 4, "d", "s", 2222, "q", "ser", ("c", "v"))
+
+    def test_tcg_passes_the_drop_in_and_kvm_does_not(self):
+        import base64
+
+        command = self.command("tcg")
+        value = command[command.index("-smbios") + 1]
+        prefix = "type=11,value=io.systemd.credential.binary:systemd.unit-dropin.dev-.device="
+        self.assertTrue(value.startswith(prefix))
+        dropin = base64.b64decode(value[len(prefix) :]).decode()
+        self.assertIn("JobRunningTimeoutSec=10min", dropin)
+        self.assertNotIn(",", value.split(",value=", 1)[1])  # a comma in the value would end the QEMU option
+        self.assertNotIn("-smbios", self.command("kvm"))
+
+
+class BootRetry(unittest.TestCase):
+    """A guest whose serial console shows that it gave up booting fails at once. An emulated guest boots once more
+    from a fresh disk (run 41770211755, Fedora 44 aarch64: systemd froze after a soft lockup); a KVM guest does not."""
+
+    def guest_with_serial(self, text):
+        work = Path(tempfile.mkdtemp())
+        (work / "serial.log").write_text(text)
+        guest = harness.Guest.__new__(harness.Guest)
+        guest.out, guest.process = work, type("Running", (), {"poll": lambda self: None})()
+        guest.root = lambda *a, **k: (1, "", "")
+        return guest
+
+    def test_emergency_mode_fails_at_once(self):
+        guest = self.guest_with_serial("...\nYou are in emergency mode. After logging in, type ...\n")
+        started = time.monotonic()
+        with self.assertRaisesRegex(harness.GuestStuck, "emergency mode"):
+            guest.wait_ssh(600)
+        self.assertLess(time.monotonic() - started, 5)
+
+    def run_boot(self, accel, stuck_boots):
+        calls = []
+
+        class Guest:
+            key = Path(tempfile.mkdtemp()) / "id"
+
+            def __init__(self):
+                self.accel = accel
+                self.key.with_suffix(".pub").write_text("ssh-ed25519 AAAA test")
+
+            def start(self, base, seed):
+                calls.append("start")
+
+            def restart(self, base, seed, reason):
+                calls.append("restart")
+
+            def wait_ssh(self, timeout):
+                calls.append("wait")
+                if calls.count("wait") <= stuck_boots:
+                    raise harness.GuestStuck("the guest stopped booting: Freezing execution")
+
+            def root(self, command, **options):
+                return 0, "6.0\n", ""
+
+        work = Path(tempfile.mkdtemp())
+        run = harness.Run(argparse.Namespace(out=str(work), breaks=[], boot_timeout=1), {"name": "x", "image": {}})
+        run.work, run.guest, run.image_info = work, Guest(), {"path": "/nonexistent.qcow2"}
+        original = harness.make_seed
+        harness.make_seed = lambda directory, key: directory / "seed.iso"
+        try:
+            return run.boot(), calls, run.facts
+        finally:
+            harness.make_seed = original
+
+    def test_an_emulated_guest_boots_once_more(self):
+        detail, calls, facts = self.run_boot("tcg", 1)
+        self.assertEqual(calls, ["start", "wait", "restart", "wait"])
+        self.assertEqual(facts["boot_retry"], "the guest stopped booting: Freezing execution")
+        self.assertIn("kernel 6.0", detail)
+
+    def test_only_once(self):
+        with self.assertRaises(harness.GuestStuck):
+            self.run_boot("tcg", 2)
+
+    def test_a_kvm_guest_does_not_boot_again(self):
+        with self.assertRaises(harness.GuestStuck):
+            self.run_boot("kvm", 1)
+
+
 class PollEvents(unittest.TestCase):
     """Run 41672380634: on TCG the client's events come later than the fixed waits of a KVM guest. The checks poll
     until the event they need arrives, up to the client timeout."""

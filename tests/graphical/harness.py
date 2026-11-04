@@ -31,6 +31,7 @@ Exit status: 0 pass, 1 fail, 3 not packaged, 2 usage or harness error.
 """
 
 import argparse
+import base64
 import datetime
 import hashlib
 import json
@@ -84,6 +85,10 @@ BTN_LEFT = 272
 POINTER_STEP = (40, 30)
 ALLOW_LISTS = (ROOT / "tests/packages/log-allowlist.txt", HERE / "log-allowlist.txt")
 LOG_LEVEL = re.compile(r"(?<![A-Za-z])(CRITICAL|ERROR)(?![A-Za-z])")
+# The systemd credential of an emulated guest: a drop-in for every device unit (prefix "dev-") that waits 10 minutes.
+DEVICE_WAIT_DROPIN = "[Unit]\nJobRunningTimeoutSec=10min\nJobTimeoutSec=10min\n"
+DEVICE_WAIT_CREDENTIAL = "systemd.unit-dropin.dev-.device=" + base64.b64encode(DEVICE_WAIT_DROPIN.encode()).decode()
+
 # The guest of an entry without "guest" data: an amd64 guest on the default BIOS. scripts/targets.json gives every
 # architecture its own data (architectures[].guest).
 DEFAULT_GUEST = {
@@ -104,6 +109,14 @@ class CheckFailed(Exception):
 
 class Deadline(CheckFailed):
     """The run reached --deadline. The check that runs fails with it, and the checks after it are skipped."""
+
+
+class GuestStuck(CheckFailed):
+    """The serial console shows that the guest gave up booting, so SSH will never come up."""
+
+
+# What a guest prints on its serial console when it has given up booting.
+STUCK = re.compile(r"You are in emergency mode|Freezing execution|Kernel panic - not syncing")
 
 
 def guest_of(entry):
@@ -156,6 +169,12 @@ def qemu_command(guest, accel, memory, cpus, disk, seed, port, qmp_path, serial,
         "-smp", str(cpus),
         "-m", str(memory),
     ]  # fmt: skip
+    if accel != "kvm":
+        # systemd waits 90 s for a device of /etc/fstab, and an emulated guest can need longer to find its disks
+        # (run 41770211755: Fedora 43 aarch64, "Timed out waiting for device", then emergency mode). The cloud image
+        # is not changed: a systemd credential in SMBIOS type 11 gives every device unit a drop-in (the dev- prefix,
+        # through systemd-debug-generator, systemd 256 and newer) with a 10-minute wait. An older systemd ignores it.
+        command += ["-smbios", f"type=11,value=io.systemd.credential.binary:{DEVICE_WAIT_CREDENTIAL}"]
     if firmware:
         code, variables = firmware
         command += [
@@ -591,11 +610,16 @@ class Guest:
 
     def wait_ssh(self, timeout):
         deadline = time.monotonic() + timeout
+        serial = self.out / "serial.log"
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
-                raise CheckFailed(
-                    "QEMU exited during boot", tail((self.out / "serial.log").read_text(errors="replace"))
-                )
+                raise CheckFailed("QEMU exited during boot", tail(serial.read_text(errors="replace")))
+            # A guest that has given up (emergency mode, PID 1 frozen, a kernel panic) never lets SSH in: say so now,
+            # rather than after the whole boot timeout.
+            text = serial.read_text(errors="replace") if serial.exists() else ""
+            stuck = STUCK.search(text)
+            if stuck:
+                raise GuestStuck(f"the guest stopped booting: {stuck.group(0)}", tail(text))
             try:
                 code, _, _ = self.root("test -e /var/lib/cloud/instance/boot-finished", timeout=30, check=False)
                 if code == 0:
@@ -603,9 +627,16 @@ class Guest:
             except subprocess.TimeoutExpired:
                 pass
             time.sleep(5)
-        raise CheckFailed(
-            f"no SSH login within {timeout} s", tail((self.out / "serial.log").read_text(errors="replace"))
-        )
+        raise CheckFailed(f"no SSH login within {timeout} s", tail(serial.read_text(errors="replace")))
+
+    def restart(self, base, seed, reason):
+        """Stop the guest at once and boot it again from a fresh copy of the image. The first serial log is kept."""
+        print(f"[graphical] boot again from a fresh disk: {reason}", flush=True)
+        self.process.kill()
+        self.process.wait()
+        (self.out / "serial.log").rename(self.out / "serial-first-boot.log")
+        self.qmp_path.unlink(missing_ok=True)
+        self.start(base, seed)
 
     def copy_in(self, sources, destination):
         """Copy files and folders into a guest folder, through tar over SSH."""
@@ -763,6 +794,7 @@ class Run:
             "first_failure": {k: failed[k] for k in ("name", "detail", "excerpt")} if failed else None,
             "checks": self.checks,
             "breaks": sorted(self.breaks),
+            "boot_retry": self.facts.get("boot_retry"),
             "packages_from": self.arguments.packages,
             "accel": self.facts.get("accel"),
             "qemu": self.facts.get("qemu"),
@@ -811,7 +843,18 @@ class Run:
             public_key = other.with_suffix(".pub").read_text().strip()
         seed = make_seed(work, public_key)
         self.guest.start(Path(self.image_info["path"]), seed)
-        self.guest.wait_ssh(self.arguments.boot_timeout)
+        try:
+            self.guest.wait_ssh(self.arguments.boot_timeout)
+        except GuestStuck as stuck:
+            # Only an emulated guest boots again, and once: there the first boot races the host's speed (run
+            # 41770211755, Fedora 44 aarch64: a 46 s soft lockup, then systemd "Failed to fork off sandboxing
+            # environment ... Freezing execution"; the same image passed in the runs before). A second boot is a new
+            # draw of that race. With KVM a stuck boot is a real failure, and it fails at once.
+            if self.guest.accel == "kvm":
+                raise
+            self.facts["boot_retry"] = stuck.detail
+            self.guest.restart(Path(self.image_info["path"]), seed, stuck.detail)
+            self.guest.wait_ssh(self.arguments.boot_timeout)
         upgrade = self.entry["image"].get("upgrade")
         if upgrade:
             self.guest.root(upgrade, timeout=self.arguments.install_timeout)

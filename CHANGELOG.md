@@ -48,6 +48,11 @@
 - The graphical VM test logs in to Alpine guests. Alpine's OpenSSH has no PAM and refuses a key login to a locked
   account, so the seed now gives the test user and root the password field `*` (no password, not locked) instead of
   `!`. Before, Alpine 3.21 to 3.24 and edge never got past the `boot` check.
+- The graphical VM test starts the Gnoblin session on Alpine. Busybox login has no PAM, so no logind session was
+  opened and Gnoblin refused to start. The guest now logs in with util-linux login and `pam_elogind`, runs eudev so
+  that mutter finds the GPU, and starts a D-Bus session bus.
+- An emulated graphical guest waits 10 minutes for its disks (a systemd credential, without changing the image), and
+  a guest that goes to emergency mode or freezes fails `boot` at once and is booted once more from a fresh disk.
 - The graphical VM test starts arm64 guests. Their network device asked for an option ROM (`efi-virtio.rom`) that
   QEMU on an Ubuntu arm64 runner does not have, so QEMU stopped at start. The device has no ROM now, and a QEMU that
   stops at start is reported with its own message.
