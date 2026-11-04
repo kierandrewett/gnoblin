@@ -381,7 +381,7 @@ static int lua_tween_control(lua_State* state, const char* method, const char* s
     if (!g_str_equal(current, "playing") && !g_str_equal(current, "paused"))
         return luaL_error(state, "this tween is not playing");
     push_tween_arguments(state);
-    if (g_str_equal(method, "tween.seek")) {
+    if (gnoblin_api_operation_is(method, GNOBLIN_OP_TWEEN_SEEK)) {
         double seconds = check_seconds(state, 2, "seek");
         lua_pushinteger(state, (lua_Integer)(seconds * 1000.0));
         lua_setfield(state, -2, "milliseconds");

@@ -431,21 +431,12 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
          * holds it, so such an operation has no gesture context to attach. */
         g_autoptr(GVariant) menu_handle =
             g_variant_lookup_value(arguments, "_menu_context_handle", NULL);
+        const GnoblinApiOperation* operation_row = gnoblin_api_operation_find(method);
         gboolean needs_focus_context =
-            !menu_handle &&
-            (g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
-             g_str_equal(method, "window.begin_resize") ||
-             g_str_equal(method, "input.text_target") ||
-             g_str_equal(method, "window.snap_context"));
+            !menu_handle && operation_row && (operation_row->flags & GN_OP_GRANT);
         /* Fields the compositor needs beside the operation itself. Only the operation that a
          * socket client's call created carries that client's ID. */
-        gboolean needs_generation =
-            g_str_equal(method, "window.snap.offer") || g_str_equal(method, "window.snap") ||
-            g_str_equal(method, "window.snap_context") ||
-            g_str_equal(method, "window.set_visual") || g_str_equal(method, "window.set_effect") ||
-            g_str_has_prefix(method, "tween.") || g_str_has_prefix(method, "process.") ||
-            g_str_has_prefix(method, "idle.") || g_str_equal(method, "settings.override") ||
-            g_str_equal(method, "override.revoke") || g_str_has_prefix(method, "input.grab");
+        gboolean needs_generation = operation_row && (operation_row->flags & GN_OP_GENERATION);
         gboolean needs_client =
             runtime->current_client_id && request_id == runtime->current_client_operation_id;
         guint64 handle = 0;
@@ -501,7 +492,7 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
         } else {
             packet = g_variant_ref(operation);
         }
-        gboolean logout_operation = g_str_equal(method, "session.logout");
+        gboolean logout_operation = operation_row && operation_row->id == GNOBLIN_OP_SESSION_LOGOUT;
         if (logout_operation && is_pending_logout(runtime, (guint64)request_id)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                 "Lua runtime reused a pending session logout request ID");

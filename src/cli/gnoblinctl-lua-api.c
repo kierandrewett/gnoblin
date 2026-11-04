@@ -238,7 +238,7 @@ gboolean lua_cli_push_api_function(lua_State* state, Cli* cli, const char* path)
         return FALSE;
     lua_CFunction function = console_function(path);
     if (function) {
-        push_closure(state, cli, function, entry->operation ? entry->operation : path, path);
+        push_closure(state, cli, function, entry->operation ? entry->operation->name : path, path);
     } else {
         g_autofree char* label = g_strdup_printf("gnoblin.%s", path);
         push_not_available(state, label);
@@ -258,7 +258,8 @@ void lua_cli_add_record_methods(lua_State* state, Cli* cli, const char* class_na
             if (g_str_equal(console_methods[i].path, entry->path))
                 function = console_methods[i].function;
         if (function)
-            push_closure(state, cli, function, entry->operation ? entry->operation : "", name);
+            push_closure(state, cli, function, entry->operation ? entry->operation->name : "",
+                         name);
         else
             push_not_available(state, entry->path);
         lua_setfield(state, -2, name);

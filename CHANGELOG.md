@@ -4,6 +4,10 @@
 
 ### Changed
 
+- One table of wire operations (`src/control/gnoblin-api-operations.h`, round 2; no wire change, API stays 1.92).
+  The version gates and their errors, the hello method list, the `gnoblinctl` minors, the supervisor packet flags and
+  the compositor dispatch read it instead of repeating names in chains. Record methods of `lua_api[]` declare their
+  positional arguments, and the runtime packs them from that schema with the same errors as before.
 - `gnoblinctl lua` has the names and call shapes of a Lua configuration (round 2; no wire change).
     - The console reads `lua_api[]`, the table the runtime installs, instead of a prefix chain of its own. A name
       that the table does not hold fails with `gnoblin.NAME is not part of the Lua API`; the table of removed

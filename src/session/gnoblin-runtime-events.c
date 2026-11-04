@@ -195,14 +195,14 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
         g_variant_lookup(operation_result, "accepted", "b", &logout_accepted);
     gboolean matching_success = logout_operation &&
                                 g_variant_lookup(payload, "method", "&s", &method) &&
-                                g_str_equal(method, "session.logout") &&
+                                gnoblin_api_operation_is(method, GNOBLIN_OP_SESSION_LOGOUT) &&
                                 g_variant_lookup(payload, "ok", "b", &succeeded) && succeeded;
     matching_success = matching_success && operation_result && logout_accepted;
     gboolean restore_requested = FALSE;
     if (g_variant_lookup(payload, "method", "&s", &method) &&
         g_variant_lookup(payload, "ok", "b", &succeeded) && succeeded && operation_result &&
         g_variant_lookup(operation_result, "accepted", "b", &logout_accepted) && logout_accepted) {
-        if (g_str_equal(method, "config.restore_default"))
+        if (gnoblin_api_operation_is(method, GNOBLIN_OP_CONFIG_RESTORE_DEFAULT))
             restore_requested = TRUE;
     }
 
@@ -494,7 +494,7 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
                 !commit_event_result(runtime, result, &api_error))
                 g_clear_pointer(&result, g_variant_unref);
         }
-    } else if (!g_str_equal(method, "runtime.reload_config") ||
+    } else if (!gnoblin_api_operation_is(method, GNOBLIN_OP_RUNTIME_RELOAD_CONFIG) ||
                g_variant_n_children(arguments) != 0) {
         g_set_error_literal(&api_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "invalid runtime config reload request");

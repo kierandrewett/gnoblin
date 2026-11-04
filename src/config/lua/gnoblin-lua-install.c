@@ -270,11 +270,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
         if (entry->function) {
             lua_pushcclosure(state, entry->function, 1);
         } else {
-            lua_pushstring(state, entry->operation);
+            lua_pushstring(state, entry->operation->name);
             lua_pushcclosure(state,
-                             g_str_has_prefix(entry->operation, "workspace.")
-                                 ? lua_workspace_action
-                                 : lua_generic_api_action,
+                             entry->operation->flags & GN_OP_WORKSPACE ? lua_workspace_action
+                                                                       : lua_generic_api_action,
                              2);
         }
         if (entry->named_arguments) {

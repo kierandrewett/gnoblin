@@ -40,7 +40,11 @@ def _combined(first: list[Path], pattern: str) -> str:
 
 
 def control_source() -> str:
-    return _combined([CONTROL_DIR / name for name in NATIVE_CONTROL_SPLIT], "gnoblin-control-*.c")
+    """The control sources and the operation table, which spells the wire names once."""
+    return (
+        _combined([CONTROL_DIR / name for name in NATIVE_CONTROL_SPLIT], "gnoblin-control-*.c")
+        + (CONTROL_DIR / "gnoblin-api-operations.h").read_text()
+    )
 
 
 def control_header() -> str:
@@ -67,6 +71,7 @@ LUA_SOURCES = JoinedSources(
     SRC_DIR / "config/lua",
     [
         "gnoblin-lua.c",
+        "../../control/gnoblin-api-operations.h",
         "gnoblin-lua-variant.c",
         "gnoblin-lua-merge.c",
         "gnoblin-lua-subscriptions.c",

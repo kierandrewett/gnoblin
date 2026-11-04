@@ -327,9 +327,10 @@ int lua_windows_snap_context(lua_State* state) {
  * method with the Window's ID. */
 int lua_window_grant_operation(lua_State* state, LuaConfig* config, const char* method,
                                const char* window_id, int grant_index, const char* edge) {
-    LuaGrantScope scope = g_str_equal(method, "window.focus")        ? LUA_GRANT_FOCUS
-                          : g_str_equal(method, "window.begin_move") ? LUA_GRANT_BEGIN_MOVE
-                                                                     : LUA_GRANT_BEGIN_RESIZE;
+    LuaGrantScope scope =
+        gnoblin_api_operation_is(method, GNOBLIN_OP_WINDOW_FOCUS)        ? LUA_GRANT_FOCUS
+        : gnoblin_api_operation_is(method, GNOBLIN_OP_WINDOW_BEGIN_MOVE) ? LUA_GRANT_BEGIN_MOVE
+                                                                         : LUA_GRANT_BEGIN_RESIZE;
     return lua_grant_operation(state, config, grant_index, scope, method, window_id, edge);
 }
 
@@ -618,7 +619,9 @@ int lua_animation_preview_method(lua_State* state) {
     lua_pushvalue(state, -2);
     lua_setfield(state, arguments, "session"); /* the wire call names the preview "session" */
 
-    if (g_str_equal(method, "animation.seek")) {
+    const GnoblinApiOperation* operation_row = gnoblin_api_operation_find(method);
+    GnoblinApiOp id = operation_row ? operation_row->id : GNOBLIN_OP_COUNT;
+    if (id == GNOBLIN_OP_ANIMATION_SEEK) {
         if (supplied != 1 || lua_type(state, 2) != LUA_TNUMBER)
             return luaL_error(state, "preview:seek requires a number from 0 to 1");
         double progress = lua_tonumber(state, 2);
@@ -626,16 +629,17 @@ int lua_animation_preview_method(lua_State* state) {
             return luaL_error(state, "preview:seek requires a number from 0 to 1");
         lua_pushnumber(state, progress);
         lua_setfield(state, arguments, "progress");
-    } else if (g_str_equal(method, "animation.step")) {
+    } else if (id == GNOBLIN_OP_ANIMATION_STEP) {
         if (supplied != 1 || !lua_isinteger(state, 2) || lua_tointeger(state, 2) < 1 ||
             lua_tointeger(state, 2) > 60000)
             return luaL_error(state, "preview:step requires an integer from 1 to 60000");
         lua_pushvalue(state, 2);
         lua_setfield(state, arguments, "milliseconds");
-    } else if (g_str_equal(method, "animation.play") || g_str_equal(method, "animation.pause") ||
-               g_str_equal(method, "animation.stop")) {
+    } else if (id == GNOBLIN_OP_ANIMATION_PLAY || id == GNOBLIN_OP_ANIMATION_PAUSE ||
+               id == GNOBLIN_OP_ANIMATION_STOP) {
         if (supplied != 0) {
-            const char* operation = method + strlen("animation.");
+            const char* operation =
+                method + strlen(gnoblin_api_operation_name(GNOBLIN_OP_ANIMATION_FAMILY));
             return luaL_error(state, "preview:%s takes no arguments", operation);
         }
     } else {
@@ -652,6 +656,6 @@ int lua_animation_preview_method(lua_State* state) {
      * is gone. */
     if (config)
         lua_object_end_after(state, config, lua_gettop(state), "AnimationPreview", 1,
-                             g_str_equal(method, "animation.stop"));
+                             id == GNOBLIN_OP_ANIMATION_STOP);
     return 1;
 }

@@ -142,7 +142,7 @@ if(GNOBLIN_LUA_FOUND)
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_XKBCOMMON
     PkgConfig::GNOBLIN_LUA m)
 
-  foreach(test_name IN ITEMS lua-config lua-config-validation lua-dropins lua-api glob-config)
+  foreach(test_name IN ITEMS lua-config lua-config-validation lua-dropins lua-api api-operations glob-config)
     add_executable(${test_name}-test tests/${test_name}-test.c)
     target_link_libraries(${test_name}-test PRIVATE gnoblin-config-core)
     add_test(NAME ${test_name} COMMAND ${test_name}-test)

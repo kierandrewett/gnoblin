@@ -9,6 +9,8 @@ table and the LuaCATS annotations that scripts/gen-lua-api.py collects, and repo
     install, unless it is installed by hand (STRUCTURAL below), and
   * a method of a class that is built by hand outside lua_api[] (HAND_BUILT below) that is
     annotated but not listed, listed but not annotated, or listed but not in the C source, and
+  * a record method whose argument schema in lua_api[] (ARGS(...)) takes a different number of
+    positional arguments than its annotation declares, and
   * a name in the console's call table (src/cli/gnoblinctl-lua-api.c) that lua_api[] does not
     hold, and a wire operation of lua_api[] on a record that the console builds but that the
     console has no method for.
@@ -106,7 +108,7 @@ def installed_paths():
     block = text[text.index("const LuaApiEntry lua_api[] = {") :]
     block = block[: block.index("{NULL, NULL, NULL}")]
     paths = set()
-    for path in re.findall(r'\{"([A-Za-z_.:]+)",', block):
+    for path in re.findall(r'^\s*\{"([A-Za-z_.:]+)",', block, re.M):
         paths.add(path if ":" in path else "gnoblin." + path)
     return paths
 
@@ -117,9 +119,40 @@ def lua_api_entries():
     block = text[text.index("const LuaApiEntry lua_api[] = {") :]
     block = block[: block.index("{NULL, NULL, NULL}")]
     entries = []
-    for match in re.finditer(r'\{"([A-Za-z_.:]+)",\s*(NULL|"[\w.]+"),\s*(NULL|\w+)', block):
+    for match in re.finditer(r'^\s*\{"([A-Za-z_.:]+)",\s*(NULL|OPERATION\(\w+\)),\s*(NULL|\w+)', block, re.M):
         entries.append((match.group(1), match.group(2) != "NULL", match.group(3) != "NULL"))
     return entries
+
+
+def argument_schemas():
+    """The positional arguments of each record method with an ARGS(...) schema: path -> (required, option)."""
+    text = TABLE.read_text()
+    block = text[text.index("const LuaApiEntry lua_api[] = {") :]
+    block = block[: block.index("{NULL, NULL, NULL}")]
+    schemas = {}
+    for match in re.finditer(r'^\s*\{"([A-Za-z_.:]+)",[^\n]*?(ARGS\((.*)\)|lua_no_arguments)\},', block, re.M):
+        kinds = re.findall(r"LUA_ARG_(\w+)", match.group(3) or "")
+        required = sum(1 for kind in kinds if kind not in ("OPTION_BOOLEAN", "CONSTANT_TRUE"))
+        # A method whose first argument only picks the operation still takes it positionally.
+        schemas[match.group(1)] = (required, "OPTION_BOOLEAN" in kinds)
+    return schemas
+
+
+def schema_problems(functions):
+    problems = []
+    for path, (required, option) in sorted(argument_schemas().items()):
+        declared = functions.get(path)
+        if declared is None:
+            continue
+        params = declared["params"]
+        if len(params) != required + (1 if option else 0):
+            problems.append(
+                f"{path}: the schema in lua_api[] takes {required + (1 if option else 0)} arguments, "
+                f"the annotation declares {len(params)}"
+            )
+        elif option and not params[-1]["optional"]:
+            problems.append(f"{path}: the option argument must be optional in the annotation")
+    return problems
 
 
 def console_table(name):
@@ -183,6 +216,7 @@ def main():
         owner = path.split(":")[0] if ":" in path else "gnoblin"
         if owner == "gnoblin" and path.startswith("gnoblin.") or owner in record_classes:
             problems.append(f"annotated but not installed: {path}")
+    problems += schema_problems(functions)
     problems += hand_built_problems(annotated)
     problems += console_problems(STRUCTURAL)
     print(f"{len(problems)} mismatches between lua_api[], the annotations and the console")

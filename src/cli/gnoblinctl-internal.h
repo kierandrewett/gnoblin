@@ -5,6 +5,7 @@
 #include <gio/gio.h>
 #include <gio/gunixsocketaddress.h>
 #include <glib-unix.h>
+#include "gnoblin-api-operations.h"
 #include "gnoblin-config.h"
 #include "gnoblin-lua-api.h"
 #include <json-glib/json-glib.h>

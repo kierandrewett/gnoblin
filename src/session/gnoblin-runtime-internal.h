@@ -4,6 +4,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include "../control/gnoblin-api-operations.h"
 #include "../control/gnoblin-runtime-protocol.h"
 #include "../input/gnoblin-input-config.h"
 #include "gnoblin-runtime-spawn.h"

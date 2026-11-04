@@ -334,6 +334,41 @@ and gap 7 are done (see the end of this list).
     - Order. The compositor checks focus identity for `snap_context` and `text_target`, so take them before
       `focus`.
 
+## One descriptor table for the wire operations (audit item 4)
+
+Principle 8 says one schema drives the Lua stub, the socket protocol and `gnoblinctl`. `lua_api[]` and the annotations
+already drove the install, the stub, `signatures.inc` and the console names. The wire side kept its own chains of
+string comparisons. `src/control/gnoblin-api-operations.h` is now the one table of wire operations. It holds data and
+inline lookups only, so libmutter (it is copied to `core/` by `src/control/manifest`), the `gnoblin` executable and
+`gnoblinctl` each include it. A row has the name, the gate (first API minor and the error older clients get), the
+minor `gnoblinctl` asks for, flags and a dispatch kind. A name ending in `.` with `GN_OP_FAMILY` stands for every name
+under that prefix. `LuaApiEntry.operation` points at a row, and a record method declares its positional arguments
+(`LuaApiEntry.arguments`, `ARGS(...)`). No wire name, field name or error text changes, and the API stays at 1.92.
+
+| Place                                                                      | What it repeated                           | Decision                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnoblin-lua-variant.c` `lua_record_method`                                | names, argument names, types, arity        | Fits. Schema in `lua_api[]`; error text derives from the argument kinds and the method path. Grant methods, `set_effect` and animation `inspect` and `preview` stay in code, keyed by flag or id.                                |
+| `gnoblin-lua-variant.c` `push_operation_result`                            | which operations answer with an object     | Fits. Flags `GN_OP_RESULT_WORKSPACE` and `GN_OP_RESULT_LIVE`; the four special results stay in code, keyed by id.                                                                                                                |
+| `gnoblin-lua-operations.c` named-table validation                          | allowed field names, thumbnail limits      | Partly. Field names come from `lua_api_operation_fields`, limits from the schema, no-argument calls from `GN_OP_NOTHING`. Types, ranges and selectors stay explicit (their errors differ from the positional ones), keyed by id. |
+| `gnoblin-runtime-packets.c`                                                | which operations get a grant or generation | Fits. `GN_OP_GRANT`, `GN_OP_GENERATION`.                                                                                                                                                                                         |
+| `gnoblin-control-runtime-channel.c`                                        | name to compositor routine                 | Fits. `dispatch` column and `GN_OP_CLIENT_ID`, `GN_OP_PROCESS_GATE`, `GN_OP_SNAP_GATE`. The routines and their checks stay; the `switch` is on the dispatch kind and the id.                                                     |
+| `gnoblin-control-requests.c` version gates                                 | 39 `api_minor <` checks and their errors   | Fits, including the one name whose 1.19 read gate comes before its own 1.67 gate (`GN_OP_READS_FIRST`). Request routing and JSON validation stay explicit.                                                                       |
+| `gnoblin-control-connection.c` hello `methods`                             | the list and its order                     | Fits. `GN_OP_HELLO`, in table order.                                                                                                                                                                                             |
+| `gnoblin-control-queue.c` read lists                                       | two name lists                             | Fits. `GN_OP_READ`, `GN_OP_ANIM_READ`.                                                                                                                                                                                           |
+| `gnoblinctl-cli.c` `api_minor_for_method`, `gnoblinctl-client.c` lists     | minor table, versioned list, waits list    | Fits. `cli_minor`, `GN_OP_VERSIONED`, `GN_OP_WAITS`.                                                                                                                                                                             |
+| `gnoblin-lua.c` `bridge_operations`, `lua_api_find_call`, install, console | names, "workspace." prefix test            | Fits. Rows by id; `GN_OP_WORKSPACE`.                                                                                                                                                                                             |
+| `gnoblinctl-lua-*.c` console packers                                       | argument shapes, in JSON                   | Kept. They build JSON from console records and their errors differ from the runtime's (the console tests assert them).                                                                                                           |
+| `gnoblinctl-dispatch.c` command table                                      | CLI verb to wire name                      | Kept. It is the CLI vocabulary; no column would remove the name.                                                                                                                                                                 |
+| `gnoblin-lua-read.c` read chain                                            | read name to Lua function and result shape | Not converted. It maps legacy wire reads to closures and shapes; a table needs its own columns. Open.                                                                                                                            |
+
+`scripts/audit-lua-annotations.py` now also checks that the number of positional arguments in an `ARGS(...)` schema
+equals the annotated parameters. `tests/api-operations-test.c` pins the hello list, the gate errors, the
+`gnoblinctl` minors, the supervisor flags and that every `lua_api[]` function points at a row.
+
+Count of quoted wire-name literals in `src/` for the 288 names the chains used (a name in the table counts once):
+856 places in 1121 literals before, 511 and 643 after. `override.revoke` was in 4 files and is in 1 (the table, plus
+its error text); `idle.cancel` 3 files to 1; `shortcut.unbind` 8 to 3; `session.logout` 11 to 4.
+
 ## Decisions
 
 - Hard cutover, no compatibility wrappers (`design/lua-api-goal.md`).

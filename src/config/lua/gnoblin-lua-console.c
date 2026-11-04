@@ -1091,10 +1091,10 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     if (entry->function) {
         lua_pushcclosure(state, entry->function, 1);
     } else {
-        lua_pushstring(state, entry->operation);
+        lua_pushstring(state, entry->operation->name);
         lua_pushcclosure(state,
-                         g_str_has_prefix(entry->operation, "workspace.") ? lua_workspace_action
-                                                                          : lua_generic_api_action,
+                         entry->operation->flags & GN_OP_WORKSPACE ? lua_workspace_action
+                                                                   : lua_generic_api_action,
                          2);
     }
     int argument_count = g_variant_n_children(arguments) ? 1 : 0;

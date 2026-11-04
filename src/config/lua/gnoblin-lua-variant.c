@@ -247,16 +247,167 @@ static int lua_readonly_next(lua_State* state) {
     return 2;
 }
 
+/* The words that a field name stands for in an error: "session_id" is "session ID". */
+static char* field_words(const char* field) {
+    g_autofree char* words = g_strdup(field);
+    g_autofree char* with_id = NULL;
+    if (g_str_has_suffix(words, "_id")) {
+        words[strlen(words) - 3] = '\0';
+        with_id = g_strdup_printf("%s ID", words);
+    } else {
+        with_id = g_strdup(words);
+    }
+    return g_strdelimit(g_steal_pointer(&with_id), "_", ' ');
+}
+
+/* The error for a record method called with the wrong number of arguments. The text follows the
+ * kind of its first argument: window:move takes integer x and y. */
+static char* record_arity_error(const LuaApiEntry* entry, const LuaApiArg* arguments,
+                                int required) {
+    g_autofree char* label = g_ascii_strdown(entry->path, -1);
+    switch (arguments->kind) {
+    case LUA_ARG_BOOLEAN:
+        return g_strdup_printf("%s requires one boolean", entry->operation->name);
+    case LUA_ARG_INTEGER:
+        return g_strdup_printf("%s takes integer %s and %s", label, arguments[0].field,
+                               arguments[1].field);
+    case LUA_ARG_NUMBER:
+    case LUA_ARG_CONSTANT_TRUE:
+        return g_strdup_printf("%s takes %d number%s", label, required, required == 1 ? "" : "s");
+    case LUA_ARG_STRING: {
+        g_autofree char* words = field_words(arguments->field);
+        return g_strdup_printf("%s requires a %s", label, words);
+    }
+    case LUA_ARG_POSITIVE_INTEGER: {
+        g_autofree char* words = field_words(arguments->field);
+        return g_strdup_printf("%s takes a positive integer %s", label, words);
+    }
+    case LUA_ARG_SIZE:
+        return g_strdup_printf("%s takes %s and %s", label, arguments[0].field, arguments[1].field);
+    case LUA_ARG_WORKSPACE:
+        return g_strdup_printf("%s takes a workspace and optional options", label);
+    case LUA_ARG_MONITOR:
+        return g_strdup_printf("%s takes an Output or a monitor ID", label);
+    case LUA_ARG_OPTION_BOOLEAN:
+    case LUA_ARG_END:
+        break;
+    }
+    return g_strdup_printf("%s takes no arguments", entry->operation->name);
+}
+
+/* The error for an argument of the wrong type. */
+static char* record_type_error(const LuaApiEntry* entry, const LuaApiArg* arguments,
+                               const LuaApiArg* argument, int required) {
+    g_autofree char* label = g_ascii_strdown(entry->path, -1);
+    switch (argument->kind) {
+    case LUA_ARG_NUMBER:
+        return g_strdup_printf("%s takes numbers", label);
+    case LUA_ARG_SIZE:
+        return g_strdup_printf("%s %s must be an integer from 1 to %d", label, argument->field,
+                               (int)argument->limit);
+    case LUA_ARG_WORKSPACE:
+        return g_strdup_printf("%s takes a Workspace, a workspace ID string or a number", label);
+    case LUA_ARG_OPTION_BOOLEAN:
+        return g_strdup_printf("%s options accept only %s", label, argument->field);
+    default:
+        return record_arity_error(entry, arguments, required);
+    }
+}
+
+/* Check the positional arguments of the record method `entry` (the values from stack index 2) and
+ * set them as the fields of the wire arguments at index `arguments`. */
+static int pack_record_arguments(lua_State* state, const LuaApiEntry* entry, int supplied,
+                                 int arguments) {
+    int required = 0;
+    gboolean option = FALSE;
+    for (const LuaApiArg* argument = entry->arguments; argument->kind != LUA_ARG_END; argument++) {
+        if (argument->kind == LUA_ARG_OPTION_BOOLEAN)
+            option = TRUE;
+        else if (argument->kind != LUA_ARG_CONSTANT_TRUE)
+            required++;
+    }
+    if (supplied < required || supplied > required + (option ? 1 : 0)) {
+        g_autofree char* message = record_arity_error(entry, entry->arguments, required);
+        return luaL_error(state, "%s", message);
+    }
+    int index = 2;
+    for (const LuaApiArg* argument = entry->arguments; argument->kind != LUA_ARG_END; argument++) {
+        gboolean valid = TRUE;
+        switch (argument->kind) {
+        case LUA_ARG_BOOLEAN:
+            valid = lua_isboolean(state, index);
+            break;
+        case LUA_ARG_INTEGER:
+            valid = lua_isinteger(state, index);
+            break;
+        case LUA_ARG_NUMBER:
+            valid = lua_type(state, index) == LUA_TNUMBER;
+            break;
+        case LUA_ARG_STRING:
+            valid = lua_type(state, index) == LUA_TSTRING;
+            break;
+        case LUA_ARG_POSITIVE_INTEGER:
+            valid = lua_isinteger(state, index) && lua_tointeger(state, index) > 0;
+            break;
+        case LUA_ARG_SIZE:
+            valid = lua_isinteger(state, index) && lua_tointeger(state, index) >= 1 &&
+                    lua_tointeger(state, index) <= argument->limit;
+            break;
+        case LUA_ARG_WORKSPACE:
+            valid = lua_push_workspace_selector(state, index);
+            break;
+        case LUA_ARG_MONITOR:
+            valid = lua_push_monitor_id(state, index);
+            break;
+        case LUA_ARG_OPTION_BOOLEAN: {
+            if (index > supplied + 1 || lua_isnil(state, index))
+                continue;
+            const char* const fields[] = {argument->field, NULL};
+            valid = lua_istable(state, index) && table_fields_allowed(state, index, fields);
+            if (valid) {
+                lua_getfield(state, index, argument->field);
+                if (!lua_isnil(state, -1))
+                    lua_setfield(state, arguments, argument->field);
+                else
+                    lua_pop(state, 1);
+            }
+            break;
+        }
+        case LUA_ARG_CONSTANT_TRUE:
+            lua_pushboolean(state, TRUE);
+            lua_setfield(state, arguments, argument->field);
+            continue;
+        case LUA_ARG_END:
+            break;
+        }
+        if (!valid) {
+            g_autofree char* message =
+                record_type_error(entry, entry->arguments, argument, required);
+            return luaL_error(state, "%s", message);
+        }
+        if (argument->kind == LUA_ARG_WORKSPACE || argument->kind == LUA_ARG_MONITOR) {
+            lua_setfield(state, arguments, argument->field);
+        } else if (argument->kind != LUA_ARG_OPTION_BOOLEAN && argument->field) {
+            lua_pushvalue(state, index);
+            lua_setfield(state, arguments, argument->field);
+        }
+        index++;
+    }
+    return 0;
+}
+
 /* Methods on snapshot records are thin adapters to the existing typed
  * operation dispatcher. Keeping the ID on the detached record means stale
- * records still fail in the compositor rather than targeting a reused row. */
+ * records still fail in the compositor rather than targeting a reused row. Upvalue 1 is the wire
+ * name of the operation, 2 the name of the method and 3 its lua_api[] entry. */
 static int lua_record_method(lua_State* state) {
     LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
     const char* method = lua_tostring(state, lua_upvalueindex(1));
-    gboolean workspace = g_str_has_prefix(method, "workspace.");
-    gboolean thumbnail = g_str_equal(method, "window.thumbnail");
+    const LuaApiEntry* entry = lua_touserdata(state, lua_upvalueindex(3));
+    const GnoblinApiOperation* operation = entry->operation;
+    gboolean workspace = operation->flags & GN_OP_WORKSPACE;
     /* A launch is named by its token, every other record by its id. */
-    const char* key_field = g_str_has_prefix(method, "launch.") ? "token" : "id";
+    const char* key_field = operation->dispatch == GN_DISPATCH_LAUNCH ? "token" : "id";
     lua_getiuservalue(state, 1, 1);
     int backing = lua_absindex(state, -1);
     lua_getfield(state, -1, key_field);
@@ -267,7 +418,7 @@ static int lua_record_method(lua_State* state) {
     int arguments = lua_absindex(state, -1);
     lua_pushstring(state, id);
     lua_setfield(state, arguments, key_field);
-    if (g_str_equal(method, "input.select")) {
+    if (operation->id == GNOBLIN_OP_INPUT_SELECT) {
         /* An input source is named by its type and id. */
         lua_getfield(state, backing, "type");
         lua_setfield(state, arguments, "type");
@@ -277,12 +428,9 @@ static int lua_record_method(lua_State* state) {
     arguments = lua_gettop(state);
 
     int supplied = arguments - 2; /* Exclude receiver and constructed argument table. */
-    gboolean focus = g_str_equal(method, "window.focus");
-    gboolean begin_move = g_str_equal(method, "window.begin_move");
-    gboolean begin_resize = g_str_equal(method, "window.begin_resize");
-    if (focus || begin_move || begin_resize) {
-        if ((focus && supplied != 1) || (begin_move && supplied != 1) ||
-            (begin_resize && supplied != 2))
+    if (operation->flags & GN_OP_GRANT) {
+        gboolean begin_resize = operation->id == GNOBLIN_OP_WINDOW_BEGIN_RESIZE;
+        if (supplied != (begin_resize ? 2 : 1))
             return luaL_error(state,
                               "%s requires %sa Grant from a shortcut, pointer or window "
                               "menu event as its last argument",
@@ -303,104 +451,17 @@ static int lua_record_method(lua_State* state) {
         }
         return lua_window_grant_operation(state, config, method, id, begin_resize ? 3 : 2, edge);
     }
-    if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
-        g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
-        g_str_equal(method, "window.restore_or_minimize") ||
-        g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
-        g_str_equal(method, "workspace.switch") || g_str_equal(method, "shortcut.unbind") ||
-        g_str_equal(method, "launch.end") || g_str_equal(method, "input.select") ||
-        g_str_equal(method, "idle.cancel") || g_str_equal(method, "override.revoke") ||
-        g_str_equal(method, "input.grab.renew") || g_str_equal(method, "input.grab.release")) {
-        if (supplied != 0)
-            return luaL_error(state, "%s takes no arguments", method);
-    } else if (g_str_equal(method, "window.set_minimized")) {
-        /* Minimizing and restoring are two compositor operations; the boolean picks one. */
-        if (supplied != 1 || !lua_isboolean(state, 2))
-            return luaL_error(state, "%s requires one boolean", method);
-        method = lua_toboolean(state, 2) ? "window.minimize" : "window.unminimize";
-    } else if (g_str_equal(method, "window.set_above") ||
-               g_str_equal(method, "window.set_sticky") ||
-               g_str_equal(method, "window.set_maximized") ||
-               g_str_equal(method, "window.set_fullscreen")) {
-        if (supplied != 1 || !lua_isboolean(state, 2))
-            return luaL_error(state, "%s requires one boolean", method);
-        lua_pushvalue(state, 2);
-        lua_setfield(state, arguments, "enabled");
-    } else if (g_str_equal(method, "window.move") || g_str_equal(method, "window.resize")) {
-        gboolean move = g_str_equal(method, "window.move");
-        if (supplied != 2 || !lua_isinteger(state, 2) || !lua_isinteger(state, 3))
-            return luaL_error(state, move ? "window:move takes integer x and y"
-                                          : "window:resize takes integer width and height");
-        lua_pushvalue(state, 2);
-        lua_setfield(state, arguments, move ? "x" : "width");
-        lua_pushvalue(state, 3);
-        lua_setfield(state, arguments, move ? "y" : "height");
-    } else if (g_str_equal(method, "window.move_to_workspace")) {
-        if (supplied < 1 || supplied > 2)
-            return luaL_error(state,
-                              "window:move_to_workspace takes a workspace and optional options");
-        static const char* const option_fields[] = {"follow", NULL};
-        if (!lua_push_workspace_selector(state, 2))
-            return luaL_error(state, "window:move_to_workspace takes a Workspace, a workspace ID "
-                                     "string or a number");
-        lua_setfield(state, arguments, "workspace");
-        if (supplied == 2 && !lua_isnil(state, 3)) {
-            if (!lua_istable(state, 3) || !table_fields_allowed(state, 3, option_fields))
-                return luaL_error(state, "window:move_to_workspace options accept only follow");
-            lua_getfield(state, 3, "follow");
-            if (!lua_isnil(state, -1))
-                lua_setfield(state, arguments, "follow");
-            else
-                lua_pop(state, 1);
-        }
-    } else if (g_str_equal(method, "window.set_effect")) {
+    if (operation->id == GNOBLIN_OP_WINDOW_SET_EFFECT) {
         /* Returns an Override, not the Operation (gnoblin-lua-state-queries.c). */
         if (supplied != 2)
             return luaL_error(state, "window:set_effect takes an effect name and a value");
         return lua_window_set_effect(state, config, id, 2, 3);
-    } else if (g_str_equal(method, "window.set_visual")) {
-        /* set_opacity(v), set_scale(s), set_rotation(degrees), set_offset(x, y) and
-         * reset_visuals() share the operation; the compositor checks the ranges. */
-        const char* name = lua_tostring(state, lua_upvalueindex(2));
-        static const struct {
-            const char* method;
-            const char* fields[2];
-        } visuals[] = {
-            {"set_opacity", {"opacity", NULL}},   {"set_scale", {"scale", NULL}},
-            {"set_rotation", {"rotation", NULL}}, {"set_offset", {"offset_x", "offset_y"}},
-            {"reset_visuals", {NULL, NULL}},
-        };
-        gboolean known = FALSE;
-        for (guint i = 0; name && i < G_N_ELEMENTS(visuals); i++) {
-            if (!g_str_equal(name, visuals[i].method))
-                continue;
-            known = TRUE;
-            int count = visuals[i].fields[1] ? 2 : visuals[i].fields[0] ? 1 : 0;
-            if (supplied != count)
-                return luaL_error(state, "window:%s takes %d number%s", name, count,
-                                  count == 1 ? "" : "s");
-            for (int field = 0; field < count; field++) {
-                if (lua_type(state, 2 + field) != LUA_TNUMBER)
-                    return luaL_error(state, "window:%s takes numbers", name);
-                lua_pushvalue(state, 2 + field);
-                lua_setfield(state, arguments, visuals[i].fields[field]);
-            }
-            if (count == 0) {
-                lua_pushboolean(state, TRUE);
-                lua_setfield(state, arguments, "reset");
-            }
-        }
-        if (!known)
-            return luaL_error(state, "unknown window visual method");
-    } else if (g_str_equal(method, "window.move_to_monitor")) {
-        if (supplied != 1 || !lua_push_monitor_id(state, 2))
-            return luaL_error(state, "window:move_to_monitor takes an Output or a monitor ID");
-        lua_setfield(state, arguments, "monitor");
-    } else if (g_str_equal(method, "animation.inspect") ||
-               g_str_equal(method, "animation.preview")) {
+    }
+    if (operation->id == GNOBLIN_OP_ANIMATION_INSPECT ||
+        operation->id == GNOBLIN_OP_ANIMATION_PREVIEW) {
         /* window:inspect_animation(name, event?) and window:preview_animation(name, event?,
          * autoplay?), and the same on a LayerSurface. The receiver is the target. */
-        gboolean preview = g_str_equal(method, "animation.preview");
+        gboolean preview = operation->id == GNOBLIN_OP_ANIMATION_PREVIEW;
         if (supplied < 1 || supplied > (preview ? 3 : 2) || lua_type(state, 2) != LUA_TSTRING)
             return luaL_error(state, preview
                                          ? "preview_animation takes an animation name, an optional "
@@ -427,29 +488,13 @@ static int lua_record_method(lua_State* state) {
             lua_pushvalue(state, 4);
             lua_setfield(state, arguments, "autoplay");
         }
-    } else if (thumbnail) {
-        if (supplied != 2)
-            return luaL_error(state, "window:thumbnail takes width and height");
-        const char* dimensions[] = {"width", "height"};
-        const lua_Integer limits[] = {480, 320};
-        for (guint i = 0; i < G_N_ELEMENTS(dimensions); i++) {
-            if (!lua_isinteger(state, 2 + (int)i) || lua_tointeger(state, 2 + (int)i) < 1 ||
-                lua_tointeger(state, 2 + (int)i) > limits[i])
-                return luaL_error(state, "window:thumbnail %s must be an integer from 1 to %d",
-                                  dimensions[i], (int)limits[i]);
-            lua_pushvalue(state, 2 + (int)i);
-            lua_setfield(state, arguments, dimensions[i]);
-        }
-    } else if (g_str_equal(method, "workspace.rename")) {
-        if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING)
-            return luaL_error(state, "workspace:rename requires a name");
-        lua_pushvalue(state, 2);
-        lua_setfield(state, arguments, "name");
-    } else if (g_str_equal(method, "shortcut.session.end")) {
-        if (supplied != 1 || !lua_isinteger(state, 2) || lua_tointeger(state, 2) <= 0)
-            return luaL_error(state, "shortcut:end_session takes a positive integer session ID");
-        lua_pushvalue(state, 2);
-        lua_setfield(state, arguments, "session_id");
+    } else {
+        pack_record_arguments(state, entry, supplied, arguments);
+    }
+    if (operation->id == GNOBLIN_OP_WINDOW_SET_MINIMIZED) {
+        /* Minimizing and restoring are two compositor operations; the boolean picks one. */
+        method = gnoblin_api_operation_name(lua_toboolean(state, 2) ? GNOBLIN_OP_WINDOW_MINIMIZE
+                                                                    : GNOBLIN_OP_WINDOW_UNMINIMIZE);
     }
     lua_pushlightuserdata(state, config);
     lua_pushstring(state, method);
@@ -457,25 +502,31 @@ static int lua_record_method(lua_State* state) {
     lua_insert(state, arguments);
     lua_call(state, 1, 1);
     /* A shortcut ends when the compositor has unbound it. */
-    if (config && g_str_equal(method, "shortcut.unbind"))
+    if (config && operation->id == GNOBLIN_OP_SHORTCUT_UNBIND)
         lua_object_end_after(state, config, -1, "Shortcut", 1, TRUE);
     /* An idle watch ends when the compositor has removed it. */
-    if (config && g_str_equal(method, "idle.cancel"))
+    if (config && operation->id == GNOBLIN_OP_IDLE_CANCEL)
         lua_object_end_after(state, config, -1, "IdleWatch", 1, TRUE);
     return 1;
 }
 
-/* Add the lua_api methods of one record class, such as Window, to a record's method table. Each
- * gets its wire operation as upvalue 1, or the class name when it has none, and its own name as
- * upvalue 2, which tells apart methods that share one operation. */
+/* Add the lua_api methods of one record class, such as Window, to a record's method table. A
+ * function gets its wire operation as upvalue 1, or the class name when it has none, and its own
+ * name as upvalue 2, which tells apart methods that share one operation. A method without a
+ * function is run by lua_record_method, which also gets its entry. */
 static void add_record_methods(lua_State* state, int method_table, const char* class) {
     gsize length = strlen(class);
     for (const LuaApiEntry* entry = lua_api; entry->path; entry++) {
         if (strncmp(entry->path, class, length) != 0 || entry->path[length] != ':')
             continue;
-        lua_pushstring(state, entry->operation ? entry->operation : class);
+        lua_pushstring(state, entry->operation ? entry->operation->name : class);
         lua_pushstring(state, entry->path + length + 1);
-        lua_pushcclosure(state, entry->function ? entry->function : lua_record_method, 2);
+        if (entry->function) {
+            lua_pushcclosure(state, entry->function, 2);
+        } else {
+            lua_pushlightuserdata(state, (void*)entry);
+            lua_pushcclosure(state, lua_record_method, 3);
+        }
         lua_setfield(state, method_table, entry->path + length + 1);
     }
 }
@@ -797,13 +848,6 @@ static void push_snap_context(lua_State* state, GVariant* value) {
     lua_setmetatable(state, -2);
 }
 
-/* The workspace operations that answer with the workspace they made, renamed or activated. */
-static gboolean workspace_operation(const char* method) {
-    return g_str_equal(method, "workspace.create") || g_str_equal(method, "workspace.next") ||
-           g_str_equal(method, "workspace.previous") || g_str_equal(method, "workspace.switch") ||
-           g_str_equal(method, "workspace.rename");
-}
-
 /* Push the Workspace handle that a workspace operation answered with: the one the workspace
  * snapshot holds, which gnoblin.workspaces.by_id returns. The completion can arrive before the
  * snapshot that lists a new workspace; the handle then takes the state of the answer, written in
@@ -836,21 +880,23 @@ static void push_workspace_result(lua_State* state, GVariant* value) {
 }
 
 void push_operation_result(lua_State* state, const char* method, GVariant* value) {
-    if (workspace_operation(method) && value &&
+    const GnoblinApiOperation* operation = gnoblin_api_operation_find(method);
+    GnoblinApiOp id = operation ? operation->id : GNOBLIN_OP_COUNT;
+    if (operation && (operation->flags & GN_OP_RESULT_WORKSPACE) && value &&
         g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
         push_workspace_result(state, value);
         return;
     }
-    if (g_str_equal(method, "input.text_target")) {
+    if (id == GNOBLIN_OP_INPUT_TEXT_TARGET) {
         push_text_target(state, value);
         return;
     }
-    if (g_str_equal(method, "window.snap_context")) {
+    if (id == GNOBLIN_OP_WINDOW_SNAP_CONTEXT) {
         push_snap_context(state, value);
         return;
     }
     push_variant(state, value);
-    if (g_str_equal(method, "window.set_visual")) {
+    if (id == GNOBLIN_OP_WINDOW_SET_VISUAL) {
         /* The compositor answers with offset_x and offset_y. A Window reads its offset as
          * {x, y}, so the result says it the same way. */
         lua_createtable(state, 0, 2);
@@ -865,7 +911,8 @@ void push_operation_result(lua_State* state, const char* method, GVariant* value
         lua_setfield(state, -2, "offset_y");
         return;
     }
-    if (g_str_has_prefix(method, "animation.") && variant_is_animation_preview(value)) {
+    if (gnoblin_api_operation_in_family(method, GNOBLIN_OP_ANIMATION_FAMILY) &&
+        variant_is_animation_preview(value)) {
         /* The compositor repeats the preview's id as `session`; the id is the one name. */
         lua_pushnil(state);
         lua_setfield(state, -2, "session");
@@ -874,10 +921,7 @@ void push_operation_result(lua_State* state, const char* method, GVariant* value
         return;
     }
     /* These return the live object they started or changed. */
-    gboolean live_result = g_str_equal(method, "shortcut.bind") ||
-                           g_str_equal(method, "launch.begin") ||
-                           g_str_equal(method, "input.select");
-    if (!live_result)
+    if (!operation || !(operation->flags & GN_OP_RESULT_LIVE))
         return;
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
