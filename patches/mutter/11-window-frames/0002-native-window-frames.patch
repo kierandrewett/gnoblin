@@ -101,19 +101,6 @@ index d1985c21..d3040817 100644
    ['xdg-foreign', 'unstable', 1, ],
    ['xdg-foreign', 'unstable', 2, ],
    ['xdg-output', 'unstable', 1, ],
-diff --git a/src/meta/util.h b/src/meta/util.h
-index 09072add..66ba95e0 100644
---- a/src/meta/util.h
-+++ b/src/meta/util.h
-@@ -114,3 +114,8 @@ int meta_gnoblin_layer_anchor (MetaWindow *window);
- 
- META_EXPORT
- const char *meta_gnoblin_layer_namespace (MetaWindow *window);
-+
-+META_EXPORT
-+gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
-+META_EXPORT
-+GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
 diff --git a/src/wayland/meta-wayland-window-configuration.c b/src/wayland/meta-wayland-window-configuration.c
 index df309b9c..d17d9f35 100644
 --- a/src/wayland/meta-wayland-window-configuration.c

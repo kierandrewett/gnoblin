@@ -4,6 +4,7 @@
 #include "core/display-private.h"
 #include "core/gnoblin-animation.h"
 #include "core/gnoblin-native-control.h"
+#include "core/gnoblin-native-dispatch.h"
 #include "meta/meta-backend.h"
 #include "meta/compositor.h"
 #include "meta/meta-context.h"

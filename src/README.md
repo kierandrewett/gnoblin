@@ -39,6 +39,8 @@ tree (Mutter or the GNOME portal backend).
 - `control/` — the private runtime protocol: the native control socket, cached
   configuration snapshots, and the operation files that serve it.
     - `gnoblin-native-control.c` — control object setup, the socket server start and stop, and policy checks.
+    - `gnoblin-native-dispatch.c` — the compositor-side entry points the control socket and Lua runtime call: runtime
+      events, and the monitor, layer, window and workspace operations.
     - `gnoblin-native-control-private.h` — types and declarations that the files below share.
     - `gnoblin-control-internal.h` — shared state struct and helper declarations for the operation files.
     - `gnoblin-control-focus.c` — focus and menu contexts, pointer buttons and trusted shortcuts.

@@ -16,35 +16,6 @@ index 6359dbf40..cc503b2b7 100644
  cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
  cdata.set('HAVE_DEVKIT', have_devkit)
  cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
-diff --git a/src/core/util.c b/src/core/util.c
-index 5aa8c6f3e..59e09d846 100644
---- a/src/core/util.c
-+++ b/src/core/util.c
-@@ -683,3 +683,24 @@ meta_encode_hex (gpointer data,
- 
-   return g_string_free_and_steal (encoded);
- }
-+
-+gboolean
-+meta_display_dispatch_gnoblin_event (MetaDisplay *display,
-+                                     const char  *event,
-+                                     GVariant    *payload)
-+{
-+#ifdef HAVE_WAYLAND
-+  g_autoptr (GError) error = NULL;
-+  gboolean claimed = FALSE;
-+
-+  if (!gnoblin_native_control_is_session (display))
-+    return FALSE;
-+  if (!gnoblin_native_control_dispatch_runtime_event (display, event, payload,
-+                                                      &claimed, &error))
-+    g_warning ("gnoblin runtime event %s: %s", event,
-+               error ? error->message : "could not queue event");
-+  return claimed;
-+#else
-+  return FALSE;
-+#endif
-+}
 diff --git a/src/meta/display.h b/src/meta/display.h
 index 8773263e0..11a268a2f 100644
 --- a/src/meta/display.h

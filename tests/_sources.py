@@ -51,6 +51,11 @@ def control_header() -> str:
     return _combined([CONTROL_DIR / "gnoblin-native-control.h"], "gnoblin-control-*.h")
 
 
+def native_dispatch_source() -> str:
+    """The compositor-side native dispatch overlay: window, workspace, monitor and layer operations."""
+    return (CONTROL_DIR / "gnoblin-native-dispatch.c").read_text()
+
+
 def overlay_manifests() -> str:
     """Every overlay manifest under src/, joined. Tests look for one line in the set."""
     return "".join(path.read_text() for path in sorted(SRC_DIR.rglob("manifest")))

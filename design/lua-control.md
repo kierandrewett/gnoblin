@@ -18,13 +18,13 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Window move
 
-- **Mutter or Gnoblin mechanism (file and function):** `patches/mutter/20-native-window-api/0005-dispatch-typed-window-operations.patch`: `meta_window_move_frame`; Gnoblin handler in `src/control/gnoblin-control-requests.c`
+- **Mutter or Gnoblin mechanism (file and function):** `src/control/gnoblin-native-dispatch.c` (`gnoblin_native_typed_window_operation`): `meta_window_move_frame`; Gnoblin handler in `src/control/gnoblin-control-requests.c`
 - **Current Lua access:** Full for 2D logical position: `Window:move(position)`; interactive move is context-bound
 - **What is needed:** Nothing beyond the existing 2D behavior.
 
 ### Window resize
 
-- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/20-native-window-api/0010-native-window-resize-user-operation.patch` and `patches/mutter/26-animation/0004-animate-typed-window-resizes.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation code in `src/control/gnoblin-native-dispatch.c`: `meta_window_move_resize_frame`; the animated resize hook is `patches/mutter/25-animation/0004-animate-typed-window-resizes.patch`
 - **Current Lua access:** Full for 2D frame size; interactive resize requires a live shortcut context
 - **What is needed:** Nothing beyond the existing 2D behavior.
 
@@ -42,13 +42,13 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Workspaces
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `patches/mutter/24-native-workspaces/0001-list-and-switch-workspaces-in-native-compositor.patch` and `patches/mutter/24-native-workspaces/0002-manage-numeric-workspaces-in-native-compositor.patch`; handlers in `src/control/windows/gnoblin-control-workspaces.c`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `src/control/gnoblin-native-dispatch.c` (`gnoblin_native_workspace_api`); handlers in `src/control/windows/gnoblin-control-workspaces.c`
 - **Current Lua access:** Full for current model: create, remove, rename, activate, next/previous, move windows; workspace records are revisioned
 - **What is needed:** Nothing beyond the current model. Retain stable workspace IDs rather than using position as identity.
 
 ### Monitor and output configuration
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `patches/mutter/22-native-monitor-layer-api/0003-native-monitor-snapshot-records.patch`; stable connector lookup in `patches/mutter/22-native-monitor-layer-api/0002-stable-monitor-connector-ids.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `src/control/gnoblin-native-dispatch.c` (`gnoblin_native_monitor_selector_resolve`); stable connector lookup in the same file (`gnoblin_native_monitor_id_for_index`)
 - **Current Lua access:** Read only for topology, current geometry, scale, refresh rate, and transform; partial runtime override for privacy screen and tablet mapping. No output profile/mode/enable/arrangement API
 - **What is needed:** Integrate the output configuration API with Lua and transactional validation/rollback.
 

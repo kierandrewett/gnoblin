@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] core: animate typed window resize operations
+
+---
+diff --git a/src/meta/compositor.h b/src/meta/compositor.h
+index 98be9e152..685961670 100644
+--- a/src/meta/compositor.h
++++ b/src/meta/compositor.h
+@@ -64,6 +64,7 @@ typedef enum
+   META_SIZE_CHANGE_FULLSCREEN,
+   META_SIZE_CHANGE_UNFULLSCREEN,
+   META_SIZE_CHANGE_MONITOR_MOVE,
++  META_SIZE_CHANGE_RESIZE,
+ } MetaSizeChange;
+ 
+ META_EXPORT

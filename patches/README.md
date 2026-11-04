@@ -15,7 +15,8 @@ file with one `From: kierandrewett <kieran@drewett.dev>` header.
 An overlay file is copied into the subproject before the patches apply, so a patch cannot edit one, and it cannot
 replace a tracked upstream file. Gnoblin code that is a whole function or file therefore lives in an overlay under
 `src/` and is wired in by a patch that adds only the include, call or build line upstream needs. Examples:
-`src/compositor/animation/gnoblin-animation.c` and the hooks that call it in `meta-window-actor.c`. A fix to upstream
+`src/compositor/animation/gnoblin-animation.c` and the hooks that call it in `meta-window-actor.c`, and
+`src/control/gnoblin-native-dispatch.c`, which `util.c` no longer carries. A fix to upstream
 behaviour, or a few lines of Gnoblin policy in a function that uses upstream static state, stays a patch. The note
 `design/patches-to-overlays.md` records what moved and what stays.
 

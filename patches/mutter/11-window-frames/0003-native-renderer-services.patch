@@ -19,16 +19,6 @@ index d3040817..b6b68b89 100644
    'wayland/meta-wayland-blur-fade.c',
    'wayland/meta-wayland-blur-fade.h',
    'wayland/meta-wayland-idle-notify.c',
-diff --git a/src/meta/util.h b/src/meta/util.h
-index 66ba95e0..03b6dd43 100644
---- a/src/meta/util.h
-+++ b/src/meta/util.h
-@@ -119,3 +119,5 @@ META_EXPORT
- gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
- META_EXPORT
- GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
-+META_EXPORT
-+void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
 index 47a3de39..98724cc5 100644
 --- a/src/wayland/meta-wayland-surface.c

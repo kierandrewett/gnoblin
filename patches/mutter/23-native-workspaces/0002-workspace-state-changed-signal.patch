@@ -30,23 +30,3 @@ index 35ee92a50..f3486df99 100644
    workspace_manager_signals[SHOWING_DESKTOP_CHANGED] =
      g_signal_new ("showing-desktop-changed",
                    G_TYPE_FROM_CLASS (klass),
-diff --git a/src/core/util.c b/src/core/util.c
-index a423bd785..9870549ea 100644
---- a/src/core/util.c
-+++ b/src/core/util.c
-@@ -1196,6 +1196,7 @@ gnoblin_native_workspace_api (MetaDisplay *display,
-                               g_strdup (name), g_free);
-       if (activate)
-         meta_workspace_activate (workspace, meta_display_get_current_time (display));
-+      g_signal_emit_by_name (manager, "gnoblin-workspace-state-changed");
-       return gnoblin_native_workspace_record (manager, workspace);
-     }
-   if (count < 1)
-@@ -1224,6 +1225,7 @@ gnoblin_native_workspace_api (MetaDisplay *display,
-             }
-           g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME,
-                                   g_strdup (name), g_free);
-+          g_signal_emit_by_name (manager, "gnoblin-workspace-state-changed");
-           return gnoblin_native_workspace_record (manager, workspace);
-         }
-       if (g_str_equal (method, "workspace.remove"))

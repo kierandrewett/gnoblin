@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: add native animation preview runtime
+
+---
+diff --git a/src/core/display.c b/src/core/display.c
+index 7f45e61bd..b9931eafb 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -161,6 +161,7 @@ enum
+   ACCELERATOR_DEACTIVATED,
+   MODIFIERS_ACCELERATOR_ACTIVATED,
+   FOCUS_WINDOW,
++  GNOBLIN_NATIVE_EVENT,
+   WINDOW_CREATED,
+   WINDOW_DEMANDS_ATTENTION,
+   WINDOW_MARKED_URGENT,
+@@ -354,6 +355,14 @@ meta_display_class_init (MetaDisplayClass *klass)
+                   NULL, NULL, NULL,
+                   G_TYPE_NONE, 2, META_TYPE_WINDOW, G_TYPE_INT64);
+ 
++  display_signals[GNOBLIN_NATIVE_EVENT] =
++    g_signal_new ("gnoblin-native-event",
++                  G_TYPE_FROM_CLASS (klass),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL, NULL,
++                  G_TYPE_NONE, 2, G_TYPE_STRING, G_TYPE_VARIANT);
++
+   display_signals[WINDOW_CREATED] =
+     g_signal_new ("window-created",
+                   G_TYPE_FROM_CLASS (klass),
+diff --git a/src/meson.build b/src/meson.build
+index 383f02c46..1625da510 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -368,6 +368,7 @@ mutter_sources = [
+   'core/startup-notification.c',
+   'core/startup-notification-private.h',
+   'core/util.c',
++  'core/gnoblin-animation.c',
+   'core/util-private.h',
+   'core/window.c',
+   'core/window-private.h',

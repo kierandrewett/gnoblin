@@ -10,7 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import patch_series  # noqa: E402
-from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES, RUNTIME_SOURCES  # noqa: E402
+from _sources import (  # noqa: E402
+    control_header,
+    control_source,
+    native_dispatch_source,
+    overlay_manifests,
+    LUA_SOURCES,
+    RUNTIME_SOURCES,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
@@ -583,7 +590,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         overlay_manifest = overlay_manifests()
         lua = LUA.read_text()
-        mutter_patch = patch_series.find("mutter", "native-window-unminimize").read_text()
+        mutter_patch = native_dispatch_source()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -646,7 +653,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        resize_patch = patch_series.find("mutter", "native-window-resize-user-operation").read_text()
+        resize_patch = native_dispatch_source()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -672,7 +679,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        move_patch = patch_series.find("mutter", "native-window-move-user-operation").read_text()
+        move_patch = native_dispatch_source()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',

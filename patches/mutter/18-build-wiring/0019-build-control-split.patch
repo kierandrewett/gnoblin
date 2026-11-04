@@ -7,7 +7,7 @@ Subject: [PATCH] mutter: build the split native control files
 diff --git a/src/meson.build b/src/meson.build
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1219,6 +1219,22 @@ libmutter = library(libmutter_name,
+@@ -1219,6 +1219,23 @@ libmutter = library(libmutter_name,
    files('core/gnoblin-control-window-rules.c'),
    files('core/gnoblin-control-window-drag.c'),
    files('core/gnoblin-control-runtime.c'),
@@ -27,6 +27,7 @@ diff --git a/src/meson.build b/src/meson.build
 +  files('core/gnoblin-control-connection.c'),
 +  files('core/gnoblin-control-runtime-channel.c'),
 +  files('core/gnoblin-control-api.c'),
++  files('core/gnoblin-native-dispatch.c'),
    files('core/gnoblin-touchpad-router.c'),
    files('core/gnoblin-keybinding-catalog.c'),
    version: '0.0.0',
