@@ -1,10 +1,17 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 20:19:32 +0000
 Subject: [PATCH] mutter: restart Xwayland for live Gnoblin config
 
+Restart Xwayland when the Gnoblin config changes its settings, keeping the session alive during the restart.
 ---
+ src/wayland/meta-wayland-private.h  |  2 ++
+ src/wayland/meta-xwayland-private.h |  1 +
+ src/wayland/meta-xwayland.c         | 34 +++++++++++++++++++++++++++++
+ 3 files changed, 37 insertions(+)
+
 diff --git a/src/wayland/meta-wayland-private.h b/src/wayland/meta-wayland-private.h
-index 5e45a5aa17..288ed661c9 100644
+index 5e45a5aa..288ed661 100644
 --- a/src/wayland/meta-wayland-private.h
 +++ b/src/wayland/meta-wayland-private.h
 @@ -77,6 +77,8 @@ struct _MetaXWaylandManager
@@ -17,7 +24,7 @@ index 5e45a5aa17..288ed661c9 100644
  };
  
 diff --git a/src/wayland/meta-xwayland-private.h b/src/wayland/meta-xwayland-private.h
-index 08a4996859..021518de2d 100644
+index 08a49968..021518de 100644
 --- a/src/wayland/meta-xwayland-private.h
 +++ b/src/wayland/meta-xwayland-private.h
 @@ -49,6 +49,7 @@ void meta_xwayland_start_xserver (MetaXWaylandManager *manager,
@@ -29,7 +36,7 @@ index 08a4996859..021518de2d 100644
                                               GAsyncResult         *result,
                                               GError              **error);
 diff --git a/src/wayland/meta-xwayland.c b/src/wayland/meta-xwayland.c
-index 4b99babe51..a4b6c6afba 100644
+index 4b99babe..d8fcfa40 100644
 --- a/src/wayland/meta-xwayland.c
 +++ b/src/wayland/meta-xwayland.c
 @@ -67,6 +67,7 @@
@@ -82,3 +89,18 @@ index 4b99babe51..a4b6c6afba 100644
  static void
  meta_xwayland_terminate (MetaXWaylandManager *manager)
  {
+@@ -481,6 +510,11 @@ x_io_error_exit (Display *display,
+   MetaContext *context = manager->compositor->context;
+   MetaX11DisplayPolicy x11_display_policy;
+ 
++  /* Gnoblin stops Xwayland on purpose to apply a config change and starts it
++   * again when the process exits. Do not treat that as a crash. */
++  if (manager->config_restart_pending)
++    return;
++
+   x11_display_policy =
+     meta_context_get_x11_display_policy (context);
+ 
+-- 
+2.55.0
+

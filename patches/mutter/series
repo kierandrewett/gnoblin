@@ -131,12 +131,10 @@
 31-cxx-compat/0001-cpp-compatible-clutter-cogl-enums.patch
 28-xwayland/0003-restart-xwayland-for-live-config.patch
 30-diagnostic-console/0003-link-diagnostics-into-gnoblin.patch
-28-xwayland/0004-keep-session-when-restarting-xwayland-for-config.patch
-28-xwayland/0005-fix-xsettings-byte-order.patch
 18-build-wiring/0003-optional-ibus-input-method-build.patch
 05-window-drag/0007-apply-drag-work-area-constraint.patch
-28-xwayland/0006-fix-xdnd-atom-names.patch
-28-xwayland/0007-keep-session-when-xwayland-exits.patch
+28-xwayland/0004-fix-xdnd-atom-names.patch
+28-xwayland/0005-keep-session-when-xwayland-exits.patch
 11-window-frames/0005-frame-x11-windows-from-the-compositor.patch
 11-window-frames/0006-x11-net-frame-extents-from-the-compositor.patch
 11-window-frames/0007-sync-x11-window-actor-with-the-frame.patch

@@ -3,9 +3,14 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 2 Oct 2026 04:59:28 +0100
 Subject: [PATCH] Publish Gnoblin XWayland scale settings
 
+Publish the Gnoblin Xwayland scale settings as XSETTINGS, writing the byte order as LSBFirst or MSBFirst.
 ---
+ src/x11/meta-x11-display-private.h |  10 +
+ src/x11/meta-x11-display.c         | 478 +++++++++++++++++++++++++++++
+ 2 files changed, 488 insertions(+)
+
 diff --git a/src/x11/meta-x11-display-private.h b/src/x11/meta-x11-display-private.h
-index 2b947de3f..79ae99740 100644
+index 2b947de3..79ae9974 100644
 --- a/src/x11/meta-x11-display-private.h
 +++ b/src/x11/meta-x11-display-private.h
 @@ -99,6 +99,16 @@ struct _MetaX11Display
@@ -26,7 +31,7 @@ index 2b947de3f..79ae99740 100644
    guint32 xselectionclear_timestamp;
  
 diff --git a/src/x11/meta-x11-display.c b/src/x11/meta-x11-display.c
-index caf29b8fb..a8b93d676 100644
+index caf29b8f..e99d6498 100644
 --- a/src/x11/meta-x11-display.c
 +++ b/src/x11/meta-x11-display.c
 @@ -51,10 +51,12 @@
@@ -58,7 +63,7 @@ index caf29b8fb..a8b93d676 100644
  static MetaBackend *
  backend_from_x11_display (MetaX11Display *x11_display)
  {
-@@ -209,6 +220,462 @@ update_ui_scaling_factor (MetaX11Display *x11_display)
+@@ -209,6 +220,464 @@ update_ui_scaling_factor (MetaX11Display *x11_display)
      meta_xwayland_get_x11_ui_scaling_factor (xwayland_manager);
  
    meta_dbus_x11_set_ui_scaling_factor (priv->dbus_api, ui_scaling_factor);
@@ -331,7 +336,9 @@ index caf29b8fb..a8b93d676 100644
 +  little_endian = ImageByteOrder (x11_display->xdisplay) == LSBFirst;
 +  settings = g_byte_array_new ();
 +
-+  header[0] = little_endian ? 'l' : 'B';
++  /* The XSETTINGS byte order is the X11 constant LSBFirst (0) or MSBFirst (1).
++   * 'l' and 'B' are the connection-setup letters, and toolkits reject them. */
++  header[0] = little_endian ? LSBFirst : MSBFirst;
 +  g_byte_array_append (settings, header, sizeof (header));
 +  append_xsettings_uint32 (settings, little_endian, serial);
 +  append_xsettings_uint32 (settings, little_endian, 3);
@@ -521,7 +528,7 @@ index caf29b8fb..a8b93d676 100644
  }
  
  static void
-@@ -228,6 +695,8 @@ meta_x11_display_dispose (GObject *object)
+@@ -228,6 +697,8 @@ meta_x11_display_dispose (GObject *object)
    g_clear_handle_id (&priv->dbus_name_id, g_bus_unown_name);
    g_clear_object (&priv->dbus_api);
  
@@ -530,7 +537,7 @@ index caf29b8fb..a8b93d676 100644
    g_clear_pointer (&x11_display->alarm_filters, g_ptr_array_unref);
  
    g_clear_list (&x11_display->event_funcs,
-@@ -1173,6 +1642,7 @@ initialize_dbus_interface (MetaX11Display *x11_display)
+@@ -1173,6 +1644,7 @@ initialize_dbus_interface (MetaX11Display *x11_display)
  static void
  ui_scaling_factor_changed (MetaX11Display *x11_display)
  {
@@ -538,7 +545,7 @@ index caf29b8fb..a8b93d676 100644
    update_cursor_theme (x11_display);
  }
  
-@@ -1400,6 +1870,10 @@ meta_x11_display_new (MetaDisplay  *display,
+@@ -1400,6 +1872,10 @@ meta_x11_display_new (MetaDisplay  *display,
                              "ui-scaling-factor-changed",
                              G_CALLBACK (ui_scaling_factor_changed),
                              x11_display);
@@ -549,7 +556,7 @@ index caf29b8fb..a8b93d676 100644
  
    set_work_area_hint (display, x11_display);
  
-@@ -1447,6 +1921,8 @@ meta_x11_display_new (MetaDisplay  *display,
+@@ -1447,6 +1923,8 @@ meta_x11_display_new (MetaDisplay  *display,
    x11_display->wm_sn_atom = wm_sn_atom;
    x11_display->wm_sn_timestamp = timestamp;
  
@@ -558,3 +565,6 @@ index caf29b8fb..a8b93d676 100644
    init_event_masks (x11_display);
  
    meta_x11_display_init_frames_client (x11_display);
+-- 
+2.55.0
+
