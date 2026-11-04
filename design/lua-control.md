@@ -24,7 +24,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Window resize
 
-- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/20-native-window-api/0010-native-window-resize-user-operation.patch` and `0076-animate-typed-window-resizes.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/20-native-window-api/0010-native-window-resize-user-operation.patch` and `patches/mutter/26-animation/0014-animate-typed-window-resizes.patch`
 - **Current Lua access:** Full for 2D frame size; interactive resize requires a live shortcut context
 - **What is needed:** Nothing beyond the existing 2D behavior.
 
@@ -42,13 +42,13 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Workspaces
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `patches/mutter/24-native-workspaces/0001-list-and-switch-workspaces-in-native-compositor.patch` and `91-native-workspace-management/0001-manage-numeric-workspaces-in-native-compositor.patch`; handlers in `src/control/windows/gnoblin-control-workspaces.c`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `patches/mutter/24-native-workspaces/0001-list-and-switch-workspaces-in-native-compositor.patch` and `patches/mutter/24-native-workspaces/0002-manage-numeric-workspaces-in-native-compositor.patch`; handlers in `src/control/windows/gnoblin-control-workspaces.c`
 - **Current Lua access:** Full for current model: create, remove, rename, activate, next/previous, move windows; workspace records are revisioned
 - **What is needed:** Nothing beyond the current model. Retain stable workspace IDs rather than using position as identity.
 
 ### Monitor and output configuration
 
-- **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `patches/mutter/22-native-monitor-layer-api/0003-native-monitor-snapshot-records.patch`; stable connector lookup in `0006-stable-monitor-connector-ids.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `patches/mutter/22-native-monitor-layer-api/0003-native-monitor-snapshot-records.patch`; stable connector lookup in `patches/mutter/22-native-monitor-layer-api/0002-stable-monitor-connector-ids.patch`
 - **Current Lua access:** Read only for topology, current geometry, scale, refresh rate, and transform; partial runtime override for privacy screen and tablet mapping. No output profile/mode/enable/arrangement API
 - **What is needed:** Integrate the output configuration API with Lua and transactional validation/rollback.
 
@@ -84,7 +84,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Tablet and pen
 
-- **Mutter or Gnoblin mechanism (file and function):** `input_device_record` and `normalize_input_value` in `src/control/gnoblin-control-input-routing.c` and `src/control/gnoblin-control-input-config.c`; tablet output patch `0090-lua-tablet-output-mapping.patch`
+- **Mutter or Gnoblin mechanism (file and function):** `input_device_record` and `normalize_input_value` in `src/control/gnoblin-control-input-routing.c` and `src/control/gnoblin-control-input-config.c`; tablet output patch `patches/mutter/14-input-settings/0019-lua-tablet-output-mapping.patch`
 - **Current Lua access:** Partial: device inspection, tablet/stylus/pad preferences and output mapping, pad-help event; no full pen pose/pressure routing or controller abstraction
 - **What is needed:** Add normalized pen/tablet event fields and per-device policy hooks; add controller devices through the same explicit device/capability model rather than pretending they are mice.
 
