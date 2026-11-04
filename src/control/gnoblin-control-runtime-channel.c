@@ -281,6 +281,7 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     gnoblin_control_tweens_cancel(control, "cancelled");
     gnoblin_control_idle_watches_clear(control);
     gnoblin_control_window_visuals_reset(control);
+    gnoblin_control_overrides_clear(control, FALSE);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_events);
     native_runtime_fail_pending_requests(control, "Lua worker restarted before replying");
     gnoblin_control_cancel_window_drags(control, "runtime_restarted");
@@ -434,80 +435,49 @@ static gboolean native_runtime_handle_session_lifecycle_state(GnoblinNativeContr
     return TRUE;
 }
 
-static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVariant* arguments,
-                                             GError** error) {
+/* The socket wire methods input.set_orientation_lock and monitors.set_privacy_screen take
+ * {value = true | false | "inherit"}. Lua uses gnoblin.settings.override for the same settings;
+ * a socket client has no object to hold, so its value is an override with no runtime owner that
+ * lasts until "inherit" or a reload (gnoblin-control-overrides.c). */
+static gboolean native_socket_override_value(GVariant* arguments, const char* method,
+                                             GVariant** value, GError** error) {
     if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
         g_variant_n_children(arguments) != 1) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "input.set_orientation_lock requires only value");
-        return NULL;
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s requires only value",
+                    method);
+        return FALSE;
     }
-    if (!control->orientation_manager) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                            "orientation lock is unavailable on this backend");
-        return NULL;
+    g_autoptr(GVariant) given = g_variant_lookup_value(arguments, "value", NULL);
+    if (given && g_variant_is_of_type(given, G_VARIANT_TYPE_BOOLEAN)) {
+        *value = g_steal_pointer(&given);
+        return TRUE;
     }
+    if (given && g_variant_is_of_type(given, G_VARIANT_TYPE_STRING) &&
+        g_str_equal(g_variant_get_string(given, NULL), "inherit")) {
+        *value = NULL;
+        return TRUE;
+    }
+    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                "%s value must be boolean or 'inherit'", method);
+    return FALSE;
+}
 
-    g_autoptr(GVariant) value = g_variant_lookup_value(arguments, "value", NULL);
-    if (!value) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "input.set_orientation_lock requires value");
+static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVariant* arguments,
+                                             GError** error) {
+    g_autoptr(GVariant) value = NULL;
+    if (!native_socket_override_value(arguments, "input.set_orientation_lock", &value, error) ||
+        !gnoblin_control_override_socket_set(control, "input", "orientation-lock", value, error))
         return NULL;
-    }
-
-    if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
-        control->orientation_lock_runtime_override = TRUE;
-        control->orientation_lock_notifications_suppressed = TRUE;
-        meta_orientation_manager_set_orientation_locked(control->orientation_manager,
-                                                        g_variant_get_boolean(value));
-    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
-               g_str_equal(g_variant_get_string(value, NULL), "inherit")) {
-        control->orientation_lock_runtime_override = FALSE;
-        control->orientation_lock_notifications_suppressed = TRUE;
-        if (control->orientation_lock_configured)
-            meta_orientation_manager_set_orientation_locked(control->orientation_manager,
-                                                            control->orientation_lock_config_value);
-        else
-            meta_orientation_manager_clear_orientation_lock_override(control->orientation_manager);
-    } else {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "input.set_orientation_lock value must be boolean or 'inherit'");
-        return NULL;
-    }
-
-    control->orientation_lock_notifications_suppressed = FALSE;
-    native_orientation_lock_publish(control);
-    return g_variant_ref(control->orientation_lock_snapshot);
+    return control->orientation_lock_snapshot ? g_variant_ref(control->orientation_lock_snapshot)
+                                              : NULL;
 }
 
 static GVariant* native_set_monitor_privacy_screen(GnoblinNativeControl* control,
                                                    GVariant* arguments, GError** error) {
-    if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
-        g_variant_n_children(arguments) != 1) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "monitors.set_privacy_screen requires only value");
+    g_autoptr(GVariant) value = NULL;
+    if (!native_socket_override_value(arguments, "monitors.set_privacy_screen", &value, error) ||
+        !gnoblin_control_override_socket_set(control, "monitors", "privacy-screen", value, error))
         return NULL;
-    }
-
-    g_autoptr(GVariant) value = g_variant_lookup_value(arguments, "value", NULL);
-    if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
-        control->monitor_privacy_screen_runtime_override = TRUE;
-        control->monitor_privacy_screen_runtime_value = g_variant_get_boolean(value);
-    } else if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
-               g_str_equal(g_variant_get_string(value, NULL), "inherit")) {
-        control->monitor_privacy_screen_runtime_override = FALSE;
-        control->monitor_privacy_screen_runtime_value = FALSE;
-    } else {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "monitors.set_privacy_screen value must be boolean or 'inherit'");
-        return NULL;
-    }
-
-    MetaSettings* settings = meta_backend_get_settings(control->backend);
-    meta_settings_apply_gnoblin_privacy_screen_runtime_override(
-        settings, control->monitor_privacy_screen_runtime_override,
-        control->monitor_privacy_screen_runtime_value);
-    native_monitor_privacy_screen_publish(control);
     return control->monitor_privacy_screen_snapshot
                ? g_variant_ref(control->monitor_privacy_screen_snapshot)
                : native_monitor_privacy_screen_snapshot(control,
@@ -637,6 +607,19 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                                                   owner_generation, &operation_error)
                      : gnoblin_control_idle_cancel(control, arguments, owner_generation,
                                                    &operation_error);
+    } else if (g_str_equal(method, "settings.override") ||
+               g_str_equal(method, "window.set_effect") || g_str_equal(method, "override.revoke")) {
+        guint64 owner_generation = 0;
+        g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+        if (g_str_equal(method, "settings.override"))
+            result = gnoblin_control_override_setting(control, operation_id, arguments,
+                                                      owner_generation, &operation_error);
+        else if (g_str_equal(method, "window.set_effect"))
+            result = gnoblin_control_override_window_effect(control, operation_id, arguments,
+                                                            owner_generation, &operation_error);
+        else
+            result = gnoblin_control_override_revoke(control, arguments, owner_generation,
+                                                     &operation_error);
     } else if (g_str_equal(method, "window.set_visual")) {
         guint64 owner_generation = 0;
         g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
@@ -1088,7 +1071,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
             guint64 previous_runtime_generation = control->runtime_generation;
             gboolean runtime_generation_changed = FALSE;
             g_autoptr(GVariant) previous_document =
-                gnoblin_runtime_cache_get_document(control->runtime_cache);
+                gnoblin_runtime_cache_get_committed_document(control->runtime_cache);
             g_autoptr(GVariant) previous_bootstrap_document =
                 bootstrap_runtime_cache
                     ? gnoblin_runtime_cache_get_document(bootstrap_runtime_cache)
@@ -1207,6 +1190,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                                                           control->display, &rollback_error))
                                 rollback_failed = TRUE;
                             native_settings_changed(previous_revision, control);
+                            gnoblin_control_overrides_reapply(control, FALSE, TRUE);
                         }
                         handled = FALSE;
                     }
@@ -1230,6 +1214,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                     gnoblin_control_tweens_cancel(control, "cancelled");
                     gnoblin_control_idle_watches_clear(control);
                     gnoblin_control_window_visuals_reset(control);
+                    gnoblin_control_overrides_clear(control, TRUE);
                     revoke_focus_contexts(control);
                 }
                 if (handled && revision > previous_revision) {

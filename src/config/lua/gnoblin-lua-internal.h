@@ -291,6 +291,7 @@ void lua_object_intern(lua_State* state, const char* kind, int index);
 void lua_object_hold(lua_State* state, const char* kind, int index);
 void lua_object_push_held(lua_State* state, const char* kind);
 void lua_object_end(lua_State* state, const char* kind, int handle, const char* reason);
+void lua_object_end_all(lua_State* state, const char* kind, const char* reason);
 void lua_object_end_after(lua_State* state, LuaConfig* config, int operation, const char* kind,
                           int handle, gboolean end_on_success);
 gboolean lua_object_push_registered(lua_State* state, const char* kind, const char* key);
@@ -303,6 +304,9 @@ gboolean lua_api_class_has_field(const char* class_name, const char* field);
 gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed);
 int lua_workspace_action(lua_State* state);
 int lua_generic_api_action(lua_State* state);
+void lua_check_operation_context(lua_State* state, LuaConfig* config);
+int lua_queue_operation(lua_State* state, LuaConfig* config, const char* method,
+                        GVariant* arguments);
 int lua_input_text_target(lua_State* state);
 int lua_menu_context_begin_move(lua_State* state);
 int lua_menu_context_begin_resize(lua_State* state);
@@ -342,7 +346,7 @@ int lua_outputs_by_id(lua_State* state);
 int lua_outputs_renderer(lua_State* state);
 int lua_read_privacy_screen(lua_State* state);
 int lua_monitors_set_privacy_screen(lua_State* state);
-int lua_outputs_set_privacy_screen(lua_State* state);
+gboolean any_output_has_privacy_screen(LuaConfig* config);
 int lua_layers_list(lua_State* state);
 int lua_capabilities_list(lua_State* state);
 int lua_privacy_state(lua_State* state);
@@ -361,6 +365,9 @@ int call_launch_operation(lua_State* state, const char* method, int arguments);
 int lua_launches_begin(lua_State* state);
 int lua_shortcuts_bind(lua_State* state);
 int lua_idle_watch(lua_State* state);
+int lua_settings_override(lua_State* state);
+int lua_window_set_effect(lua_State* state, LuaConfig* config, const char* window_id,
+                          int name_index, int value_index);
 int lua_shortcut_actions(lua_State* state);
 gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, gboolean root,
                        GError** error);

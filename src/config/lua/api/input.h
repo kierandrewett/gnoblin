@@ -100,12 +100,6 @@ function InputSource:watch(property, fn) end
 ---@return OrientationLock
 function gnoblin.input.orientation_lock() end
 
----Set the runtime orientation lock override, or inherit the configured/system value.
----@param value boolean|"inherit" True locks orientation; false unlocks it; "inherit" clears the
-runtime override.
----@return Operation<OrientationLock>
-function gnoblin.input.set_orientation_lock(value) end
-
 ---Create a one-use text target from the active shortcut FocusContext.
 ---@param context FocusContext Context supplied to a shortcut event callback.
 ---@return Operation<TextTarget>

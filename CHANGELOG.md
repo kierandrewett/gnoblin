@@ -52,8 +52,36 @@
     - The Lua runtime keeps running after the call. Before, the call stopped the runtime and the
       supervisor asked logind afterwards, so the Operation could not report a refusal.
 
+- The orientation lock and the privacy screen use the new override call (bridge API 1.90). The
+  Lua functions `gnoblin.input.set_orientation_lock(value)` and
+  `gnoblin.outputs.set_privacy_screen(value)` are gone from Lua and from `gnoblinctl lua`. Use
+  `gnoblin.settings.override("input.orientation_lock", value)` and
+  `gnoblin.settings.override("monitors.privacy_screen", value)`, and `override:revoke()` in place
+  of `"inherit"`. The wire methods `input.set_orientation_lock` and `monitors.set_privacy_screen`
+  stay for socket clients, with two changes: a configuration reload that commits ends the value
+  that a socket client set (the orientation lock already did), and `monitors.set_privacy_screen`
+  fails with `true` or `false` when no output has a privacy screen. A newer value replaces an older
+  one, whoever set it.
+
 ### Added
 
+- `gnoblin.settings.override(path, value)` and `window:set_effect(name, value)` return a live
+  `Override` that layers a value over the committed configuration, or an effect over the window
+  rules of one window, until it is taken back (bridge API 1.90). See
+  [overrides](docs/shell-api/overrides.md).
+    - Settings that can change at runtime are `window_management.*`, `compositor.*`,
+      `cursor.theme`, `cursor.size`, `layer_shell.preserve_active_window`,
+      `monitors.privacy_screen` and `input.orientation_lock`. Any other path raises an error that
+      says why it cannot change. The value is checked as the configuration checks it.
+    - The effects are those of window rules: `opacity`, `blur`, `blur_ignore_shadows`, `shader`,
+      `shader_uniforms`, `frame` and `corners`. The effect goes over the matching rules as one more
+      rule and changes only what it sets.
+    - `override:revoke()` returns the target to the next older layer, and
+      `override:on("closed", fn)` gets the reason: `revoked`, `replaced`, `window_closed`,
+      `config_reloaded` or the compositor's message.
+    - The latest override of one setting, or of one effect of one window, wins; the older one ends
+      with `replaced`. A reload, a Lua worker restart and the close of the window end overrides.
+    - `gnoblin.settings` keeps showing the committed values.
 - Outputs are live objects (bridge API 1.88). See [outputs](docs/shell-api/outputs.md).
     - Every read of one display returns the same `Output`, with `alive`, `on` and `watch`.
     - An output also has its logical monitor's index, size and work area, and its privacy
@@ -264,7 +292,9 @@ A second pass removes every Lua function that had another name for the same acti
 | `gnoblin.launches.snapshot()`                            | `gnoblin.launches.list()`; each `Launch` has its own `revision` |
 | `gnoblin.monitors.list()`, `gnoblin.monitors.primary()`  | `gnoblin.outputs.list()`, `gnoblin.outputs.primary()`           |
 | `gnoblin.monitors.privacy_screen()`                      | `output.privacy_screen`                                         |
-| `gnoblin.monitors.set_privacy_screen(value)`             | `gnoblin.outputs.set_privacy_screen(value)`                     |
+| `gnoblin.monitors.set_privacy_screen(value)`             | `gnoblin.settings.override("monitors.privacy_screen", value)`   |
+| `gnoblin.outputs.set_privacy_screen(value)`              | `gnoblin.settings.override("monitors.privacy_screen", value)`   |
+| `gnoblin.input.set_orientation_lock(value)`              | `gnoblin.settings.override("input.orientation_lock", value)`    |
 | `gnoblin.session.activity()`                             | `gnoblin.idle.watch(seconds)`                                   |
 | Lua `gnoblin.monitor.*` events                           | `gnoblin.output.added`, `changed`, `removed`                    |
 

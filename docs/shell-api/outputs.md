@@ -115,29 +115,27 @@ The `transform` values describe the output orientation:
 
 `source` has one of these values:
 
-- `runtime`: `gnoblin.outputs.set_privacy_screen` set a runtime override.
+- `runtime`: a runtime [override](/shell-api/overrides) of `monitors.privacy_screen` set it.
 - `config`: `monitors.privacy_screen` is set in the Lua configuration.
 - `system`: neither a runtime override nor the configuration sets a value.
 
-`gnoblin.outputs.set_privacy_screen(value)` returns an `Operation`. It accepts:
-
-- `true`: turn privacy screens on for this session.
-- `false`: turn them off for this session.
-- `"inherit"`: remove the runtime override and use the configured value, or
-  the system preference when the configuration has none.
+The privacy screen request is an [override](/shell-api/overrides) of
+`monitors.privacy_screen`. The value is `true` to turn privacy screens on for
+this session, or `false` to turn them off. Revoking the override uses the
+configured value, or the system preference when the configuration has none.
 
 The compositor keeps one privacy screen request for the whole session and
 applies it to every output that has a privacy screen. For this reason the
-call belongs to `gnoblin.outputs`, and an `Output` has no `set_privacy_screen`
+request belongs to the session and an `Output` has no `set_privacy_screen`
 method. Note these rules:
 
-- `true` and `false` raise an error when `privacy_screen.available` is false
-  on every output.
-- `"inherit"` is always accepted.
+- The call raises an error when `privacy_screen.available` is false on every
+  output.
 - A runtime override does not change the system preference.
+- A newer override of `monitors.privacy_screen` replaces an older one.
 
 ```lua
-gnoblin.outputs.set_privacy_screen(true)
+local privacy = gnoblin.settings.override("monitors.privacy_screen", true)
 
 local primary = gnoblin.outputs.primary()
 if primary then

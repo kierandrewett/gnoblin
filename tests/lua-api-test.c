@@ -325,13 +325,15 @@ int main(void) {
         "    end)\n"
         "    output:on('closed', function(o) output_log[#output_log+1]='closed' end)\n"
         "    assert(not pcall(function() output:watch('missing', print) end))\n"
-        "    assert(output.set_privacy_screen==nil)\n"
+        "    assert(output.set_privacy_screen==nil and g.outputs.set_privacy_screen==nil)\n"
+        "    assert(g.input.set_orientation_lock==nil)\n"
         "    assert(not pcall(function() output:set_privacy_screen(true) end))\n"
-        "    assert(not pcall(g.outputs.set_privacy_screen, 'on'))\n"
-        "    assert(not pcall(g.outputs.set_privacy_screen))\n"
-        "    assert(not pcall(g.outputs.set_privacy_screen, true, false))\n"
-        "    local operation=g.outputs.set_privacy_screen(true)\n"
-        "    assert(operation.method=='monitors.set_privacy_screen')\n"
+        "    assert(not pcall(g.settings.override, 'monitors.privacy_screen', 'on'))\n"
+        "    assert(not pcall(g.settings.override, 'monitors.privacy_screen', 'inherit'))\n"
+        "    assert(not pcall(g.settings.override, 'monitors.privacy_screen'))\n"
+        "    assert(not pcall(g.settings.override, 'monitors.privacy_screen', true, false))\n"
+        "    local override=g.settings.override('monitors.privacy_screen', true)\n"
+        "    assert(override.alive and override.scope=='settings' and override.value==true)\n"
         "  else\n"
         "    assert(table.concat(output_log, ';')=='1>2;scale;closed', table.concat(output_log, "
         "';'))\n"
@@ -341,11 +343,11 @@ int main(void) {
         "  end\n"
         "end)\n"
         "g.on('test.no-privacy', function(event)\n"
-        "  local ok, err=pcall(g.outputs.set_privacy_screen, false)\n"
+        "  local ok, err=pcall(g.settings.override, 'monitors.privacy_screen', false)\n"
         "  assert(not ok and tostring(err):find('no output has a privacy screen', 1, true), "
         "tostring(err))\n"
-        "  local operation=g.outputs.set_privacy_screen('inherit')\n"
-        "  assert(operation.method=='monitors.set_privacy_screen')\n"
+        "  local operation=g.settings.override('compositor.visual_bell', false)\n"
+        "  assert(operation.alive)\n"
         "end)\n"
         "local launch, launch_log, replaced_log=nil, {}, {}\n"
         "g.on('test.launches', function(event)\n"
@@ -461,6 +463,74 @@ int main(void) {
         "table.concat(idle_log, ';'))\n"
         "    assert(not idle_watch.alive and second_watch.alive)\n"
         "    assert(not pcall(function() idle_watch:on('idle', print) end))\n"
+        "  end\n"
+        "end)\n"
+        "local ov_log, ov = {}, {}\n"
+        "local function ovnote(text) ov_log[#ov_log+1]=text end\n"
+        "local function refusal(path, value, needle)\n"
+        "  local ok, err=pcall(g.settings.override, path, value)\n"
+        "  assert(not ok and tostring(err):find(needle, 1, true), path..': '..tostring(err))\n"
+        "end\n"
+        "g.on('test.overrides', function(event)\n"
+        "  if event.step=='make' then\n"
+        "    refusal('xwayland.enable', true, 'Xwayland')\n"
+        "    refusal('input.mouse', true, 'input.orientation_lock')\n"
+        "    refusal('window_rules.x', true, 'Window:set_effect')\n"
+        "    refusal('shortcuts.x', true, 'gnoblin.shortcuts.bind')\n"
+        "    refusal('workspaces.main', true, 'gnoblin.workspaces.create')\n"
+        "    refusal('cursor.hide', true, 'cursor.theme and cursor.size')\n"
+        "    refusal('nonsense.key', true, 'read only when the configuration loads')\n"
+        "    refusal('window_management.nope', true, 'window-management')\n"
+        "    refusal('compositor.blur', 'sideways', 'compositor')\n"
+        "    refusal('window_management.auto_raise_delay', 99999, 'window-management')\n"
+        "    refusal('input.orientation_lock', 'inherit', 'true or false')\n"
+        "    refusal('compositor', true, 'such as window_management.focus_mode')\n"
+        "    refusal('a.b.c', true, 'such as window_management.focus_mode')\n"
+        "    assert(not pcall(g.settings.override, 'compositor.visual_bell'))\n"
+        "    assert(not pcall(g.settings.override, 'compositor.visual_bell', true, false))\n"
+        "    assert(not pcall(g.settings.override, 'compositor.visual_bell', {}))\n"
+        "    for key in pairs(g.settings) do assert(key~='override') end\n"
+        "    ov.bell=g.settings.override('compositor.visual_bell', false)\n"
+        "    assert(ov.bell.alive and ov.bell.scope=='settings' and ov.bell.value==false)\n"
+        "    assert(ov.bell.name=='compositor.visual_bell' and ov.bell.window==nil)\n"
+        "    assert(ov.bell.id:match('^override%-%d+$'))\n"
+        "    assert(not pcall(function() ov.bell:on('bogus', print) end))\n"
+        "    ov.bell:on('closed', function(o, reason) ovnote('bell:'..tostring(reason)) end)\n"
+        "    ov.lock=g.settings.override('input.orientation_lock', true)\n"
+        "    ov.lock:on('closed', function(o, reason) ovnote('lock:'..tostring(reason)) end)\n"
+        "    ov.refused=g.settings.override('window_management.focus_mode', 'hover')\n"
+        "    ov.refused:on('closed', function(o, reason)\n"
+        "      ovnote('refused:'..tostring(reason)..':'..tostring(o.alive))\n"
+        "    end)\n"
+        "    local window=event.window\n"
+        "    assert(not pcall(function() window:set_effect('bogus', 1) end))\n"
+        "    local ok, err=pcall(function() window:set_effect('bogus', 1) end)\n"
+        "    assert(tostring(err):find('blur_ignore_shadows', 1, true), tostring(err))\n"
+        "    assert(not pcall(function() window:set_effect('opacity', 2) end))\n"
+        "    assert(not pcall(function() window:set_effect('blur', -1) end))\n"
+        "    assert(not pcall(function() window:set_effect('blur_ignore_shadows', 'x') end))\n"
+        "    assert(not pcall(function() window:set_effect('corners', {bogus=1}) end))\n"
+        "    assert(not pcall(function() window:set_effect('corners', {radius=201}) end))\n"
+        "    assert(not pcall(function() window:set_effect('shader_uniforms', {a='x'}) end))\n"
+        "    assert(not pcall(function() window:set_effect('blur') end))\n"
+        "    ov.blur=window:set_effect('blur', 20)\n"
+        "    assert(ov.blur.alive and ov.blur.scope=='window' and ov.blur.window=='42')\n"
+        "    assert(ov.blur.name=='blur' and ov.blur.value==20)\n"
+        "    ov.blur:on('closed', function(o, reason) ovnote('blur:'..tostring(reason)) end)\n"
+        "    ov.corners=window:set_effect('corners', {radius=12, border_width=2})\n"
+        "    assert(ov.corners.value.radius==12 and ov.corners.value.border_width==2)\n"
+        "    ov.corners:on('closed', function(o, reason) error('MARK '..tostring(reason)) end)\n"
+        "    ov.uniforms=window:set_effect('shader_uniforms', {my_strength=0.5})\n"
+        "  elseif event.step=='revoke' then\n"
+        "    local operation=ov.bell:revoke()\n"
+        "    assert(operation.method=='override.revoke' and ov.bell.alive)\n"
+        "  else\n"
+        "    assert(table.concat(ov_log, ';')=="
+        "'refused:no hover:false;bell:revoked;lock:replaced;blur:window_closed', "
+        "table.concat(ov_log, ';'))\n"
+        "    assert(not ov.bell.alive and not ov.lock.alive and not ov.blur.alive)\n"
+        "    assert(ov.corners.alive and ov.uniforms.alive)\n"
+        "    assert(not pcall(function() ov.bell:on('closed', print) end))\n"
         "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
@@ -963,6 +1033,107 @@ int main(void) {
     complete_operation(g_array_index(cancel_ids, gint64, 0), TRUE,
                        g_variant_builder_end(&cancelled), NULL);
     g_assert_cmpuint(dispatch_counting_operations("test.idle", step_payload("check")), ==, 0);
+
+    /* Overrides: a setting path or a window effect makes one object; the compositor ends it with
+     * a reason, and a committed reload ends the ones left. */
+    GVariantBuilder override_window, override_frame, override_make;
+    g_variant_builder_init(&override_frame, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_init(&override_window, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&override_window, "{sv}", "id", g_variant_new_string("42"));
+    g_variant_builder_add(&override_window, "{sv}", "frame",
+                          g_variant_builder_end(&override_frame));
+    g_variant_builder_init(&override_make, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&override_make, "{sv}", "step", g_variant_new_string("make"));
+    g_variant_builder_add(&override_make, "{sv}", "window",
+                          g_variant_builder_end(&override_window));
+    g_autoptr(GVariant) override_make_payload =
+        g_variant_ref_sink(g_variant_builder_end(&override_make));
+    g_autoptr(GVariant) override_make_result =
+        gnoblin_config_dispatch_event("test.overrides", override_make_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(override_make_result);
+    g_autoptr(GVariant) override_operations = gnoblin_config_drain_runtime_operations();
+    gnoblin_config_finish_event(TRUE);
+    g_assert_cmpuint(g_variant_n_children(override_operations), ==, 6);
+    g_autoptr(GArray) override_ids = g_array_new(FALSE, FALSE, sizeof(gint64));
+    const char* const expected_methods[] = {"settings.override", "settings.override",
+                                            "settings.override", "window.set_effect",
+                                            "window.set_effect", "window.set_effect"};
+    for (gsize i = 0; i < 6; i++) {
+        g_autoptr(GVariant) operation = g_variant_get_child_value(override_operations, i);
+        const char* method = NULL;
+        gint64 id = 0;
+        g_assert_true(g_variant_lookup(operation, "method", "&s", &method));
+        g_assert_true(g_variant_lookup(operation, "request_id", "x", &id));
+        g_assert_cmpstr(method, ==, expected_methods[i]);
+        g_array_append_val(override_ids, id);
+        g_autoptr(GVariant) arguments =
+            g_variant_lookup_value(operation, "arguments", G_VARIANT_TYPE_VARDICT);
+        const char* text = NULL;
+        if (i < 3) {
+            g_assert_true(g_variant_lookup(arguments, "section", "&s", &text));
+            g_assert_cmpstr(text, ==,
+                            i == 0   ? "compositor"
+                            : i == 1 ? "input"
+                                     : "window-management");
+            g_assert_true(g_variant_lookup(arguments, "key", "&s", &text));
+            g_assert_cmpstr(text, ==,
+                            i == 0   ? "visual-bell"
+                            : i == 1 ? "orientation-lock"
+                                     : "focus-mode");
+        } else {
+            g_assert_true(g_variant_lookup(arguments, "id", "&s", &text));
+            g_assert_cmpstr(text, ==, "42");
+        }
+        if (i == 4) {
+            /* The corner table reaches the compositor with the keys the rule engine reads. */
+            g_autoptr(GVariant) corners = g_variant_lookup_value(arguments, "value", NULL);
+            gint64 radius = 0, border = 0;
+            g_assert_true(g_variant_lookup(corners, "radius", "x", &radius));
+            g_assert_true(g_variant_lookup(corners, "border-width", "x", &border));
+            g_assert_cmpint(radius, ==, 12);
+            g_assert_cmpint(border, ==, 2);
+        }
+        if (i == 5) {
+            /* Uniform names are data, not settings: the underscore stays. */
+            g_autoptr(GVariant) uniforms = g_variant_lookup_value(arguments, "value", NULL);
+            double strength = 0;
+            g_assert_true(g_variant_lookup(uniforms, "my_strength", "d", &strength));
+            g_assert_cmpfloat(strength, ==, 0.5);
+        }
+    }
+    complete_operation(g_array_index(override_ids, gint64, 2), FALSE, NULL, "no hover");
+    g_autofree char* override_id_bell =
+        g_strdup_printf("override-%" G_GINT64_FORMAT, g_array_index(override_ids, gint64, 0));
+    g_autofree char* override_id_lock =
+        g_strdup_printf("override-%" G_GINT64_FORMAT, g_array_index(override_ids, gint64, 1));
+    g_autofree char* override_id_blur =
+        g_strdup_printf("override-%" G_GINT64_FORMAT, g_array_index(override_ids, gint64, 3));
+    g_autoptr(GArray) revoke_ids = dispatch_operation_ids("test.overrides", step_payload("revoke"));
+    g_assert_cmpuint(revoke_ids->len, ==, 1);
+    const char* const closings[][2] = {
+        {"bell", "revoked"}, {"lock", "replaced"}, {"blur", "window_closed"}};
+    const char* const closing_ids[] = {override_id_bell, override_id_lock, override_id_blur};
+    for (guint i = 0; i < G_N_ELEMENTS(closings); i++) {
+        GVariantBuilder closed;
+        g_variant_builder_init(&closed, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&closed, "{sv}", "id", g_variant_new_string(closing_ids[i]));
+        g_variant_builder_add(&closed, "{sv}", "reason", g_variant_new_string(closings[i][1]));
+        g_assert_cmpuint(
+            dispatch_counting_operations("gnoblin.override.closed", g_variant_builder_end(&closed)),
+            ==, 0);
+    }
+    g_assert_cmpuint(dispatch_counting_operations("test.overrides", step_payload("check")), ==, 0);
+
+    /* A reload that commits ends the overrides that remain, in the old runtime, before it goes. */
+    g_free(gnoblin_config_take_runtime_callback_error());
+    g_autoptr(GVariant) override_reloaded = gnoblin_config_load_runtime(root, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(override_reloaded);
+    gnoblin_config_finish_load(TRUE);
+    g_autofree char* reload_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(reload_error);
+    g_assert_nonnull(strstr(reload_error, "MARK config_reloaded"));
 
     g_unlink(root);
     g_unlink(component);

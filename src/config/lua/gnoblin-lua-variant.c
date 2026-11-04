@@ -349,7 +349,7 @@ static int lua_record_method(lua_State* state) {
         g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
         g_str_equal(method, "workspace.switch") || g_str_equal(method, "shortcut.unbind") ||
         g_str_equal(method, "launch.end") || g_str_equal(method, "input.select") ||
-        g_str_equal(method, "idle.cancel")) {
+        g_str_equal(method, "idle.cancel") || g_str_equal(method, "override.revoke")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "window.set_minimized")) {
@@ -392,6 +392,11 @@ static int lua_record_method(lua_State* state) {
             else
                 lua_pop(state, 1);
         }
+    } else if (g_str_equal(method, "window.set_effect")) {
+        /* Returns an Override, not the Operation (gnoblin-lua-state-queries.c). */
+        if (supplied != 2)
+            return luaL_error(state, "window:set_effect takes an effect name and a value");
+        return lua_window_set_effect(state, config, id, 2, 3);
     } else if (g_str_equal(method, "window.set_visual")) {
         /* set_opacity(v), set_scale(s), set_rotation(degrees), set_offset(x, y) and
          * reset_visuals() share the operation; the compositor checks the ranges. */
@@ -561,7 +566,15 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
     /* An idle watch has the seconds it waits for and whether the session is idle for them. */
     gboolean is_idle_watch = backing_field_type(state, backing, "seconds") == LUA_TNUMBER &&
                              backing_field_type(state, backing, "idle") == LUA_TBOOLEAN;
-    const char* kind = is_window              ? "Window"
+    /* An override names its scope, and the setting or effect it changes. */
+    lua_getfield(state, backing, "scope");
+    gboolean is_override = lua_type(state, -1) == LUA_TSTRING &&
+                           (g_str_equal(lua_tostring(state, -1), "settings") ||
+                            g_str_equal(lua_tostring(state, -1), "window")) &&
+                           backing_field_type(state, backing, "name") == LUA_TSTRING;
+    lua_pop(state, 1);
+    const char* kind = is_override            ? "Override"
+                       : is_window            ? "Window"
                        : is_animation_preview ? "AnimationPreview"
                        : is_workspace         ? "Workspace"
                        : is_layer             ? "LayerSurface"

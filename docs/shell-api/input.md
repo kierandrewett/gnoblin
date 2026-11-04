@@ -90,19 +90,19 @@ a runtime override is active.
 The `orientation` field is `normal`, `bottom-up`, `left-up`, `right-up`, or
 `undefined`. The last value means no orientation is available.
 
-Call one of these to request a change:
+Change the lock with an [override](/shell-api/overrides):
 
-- `gnoblin.input.set_orientation_lock(true)` locks the current orientation.
-- `gnoblin.input.set_orientation_lock(false)` unlocks orientation.
-- `gnoblin.input.set_orientation_lock("inherit")` clears the runtime override.
+- `gnoblin.settings.override("input.orientation_lock", true)` locks the current orientation.
+- `gnoblin.settings.override("input.orientation_lock", false)` unlocks orientation.
+- `override:revoke()` ends the override.
 
-Each call returns an asynchronous `Operation<OrientationLock>` and does not
-write the config file. After `inherit`, Gnoblin restores the configured boolean
-if one is set or follows the system setting otherwise.
+The call returns an `Override` and does not write the config file. After the
+override ends, Gnoblin restores the configured boolean if one is set or follows
+the system setting otherwise. A newer override replaces an older one.
 
-On config reload, Gnoblin applies a boolean `input.orientation_lock` value.
-When omitted or set to `"inherit"`, it clears the override and follows the
-system setting. Subscribe to `gnoblin.input.orientation-lock-changed` to
+On config reload, Gnoblin applies a boolean `input.orientation_lock` value and
+ends every override. When the value is omitted or set to `"inherit"`, Gnoblin
+follows the system setting. Subscribe to `gnoblin.input.orientation-lock-changed` to
 receive the updated record, plus these event fields:
 
 - `name` identifies the event.
@@ -338,14 +338,13 @@ The event provides labels when available, but no image or popup. Draw and
 dismiss the overlay in your shell. Each help press sends a new event; without a
 listener, no overlay appears.
 
-| Lua method                                  | Arguments                       | Successful result                       |
-| ------------------------------------------- | ------------------------------- | --------------------------------------- |
-| `gnoblin.input.devices()`                   | None                            | Physical input-device records           |
-| `gnoblin.input.sources()`                   | None                            | Configured `InputSource` objects        |
-| `gnoblin.input.current_source()`            | None                            | Current `InputSource`, or `nil`         |
-| `source:select()`                           | None                            | Operation returning the selected source |
-| `gnoblin.input.orientation_lock()`          | None                            | Immutable `OrientationLock` record      |
-| `gnoblin.input.set_orientation_lock(value)` | `true`, `false`, or `"inherit"` | `Operation<OrientationLock>`            |
+| Lua method                         | Arguments | Successful result                       |
+| ---------------------------------- | --------- | --------------------------------------- |
+| `gnoblin.input.devices()`          | None      | Physical input-device records           |
+| `gnoblin.input.sources()`          | None      | Configured `InputSource` objects        |
+| `gnoblin.input.current_source()`   | None      | Current `InputSource`, or `nil`         |
+| `source:select()`                  | None      | Operation returning the selected source |
+| `gnoblin.input.orientation_lock()` | None      | Immutable `OrientationLock` record      |
 
 The socket operation `input.select` takes a source's `type` and `id`. In Lua it
 is `source:select()`.

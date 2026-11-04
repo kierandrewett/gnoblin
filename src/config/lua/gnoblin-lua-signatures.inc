@@ -273,7 +273,18 @@ static const ApiMember api_fields_OutputPrivacyScreen[] = {
     {"enabled", "boolean", TRUE, "Whether the privacy screen is on, when available."},
     {"locked", "boolean", TRUE, "Whether a hardware switch locks the privacy screen, when available."},
     {"requested", "boolean", FALSE, "Whether the session asks for privacy screens to be on. This one request applies to every output."},
-    {"source", "\"runtime\"|\"system\"|\"config\"", FALSE, "What sets the request: a runtime override from gnoblin.outputs.set_privacy_screen, the configuration, or the system setting."},
+    {"source", "\"runtime\"|\"system\"|\"config\"", FALSE, "What sets the request: a runtime override from gnoblin.settings.override(\"monitors.privacy_screen\", value), the configuration, or the system setting."},
+};
+static const ApiMember api_fields_Override[] = {
+    {"id", "string", FALSE, "Identifier, \"override-\" and the number of the request that made it."},
+    {"alive", "boolean", FALSE, "False once the override has ended."},
+    {"scope", "\"settings\"|\"window\"", FALSE, "What it changes: a setting, or an effect of one window."},
+    {"name", "string", FALSE, "The setting path, such as \"window_management.focus_mode\", or the effect name, such as \"blur\"."},
+    {"window", "string", TRUE, "The ID of the window an effect belongs to. Absent for a setting."},
+    {"value", "any", FALSE, "The value it layers."},
+};
+static const ApiMember api_fields_OverrideRevokeResult[] = {
+    {"revoked", "boolean", FALSE, "True when the compositor ended the override."},
 };
 static const ApiMember api_fields_PrivacyAvailability[] = {
     {"screen_sharing", "boolean", FALSE, "Whether screen sharing state is available."},
@@ -635,6 +646,8 @@ static const ApiClass api_classes[] = {
     {"Output", "", api_fields_Output, 22},
     {"OutputMode", "", api_fields_OutputMode, 3},
     {"OutputPrivacyScreen", "", api_fields_OutputPrivacyScreen, 5},
+    {"Override", "A value that the runtime layers over the committed configuration, or an effect that it layers over the window rules of one window, until the override ends. It is the same object for as long as it is alive. The latest override of one setting, or of one effect on one window, wins: an older one ends at once with the reason \"replaced\". An override ends too when it is revoked (\"revoked\"), when its window closes (\"window_closed\"), and when a configuration reload commits (\"config_reloaded\"). A stopped or restarted Lua worker drops its overrides as well. An override never writes the configuration file, and `gnoblin.settings` keeps showing the committed values.", api_fields_Override, 6},
+    {"OverrideRevokeResult", "", api_fields_OverrideRevokeResult, 1},
     {"PrivacyAvailability", "", api_fields_PrivacyAvailability, 5},
     {"PrivacyState", "", api_fields_PrivacyState, 7},
     {"PrivacyStopResult", "", api_fields_PrivacyStopResult, 1},
@@ -711,75 +724,76 @@ static const ApiMember api_params_15[] = {
     {"enabled", "boolean", FALSE, "True to keep above; false to clear."},
 };
 static const ApiMember api_params_16[] = {
-    {"enabled", "boolean", FALSE, "True to enter fullscreen; false to leave it."},
+    {"name", "string", FALSE, "The effect, such as \"blur\"."},
+    {"value", "any", FALSE, "The value for that effect."},
 };
 static const ApiMember api_params_17[] = {
-    {"enabled", "boolean", FALSE, "True to maximize; false to restore."},
+    {"enabled", "boolean", FALSE, "True to enter fullscreen; false to leave it."},
 };
 static const ApiMember api_params_18[] = {
-    {"enabled", "boolean", FALSE, "True to minimize; false to remove minimization."},
+    {"enabled", "boolean", FALSE, "True to maximize; false to restore."},
 };
 static const ApiMember api_params_19[] = {
+    {"enabled", "boolean", FALSE, "True to minimize; false to remove minimization."},
+};
+static const ApiMember api_params_20[] = {
     {"x", "number", FALSE, ""},
     {"y", "number", FALSE, ""},
 };
-static const ApiMember api_params_20[] = {
+static const ApiMember api_params_21[] = {
     {"opacity", "number", FALSE, ""},
 };
-static const ApiMember api_params_21[] = {
+static const ApiMember api_params_22[] = {
     {"degrees", "number", FALSE, ""},
 };
-static const ApiMember api_params_22[] = {
+static const ApiMember api_params_23[] = {
     {"scale", "number", FALSE, ""},
 };
-static const ApiMember api_params_23[] = {
+static const ApiMember api_params_24[] = {
     {"enabled", "boolean", FALSE, "True to make sticky; false to clear."},
 };
-static const ApiMember api_params_24[] = {
+static const ApiMember api_params_25[] = {
     {"width", "integer", FALSE, "Thumbnail width from 1 to 480 pixels."},
     {"height", "integer", FALSE, "Thumbnail height from 1 to 320 pixels."},
 };
-static const ApiMember api_params_25[] = {
+static const ApiMember api_params_26[] = {
     {"property", "string", FALSE, "A field of Window, such as \"title\" or \"frame\"."},
     {"fn", "fun(window: Window, value: any, old: any)", FALSE, ""},
 };
-static const ApiMember api_params_26[] = {
+static const ApiMember api_params_27[] = {
     {"animation", "AnimationArgs", FALSE, ""},
 };
-static const ApiMember api_params_27[] = {
+static const ApiMember api_params_28[] = {
     {"name", "string", FALSE, "Animation name, 1 to 80 ASCII letters, digits, underscores, or hyphens."},
 };
-static const ApiMember api_params_28[] = {
+static const ApiMember api_params_29[] = {
     {"name", "string", FALSE, "Animation name."},
     {"options", "AnimationInspectOptions", TRUE, ""},
 };
-static const ApiMember api_params_30[] = {
+static const ApiMember api_params_31[] = {
     {"name", "string", FALSE, "Animation name."},
     {"options", "AnimationPreviewOptions", TRUE, ""},
 };
-static const ApiMember api_params_33[] = {
+static const ApiMember api_params_34[] = {
     {"values", "table", FALSE, "Array values; numeric keys must form a dense sequence starting at 1 when converted."},
 };
-static const ApiMember api_params_38[] = {
+static const ApiMember api_params_39[] = {
     {"settings", "table", FALSE, "Settings table to merge into the active configuration."},
 };
-static const ApiMember api_params_40[] = {
+static const ApiMember api_params_41[] = {
     {"name", "string", FALSE, "linear, sine, quad, cubic, quart, quint, expo, circ, back, elastic or bounce."},
     {"t", "number", FALSE, "Progress from 0 to 1; values outside are clamped."},
     {"direction", "\"in\"|\"out\"|\"in_out\"", TRUE, "Default \"in_out\"."},
 };
-static const ApiMember api_params_41[] = {
+static const ApiMember api_params_42[] = {
     {"filter", "FocusHistoryFilter", TRUE, ""},
 };
-static const ApiMember api_params_43[] = {
+static const ApiMember api_params_44[] = {
     {"seconds", "number", FALSE, "Idle time above 0 and at most 86400. Fractions are allowed."},
 };
-static const ApiMember api_params_46[] = {
+static const ApiMember api_params_47[] = {
     {"match", "InputHandlerMatch", FALSE, "Event selectors. type is required; other selectors are optional."},
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
-};
-static const ApiMember api_params_48[] = {
-    {"value", "boolean|\"inherit\"", FALSE, "True locks orientation; false unlocks it; \"inherit\" clears the runtime override."},
 };
 static const ApiMember api_params_50[] = {
     {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
@@ -814,12 +828,13 @@ static const ApiMember api_params_58[] = {
 static const ApiMember api_params_59[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
-static const ApiMember api_params_63[] = {
-    {"value", "boolean|\"inherit\"", FALSE, ""},
-};
-static const ApiMember api_params_67[] = {
+static const ApiMember api_params_66[] = {
     {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
     {"options", "ProcessOptions", TRUE, ""},
+};
+static const ApiMember api_params_76[] = {
+    {"path", "string", FALSE, "The setting, such as \"compositor.visual_bell\"."},
+    {"value", "boolean|number|string", FALSE, "The value to layer."},
 };
 static const ApiMember api_params_77[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
@@ -872,39 +887,39 @@ static const ApiFunction api_functions[] = {
     {"Window:resize", "Resize this window.", api_params_13, 2, "Operation<Json>"},
     {"Window:restore_or_minimize", "Unmaximize this window, restore the frame it had before a snap, or minimize it, whichever applies first.", NULL, 0, "Operation<Json>"},
     {"Window:set_above", "Set whether this window stays above other windows.", api_params_15, 1, "Operation<Json>"},
-    {"Window:set_fullscreen", "Set whether this window is fullscreen.", api_params_16, 1, "Operation<Json>"},
-    {"Window:set_maximized", "Set whether this window is maximized.", api_params_17, 1, "Operation<Json>"},
-    {"Window:set_minimized", "Set whether this window is minimized.", api_params_18, 1, "Operation<Json>"},
-    {"Window:set_offset", "Draw this window moved by an offset in logical pixels, each from -100000 to 100000.", api_params_19, 2, "Operation<WindowVisual>"},
-    {"Window:set_opacity", "Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn and picked, not its frame or what the client sees. The runtime's reload clears them.", api_params_20, 1, "Operation<WindowVisual>"},
-    {"Window:set_rotation", "Draw this window rotated about its centre, in degrees from -3600 to 3600.", api_params_21, 1, "Operation<WindowVisual>"},
-    {"Window:set_scale", "Draw this window scaled about its centre, from 0.01 to 10.", api_params_22, 1, "Operation<WindowVisual>"},
-    {"Window:set_sticky", "Set whether this window appears on every workspace.", api_params_23, 1, "Operation<Json>"},
-    {"Window:thumbnail", "Capture a thumbnail at the requested dimensions.", api_params_24, 2, "Operation<Json>"},
-    {"Window:watch", "Call fn(window, value, old) when one field of this window changes.", api_params_25, 2, "{unsubscribe: fun()}"},
-    {"animation", "Declare or update a named animation in configuration.", api_params_26, 1, ""},
-    {"animations.get", "Return an animation by name, or nil if it is not registered.", api_params_27, 1, "AnimationInfo|nil"},
-    {"animations.inspect", "Resolve an animation against a visible target without starting it.", api_params_28, 2, "AnimationInspection"},
+    {"Window:set_effect", "Layer one window rule effect over this window and return the Override. The effects are those that `gnoblin.window_rule` supports: `opacity` (0 to 1), `blur` (0 to 100), `blur_ignore_shadows`, `shader` (a GLSL file path, or \"\" to clear it), `shader_uniforms`, `frame` and `corners`. The last three take the same table as the rule. The value goes over every rule that matches the window, as one more rule after them, so it changes only what it sets. The latest override of one effect on one window wins; an older one ends with the reason \"replaced\". The override ends when it is revoked, when the window closes, and when a configuration reload commits, and the window then shows what its rules give. This is not `set_opacity`: that call changes how the window actor is drawn, and `opacity` here is the rule's opacity of the window content, which the two multiply. Call this while handling an event, as with every operation.", api_params_16, 2, "Override"},
+    {"Window:set_fullscreen", "Set whether this window is fullscreen.", api_params_17, 1, "Operation<Json>"},
+    {"Window:set_maximized", "Set whether this window is maximized.", api_params_18, 1, "Operation<Json>"},
+    {"Window:set_minimized", "Set whether this window is minimized.", api_params_19, 1, "Operation<Json>"},
+    {"Window:set_offset", "Draw this window moved by an offset in logical pixels, each from -100000 to 100000.", api_params_20, 2, "Operation<WindowVisual>"},
+    {"Window:set_opacity", "Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn and picked, not its frame or what the client sees. The runtime's reload clears them.", api_params_21, 1, "Operation<WindowVisual>"},
+    {"Window:set_rotation", "Draw this window rotated about its centre, in degrees from -3600 to 3600.", api_params_22, 1, "Operation<WindowVisual>"},
+    {"Window:set_scale", "Draw this window scaled about its centre, from 0.01 to 10.", api_params_23, 1, "Operation<WindowVisual>"},
+    {"Window:set_sticky", "Set whether this window appears on every workspace.", api_params_24, 1, "Operation<Json>"},
+    {"Window:thumbnail", "Capture a thumbnail at the requested dimensions.", api_params_25, 2, "Operation<Json>"},
+    {"Window:watch", "Call fn(window, value, old) when one field of this window changes.", api_params_26, 2, "{unsubscribe: fun()}"},
+    {"animation", "Declare or update a named animation in configuration.", api_params_27, 1, ""},
+    {"animations.get", "Return an animation by name, or nil if it is not registered.", api_params_28, 1, "AnimationInfo|nil"},
+    {"animations.inspect", "Resolve an animation against a visible target without starting it.", api_params_29, 2, "AnimationInspection"},
     {"animations.list", "Return the configured native animation records.", NULL, 0, "AnimationInfo[]"},
-    {"animations.preview", "Start a controllable preview of an animation on a visible target.", api_params_30, 2, "Operation<AnimationPreview>"},
+    {"animations.preview", "Start a controllable preview of an animation on a visible target.", api_params_31, 2, "Operation<AnimationPreview>"},
     {"animations.surfaces", "List visible layer-shell surfaces that can be targeted by animations.", NULL, 0, "{surfaces: AnimationSurface[]}"},
     {"appearance.color_scheme", "Read the current desktop color scheme, or nil when unavailable.", NULL, 0, "ColorScheme|nil"},
-    {"array", "Mark a table as an array so configuration conversion preserves it as a list.", api_params_33, 1, "table"},
+    {"array", "Mark a table as an array so configuration conversion preserves it as a list.", api_params_34, 1, "table"},
     {"capabilities.list", "Return the native compositor and protocol capabilities as read-only records.", NULL, 0, "Capability[]"},
     {"config.default", "Return the bundled default Lua configuration source.", NULL, 0, "string"},
     {"config.path", "Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.", NULL, 0, "string"},
     {"config.restore_default", "Replace the standard config directory with bundled defaults, save the old directory as a backup, and reload the restored configuration.", NULL, 0, "Operation<AcceptedResult>"},
-    {"configure", "Merge settings into the active Lua configuration.", api_params_38, 1, ""},
+    {"configure", "Merge settings into the active Lua configuration.", api_params_39, 1, ""},
     {"console.toggle", "Toggle the shell console.", NULL, 0, "Operation<ConsoleToggleResult>"},
-    {"ease", "Return eased progress for t from 0 to 1.", api_params_40, 3, "number"},
-    {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_41, 1, "Window[]"},
+    {"ease", "Return eased progress for t from 0 to 1.", api_params_41, 3, "number"},
+    {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_42, 1, "Window[]"},
     {"focus.policy", "Read the committed focus policy.", NULL, 0, "FocusPolicy"},
-    {"idle.watch", "Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not idle; if the compositor refuses it, it ends and its \"closed\" listeners get the reason.", api_params_43, 1, "IdleWatch"},
+    {"idle.watch", "Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not idle; if the compositor refuses it, it ends and its \"closed\" listeners get the reason.", api_params_44, 1, "IdleWatch"},
     {"input.current_source", "Return the selected input source, or nil when there is no current source.", NULL, 0, "InputSource|nil"},
     {"input.devices", "Return available input devices.", NULL, 0, "InputDevice[]"},
-    {"input.on", "Register a Lua policy callback for matching input events.", api_params_46, 2, "string"},
+    {"input.on", "Register a Lua policy callback for matching input events.", api_params_47, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
-    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_48, 1, "Operation<OrientationLock>"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
     {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_50, 1, "Operation<TextTarget>"},
     {"launches.begin", "Begin tracking a matching application launch and return the Launch. It exists at once, pending, with the values asked for; the compositor's confirmation and changes update it. A token that is already in use ends the earlier Launch with the reason \"replaced\". If the compositor refuses the launch, it ends with the reason and its state becomes \"ended\".", api_params_51, 3, "Launch"},
@@ -919,11 +934,10 @@ static const ApiFunction api_functions[] = {
     {"outputs.list", "Return all current outputs. The list is empty until the first output snapshot is published.", NULL, 0, "Output[]"},
     {"outputs.primary", "Return the primary output, or nil when there is none.", NULL, 0, "Output|nil"},
     {"outputs.renderer", "Return the compositor renderer, or nil until the first output snapshot is published.", NULL, 0, "Renderer|nil"},
-    {"outputs.set_privacy_screen", "Turn privacy screens on or off for the whole session. The compositor keeps one privacy screen request and applies it to every output that has a privacy screen, so this call belongs to the session and not to one Output. Read each output's state in Output.privacy_screen, and watch it with Output:watch(\"privacy_screen\", fn). true and false raise an error when no output has a privacy screen (every output has privacy_screen.available false). \"inherit\" removes the runtime override, restores the configured or system value, and is always accepted.", api_params_63, 1, "Operation<Json>"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_67, 2, "Process"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_66, 2, "Process"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.hibernate", "Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
@@ -933,6 +947,7 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or `internal` (the D-Bus error is in the message).", NULL, 0, "Operation<AcceptedResult>"},
+    {"settings.override", "Layer a value over one committed setting, for this runtime, and return the Override. The path is \"section.key\" with the names of the configuration, such as `window_management.focus_mode`. Only a setting that can change while the session runs is accepted: `window_management.*`, `compositor.*`, `cursor.theme`, `cursor.size`, `layer_shell.preserve_active_window`, `monitors.privacy_screen` and `input.orientation_lock`. Any other path raises an error that says why it cannot change at runtime. The value is checked the way the configuration checks it, so a value the configuration would refuse raises an error too. The orientation lock and the privacy screen take `true` or `false`; a privacy screen needs an output that has one. If the compositor refuses the override, it ends and its \"closed\" listeners get the reason. Call this while handling an event, as with every operation.", api_params_76, 2, "Override"},
     {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_77, 1, "ShortcutAction[]"},
     {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for; if the compositor refuses the binding (the accelerator is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_78, 3, "Shortcut"},
     {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_79, 1, "Operation<ShortcutCaptureResult>"},

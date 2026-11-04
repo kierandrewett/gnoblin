@@ -96,6 +96,13 @@ int lua_gnoblin_index(lua_State* state) {
     lua_setfield(state, -2, "revision");
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
+    /* `override` is a method of the snapshot: it stays out of its fields and of pairs(), and
+     * the snapshot that the socket read "settings" returns has the same fields as before. */
+    lua_getiuservalue(state, -1, 2);
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_settings_override, 1);
+    lua_setfield(state, -2, "override");
+    lua_pop(state, 1);
     return 1;
 }
 

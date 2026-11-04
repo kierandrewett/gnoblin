@@ -1,62 +1,5 @@
 #include "gnoblinctl-internal.h"
 
-static gboolean lua_cli_privacy_screen_snapshot_valid(JsonObject* snapshot) {
-    static const char* const snapshot_fields[] = {"requested_enabled", "source", "revision",
-                                                  "monitors", NULL};
-    static const char* const monitor_fields[] = {"id", "available", "enabled", "locked", NULL};
-    if (!snapshot || !lua_cli_workspace_object_has_only_keys(snapshot, snapshot_fields))
-        return FALSE;
-    JsonNode* requested = json_object_get_member(snapshot, "requested_enabled");
-    JsonNode* source = json_object_get_member(snapshot, "source");
-    JsonNode* revision = json_object_get_member(snapshot, "revision");
-    JsonNode* monitors_node = json_object_get_member(snapshot, "monitors");
-    const char* source_name =
-        source && JSON_NODE_HOLDS_VALUE(source) && json_node_get_value_type(source) == G_TYPE_STRING
-            ? json_node_get_string(source)
-            : NULL;
-    if (!requested || !JSON_NODE_HOLDS_VALUE(requested) ||
-        json_node_get_value_type(requested) != G_TYPE_BOOLEAN || !source_name ||
-        !(g_str_equal(source_name, "runtime") || g_str_equal(source_name, "config") ||
-          g_str_equal(source_name, "system")) ||
-        !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
-        (json_node_get_value_type(revision) != G_TYPE_INT &&
-         json_node_get_value_type(revision) != G_TYPE_INT64 &&
-         json_node_get_value_type(revision) != G_TYPE_UINT &&
-         json_node_get_value_type(revision) != G_TYPE_UINT64) ||
-        (json_node_get_value_type(revision) != G_TYPE_UINT &&
-         json_node_get_value_type(revision) != G_TYPE_UINT64 && json_node_get_int(revision) < 0) ||
-        !monitors_node || !JSON_NODE_HOLDS_ARRAY(monitors_node))
-        return FALSE;
-
-    JsonArray* monitors = json_node_get_array(monitors_node);
-    for (guint i = 0; i < json_array_get_length(monitors); i++) {
-        JsonNode* monitor_node = json_array_get_element(monitors, i);
-        if (!monitor_node || !JSON_NODE_HOLDS_OBJECT(monitor_node))
-            return FALSE;
-        JsonObject* monitor = json_node_get_object(monitor_node);
-        if (!lua_cli_workspace_object_has_only_keys(monitor, monitor_fields))
-            return FALSE;
-        const char* id = member_string(monitor, "id", NULL);
-        JsonNode* available = json_object_get_member(monitor, "available");
-        if (!id || !*id || !available || !JSON_NODE_HOLDS_VALUE(available) ||
-            json_node_get_value_type(available) != G_TYPE_BOOLEAN)
-            return FALSE;
-        gboolean supports_privacy_screen = json_node_get_boolean(available);
-        const char* const state_fields[] = {"enabled", "locked", NULL};
-        for (guint field = 0; state_fields[field]; field++) {
-            JsonNode* value = json_object_get_member(monitor, state_fields[field]);
-            if (supports_privacy_screen) {
-                if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
-                    json_node_get_value_type(value) != G_TYPE_BOOLEAN)
-                    return FALSE;
-            } else if (value) {
-                return FALSE;
-            }
-        }
-    }
-    return TRUE;
-}
-
 int lua_cli_output_tostring(lua_State* state) {
     lua_getiuservalue(state, 1, 1);
     lua_getfield(state, -1, "id");
@@ -576,53 +519,5 @@ int lua_cli_outputs_renderer(lua_State* state) {
     json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
-    return 1;
-}
-
-/* gnoblin.outputs.set_privacy_screen(value): one request for the whole session, set through the
- * monitors.set_privacy_screen wire call. true and false fail when no output has a privacy
- * screen; "inherit" is always accepted. */
-int lua_cli_outputs_set_privacy_screen(lua_State* state) {
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 1 ||
-        (!lua_isboolean(state, 1) &&
-         !(lua_type(state, 1) == LUA_TSTRING && g_str_equal(lua_tostring(state, 1), "inherit"))))
-        return luaL_error(state,
-                          "gnoblin.outputs.set_privacy_screen requires true, false, or 'inherit'");
-    if (lua_isboolean(state, 1)) {
-        g_autoptr(JsonNode) outputs_node =
-            lua_cli_output_snapshot(state, cli, "set_privacy_screen");
-        JsonArray* outputs = json_node_get_array(outputs_node);
-        gboolean available = FALSE;
-        for (guint i = 0; i < json_array_get_length(outputs) && !available; i++) {
-            JsonObject* output = json_array_get_object_element(outputs, i);
-            JsonObject* privacy =
-                output && json_object_has_member(output, "privacy_screen") &&
-                        JSON_NODE_HOLDS_OBJECT(json_object_get_member(output, "privacy_screen"))
-                    ? json_object_get_object_member(output, "privacy_screen")
-                    : NULL;
-            available =
-                privacy && json_object_get_boolean_member_with_default(privacy, "available", FALSE);
-        }
-        if (!available)
-            return luaL_error(state, "no output has a privacy screen");
-    }
-    JsonObject* arguments = json_object_new();
-    if (lua_isboolean(state, 1))
-        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 1));
-    else
-        json_object_set_string_member(arguments, "value", "inherit");
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "monitors.set_privacy_screen", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "gnoblin.outputs.set_privacy_screen failed: %s",
-                          call_error ? call_error->message : "unknown compositor error");
-    if (!JSON_NODE_HOLDS_OBJECT(result) ||
-        !lua_cli_privacy_screen_snapshot_valid(json_node_get_object(result)))
-        return luaL_error(state, "gnoblin.outputs.set_privacy_screen returned an invalid snapshot");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
     return 1;
 }

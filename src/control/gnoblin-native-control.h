@@ -13,7 +13,7 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 89
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 90
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error);

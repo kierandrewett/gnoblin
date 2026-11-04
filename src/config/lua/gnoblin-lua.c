@@ -141,6 +141,7 @@ const LuaApiEntry lua_api[] = {
     {"Window:set_rotation", "window.set_visual", NULL},
     {"Window:set_offset", "window.set_visual", NULL},
     {"Window:reset_visuals", "window.set_visual", NULL},
+    {"Window:set_effect", "window.set_effect", NULL},
     {"Window:on", NULL, lua_object_on},
     {"Window:watch", NULL, lua_object_watch},
 
@@ -160,7 +161,6 @@ const LuaApiEntry lua_api[] = {
     {"outputs.primary", NULL, lua_outputs_primary},
     {"outputs.by_id", NULL, lua_outputs_by_id},
     {"outputs.renderer", NULL, lua_outputs_renderer},
-    {"outputs.set_privacy_screen", NULL, lua_outputs_set_privacy_screen},
     {"Output:on", NULL, lua_object_on},
     {"Output:watch", NULL, lua_object_watch},
     {"layers.list", NULL, lua_layers_list},
@@ -189,7 +189,6 @@ const LuaApiEntry lua_api[] = {
     {"InputSource:watch", NULL, lua_object_watch},
     {"input.text_target", "input.text_target", lua_input_text_target},
     {"input.orientation_lock", NULL, lua_input_orientation_lock},
-    {"input.set_orientation_lock", "input.set_orientation_lock", NULL},
     {"input.on", NULL, lua_input_on},
 
     {"shortcuts.actions", NULL, lua_shortcut_actions},
@@ -212,6 +211,9 @@ const LuaApiEntry lua_api[] = {
     {"IdleWatch:on", NULL, lua_object_on},
     {"IdleWatch:watch", NULL, lua_object_watch},
 
+    {"Override:revoke", "override.revoke", NULL},
+    {"Override:on", NULL, lua_object_on},
+
     {"privacy.state", NULL, lua_privacy_state},
     {"privacy.stop_sharing", "privacy.stop_sharing", NULL},
     {"privacy.stop_recording", "privacy.stop_recording", NULL},
@@ -232,9 +234,10 @@ const LuaApiEntry lua_api[] = {
 /* Wire operations that socket clients call directly but Lua does not install under that name. Lua
  * reaches Request answers through the Request object (gnoblin-lua-request.c), reaches the preview
  * controls through AnimationPreview, window minimize state through Window:set_minimized, and moves
- * a window to a workspace through Window:move_to_workspace. The launch names are those shells use
- * on the wire.
- * gnoblin_config_call_api accepts them; install_api does not install them. */
+ * a window to a workspace through Window:move_to_workspace. Lua changes the orientation lock and
+ * the privacy screen with gnoblin.settings.override; the two wire names stay for socket clients.
+ * The launch names are those shells use on the wire. gnoblin_config_call_api accepts them;
+ * install_api does not install them. */
 static const LuaApiEntry bridge_operations[] = {
     {"prompt.respond", "prompt.respond", NULL},
     {"prompt.cancel", "prompt.cancel", NULL},
@@ -255,6 +258,7 @@ static const LuaApiEntry bridge_operations[] = {
     {"animation.play", "animation.play", NULL},
     {"animation.pause", "animation.pause", NULL},
     {"animation.stop", "animation.stop", NULL},
+    {"input.set_orientation_lock", "input.set_orientation_lock", NULL},
     {"monitors.set_privacy_screen", "monitors.set_privacy_screen", lua_monitors_set_privacy_screen},
     {NULL, NULL, NULL},
 };

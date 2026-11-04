@@ -408,18 +408,45 @@ GVariant* lua_command_argv_variant(lua_State* state, int index, const char* labe
     return g_variant_builder_end(&argv);
 }
 
+/* Raise the Lua error that every operation shares when it cannot be queued now. */
+void lua_check_operation_context(lua_State* state, LuaConfig* config) {
+    if (config && config->rejecting_operations)
+        luaL_error(state, "runtime operations are unavailable while rejecting a failed event");
+    if (!config || !config->runtime_actions || (!config->dispatching && !config->api_calling))
+        luaL_error(state, "Gnoblin session actions are available only at runtime");
+    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        luaL_error(state, "too many pending Gnoblin session actions");
+}
+
+/* Queue `method` with `arguments` (an a{sv} variant, consumed) for the compositor and push its
+ * Operation. */
+int lua_queue_operation(lua_State* state, LuaConfig* config, const char* method,
+                        GVariant* arguments) {
+    guint64 request_id = allocate_operation_id();
+    if (!request_id) {
+        g_variant_unref(g_variant_ref_sink(arguments));
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    }
+    GVariantBuilder action;
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
+    g_variant_builder_add(&action, "{sv}", "arguments", arguments);
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    if (config->api_calling)
+        lua_pushinteger(state, request_id); /* legacy socket/C caller contract */
+    else
+        push_operation_handle(state, config, request_id, method);
+    return 1;
+}
+
 int lua_generic_api_action(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     if (g_str_equal(method, "window.begin_move") || g_str_equal(method, "window.begin_resize"))
         return luaL_error(state, "%s requires a Window record and trusted FocusContext", method);
-    if (config && config->rejecting_operations)
-        return luaL_error(state,
-                          "runtime operations are unavailable while rejecting a failed event");
-    if (!config || !config->runtime_actions || (!config->dispatching && !config->api_calling))
-        return luaL_error(state, "Gnoblin session actions are available only at runtime");
-    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
-        return luaL_error(state, "too many pending Gnoblin session actions");
+    lua_check_operation_context(state, config);
 
     if ((g_str_equal(method, "privacy.stop_sharing") ||
          g_str_equal(method, "privacy.stop_recording")) &&
@@ -677,19 +704,5 @@ int lua_generic_api_action(lua_State* state) {
         return luaL_error(state, "%s takes no arguments or one argument table", method);
     }
 
-    guint64 request_id = allocate_operation_id();
-    if (!request_id)
-        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
-    GVariantBuilder action;
-    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
-    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
-    g_variant_builder_add(&action, "{sv}", "arguments", arguments);
-    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
-    config->actions_in_dispatch++;
-    if (config->api_calling)
-        lua_pushinteger(state, request_id); /* legacy socket/C caller contract */
-    else
-        push_operation_handle(state, config, request_id, method);
-    return 1;
+    return lua_queue_operation(state, config, method, arguments);
 }

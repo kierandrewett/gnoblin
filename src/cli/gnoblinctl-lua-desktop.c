@@ -246,31 +246,6 @@ int lua_cli_appearance_color_scheme(lua_State* state) {
     return 1;
 }
 
-int lua_cli_input_set_orientation_lock(lua_State* state) {
-    if (lua_gettop(state) != 1 || (!lua_isboolean(state, 1) &&
-                                   !(lua_type(state, 1) == LUA_TSTRING && lua_isstring(state, 1) &&
-                                     g_str_equal(lua_tostring(state, 1), "inherit"))))
-        return luaL_error(state, "input.set_orientation_lock requires true, false, or 'inherit'");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    JsonObject* arguments = json_object_new();
-    if (lua_isboolean(state, 1))
-        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 1));
-    else
-        json_object_set_string_member(arguments, "value", "inherit");
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "input.set_orientation_lock", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "input.set_orientation_lock failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return luaL_error(state, "input.set_orientation_lock returned an invalid snapshot");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
 int lua_cli_layers_list(lua_State* state) {
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.layers.list accepts one optional filter table");

@@ -29,6 +29,7 @@ STRUCTURAL = {
     "gnoblin.animation",  # declaration closure
     "gnoblin.focus.policy",  # built on first read by lua_gnoblin_index
     "gnoblin.focus.history",  # built on first read by lua_gnoblin_index
+    "gnoblin.settings.override",  # a method of the gnoblin.settings snapshot, added by lua_gnoblin_index
 }
 
 

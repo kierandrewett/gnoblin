@@ -129,13 +129,10 @@ int lua_api_index(lua_State* state) {
             lua_pushcclosure(state, lua_cli_outputs_by_id, 1);
         else if (g_str_equal(name, "renderer"))
             lua_pushcclosure(state, lua_cli_outputs_renderer, 1);
-        else if (g_str_equal(name, "set_privacy_screen"))
-            lua_pushcclosure(state, lua_cli_outputs_set_privacy_screen, 1);
         else
             lua_pop(state, 1);
         if (g_str_equal(name, "list") || g_str_equal(name, "primary") ||
-            g_str_equal(name, "by_id") || g_str_equal(name, "renderer") ||
-            g_str_equal(name, "set_privacy_screen"))
+            g_str_equal(name, "by_id") || g_str_equal(name, "renderer"))
             return 1;
     }
     if (g_str_equal(prefix, "layers")) {
@@ -258,11 +255,6 @@ int lua_api_index(lua_State* state) {
             lua_pushcclosure(state, lua_cli_input_snapshot, 2);
             return 1;
         }
-        if (g_str_equal(name, "set_orientation_lock")) {
-            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-            lua_pushcclosure(state, lua_cli_input_set_orientation_lock, 1);
-            return 1;
-        }
     }
     if (g_str_equal(prefix, "focus")) {
         if (g_str_equal(name, "policy")) {
@@ -308,7 +300,13 @@ int lua_api_index(lua_State* state) {
         {"monitors.list", "gnoblin.outputs.list"},
         {"monitors.primary", "gnoblin.outputs.primary"},
         {"monitors.privacy_screen", "output.privacy_screen"},
-        {"monitors.set_privacy_screen", "gnoblin.outputs.set_privacy_screen"},
+        {"monitors.set_privacy_screen",
+         "gnoblin.settings.override(\"monitors.privacy_screen\", value) in a configuration"},
+        {"outputs.set_privacy_screen",
+         "gnoblin.settings.override(\"monitors.privacy_screen\", value) in a configuration"},
+        {"input.set_orientation_lock",
+         "gnoblin.settings.override(\"input.orientation_lock\", value) in a configuration, or "
+         "`gnoblinctl input orientation-lock`"},
         {"layer.list", "gnoblin.layers.list"},
         {"input.list", "gnoblin.input.sources"},
         {"input.current", "gnoblin.input.current_source"},

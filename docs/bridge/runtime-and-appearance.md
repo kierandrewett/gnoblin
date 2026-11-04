@@ -53,9 +53,12 @@ asynchronously with the resulting record. `inherit` clears the runtime
 override, restores a configured boolean if present, or follows the system
 setting otherwise. A runtime request does not write the config file.
 
-Config reload reapplies a boolean `input.orientation_lock` value. If it is
-omitted or set to `"inherit"`, reload clears the override and follows the
-system setting.
+Lua changes the same setting with an override. A newer request of either kind
+replaces an older one.
+
+Config reload reapplies a boolean `input.orientation_lock` value and ends every
+runtime override. If the value is omitted or set to `"inherit"`, reload clears
+the override and follows the system setting.
 
 Subscribe to `gnoblin.input.orientation-lock-changed` to receive changes. Its
 top-level fields are:

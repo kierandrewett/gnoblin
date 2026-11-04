@@ -522,3 +522,303 @@ int lua_shortcut_actions(lua_State* state) {
     lua_remove(state, result);
     return 1;
 }
+
+/* Overrides: gnoblin.settings.override(path, value) and Window:set_effect(name, value). Both
+ * queue one operation and return an Override that lives until the compositor ends it. The
+ * compositor owns the rules (gnoblin-control-overrides.c); this file checks what the runtime can
+ * check at once, so a mistake is a Lua error at the call and not a late failure. */
+#include "../../control/gnoblin-overrides.h"
+
+/* Return `value` with each table key in the document's kebab case, which is the form the
+ * window-rule engine reads. The names under shader_uniforms are uniform names and stay as they
+ * are. The caller owns the result. */
+static GVariant* override_kebab_value(GVariant* value, gboolean literal) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
+        GVariantBuilder builder;
+        GVariantIter iter;
+        const char* key = NULL;
+        GVariant* child = NULL;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+        g_variant_iter_init(&iter, value);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &child)) {
+            g_autoptr(GVariant) owned = child;
+            g_autofree char* name = g_strdup(key);
+            if (!literal)
+                g_strdelimit(name, "_", '-');
+            g_autoptr(GVariant) converted =
+                override_kebab_value(owned, literal || g_str_equal(name, "shader-uniforms"));
+            g_variant_builder_add(&builder, "{sv}", name, converted);
+        }
+        return g_variant_ref_sink(g_variant_builder_end(&builder));
+    }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
+        GVariantBuilder builder;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("av"));
+        for (gsize i = 0; i < g_variant_n_children(value); i++) {
+            g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+            g_autoptr(GVariant) inner = g_variant_get_variant(boxed);
+            g_autoptr(GVariant) converted = override_kebab_value(inner, literal);
+            g_variant_builder_add(&builder, "v", converted);
+        }
+        return g_variant_ref_sink(g_variant_builder_end(&builder));
+    }
+    return g_variant_ref(value);
+}
+
+static gboolean override_number(GVariant* value, double* number) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+        *number = g_variant_get_double(value);
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+        *number = (double)g_variant_get_int64(value);
+    else
+        return FALSE;
+    return isfinite(*number);
+}
+
+/* NULL when `table` has only the keys in `allowed`; otherwise the first other key. */
+static const char* override_unknown_key(GVariant* table, const char* const* allowed) {
+    GVariantIter iter;
+    const char* key = NULL;
+    g_variant_iter_init(&iter, table);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, NULL))
+        if (!g_strv_contains(allowed, key))
+            return key;
+    return NULL;
+}
+
+/* An error message for an effect value the rule engine would not accept, or NULL. `value` has
+ * kebab-case keys. The caller frees the message. */
+static char* override_effect_error(const char* name, GVariant* value) {
+    static const char* const corner_keys[] = {"radius",     "smoothing",       "mode",
+                                              "padding",    "keep-maximized",  "keep-fullscreen",
+                                              "keep-tiled", "skip-libadwaita", "skip-libhandy",
+                                              "remove-csd", "border-width",    "border-color",
+                                              "shadow",     "keep-shadow",     "shadow-animation",
+                                              NULL};
+    static const char* const frame_keys[] = {
+        "mode",          "extents",    "crop",       "renderer",
+        "style",         "background", "foreground", "inactive-background",
+        "button-layout", NULL};
+    double number = 0;
+    if (g_str_equal(name, "opacity")) {
+        if (!override_number(value, &number) || number < 0 || number > 1)
+            return g_strdup("opacity takes a number from 0 to 1");
+    } else if (g_str_equal(name, "blur")) {
+        if (!override_number(value, &number) || number < 0 || number > 100)
+            return g_strdup("blur takes a number from 0 to 100");
+    } else if (g_str_equal(name, "blur_ignore_shadows")) {
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN))
+            return g_strdup("blur_ignore_shadows takes a boolean");
+    } else if (g_str_equal(name, "shader")) {
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            return g_strdup("shader takes a GLSL file path, or \"\" to clear it");
+    } else if (g_str_equal(name, "shader_uniforms")) {
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT) ||
+            g_variant_n_children(value) > 64)
+            return g_strdup("shader_uniforms takes a table of at most 64 numbers");
+        GVariantIter iter;
+        const char* key = NULL;
+        GVariant* child = NULL;
+        g_variant_iter_init(&iter, value);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &child)) {
+            g_autoptr(GVariant) owned = child;
+            if (!override_number(owned, &number))
+                return g_strdup_printf("shader_uniforms.%s must be a finite number", key);
+        }
+    } else if (g_str_equal(name, "frame") || g_str_equal(name, "corners")) {
+        gboolean corners = g_str_equal(name, "corners");
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT))
+            return g_strdup_printf("%s takes a table", name);
+        const char* unknown = override_unknown_key(value, corners ? corner_keys : frame_keys);
+        if (unknown) {
+            g_autofree char* public_name = g_strdelimit(g_strdup(unknown), "-", '_');
+            return g_strdup_printf("%s has no field %s; see the window rule fields", name,
+                                   public_name);
+        }
+        g_autoptr(GVariant) radius = g_variant_lookup_value(value, "radius", NULL);
+        if (corners && radius && (!override_number(radius, &number) || number < 0 || number > 200))
+            return g_strdup("corners.radius takes a number from 0 to 200");
+    }
+    return NULL;
+}
+
+/* Make the Override object for `operation` (the Operation at that stack index) and push it. The
+ * object exists at once; when the compositor refuses the operation it ends with the reason. */
+static int push_override_handle(lua_State* state, LuaConfig* config, int operation,
+                                const char* scope, const char* name, const char* window_id,
+                                int value) {
+    operation = lua_absindex(state, operation);
+    value = lua_absindex(state, value);
+    lua_createtable(state, 0, 5);
+    int record = lua_gettop(state);
+    lua_getfield(state, operation, "id");
+    lua_pushfstring(state, "override-%I", (lua_Integer)lua_tointeger(state, -1));
+    lua_setfield(state, record, "id");
+    lua_pop(state, 1);
+    lua_pushstring(state, scope);
+    lua_setfield(state, record, "scope");
+    lua_pushstring(state, name);
+    lua_setfield(state, record, "name");
+    if (window_id) {
+        lua_pushstring(state, window_id);
+        lua_setfield(state, record, "window");
+    }
+    lua_pushvalue(state, value);
+    lua_setfield(state, record, "value");
+    push_readonly_copy(state, record);
+    lua_object_hold(state, "Override", -1);
+    lua_object_end_after(state, config, operation, "Override", -1, FALSE);
+    return 1;
+}
+
+/* A value for the document: the Lua value at `index` as a variant with kebab-case keys (none
+ * when `literal`, for the uniform names), or NULL and a message. */
+static GVariant* override_value(lua_State* state, int index, gboolean literal, char** message) {
+    g_autoptr(GError) error = NULL;
+    GVariant* converted = variant_from_lua(state, index, 0, FALSE, 0, &error);
+    if (!converted) {
+        *message = g_strdup(error ? error->message : "the value cannot be sent to the compositor");
+        return NULL;
+    }
+    g_autoptr(GVariant) owned = g_variant_ref_sink(converted);
+    return override_kebab_value(owned, literal);
+}
+
+/* Check a setting path and value without raising a Lua error, so every allocation is freed
+ * before the caller raises one. On success the document's section and key and the value are
+ * set; otherwise the result is the error message. */
+static char* settings_override_check(lua_State* state, LuaConfig* config, const char* path,
+                                     int value_index, char** section_out, char** key_out,
+                                     GVariant** value_out) {
+    g_auto(GStrv) parts = g_strsplit(path, ".", -1);
+    if (g_strv_length(parts) != 2 || !*parts[0] || !*parts[1])
+        return g_strdup_printf("gnoblin.settings.override takes a path such as "
+                               "window_management.focus_mode, not \"%s\"",
+                               path);
+    g_autofree char* section = gnoblin_override_document_name(parts[0]);
+    g_autofree char* key = gnoblin_override_document_name(parts[1]);
+    g_autofree char* refusal = gnoblin_override_setting_refusal(section, key);
+    if (refusal)
+        return g_strdup_printf("%s cannot change at runtime: %s. The settings that can are %s",
+                               path, refusal, GNOBLIN_OVERRIDE_SETTING_LIST);
+    g_autofree char* message = NULL;
+    g_autoptr(GVariant) value = override_value(state, value_index, FALSE, &message);
+    if (!value)
+        return g_strdup_printf("%s: %s", path, message);
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
+        !g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+        !g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) &&
+        !g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+        return g_strdup_printf("%s takes a boolean, a number or a string", path);
+    gboolean orientation = g_str_equal(section, "input");
+    gboolean privacy = g_str_equal(section, "monitors");
+    if ((orientation || privacy) && !g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN))
+        return g_strdup_printf("%s takes true or false; revoke the override to follow the "
+                               "configuration again",
+                               path);
+    if (privacy && !any_output_has_privacy_screen(config))
+        return g_strdup_printf("%s: no output has a privacy screen", path);
+    /* The configuration's own validator checks the value against the committed document. */
+    if (!orientation && !privacy) {
+        if (!config->settings_document)
+            return g_strdup_printf("%s: the configuration is not active yet", path);
+        GVariantDict document;
+        g_variant_dict_init(&document, config->settings_document);
+        g_autoptr(GVariant) current =
+            g_variant_dict_lookup_value(&document, section, G_VARIANT_TYPE_VARDICT);
+        GVariantDict layer;
+        g_variant_dict_init(&layer, current);
+        g_variant_dict_insert_value(&layer, key, value);
+        g_variant_dict_insert_value(&document, section, g_variant_dict_end(&layer));
+        g_autoptr(GVariant) layered = g_variant_ref_sink(g_variant_dict_end(&document));
+        g_autoptr(GError) invalid = NULL;
+        if (!gnoblin_config_validate_document(layered, &invalid))
+            return g_strdup_printf("%s: %s", path, invalid->message);
+    }
+    *section_out = g_steal_pointer(&section);
+    *key_out = g_steal_pointer(&key);
+    *value_out = g_steal_pointer(&value);
+    return NULL;
+}
+
+/* gnoblin.settings.override(path, value). `path` is "section.key" in the public snake_case
+ * names, such as "window_management.focus_mode". */
+int lua_settings_override(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING || lua_isnil(state, 2))
+        return luaL_error(state, "gnoblin.settings.override takes a setting path and a value");
+    lua_check_operation_context(state, config);
+    char* section = NULL;
+    char* key = NULL;
+    GVariant* value = NULL;
+    char* error =
+        settings_override_check(state, config, lua_tostring(state, 1), 2, &section, &key, &value);
+    if (error) {
+        lua_pushstring(state, error);
+        g_free(error);
+        return lua_error(state);
+    }
+    GVariantBuilder arguments;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&arguments, "{sv}", "section", g_variant_new_string(section));
+    g_variant_builder_add(&arguments, "{sv}", "key", g_variant_new_string(key));
+    g_variant_builder_add(&arguments, "{sv}", "value", value);
+    g_free(section);
+    g_free(key);
+    g_variant_unref(value);
+    lua_queue_operation(state, config, "settings.override", g_variant_builder_end(&arguments));
+    int operation = lua_gettop(state);
+    return push_override_handle(state, config, operation, "settings", lua_tostring(state, 1), NULL,
+                                2);
+}
+
+/* An error message for the effect name and value at these stack indices, or NULL with the
+ * value to send. */
+static char* window_effect_check(lua_State* state, int name_index, int value_index,
+                                 GVariant** value_out) {
+    if (lua_type(state, name_index) != LUA_TSTRING || lua_isnil(state, value_index))
+        return g_strdup("window:set_effect takes an effect name and a value");
+    const char* name = lua_tostring(state, name_index);
+    if (!gnoblin_override_effect_known(name))
+        return g_strdup_printf("\"%s\" is not a window effect; the effects are %s", name,
+                               GNOBLIN_OVERRIDE_EFFECT_LIST);
+    g_autofree char* message = NULL;
+    g_autoptr(GVariant) value =
+        override_value(state, value_index, g_str_equal(name, "shader_uniforms"), &message);
+    if (!value)
+        return g_strdup_printf("window:set_effect %s: %s", name, message);
+    char* invalid = override_effect_error(name, value);
+    if (invalid) {
+        char* text = g_strdup_printf("window:set_effect: %s", invalid);
+        g_free(invalid);
+        return text;
+    }
+    *value_out = g_steal_pointer(&value);
+    return NULL;
+}
+
+/* Window:set_effect(name, value), called by the Window record method with the window's id. The
+ * effect is one the window rules support; it layers over every matching rule until the Override
+ * ends. */
+int lua_window_set_effect(lua_State* state, LuaConfig* config, const char* window_id,
+                          int name_index, int value_index) {
+    lua_check_operation_context(state, config);
+    GVariant* value = NULL;
+    char* error = window_effect_check(state, name_index, value_index, &value);
+    if (error) {
+        lua_pushstring(state, error);
+        g_free(error);
+        return lua_error(state);
+    }
+    GVariantBuilder arguments;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&arguments, "{sv}", "id", g_variant_new_string(window_id));
+    g_variant_builder_add(&arguments, "{sv}", "name",
+                          g_variant_new_string(lua_tostring(state, name_index)));
+    g_variant_builder_add(&arguments, "{sv}", "value", value);
+    g_variant_unref(value);
+    lua_queue_operation(state, config, "window.set_effect", g_variant_builder_end(&arguments));
+    int operation = lua_gettop(state);
+    return push_override_handle(state, config, operation, "window", lua_tostring(state, name_index),
+                                window_id, value_index);
+}

@@ -670,6 +670,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_free(control->path);
     g_clear_pointer(&control->native_touchpad_gestures, g_variant_unref);
     g_clear_pointer(&control->touchpad_router, gnoblin_touchpad_router_free);
+    gnoblin_control_overrides_free(control);
     g_clear_pointer(&control->runtime_cache, gnoblin_runtime_cache_free);
     g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref);
     g_clear_pointer(&control->pending_location_authorizations, g_hash_table_unref);

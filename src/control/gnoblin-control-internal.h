@@ -380,6 +380,7 @@ struct _GnoblinNativeControl {
     gboolean orientation_lock_notifications_suppressed;
     gpointer session_activity_watch; /* the compositor's own idle watch (session-activity.c) */
     GHashTable* idle_watches;        /* idle watch ID -> IdleWatch, Lua's (session-activity.c) */
+    GPtrArray* overrides;            /* runtime overrides, oldest first (overrides.c) */
     char* path;
     dev_t device;
     ino_t inode;
@@ -522,6 +523,33 @@ G_GNUC_INTERNAL GVariant* gnoblin_control_idle_cancel(GnoblinNativeControl* cont
 G_GNUC_INTERNAL void gnoblin_control_activity_publish(GnoblinNativeControl* control,
                                                       gboolean available, gboolean idle,
                                                       guint64 threshold_ms, guint64 idle_for_ms);
+
+/* gnoblin-control-overrides.c: runtime setting overrides and per-window effect overrides. */
+G_GNUC_INTERNAL GVariant* gnoblin_control_override_setting(GnoblinNativeControl* control,
+                                                           gint64 operation_id, GVariant* arguments,
+                                                           guint64 owner_generation,
+                                                           GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_override_window_effect(GnoblinNativeControl* control,
+                                                                 gint64 operation_id,
+                                                                 GVariant* arguments,
+                                                                 guint64 owner_generation,
+                                                                 GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_override_revoke(GnoblinNativeControl* control,
+                                                          GVariant* arguments,
+                                                          guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL gboolean gnoblin_control_override_socket_set(GnoblinNativeControl* control,
+                                                             const char* section, const char* key,
+                                                             GVariant* value, GError** error);
+G_GNUC_INTERNAL void gnoblin_control_overrides_clear(GnoblinNativeControl* control,
+                                                     gboolean include_socket);
+G_GNUC_INTERNAL void gnoblin_control_overrides_reapply(GnoblinNativeControl* control,
+                                                       gboolean orientation_lock,
+                                                       gboolean documents);
+G_GNUC_INTERNAL void gnoblin_control_overrides_window_closed(GnoblinNativeControl* control,
+                                                             const char* window_id);
+G_GNUC_INTERNAL GVariant* gnoblin_control_window_effect_rule(GnoblinNativeControl* control,
+                                                             MetaWindow* window);
+G_GNUC_INTERNAL void gnoblin_control_overrides_free(GnoblinNativeControl* control);
 
 /* gnoblin-control-input-sources.c: XKB and IBus input sources. */
 G_GNUC_INTERNAL void gnoblin_control_window_input_source_free(gpointer data);

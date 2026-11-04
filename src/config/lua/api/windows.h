@@ -214,6 +214,22 @@ function Window:set_offset(x, y) end
 ---@return Operation<WindowVisual>
 function Window:reset_visuals() end
 
+---Layer one window rule effect over this window and return the Override. The effects are those
+---that `gnoblin.window_rule` supports: `opacity` (0 to 1), `blur` (0 to 100),
+`blur_ignore_shadows`,
+---`shader` (a GLSL file path, or "" to clear it), `shader_uniforms`, `frame` and `corners`. The
+---last three take the same table as the rule. The value goes over every rule that matches the
+---window, as one more rule after them, so it changes only what it sets. The latest override of
+---one effect on one window wins; an older one ends with the reason "replaced". The override ends
+---when it is revoked, when the window closes, and when a configuration reload commits, and the
+---window then shows what its rules give. This is not `set_opacity`: that call changes how the
+---window actor is drawn, and `opacity` here is the rule's opacity of the window content, which
+---the two multiply. Call this while handling an event, as with every operation.
+---@param name string The effect, such as "blur".
+---@param value any The value for that effect.
+---@return Override
+function Window:set_effect(name, value) end
+
 ---Call fn(window, ...) on a signal of this window: "changed" (with the list of changed fields),
 ---"focused", "unfocused" or "closed". Listening ends after "closed".
 ---@param signal "changed"|"focused"|"unfocused"|"closed"

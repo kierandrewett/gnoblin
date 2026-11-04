@@ -575,6 +575,7 @@ static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     g_hash_table_remove(control->window_signal_handler_ids, window);
     g_signal_handlers_disconnect_by_data(window, control);
     g_hash_table_remove(control->snap_restore_frames, window);
+    gnoblin_control_overrides_window_closed(control, window_id);
     g_hash_table_remove(control->windows, window);
     schedule_windows(control);
 }

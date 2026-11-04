@@ -385,6 +385,7 @@ void privacy_pipewire_state_changed(GnoblinPipewireMonitor* monitor, gboolean av
 GVariant* native_location_authorize_operation(GnoblinNativeControl* control, GVariant* arguments,
                                               guint64 client_id, GError** error);
 void native_settings_changed(guint64 revision, gpointer user_data);
+void native_apply_runtime_preferences(GnoblinNativeControl* control, GVariant* config);
 GVariant* filter_native_touchpad_gestures(GVariant* gestures);
 gboolean native_config_event(MetaDisplay* display, const char* event, GVariant* document,
                              GVariant* payload, gpointer user_data);

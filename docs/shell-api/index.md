@@ -11,6 +11,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Workspaces](/shell-api/workspaces): state and operations.
 - [Outputs](/shell-api/outputs): display outputs, modes, and renderer state.
 - [Idle watches](/shell-api/idle): run code when the session has had no input for a set time.
+- [Overrides](/shell-api/overrides): layer a setting or a window effect over the configuration, and take it back.
 - [Layer surfaces](/shell-api/layer-surfaces): shell surface snapshots and policy.
 - [Input](/shell-api/input): devices, sources, and orientation lock.
 - [Input handlers](/shell-api/input-handlers): handle local pointer, keyboard, and gesture events.
@@ -43,6 +44,9 @@ The local socket protocol for non-Lua clients is documented in the [compositor b
 local focus_mode = gnoblin.settings.window_management.focus_mode
 print(focus_mode, gnoblin.settings.revision)
 ```
+
+`gnoblin.settings.override(path, value)` layers a value over one committed setting without changing this snapshot. See
+[overrides](/shell-api/overrides).
 
 `gnoblin.snapshot()` returns a detached copy of the Lua configuration view. Use `gnoblin.settings` for immutable reads of committed settings.
 

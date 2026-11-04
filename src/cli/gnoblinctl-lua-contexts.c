@@ -263,6 +263,12 @@ static int lua_cli_window_visual(lua_State* state) {
     return luaL_error(state, "unknown window visual method %s", name);
 }
 
+/* An effect override lasts only while a runtime holds it, and a gnoblinctl script ends first. */
+static int lua_cli_window_set_effect(lua_State* state) {
+    return luaL_error(state, "window:set_effect needs a configuration to hold the override; a "
+                             "gnoblinctl script ends before anything could revoke it");
+}
+
 void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) {
     g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
     json_node_set_object(node, object);
@@ -308,6 +314,8 @@ void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) 
         lua_pushcclosure(state, lua_cli_window_visual, 2);
         lua_setfield(state, -2, visual_methods[i]);
     }
+    lua_pushcfunction(state, lua_cli_window_set_effect);
+    lua_setfield(state, -2, "set_effect");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_WINDOW_RECORD_METATABLE);
     lua_setmetatable(state, record);

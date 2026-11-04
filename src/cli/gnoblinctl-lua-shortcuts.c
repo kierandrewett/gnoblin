@@ -585,6 +585,22 @@ void register_lua_cli_focus_policy_record(lua_State* state) {
     lua_pop(state, 1);
 }
 
+/* An override lasts only while a runtime holds it, and a gnoblinctl script ends first. */
+static int lua_cli_settings_override(lua_State* state) {
+    return luaL_error(state,
+                      "gnoblin.settings.override needs a configuration to hold the override; a "
+                      "gnoblinctl script ends before anything could revoke it. Use "
+                      "`gnoblinctl input orientation-lock` for the orientation lock");
+}
+
+static int lua_cli_settings_index(lua_State* state) {
+    if (lua_type(state, 2) == LUA_TSTRING && g_str_equal(lua_tostring(state, 2), "override")) {
+        lua_pushcfunction(state, lua_cli_settings_override);
+        return 1;
+    }
+    return lua_cli_readonly_index(state);
+}
+
 static int lua_cli_settings_tostring(lua_State* state) {
     lua_pushliteral(state, "Settings");
     return 1;
@@ -595,7 +611,7 @@ void register_lua_cli_settings_record(lua_State* state) {
         lua_pop(state, 1);
         return;
     }
-    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_pushcfunction(state, lua_cli_settings_index);
     lua_setfield(state, -2, "__index");
     lua_pushcfunction(state, lua_cli_readonly_newindex);
     lua_setfield(state, -2, "__newindex");

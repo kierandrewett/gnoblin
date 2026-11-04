@@ -163,3 +163,4 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.87            | Adds the `gnoblin.location.authorization-finished` event                                                          |
 | 1.88            | Adds the `gnoblin.output.added`, `gnoblin.output.changed` and `gnoblin.output.removed` events and output fields   |
 | 1.89            | Changes the results of the session power methods to the real logind answer or error                               |
+| 1.90            | Ends every runtime override at a reload; `monitors.set_privacy_screen` fails when no output has a privacy screen  |

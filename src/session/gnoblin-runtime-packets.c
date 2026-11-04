@@ -417,8 +417,10 @@ gboolean send_pending_operations(Runtime* runtime, GError** error) {
         gboolean needs_generation =
             g_str_equal(method, "window.snap.offer") || g_str_equal(method, "window.snap") ||
             g_str_equal(method, "window.snap_context") ||
-            g_str_equal(method, "window.set_visual") || g_str_has_prefix(method, "tween.") ||
-            g_str_has_prefix(method, "process.") || g_str_has_prefix(method, "idle.");
+            g_str_equal(method, "window.set_visual") || g_str_equal(method, "window.set_effect") ||
+            g_str_has_prefix(method, "tween.") || g_str_has_prefix(method, "process.") ||
+            g_str_has_prefix(method, "idle.") || g_str_equal(method, "settings.override") ||
+            g_str_equal(method, "override.revoke");
         gboolean needs_client =
             runtime->current_client_id && request_id == runtime->current_client_operation_id;
         guint64 handle = 0;

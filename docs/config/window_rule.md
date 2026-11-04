@@ -56,6 +56,9 @@ Gnoblin leaves the window in place and logs a warning.
 | `workspace`           | `{id = "code"}` or `{number = 1..1024}`; place a new window on a workspace |
 | `frame`               | Frame fields below                                                         |
 
+To change one of these effects for one window while the session runs, use
+[`window:set_effect`](/shell-api/overrides#window-effects).
+
 Blur follows the opacity of the surface it sits behind. When a layer-shell panel
 fades in or out, whether through a `layer-open` animation or its own alpha, the
 blur fades with it. Panels need no extra protocol or setting for this.

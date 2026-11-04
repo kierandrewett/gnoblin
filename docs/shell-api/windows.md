@@ -132,6 +132,27 @@ window:set_opacity(0.8)
 - An open, close, minimize or resize animation draws the window itself. A
   change made while one plays can be overwritten when it ends.
 
+## Change what a window's rules give
+
+`window:set_effect(name, value)` layers one [window rule](/config/window_rule#rule-fields) effect over one window and
+returns an `Override`. The effect goes over every rule that matches the window and changes only what it sets. The
+names are:
+
+- `opacity`, `blur` and `blur_ignore_shadows`
+- `shader` and `shader_uniforms`
+- `frame` and `corners`
+
+```lua
+local blurred = window:set_effect("blur", 24)
+local round = window:set_effect("corners", {radius = 14, border_width = 1})
+
+blurred:revoke()
+```
+
+The effect ends when you revoke it, when the window closes and when a configuration reload commits. A newer effect of
+the same name replaces an older one. The window `opacity` effect is the rule's opacity of the window content, and it
+multiplies with `set_opacity`. See [overrides](/shell-api/overrides) for the ending reasons and the rules.
+
 ## Compositor requests
 
 Subscribe to `gnoblin.window.menu-requested` to show a shell-owned window menu,

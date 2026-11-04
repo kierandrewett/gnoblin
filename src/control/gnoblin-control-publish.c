@@ -709,40 +709,18 @@ GVariant* native_location_authorize_operation(GnoblinNativeControl* control, GVa
     return response;
 }
 
-void native_settings_changed(guint64 revision, gpointer user_data) {
-    GnoblinNativeControl* control = user_data;
-    if (!control || control->stopping || !control->display)
-        return;
-    gnoblin_control_clear_runtime_dynamic_shortcuts(control, "config_changed");
-    gnoblin_control_clear_configured_capture_shortcut(control, "config_changed");
-    if (control->active_shortcut_session)
-        dynamic_shortcut_end_session(control, control->active_shortcut_session, "config_changed");
-
-    g_autoptr(GVariant) config = native_config_document(control);
+/* Apply the settings that can change while the session runs, from `config`: window management,
+ * compositor, cursor, layer shell and the debug overlay. A reload applies them with the rest of
+ * the document; a runtime override of one of them applies them again with the layered document
+ * (gnoblin-control-overrides.c). */
+void native_apply_runtime_preferences(GnoblinNativeControl* control, GVariant* config) {
     meta_compositor_invalidate_background_blur(meta_display_get_compositor(control->display));
-    g_autoptr(GError) capture_error = NULL;
-    if (!apply_configured_capture_shortcut(control, config, &capture_error))
-        g_warning("gnoblin-native-control: could not apply configured shortcut input capture: %s",
-                  capture_error ? capture_error->message : "invalid capture configuration");
     g_autoptr(GVariant) window_management =
         config ? g_variant_lookup_value(config, "window-management", G_VARIANT_TYPE_VARDICT) : NULL;
     g_autoptr(GVariant) compositor_preferences =
         config ? g_variant_lookup_value(config, "compositor", G_VARIANT_TYPE_VARDICT) : NULL;
-    g_autoptr(GVariant) input_preferences =
-        config ? g_variant_lookup_value(config, "input", G_VARIANT_TYPE_VARDICT) : NULL;
     g_autoptr(GVariant) cursor_preferences =
         config ? g_variant_lookup_value(config, "cursor", G_VARIANT_TYPE_VARDICT) : NULL;
-    g_autoptr(GVariant) keyboard_preferences =
-        input_preferences
-            ? g_variant_lookup_value(input_preferences, "keyboard", G_VARIANT_TYPE_VARDICT)
-            : NULL;
-    g_autoptr(GVariant) xwayland_preferences =
-        config ? g_variant_lookup_value(config, "xwayland", G_VARIANT_TYPE_VARDICT) : NULL;
-    g_autoptr(GVariant) monitor_preferences =
-        config ? g_variant_lookup_value(config, "monitors", G_VARIANT_TYPE_VARDICT) : NULL;
-    native_apply_location_policy(control, config);
-    gnoblin_control_auth_apply_config(control, config);
-    gnoblin_control_prompts_apply_config(control, config);
     const char* cursor_theme = "default";
     gint64 cursor_size = 24;
     if (cursor_preferences) {
@@ -751,10 +729,7 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
     }
     meta_prefs_apply_gnoblin_window_preferences(window_management);
     meta_prefs_apply_gnoblin_compositor_preferences(compositor_preferences);
-    meta_prefs_apply_gnoblin_keyboard_preferences(keyboard_preferences);
     meta_prefs_set_gnoblin_cursor_config(cursor_theme, (int)cursor_size);
-    meta_settings_apply_gnoblin_xwayland_preferences(meta_backend_get_settings(control->backend),
-                                                     xwayland_preferences);
     meta_wayland_layer_shell_set_preserve_active_window(
         control->wayland_compositor,
         gnoblin_native_control_get_config_bool(control->display, "layer-shell",
@@ -767,6 +742,39 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
         if (control->debug_handler)
             control->debug_handler(developer_debug, control->debug_handler_data);
     }
+}
+
+void native_settings_changed(guint64 revision, gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    if (!control || control->stopping || !control->display)
+        return;
+    gnoblin_control_clear_runtime_dynamic_shortcuts(control, "config_changed");
+    gnoblin_control_clear_configured_capture_shortcut(control, "config_changed");
+    if (control->active_shortcut_session)
+        dynamic_shortcut_end_session(control, control->active_shortcut_session, "config_changed");
+
+    g_autoptr(GVariant) config = native_config_document(control);
+    g_autoptr(GError) capture_error = NULL;
+    if (!apply_configured_capture_shortcut(control, config, &capture_error))
+        g_warning("gnoblin-native-control: could not apply configured shortcut input capture: %s",
+                  capture_error ? capture_error->message : "invalid capture configuration");
+    g_autoptr(GVariant) input_preferences =
+        config ? g_variant_lookup_value(config, "input", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) keyboard_preferences =
+        input_preferences
+            ? g_variant_lookup_value(input_preferences, "keyboard", G_VARIANT_TYPE_VARDICT)
+            : NULL;
+    g_autoptr(GVariant) xwayland_preferences =
+        config ? g_variant_lookup_value(config, "xwayland", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) monitor_preferences =
+        config ? g_variant_lookup_value(config, "monitors", G_VARIANT_TYPE_VARDICT) : NULL;
+    native_apply_location_policy(control, config);
+    gnoblin_control_auth_apply_config(control, config);
+    gnoblin_control_prompts_apply_config(control, config);
+    native_apply_runtime_preferences(control, config);
+    meta_prefs_apply_gnoblin_keyboard_preferences(keyboard_preferences);
+    meta_settings_apply_gnoblin_xwayland_preferences(meta_backend_get_settings(control->backend),
+                                                     xwayland_preferences);
     meta_settings_apply_gnoblin_privacy_screen_preferences(
         meta_backend_get_settings(control->backend), monitor_preferences);
     meta_settings_apply_gnoblin_privacy_screen_runtime_override(

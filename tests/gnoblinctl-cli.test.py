@@ -1290,7 +1290,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(102):
+                    for _ in range(97):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -2805,10 +2805,11 @@ def main() -> int:
             'assert(lock.available and not lock.locked and lock.source == "system")\n'
             "assert(not pcall(function() lock.locked = true end))\n"
             'assert(not pcall(function() rawset(lock, "locked", true) end))\n'
-            "local updated = gnoblin.input.set_orientation_lock(true)\n"
-            'assert(updated.available and updated.locked and updated.source == "runtime")\n'
-            "assert(not pcall(function() updated.locked = false end))\n"
-            'assert(not pcall(function() rawset(updated, "locked", false) end))\n',
+            "local removed_ok, removed_error = pcall(function() return gnoblin.input.set_orientation_lock end)\n"
+            'assert(not removed_ok and removed_error:match("gnoblin.settings.override"))\n'
+            "local settings = gnoblin.settings\n"
+            "local override_ok, override_error = pcall(function() return settings.override('input.orientation_lock', true) end)\n"
+            'assert(not override_ok and override_error:match("needs a configuration"))\n',
             encoding="utf-8",
         )
         orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
@@ -2824,20 +2825,12 @@ def main() -> int:
             "assert(dp.privacy_screen.enabled == nil and dp.privacy_screen.locked == nil)\n"
             'assert(not pcall(function() initial.source = "runtime" end))\n'
             'assert(not pcall(function() rawset(initial, "source", "runtime") end))\n'
-            "local enabled = gnoblin.outputs.set_privacy_screen(true)\n"
-            'assert(enabled.requested_enabled and enabled.source == "runtime" and enabled.revision == 32)\n'
-            "assert(enabled.monitors[1].enabled and not enabled.monitors[2].available)\n"
-            "assert(not pcall(function() enabled.monitors[1].enabled = false end))\n"
-            "local disabled = gnoblin.outputs.set_privacy_screen(false)\n"
-            'assert(not disabled.requested_enabled and disabled.source == "runtime")\n'
-            'local inherited = gnoblin.outputs.set_privacy_screen("inherit")\n'
-            'assert(not inherited.requested_enabled and inherited.source == "system")\n'
-            'assert(not pcall(function() gnoblin.outputs.set_privacy_screen("on") end))\n'
-            "assert(not pcall(function() gnoblin.outputs.set_privacy_screen() end))\n"
+            "local removed_ok, removed_error = pcall(function() return gnoblin.outputs.set_privacy_screen end)\n"
+            'assert(not removed_ok and removed_error:match("gnoblin.settings.override"))\n'
             "assert(hdmi.set_privacy_screen == nil and dp.set_privacy_screen == nil)\n"
             "assert(not pcall(function() hdmi:set_privacy_screen(true) end))\n"
             "local removed_ok, removed_error = pcall(function() return gnoblin.monitors.set_privacy_screen end)\n"
-            'assert(not removed_ok and removed_error:match("gnoblin.outputs.set_privacy_screen"))\n',
+            'assert(not removed_ok and removed_error:match("gnoblin.settings.override"))\n',
             encoding="utf-8",
         )
         privacy_screen_result = run(binary, "--socket", socket_path, "lua", str(privacy_screen_file))
@@ -2871,8 +2864,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 102
-        assert len(subscriptions) == 102
+        assert len(received) == 97
+        assert len(subscriptions) == 97
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -2989,23 +2982,11 @@ def main() -> int:
         assert received[91]["api_version"] == {"major": 1, "minor": 66}
         assert received[91]["arguments"] == {"value": True}
         assert received[92]["method"] == "input.orientation_lock"
-        assert received[93]["method"] == "input.set_orientation_lock"
-        assert received[93]["api_version"] == {"major": 1, "minor": 66}
-        assert received[93]["arguments"] == {"value": True}
-        privacy_screen_requests = [
+        assert not [
             request
             for request in received
             if request.get("method") in {"monitors.privacy_screen", "monitors.set_privacy_screen"}
         ]
-        assert [request["method"] for request in privacy_screen_requests] == [
-            "monitors.set_privacy_screen",
-            "monitors.set_privacy_screen",
-            "monitors.set_privacy_screen",
-        ]
-        assert all(request["api_version"] == {"major": 1, "minor": 74} for request in privacy_screen_requests)
-        assert privacy_screen_requests[0]["arguments"] == {"value": True}
-        assert privacy_screen_requests[1]["arguments"] == {"value": False}
-        assert privacy_screen_requests[2]["arguments"] == {"value": "inherit"}
         assert all(call["api_version"] == {"major": 1, "minor": 18} for call in animation_calls)
         assert received[57]["method"] == "privacy.state"
         assert received[57]["api_version"] == {"major": 1, "minor": 47}

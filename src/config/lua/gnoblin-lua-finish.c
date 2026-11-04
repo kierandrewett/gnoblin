@@ -12,6 +12,11 @@ void gnoblin_config_finish_load(gboolean commit) {
             !active_runtime || !active_runtime->document ||
             !g_variant_equal(active_runtime->document, pending_runtime->document);
         guint64 settings_revision = active_runtime ? active_runtime->config.settings_revision : 0;
+        /* The compositor ends every override at a committed reload. Tell the old runtime's
+         * handles before it goes, so "closed" listeners run once. They run with no dispatch
+         * open, so they can read but cannot start an operation. */
+        if (active_runtime && active_runtime->state)
+            lua_object_end_all(active_runtime->state, "Override", "config_reloaded");
         lua_runtime_free(active_runtime);
         active_runtime = g_steal_pointer(&pending_runtime);
         if (revision_counters_seeded) {

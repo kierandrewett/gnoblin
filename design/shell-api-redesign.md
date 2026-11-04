@@ -172,6 +172,34 @@ and gap 7 stay open.
       still covers it. The compositor no longer reads it, because idle comes from the monitor
       directly. It is a published interface for other programs.
 
+- Gap 8, done. `gnoblin.settings.override(path, value)` and `Window:set_effect(name, value)` return a live
+  `Override` (`alive`, `on("closed")`, `revoke()`, bridge API 1.90).
+    - Before: two settings had runtime overrides, each its own call and flag
+      (`input.set_orientation_lock`, `monitors.set_privacy_screen`); per-window effects existed only
+      as config window rules. Both flags lived in the compositor and a reload cleared only the
+      orientation lock.
+    - One list in the compositor (`gnoblin-control-overrides.c`) holds every override, oldest
+      first, with an owner: a runtime generation, or none for a socket client. The latest override
+      of one target wins and the older ends with `replaced`. A reload that commits ends all of them
+      (`config_reloaded`), a worker restart ends the runtime's, and a closed window ends its effects
+      (`window_closed`). The Lua runtime ends its own handles just before it frees the old runtime,
+      so listeners of `closed` run once with the reason.
+    - Settings that can change at runtime are the sections the compositor applies from the
+      document (`window_management`, `compositor`, `cursor` theme and size, `layer_shell`
+      `preserve_active_window`) and the two that have their own Mutter state (the orientation lock
+      and the privacy screen). The list is one header shared by the runtime and the compositor
+      (`gnoblin-overrides.h`), so a refusal names its reason at the call. The configuration
+      validator checks the value against the committed document in the runtime.
+    - A document-backed override is an overlay on the compositor's runtime cache: every reader sees
+      it, `gnoblin.settings` and the worker's committed copy do not. `native_apply_runtime_preferences`
+      applies it again from the overlay.
+    - A window effect is one more rule after the configured ones in `native_apply_window_rules`, so
+      it uses the rule engine for blur, opacity, shaders, frames and corners and invents no effect.
+    - The two old Lua functions are gone, with their `gnoblinctl lua` forms. The wire methods stay
+      for socket clients; they set an override with no owner.
+    - Not done: overriding input device settings (mouse, touchpad, keyboard layout), which have
+      their own apply paths, and animations and workspace placement rules, which are not effects.
+
 ## Decisions
 
 - Hard cutover, no compatibility wrappers (`design/lua-api-goal.md`).

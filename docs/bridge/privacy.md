@@ -174,8 +174,10 @@ The snapshot's `source` value is one of:
 Runtime overrides apply for the current session and do not write the system
 preference.
 
-Set a session-only override with `true` or `false`. Pass `"inherit"` to clear
-the runtime override, exposing the configured value or the system preference:
+Set a session-only override with `true` or `false`. The call fails when no
+output has a privacy screen. Pass `"inherit"` to clear the runtime override,
+exposing the configured value or the system preference. A configuration reload
+that commits clears the override too:
 
 ```json
 {

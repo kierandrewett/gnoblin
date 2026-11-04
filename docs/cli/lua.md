@@ -40,6 +40,9 @@ end
 Window actions wait for compositor completion and return the completed value.
 They do not return an asynchronous `Operation` handle.
 
+`window:set_effect` raises an error here, because an
+[override](/shell-api/overrides) needs a configuration to hold it.
+
 The [draw methods](/shell-api/windows#change-how-a-window-is-drawn) work here
 too: `set_opacity`, `set_scale`, `set_rotation`, `set_offset` and
 `reset_visuals` return the window's visual values. The Lua configuration owns
@@ -235,18 +238,15 @@ Read displays with `gnoblin.outputs.list()`, `gnoblin.outputs.primary()` and
 `gnoblin.outputs.by_id(id)`. They return read-only `Output` records, or `nil`
 when no output matches.
 
-`gnoblin.outputs.set_privacy_screen(value)` takes `true`, `false` or
-`"inherit"`, waits for the compositor and returns the privacy screen state. It
-sets one request for the whole session, not for one output. It fails when no
-output has a privacy screen and `value` is `true` or `false`:
-
 ```lua
 for _, output in ipairs(gnoblin.outputs.list()) do
     print(output.id, output.width, output.height, output.scale)
 end
-
-gnoblin.outputs.set_privacy_screen("inherit")
 ```
+
+A console script cannot hold an [override](/shell-api/overrides), because the
+script ends before anything could revoke it. `gnoblin.settings.override` and
+`window:set_effect` raise an error here. Make an override in a configuration.
 
 Use `gnoblin.layers.list(filter?)` to read layer surfaces. Each result is a
 read-only `LayerSurface` record.
