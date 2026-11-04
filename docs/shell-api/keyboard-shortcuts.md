@@ -47,7 +47,7 @@ This binding ends each of its sessions when the session starts:
 ```lua
 gnoblin.shortcuts.bind("switcher", "<Alt>Tab", {hold = "alt", mode = "modal"})
 
-gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+gnoblin.on("gnoblin.shortcut.session.activated", function(event)
     if event.id == "switcher" then
         gnoblin.shortcuts.end_session(event.id, event.session_id)
     end
@@ -156,7 +156,7 @@ The socket capability and request contract are documented in the
 [compositor bridge](/bridge/).
 
 ```lua
-gnoblin.events.once("gnoblin.window.focused", function()
+gnoblin.once("gnoblin.window.focused", function()
     local operation = gnoblin.shortcuts.capture({timeout = 10})
     operation:on_complete(function(value, err)
         if err then

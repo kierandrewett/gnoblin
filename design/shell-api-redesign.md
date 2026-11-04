@@ -103,6 +103,25 @@ Each phase leaves the tree working and is its own pull request.
 lock refuses them. `gnoblin.tween()` compiles to one description that the compositor plays on a stage timeline;
 `gnoblin.ease` shares its curves with the compositor through one header.
 
+**Round 2: finish the object model.** Section 1 of the review (no two Lua names for one action) and
+section 2 (output, shortcut, launch, input source and process objects) land in four steps. Phase 5
+and gap 7 stay open.
+
+- Step (a), done. `gnoblin.on` and `gnoblin.once` replace the `events` namespace, including
+  `events.mutter`.
+- The workspace functions `rename`, `remove`, `activate`, `move_active` and `move_window`, and
+  `Workspace:move_here`, are gone. A `Workspace` object renames, removes and activates itself, and
+  `Window:move_to_workspace` moves a window.
+- The `animations.seek`, `step`, `play`, `pause` and `stop` session functions are gone. An
+  `AnimationPreview` has the methods.
+- `Window:set_minimized(enabled)` replaces `minimize`, `unminimize` and `toggle_minimize`.
+  `Window:restore` is gone: it is `set_minimized(false)` plus `set_maximized(false)`.
+  `Window:restore_or_minimize` stays, because it restores the frame saved before a snap.
+- `launches.snapshot` is gone from Lua. Each `Launch` in `launches.list` has its own revision.
+- Socket clients keep every wire name.
+- Steps (b), (c) and (d) are not done: `gnoblin.monitors` and `gnoblin.outputs` are still two
+  namespaces; `shortcuts.bind`, `launches.begin` and `input.select_source` still take IDs.
+
 ## Decisions
 
 - Hard cutover, no compatibility wrappers (`design/lua-api-goal.md`).

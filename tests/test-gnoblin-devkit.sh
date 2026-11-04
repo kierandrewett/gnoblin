@@ -135,14 +135,14 @@ gnoblin.configure {
         {id = "chat", name = "Chat"},
     },
 }
-gnoblin.events.on("gnoblin.session.state-changed", function(event)
+gnoblin.on("gnoblin.session.state-changed", function(event)
     assert(event.state == "starting" or event.state == "running" or event.state == "stopping")
     local status = gnoblin.session.status()
     assert(status.session_state == event.state)
     assert(status.session_revision == event.revision)
     print("SESSION_LIFECYCLE:" .. event.state)
 end)
-gnoblin.events.once("gnoblin.config.reloaded", function(event)
+gnoblin.once("gnoblin.config.reloaded", function(event)
     assert(type(event.sequence) == "number" and event.sequence > 0)
     assert(type(event.time) == "number" and event.time > 0)
     assert(type(gnoblin.settings) == "userdata")
@@ -179,20 +179,20 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     print("LUA_API:runtime-status")
     print("LUA_API:snapshots")
 end)
-gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+gnoblin.on("gnoblin.shortcut.session.activated", function(event)
     if event.id == "shell_input_capture" then
         assert(type(event.session_id) == "number" and event.session_id > 0)
         assert(event.trigger == "release")
         print("SHORTCUT_CAPTURE:session-activated")
     end
 end)
-gnoblin.events.on("gnoblin.shortcut.session.key", function(event)
+gnoblin.on("gnoblin.shortcut.session.key", function(event)
     if event.id == "shell_input_capture" then
         assert(event.phase == "press" or event.phase == "release")
         print("SHORTCUT_CAPTURE:key")
     end
 end)
-gnoblin.events.once("gnoblin.session.activity-changed", function(event)
+gnoblin.once("gnoblin.session.activity-changed", function(event)
     local activity = gnoblin.session.activity()
     assert(type(event.revision) == "number" and event.revision > 0)
     assert(activity.revision >= event.revision,
@@ -465,7 +465,7 @@ event_script = runtime_dir / "mutter-event.lua"
 request_path = runtime_dir / "mutter-event-client-request"
 request_path.unlink(missing_ok=True)
 event_script.write_text(
-    'gnoblin.events.mutter.once("mutter.display.window-created", function(event)\n'
+    'gnoblin.once("mutter.display.window-created", function(event)\n'
     '  assert(event.event == "mutter.display.window-created")\n'
     '  assert(event.source == "display" and event.signal == "window-created")\n'
     '  assert(type(event.sequence) == "number" and event.sequence > 0)\n'
@@ -540,8 +540,8 @@ local function report_workspace_animation(event)
         print("LUA_WORKSPACE_ANIMATION:" .. event.name)
     end
 end
-gnoblin.events.on("gnoblin.animation.started", report_workspace_animation)
-gnoblin.events.on("gnoblin.animation.finished", report_workspace_animation)
+gnoblin.on("gnoblin.animation.started", report_workspace_animation)
+gnoblin.on("gnoblin.animation.finished", report_workspace_animation)
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 python3 "$GNOBLIN_TEST_ROOT/tests/test-workspace-animation-events.py"
@@ -566,7 +566,7 @@ local function layer_from_snapshot(id)
         if layer.id == id then return layer end
     end
 end
-gnoblin.events.on("gnoblin.layer.created", function(event)
+gnoblin.on("gnoblin.layer.created", function(event)
     if event.layer.namespace ~= namespace then return end
     local current = layer_from_snapshot(event.layer.id)
     assert(current and current.namespace == namespace,
@@ -574,7 +574,7 @@ gnoblin.events.on("gnoblin.layer.created", function(event)
     assert(current.mapped == false, "new layer role should first appear unmapped")
     print("LUA_LAYER:created-snapshot")
 end)
-gnoblin.events.on("gnoblin.layer.changed", function(event)
+gnoblin.on("gnoblin.layer.changed", function(event)
     if event.layer.namespace ~= namespace then return end
     local saw_mapped = false
     for _, field in ipairs(event.changed) do
@@ -586,7 +586,7 @@ gnoblin.events.on("gnoblin.layer.changed", function(event)
         "mapped callback must see the updated state in gnoblin.layers.list()")
     print(current.mapped and "LUA_LAYER:mapped-snapshot" or "LUA_LAYER:unmapped-snapshot")
 end)
-gnoblin.events.on("gnoblin.layer.removed", function(event)
+gnoblin.on("gnoblin.layer.removed", function(event)
     if event.last.namespace ~= namespace then return end
     assert(layer_from_snapshot(event.layer_id) == nil,
         "removed callback must see the layer absent from gnoblin.layers.list()")

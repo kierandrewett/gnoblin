@@ -6,7 +6,7 @@ configuration.
 Create `~/.config/gnoblin/scripts/window-log.lua`:
 
 ```lua
-gnoblin.events.on("gnoblin.window.created", function(event)
+gnoblin.on("gnoblin.window.created", function(event)
     local window = event.window
     print(window.app_id, window.title)
 end)

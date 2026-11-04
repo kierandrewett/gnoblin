@@ -120,7 +120,7 @@ methods as the supervised runtime:
 local window = gnoblin.windows.focused()
 if window then
     print(window.id .. ": " .. window.title)
-    print(window:minimize().id)
+    print(window:set_minimized(true).id)
 end
 ```
 
@@ -199,14 +199,12 @@ for _, capability in ipairs(gnoblin.capabilities.list()) do
 end
 ```
 
-Read launch feedback with `gnoblin.launches.list()`. Use
-`gnoblin.launches.snapshot()` when you also need the collection revision. Both
-calls return deeply read-only launch records:
+Read launch feedback with `gnoblin.launches.list()`. It returns deeply
+read-only launch records. Each record carries its own `revision`:
 
 ```lua
-local snapshot = gnoblin.launches.snapshot()
-for _, launch in ipairs(snapshot.launches) do
-    print(launch.application, launch.state, snapshot.revision)
+for _, launch in ipairs(gnoblin.launches.list()) do
+    print(launch.application, launch.state, launch.revision)
 end
 ```
 
@@ -265,32 +263,22 @@ operations available to configuration scripts:
 local workspace = gnoblin.workspaces.by_id("web")
 if workspace then
     workspace:activate()
-    workspace:move_here("42", { follow = true })
 end
 ```
 
 Workspace actions wait for compositor completion and return the completed
-value. The console supports these namespace methods:
+value. The console supports `gnoblin.workspaces.create(name, options?)`,
+`next()` and `previous()`. Records add `workspace:activate()`,
+`workspace:rename(name)` and `workspace:remove()`. Window records add
+`window:move_to_workspace(workspace, options?)`.
 
-- `create(name, options?)`, where options may hold `id` and `activate`
-- `rename(workspace, name)`, `activate(workspace)`, and `remove(workspace)`
-- `next()` and `previous()`
-- `move_active(workspace, options?)`
-- `move_window(window, workspace, options?)`
+Creation accepts a nonempty name up to 80 characters. Options may hold `id` and
+`activate`. An optional ID must start with an ASCII letter or digit and contain
+up to 64 letters, digits, periods, underscores, or hyphens.
 
-A `workspace` argument is a string ID or a positive integer number, as
-for `rename`.
-
-Creation accepts a nonempty name up to 80 characters. An optional ID must
-start with an ASCII letter or digit and contain up to 64 letters, digits,
-periods, underscores, or hyphens.
-
-The `follow` option must be a boolean when supplied. A window is `"active"`
-or a stable window ID.
-
-`move_active` and `move_window` return a read-only `WorkspaceMove` with the
-resulting workspace, window ID, and `follow` value. The compositor rejects
-removal of configured, active, or nonempty workspaces.
+A `workspace` argument to `move_to_workspace` is a string ID or a positive
+integer number. The `follow` option must be a boolean when supplied. The
+compositor rejects removal of configured, active, or nonempty workspaces.
 
 Input devices and sources are read-only `InputDevice` and `InputSource`
 records. Each record includes the revision of its snapshot. The current source
@@ -418,7 +406,7 @@ replace the decision with a consent prompt before approving access:
 
 ```lua
 local subscription
-subscription = gnoblin.events.on("gnoblin.location.authorization-requested", function(event)
+subscription = gnoblin.on("gnoblin.location.authorization-requested", function(event)
     local result = gnoblin.location.authorize_app {
         request_id = event.request_id,
         allow = false,
@@ -448,7 +436,7 @@ local binding = gnoblin.shortcuts.bind("temporary-cli-shortcut", "<Alt>F12", {
 })
 
 local subscription
-subscription = gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+subscription = gnoblin.on("gnoblin.shortcut.session.activated", function(event)
     if event.id ~= binding.id then
         return
     end
@@ -474,7 +462,7 @@ For example, save this as `focus.lua`, replacing the ID with one from
 local window = gnoblin.windows.by_id("replace-with-window-id")
 assert(window, "window no longer exists")
 
-gnoblin.events.on("gnoblin.shortcut.activated", function(event)
+gnoblin.on("gnoblin.shortcut.activated", function(event)
     if event.focus_context then
         window:focus(event.focus_context)
     end

@@ -55,7 +55,7 @@ calls return an operation descriptor and complete through
 Earlier API versions keep the synchronous native route.
 
 API 1.54 adds the Lua-backed `launch.status` route. Every supported client
-version now reads through `gnoblin.launches.snapshot()`. The request still
+version now reads through the Lua runtime. The request still
 enables launch-change events for the connection.
 
 Clients with API 1.29 or newer read `session.status` directly from Mutter

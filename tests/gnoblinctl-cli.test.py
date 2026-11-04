@@ -87,7 +87,7 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             'local window = gnoblin.windows.by_id("window-1")\n'
             'assert(window and window.id == "window-1")\n'
             "local subscription\n"
-            'gnoblin.events.once("gnoblin.shortcut.activated", function(event)\n'
+            'gnoblin.once("gnoblin.shortcut.activated", function(event)\n'
             '  assert(type(event.focus_context) == "userdata")\n'
             "  assert(not pcall(function() window:focus(tostring(event.focus_context)) end))\n"
             '  assert(not pcall(function() event.focus_context.token = "forged" end))\n'
@@ -102,7 +102,7 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             '  print("FOCUS_CONTEXT_ONCE_OK")\n'
             "end)\n"
             "local count = 0\n"
-            'subscription = gnoblin.events.on("gnoblin.shortcut.activated", function(event)\n'
+            'subscription = gnoblin.on("gnoblin.shortcut.activated", function(event)\n'
             '  assert(type(event.focus_context) == "userdata")\n'
             "  local result\n"
             '  if event.action == "move" then\n'
@@ -437,7 +437,7 @@ def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.C
         script_path = root / "menu.lua"
         script_path.write_text(
             "local subscription\n"
-            'subscription = gnoblin.events.on("gnoblin.window.menu-requested", function(event)\n'
+            'subscription = gnoblin.on("gnoblin.window.menu-requested", function(event)\n'
             '  if event.menu_type == "wm" then\n'
             '    assert(type(event.menu_context) == "userdata")\n'
             "    assert(event.menu_context.token == nil)\n"
@@ -595,7 +595,7 @@ def run_shortcut_binding_cli_test(binary: str, build_directory: str) -> subproce
             'local binding = gnoblin.shortcuts.bind("cli-test", "<Super>F12")\n'
             'assert(binding.id == "cli-test" and binding.accelerator == "<Super>F12")\n'
             'assert(not pcall(function() binding.id = "changed" end))\n'
-            'gnoblin.events.once("gnoblin.shortcut.session.activated", function(event)\n'
+            'gnoblin.once("gnoblin.shortcut.session.activated", function(event)\n'
             '  assert(event.id == "cli-test" and event.session_id == 9)\n'
             "  local ended = gnoblin.shortcuts.end_session(event.id, event.session_id)\n"
             "  assert(ended.ended and ended.session_id == event.session_id)\n"
@@ -714,7 +714,7 @@ def run_location_authorization_cli_test(binary: str, build_directory: str) -> su
         script_path = root / "location.lua"
         script_path.write_text(
             "local subscription\n"
-            'subscription = gnoblin.events.on("gnoblin.location.authorization-requested", function(event)\n'
+            'subscription = gnoblin.on("gnoblin.location.authorization-requested", function(event)\n'
             '  assert(event.app_id == "org.example.App" and event.requested_accuracy == 6)\n'
             "  local ok, err = pcall(function()\n"
             "    gnoblin.location.authorize_app({request_id = event.request_id + 1, allow = false, accuracy = 0})\n"
@@ -1228,7 +1228,7 @@ def main() -> int:
     once_result = run_event_subscription(
         binary,
         build_directory,
-        'gnoblin.events.once("gnoblin.test.once", function(event) '
+        'gnoblin.once("gnoblin.test.once", function(event) '
         'print("ONCE:" .. event.name .. ":" .. event.event .. ":" .. event.value) end)\n',
         "gnoblin.test.once",
         [42],
@@ -1252,24 +1252,12 @@ def main() -> int:
     mutter_result = run_event_subscription(
         binary,
         build_directory,
-        'gnoblin.events.mutter.once("mutter.test.signal", function(event) print("MUTTER:" .. event.event) end)\n',
+        'gnoblin.once("mutter.test.signal", function(event) print("MUTTER:" .. event.event) end)\n',
         "mutter.test.signal",
         [1],
     )
     assert mutter_result.returncode == 0, mutter_result.stderr
     assert "MUTTER:mutter.test.signal" in mutter_result.stdout, mutter_result.stdout
-
-    with tempfile.TemporaryDirectory(prefix="mutter-name-", dir=build_directory) as temporary:
-        socket_path = str(Path(temporary) / "unused.sock")
-        for method in ("on", "once"):
-            script_path = Path(temporary) / f"{method}.lua"
-            script_path.write_text(
-                f'gnoblin.events.mutter.{method}("gnoblin.window.created", function() end)\n',
-                encoding="utf-8",
-            )
-            invalid_mutter_name = run(binary, "--socket", socket_path, "lua", str(script_path))
-            assert invalid_mutter_name.returncode != 0
-            assert "Mutter event name must start with 'mutter.'" in invalid_mutter_name.stderr
 
     focus_context_result = run_focus_context_cli_test(binary, build_directory)
     assert focus_context_result.returncode == 0, focus_context_result.stderr
@@ -1302,7 +1290,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(110):
+                    for _ in range(101):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -2328,7 +2316,7 @@ def main() -> int:
             'assert(gnoblin.windows.focused().id == "42")\n'
             'assert(gnoblin.windows.by_id("42").title == "Notes")\n'
             'assert(gnoblin.windows.by_id("missing") == nil)\n'
-            'assert(window:minimize().id == "42")\n'
+            'assert(window:set_minimized(true).id == "42")\n'
             "local focus_ok, focus_error = pcall(function() window:focus() end)\n"
             'assert(not focus_ok and focus_error:match("FocusContext"))\n'
             "local workspaces = gnoblin.workspaces.list()\n"
@@ -2341,7 +2329,6 @@ def main() -> int:
             'assert(gnoblin.workspaces.by_id("missing") == nil)\n'
             "assert(workspace:activate().active)\n"
             'assert(workspace:rename("Renamed").name == "Renamed")\n'
-            'assert(workspace:move_here(window, {follow = true}).window == "42")\n'
             'assert(workspace:remove().id == "codex-probe")\n'
             "local monitors = gnoblin.monitors.list()\n"
             'assert(#monitors == 1 and monitors[1].id == "HDMI-1")\n'
@@ -2520,7 +2507,7 @@ def main() -> int:
             "local history = gnoblin.focus.history { limit = 1 }\n"
             'assert(#history == 1 and tostring(history[1]) == "Window<42>")\n'
             'assert(history[1].title == "Notes" and history[1].focused)\n'
-            'assert(history[1].geometry.width == 640 and type(history[1].minimize) == "function")\n'
+            'assert(history[1].geometry.width == 640 and type(history[1].set_minimized) == "function")\n'
             'assert(not pcall(function() history[1].title = "Changed" end))\n'
             "assert(not pcall(function() history[1].geometry.width = 1 end))\n",
             encoding="utf-8",
@@ -2631,12 +2618,8 @@ def main() -> int:
             'assert(launches[1].application == "app" and launches[1].state == "pending")\n'
             "assert(launches[1].started_at == 1720000000123 and launches[1].timeout_ms == 3000)\n"
             'assert(not pcall(function() launches[1].state = "ended" end))\n'
-            "local snapshot = gnoblin.launches.snapshot()\n"
-            'assert(snapshot.revision == 4 and snapshot.launches[1].token == "one")\n'
-            "assert(not pcall(function() snapshot.revision = 5 end))\n"
-            'assert(not pcall(function() rawset(snapshot.launches[1], "token", "changed") end))\n'
-            "assert(not pcall(function() gnoblin.launches.list(true) end))\n"
-            "assert(not pcall(function() gnoblin.launches.snapshot({}) end))\n",
+            "assert(not pcall(function() return gnoblin.launches.snapshot() end))\n"
+            "assert(not pcall(function() gnoblin.launches.list(true) end))\n",
             encoding="utf-8",
         )
         launches_result = run(binary, "--socket", socket_path, "lua", str(launches_file))
@@ -2705,21 +2688,16 @@ def main() -> int:
             'local created = gnoblin.workspaces.create("Lua Workspace", {id = "lua-api", activate = false})\n'
             'assert(created.id == "lua-api" and created.number == 3 and created.persistent)\n'
             'assert(not pcall(function() created.name = "changed" end))\n'
-            'local renamed = gnoblin.workspaces.rename("lua-api", "Renamed Lua Workspace")\n'
+            'local renamed = created:rename("Renamed Lua Workspace")\n'
             'assert(renamed.name == "Renamed Lua Workspace")\n'
-            'local active = gnoblin.workspaces.activate("lua-api")\n'
+            "local active = created:activate()\n"
             "assert(active.active)\n"
             'assert(gnoblin.workspaces.next().id == "lua-api")\n'
             'assert(gnoblin.workspaces.previous().id == "lua-api")\n'
-            'local moved_active = gnoblin.workspaces.move_active("lua-api", {follow = false})\n'
-            'assert(moved_active.workspace.id == "lua-api" and moved_active.follow == false)\n'
-            'assert(not pcall(function() rawset(moved_active, "follow", true) end))\n'
-            'local moved_window = gnoblin.workspaces.move_window("active", 1, {follow = true})\n'
-            'assert(moved_window.window == "42" and moved_window.follow)\n'
-            'assert(gnoblin.workspaces.remove("lua-api").id == "lua-api")\n'
+            'assert(created:remove().id == "lua-api")\n'
             'assert(not pcall(function() gnoblin.workspaces.create("invalid", {id = 42}) end))\n'
-            'assert(not pcall(function() gnoblin.workspaces.move_window("42", {id = "x"}) end))\n'
-            'assert(not pcall(function() gnoblin.workspaces.rename {id = "lua-api", name = "x"} end))\n'
+            'assert(not pcall(function() gnoblin.workspaces.rename("lua-api", "x") end))\n'
+            'assert(not pcall(function() gnoblin.workspaces.move_window("42", 1) end))\n'
             "assert(not pcall(function() gnoblin.workspaces.next(true) end))\n",
             encoding="utf-8",
         )
@@ -2853,19 +2831,11 @@ def main() -> int:
         assert privacy_screen_result.returncode == 0, privacy_screen_result.stderr
         animation_controls_file = Path(temporary) / "animation-controls.lua"
         animation_controls_file.write_text(
-            'local seek = gnoblin.animations.seek("preview-17", 0.4)\n'
-            'assert(seek.progress == 0.4 and type(seek.step) == "function")\n'
-            'local step = gnoblin.animations.step("preview-17", 250)\n'
-            'assert(step.progress == 0.75 and type(step.play) == "function")\n'
-            'local play = gnoblin.animations.play("preview-17")\n'
-            'assert(play.playing and type(play.pause) == "function")\n'
-            'local pause = gnoblin.animations.pause("preview-17")\n'
-            'assert(not pause.playing and type(pause.stop) == "function")\n'
-            'local stop = gnoblin.animations.stop("preview-17")\n'
-            'assert(stop.ok and stop.session == "preview-17")\n'
-            'assert(not pcall(function() gnoblin.animations.seek("preview-17", 1.1) end))\n'
-            'assert(not pcall(function() gnoblin.animations.step("preview-17", 0) end))\n'
-            'assert(not pcall(function() gnoblin.animations.play("preview-17", "extra") end))\n',
+            'assert(not pcall(function() gnoblin.animations.seek("preview-17", 0.4) end))\n'
+            'assert(not pcall(function() gnoblin.animations.step("preview-17", 250) end))\n'
+            'assert(not pcall(function() gnoblin.animations.play("preview-17") end))\n'
+            'assert(not pcall(function() gnoblin.animations.pause("preview-17") end))\n'
+            'assert(not pcall(function() gnoblin.animations.stop("preview-17") end))\n',
             encoding="utf-8",
         )
         animation_controls = run(binary, "--socket", socket_path, "lua", str(animation_controls_file))
@@ -2888,8 +2858,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 110
-        assert len(subscriptions) == 110
+        assert len(received) == 101
+        assert len(subscriptions) == 101
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -2930,7 +2900,7 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
-        animation_calls = received[42:48]
+        animation_calls = received[41:47]
         assert [call["method"] for call in animation_calls] == [
             "animation.preview",
             "animation.seek",
@@ -2969,46 +2939,46 @@ def main() -> int:
         version_request = [call for call in received if call["method"] == "version"][-1]
         assert version_request["api_version"] == {"major": 1, "minor": 19}
         assert version_request["arguments"] == {}
-        assert received[48]["method"] == "input.devices"
+        assert received[47]["method"] == "input.devices"
+        assert received[47]["api_version"] == {"major": 1, "minor": 46}
+        assert received[47]["arguments"] == {}
+        assert received[48]["method"] == "input.sources"
         assert received[48]["api_version"] == {"major": 1, "minor": 46}
         assert received[48]["arguments"] == {}
-        assert received[49]["method"] == "input.sources"
+        assert received[49]["method"] == "input.current_source"
         assert received[49]["api_version"] == {"major": 1, "minor": 46}
         assert received[49]["arguments"] == {}
-        assert received[50]["method"] == "input.current_source"
-        assert received[50]["api_version"] == {"major": 1, "minor": 46}
-        assert received[50]["arguments"] == {}
-        assert received[51]["method"] == "input.select"
-        assert received[51]["api_version"] == {"major": 1, "minor": 6}
-        assert received[51]["arguments"] == {"type": "xkb", "id": "us"}
-        assert received[52]["method"] == "shortcuts.list"
-        assert received[52]["api_version"] == {"major": 1, "minor": 40}
-        assert received[52]["arguments"] == {}
-        assert received[53]["method"] == "shortcuts.actions"
-        assert received[53]["api_version"] == {"major": 1, "minor": 41}
-        assert received[53]["arguments"] == {"group": "wm"}
-        assert received[54]["method"] == "focus.policy"
+        assert received[50]["method"] == "input.select"
+        assert received[50]["api_version"] == {"major": 1, "minor": 6}
+        assert received[50]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[51]["method"] == "shortcuts.list"
+        assert received[51]["api_version"] == {"major": 1, "minor": 40}
+        assert received[51]["arguments"] == {}
+        assert received[52]["method"] == "shortcuts.actions"
+        assert received[52]["api_version"] == {"major": 1, "minor": 41}
+        assert received[52]["arguments"] == {"group": "wm"}
+        assert received[53]["method"] == "focus.policy"
+        assert received[53]["api_version"] == {"major": 1, "minor": 19}
+        assert received[53]["arguments"] == {}
+        assert received[54]["method"] == "settings"
         assert received[54]["api_version"] == {"major": 1, "minor": 19}
         assert received[54]["arguments"] == {}
-        assert received[55]["method"] == "settings"
+        assert received[55]["method"] == "focus.history"
         assert received[55]["api_version"] == {"major": 1, "minor": 19}
-        assert received[55]["arguments"] == {}
-        assert received[56]["method"] == "focus.history"
-        assert received[56]["api_version"] == {"major": 1, "minor": 19}
-        assert received[56]["arguments"] == {"limit": 1}
-        assert received[57]["method"] == "layer.animation_policy"
-        assert received[57]["api_version"] == {"major": 1, "minor": 31}
-        assert received[57]["arguments"] == {"namespace": "bingux-panel"}
-        assert received[95]["method"] == "input.orientation_lock"
-        assert received[95]["api_version"] == {"major": 1, "minor": 66}
-        assert received[95]["arguments"] == {}
-        assert received[96]["method"] == "input.set_orientation_lock"
-        assert received[96]["api_version"] == {"major": 1, "minor": 66}
-        assert received[96]["arguments"] == {"value": True}
-        assert received[97]["method"] == "input.orientation_lock"
-        assert received[98]["method"] == "input.set_orientation_lock"
-        assert received[98]["api_version"] == {"major": 1, "minor": 66}
-        assert received[98]["arguments"] == {"value": True}
+        assert received[55]["arguments"] == {"limit": 1}
+        assert received[56]["method"] == "layer.animation_policy"
+        assert received[56]["api_version"] == {"major": 1, "minor": 31}
+        assert received[56]["arguments"] == {"namespace": "bingux-panel"}
+        assert received[91]["method"] == "input.orientation_lock"
+        assert received[91]["api_version"] == {"major": 1, "minor": 66}
+        assert received[91]["arguments"] == {}
+        assert received[92]["method"] == "input.set_orientation_lock"
+        assert received[92]["api_version"] == {"major": 1, "minor": 66}
+        assert received[92]["arguments"] == {"value": True}
+        assert received[93]["method"] == "input.orientation_lock"
+        assert received[94]["method"] == "input.set_orientation_lock"
+        assert received[94]["api_version"] == {"major": 1, "minor": 66}
+        assert received[94]["arguments"] == {"value": True}
         privacy_screen_requests = [
             request
             for request in received
@@ -3025,47 +2995,22 @@ def main() -> int:
         assert privacy_screen_requests[1]["arguments"] == {"value": True}
         assert privacy_screen_requests[2]["arguments"] == {"value": False}
         assert privacy_screen_requests[3]["arguments"] == {"value": "inherit"}
-        animation_control_requests = [
-            request
-            for request in received
-            if request["method"]
-            in {
-                "animation.seek",
-                "animation.step",
-                "animation.play",
-                "animation.pause",
-                "animation.stop",
-            }
-            and request.get("arguments", {}).get("session") == "preview-17"
-        ][-5:]
-        assert [request["method"] for request in animation_control_requests] == [
-            "animation.seek",
-            "animation.step",
-            "animation.play",
-            "animation.pause",
-            "animation.stop",
-        ]
-        assert all(request["api_version"] == {"major": 1, "minor": 18} for request in animation_control_requests)
-        assert animation_control_requests[0]["arguments"] == {"session": "preview-17", "progress": 0.4}
-        assert animation_control_requests[1]["arguments"] == {"session": "preview-17", "milliseconds": 250}
-        assert animation_control_requests[2]["arguments"] == {"session": "preview-17"}
-        assert animation_control_requests[3]["arguments"] == {"session": "preview-17"}
-        assert animation_control_requests[4]["arguments"] == {"session": "preview-17"}
-        assert received[58]["method"] == "privacy.state"
-        assert received[58]["api_version"] == {"major": 1, "minor": 47}
+        assert all(call["api_version"] == {"major": 1, "minor": 18} for call in animation_calls)
+        assert received[57]["method"] == "privacy.state"
+        assert received[57]["api_version"] == {"major": 1, "minor": 47}
+        assert received[57]["arguments"] == {}
+        assert received[58]["method"] == "capabilities.list"
+        assert received[58]["api_version"] == {"major": 1, "minor": 19}
         assert received[58]["arguments"] == {}
-        assert received[59]["method"] == "capabilities.list"
-        assert received[59]["api_version"] == {"major": 1, "minor": 19}
+        assert received[59]["method"] == "session.status"
+        assert received[59]["api_version"] == {"major": 1, "minor": 76}
         assert received[59]["arguments"] == {}
         assert received[60]["method"] == "session.status"
         assert received[60]["api_version"] == {"major": 1, "minor": 76}
         assert received[60]["arguments"] == {}
-        assert received[61]["method"] == "session.status"
-        assert received[61]["api_version"] == {"major": 1, "minor": 76}
+        assert received[61]["method"] == "session.activity"
+        assert received[61]["api_version"] == {"major": 1, "minor": 24}
         assert received[61]["arguments"] == {}
-        assert received[62]["method"] == "session.activity"
-        assert received[62]["api_version"] == {"major": 1, "minor": 24}
-        assert received[62]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
@@ -3151,31 +3096,25 @@ def main() -> int:
         assert received[32]["arguments"] == {"id": "codex-probe"}
         assert received[33]["method"] == "workspace.rename"
         assert received[33]["arguments"] == {"id": "codex-probe", "name": "Renamed"}
-        assert received[34]["method"] == "workspace.move_window"
-        assert received[34]["arguments"] == {
-            "window": "42",
-            "workspace": {"id": "codex-probe"},
-            "follow": True,
-        }
-        assert received[35]["method"] == "workspace.remove"
-        assert received[35]["arguments"] == {"id": "codex-probe"}
+        assert received[34]["method"] == "workspace.remove"
+        assert received[34]["arguments"] == {"id": "codex-probe"}
+        assert received[35]["method"] == "monitors.list"
+        assert received[35]["api_version"] == {"major": 1, "minor": 37}
+        assert received[35]["arguments"] == {}
         assert received[36]["method"] == "monitors.list"
-        assert received[36]["api_version"] == {"major": 1, "minor": 37}
         assert received[36]["arguments"] == {}
         assert received[37]["method"] == "monitors.list"
         assert received[37]["arguments"] == {}
-        assert received[38]["method"] == "monitors.list"
+        assert received[38]["method"] == "layers.list"
+        assert received[38]["api_version"] == {"major": 1, "minor": 37}
         assert received[38]["arguments"] == {}
         assert received[39]["method"] == "layers.list"
-        assert received[39]["api_version"] == {"major": 1, "minor": 37}
-        assert received[39]["arguments"] == {}
-        assert received[40]["method"] == "layers.list"
-        assert received[40]["arguments"] == {
+        assert received[39]["arguments"] == {
             "monitor_id": "HDMI-1",
             "namespace": "panel:top",
             "layer": "top",
         }
-        unminimize_request = received[41]
+        unminimize_request = received[40]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
         capture_calls = [call for call in received if call["method"] == "shortcut.capture"]
@@ -3188,14 +3127,12 @@ def main() -> int:
         assert surfaces_calls[0]["api_version"] == {"major": 1, "minor": 18}
         assert surfaces_calls[0]["arguments"] == {}
         workspace_calls = [call for call in received if call["method"].startswith("workspace.")]
-        assert [call["method"] for call in workspace_calls[-8:]] == [
+        assert [call["method"] for call in workspace_calls[-6:]] == [
             "workspace.create",
             "workspace.rename",
             "workspace.switch",
             "workspace.next",
             "workspace.previous",
-            "workspace.move_active",
-            "workspace.move_window",
             "workspace.remove",
         ]
         inspect_calls = [call for call in received if call["method"] == "animation.inspect"]

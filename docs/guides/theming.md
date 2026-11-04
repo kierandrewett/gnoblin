@@ -38,7 +38,7 @@ GNOME reports a change:
 ```lua
 local base_rules = gnoblin.snapshot().window_rules or {}
 
-gnoblin.events.on("gnoblin.appearance.color-scheme-changed", function(event)
+gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
     local rules = {}
     for i, rule in ipairs(base_rules) do rules[i] = rule end
 

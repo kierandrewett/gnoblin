@@ -134,8 +134,8 @@ static void assert_active_unchanged(GVariant* previous, guint64 revision, guint6
 static void test_transaction_and_recovery(void) {
     write_source(
         "gnoblin.configure {cursor = {size = 31}, protocols = {wlr_screencopy = false}}\n"
-        "gnoblin.events.on('test.valid', function() gnoblin.configure {cursor = {size = 32}} end)\n"
-        "gnoblin.events.on('test.invalid', function()\n"
+        "gnoblin.on('test.valid', function() gnoblin.configure {cursor = {size = 32}} end)\n"
+        "gnoblin.on('test.invalid', function()\n"
         " gnoblin.configure {cursor = {size = 0}} end)\n");
     g_autoptr(GError) error = NULL;
     g_autoptr(GVariant) previous = gnoblin_config_load_runtime(path, NULL, NULL, &error);

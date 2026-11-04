@@ -111,10 +111,7 @@ const LuaApiEntry lua_api[] = {
 
     {"process.spawn", NULL, lua_process_spawn},
     {"on", NULL, lua_on},
-    {"events.on", NULL, lua_on},
-    {"events.once", NULL, lua_once},
-    {"events.mutter.on", NULL, lua_mutter_on},
-    {"events.mutter.once", NULL, lua_mutter_once},
+    {"once", NULL, lua_once},
 
     {"windows.list", NULL, lua_windows_list},
     {"windows.focused", NULL, lua_windows_focused},
@@ -124,10 +121,7 @@ const LuaApiEntry lua_api[] = {
     {"Window:kill", "window.kill", NULL},
     {"Window:raise", "window.raise", NULL},
     {"Window:lower", "window.lower", NULL},
-    {"Window:minimize", "window.minimize", NULL},
-    {"Window:toggle_minimize", "window.toggle_minimize", NULL},
-    {"Window:unminimize", "window.unminimize", NULL},
-    {"Window:restore", "window.restore", NULL},
+    {"Window:set_minimized", "window.set_minimized", NULL},
     {"Window:restore_or_minimize", "window.restore_or_minimize", NULL},
     {"Window:set_maximized", "window.set_maximized", NULL},
     {"Window:set_fullscreen", "window.set_fullscreen", NULL},
@@ -154,17 +148,11 @@ const LuaApiEntry lua_api[] = {
     {"workspaces.active", NULL, lua_workspaces_active},
     {"workspaces.by_id", NULL, lua_workspaces_by_id},
     {"workspaces.create", "workspace.create", NULL, TRUE},
-    {"workspaces.rename", "workspace.rename", NULL, TRUE},
-    {"workspaces.remove", "workspace.remove", NULL, TRUE},
-    {"workspaces.activate", "workspace.switch", NULL, TRUE},
     {"workspaces.next", "workspace.next", NULL},
     {"workspaces.previous", "workspace.previous", NULL},
-    {"workspaces.move_active", "workspace.move_active", NULL, TRUE},
-    {"workspaces.move_window", "workspace.move_window", NULL, TRUE},
     {"Workspace:activate", "workspace.switch", NULL},
     {"Workspace:rename", "workspace.rename", NULL},
     {"Workspace:remove", "workspace.remove", NULL},
-    {"Workspace:move_here", "workspace.move_window", NULL},
     {"Workspace:on", NULL, lua_object_on},
     {"Workspace:watch", NULL, lua_object_watch},
 
@@ -188,11 +176,6 @@ const LuaApiEntry lua_api[] = {
     {"animations.surfaces", "animation.surfaces", NULL},
     {"animations.inspect", "animation.inspect", NULL, TRUE},
     {"animations.preview", "animation.preview", NULL, TRUE},
-    {"animations.seek", "animation.seek", NULL, TRUE},
-    {"animations.step", "animation.step", NULL, TRUE},
-    {"animations.play", "animation.play", NULL, TRUE},
-    {"animations.pause", "animation.pause", NULL, TRUE},
-    {"animations.stop", "animation.stop", NULL, TRUE},
     {"AnimationPreview:seek", "animation.seek", lua_animation_preview_method},
     {"AnimationPreview:step", "animation.step", lua_animation_preview_method},
     {"AnimationPreview:play", "animation.play", lua_animation_preview_method},
@@ -216,7 +199,6 @@ const LuaApiEntry lua_api[] = {
     {"shortcuts.end_session", "shortcut.session.end", NULL, TRUE},
 
     {"launches.list", NULL, lua_launches_list},
-    {"launches.snapshot", NULL, lua_launches_snapshot},
     {"launches.begin", NULL, lua_launches_begin, TRUE},
     {"launches.finish", NULL, lua_launches_finish},
 
@@ -238,9 +220,11 @@ const LuaApiEntry lua_api[] = {
     {NULL, NULL, NULL},
 };
 
-/* Wire operations that socket clients call directly but Lua does not install: Request answers,
- * which Lua reaches through the Request object (gnoblin-lua-request.c), and the launch.begin and
- * launch.end names that shells use, which Lua spells launches.begin and launches.finish.
+/* Wire operations that socket clients call directly but Lua does not install under that name. Lua
+ * reaches Request answers through the Request object (gnoblin-lua-request.c), reaches the preview
+ * controls through AnimationPreview, window minimize state through Window:set_minimized, and moves
+ * a window to a workspace through Window:move_to_workspace. The launch names are those shells use
+ * on the wire.
  * gnoblin_config_call_api accepts them; install_api does not install them. */
 static const LuaApiEntry bridge_operations[] = {
     {"prompt.respond", "prompt.respond", NULL},
@@ -251,21 +235,33 @@ static const LuaApiEntry bridge_operations[] = {
     {"location.authorize_app", "location.authorize_app", NULL},
     {"launch.begin", "launch.begin", NULL},
     {"launch.end", "launch.end", NULL},
+    {"window.minimize", "window.minimize", NULL},
+    {"window.unminimize", "window.unminimize", NULL},
+    {"window.toggle_minimize", "window.toggle_minimize", NULL},
+    {"window.restore", "window.restore", NULL},
+    {"workspace.move_active", "workspace.move_active", NULL},
+    {"workspace.move_window", "workspace.move_window", NULL},
+    {"animation.seek", "animation.seek", NULL},
+    {"animation.step", "animation.step", NULL},
+    {"animation.play", "animation.play", NULL},
+    {"animation.pause", "animation.pause", NULL},
+    {"animation.stop", "animation.stop", NULL},
     {NULL, NULL, NULL},
 };
 
 /* The entry a socket client names by operation or by gnoblin path. Paths under gnoblin come
- * before record methods, so workspace.switch resolves to workspaces.activate. */
+ * first, then the wire-only operations, then record methods, so workspace.switch resolves to
+ * Workspace:activate and animation.seek to the generic operation, not AnimationPreview:seek. */
 const LuaApiEntry* lua_api_find_call(const char* method) {
     for (const LuaApiEntry* entry = lua_api; entry->path; entry++)
         if (entry->operation && !strchr(entry->path, ':') &&
             (g_str_equal(entry->operation, method) || g_str_equal(entry->path, method)))
             return entry;
-    for (const LuaApiEntry* entry = lua_api; entry->path; entry++)
-        if (entry->operation && strchr(entry->path, ':') && g_str_equal(entry->operation, method))
-            return entry;
     for (const LuaApiEntry* entry = bridge_operations; entry->path; entry++)
         if (g_str_equal(entry->operation, method))
+            return entry;
+    for (const LuaApiEntry* entry = lua_api; entry->path; entry++)
+        if (entry->operation && strchr(entry->path, ':') && g_str_equal(entry->operation, method))
             return entry;
     return NULL;
 }

@@ -11,7 +11,7 @@ request a one-use text target. It returns an operation; on success, its value
 is an opaque `TextTarget`:
 
 ```lua
-gnoblin.events.on("gnoblin.shortcut.activated", function(event)
+gnoblin.on("gnoblin.shortcut.activated", function(event)
     if not event.focus_context then
         return
     end
@@ -29,7 +29,7 @@ The `gnoblinctl lua` console can use the same capability inside an event
 callback. Save this as `insert-text.lua` and run it from a Gnoblin session:
 
 ```lua
-gnoblin.events.once("gnoblin.shortcut.activated", function(event)
+gnoblin.once("gnoblin.shortcut.activated", function(event)
     if not event.focus_context then
         return
     end

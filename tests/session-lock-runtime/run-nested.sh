@@ -99,7 +99,7 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -euo pipefail -c '
   "$BUILD/session-lock-smoke" probe
 
   cat >"$BUILD/lock-request-listener.lua" <<'LUA'
-gnoblin.events.once("gnoblin.session.lock-requested", function(event)
+gnoblin.once("gnoblin.session.lock-requested", function(event)
   assert(event.name == "gnoblin.session.lock-requested")
   assert(event.sequence > 0)
   print("LOCK_REQUESTED_EVENT")

@@ -517,9 +517,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "launches.snapshot") || g_str_equal(method, "launch.status")) {
-        lua_getfield(state, -1, "launches");
-        lua_getfield(state, -1, "snapshot");
-        lua_remove(state, -2);
+        /* A wire read only: Lua reads each Launch's own revision. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_launches_snapshot, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "shortcuts.list")) {
         lua_getfield(state, -1, "shortcuts");

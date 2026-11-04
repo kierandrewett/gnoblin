@@ -31,7 +31,7 @@ To inspect the labels in a session, save this as `pad-help.lua` and run
 `gnoblinctl lua pad-help.lua`:
 
 ```lua
-gnoblin.events.once("gnoblin.input.pad-help-requested", function(event)
+gnoblin.once("gnoblin.input.pad-help-requested", function(event)
     for _, button in ipairs(event.buttons) do
         print(button.button, button.label or "")
     end

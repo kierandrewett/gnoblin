@@ -30,7 +30,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 
 Read-only calls return detached snapshots. Runtime mutations return an `Operation` handle and complete asynchronously. See [Operations, errors and timers](/shell-api/errors) and [shared runtime types](/shell-api/types).
 
-Subscribe with `gnoblin.events.on(name, callback)` or the `gnoblin.on` alias. See the [event reference](/events/).
+Subscribe with `gnoblin.on(name, callback)`, or `gnoblin.once(name, callback)` for one event. See the [event reference](/events/).
 
 The local socket protocol for non-Lua clients is documented in the [compositor bridge](/bridge/). For command-line use, see [gnoblinctl](/cli/).
 

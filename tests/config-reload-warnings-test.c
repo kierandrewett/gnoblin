@@ -65,8 +65,8 @@ static void request_reload(Runtime* runtime, const char* source, gboolean commit
     g_autofree char* with_event_probe = g_strconcat(
         source,
         "\nlocal warnings_seen\n"
-        "gnoblin.events.on('gnoblin.config.reloaded', function(e) warnings_seen = e.warnings end)\n"
-        "gnoblin.events.on('test.check-warnings', function(e)\n"
+        "gnoblin.on('gnoblin.config.reloaded', function(e) warnings_seen = e.warnings end)\n"
+        "gnoblin.on('test.check-warnings', function(e)\n"
         " assert(warnings_seen ~= nil, 'reload event has no warnings')\n"
         " assert(#warnings_seen == #e.expected)\n"
         " for i, warning in ipairs(e.expected) do assert(warnings_seen[i] == warning) end\n"

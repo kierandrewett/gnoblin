@@ -22,6 +22,7 @@ int lua_gnoblin_index(lua_State* state) {
         {"autostart", "use gnoblin.configure.autostart.name = {command = ...}"},
         {"remove_shortcut", "set gnoblin.configure.shortcuts.name.enable = false"},
         {"remove_autostart", "set gnoblin.configure.autostart.name.enable = false"},
+        {"events", "use gnoblin.on(name, fn) and gnoblin.once(name, fn)"},
     };
     for (guint i = 0; i < G_N_ELEMENTS(removed_apis); i++)
         if (g_str_equal(property, removed_apis[i].name))
@@ -211,14 +212,6 @@ int lua_on(lua_State* state) {
     return 1;
 }
 
-int lua_mutter_on(lua_State* state) {
-    size_t event_length;
-    const char* event = luaL_checklstring(state, 1, &event_length);
-    if (event_length <= strlen("mutter.") || !g_str_has_prefix(event, "mutter."))
-        return luaL_error(state, "Mutter event names must start with 'mutter.'");
-    return lua_on(state);
-}
-
 static int lua_once_callback(lua_State* state) {
     lua_getfield(state, lua_upvalueindex(1), "fired");
     if (lua_toboolean(state, -1))
@@ -262,14 +255,6 @@ int lua_once(lua_State* state) {
     }
     lua_settop(state, 1);
     return 1;
-}
-
-int lua_mutter_once(lua_State* state) {
-    size_t event_length;
-    const char* event = luaL_checklstring(state, 1, &event_length);
-    if (event_length <= strlen("mutter.") || !g_str_has_prefix(event, "mutter."))
-        return luaL_error(state, "Mutter event names must start with 'mutter.'");
-    return lua_once(state);
 }
 
 gboolean workspace_id_valid(const char* id) {

@@ -124,23 +124,13 @@ function Window:lower() end
 ---@return Operation<Json>
 function Window:kill() end
 
----Minimize this window.
+---Set whether this window is minimized.
+---@param enabled boolean True to minimize; false to remove minimization.
 ---@return Operation<Json>
-function Window:minimize() end
+function Window:set_minimized(enabled) end
 
----Toggle this window's minimized state.
----@return Operation<Json>
-function Window:toggle_minimize() end
-
----Remove this window from its minimized state.
----@return Operation<Json>
-function Window:unminimize() end
-
----Restore this window from its minimized, maximized, or fullscreen state.
----@return Operation<Json>
-function Window:restore() end
-
----Restore this window, or minimize it when already restored.
+---Unmaximize this window, restore the frame it had before a snap, or minimize it, whichever
+---applies first.
 ---@return Operation<Json>
 function Window:restore_or_minimize() end
 

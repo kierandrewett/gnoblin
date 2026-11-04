@@ -407,9 +407,11 @@ int main(void) {
         "local g=require('gnoblin'); local a=require('module'); local b=require('module')\n"
         "if a~=b then error('require cache') end\n"
         "assert(type(g.animation)=='function', 'gnoblin.animation must declare animations')\n"
-        "for _,name in ipairs({'list','get','surfaces','inspect','preview',\n"
-        "    'seek','step','play','pause','stop'}) do\n"
+        "for _,name in ipairs({'list','get','surfaces','inspect','preview'}) do\n"
         "  assert(type(g.animations[name])=='function', 'missing gnoblin.animations.'..name)\n"
+        "end\n"
+        "for _,name in ipairs({'seek','step','play','pause','stop'}) do\n"
+        "  assert(g.animations[name]==nil, 'duplicate gnoblin.animations.'..name)\n"
         "end\n"
         "g.configure {shortcuts={}}; "
         "g.config.autostart={}\n"
@@ -1398,13 +1400,12 @@ int main(void) {
         "assert(g.workspace == nil)\n"
         "assert(type(g.workspaces.list)=='function')\n"
         "assert(type(g.workspaces.create)=='function')\n"
-        "assert(type(g.workspaces.rename)=='function')\n"
-        "assert(type(g.workspaces.remove)=='function')\n"
-        "assert(type(g.workspaces.activate)=='function')\n"
+        "assert(g.workspaces.rename==nil and g.workspaces.remove==nil)\n"
+        "assert(g.workspaces.activate==nil and not pcall(function() return g.events end))\n"
         "assert(type(g.workspaces.next)=='function')\n"
         "assert(type(g.workspaces.previous)=='function')\n"
-        "assert(type(g.workspaces.move_active)=='function')\n"
-        "assert(type(g.workspaces.move_window)=='function')\n"
+        "assert(g.workspaces.move_active==nil and g.workspaces.move_window==nil)\n"
+        "assert(type(g.once)=='function' and g.launches.snapshot==nil)\n"
         "assert(type(g.launches.finish)=='function')\n"
         "g.animation {name='test-open', event='open', duration=240}\n"
         "g.animation {name='test-layer-open', event='layer-open', duration=230}\n"
@@ -2032,13 +2033,13 @@ int main(void) {
         "  assert(g.input.current_source().id=='us')\n"
         "  local window=assert(g.windows.by_id('window-1'))\n"
         "  assert(window:set_above(true).method=='window.set_above')\n"
-        "  assert(window:unminimize().method=='window.unminimize')\n"
+        "  assert(window:set_minimized(false).method=='window.unminimize')\n"
+        "  assert(window:set_minimized(true).method=='window.minimize')\n"
         "  local workspace=assert(g.workspaces.active())\n"
         "  assert(workspace.id=='workspace-1' and workspace.name=='Main')\n"
         "  assert(g.workspaces.by_id('workspace-1'):rename('Work').method=='workspace.rename')\n"
         "  assert(g.workspaces.list()[1]:activate().method=='workspace.switch')\n"
         "  assert(workspace:remove().method=='workspace.remove')\n"
-        "  assert(workspace:move_here(window,{follow=true}).method=='workspace.move_window')\n"
         "  assert(g.workspaces.create('Terminal',{id='terminal',activate=true}).method=='"
         "workspace.create')\n"
         "  assert(g.workspaces.next().method=='workspace.next')\n"
@@ -2160,8 +2161,8 @@ int main(void) {
     g_assert_nonnull(snapshot_methods_result);
     g_autoptr(GVariant) snapshot_method_operations = gnoblin_config_drain_runtime_operations();
     const char* const expected_snapshot_methods[] = {
-        "window.set_above", "window.unminimize", "workspace.rename",
-        "workspace.switch", "workspace.remove",  "workspace.move_window",
+        "window.set_above", "window.unminimize", "window.minimize",
+        "workspace.rename", "workspace.switch",  "workspace.remove",
         "workspace.create", "workspace.next",    "workspace.previous",
     };
     g_assert_cmpuint(g_variant_n_children(snapshot_method_operations), ==,

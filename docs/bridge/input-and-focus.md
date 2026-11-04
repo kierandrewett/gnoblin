@@ -203,7 +203,7 @@ The socket exposes these reads at the listed API versions:
 | 1.74        | `monitors.privacy_screen` | `gnoblin.monitors.privacy_screen()` | None                                                       |
 | 1.37        | `layers.list`             | `gnoblin.layers.list(filter)`       | `monitor_id`, `namespace`, `layer`                         |
 | 1.37        | `launches.list`           | `gnoblin.launches.list()`           | None                                                       |
-| 1.39        | `launches.snapshot`       | `gnoblin.launches.snapshot()`       | None                                                       |
+| 1.39        | `launches.snapshot`       | `gnoblin.launches.list()`           | None; the reply adds the collection revision               |
 | 1.40        | `shortcuts.list`          | `gnoblin.shortcuts.list()`          | None                                                       |
 | 1.41        | `shortcuts.actions`       | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
 | 1.24        | `session.activity`        | `gnoblin.session.activity()`        | None                                                       |

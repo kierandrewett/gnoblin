@@ -32,16 +32,9 @@ configuration.
 | `gnoblin.animations.surfaces()`              | None                                           | `{surfaces = {Surface, ...}}`                |
 | `gnoblin.animations.inspect(name, options?)` | Name; options `target`, `event`, `target_type` | Animation details and resolved specification |
 | `gnoblin.animations.preview(name, options?)` | Name; the inspect options and `autoplay`       | `AnimationPreview` record                    |
-| `gnoblin.animations.seek(session, progress)` | Session; progress from 0 to 1                  | Updated `AnimationPreview` record            |
-| `gnoblin.animations.step(session, ms)`       | Session; milliseconds from 1 to 60000          | Updated `AnimationPreview` record            |
-| `gnoblin.animations.play(session)`           | Session                                        | Updated `AnimationPreview` record            |
-| `gnoblin.animations.pause(session)`          | Session                                        | Updated `AnimationPreview` record            |
-| `gnoblin.animations.stop(session)`           | Session                                        | `{ok = true, session = string}`              |
 
-`gnoblinctl lua` supports the five session controls. Use the `id` from an
-`AnimationPreview` as the session. The CLI
-waits for each operation and returns the updated read-only preview, or the
-stop result.
+`gnoblinctl lua` supports the same preview record methods. The CLI waits for each
+operation and returns the updated read-only preview, or the stop result.
 
 | Field         | Accepted value                                  | Meaning                                       |
 | ------------- | ----------------------------------------------- | --------------------------------------------- |
@@ -55,8 +48,13 @@ See the [animation guide](/guides/animations) for supported animation events.
 In Lua, `gnoblin.animations.preview(name, options?)` returns an `Operation`. Its
 successful value is an immutable preview record.
 
-The record methods are `seek`, `step`, `play`, `pause`, and `stop`. They return
-new operations. The stop result contains an `ok` flag and a `session` ID.
+Control a preview with the methods of its record. They return new operations:
+
+- `preview:seek(progress)` takes a value from 0 to 1.
+- `preview:step(milliseconds)` takes 1 to 60000.
+- `preview:play()`, `preview:pause()` and `preview:stop()` take no argument.
+
+The stop result contains an `ok` flag and a `session` ID.
 
 Configured `open` and `close` animations run for normal windows during their
 map and destroy lifecycles. The compositor starts built-in or registered
@@ -67,7 +65,7 @@ For example, inspect a new window's `open` animation, seek to its midpoint,
 then play from there:
 
 ```lua
-gnoblin.events.on("gnoblin.window.created", function(event)
+gnoblin.on("gnoblin.window.created", function(event)
     local request = gnoblin.animations.preview("gnome-open", {
         event = "open",
         target = event.window.id,

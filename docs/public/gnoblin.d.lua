@@ -9,8 +9,6 @@ gnoblin.appearance = {}
 gnoblin.capabilities = {}
 gnoblin.config = {}
 gnoblin.console = {}
-gnoblin.events = {}
-gnoblin.events.mutter = {}
 gnoblin.focus = {}
 gnoblin.input = {}
 gnoblin.launches = {}
@@ -144,33 +142,6 @@ function gnoblin.animations.inspect(name, options) end
 ---@param options? AnimationPreviewOptions
 ---@return Operation<AnimationPreview>
 function gnoblin.animations.preview(name, options) end
-
----Set a preview session to a progress value from 0 to 1.
----@param session string Preview session ID.
----@param progress number Progress from 0 to 1.
----@return Operation<AnimationPreview>
-function gnoblin.animations.seek(session, progress) end
-
----Advance a preview session by a duration in milliseconds.
----@param session string Preview session ID.
----@param milliseconds integer Step duration, from 1 to 60000.
----@return Operation<AnimationPreview>
-function gnoblin.animations.step(session, milliseconds) end
-
----Resume a preview session.
----@param session string Preview session ID.
----@return Operation<AnimationPreview>
-function gnoblin.animations.play(session) end
-
----Pause a preview session.
----@param session string Preview session ID.
----@return Operation<AnimationPreview>
-function gnoblin.animations.pause(session) end
-
----Stop a preview session and restore the target's original actor state.
----@param session string Preview session ID.
----@return Operation<AnimationStopResult>
-function gnoblin.animations.stop(session) end
 
 ---Set preview progress from an AnimationPreview record.
 ---@param progress number Progress from 0 to 1.
@@ -416,29 +387,11 @@ function gnoblin.config.restore_default() end
 ---@return EventSubscription
 function gnoblin.on(name, callback) end
 
----Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.
----@param name string Event name, or `*` to receive every dispatched event.
----@param callback fun(event: Event) Called once for each matching event.
----@return EventSubscription
-function gnoblin.events.on(name, callback) end
-
 ---Register a callback that is removed after its first event.
 ---@param name string Event name, or `*` to receive the next dispatched event.
 ---@param callback fun(event: Event) Called once for the first matching event.
 ---@return EventSubscription
-function gnoblin.events.once(name, callback) end
-
----Register a callback for a Mutter event. The name must start with `mutter.`.
----@param name string Mutter event name, 1 to 128 UTF-8 bytes.
----@param callback fun(event: Event) Called once for each matching event.
----@return EventSubscription
-function gnoblin.events.mutter.on(name, callback) end
-
----Register a callback for one Mutter event. The name must start with `mutter.`.
----@param name string Mutter event name, 1 to 128 UTF-8 bytes.
----@param callback fun(event: Event) Called once for the first matching event.
----@return EventSubscription
-function gnoblin.events.mutter.once(name, callback) end
+function gnoblin.once(name, callback) end
 
 ---@class FocusHistoryFilter
 ---@field workspace_id? string Exact workspace ID to include.
@@ -579,10 +532,6 @@ function TextTarget:insert_text(text) end
 ---@field ok boolean True when the request was accepted.
 ---@field token string Launch token.
 
----@class LaunchSnapshot
----@field launches Launch[] Current launch records.
----@field revision integer Revision of the launch snapshot.
-
 ---Begin tracking a matching application launch.
 ---@param token string Non-empty token, at most 128 characters.
 ---@param application string Non-empty application identifier, at most 512 characters.
@@ -598,10 +547,6 @@ function gnoblin.launches.finish(token) end
 ---Return the current launch records.
 ---@return Launch[]
 function gnoblin.launches.list() end
-
----Return the launch records and their snapshot revision.
----@return LaunchSnapshot
-function gnoblin.launches.snapshot() end
 
 ---@class MonitorRect
 ---@field x integer X coordinate in compositor layout.
@@ -1207,23 +1152,13 @@ function Window:lower() end
 ---@return Operation<Json>
 function Window:kill() end
 
----Minimize this window.
+---Set whether this window is minimized.
+---@param enabled boolean True to minimize; false to remove minimization.
 ---@return Operation<Json>
-function Window:minimize() end
+function Window:set_minimized(enabled) end
 
----Toggle this window's minimized state.
----@return Operation<Json>
-function Window:toggle_minimize() end
-
----Remove this window from its minimized state.
----@return Operation<Json>
-function Window:unminimize() end
-
----Restore this window from its minimized, maximized, or fullscreen state.
----@return Operation<Json>
-function Window:restore() end
-
----Restore this window, or minimize it when already restored.
+---Unmaximize this window, restore the frame it had before a snap, or minimize it, whichever
+---applies first.
 ---@return Operation<Json>
 function Window:restore_or_minimize() end
 
@@ -1357,11 +1292,6 @@ function SnapContext:commit(request) end
 ---@class WorkspaceMoveOptions
 ---@field follow? boolean Activate the destination workspace after moving. Default false.
 
----@class WorkspaceMoveResult
----@field workspace Workspace Destination workspace snapshot.
----@field window string ID of the moved window.
----@field follow boolean Whether the destination workspace was activated.
-
 ---Return the current workspace snapshot.
 ---@return Workspace[]
 function gnoblin.workspaces.list() end
@@ -1381,22 +1311,6 @@ function gnoblin.workspaces.by_id(id) end
 ---@return Operation<Workspace>
 function gnoblin.workspaces.create(name, options) end
 
----Rename a workspace.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@param name string Nonempty UTF-8 name of at most 80 characters.
----@return Operation<Workspace>
-function gnoblin.workspaces.rename(workspace, name) end
-
----Remove an inactive, empty workspace when at least one other workspace remains.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@return Operation<Workspace>
-function gnoblin.workspaces.remove(workspace) end
-
----Activate a workspace. The current native compositor supports numbers and rejects IDs.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@return Operation<Workspace>
-function gnoblin.workspaces.activate(workspace) end
-
 ---Activate the next workspace, wrapping to the first.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.next() end
@@ -1404,19 +1318,6 @@ function gnoblin.workspaces.next() end
 ---Activate the previous workspace, wrapping to the last.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.previous() end
-
----Move the focused window to a workspace.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_active(workspace, options) end
-
----Move a window to a workspace.
----@param window Window|string Window snapshot, stable window ID, or "active" for the focused window.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_window(window, workspace, options) end
 
 ---Activate this workspace.
 ---@return Operation<Workspace>
@@ -1430,12 +1331,6 @@ function Workspace:rename(name) end
 ---Remove this workspace if it is inactive and empty.
 ---@return Operation<Workspace>
 function Workspace:remove() end
-
----Move a window into this workspace.
----@param window Window|string Window snapshot or stable window ID.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function Workspace:move_here(window, options) end
 
 ---Call fn(workspace, ...) on a signal of this workspace: "changed" (with the list of changed
 ---fields), "activated" or "closed". Listening ends after "closed".

@@ -125,14 +125,18 @@ static int lua_cli_window_method(lua_State* state) {
         }
     } else if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
                g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
-               g_str_equal(method, "window.minimize") ||
-               g_str_equal(method, "window.toggle_minimize") ||
-               g_str_equal(method, "window.unminimize") || g_str_equal(method, "window.restore") ||
                g_str_equal(method, "window.restore_or_minimize")) {
         if (supplied != 0) {
             json_object_unref(arguments);
             return luaL_error(state, "%s takes no arguments", method);
         }
+    } else if (g_str_equal(method, "window.set_minimized")) {
+        /* Minimizing and restoring are two compositor operations; the boolean picks one. */
+        if (supplied != 1 || !lua_isboolean(state, 2)) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s requires one boolean", method);
+        }
+        method = lua_toboolean(state, 2) ? "window.minimize" : "window.unminimize";
     } else if (g_str_equal(method, "window.set_maximized") ||
                g_str_equal(method, "window.set_fullscreen") ||
                g_str_equal(method, "window.set_above") ||
@@ -274,10 +278,7 @@ void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) 
         {"kill", "window.kill"},
         {"raise", "window.raise"},
         {"lower", "window.lower"},
-        {"minimize", "window.minimize"},
-        {"toggle_minimize", "window.toggle_minimize"},
-        {"unminimize", "window.unminimize"},
-        {"restore", "window.restore"},
+        {"set_minimized", "window.set_minimized"},
         {"restore_or_minimize", "window.restore_or_minimize"},
         {"set_maximized", "window.set_maximized"},
         {"set_fullscreen", "window.set_fullscreen"},

@@ -70,10 +70,7 @@ Each method returns an `Operation` handle.
 | ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
 | `window:close()`                                | None                                      | Ask the application to close.                                |
 | `window:kill()`                                 | None                                      | Kill the client process; use it when `unresponsive` is true. |
-| `window:minimize()`                             | None                                      | Minimize the window.                                         |
-| `window:toggle_minimize()`                      | None                                      | Minimize or restore the window.                              |
-| `window:unminimize()`                           | None                                      | Remove minimization without changing maximization.           |
-| `window:restore()`                              | None                                      | Remove minimization and maximization.                        |
+| `window:set_minimized(enabled)`                 | Boolean                                   | Minimize the window, or remove minimization.                 |
 | `window:restore_or_minimize()`                  | None                                      | Unmaximize, restore the pre-snap frame, or minimize.         |
 | `window:set_maximized(enabled)`                 | Boolean                                   | Set maximization.                                            |
 | `window:set_fullscreen(enabled)`                | Boolean                                   | Set fullscreen.                                              |

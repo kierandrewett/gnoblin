@@ -254,7 +254,6 @@ static int lua_record_method(lua_State* state) {
     LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
     const char* method = lua_tostring(state, lua_upvalueindex(1));
     gboolean workspace = g_str_has_prefix(method, "workspace.");
-    gboolean workspace_move = g_str_equal(method, "workspace.move_window");
     gboolean thumbnail = g_str_equal(method, "window.thumbnail");
     lua_getiuservalue(state, 1, 1);
     int backing = lua_absindex(state, -1);
@@ -264,10 +263,8 @@ static int lua_record_method(lua_State* state) {
     const char* id = lua_tostring(state, -1);
     lua_newtable(state);
     int arguments = lua_absindex(state, -1);
-    if (!workspace_move) {
-        lua_pushstring(state, id);
-        lua_setfield(state, arguments, "id");
-    }
+    lua_pushstring(state, id);
+    lua_setfield(state, arguments, "id");
     lua_remove(state, -2); /* id */
     lua_remove(state, -2); /* backing */
     arguments = lua_gettop(state);
@@ -341,13 +338,16 @@ static int lua_record_method(lua_State* state) {
     }
     if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
         g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
-        g_str_equal(method, "window.minimize") || g_str_equal(method, "window.toggle_minimize") ||
-        g_str_equal(method, "window.restore") || g_str_equal(method, "window.unminimize") ||
         g_str_equal(method, "window.restore_or_minimize") ||
         g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
         g_str_equal(method, "workspace.switch")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
+    } else if (g_str_equal(method, "window.set_minimized")) {
+        /* Minimizing and restoring are two compositor operations; the boolean picks one. */
+        if (supplied != 1 || !lua_isboolean(state, 2))
+            return luaL_error(state, "%s requires one boolean", method);
+        method = lua_toboolean(state, 2) ? "window.minimize" : "window.unminimize";
     } else if (g_str_equal(method, "window.set_above") ||
                g_str_equal(method, "window.set_sticky") ||
                g_str_equal(method, "window.set_maximized") ||
@@ -440,32 +440,6 @@ static int lua_record_method(lua_State* state) {
             return luaL_error(state, "workspace:rename requires a name");
         lua_pushvalue(state, 2);
         lua_setfield(state, arguments, "name");
-    } else if (g_str_equal(method, "workspace.move_window")) {
-        if (supplied < 1 || supplied > 2)
-            return luaL_error(state, "workspace:move_here requires a window and optional options");
-        if (lua_type(state, 2) == LUA_TSTRING)
-            lua_pushvalue(state, 2);
-        else if (lua_isuserdata(state, 2))
-            lua_getfield(state, 2, "id");
-        else
-            return luaL_error(state, "workspace:move_here requires a Window record or window ID");
-        if (lua_type(state, -1) != LUA_TSTRING)
-            return luaL_error(state, "workspace:move_here requires a Window record or window ID");
-        lua_setfield(state, arguments, "window");
-        lua_newtable(state);
-        lua_pushstring(state, id);
-        lua_setfield(state, -2, "id");
-        lua_setfield(state, arguments, "workspace");
-        if (supplied == 2 && !lua_isnil(state, 3)) {
-            static const char* const option_fields[] = {"follow", NULL};
-            if (!lua_istable(state, 3) || !table_fields_allowed(state, 3, option_fields))
-                return luaL_error(state, "workspace:move_here options accept only follow");
-            lua_getfield(state, 3, "follow");
-            if (!lua_isnil(state, -1))
-                lua_setfield(state, arguments, "follow");
-            else
-                lua_pop(state, 1);
-        }
     }
     lua_pushlightuserdata(state, config);
     lua_pushstring(state, method);

@@ -49,9 +49,9 @@ int lua_api_index(lua_State* state) {
     const char* prefix = lua_tostring(state, lua_upvalueindex(1));
     const char* name = luaL_checkstring(state, 2);
     if (!*prefix) {
-        if (g_str_equal(name, "on")) {
+        if (g_str_equal(name, "on") || g_str_equal(name, "once")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-            lua_pushboolean(state, FALSE);
+            lua_pushboolean(state, g_str_equal(name, "once"));
             lua_pushcclosure(state, lua_cli_events_subscribe, 2);
             return 1;
         }
@@ -73,31 +73,6 @@ int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_api_index, 2);
         lua_setfield(state, -2, "__index");
         lua_setmetatable(state, -2);
-        return 1;
-    }
-    if (g_str_equal(prefix, "events") && (g_str_equal(name, "on") || g_str_equal(name, "once"))) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushboolean(state, g_str_equal(name, "once"));
-        lua_pushboolean(state, FALSE);
-        lua_pushcclosure(state, lua_cli_events_subscribe, 3);
-        return 1;
-    }
-    if (g_str_equal(prefix, "events") && g_str_equal(name, "mutter")) {
-        lua_newtable(state);
-        lua_newtable(state);
-        lua_pushliteral(state, "events.mutter");
-        lua_pushvalue(state, lua_upvalueindex(2));
-        lua_pushcclosure(state, lua_api_index, 2);
-        lua_setfield(state, -2, "__index");
-        lua_setmetatable(state, -2);
-        return 1;
-    }
-    if (g_str_equal(prefix, "events.mutter") &&
-        (g_str_equal(name, "on") || g_str_equal(name, "once"))) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushboolean(state, g_str_equal(name, "once"));
-        lua_pushboolean(state, TRUE);
-        lua_pushcclosure(state, lua_cli_events_subscribe, 3);
         return 1;
     }
     if (g_str_equal(prefix, "windows")) {
@@ -128,20 +103,10 @@ int lua_api_index(lua_State* state) {
             const char* method = NULL;
             if (g_str_equal(name, "create"))
                 method = "workspace.create";
-            else if (g_str_equal(name, "rename"))
-                method = "workspace.rename";
-            else if (g_str_equal(name, "remove"))
-                method = "workspace.remove";
-            else if (g_str_equal(name, "activate"))
-                method = "workspace.switch";
             else if (g_str_equal(name, "next"))
                 method = "workspace.next";
             else if (g_str_equal(name, "previous"))
                 method = "workspace.previous";
-            else if (g_str_equal(name, "move_active"))
-                method = "workspace.move_active";
-            else if (g_str_equal(name, "move_window"))
-                method = "workspace.move_window";
             if (method) {
                 lua_pop(state, 1);
                 lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
@@ -277,15 +242,6 @@ int lua_api_index(lua_State* state) {
         return 1;
     }
     if (g_str_equal(prefix, "animations") &&
-        (g_str_equal(name, "seek") || g_str_equal(name, "step") || g_str_equal(name, "play") ||
-         g_str_equal(name, "pause") || g_str_equal(name, "stop"))) {
-        g_autofree char* method = g_strdup_printf("animation.%s", name);
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushstring(state, method);
-        lua_pushcclosure(state, lua_cli_animations_control, 2);
-        return 1;
-    }
-    if (g_str_equal(prefix, "animations") &&
         (g_str_equal(name, "list") || g_str_equal(name, "get") || g_str_equal(name, "inspect") ||
          g_str_equal(name, "surfaces"))) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
@@ -296,11 +252,9 @@ int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, function, 1);
         return 1;
     }
-    if (g_str_equal(prefix, "launches") &&
-        (g_str_equal(name, "list") || g_str_equal(name, "snapshot"))) {
+    if (g_str_equal(prefix, "launches") && g_str_equal(name, "list")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushboolean(state, g_str_equal(name, "snapshot"));
-        lua_pushcclosure(state, lua_cli_launches_read, 2);
+        lua_pushcclosure(state, lua_cli_launches_read, 1);
         return 1;
     }
     if (g_str_equal(prefix, "launches") &&
@@ -377,6 +331,19 @@ int lua_api_index(lua_State* state) {
         {"layer.list", "gnoblin.layers.list"},
         {"input.list", "gnoblin.input.sources"},
         {"input.current", "gnoblin.input.current_source"},
+        {"events.on", "gnoblin.on"},
+        {"events.once", "gnoblin.once"},
+        {"workspaces.rename", "workspace:rename"},
+        {"workspaces.remove", "workspace:remove"},
+        {"workspaces.activate", "workspace:activate"},
+        {"workspaces.move_active", "window:move_to_workspace"},
+        {"workspaces.move_window", "window:move_to_workspace"},
+        {"animations.seek", "preview:seek"},
+        {"animations.step", "preview:step"},
+        {"animations.play", "preview:play"},
+        {"animations.pause", "preview:pause"},
+        {"animations.stop", "preview:stop"},
+        {"launches.snapshot", "gnoblin.launches.list"},
         {"launches.end", "gnoblin.launches.finish"},
         {NULL, NULL},
     };

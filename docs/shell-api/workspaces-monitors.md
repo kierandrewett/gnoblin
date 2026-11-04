@@ -43,24 +43,20 @@ under its session ID.
 
 ## Create and change workspaces
 
-| Method                                                | Arguments                                                | Successful result             |
-| ----------------------------------------------------- | -------------------------------------------------------- | ----------------------------- |
-| `workspaces.create(name, options?)`                   | Name; options `id`, `activate`                           | New `Workspace` record        |
-| `workspaces.rename(workspace, name)`                  | Workspace, new name                                      | Updated `Workspace` record    |
-| `workspaces.remove(workspace)`                        | Workspace                                                | Removed workspace record      |
-| `workspaces.activate(workspace)`                      | Workspace                                                | Activated `Workspace` record  |
-| `workspaces.next()`                                   | None                                                     | Activated `Workspace` record  |
-| `workspaces.previous()`                               | None                                                     | Activated `Workspace` record  |
-| `workspaces.move_active(workspace, options?)`         | Destination; option `follow`                             | `{workspace, window, follow}` |
-| `workspaces.move_window(window, workspace, options?)` | `Window`, window ID or `"active"`; destination; `follow` | `{workspace, window, follow}` |
+| Method                                      | Arguments                      | Successful result            |
+| ------------------------------------------- | ------------------------------ | ---------------------------- |
+| `gnoblin.workspaces.create(name, options?)` | Name; options `id`, `activate` | New `Workspace` record       |
+| `gnoblin.workspaces.next()`                 | None                           | Activated `Workspace` record |
+| `gnoblin.workspaces.previous()`             | None                           | Activated `Workspace` record |
 
-A workspace argument is a workspace ID string or a one-based workspace number
-from 1 to 1024:
+Change one workspace through its object, and move a window with
+`window:move_to_workspace(workspace, options?)`. A workspace argument there is a
+workspace ID string or a one-based workspace number from 1 to 1024:
 
 ```lua
-gnoblin.workspaces.activate(2)
-gnoblin.workspaces.rename(2, "Mail")
-gnoblin.workspaces.move_active(3, {follow = true})
+gnoblin.workspaces.list()[2]:activate()
+gnoblin.workspaces.by_id("mail"):rename("Mail")
+gnoblin.windows.focused():move_to_workspace(3, {follow = true})
 ```
 
 Mutations return operation handles and complete asynchronously. For socket
@@ -89,12 +85,11 @@ workspace, or a workspace that still contains windows.
 Workspace objects also provide these methods. Call them with colon syntax
 from a runtime event callback; each returns an `Operation` handle.
 
-| Method                                  | Arguments                                                                   | Effect                              |
-| --------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
-| `workspace:activate()`                  | None                                                                        | Activate this workspace.            |
-| `workspace:rename(name)`                | Nonempty name up to 80 characters                                           | Rename this workspace.              |
-| `workspace:remove()`                    | None                                                                        | Remove this workspace when allowed. |
-| `workspace:move_here(window, options?)` | `Window` object, stable window ID, or `"active"`; optional `follow` boolean | Move the window to this workspace.  |
+| Method                   | Arguments                         | Effect                              |
+| ------------------------ | --------------------------------- | ----------------------------------- |
+| `workspace:activate()`   | None                              | Activate this workspace.            |
+| `workspace:rename(name)` | Nonempty name up to 80 characters | Rename this workspace.              |
+| `workspace:remove()`     | None                              | Remove this workspace when allowed. |
 
 ## Monitors
 

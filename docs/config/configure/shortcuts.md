@@ -30,7 +30,7 @@ gnoblin.configure {
     },
 }
 
-gnoblin.events.on("gnoblin.shortcut.session.key", function(event)
+gnoblin.on("gnoblin.shortcut.session.key", function(event)
     if event.id == "launcher" and event.phase == "press" then
         -- Handle keys typed after pressing Super.
     end

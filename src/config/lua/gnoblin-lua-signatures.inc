@@ -180,10 +180,6 @@ static const ApiMember api_fields_LaunchEndResult[] = {
     {"ok", "boolean", FALSE, "True when the request was accepted."},
     {"token", "string", FALSE, "Launch token."},
 };
-static const ApiMember api_fields_LaunchSnapshot[] = {
-    {"launches", "Launch[]", FALSE, "Current launch records."},
-    {"revision", "integer", FALSE, "Revision of the launch snapshot."},
-};
 static const ApiMember api_fields_LayerAnimationPolicy[] = {
     {"namespace", "string", FALSE, "Layer namespace."},
     {"enter", "any", FALSE, "Enter animation policy."},
@@ -611,11 +607,6 @@ static const ApiMember api_fields_WorkspaceCreateOptions[] = {
 static const ApiMember api_fields_WorkspaceMoveOptions[] = {
     {"follow", "boolean", TRUE, "Activate the destination workspace after moving. Default false."},
 };
-static const ApiMember api_fields_WorkspaceMoveResult[] = {
-    {"workspace", "Workspace", FALSE, "Destination workspace snapshot."},
-    {"window", "string", FALSE, "ID of the moved window."},
-    {"follow", "boolean", FALSE, "Whether the destination workspace was activated."},
-};
 
 static const ApiClass api_classes[] = {
     {"AcceptedResult", "", api_fields_AcceptedResult, 1},
@@ -645,7 +636,6 @@ static const ApiClass api_classes[] = {
     {"Launch", "", api_fields_Launch, 6},
     {"LaunchBeginOptions", "", api_fields_LaunchBeginOptions, 1},
     {"LaunchEndResult", "", api_fields_LaunchEndResult, 2},
-    {"LaunchSnapshot", "", api_fields_LaunchSnapshot, 2},
     {"LayerAnimationPolicy", "", api_fields_LayerAnimationPolicy, 5},
     {"LayerFilter", "", api_fields_LayerFilter, 3},
     {"LayerSurface", "", api_fields_LayerSurface, 7},
@@ -702,7 +692,6 @@ static const ApiClass api_classes[] = {
     {"Workspace", "", api_fields_Workspace, 6},
     {"WorkspaceCreateOptions", "", api_fields_WorkspaceCreateOptions, 2},
     {"WorkspaceMoveOptions", "", api_fields_WorkspaceMoveOptions, 1},
-    {"WorkspaceMoveResult", "", api_fields_WorkspaceMoveResult, 3},
     {NULL, NULL, NULL, 0},
 };
 
@@ -716,227 +705,182 @@ static const ApiMember api_params_1[] = {
 static const ApiMember api_params_3[] = {
     {"context", "FocusContext", FALSE, "Live context from the current shortcut event."},
 };
-static const ApiMember api_params_7[] = {
+static const ApiMember api_params_6[] = {
     {"x", "integer", FALSE, "X coordinate, from -100000 to 100000."},
     {"y", "integer", FALSE, "Y coordinate, from -100000 to 100000."},
 };
-static const ApiMember api_params_8[] = {
+static const ApiMember api_params_7[] = {
     {"monitor", "string", FALSE, "Monitor ID."},
 };
-static const ApiMember api_params_9[] = {
+static const ApiMember api_params_8[] = {
     {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024."},
     {"options", "WorkspaceMoveOptions", TRUE, ""},
 };
-static const ApiMember api_params_10[] = {
+static const ApiMember api_params_9[] = {
     {"signal", "\"changed\"|\"focused\"|\"unfocused\"|\"closed\"", FALSE, ""},
     {"fn", "fun(window: Window, changed?: string[])", FALSE, ""},
 };
-static const ApiMember api_params_14[] = {
+static const ApiMember api_params_13[] = {
     {"width", "integer", FALSE, "Width, from 1 to 32768."},
     {"height", "integer", FALSE, "Height, from 1 to 32768."},
 };
-static const ApiMember api_params_17[] = {
+static const ApiMember api_params_15[] = {
     {"enabled", "boolean", FALSE, "True to keep above; false to clear."},
 };
-static const ApiMember api_params_18[] = {
+static const ApiMember api_params_16[] = {
     {"enabled", "boolean", FALSE, "True to enter fullscreen; false to leave it."},
 };
-static const ApiMember api_params_19[] = {
+static const ApiMember api_params_17[] = {
     {"enabled", "boolean", FALSE, "True to maximize; false to restore."},
 };
-static const ApiMember api_params_20[] = {
+static const ApiMember api_params_18[] = {
+    {"enabled", "boolean", FALSE, "True to minimize; false to remove minimization."},
+};
+static const ApiMember api_params_19[] = {
     {"x", "number", FALSE, ""},
     {"y", "number", FALSE, ""},
 };
-static const ApiMember api_params_21[] = {
+static const ApiMember api_params_20[] = {
     {"opacity", "number", FALSE, ""},
 };
-static const ApiMember api_params_22[] = {
+static const ApiMember api_params_21[] = {
     {"degrees", "number", FALSE, ""},
 };
-static const ApiMember api_params_23[] = {
+static const ApiMember api_params_22[] = {
     {"scale", "number", FALSE, ""},
 };
-static const ApiMember api_params_24[] = {
+static const ApiMember api_params_23[] = {
     {"enabled", "boolean", FALSE, "True to make sticky; false to clear."},
 };
-static const ApiMember api_params_25[] = {
+static const ApiMember api_params_24[] = {
     {"width", "integer", FALSE, "Thumbnail width from 1 to 480 pixels."},
     {"height", "integer", FALSE, "Thumbnail height from 1 to 320 pixels."},
 };
-static const ApiMember api_params_28[] = {
+static const ApiMember api_params_25[] = {
     {"property", "string", FALSE, "A field of Window, such as \"title\" or \"frame\"."},
     {"fn", "fun(window: Window, value: any, old: any)", FALSE, ""},
 };
-static const ApiMember api_params_29[] = {
+static const ApiMember api_params_26[] = {
     {"animation", "AnimationArgs", FALSE, ""},
 };
-static const ApiMember api_params_30[] = {
+static const ApiMember api_params_27[] = {
     {"name", "string", FALSE, "Animation name, 1 to 80 ASCII letters, digits, underscores, or hyphens."},
 };
-static const ApiMember api_params_31[] = {
+static const ApiMember api_params_28[] = {
     {"name", "string", FALSE, "Animation name."},
     {"options", "AnimationInspectOptions", TRUE, ""},
 };
-static const ApiMember api_params_33[] = {
-    {"session", "string", FALSE, "Preview session ID."},
-};
-static const ApiMember api_params_34[] = {
-    {"session", "string", FALSE, "Preview session ID."},
-};
-static const ApiMember api_params_35[] = {
+static const ApiMember api_params_30[] = {
     {"name", "string", FALSE, "Animation name."},
     {"options", "AnimationPreviewOptions", TRUE, ""},
 };
-static const ApiMember api_params_36[] = {
-    {"session", "string", FALSE, "Preview session ID."},
-    {"progress", "number", FALSE, "Progress from 0 to 1."},
-};
-static const ApiMember api_params_37[] = {
-    {"session", "string", FALSE, "Preview session ID."},
-    {"milliseconds", "integer", FALSE, "Step duration, from 1 to 60000."},
-};
-static const ApiMember api_params_38[] = {
-    {"session", "string", FALSE, "Preview session ID."},
-};
-static const ApiMember api_params_41[] = {
+static const ApiMember api_params_33[] = {
     {"values", "table", FALSE, "Array values; numeric keys must form a dense sequence starting at 1 when converted."},
 };
-static const ApiMember api_params_46[] = {
+static const ApiMember api_params_38[] = {
     {"settings", "table", FALSE, "Settings table to merge into the active configuration."},
 };
-static const ApiMember api_params_48[] = {
+static const ApiMember api_params_40[] = {
     {"name", "string", FALSE, "linear, sine, quad, cubic, quart, quint, expo, circ, back, elastic or bounce."},
     {"t", "number", FALSE, "Progress from 0 to 1; values outside are clamped."},
     {"direction", "\"in\"|\"out\"|\"in_out\"", TRUE, "Default \"in_out\"."},
 };
-static const ApiMember api_params_49[] = {
-    {"name", "string", FALSE, "Mutter event name, 1 to 128 UTF-8 bytes."},
-    {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
-};
-static const ApiMember api_params_50[] = {
-    {"name", "string", FALSE, "Mutter event name, 1 to 128 UTF-8 bytes."},
-    {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
-};
-static const ApiMember api_params_51[] = {
-    {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
-    {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
-};
-static const ApiMember api_params_52[] = {
-    {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
-    {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
-};
-static const ApiMember api_params_53[] = {
+static const ApiMember api_params_41[] = {
     {"filter", "FocusHistoryFilter", TRUE, ""},
 };
-static const ApiMember api_params_57[] = {
+static const ApiMember api_params_45[] = {
     {"match", "InputHandlerMatch", FALSE, "Event selectors. type is required; other selectors are optional."},
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
 };
-static const ApiMember api_params_59[] = {
+static const ApiMember api_params_47[] = {
     {"type", "\"xkb\"|\"ibus\"", FALSE, "Source implementation."},
     {"id", "string", FALSE, "Non-empty source ID."},
 };
-static const ApiMember api_params_60[] = {
+static const ApiMember api_params_48[] = {
     {"value", "boolean|\"inherit\"", FALSE, "True locks orientation; false unlocks it; \"inherit\" clears the runtime override."},
 };
-static const ApiMember api_params_62[] = {
+static const ApiMember api_params_50[] = {
     {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
 };
-static const ApiMember api_params_63[] = {
+static const ApiMember api_params_51[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
     {"application", "string", FALSE, "Non-empty application identifier, at most 512 characters."},
     {"options", "LaunchBeginOptions", TRUE, ""},
 };
-static const ApiMember api_params_64[] = {
+static const ApiMember api_params_52[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
 };
-static const ApiMember api_params_67[] = {
+static const ApiMember api_params_54[] = {
     {"namespace", "string", FALSE, "UTF-8 namespace from 1 to 128 bytes."},
 };
-static const ApiMember api_params_68[] = {
+static const ApiMember api_params_55[] = {
     {"filter", "LayerFilter", TRUE, ""},
 };
-static const ApiMember api_params_69[] = {
+static const ApiMember api_params_56[] = {
     {"a", "number", FALSE, ""},
     {"b", "number", FALSE, ""},
     {"t", "number", FALSE, ""},
 };
-static const ApiMember api_params_70[] = {
+static const ApiMember api_params_57[] = {
     {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories."},
 };
-static const ApiMember api_params_74[] = {
+static const ApiMember api_params_61[] = {
     {"value", "boolean|\"inherit\"", FALSE, "true or false sets the override; \"inherit\" restores the configured or system value."},
 };
-static const ApiMember api_params_75[] = {
+static const ApiMember api_params_62[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
-static const ApiMember api_params_76[] = {
+static const ApiMember api_params_63[] = {
+    {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
+    {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
+};
+static const ApiMember api_params_64[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
-static const ApiMember api_params_83[] = {
+static const ApiMember api_params_71[] = {
     {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
     {"options", "ProcessOptions", TRUE, ""},
 };
-static const ApiMember api_params_94[] = {
+static const ApiMember api_params_82[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
 };
-static const ApiMember api_params_95[] = {
+static const ApiMember api_params_83[] = {
     {"id", "string", FALSE, "Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens."},
     {"accelerator", "string", FALSE, "Valid accelerator. Bare \"Super\" requires capture_input=true, trigger=\"release\", and hold=\"none\"."},
     {"options", "ShortcutBindOptions", TRUE, ""},
 };
-static const ApiMember api_params_96[] = {
+static const ApiMember api_params_84[] = {
     {"options", "ShortcutCaptureOptions", TRUE, ""},
 };
-static const ApiMember api_params_97[] = {
+static const ApiMember api_params_85[] = {
     {"id", "string", FALSE, "Binding ID owned by this Lua runtime."},
     {"session_id", "integer", FALSE, "Positive ID of the active binding session."},
 };
-static const ApiMember api_params_99[] = {
+static const ApiMember api_params_87[] = {
     {"id", "string", FALSE, "Binding ID owned by this Lua runtime."},
 };
-static const ApiMember api_params_101[] = {
+static const ApiMember api_params_89[] = {
     {"seconds", "number", FALSE, "From 0 to 86400."},
 };
-static const ApiMember api_params_105[] = {
+static const ApiMember api_params_93[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
-static const ApiMember api_params_106[] = {
+static const ApiMember api_params_94[] = {
     {"id", "string", FALSE, "Stable window ID."},
 };
-static const ApiMember api_params_108[] = {
+static const ApiMember api_params_96[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_109[] = {
+static const ApiMember api_params_97[] = {
     {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
 };
-static const ApiMember api_params_110[] = {
-    {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024."},
-};
-static const ApiMember api_params_112[] = {
+static const ApiMember api_params_99[] = {
     {"id", "string", FALSE, "Stable workspace ID."},
 };
-static const ApiMember api_params_113[] = {
+static const ApiMember api_params_100[] = {
     {"name", "string", FALSE, "Nonempty UTF-8 name of at most 80 characters."},
     {"options", "WorkspaceCreateOptions", TRUE, ""},
-};
-static const ApiMember api_params_115[] = {
-    {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024."},
-    {"options", "WorkspaceMoveOptions", TRUE, ""},
-};
-static const ApiMember api_params_116[] = {
-    {"window", "Window|string", FALSE, "Window snapshot, stable window ID, or \"active\" for the focused window."},
-    {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024."},
-    {"options", "WorkspaceMoveOptions", TRUE, ""},
-};
-static const ApiMember api_params_119[] = {
-    {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024."},
-};
-static const ApiMember api_params_120[] = {
-    {"workspace", "string|integer", FALSE, "Stable workspace ID, or one-based number from 1 to 1024."},
-    {"name", "string", FALSE, "Nonempty UTF-8 name of at most 80 characters."},
 };
 
 static const ApiFunction api_functions[] = {
@@ -946,84 +890,72 @@ static const ApiFunction api_functions[] = {
     {"Window:focus", "Focus this window using a live shortcut-event context.", api_params_3, 1, "Operation<Json>"},
     {"Window:kill", "Send SIGKILL to the client process that owns this window. Use it for a window whose `unresponsive` field is true; the client loses unsaved work.", NULL, 0, "Operation<Json>"},
     {"Window:lower", "Lower this window below the others.", NULL, 0, "Operation<Json>"},
-    {"Window:minimize", "Minimize this window.", NULL, 0, "Operation<Json>"},
-    {"Window:move", "Move this window to a position in the compositor layout.", api_params_7, 2, "Operation<Json>"},
-    {"Window:move_to_monitor", "Move this window to a monitor.", api_params_8, 1, "Operation<Json>"},
-    {"Window:move_to_workspace", "Move this window to a workspace.", api_params_9, 2, "Operation<Json>"},
-    {"Window:on", "Call fn(window, ...) on a signal of this window: \"changed\" (with the list of changed fields), \"focused\", \"unfocused\" or \"closed\". Listening ends after \"closed\".", api_params_10, 2, "{unsubscribe: fun()}"},
+    {"Window:move", "Move this window to a position in the compositor layout.", api_params_6, 2, "Operation<Json>"},
+    {"Window:move_to_monitor", "Move this window to a monitor.", api_params_7, 1, "Operation<Json>"},
+    {"Window:move_to_workspace", "Move this window to a workspace.", api_params_8, 2, "Operation<Json>"},
+    {"Window:on", "Call fn(window, ...) on a signal of this window: \"changed\" (with the list of changed fields), \"focused\", \"unfocused\" or \"closed\". Listening ends after \"closed\".", api_params_9, 2, "{unsubscribe: fun()}"},
     {"Window:present", "Focus a window whose program the runtime started with gnoblin.process.spawn. No key press is needed. It waits until the window is shown and no key press or click reached a window for 250 ms, at most 5 seconds, then succeeds when the window has focus.", NULL, 0, "Operation<{id: string, focused: boolean}>"},
     {"Window:raise", "Raise this window above the others without focusing it.", NULL, 0, "Operation<Json>"},
     {"Window:reset_visuals", "Draw this window without any visual change the runtime set.", NULL, 0, "Operation<WindowVisual>"},
-    {"Window:resize", "Resize this window.", api_params_14, 2, "Operation<Json>"},
-    {"Window:restore", "Restore this window from its minimized, maximized, or fullscreen state.", NULL, 0, "Operation<Json>"},
-    {"Window:restore_or_minimize", "Restore this window, or minimize it when already restored.", NULL, 0, "Operation<Json>"},
-    {"Window:set_above", "Set whether this window stays above other windows.", api_params_17, 1, "Operation<Json>"},
-    {"Window:set_fullscreen", "Set whether this window is fullscreen.", api_params_18, 1, "Operation<Json>"},
-    {"Window:set_maximized", "Set whether this window is maximized.", api_params_19, 1, "Operation<Json>"},
-    {"Window:set_offset", "Draw this window moved by an offset in logical pixels, each from -100000 to 100000.", api_params_20, 2, "Operation<WindowVisual>"},
-    {"Window:set_opacity", "Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn and picked, not its frame or what the client sees. The runtime's reload clears them.", api_params_21, 1, "Operation<WindowVisual>"},
-    {"Window:set_rotation", "Draw this window rotated about its centre, in degrees from -3600 to 3600.", api_params_22, 1, "Operation<WindowVisual>"},
-    {"Window:set_scale", "Draw this window scaled about its centre, from 0.01 to 10.", api_params_23, 1, "Operation<WindowVisual>"},
-    {"Window:set_sticky", "Set whether this window appears on every workspace.", api_params_24, 1, "Operation<Json>"},
-    {"Window:thumbnail", "Capture a thumbnail at the requested dimensions.", api_params_25, 2, "Operation<Json>"},
-    {"Window:toggle_minimize", "Toggle this window's minimized state.", NULL, 0, "Operation<Json>"},
-    {"Window:unminimize", "Remove this window from its minimized state.", NULL, 0, "Operation<Json>"},
-    {"Window:watch", "Call fn(window, value, old) when one field of this window changes.", api_params_28, 2, "{unsubscribe: fun()}"},
-    {"animation", "Declare or update a named animation in configuration.", api_params_29, 1, ""},
-    {"animations.get", "Return an animation by name, or nil if it is not registered.", api_params_30, 1, "AnimationInfo|nil"},
-    {"animations.inspect", "Resolve an animation against a visible target without starting it.", api_params_31, 2, "AnimationInspection"},
+    {"Window:resize", "Resize this window.", api_params_13, 2, "Operation<Json>"},
+    {"Window:restore_or_minimize", "Unmaximize this window, restore the frame it had before a snap, or minimize it, whichever applies first.", NULL, 0, "Operation<Json>"},
+    {"Window:set_above", "Set whether this window stays above other windows.", api_params_15, 1, "Operation<Json>"},
+    {"Window:set_fullscreen", "Set whether this window is fullscreen.", api_params_16, 1, "Operation<Json>"},
+    {"Window:set_maximized", "Set whether this window is maximized.", api_params_17, 1, "Operation<Json>"},
+    {"Window:set_minimized", "Set whether this window is minimized.", api_params_18, 1, "Operation<Json>"},
+    {"Window:set_offset", "Draw this window moved by an offset in logical pixels, each from -100000 to 100000.", api_params_19, 2, "Operation<WindowVisual>"},
+    {"Window:set_opacity", "Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn and picked, not its frame or what the client sees. The runtime's reload clears them.", api_params_20, 1, "Operation<WindowVisual>"},
+    {"Window:set_rotation", "Draw this window rotated about its centre, in degrees from -3600 to 3600.", api_params_21, 1, "Operation<WindowVisual>"},
+    {"Window:set_scale", "Draw this window scaled about its centre, from 0.01 to 10.", api_params_22, 1, "Operation<WindowVisual>"},
+    {"Window:set_sticky", "Set whether this window appears on every workspace.", api_params_23, 1, "Operation<Json>"},
+    {"Window:thumbnail", "Capture a thumbnail at the requested dimensions.", api_params_24, 2, "Operation<Json>"},
+    {"Window:watch", "Call fn(window, value, old) when one field of this window changes.", api_params_25, 2, "{unsubscribe: fun()}"},
+    {"animation", "Declare or update a named animation in configuration.", api_params_26, 1, ""},
+    {"animations.get", "Return an animation by name, or nil if it is not registered.", api_params_27, 1, "AnimationInfo|nil"},
+    {"animations.inspect", "Resolve an animation against a visible target without starting it.", api_params_28, 2, "AnimationInspection"},
     {"animations.list", "Return the configured native animation records.", NULL, 0, "AnimationInfo[]"},
-    {"animations.pause", "Pause a preview session.", api_params_33, 1, "Operation<AnimationPreview>"},
-    {"animations.play", "Resume a preview session.", api_params_34, 1, "Operation<AnimationPreview>"},
-    {"animations.preview", "Start a controllable preview of an animation on a visible target.", api_params_35, 2, "Operation<AnimationPreview>"},
-    {"animations.seek", "Set a preview session to a progress value from 0 to 1.", api_params_36, 2, "Operation<AnimationPreview>"},
-    {"animations.step", "Advance a preview session by a duration in milliseconds.", api_params_37, 2, "Operation<AnimationPreview>"},
-    {"animations.stop", "Stop a preview session and restore the target's original actor state.", api_params_38, 1, "Operation<AnimationStopResult>"},
+    {"animations.preview", "Start a controllable preview of an animation on a visible target.", api_params_30, 2, "Operation<AnimationPreview>"},
     {"animations.surfaces", "List visible layer-shell surfaces that can be targeted by animations.", NULL, 0, "{surfaces: AnimationSurface[]}"},
     {"appearance.color_scheme", "Read the current desktop color scheme, or nil when unavailable.", NULL, 0, "ColorScheme|nil"},
-    {"array", "Mark a table as an array so configuration conversion preserves it as a list.", api_params_41, 1, "table"},
+    {"array", "Mark a table as an array so configuration conversion preserves it as a list.", api_params_33, 1, "table"},
     {"capabilities.list", "Return the native compositor and protocol capabilities as read-only records.", NULL, 0, "Capability[]"},
     {"config.default", "Return the bundled default Lua configuration source.", NULL, 0, "string"},
     {"config.path", "Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.", NULL, 0, "string"},
     {"config.restore_default", "Replace the standard config directory with bundled defaults, save the old directory as a backup, and reload the restored configuration.", NULL, 0, "Operation<AcceptedResult>"},
-    {"configure", "Merge settings into the active Lua configuration.", api_params_46, 1, ""},
+    {"configure", "Merge settings into the active Lua configuration.", api_params_38, 1, ""},
     {"console.toggle", "Toggle the shell console.", NULL, 0, "Operation<ConsoleToggleResult>"},
-    {"ease", "Return eased progress for t from 0 to 1.", api_params_48, 3, "number"},
-    {"events.mutter.on", "Register a callback for a Mutter event. The name must start with `mutter.`.", api_params_49, 2, "EventSubscription"},
-    {"events.mutter.once", "Register a callback for one Mutter event. The name must start with `mutter.`.", api_params_50, 2, "EventSubscription"},
-    {"events.on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_51, 2, "EventSubscription"},
-    {"events.once", "Register a callback that is removed after its first event.", api_params_52, 2, "EventSubscription"},
-    {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_53, 1, "Window[]"},
+    {"ease", "Return eased progress for t from 0 to 1.", api_params_40, 3, "number"},
+    {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_41, 1, "Window[]"},
     {"focus.policy", "Read the committed focus policy.", NULL, 0, "FocusPolicy"},
     {"input.current_source", "Return the selected input source, or nil when there is no current source.", NULL, 0, "InputSource|nil"},
     {"input.devices", "Return available input devices.", NULL, 0, "InputDevice[]"},
-    {"input.on", "Register a Lua policy callback for matching input events.", api_params_57, 2, "string"},
+    {"input.on", "Register a Lua policy callback for matching input events.", api_params_45, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
-    {"input.select_source", "Select an XKB layout or IBus engine.", api_params_59, 2, "Operation<InputSource>"},
-    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_60, 1, "Operation<OrientationLock>"},
+    {"input.select_source", "Select an XKB layout or IBus engine.", api_params_47, 2, "Operation<InputSource>"},
+    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_48, 1, "Operation<OrientationLock>"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
-    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_62, 1, "Operation<TextTarget>"},
-    {"launches.begin", "Begin tracking a matching application launch.", api_params_63, 3, "Operation<Launch>"},
-    {"launches.finish", "Finish tracking a launch token.", api_params_64, 1, "Operation<LaunchEndResult>"},
+    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_50, 1, "Operation<TextTarget>"},
+    {"launches.begin", "Begin tracking a matching application launch.", api_params_51, 3, "Operation<Launch>"},
+    {"launches.finish", "Finish tracking a launch token.", api_params_52, 1, "Operation<LaunchEndResult>"},
     {"launches.list", "Return the current launch records.", NULL, 0, "Launch[]"},
-    {"launches.snapshot", "Return the launch records and their snapshot revision.", NULL, 0, "LaunchSnapshot"},
-    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_67, 1, "LayerAnimationPolicy"},
-    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_68, 1, "LayerSurface[]"},
-    {"lerp", "Return a + (b - a) * t.", api_params_69, 3, "number"},
-    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_70, 1, "boolean"},
+    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_54, 1, "LayerAnimationPolicy"},
+    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_55, 1, "LayerSurface[]"},
+    {"lerp", "Return a + (b - a) * t.", api_params_56, 3, "number"},
+    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_57, 1, "boolean"},
     {"monitors.list", "Return the current monitor snapshot.", NULL, 0, "Monitor[]"},
     {"monitors.primary", "Return the primary monitor, or nil when none is available.", NULL, 0, "Monitor|nil"},
     {"monitors.privacy_screen", "Return the current privacy screen settings and per-monitor states.", NULL, 0, "PrivacyScreenSnapshot"},
-    {"monitors.set_privacy_screen", "Set the runtime privacy screen override.", api_params_74, 1, "Operation<Json>"},
-    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_75, 2, "EventSubscription"},
-    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_76, 1, "Output|nil"},
+    {"monitors.set_privacy_screen", "Set the runtime privacy screen override.", api_params_61, 1, "Operation<Json>"},
+    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_62, 2, "EventSubscription"},
+    {"once", "Register a callback that is removed after its first event.", api_params_63, 2, "EventSubscription"},
+    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_64, 1, "Output|nil"},
     {"outputs.list", "Return all current outputs. The list is empty until the first output snapshot is published.", NULL, 0, "Output[]"},
     {"outputs.primary", "Return the primary output, or nil when there is none.", NULL, 0, "Output|nil"},
     {"outputs.renderer", "Return the compositor renderer, or nil until the first output snapshot is published.", NULL, 0, "Renderer|nil"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_83, 2, "Process"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_71, 2, "Process"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.activity", "Read the session idle state and elapsed idle time.", NULL, 0, "SessionActivity"},
@@ -1034,32 +966,27 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Request that the machine reboot through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Request that the session suspend through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
-    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_94, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_95, 3, "Operation<ShortcutBinding>"},
-    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_96, 1, "Operation<ShortcutCaptureResult>"},
-    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_97, 2, "Operation<ShortcutEndSessionResult>"},
+    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_82, 1, "ShortcutAction[]"},
+    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_83, 3, "Operation<ShortcutBinding>"},
+    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_84, 1, "Operation<ShortcutCaptureResult>"},
+    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_85, 2, "Operation<ShortcutEndSessionResult>"},
     {"shortcuts.list", "List the configured shortcut records.", NULL, 0, "ShortcutState[]"},
-    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_99, 1, "Operation<ShortcutUnbindResult>"},
+    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_87, 1, "Operation<ShortcutUnbindResult>"},
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
-    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_101, 1, "Operation<nil>"},
+    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_89, 1, "Operation<nil>"},
     {"timers.now", "Seconds on a monotonic clock. Only differences between two readings are meaningful.", NULL, 0, "number"},
     {"tween", "Create an empty tween.", NULL, 0, "Tween"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_105, 1, ""},
-    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_106, 1, "Window|nil"},
+    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_93, 1, ""},
+    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_94, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_108, 1, "Window[]"},
-    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_109, 1, "Operation<SnapContext>"},
-    {"workspaces.activate", "Activate a workspace. The current native compositor supports numbers and rejects IDs.", api_params_110, 1, "Operation<Workspace>"},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_96, 1, "Window[]"},
+    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_97, 1, "Operation<SnapContext>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_112, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_113, 2, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_99, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_100, 2, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
-    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_115, 2, "Operation<WorkspaceMoveResult>"},
-    {"workspaces.move_window", "Move a window to a workspace.", api_params_116, 3, "Operation<WorkspaceMoveResult>"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},
-    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_119, 1, "Operation<Workspace>"},
-    {"workspaces.rename", "Rename a workspace.", api_params_120, 2, "Operation<Workspace>"},
     {NULL, NULL, NULL, 0, NULL},
 };

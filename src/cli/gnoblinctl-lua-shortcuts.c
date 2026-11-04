@@ -31,43 +31,6 @@ static int lua_cli_workspace_method(lua_State* state) {
         }
         json_object_set_string_member(arguments, "id", id);
         json_object_set_string_member(arguments, "name", lua_tostring(state, 2));
-    } else if (g_str_equal(method, "workspace.move_window")) {
-        if (supplied < 1 || supplied > 2 ||
-            (supplied == 2 && !lua_isnil(state, 3) && !lua_istable(state, 3))) {
-            json_object_unref(arguments);
-            return luaL_error(state,
-                              "workspace.move_window requires a window and optional options");
-        }
-        g_autofree char* window = NULL;
-        if (lua_type(state, 2) == LUA_TSTRING)
-            window = g_strdup(lua_tostring(state, 2));
-        else if (luaL_testudata(state, 2, GNOBLINCTL_WINDOW_RECORD_METATABLE)) {
-            lua_getiuservalue(state, 2, 1);
-            lua_getfield(state, -1, "id");
-            if (lua_isstring(state, -1))
-                window = g_strdup(lua_tostring(state, -1));
-            lua_pop(state, 2);
-        }
-        if (!window || !*window) {
-            json_object_unref(arguments);
-            return luaL_error(state, "workspace.move_window requires a Window record or window ID");
-        }
-        json_object_set_string_member(arguments, "window", window);
-        JsonObject* workspace = json_object_new();
-        json_object_set_string_member(workspace, "id", id);
-        JsonNode* workspace_node = json_node_new(JSON_NODE_OBJECT);
-        json_node_take_object(workspace_node, workspace);
-        json_object_set_member(arguments, "workspace", workspace_node);
-        if (supplied == 2 && !lua_isnil(state, 3)) {
-            g_autoptr(JsonObject) options = lua_cli_table_object(state, 3, "workspace options");
-            JsonNode* follow = json_object_get_member(options, "follow");
-            if (json_object_get_size(options) != 1 || !follow || !JSON_NODE_HOLDS_VALUE(follow) ||
-                json_node_get_value_type(follow) != G_TYPE_BOOLEAN) {
-                json_object_unref(arguments);
-                return luaL_error(state, "workspace options accept only boolean follow");
-            }
-            json_object_set_boolean_member(arguments, "follow", json_node_get_boolean(follow));
-        }
     } else {
         json_object_unref(arguments);
         return luaL_error(state, "unsupported Workspace method %s", method);
@@ -96,7 +59,6 @@ void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* objec
         {"activate", "workspace.switch"},
         {"rename", "workspace.rename"},
         {"remove", "workspace.remove"},
-        {"move_here", "workspace.move_window"},
         {NULL, NULL},
     };
     for (guint i = 0; methods[i][0]; i++) {

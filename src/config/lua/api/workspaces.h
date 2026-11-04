@@ -21,11 +21,6 @@ rejects it.
 ---@class WorkspaceMoveOptions
 ---@field follow? boolean Activate the destination workspace after moving. Default false.
 
----@class WorkspaceMoveResult
----@field workspace Workspace Destination workspace snapshot.
----@field window string ID of the moved window.
----@field follow boolean Whether the destination workspace was activated.
-
 ---Return the current workspace snapshot.
 ---@return Workspace[]
 function gnoblin.workspaces.list() end
@@ -46,22 +41,6 @@ function gnoblin.workspaces.by_id(id) end
 ---@return Operation<Workspace>
 function gnoblin.workspaces.create(name, options) end
 
----Rename a workspace.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@param name string Nonempty UTF-8 name of at most 80 characters.
----@return Operation<Workspace>
-function gnoblin.workspaces.rename(workspace, name) end
-
----Remove an inactive, empty workspace when at least one other workspace remains.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@return Operation<Workspace>
-function gnoblin.workspaces.remove(workspace) end
-
----Activate a workspace. The current native compositor supports numbers and rejects IDs.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@return Operation<Workspace>
-function gnoblin.workspaces.activate(workspace) end
-
 ---Activate the next workspace, wrapping to the first.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.next() end
@@ -69,20 +48,6 @@ function gnoblin.workspaces.next() end
 ---Activate the previous workspace, wrapping to the last.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.previous() end
-
----Move the focused window to a workspace.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_active(workspace, options) end
-
----Move a window to a workspace.
----@param window Window|string Window snapshot, stable window ID, or "active" for the focused
-window.
----@param workspace string|integer Stable workspace ID, or one-based number from 1 to 1024.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_window(window, workspace, options) end
 
 ---Activate this workspace.
 ---@return Operation<Workspace>
@@ -96,12 +61,6 @@ function Workspace:rename(name) end
 ---Remove this workspace if it is inactive and empty.
 ---@return Operation<Workspace>
 function Workspace:remove() end
-
----Move a window into this workspace.
----@param window Window|string Window snapshot or stable window ID.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function Workspace:move_here(window, options) end
 
 ---Call fn(workspace, ...) on a signal of this workspace: "changed" (with the list of changed
 ---fields), "activated" or "closed". Listening ends after "closed".

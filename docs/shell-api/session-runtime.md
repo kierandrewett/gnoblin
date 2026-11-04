@@ -89,7 +89,7 @@ republishing state, or a new configuration generation is accepted. Failed or
 rolled-back reloads do not change the reported generation.
 
 ```lua
-gnoblin.events.on("gnoblin.runtime.status-changed", function(event)
+gnoblin.on("gnoblin.runtime.status-changed", function(event)
     print(event.state, event.generation)
 end)
 ```

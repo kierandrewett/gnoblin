@@ -317,7 +317,6 @@ int lua_cli_launches_read(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.launches reads take no arguments");
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    gboolean return_snapshot = lua_toboolean(state, lua_upvalueindex(2));
     JsonObject* arguments = json_object_new();
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result =
@@ -338,12 +337,6 @@ int lua_cli_launches_read(lua_State* state) {
         if (!JSON_NODE_HOLDS_OBJECT(value) ||
             !lua_cli_launch_record_valid(json_node_get_object(value)))
             return luaL_error(state, "gnoblin.launches returned an invalid Launch record");
-    }
-    if (return_snapshot) {
-        json_to_lua(state, result);
-        lua_cli_push_readonly_value(state, -1);
-        lua_remove(state, -2);
-        return 1;
     }
     lua_createtable(state, json_array_get_length(launches), 0);
     for (guint i = 0; i < json_array_get_length(launches); i++) {

@@ -34,7 +34,7 @@ included when available and localized by the input stack.
 Subscribe in a Lua file and run it with `gnoblinctl lua pad-help.lua`:
 
 ```lua
-gnoblin.events.on("gnoblin.input.pad-help-requested", function(event)
+gnoblin.on("gnoblin.input.pad-help-requested", function(event)
     print(event.device.name)
     for _, button in ipairs(event.buttons) do
         print(button.button, button.label or "")

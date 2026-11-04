@@ -18,10 +18,6 @@
 ---@field ok boolean True when the request was accepted.
 ---@field token string Launch token.
 
----@class LaunchSnapshot
----@field launches Launch[] Current launch records.
----@field revision integer Revision of the launch snapshot.
-
 ---Begin tracking a matching application launch.
 ---@param token string Non-empty token, at most 128 characters.
 ---@param application string Non-empty application identifier, at most 512 characters.
@@ -37,8 +33,4 @@ function gnoblin.launches.finish(token) end
 ---Return the current launch records.
 ---@return Launch[]
 function gnoblin.launches.list() end
-
----Return the launch records and their snapshot revision.
----@return LaunchSnapshot
-function gnoblin.launches.snapshot() end
 */

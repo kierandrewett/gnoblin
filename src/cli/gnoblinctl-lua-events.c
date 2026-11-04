@@ -341,18 +341,15 @@ static gboolean cli_lua_is_owned_shortcut_event(const char* event_name) {
 int lua_cli_events_subscribe(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     gboolean once = lua_toboolean(state, lua_upvalueindex(2));
-    gboolean mutter_namespace = lua_toboolean(state, lua_upvalueindex(3));
     if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING ||
         lua_type(state, 2) != LUA_TFUNCTION)
-        return luaL_error(state, "gnoblin.events.%s requires an event name and callback",
+        return luaL_error(state, "gnoblin.%s requires an event name and callback",
                           once ? "once" : "on");
     size_t event_length = 0;
     const char* event_name = lua_tolstring(state, 1, &event_length);
     if (!event_name || event_length == 0 || event_length > 128 ||
         !g_utf8_validate(event_name, event_length, NULL))
         return luaL_error(state, "event name must be 1 to 128 bytes of valid UTF-8");
-    if (mutter_namespace && !g_str_has_prefix(event_name, "mutter."))
-        return luaL_error(state, "Mutter event name must start with 'mutter.'");
 
     CliLuaEventSubscription* subscription = g_new0(CliLuaEventSubscription, 1);
     subscription->cli = cli;
