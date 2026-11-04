@@ -3,8 +3,8 @@
 Repo rule (`AGENTS.md`): Gnoblin-owned behaviour lives in Gnoblin's source and overlays; an upstream patch is a narrow
 hook. This note is the plan and the record for moving the Gnoblin-owned code that `patches/mutter/` and
 `patches/xdg-desktop-portal-gnome/` still carry into overlay sources under `src/`. It is one half of the patch tidy-up;
-squashing the remaining fix-up chains (option B in `patches/README.md` history) is a separate, later step and this change
-does not squash unrelated patches.
+squashing the remaining fix-up chains (option B) was a separate, later step and this change does not squash unrelated
+patches. `design/patches-squash-plan.md` records that step; the patch names in the tables below are those before it.
 
 ## Overlay mechanism and its limits
 

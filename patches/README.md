@@ -43,7 +43,9 @@ patches/<project>/
   `scripts/manage-patches.py path PROJECT SLUG` prints the path of one patch.
 
 The old layout (`10-tooling`, `99-typed-window-api`, `zz-monolithic-compositor`, ...) is mapped to this one in
-`design/patches-layout-mapping.tsv`. The `new` column holds the patch's current path. A patch whose code moved to an
+`design/patches-layout-mapping.tsv`. `design/patches-squash-plan.md` lists the fixup chains that were folded into
+their parent patch; a folded patch maps to the patch that now holds its change. The `new` column holds the patch's
+current path. A patch whose code moved to an
 overlay and that no longer exists has `overlay:<path>` there, naming the overlay file that carries its code.
 
 ## Check

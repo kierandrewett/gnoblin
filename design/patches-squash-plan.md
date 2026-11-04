@@ -64,6 +64,15 @@ The third `use-supervisor-session-predicate` (the `util.c` one) was retired when
 
 One patch, nothing to fold.
 
-## Tree hashes
+## Result
 
-The recorded baseline and the result of every step are in `~/.cache/plt/evidence/squash-*`.
+| Project                         | Patches before | Patches after | Patched tree hash (before and after)                                                                                 |
+| ------------------------------- | -------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `mutter`                        | 179            | 139           | `2487215fb96d3cb040e57c74be505e7cc3bd89da`                                                                           |
+| `xdg-desktop-portal-gnome`      | 14             | 12            | `14a4bf7f9b40815c2d37c1a160fa291991d4ea40`                                                                           |
+| `portal-dependencies` (libgxdp) | 1              | 1             | patch file unchanged (sha256 `091056c7...`); the library source is a wrap download that this checkout does not carry |
+
+No exception: every fold left the tree hash unchanged, so no patch changed the generated tree and no `config.h` proof is
+needed. Each fold rewrote only the target patch that holds it; no downstream patch had to be regenerated. `design/patches-layout-mapping.tsv` maps each old path to the patch that now holds its change. Tests that
+named a folded patch (`focus-policy-contract`, `native-socket-text-snap-api`, `session-lock-protocol`,
+`csd-pixel-lifetime`) read the surviving patch. The evidence is in `~/.cache/plt/evidence/squash-*`.
