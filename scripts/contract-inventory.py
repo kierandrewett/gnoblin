@@ -738,7 +738,7 @@ def config_keys_document() -> dict[str, object]:
         LUA_CONFIGURE_KEYS,
     )
     overrides_text = strip_comments(read(OVERRIDES_HEADER))
-    overridable: dict[str, list[str | None]] = {}
+    overridable: dict[str, list[str]] = {}
     for entry, line in brace_entries(overrides_text, "} allowed[] = {"):
         fields = split_top_level(entry[1:-1])
         if len(fields) != 2:
