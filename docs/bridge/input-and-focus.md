@@ -206,7 +206,7 @@ The socket exposes these reads at the listed API versions:
 | 1.39        | `launches.snapshot`       | `gnoblin.launches.list()`           | None; the reply adds the collection revision               |
 | 1.40        | `shortcuts.list`          | `gnoblin.shortcuts.configured()`    | None                                                       |
 | 1.41        | `shortcuts.actions`       | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
-| 1.24        | `session.activity`        | `gnoblin.session.activity()`        | None                                                       |
+| 1.24        | `session.activity`        | `gnoblin.idle.watch(seconds)`       | None; the sample has a fixed 120 second threshold          |
 | 1.29        | `session.status`          | `gnoblin.session.status()`          | None                                                       |
 | 1.70        | `appearance.color_scheme` | `gnoblin.appearance.color_scheme()` | None                                                       |
 

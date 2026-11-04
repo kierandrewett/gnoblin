@@ -152,6 +152,25 @@ and gap 7 stay open.
   A handler is never disabled. When an event handler fails, the configuration edits made during
   that event are rolled back as before; a per-handler rollback would need a config snapshot before
   every handler call. Answerable events (the other half of the gap table row) stay open.
+- Gap 11, done.
+    - Idle. `gnoblin.idle.watch(seconds)` returns a live `IdleWatch` (`alive`, `idle`, `seconds`,
+      `on` with `idle`, `active` and `closed`, `watch`, `cancel`). A watch is a pair of watches on
+      Mutter's core idle monitor, owned by the runtime generation that made it; a reload, a worker
+      restart and the compositor's stop remove it. At most 256 for each runtime. The compositor's
+      own 120 s sample, which socket clients read as `session.activity`, is one in-process watch of
+      the same kind. `gnoblin.session.activity()` is gone from Lua and `gnoblinctl lua`.
+    - Power. `session.suspend`, `hibernate`, `reboot` and `poweroff` run in the compositor
+      (`gnoblin-control-power.c`): read the logind capability, call the action, and finish the
+      Operation with the answer. A capability of `no` or a polkit refusal is `denied`; `na` is
+      `unsupported`. The Lua runtime no longer exits for a power action and the supervisor has no
+      power exit path. Bridge API 1.89.
+    - Lock. A Lua configuration that listens for `gnoblin.session.lock-requested` counts as a
+      listener, so `gnoblinctl session lock` reaches a config-only shell and its `Request` of kind
+      `"lock"` finishes with `locked` or `timeout`.
+    - `org.gnoblin.SessionIdle` stays. The `gnoblin-idle` service still exports it with
+      `org.freedesktop.ScreenSaver`, the session target still starts that service and its test
+      still covers it. The compositor no longer reads it, because idle comes from the monitor
+      directly. It is a published interface for other programs.
 
 ## Decisions
 

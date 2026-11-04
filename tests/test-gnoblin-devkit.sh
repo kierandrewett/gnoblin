@@ -193,11 +193,10 @@ gnoblin.on("gnoblin.shortcut.session.key", function(event)
     end
 end)
 gnoblin.once("gnoblin.session.activity-changed", function(event)
-    local activity = gnoblin.session.activity()
+    assert(gnoblin.session.activity == nil, "gnoblin.session.activity() was replaced by gnoblin.idle.watch")
     assert(type(event.revision) == "number" and event.revision > 0)
-    assert(activity.revision >= event.revision,
-        "session activity snapshot must be current before its event is delivered")
-    print("LUA_API:activity-event-snapshot")
+    assert(type(event.available) == "boolean" and event.threshold_ms == 120000)
+    print("LUA_API:activity-event")
 end)
 LUA
 
@@ -983,7 +982,7 @@ done
 printf '%s\n' 'PASS: Lua layer lifecycle callbacks see current layer snapshots'
 if [[ ! -S /run/dbus/system_bus_socket ]]; then
     printf '%s\n' 'SKIP: the idle service needs logind on the system bus, which this host does not have'
-elif ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
+elif ! grep -Fq 'LUA_API:activity-event' "$fixture_root/state/devkit-last.log"; then
     echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
     tail -n 80 "$fixture_root/state/devkit-last.log" >&2
     exit 1

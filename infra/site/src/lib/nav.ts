@@ -172,6 +172,7 @@ export const NAV: NavSection[] = [
                     { label: "Keyboard shortcuts", slug: "shell-api/keyboard-shortcuts" },
                     { label: "Launch feedback", slug: "shell-api/launch-feedback" },
                     { label: "Processes", slug: "shell-api/processes" },
+                    { label: "Idle watches", slug: "shell-api/idle" },
                     { label: "Session and runtime health", slug: "shell-api/session-runtime" },
                     { label: "Requests", slug: "shell-api/requests" },
                     { label: "Privacy", slug: "shell-api/privacy" },

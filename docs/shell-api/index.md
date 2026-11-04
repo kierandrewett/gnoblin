@@ -10,6 +10,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Focus and activation](/shell-api/focus-activation): focus policy, history, activation tokens, and trusted contexts.
 - [Workspaces](/shell-api/workspaces): state and operations.
 - [Outputs](/shell-api/outputs): display outputs, modes, and renderer state.
+- [Idle watches](/shell-api/idle): run code when the session has had no input for a set time.
 - [Layer surfaces](/shell-api/layer-surfaces): shell surface snapshots and policy.
 - [Input](/shell-api/input): devices, sources, and orientation lock.
 - [Input handlers](/shell-api/input-handlers): handle local pointer, keyboard, and gesture events.

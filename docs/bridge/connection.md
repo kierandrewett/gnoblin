@@ -162,3 +162,4 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.86            | Removes the permission and portal grant API and its events; see `CHANGELOG.md`                                    |
 | 1.87            | Adds the `gnoblin.location.authorization-finished` event                                                          |
 | 1.88            | Adds the `gnoblin.output.added`, `gnoblin.output.changed` and `gnoblin.output.removed` events and output fields   |
+| 1.89            | Changes the results of the session power methods to the real logind answer or error                               |

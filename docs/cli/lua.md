@@ -167,15 +167,9 @@ if status.lock_available then
 end
 ```
 
-`gnoblin.session.activity()` returns an idle-monitor sample as a
-read-only `SessionActivity` record:
-
-```lua
-local activity = gnoblin.session.activity()
-if activity.available then
-    print(activity.idle, activity.idle_for_ms, activity.threshold_ms)
-end
-```
+`gnoblin.idle.watch(seconds)` needs a configuration to hold the watch, so
+`gnoblinctl lua` cannot use it. Read the idle-monitor sample from a terminal
+with `gnoblinctl session activity`. See [Idle watches](/shell-api/idle).
 
 `gnoblin.session.lock()` asks a subscribed shell client to show its lock UI.
 Its read-only result reports delivery, not that the compositor locked the

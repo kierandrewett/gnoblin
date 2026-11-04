@@ -43,6 +43,14 @@
 - A `Process` has `alive` and `on("closed", fn)`. The end signal is `closed`, as on Window,
   Workspace and Output, so code can treat every object alike; `status`, `exit_code` and `signal`
   say how it ended, and `wait()` and `kill()` stay.
+- `gnoblin.session.suspend()`, `hibernate()`, `reboot()` and `poweroff()` finish with logind's real
+  answer (bridge API 1.89). Gnoblin reads the capability (`CanSuspend` and its siblings), then asks
+  logind for the action, and the Operation ends with `{accepted = true}` or with an error. See
+  [session and runtime health](docs/shell-api/session-runtime.md).
+    - `denied`: the capability answer is `no`, or logind or polkit refuses the action.
+    - `unsupported`, `busy`, `unavailable`, `timed_out` and `internal` name the other failures.
+    - The Lua runtime keeps running after the call. Before, the call stopped the runtime and the
+      supervisor asked logind afterwards, so the Operation could not report a refusal.
 
 ### Added
 
@@ -58,6 +66,10 @@
       call `monitors.set_privacy_screen` is unchanged.
     - New events tell Lua and shell processes when a display is added, changes or is removed.
     - Monitor events and monitor reads stay for shell processes only.
+- `gnoblin.idle.watch(seconds)` returns a live `IdleWatch` for any idle time from above 0 up to
+  86400 seconds, with `alive`, `idle`, `seconds`, `on("idle" | "active" | "closed")`, `watch` and
+  `cancel()`. Each runtime can have up to 256 watches. A reload ends every watch. See
+  [idle watches](docs/shell-api/idle.md).
 - The `gnoblin.location.authorization-finished` event (bridge API 1.87) reports how each location
   request ended: `allowed`, `denied` or `timeout`. A Lua location `Request` now finishes from it,
   so `finished()` reports the real outcome when a shell process answered the request instead of
@@ -253,6 +265,7 @@ A second pass removes every Lua function that had another name for the same acti
 | `gnoblin.monitors.list()`, `gnoblin.monitors.primary()`  | `gnoblin.outputs.list()`, `gnoblin.outputs.primary()`           |
 | `gnoblin.monitors.privacy_screen()`                      | `output.privacy_screen`                                         |
 | `gnoblin.monitors.set_privacy_screen(value)`             | `gnoblin.outputs.set_privacy_screen(value)`                     |
+| `gnoblin.session.activity()`                             | `gnoblin.idle.watch(seconds)`                                   |
 | Lua `gnoblin.monitor.*` events                           | `gnoblin.output.added`, `changed`, `removed`                    |
 
 `window:restore_or_minimize()` stays: it restores the frame saved before a snap, which no other
