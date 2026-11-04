@@ -207,6 +207,9 @@ add_test(NAME cursor-config-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/cursor-config-contract.test.py")
 add_test(NAME window-button-layout-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/window-button-layout-contract.test.py")
+add_test(NAME native-control-safety
+  COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/native-control-safety.py")
+set_tests_properties(native-control-safety PROPERTIES TIMEOUT 120)
 option(GNOBLIN_WITH_PORTAL "Build and report the GTK-based portal backend" ON)
 add_custom_target(gnoblinctl-identity
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build-identity.py"

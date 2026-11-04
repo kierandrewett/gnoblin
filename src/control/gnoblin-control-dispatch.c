@@ -160,6 +160,16 @@ void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
     g_free(control);
 }
 
+/* The compositor side of the control is gone. The state is freed here, or by the last async
+ * callback still holding it, never before: teardown_complete is set first so that a callback
+ * running between a runtime abort and this call cannot free what stop is still tearing down. */
+void native_control_finish_teardown(GnoblinNativeControl* control) {
+    if (!control)
+        return;
+    control->teardown_complete = TRUE;
+    native_control_maybe_free_stopped(control);
+}
+
 /* Exported names for static helpers that gnoblin-control-session-activity.c calls. */
 void gnoblin_control_maybe_free_stopped(GnoblinNativeControl* control) {
     native_control_maybe_free_stopped(control);

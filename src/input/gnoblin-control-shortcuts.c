@@ -1,7 +1,7 @@
 /* Dynamic shortcut bindings: the shortcut.bind, shortcut.unbind and shortcut.session.end socket
  * methods, the bare-Super arming, the lookup and cleanup of bound shortcuts per client and per
  * Lua owner, and the binding validators. Session start and end, key capture, activation and the
- * event routing stay in gnoblin-native-control.c because tests read their text there. */
+ * event routing stay in gnoblin-control-focus.c. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

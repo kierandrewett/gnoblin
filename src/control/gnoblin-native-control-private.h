@@ -370,6 +370,7 @@ gboolean native_input_handle_decision(GnoblinNativeControl* control,
                                       const GnoblinRuntimePacket* packet, GError** error);
 GVariant* input_device_snapshot(GnoblinNativeControl* control);
 void native_control_maybe_free_stopped(GnoblinNativeControl* control);
+void native_control_finish_teardown(GnoblinNativeControl* control);
 void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean complete, gboolean ok,
                                   const char* accelerator, const char* error_code,
                                   const char* message);

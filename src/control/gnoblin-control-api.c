@@ -712,6 +712,5 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->accepted_input_requests, g_hash_table_unref);
     g_clear_pointer(&control->input_policy_error, g_free);
     control->path = NULL;
-    control->teardown_complete = TRUE;
-    native_control_maybe_free_stopped(control);
+    native_control_finish_teardown(control);
 }
