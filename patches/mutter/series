@@ -89,11 +89,9 @@
 05-window-drag/0005-pointer-drag-snap.patch
 09-focus-activation/0002-focus-with-xdg-activation-token.patch
 27-window-clipping/0001-native-rounded-window-clipping.patch
-27-window-clipping/0002-native-x11-window-clipping.patch
 17-distro-compat/0004-lower-libinput-to-1.30.patch
-27-window-clipping/0003-native-rounded-clip-padding.patch
-27-window-clipping/0004-native-csd-reconstruction.patch
-27-window-clipping/0005-native-window-shadow-geometry-and-scanout.patch
+27-window-clipping/0002-native-csd-reconstruction.patch
+27-window-clipping/0003-native-window-shadow-geometry-and-scanout.patch
 14-input-settings/0006-wayland-keyboard-repeat-uses-effective-input-settings.patch
 14-input-settings/0007-gnoblin-config-controls-stylus-eraser-button.patch
 25-animation/0003-native-window-resize-animation.patch
