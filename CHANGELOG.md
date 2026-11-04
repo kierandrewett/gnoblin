@@ -15,7 +15,9 @@
   visible bounds, `_NET_FRAME_EXTENTS` and `_NET_REQUEST_FRAME_EXTENTS` report Gnoblin's border, and Mutter's stock
   shadow no longer draws for managed X11 windows. A border change keeps the client where it is.
   `mutter-x11-frames` is no longer built or installed. A request for frame extents before the window exists is answered
-  from the rules that match only the window type and `client_type`.
+  from the rules that match only the window type and `client_type`. The Mutter code for a frame window (`MetaFrame`,
+  its sync counter and borders, the `_MUTTER_FRAME_FOR`, `_MUTTER_FRAME_EXTENTS` and `_MUTTER_NEEDS_FRAME` properties,
+  and the frame mask in the X11 window actor) is removed in patch `11-window-frames/0011`.
 
 ### Changed
 

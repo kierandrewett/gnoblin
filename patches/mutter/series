@@ -176,3 +176,4 @@
 11-window-frames/0008-x11-net-frame-extents-from-the-compositor.patch
 11-window-frames/0009-sync-x11-window-actor-with-the-frame.patch
 11-window-frames/0010-drop-the-x11-frames-helper.patch
+11-window-frames/0011-remove-the-x11-frame-window-code.patch
