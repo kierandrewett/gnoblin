@@ -698,6 +698,7 @@ GVariant* native_location_authorize_operation(GnoblinNativeControl* control, GVa
         return NULL;
     }
     pending->completed = TRUE;
+    pending->result = allowed ? "allowed" : "denied";
     gnoblin_location_request_complete(pending->request, allowed, accuracy);
     GVariantBuilder result;
     g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);

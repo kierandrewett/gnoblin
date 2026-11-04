@@ -86,8 +86,12 @@ Each phase leaves the tree working and is its own pull request.
    This replaces PR #314.
 3. **Requests. Done.** One `Request` (`event.request`) for prompt, auth, location and lock, with `finished()` and the
    answer verbs only on the kinds that take them. The Lua verbs are gone; socket clients keep the wire methods, and
-   the compositor now checks that a socket client received the request it answers. The auth and location paths are
-   not yet run in an isolated session.
+   the compositor now checks that a socket client received the request it answers. Auth ran through real polkit in a
+   separate `ssh localhost` login session (`pkexec`), and location through a real GeoClue on a private bus with
+   network off. GeoClue asks agents only for Flatpak apps, which it finds from `/proc/PID/cgroup`; this host's
+   extra `net_cls` cgroup line hides them, so the test sends `AuthorizeApp` itself. Location requests now end
+   with `gnoblin.location.authorization-finished` (API 1.87), so a Lua `Request` reports the outcome when a
+   shell process answered it.
 4. **Conventions. Done.** Positional signatures driven by the annotations (`named_arguments` in `lua_api[]`, one
    adapter); duplicate Lua names removed while their wire names stay for shells. `configure`, `animation`,
    `window_rule` and `array` keep a table because they declare data; filters stay trailing option tables.

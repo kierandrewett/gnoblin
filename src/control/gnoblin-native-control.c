@@ -445,6 +445,7 @@ const char* native_socket_events[] = {
     "gnoblin.appearance.color-scheme-changed",
     "gnoblin.privacy.changed",
     "gnoblin.location.authorization-requested",
+    "gnoblin.location.authorization-finished",
     "gnoblin.auth.requested",
     "gnoblin.auth.prompt",
     "gnoblin.auth.message",

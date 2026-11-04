@@ -129,15 +129,6 @@ static void mark_answered(lua_State* state, int backing) {
     }
 }
 
-/* Callback on a location answer: the request is decided once the compositor accepted it. */
-static int lua_location_answered(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_isnil(state, 2))
-        finish_request(state, config, lua_upvalueindex(2),
-                       lua_tostring(state, lua_upvalueindex(3)));
-    return 0;
-}
-
 static int lua_request_answer(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     int arguments = lua_gettop(state) - 1;
@@ -146,7 +137,6 @@ static int lua_request_answer(lua_State* state) {
     push_request_arguments(state, backing);
     int table = lua_absindex(state, -1);
     const char* method = NULL;
-    const char* location_result = NULL;
     if (g_str_equal(kind, "password") || g_str_equal(kind, "confirm")) {
         gboolean password = g_str_equal(kind, "password");
         if (arguments < 1 || arguments > 2 ||
@@ -186,21 +176,11 @@ static int lua_request_answer(lua_State* state) {
             lua_pushinteger(state, 0);
         lua_setfield(state, table, "accuracy");
         method = "location.authorize_app";
-        location_result = allow ? "allowed" : "denied";
     } else {
         return luaL_error(state, "this Request takes no answer");
     }
     queue_request_operation(state, config, method);
     mark_answered(state, backing);
-    if (location_result) {
-        int operation = lua_absindex(state, -1);
-        lua_pushlightuserdata(state, config);
-        lua_pushvalue(state, backing);
-        lua_pushstring(state, location_result);
-        lua_pushcclosure(state, lua_location_answered, 3);
-        subscribe_operation(state, config, operation);
-        lua_pop(state, 1);
-    }
     return 1;
 }
 
@@ -442,12 +422,6 @@ int request_for_event(lua_State* state, LuaConfig* config, const char* event, GV
         attach = TRUE;
     } else if (g_str_equal(event, "gnoblin.location.authorization-requested") && id > 0) {
         create_request(state, config, FAMILY_LOCATION, id, "location", payload);
-        gint64 expires_at_us = 0;
-        g_variant_lookup(payload, "expires_at_us", "x", &expires_at_us);
-        double seconds = (double)(expires_at_us - g_get_monotonic_time()) / G_USEC_PER_SEC;
-        lua_getfield(state, -1, "_finished");
-        finish_operation_after(state, config, -1, CLAMP(seconds, 0.0, 600.0), "timeout");
-        lua_pop(state, 1);
         attach = TRUE;
     } else if (g_str_equal(event, "gnoblin.session.lock-requested")) {
         gint64 sequence = 0;
@@ -467,7 +441,9 @@ int request_for_event(lua_State* state, LuaConfig* config, const char* event, GV
     } else if ((g_str_equal(event, "gnoblin.prompt.finished") &&
                 push_request_backing(state, config, FAMILY_PROMPT, id)) ||
                (g_str_equal(event, "gnoblin.auth.finished") &&
-                push_request_backing(state, config, FAMILY_AUTH, id))) {
+                push_request_backing(state, config, FAMILY_AUTH, id)) ||
+               (g_str_equal(event, "gnoblin.location.authorization-finished") &&
+                push_request_backing(state, config, FAMILY_LOCATION, id))) {
         const char* result = "cancelled";
         g_variant_lookup(payload, "result", "&s", &result);
         lua_pushvalue(state, -1);

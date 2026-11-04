@@ -4,6 +4,10 @@
 
 ### Added
 
+- The `gnoblin.location.authorization-finished` event (bridge API 1.87) reports how each location
+  request ended: `allowed`, `denied` or `timeout`. A Lua location `Request` now finishes from it,
+  so `finished()` reports the real outcome when a shell process answered the request instead of
+  `timeout`.
 - Lua timers and Operation methods. `gnoblin.timers.after(seconds)` returns an Operation that
   succeeds after the given time, and `gnoblin.timers.now()` reads a monotonic clock. Every
   Operation now has `map(fn)`, `timeout(seconds)` and `cancel()` beside `on_complete`. Pending

@@ -189,6 +189,8 @@ typedef struct {
     gint64 expires_at_us;
     guint timeout_source_id;
     gboolean completed;
+    /* "allowed", "denied" or "timeout"; published in gnoblin.location.authorization-finished. */
+    const char* result;
 } PendingLocationAuthorization;
 
 struct _GnoblinNativeControl {

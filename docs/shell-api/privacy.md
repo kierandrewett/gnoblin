@@ -80,8 +80,13 @@ it allows the accuracy the application asked for.
 - `"allowed"` or `"denied"`: the request got that answer.
 - `"timeout"`: nothing answered before the deadline.
 
+The outcome is the same whether your handler, another handler or a shell
+process answered. `gnoblin.location.authorization-finished` carries it as
+`event.result`.
+
 The [compositor bridge](/bridge/) describes how a socket client receives these
-requests and answers them with `location.authorize_app`. GeoClue configuration
+requests and answers them with `location.authorize_app`. With API version 1.87
+or later, it can also subscribe to `gnoblin.location.authorization-finished`. GeoClue configuration
 that does not allow the agent must be fixed by the system administrator before
 the capability becomes available.
 
@@ -106,7 +111,8 @@ The request's fields are `id`, `app_id`, `requested_accuracy`, and
 
 Requests expire after 25 seconds. Gnoblin denies unanswered requests and
 requests still pending when the runtime stops or the GeoClue agent becomes
-unavailable. A request takes one answer. Socket clients must answer on the same
+unavailable. An expired request finishes with `timeout`, and one ended by a
+stop finishes with `denied`. A request takes one answer. Socket clients must answer on the same
 connection that received the request event.
 
 `gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording
