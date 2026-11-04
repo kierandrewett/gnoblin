@@ -7,3 +7,7 @@ xdg-desktop-portal-gnome gnoblin-inhibit.h src/gnoblin-inhibit.h
 xdg-desktop-portal-gnome gnoblin-screenshot.c src/gnoblin-screenshot.c
 xdg-desktop-portal-gnome gnoblin-screenshot-capture.c src/gnoblin-screenshot-capture.c
 xdg-desktop-portal-gnome gnoblin-screenshot-capture.h src/gnoblin-screenshot-capture.h
+xdg-desktop-portal-gnome gnoblin-globalshortcuts.c src/gnoblin-globalshortcuts.c
+xdg-desktop-portal-gnome gnoblin-wallpaperpreview.c src/gnoblin-wallpaperpreview.c
+xdg-desktop-portal-gnome org.gnoblin.Shell.GlobalShortcutsProvider.xml data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
+xdg-desktop-portal-gnome org.gnoblin.Shell.GlobalShortcutsRebind.xml data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
