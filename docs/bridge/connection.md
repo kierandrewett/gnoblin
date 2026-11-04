@@ -160,3 +160,9 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.84            | Reserved; no API changes                                                                                          |
 | 1.85            | Replaces `window_management.center_new_windows` with `new_window_placement` (`free_space`, `center` or `cascade`) |
 | 1.86            | Removes the permission and portal grant API and its events; see `CHANGELOG.md`                                    |
+| 1.87            | Adds the `gnoblin.location.authorization-finished` event                                                          |
+| 1.88            | Adds the `gnoblin.output.added`, `gnoblin.output.changed` and `gnoblin.output.removed` events and output fields   |
+| 1.89            | Changes the results of the session power methods to the real logind answer or error                               |
+| 1.90            | Ends every runtime override at a reload; `monitors.set_privacy_screen` fails when no output has a privacy screen  |
+| 1.91            | Adds the `input.grab` Lua runtime operations and the `gnoblin.input.grab.*` events                                |
+| 1.92            | A `focus_context` token lasts for its whole gesture: each operation can use it once, not the first one only       |

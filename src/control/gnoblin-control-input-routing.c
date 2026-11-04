@@ -805,6 +805,15 @@ static void native_input_discard_stale_stream_disposition(GnoblinNativeControl* 
         (clutter_event_get_flags(event) & CLUTTER_EVENT_FLAG_REPEATED) != 0);
 }
 
+/* The first thing the stage input filter does with an event, before the diagnostic console or any
+ * other consumer can take it, so the set of held keys sees every key press and release. */
+void gnoblin_native_control_track_key(MetaDisplay* display, const ClutterEvent* event) {
+    GnoblinNativeControl* control =
+        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+    if (control && !control->stopping)
+        gnoblin_control_track_pressed_key(control, event);
+}
+
 gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const ClutterEvent* event,
                                                    ClutterActor* event_actor) {
     GnoblinNativeControl* control =

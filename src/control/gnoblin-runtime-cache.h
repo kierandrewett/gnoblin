@@ -24,8 +24,19 @@ void gnoblin_runtime_cache_free(GnoblinRuntimeCache* cache);
 gboolean gnoblin_runtime_cache_replace(GnoblinRuntimeCache* cache, GVariant* document,
                                        guint64 settings_revision, GError** error);
 
-/* Returns a new reference, or NULL before the first successful replacement. */
+/*
+ * Layer runtime overrides over the committed document. `overlay` is the committed document with
+ * the overrides applied (a{sv}); NULL removes the layer. Every reader below, including
+ * get_document(), sees the overlay while it is set. A replace() drops it. The cache takes its own
+ * reference.
+ */
+void gnoblin_runtime_cache_set_overlay(GnoblinRuntimeCache* cache, GVariant* overlay);
+
+/* Returns a new reference to the effective document (the overlay when one is set), or NULL before
+ * the first successful replacement. */
 GVariant* gnoblin_runtime_cache_get_document(GnoblinRuntimeCache* cache);
+/* The document the Lua owner committed, without overrides: what a replacement worker must get. */
+GVariant* gnoblin_runtime_cache_get_committed_document(GnoblinRuntimeCache* cache);
 guint64 gnoblin_runtime_cache_get_settings_revision(GnoblinRuntimeCache* cache);
 
 /* Look up a typed value in a top-level section a{sv}; missing/wrong types use fallback. */

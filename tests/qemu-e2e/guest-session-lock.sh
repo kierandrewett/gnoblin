@@ -10,8 +10,9 @@
 # keep refusing capture. A new locker must then be able to take the lock and unlock it (swaylock unlocks on SIGUSR1),
 # after which the shortcut fires and capture shows the desktop again.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 F="$HOME/.config/gnoblin/config/99-test-session-lock.lua"
@@ -30,11 +31,11 @@ check() {
 
 python3 -c "import PIL" 2>/dev/null || sudo dnf install -y python3-pillow >/dev/null 2>&1
 
-cat > "$F" <<'LUA'
+cat >"$F" <<'LUA'
 gnoblin.configure {
     keybindings = {keyboard = {
         lock_probe = {binding = "<Super>F9", callback = function()
-            gnoblin.commands.run({"sh", "-c", "echo x >> /tmp/lock-probe"})
+            gnoblin.process.spawn({"sh", "-c", "echo x >> /tmp/lock-probe"})
         end},
     }},
 }
@@ -42,7 +43,7 @@ LUA
 "$G" config reload >/dev/null 2>&1
 sleep 3
 
-cat > /tmp/press-keys.py <<'PY'
+cat >/tmp/press-keys.py <<'PY'
 import sys
 import time
 
@@ -74,7 +75,7 @@ call(session, iface, "Stop", None)
 PY
 
 # Prints how many of four sample points, two on each monitor, show the locker colour (51, 102, 153).
-cat > /tmp/lock-pixels.py <<'PY'
+cat >/tmp/lock-pixels.py <<'PY'
 from PIL import Image
 
 im = Image.open("/tmp/lock-shot.png").convert("RGB")
@@ -96,24 +97,26 @@ capture_while_locked() {
         *) echo desktop ;;
     esac
 }
-capture_is_safe() { case "$(capture_while_locked)" in refused|lock-scene) echo safe ;; *) echo leak ;; esac; }
-probe_count() { wc -l < /tmp/lock-probe 2>/dev/null || echo 0; }
+capture_is_safe() { case "$(capture_while_locked)" in refused | lock-scene) echo safe ;; *) echo leak ;; esac }
+probe_count() { wc -l </tmp/lock-probe 2>/dev/null || echo 0; }
 
 # A desktop window, so there is something to hide.
-nohup foot -T lock-desktop >/dev/null 2>&1 < /dev/null &
+nohup foot -T lock-desktop >/dev/null 2>&1 </dev/null &
 sleep 3
 rm -f /tmp/lock-probe
 
 check "the session starts unlocked" "$(lock_state)" '"lock_state":"unlocked"'
 check "no sample point shows the locker colour before the lock" "$(shot_hits)" "0"
-python3 /tmp/press-keys.py super+f9; sleep 1
+python3 /tmp/press-keys.py super+f9
+sleep 1
 check "the desktop shortcut fires while unlocked" "$(probe_count)" "1"
 
 swaylock -f -c 336699 >/dev/null 2>&1
 sleep 3
 check "the compositor reports the session locked" "$(lock_state)" '"lock_state":"locked"'
 check "screen capture does not leak the desktop while locked" "$(capture_is_safe)" "safe"
-python3 /tmp/press-keys.py super+f9; sleep 1
+python3 /tmp/press-keys.py super+f9
+sleep 1
 check "the desktop shortcut does not fire while locked" "$(probe_count)" "1"
 
 pkill -9 -x swaylock
@@ -129,7 +132,8 @@ pkill -USR1 -x swaylock
 sleep 3
 check "SIGUSR1 unlocks the session" "$(lock_state)" '"lock_state":"unlocked"'
 check "the desktop is visible again" "$(shot_hits)" "0"
-python3 /tmp/press-keys.py super+f9; sleep 1
+python3 /tmp/press-keys.py super+f9
+sleep 1
 check "the desktop shortcut fires again after the unlock" "$(probe_count)" "2"
 check "the compositor keeps running" "$("$G" status 2>&1 | head -1 | grep -o '"state":"[a-z]*"')" '"state":"running"'
 

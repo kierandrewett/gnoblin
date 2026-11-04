@@ -29,9 +29,10 @@ Gnoblin registers as the polkit agent for the login session and sends
 `gnoblin.auth.requested`, `gnoblin.auth.prompt`, `gnoblin.auth.message`, and
 `gnoblin.auth.finished` events.
 
-Write a handler before you turn this on. A request that no handler claims with
-`gnoblin.auth.begin` or `gnoblin.auth.cancel` is cancelled after 15 seconds,
-and the program that asked reports "Not authorized".
+Write a handler before you turn this on. A request that no handler claims or
+cancels with `event.request:claim()` or `event.request:cancel()` is cancelled
+after 15 seconds, and the program that asked reports "Not authorized". See
+[Authentication prompts](/shell-api/authentication).
 
 Polkit allows one agent per session. Stop any other agent, such as
 `polkit-gnome`, `polkit-mate`, or a shell's own agent, or do not start it,

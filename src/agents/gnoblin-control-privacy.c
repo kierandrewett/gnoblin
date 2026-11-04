@@ -118,12 +118,23 @@ void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control, gbo
     publish_privacy_snapshot(control, changed);
 }
 
+/* Removing a pending entry ends the request: an unanswered one is denied to GeoClue, and every
+ * subscriber learns the outcome, including the ones that did not answer. */
 void gnoblin_control_pending_location_authorization_free(gpointer user_data) {
     PendingLocationAuthorization* pending = user_data;
     if (pending->timeout_source_id)
         g_source_remove(pending->timeout_source_id);
     if (!pending->completed)
         gnoblin_location_request_complete(pending->request, FALSE, 0);
+    GVariantBuilder fields;
+    g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&fields, "{sv}", "request_id",
+                          g_variant_new_int64((gint64)pending->request_id));
+    g_variant_builder_add(&fields, "{sv}", "result",
+                          g_variant_new_string(pending->result ? pending->result : "denied"));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&fields));
+    gnoblin_control_publish_event(pending->control, "gnoblin.location.authorization-finished",
+                                  payload);
     gnoblin_location_request_unref(pending->request);
     g_clear_pointer(&pending->recipient_client_ids, g_hash_table_unref);
     g_free(pending);
@@ -137,6 +148,7 @@ void gnoblin_control_clear_pending_location_authorizations(GnoblinNativeControl*
 static gboolean pending_location_authorization_timeout(gpointer user_data) {
     PendingLocationAuthorization* pending = user_data;
     pending->timeout_source_id = 0;
+    pending->result = "timeout";
     if (pending->control->pending_location_authorizations)
         g_hash_table_remove(pending->control->pending_location_authorizations,
                             &pending->request_id);

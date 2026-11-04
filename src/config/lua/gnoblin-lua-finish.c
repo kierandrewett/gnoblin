@@ -1,5 +1,20 @@
 #include "gnoblin-lua-internal.h"
 
+/* Every live object this runtime made ends when the runtime does: the compositor drops what it
+ * holds for them, or the handle has no state left to describe. Each "closed" listener runs once
+ * with `reason`, with no dispatch open, so it can read but cannot start an operation. Windows,
+ * workspaces, outputs, layer surfaces and input sources belong to the compositor and stay. */
+static void end_runtime_objects(LuaRuntime* runtime, const char* reason) {
+    static const char* const kinds[] = {"Override", "Grab",    "Shortcut", "IdleWatch",
+                                        "Launch",   "Process", "Tween",    "AnimationPreview",
+                                        NULL};
+    if (!runtime || !runtime->state)
+        return;
+    for (guint i = 0; kinds[i]; i++)
+        lua_object_end_all(runtime->state, kinds[i], reason);
+    request_end_all(runtime->state, &runtime->config, reason);
+}
+
 static GVariant* focus_policy_snapshot(GVariant* document, guint64 revision);
 
 void gnoblin_config_finish_load(gboolean commit) {
@@ -12,6 +27,8 @@ void gnoblin_config_finish_load(gboolean commit) {
             !active_runtime || !active_runtime->document ||
             !g_variant_equal(active_runtime->document, pending_runtime->document);
         guint64 settings_revision = active_runtime ? active_runtime->config.settings_revision : 0;
+        /* Tell the old runtime's objects before it goes, so "closed" listeners run once. */
+        end_runtime_objects(active_runtime, "config_reloaded");
         lua_runtime_free(active_runtime);
         active_runtime = g_steal_pointer(&pending_runtime);
         if (revision_counters_seeded) {
@@ -68,6 +85,12 @@ void gnoblin_config_finish_deferred_load(gboolean commit) {
     g_assert(!pending_runtime);
     pending_runtime = g_steal_pointer(&deferred_runtime);
     gnoblin_config_finish_load(commit);
+}
+
+/* The worker is shutting down in order: tell the objects that cannot outlive it, so their
+ * "closed" listeners run once. */
+void gnoblin_config_stop_runtime(void) {
+    end_runtime_objects(active_runtime, "runtime_stopped");
 }
 
 guint64 gnoblin_config_deferred_runtime_generation(void) {
@@ -156,8 +179,14 @@ gboolean gnoblin_config_has_pending_document(void) {
 }
 
 void gnoblin_config_finish_event(gboolean commit) {
-    if (!active_runtime || !active_runtime->pending_document)
+    if (!active_runtime)
         return;
+    if (!active_runtime->pending_document) {
+        if (!commit)
+            finish_configure_operations(active_runtime->state, &active_runtime->config, FALSE,
+                                        "the configuration change was not committed");
+        return;
+    }
     if (commit) {
         g_autoptr(GVariant) previous_focus_policy =
             focus_policy_snapshot(active_runtime->document, 0);
@@ -183,13 +212,14 @@ void gnoblin_config_finish_event(gboolean commit) {
         if (settings_changed && settings_changed_callback)
             settings_changed_callback(active_runtime->config.settings_revision,
                                       settings_changed_data);
+        /* The change is the committed document now: its Operations succeed. */
+        finish_configure_operations(active_runtime->state, &active_runtime->config, TRUE, NULL);
         return;
     }
     lua_State* state = active_runtime->state;
-    lua_getglobal(state, "gnoblin");
-    push_variant(state, active_runtime->document);
-    lua_setfield(state, -2, "config");
-    lua_pop(state, 1);
+    set_document(state, active_runtime->document);
+    finish_configure_operations(state, &active_runtime->config, FALSE,
+                                "the configuration change was not committed");
     g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
 }
 

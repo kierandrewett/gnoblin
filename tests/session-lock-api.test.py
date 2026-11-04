@@ -28,7 +28,7 @@ class SessionLockApiTests(unittest.TestCase):
         self.assertIsNotNone(api_minor)
         self.assertGreaterEqual(int(api_minor.group(1)), 21)
         self.assertIn('"session.lock",', control)
-        self.assertIn('g_str_equal(method, "session.lock") && client->api_minor < 21', control)
+        self.assertRegex(control, r'X\(SESSION_LOCK, "session\.lock", 21,')
 
     def test_request_requires_available_compositor_and_subscribed_client(self):
         source = control_source()

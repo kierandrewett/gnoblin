@@ -117,16 +117,24 @@ static gboolean validate_pointer_keybindings(GVariant* actions, GError** error) 
             const char* text = g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING)
                                    ? g_variant_get_string(binding, NULL)
                                    : NULL;
-            const char* button = text ? strstr(text, "Button") : NULL;
-            g_autofree char* modifiers = button ? g_strndup(text, button - text) : NULL;
-            if (!text || strlen(text) > 160 || !button || !modifiers[0] ||
-                !window_modifier_valid(modifiers) ||
-                (!g_str_equal(button, "Button1") && !g_str_equal(button, "Button2") &&
-                 !g_str_equal(button, "Button3"))) {
+            GnoblinChord chord;
+            g_autofree char* chord_error = NULL;
+            if (!text) {
                 g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "keybindings.pointer.%s needs modifier tokens followed by Button1, "
-                            "Button2 or Button3",
-                            action);
+                            "keybindings.pointer.%s needs strings", action);
+                return FALSE;
+            }
+            if (!gnoblin_chord_parse(text, GNOBLIN_CHORD_POINTER, &chord, &chord_error)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "keybindings.pointer.%s: %s",
+                            action, chord_error);
+                return FALSE;
+            }
+            if (!chord.modifiers) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "keybindings.pointer.%s: \"%s\" has no modifier; a plain click belongs "
+                            "to the application. Write modifiers in angle brackets before the "
+                            "button, for example <Super>Button1",
+                            action, text);
                 return FALSE;
             }
         }
@@ -178,6 +186,18 @@ gboolean validate_input_handlers(GVariant* document, GError** error) {
                 if (g_variant_is_of_type(field, G_VARIANT_TYPE_STRING)) {
                     const char* text = g_variant_get_string(field, NULL);
                     valid = *text && strlen(text) <= 160 && g_utf8_validate(text, -1, NULL);
+                    if (valid && g_str_equal(name, "accelerator") &&
+                        (g_str_equal(type, "key") || g_str_equal(type, "button"))) {
+                        g_autofree char* chord_error = NULL;
+                        if (!gnoblin_chord_parse(text,
+                                                 g_str_equal(type, "key") ? GNOBLIN_CHORD_KEY
+                                                                          : GNOBLIN_CHORD_POINTER,
+                                                 NULL, &chord_error)) {
+                            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                        "input handler accelerator: %s", chord_error);
+                            return FALSE;
+                        }
+                    }
                 }
                 if (g_str_equal(name, "accelerator") && !g_str_equal(type, "key") &&
                     !g_str_equal(type, "button"))
@@ -236,8 +256,12 @@ static gboolean validate_keyboard_callbacks(GVariant* actions, GError** error) {
             if (!g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING))
                 goto invalid;
             const char* text = g_variant_get_string(binding, NULL);
-            if (!*text || strlen(text) > 160 || !g_utf8_validate(text, -1, NULL))
-                goto invalid;
+            g_autofree char* chord_error = NULL;
+            if (!gnoblin_chord_parse(text, GNOBLIN_CHORD_KEY, NULL, &chord_error)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "keybindings.keyboard.%s: %s",
+                            name, chord_error);
+                return FALSE;
+            }
         }
     }
     return TRUE;
@@ -313,12 +337,59 @@ gboolean validate_keybindings(GVariant* document, GError** error) {
                 const char* accelerator = g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING)
                                               ? g_variant_get_string(binding, NULL)
                                               : NULL;
-                if (!accelerator || !*accelerator || strlen(accelerator) > 160 ||
-                    !g_utf8_validate(accelerator, -1, NULL)) {
+                GnoblinChord chord;
+                g_autofree char* chord_error = NULL;
+                if (!accelerator) {
                     g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                 "keybindings.%s.%s contains an invalid accelerator", group, name);
                     return FALSE;
                 }
+                if (!gnoblin_chord_parse(accelerator, GNOBLIN_CHORD_KEY, &chord, &chord_error)) {
+                    g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "keybindings.%s.%s: %s",
+                                group, name, chord_error);
+                    return FALSE;
+                }
+            }
+        }
+    }
+    return TRUE;
+}
+
+/* Every binding of every named shortcut is a chord (gnoblin-chord.h). The compositor claims the
+ * keys when it applies the document; this reports a mistake while the configuration loads, with
+ * the form to write. */
+gboolean validate_shortcuts(GVariant* document, GError** error) {
+    g_autoptr(GVariant) declarations =
+        g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
+    for (gsize i = 0; declarations && i < g_variant_n_children(declarations); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(declarations, i);
+        g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
+        g_autoptr(GVariant) binding = g_variant_lookup_value(entry, "binding", NULL);
+        const char* name = "";
+        g_variant_lookup(entry, "name", "&s", &name);
+        if (!binding)
+            continue;
+        g_autoptr(GVariant) inner = g_variant_is_of_type(binding, G_VARIANT_TYPE_VARIANT)
+                                        ? g_variant_get_variant(binding)
+                                        : g_variant_ref(binding);
+        gsize count =
+            g_variant_is_of_type(inner, G_VARIANT_TYPE("av")) ? g_variant_n_children(inner) : 1;
+        for (gsize j = 0; j < count; j++) {
+            g_autoptr(GVariant) item = NULL;
+            if (g_variant_is_of_type(inner, G_VARIANT_TYPE("av"))) {
+                g_autoptr(GVariant) wrapped = g_variant_get_child_value(inner, j);
+                item = g_variant_get_variant(wrapped);
+            } else {
+                item = g_variant_ref(inner);
+            }
+            if (!g_variant_is_of_type(item, G_VARIANT_TYPE_STRING))
+                continue; /* the compositor reports a binding of the wrong type */
+            g_autofree char* chord_error = NULL;
+            if (!gnoblin_chord_parse(g_variant_get_string(item, NULL), GNOBLIN_CHORD_KEY, NULL,
+                                     &chord_error)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "shortcuts.%s.binding: %s",
+                            name, chord_error);
+                return FALSE;
             }
         }
     }

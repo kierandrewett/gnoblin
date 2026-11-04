@@ -8,7 +8,7 @@ int lua_cli_workspace_tostring(lua_State* state) {
     return 1;
 }
 
-static int lua_cli_workspace_method(lua_State* state) {
+int lua_cli_workspace_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     int supplied = lua_gettop(state) - 1;
@@ -31,43 +31,6 @@ static int lua_cli_workspace_method(lua_State* state) {
         }
         json_object_set_string_member(arguments, "id", id);
         json_object_set_string_member(arguments, "name", lua_tostring(state, 2));
-    } else if (g_str_equal(method, "workspace.move_window")) {
-        if (supplied < 1 || supplied > 2 ||
-            (supplied == 2 && !lua_isnil(state, 3) && !lua_istable(state, 3))) {
-            json_object_unref(arguments);
-            return luaL_error(state,
-                              "workspace.move_window requires a window and optional options");
-        }
-        g_autofree char* window = NULL;
-        if (lua_type(state, 2) == LUA_TSTRING)
-            window = g_strdup(lua_tostring(state, 2));
-        else if (luaL_testudata(state, 2, GNOBLINCTL_WINDOW_RECORD_METATABLE)) {
-            lua_getiuservalue(state, 2, 1);
-            lua_getfield(state, -1, "id");
-            if (lua_isstring(state, -1))
-                window = g_strdup(lua_tostring(state, -1));
-            lua_pop(state, 2);
-        }
-        if (!window || !*window) {
-            json_object_unref(arguments);
-            return luaL_error(state, "workspace.move_window requires a Window record or window ID");
-        }
-        json_object_set_string_member(arguments, "window", window);
-        JsonObject* workspace = json_object_new();
-        json_object_set_string_member(workspace, "id", id);
-        JsonNode* workspace_node = json_node_new(JSON_NODE_OBJECT);
-        json_node_take_object(workspace_node, workspace);
-        json_object_set_member(arguments, "workspace", workspace_node);
-        if (supplied == 2 && !lua_isnil(state, 3)) {
-            g_autoptr(JsonObject) options = lua_cli_table_object(state, 3, "workspace options");
-            JsonNode* follow = json_object_get_member(options, "follow");
-            if (json_object_get_size(options) != 1 || !follow || !JSON_NODE_HOLDS_VALUE(follow) ||
-                json_node_get_value_type(follow) != G_TYPE_BOOLEAN) {
-                json_object_unref(arguments);
-                return luaL_error(state, "workspace options accept only boolean follow");
-            }
-            json_object_set_boolean_member(arguments, "follow", json_node_get_boolean(follow));
-        }
     } else {
         json_object_unref(arguments);
         return luaL_error(state, "unsupported Workspace method %s", method);
@@ -92,49 +55,9 @@ void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* objec
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    static const char* const methods[][2] = {
-        {"activate", "workspace.switch"},
-        {"rename", "workspace.rename"},
-        {"remove", "workspace.remove"},
-        {"move_here", "workspace.move_window"},
-        {NULL, NULL},
-    };
-    for (guint i = 0; methods[i][0]; i++) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushstring(state, methods[i][1]);
-        lua_pushcclosure(state, lua_cli_workspace_method, 2);
-        lua_setfield(state, -2, methods[i][0]);
-    }
+    lua_cli_add_record_methods(state, cli, "Workspace");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_WORKSPACE_RECORD_METATABLE);
-    lua_setmetatable(state, record);
-    lua_remove(state, backing);
-}
-
-int lua_cli_monitor_tostring(lua_State* state) {
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, "id");
-    const char* id = lua_tostring(state, -1);
-    lua_pushfstring(state, "Monitor<%s>", id ? id : "unknown");
-    return 1;
-}
-
-void lua_cli_push_monitor_record(lua_State* state, JsonObject* object) {
-    const char* id = member_string(object, "id", NULL);
-    if (!id || !*id)
-        luaL_error(state, "gnoblin.monitors returned a monitor without a stable id");
-
-    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
-    json_node_set_object(node, object);
-    json_to_lua(state, node);
-    int backing = lua_absindex(state, -1);
-    lua_newuserdatauv(state, 1, 2);
-    int record = lua_absindex(state, -1);
-    lua_pushvalue(state, backing);
-    lua_setiuservalue(state, record, 1);
-    lua_newtable(state);
-    lua_setiuservalue(state, record, 2);
-    luaL_getmetatable(state, GNOBLINCTL_MONITOR_RECORD_METATABLE);
     lua_setmetatable(state, record);
     lua_remove(state, backing);
 }
@@ -147,7 +70,7 @@ int lua_cli_layer_surface_tostring(lua_State* state) {
     return 1;
 }
 
-void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object) {
+void lua_cli_push_layer_surface_record(lua_State* state, Cli* cli, JsonObject* object) {
     const char* id = member_string(object, "id", NULL);
     if (!id || !*id)
         luaL_error(state, "gnoblin.layers.list returned a layer surface without a stable id");
@@ -161,6 +84,7 @@ void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object) {
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
+    lua_cli_add_record_methods(state, cli, "LayerSurface");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -204,7 +128,34 @@ static gboolean lua_cli_input_device_valid(JsonObject* object) {
     return TRUE;
 }
 
-void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revision,
+/* InputSource:select(): switch to this source and return the confirmed source. */
+int lua_cli_input_source_select(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    luaL_checkudata(state, 1, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "source:select takes no arguments");
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "type");
+    lua_getfield(state, -2, "id");
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "type", lua_tostring(state, -2));
+    json_object_set_string_member(arguments, "id", lua_tostring(state, -1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "input.select", arguments, &call_error);
+    if (!result)
+        return luaL_error(state, "input.select failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "input.select returned an invalid InputSource");
+    JsonObject* source = json_node_get_object(result);
+    gint64 revision = json_object_get_int_member_with_default(source, "revision", -1);
+    if (revision < 0)
+        return luaL_error(state, "input.select returned an invalid InputSource");
+    lua_cli_push_input_record(state, cli, source, revision, FALSE);
+    return 1;
+}
+
+void lua_cli_push_input_record(lua_State* state, Cli* cli, JsonObject* object, gint64 revision,
                                gboolean is_device) {
     gboolean valid =
         is_device ? lua_cli_input_device_valid(object) : lua_cli_input_source_valid(object);
@@ -231,6 +182,7 @@ void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revi
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
+    lua_cli_add_record_methods(state, cli, is_device ? "InputDevice" : "InputSource");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, is_device ? GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE
                                        : GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
@@ -259,12 +211,16 @@ static void lua_cli_push_shortcut_record(lua_State* state, JsonObject* object, g
 }
 
 static int lua_cli_shortcut_record_tostring(lua_State* state) {
+    gboolean is_object = luaL_testudata(state, 1, GNOBLINCTL_SHORTCUT_RECORD_METATABLE) != NULL;
     gboolean is_action =
         luaL_testudata(state, 1, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE) != NULL;
     lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, is_action ? "id" : "name");
+    lua_getfield(state, -1, is_action || is_object ? "id" : "name");
     const char* identity = lua_tostring(state, -1);
-    lua_pushfstring(state, "%s<%s>", is_action ? "ShortcutAction" : "ShortcutState",
+    lua_pushfstring(state, "%s<%s>",
+                    is_object   ? "Shortcut"
+                    : is_action ? "ShortcutAction"
+                                : "ShortcutState",
                     identity ? identity : "unknown");
     return 1;
 }
@@ -295,9 +251,9 @@ static int lua_cli_shortcut_snapshot(lua_State* state, gboolean is_action) {
     return 1;
 }
 
-int lua_cli_shortcuts_list(lua_State* state) {
+int lua_cli_shortcuts_configured(lua_State* state) {
     if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.shortcuts.list takes no arguments");
+        return luaL_error(state, "gnoblin.shortcuts.configured takes no arguments");
     return lua_cli_shortcut_snapshot(state, FALSE);
 }
 
@@ -380,16 +336,107 @@ static void lua_cli_push_readonly_json_object(lua_State* state, JsonObject* obje
     lua_remove(state, -2);
 }
 
-int lua_cli_shortcuts_bind(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.shortcuts.bind requires one options table");
-    static const char* const allowed[] = {"id",   "accelerator",   "hold", "trigger",
-                                          "mode", "capture_input", NULL};
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut binding options");
-    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
-        return luaL_error(state, "gnoblin.shortcuts.bind accepts only id, accelerator, hold, "
-                                 "trigger, mode, and capture_input");
+#define LUA_CLI_BOUND_SHORTCUTS_KEY "gnoblinctl.shortcuts"
+
+/* Unbind or end a session of the shortcut at index 1, through the connection that owns it. The
+ * methods are Shortcut:unbind() and Shortcut:end_session(session_id). */
+int lua_cli_shortcut_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    gboolean unbinding = g_str_equal(method, "shortcut.unbind");
+    luaL_checkudata(state, 1, GNOBLINCTL_SHORTCUT_RECORD_METATABLE);
+    int supplied = lua_gettop(state) - 1;
+    if (unbinding ? supplied != 0
+                  : (supplied != 1 || !lua_isinteger(state, 2) || lua_tointeger(state, 2) <= 0))
+        return luaL_error(state, unbinding ? "shortcut:unbind takes no arguments"
+                                           : "shortcut:end_session requires session_id (positive "
+                                             "integer)");
+    lua_getiuservalue(state, 1, 1);
+    int backing = lua_absindex(state, -1);
+    lua_getfield(state, backing, "id");
+    g_autofree char* id = g_strdup(lua_tostring(state, -1));
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "id", id);
+    if (!unbinding)
+        json_object_set_int_member(arguments, "session_id", lua_tointeger(state, 2));
+    if (!cli->lua_shortcut_owner)
+        return luaL_error(state, "shortcut %s has no active owner connection", id);
+    g_autoptr(GError) error = NULL;
+    g_autoptr(JsonObject) result = lua_cli_shortcut_owner_call(cli, method, arguments, &error);
+    if (!result)
+        return luaL_error(state, "%s failed: %s", method,
+                          error ? error->message : "invalid result");
+    const char* result_id = member_string(result, "id", NULL);
+    if (!result_id ||
+        !json_object_get_boolean_member_with_default(result, unbinding ? "unbound" : "ended",
+                                                     FALSE) ||
+        (!unbinding && json_object_get_int_member_with_default(result, "session_id", 0) <= 0))
+        return luaL_error(state, "%s returned an invalid result", method);
+    if (unbinding) {
+        if (cli->lua_shortcut_bindings)
+            g_hash_table_remove(cli->lua_shortcut_bindings, result_id);
+        lua_pushboolean(state, FALSE);
+        lua_setfield(state, backing, "alive");
+        lua_getfield(state, LUA_REGISTRYINDEX, LUA_CLI_BOUND_SHORTCUTS_KEY);
+        if (lua_istable(state, -1)) {
+            lua_pushnil(state);
+            lua_setfield(state, -2, result_id);
+        }
+    }
+    lua_cli_push_readonly_json_object(state, result);
+    return 1;
+}
+
+/* A bound shortcut: the compositor's binding record with `alive`, and its methods. Every bound
+ * shortcut is also kept in the registry so that gnoblin.shortcuts.list returns the same object. */
+static void lua_cli_push_shortcut_object(lua_State* state, Cli* cli, JsonObject* object) {
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, object);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_pushboolean(state, TRUE);
+    lua_setfield(state, backing, "alive");
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_cli_add_record_methods(state, cli, "Shortcut");
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_SHORTCUT_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    record = lua_absindex(state, -1);
+
+    if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_CLI_BOUND_SHORTCUTS_KEY) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, LUA_REGISTRYINDEX, LUA_CLI_BOUND_SHORTCUTS_KEY);
+    }
+    lua_pushvalue(state, record);
+    lua_setfield(state, -2, member_string(object, "id", ""));
+    lua_pop(state, 1);
+}
+
+int lua_cli_shortcuts_bind(lua_State* state) {
+    if (lua_gettop(state) < 2 || lua_gettop(state) > 3 || lua_type(state, 1) != LUA_TSTRING ||
+        !*lua_tostring(state, 1) || lua_type(state, 2) != LUA_TSTRING || !*lua_tostring(state, 2))
+        return luaL_error(state,
+                          "gnoblin.shortcuts.bind requires id (string), accelerator (string) "
+                          "and optional options");
+    static const char* const allowed[] = {"hold", "trigger", "mode", "capture_input", NULL};
+    g_autoptr(JsonObject) arguments = lua_cli_optional_options(state, 3, "gnoblin.shortcuts.bind");
+    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
+        return luaL_error(state, "gnoblin.shortcuts.bind options accept only hold, trigger, mode, "
+                                 "and capture_input");
+    json_object_set_string_member(arguments, "id", lua_tostring(state, 1));
+    json_object_set_string_member(arguments, "accelerator", lua_tostring(state, 2));
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (cli->lua_shortcut_bindings &&
+        g_hash_table_contains(cli->lua_shortcut_bindings, lua_tostring(state, 1)))
+        return luaL_error(state, "shortcut %s is already bound; unbind it first",
+                          lua_tostring(state, 1));
     g_autoptr(GError) error = NULL;
     if (!cli_lua_shortcut_owner_ensure(cli, &error))
         return luaL_error(state, "gnoblin.shortcuts.bind could not create its owner connection: %s",
@@ -406,57 +453,37 @@ int lua_cli_shortcuts_bind(lua_State* state) {
     if (!cli->lua_shortcut_bindings)
         cli->lua_shortcut_bindings = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     g_hash_table_add(cli->lua_shortcut_bindings, g_strdup(id));
-    lua_cli_push_readonly_json_object(state, result);
+    lua_cli_push_shortcut_object(state, cli, result);
     return 1;
 }
 
-int lua_cli_shortcuts_unbind(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.shortcuts.unbind requires one {id} table");
-    static const char* const allowed[] = {"id", NULL};
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut unbind options");
-    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
-        return luaL_error(state, "gnoblin.shortcuts.unbind accepts only id");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (!cli->lua_shortcut_owner)
-        return luaL_error(state, "gnoblin.shortcuts.unbind has no active owner connection");
-    g_autoptr(GError) error = NULL;
-    g_autoptr(JsonObject) result =
-        lua_cli_shortcut_owner_call(cli, "shortcut.unbind", arguments, &error);
-    if (!result)
-        return luaL_error(state, "gnoblin.shortcuts.unbind failed: %s",
-                          error ? error->message : "invalid result");
-    const char* id = member_string(result, "id", NULL);
-    if (!id || !json_object_get_boolean_member_with_default(result, "unbound", FALSE))
-        return luaL_error(state, "gnoblin.shortcuts.unbind returned an invalid result");
-    if (cli->lua_shortcut_bindings)
-        g_hash_table_remove(cli->lua_shortcut_bindings, id);
-    lua_cli_push_readonly_json_object(state, result);
-    return 1;
+static int lua_cli_compare_strings(gconstpointer a, gconstpointer b) {
+    return strcmp(*(const char* const*)a, *(const char* const*)b);
 }
 
-int lua_cli_shortcuts_end_session(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state,
-                          "gnoblin.shortcuts.end_session requires one {id, session_id} table");
-    static const char* const allowed[] = {"id", "session_id", NULL};
-    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut session options");
-    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
-        return luaL_error(state, "gnoblin.shortcuts.end_session accepts only id and session_id");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (!cli->lua_shortcut_owner)
-        return luaL_error(state, "gnoblin.shortcuts.end_session has no active owner connection");
-    g_autoptr(GError) error = NULL;
-    g_autoptr(JsonObject) result =
-        lua_cli_shortcut_owner_call(cli, "shortcut.session.end", arguments, &error);
-    if (!result)
-        return luaL_error(state, "gnoblin.shortcuts.end_session failed: %s",
-                          error ? error->message : "invalid result");
-    const char* id = member_string(result, "id", NULL);
-    if (!id || !json_object_get_boolean_member_with_default(result, "ended", FALSE) ||
-        json_object_get_int_member_with_default(result, "session_id", 0) <= 0)
-        return luaL_error(state, "gnoblin.shortcuts.end_session returned an invalid result");
-    lua_cli_push_readonly_json_object(state, result);
+/* gnoblin.shortcuts.list: the shortcuts this script bound and has not unbound, in ID order. */
+int lua_cli_shortcuts_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.shortcuts.list takes no arguments");
+    lua_newtable(state);
+    int result = lua_absindex(state, -1);
+    if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_CLI_BOUND_SHORTCUTS_KEY) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        return 1;
+    }
+    int bound = lua_absindex(state, -1);
+    g_autoptr(GPtrArray) ids = g_ptr_array_new_with_free_func(g_free);
+    lua_pushnil(state);
+    while (lua_next(state, bound)) {
+        g_ptr_array_add(ids, g_strdup(lua_tostring(state, -2)));
+        lua_pop(state, 1);
+    }
+    g_ptr_array_sort(ids, lua_cli_compare_strings);
+    for (guint i = 0; i < ids->len; i++) {
+        lua_getfield(state, bound, g_ptr_array_index(ids, i));
+        lua_rawseti(state, result, i + 1);
+    }
+    lua_pop(state, 1);
     return 1;
 }
 
@@ -534,6 +561,16 @@ void register_lua_cli_focus_policy_record(lua_State* state) {
     lua_pop(state, 1);
 }
 
+static int lua_cli_settings_index(lua_State* state) {
+    if (lua_type(state, 2) == LUA_TSTRING && g_str_equal(lua_tostring(state, 2), "override")) {
+        /* An override lasts only while a runtime holds it. */
+        lua_pushliteral(state, "gnoblin.settings.override");
+        lua_pushcclosure(state, lua_cli_not_available, 1);
+        return 1;
+    }
+    return lua_cli_readonly_index(state);
+}
+
 static int lua_cli_settings_tostring(lua_State* state) {
     lua_pushliteral(state, "Settings");
     return 1;
@@ -544,7 +581,7 @@ void register_lua_cli_settings_record(lua_State* state) {
         lua_pop(state, 1);
         return;
     }
-    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_pushcfunction(state, lua_cli_settings_index);
     lua_setfield(state, -2, "__index");
     lua_pushcfunction(state, lua_cli_readonly_newindex);
     lua_setfield(state, -2, "__newindex");

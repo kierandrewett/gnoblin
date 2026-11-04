@@ -5,10 +5,10 @@ gnoblin.configure {
             move = {
                 binding = "<Super>Button1",
                 callback = function(event)
-                    if not event.window or not event.focus_context or not event.window.movable then
+                    if not event.window or not event.grant or not event.window.movable then
                         return "forward"
                     end
-                    event.window:begin_move(event.focus_context)
+                    event.window:begin_move(event.grant)
                     return "consume"
                 end,
             },
@@ -16,7 +16,7 @@ gnoblin.configure {
                 binding = "<Super>Button3",
                 callback = function(event)
                     local window = event.window
-                    if not window or not event.focus_context or not window.resizable then
+                    if not window or not event.grant or not window.resizable then
                         return "forward"
                     end
                     local frame = window.frame
@@ -24,7 +24,7 @@ gnoblin.configure {
                         and "north" or "south"
                     local horizontal = event.pointer.x < frame.x + frame.width / 2
                         and "west" or "east"
-                    window:begin_resize(vertical .. "_" .. horizontal, event.focus_context)
+                    window:begin_resize(vertical .. "_" .. horizontal, event.grant)
                     return "consume"
                 end,
             },

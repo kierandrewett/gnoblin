@@ -11,13 +11,6 @@
 ---@field session_state? "starting"|"running"|"stopping" Session lifecycle state when supported.
 ---@field session_revision? integer Lifecycle revision, present with session_state.
 
----@class SessionActivity
----@field available boolean Whether idle activity data is available.
----@field idle boolean Whether the session has been idle for at least threshold_ms.
----@field threshold_ms integer Idle threshold in milliseconds.
----@field idle_for_ms integer Time since the last activity in milliseconds.
----@field revision integer Activity snapshot revision.
-
 ---@class RuntimeStatus
 ---@field state "starting"|"running"|"restarting"|"unavailable" Runtime worker state.
 ---@field generation integer Active runtime generation.
@@ -62,10 +55,6 @@
 ---@class PrivacyStopResult
 ---@field requested integer Number of privacy sessions asked to stop.
 
----@class LocationAuthorizationResult
----@field request_id integer Identifier of the answered authorization request.
----@field submitted boolean Whether the response was submitted.
-
 ---@class ConsoleToggleResult
 ---@field toggled boolean Whether the console was toggled.
 
@@ -75,10 +64,6 @@
 ---@return SessionStatus
 function gnoblin.session.status() end
 
----Read the session idle state and elapsed idle time.
----@return SessionActivity
-function gnoblin.session.activity() end
-
 ---Request that the compositor lock the session.
 ---@return Operation<SessionLockResult>
 function gnoblin.session.lock() end
@@ -87,19 +72,23 @@ function gnoblin.session.lock() end
 ---@return Operation<AcceptedResult>
 function gnoblin.session.logout() end
 
----Request that the session suspend through the native session supervisor and logind.
+---Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds
+---when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or
+---`internal` (the D-Bus error is in the message).
 ---@return Operation<AcceptedResult>
 function gnoblin.session.suspend() end
 
----Request that the session hibernate through the native session supervisor and logind.
+---Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.hibernate() end
 
----Request that the machine reboot through the native session supervisor and logind.
+---Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.reboot() end
 
----Request that the machine power off through the native session supervisor and logind.
+---Ask logind to power off the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.poweroff() end
 
@@ -123,18 +112,6 @@ function gnoblin.privacy.stop_sharing() end
 ---@return Operation<PrivacyStopResult>
 function gnoblin.privacy.stop_recording() end
 
----Answer a pending location authorization request. The request ID must have been received from an
-active authorization event subscription.
----@param request LocationAuthorizationArgs
----@return Operation<LocationAuthorizationResult>
-function gnoblin.location.authorize_app(request) end
-
----@class LocationAuthorizationArgs
----@field request_id integer Positive ID from a pending location authorization request.
----@field allow boolean Whether to allow location access.
----@field accuracy integer 0 when denied; when allowed, one of 1, 4, 5, 6, or 8 and no greater than
-the requested accuracy.
-
 ---Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.
 ---@return VersionInfo
 function gnoblin.version() end
@@ -147,7 +124,20 @@ function gnoblin.console.toggle() end
 ---@return ColorScheme|nil
 function gnoblin.appearance.color_scheme() end
 
----Return a detached copy of the active Lua configuration table.
+---Return a detached copy of the configuration that the files loaded so far have built, with the
+---internal hyphenated names, such as `snapshot()["window-rules"]`. Use it only while the config
+---loads; at run time it is an error, and `gnoblin.settings` holds the committed settings.
 ---@return Json
 function gnoblin.snapshot() end
+
+---@class Capability
+---@field id string Capability ID.
+---@field description string What the capability provides.
+---@field available boolean Whether the capability is available now.
+---@field reason? string Why the capability is unavailable, when it is not.
+---@field revision integer State revision for this snapshot.
+
+---Return the native compositor and protocol capabilities as read-only records.
+---@return Capability[]
+function gnoblin.capabilities.list() end
 */

@@ -173,6 +173,23 @@ typedef struct {
     guint timeout_ms;
     guint64 revision;
 } NativeLaunch;
+/* What one gesture proves. Each operation takes its own scope once, so one key press can focus a
+ * window and then begin a move. */
+typedef enum {
+    FOCUS_SCOPE_FOCUS = 1 << 0,
+    FOCUS_SCOPE_BEGIN_MOVE = 1 << 1,
+    FOCUS_SCOPE_BEGIN_RESIZE = 1 << 2,
+    FOCUS_SCOPE_SNAP_CONTEXT = 1 << 3,
+    FOCUS_SCOPE_TEXT_TARGET = 1 << 4,
+} NativeFocusScope;
+#define FOCUS_SCOPE_ALL                                                                            \
+    (FOCUS_SCOPE_FOCUS | FOCUS_SCOPE_BEGIN_MOVE | FOCUS_SCOPE_BEGIN_RESIZE |                       \
+     FOCUS_SCOPE_SNAP_CONTEXT | FOCUS_SCOPE_TEXT_TARGET)
+typedef enum {
+    FOCUS_CLAIM_OK,
+    FOCUS_CLAIM_MISSING, /* expired, revoked or fully used */
+    FOCUS_CLAIM_USED,    /* this scope was taken already */
+} NativeFocusClaim;
 typedef struct {
     guint64 generation;
     gint64 expires_at_us;
@@ -187,6 +204,8 @@ typedef struct {
     guint64 pointer_target_sequence;
     double pointer_x;
     double pointer_y;
+    /* Operations of this gesture already taken, as NativeFocusScope bits. */
+    guint used_scopes;
 } NativeFocusContext;
 typedef struct {
     guint64 generation;
@@ -282,6 +301,11 @@ void native_trusted_shortcut_activated(MetaDisplay* display, guint action,
                                        const ClutterEvent* event, gpointer user_data);
 gboolean focus_token_random(char token[65]);
 void revoke_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle);
+void revoke_other_focus_grants_for_handle(GnoblinNativeControl* control, guint64 handle,
+                                          const char* keep_token);
+NativeFocusClaim native_focus_context_claim(GnoblinNativeControl* control, guint64 handle,
+                                            NativeFocusScope scope, NativeFocusContext* out);
+gboolean native_grant_window_allows(const char* grant_window, const char* window_id);
 void revoke_focus_contexts(GnoblinNativeControl* control);
 void native_menu_context_free(gpointer data);
 void revoke_menu_contexts(GnoblinNativeControl* control);
@@ -317,6 +341,7 @@ GVariant* normalize_input_fields(const char* group, GVariant* fields, GError** e
 gboolean valid_input_device(const char* group, const char* device);
 GVariant* native_orientation_lock_snapshot(GnoblinNativeControl* control, guint64 revision);
 void native_orientation_lock_publish(GnoblinNativeControl* control);
+gboolean native_monitor_privacy_screen_request(GnoblinNativeControl* control, const char** source);
 GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, guint64 revision);
 void native_monitor_privacy_screen_publish(GnoblinNativeControl* control);
 void native_orientation_manager_notified(GObject* manager, GParamSpec* property,
@@ -345,6 +370,7 @@ gboolean native_input_handle_decision(GnoblinNativeControl* control,
                                       const GnoblinRuntimePacket* packet, GError** error);
 GVariant* input_device_snapshot(GnoblinNativeControl* control);
 void native_control_maybe_free_stopped(GnoblinNativeControl* control);
+void native_control_finish_teardown(GnoblinNativeControl* control);
 void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean complete, gboolean ok,
                                   const char* accelerator, const char* error_code,
                                   const char* message);
@@ -384,6 +410,7 @@ void privacy_pipewire_state_changed(GnoblinPipewireMonitor* monitor, gboolean av
 GVariant* native_location_authorize_operation(GnoblinNativeControl* control, GVariant* arguments,
                                               guint64 client_id, GError** error);
 void native_settings_changed(guint64 revision, gpointer user_data);
+void native_apply_runtime_preferences(GnoblinNativeControl* control, GVariant* config);
 GVariant* filter_native_touchpad_gestures(GVariant* gestures);
 gboolean native_config_event(MetaDisplay* display, const char* event, GVariant* document,
                              GVariant* payload, gpointer user_data);
@@ -446,6 +473,7 @@ char* handle_ui_session_request(Client* client, JsonObject* request);
 char* handle_request(Client* client, const char* data, gsize length);
 void send_response(Client* client, char* response);
 void schedule_windows(GnoblinNativeControl* control);
+void publish_windows_now(GnoblinNativeControl* control);
 gboolean native_mutter_event_is_subscribable(GnoblinNativeControl* control, const char* name);
 void clear_display_signal_watches(GnoblinNativeControl* control);
 void refresh_display_signal_watches(GnoblinNativeControl* control);

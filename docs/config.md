@@ -7,9 +7,9 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 - [`gnoblin.configure`](/config/configure) — set compositor, input and window-management options.
 - [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
 - [`gnoblin.animation`](/config/animation) — register a named animation.
-- [`gnoblin.config`](/config/config) — inspect or edit the config assembled during loading.
+- [`gnoblin.config`](/config/config) — find the config file, read the bundled default and restore it.
 - [`gnoblin.load`](/config/load) — load another Lua config file.
-- [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the current config.
+- [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the config while it loads.
 - [`gnoblin.array`](/config/array) — mark a Lua table as a list.
 - [`gnoblin.on`](/events/) — handle compositor and input events.
 - [Lua runtime API](/shell-api/) — inspect and control the running session.

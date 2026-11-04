@@ -1,13 +1,28 @@
 # Layer surfaces
 
-`gnoblin.layers.list(filter?)` returns read-only records from the native
-layer-surface snapshot. Each record includes its state revision. Layer records
-have no mutating methods; shell clients continue to own their surfaces.
+`gnoblin.layers.list()` returns `LayerSurface` objects from the native
+layer-surface snapshot. Each includes its state revision. Layer surfaces have
+no mutating methods; shell clients continue to own their surfaces.
 
-The optional filter accepts exact string matches for `monitor_id`, `namespace`,
-and `layer`. Unknown fields and non-string values raise a Lua error. The read
-is available only in the native Mutter runtime and raises a Lua error while its
-snapshot is unavailable.
+Like [window objects](/shell-api/windows#live-window-objects), every read of one
+surface returns the same object, updated with each change:
+
+- `layer.alive` turns `false` when the surface goes away.
+- `layer:on(signal, fn)` takes `"changed"` or `"closed"`.
+- `layer:watch(field, fn)` calls `fn(layer, value, old)` when a declared field
+  changes.
+
+`gnoblin.layers.list()` takes no filter. Select surfaces with
+`gnoblin.find("LayerSurface", filter)`. A table filter matches declared scalar
+fields, such as `id`, `namespace`, `layer` and `monitor_id`. A predicate function
+also works. See [find](/shell-api/find).
+
+The read is available only in the native Mutter runtime and raises a Lua error
+while its snapshot is unavailable.
+
+```lua
+local panels = gnoblin.find("LayerSurface", {layer = "top"})
+```
 
 Shells that also use the control socket can find its request format in the
 [compositor bridge](/bridge/).
@@ -52,14 +67,18 @@ focus also raises a popup when it opens. A shell can keep companion surfaces
 above or below an overlay using [UI-session state](../bridge/.md#api-version-175-shell-ui-sessions).
 Those constraints apply to pointer raises too.
 
-`gnoblin.layers.animation_policy(namespace)` returns the effective enter and
-exit phases and `window_shadow` for a layer namespace. The namespace must be 1
-to 128 UTF-8 bytes. Without an animation override, each phase uses its first enabled event
+`gnoblin.layers.animation_policy(layer)` returns the effective enter and
+exit phases and `window_shadow` for a layer surface. Pass a `LayerSurface`, or a
+namespace of 1 to 128 UTF-8 bytes. Without an animation override, each phase uses its first enabled event
 registration, or `none` if no event is registered.
 
 `window_shadow` defaults to `false` unless a matching default-window rule
 supplies a shadow value. The method raises a Lua error if the committed policy
 cannot be read.
+
+`layer:inspect_animation(name, event?)` resolves an animation against the surface without
+starting it. `layer:preview_animation(name, event?, autoplay?)` starts a controllable
+[preview](/shell-api/appearance-animations#animation-controls).
 
 `gnoblin.capabilities.list()` returns read-only native compositor and protocol
 capability records. It takes no arguments and has no filters or mutators. The

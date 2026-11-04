@@ -20,7 +20,7 @@ gnoblin.configure {
             terminal = {
                 binding = "<Super>Return",
                 callback = function(event)
-                    gnoblin.commands.run({"ptyxis", "--new-window"})
+                    gnoblin.process.spawn({"ptyxis", "--new-window"})
                 end,
             },
         },
@@ -29,8 +29,13 @@ gnoblin.configure {
 ```
 
 Install `ptyxis`, save the file, and run `gnoblinctl reload`. Super+Enter then
-queues a terminal launch. Commands are argument arrays; shell expansion happens
+starts a terminal. Commands are argument arrays; shell expansion happens
 only if you explicitly run a shell.
+
+Every `binding`, and every accelerator in the action lists below, is a chord in
+the [chord syntax](/guides/shortcuts#chord-syntax). Gnoblin refuses another
+form, such as `Super+Return`, when it loads the config, and the message names
+the form to write.
 
 Use snake_case names. A later declaration with the same name replaces its
 callback. Set `enable = false` to disable a binding.
@@ -45,7 +50,7 @@ Release triggers reserve and consume the physical press/release pair.
 Returning forward cannot undo that reservation; use a press trigger for
 conditional forwarding.
 
-For device selectors and lower-level events, see [Input handlers](/shell-api/input#input-handlers).
+For device selectors and lower-level events, see [Input handlers](/shell-api/input-handlers).
 
 ## Mutter action overrides
 
@@ -118,7 +123,7 @@ gnoblin.configure {
                         and "north" or "south"
                     local horizontal = event.pointer.x < frame.x + frame.width / 2
                         and "west" or "east"
-                    window:begin_resize(vertical .. "_" .. horizontal, event.focus_context)
+                    window:begin_resize(vertical .. "_" .. horizontal, event.grant)
                 end,
             },
         },
@@ -133,9 +138,8 @@ callback to select another edge or perform another supported window operation.
 `Button1` is left, `Button2` middle and `Button3` right. Prefix the button with
 one or more modifier tokens. Ordinary clicks continue to reach apps.
 
-Modifier tokens are case-insensitive: `<Super>`, `<Alt>`, `<Meta>`, `<Hyper>`,
-`<Mod1>` through `<Mod5>`, `<Control>` (also `<Ctrl>`, `<Ctl>` or `<Primary>`),
-and `<Shift>` (also `<Shft>`). Combine tokens without spaces. Conflicting
+Write the binding in the [chord syntax](/guides/shortcuts#chord-syntax), such
+as `<Super>Button1`. A pointer chord needs at least one modifier. Conflicting
 button and modifier combinations are rejected.
 
 Names identify callbacks, not built-in actions. Without a binding, the
@@ -147,7 +151,7 @@ To disable an imported binding, set its named declaration to
 the earlier callback.
 
 The event contains the window under the pointer, its frame geometry, and the
-pointer's stage coordinates `pointer.x` and `pointer.y`. Its one-use `focus_context` authorizes
+pointer's stage coordinates `pointer.x` and `pointer.y`. Its [`grant`](/shell-api/grants) authorizes
 a move or resize of that window during the trusted input interaction.
 
 These gestures operate on Wayland and Xwayland application windows,

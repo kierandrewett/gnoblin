@@ -7,8 +7,6 @@ int lua_focus_policy(lua_State* state) {
     return 1;
 }
 
-static int lua_operation_unsubscribe(lua_State* state);
-
 int lua_gnoblin_index(lua_State* state) {
     LuaConfig* config = config_from_upvalue(state);
     if (lua_type(state, 2) != LUA_TSTRING) {
@@ -24,6 +22,7 @@ int lua_gnoblin_index(lua_State* state) {
         {"autostart", "use gnoblin.configure.autostart.name = {command = ...}"},
         {"remove_shortcut", "set gnoblin.configure.shortcuts.name.enable = false"},
         {"remove_autostart", "set gnoblin.configure.autostart.name.enable = false"},
+        {"events", "use gnoblin.on(name, fn) and gnoblin.once(name, fn)"},
     };
     for (guint i = 0; i < G_N_ELEMENTS(removed_apis); i++)
         if (g_str_equal(property, removed_apis[i].name))
@@ -97,28 +96,36 @@ int lua_gnoblin_index(lua_State* state) {
     lua_setfield(state, -2, "revision");
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
+    /* `override` is a method of the snapshot: it stays out of its fields and of pairs(), and
+     * the snapshot that the socket read "settings" returns has the same fields as before. */
+    lua_getiuservalue(state, -1, 2);
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_settings_override, 1);
+    lua_setfield(state, -2, "override");
+    lua_pop(state, 1);
     return 1;
 }
 
+/* gnoblin.snapshot(): a copy of the configuration the files have built so far. At run time the
+ * committed settings are gnoblin.settings. */
 int lua_snapshot(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "snapshot takes no arguments");
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    if (!lua_istable(state, -1))
-        return luaL_error(state, "gnoblin.config must be a table");
+    if (lua_in_runtime(state))
+        return luaL_error(state,
+                          "gnoblin.snapshot() reads the config while it loads; at run time read "
+                          "gnoblin.settings");
+    push_document(state);
     copy_config_value(state, -1, 0);
     return 1;
 }
 
+/* Merge the table at index 1 into the document. */
 int lua_set(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    if (!lua_istable(state, -1))
-        return luaL_error(state, "gnoblin.config must be a table");
+    push_document(state);
     merge_table(state, -1, 1, NULL, FALSE);
-    lua_pop(state, 2);
+    lua_pop(state, 1);
     return 0;
 }
 
@@ -166,14 +173,11 @@ static int lua_listener_wrapper(lua_State* state) {
     lua_pop(state, 1);
     if (!active)
         return 0;
+    /* An error propagates to the dispatcher, which logs it with the event and stack. The
+     * subscription stays active. */
     lua_getfield(state, lua_upvalueindex(1), "_user_callback");
     lua_pushvalue(state, 1);
-    if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-        record_runtime_callback_error("event callback", lua_error_text(state));
-        lua_pushboolean(state, FALSE);
-        lua_setfield(state, lua_upvalueindex(1), "_active");
-        return lua_error(state);
-    }
+    lua_call(state, 1, 0);
     return 0;
 }
 
@@ -213,14 +217,6 @@ int lua_on(lua_State* state) {
     return 1;
 }
 
-int lua_mutter_on(lua_State* state) {
-    size_t event_length;
-    const char* event = luaL_checklstring(state, 1, &event_length);
-    if (event_length <= strlen("mutter.") || !g_str_has_prefix(event, "mutter."))
-        return luaL_error(state, "Mutter event names must start with 'mutter.'");
-    return lua_on(state);
-}
-
 static int lua_once_callback(lua_State* state) {
     lua_getfield(state, lua_upvalueindex(1), "fired");
     if (lua_toboolean(state, -1))
@@ -237,8 +233,7 @@ static int lua_once_callback(lua_State* state) {
     lua_pop(state, 1);
     lua_getfield(state, lua_upvalueindex(1), "callback");
     lua_pushvalue(state, 1);
-    if (lua_pcall(state, 1, 0, 0) != LUA_OK)
-        return lua_error(state);
+    lua_call(state, 1, 0);
     return 0;
 }
 
@@ -266,14 +261,6 @@ int lua_once(lua_State* state) {
     return 1;
 }
 
-int lua_mutter_once(lua_State* state) {
-    size_t event_length;
-    const char* event = luaL_checklstring(state, 1, &event_length);
-    if (event_length <= strlen("mutter.") || !g_str_has_prefix(event, "mutter."))
-        return luaL_error(state, "Mutter event names must start with 'mutter.'");
-    return lua_once(state);
-}
-
 gboolean workspace_id_valid(const char* id) {
     return id && g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id, G_REGEX_OPTIMIZE,
                                       G_REGEX_MATCH_NOTEMPTY);
@@ -283,111 +270,4 @@ gboolean workspace_selector_id_valid(const char* id) {
     return workspace_id_valid(id) ||
            (id && g_regex_match_simple("^@session-[1-9][0-9]*$", id, G_REGEX_OPTIMIZE,
                                        G_REGEX_MATCH_NOTEMPTY));
-}
-
-guint64 allocate_operation_id(void) {
-    if (next_runtime_operation_id >= G_MAXINT64)
-        return 0;
-    return ++next_runtime_operation_id;
-}
-
-static void push_operation_subscription(lua_State* state, int operation, int callback) {
-    operation = lua_absindex(state, operation);
-    callback = lua_absindex(state, callback);
-    lua_newtable(state);
-    lua_pushvalue(state, operation);
-    lua_setfield(state, -2, "_operation");
-    lua_pushvalue(state, callback);
-    lua_setfield(state, -2, "_callback");
-    lua_pushboolean(state, TRUE);
-    lua_setfield(state, -2, "_active");
-    lua_pushcfunction(state, lua_operation_unsubscribe);
-    lua_setfield(state, -2, "unsubscribe");
-}
-
-static int lua_operation_on_complete(lua_State* state) {
-    luaL_checktype(state, 1, LUA_TTABLE);
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    lua_getfield(state, 1, "status");
-    gboolean pending = lua_isstring(state, -1) && g_str_equal(lua_tostring(state, -1), "pending");
-    lua_pop(state, 1);
-    if (pending) {
-        lua_getfield(state, 1, "_callbacks");
-        if (!lua_istable(state, -1)) {
-            lua_pop(state, 1);
-            lua_newtable(state);
-            lua_pushvalue(state, -1);
-            lua_setfield(state, 1, "_callbacks");
-        }
-        int callbacks = lua_absindex(state, -1);
-        push_operation_subscription(state, 1, 2);
-        lua_pushvalue(state, -1);
-        lua_rawseti(state, callbacks, lua_rawlen(state, callbacks) + 1);
-        return 1;
-    } else {
-        if (!config || !config->deferred_callbacks) {
-            return luaL_error(state, "deferred operation callbacks are unavailable");
-        }
-        push_operation_subscription(state, 1, 2);
-        lua_pushvalue(state, -1);
-        int reference = luaL_ref(state, LUA_REGISTRYINDEX);
-        g_ptr_array_add(config->deferred_callbacks, GINT_TO_POINTER(reference));
-        schedule_deferred_callbacks(config);
-        return 1;
-    }
-}
-
-static int lua_operation_unsubscribe(lua_State* state) {
-    luaL_checktype(state, 1, LUA_TTABLE);
-    lua_getfield(state, 1, "_active");
-    gboolean active = lua_toboolean(state, -1);
-    lua_pop(state, 1);
-    if (!active)
-        return 0;
-    lua_pushboolean(state, FALSE);
-    lua_setfield(state, 1, "_active");
-    lua_getfield(state, 1, "_operation");
-    lua_getfield(state, -1, "_callbacks");
-    if (lua_istable(state, -1)) {
-        int callbacks = lua_absindex(state, -1);
-        lua_Integer count = lua_rawlen(state, callbacks);
-        for (lua_Integer i = 1; i <= count; i++) {
-            lua_rawgeti(state, callbacks, i);
-            gboolean match = lua_rawequal(state, 1, -1);
-            lua_pop(state, 1);
-            if (!match)
-                continue;
-            lua_getglobal(state, "table");
-            lua_getfield(state, -1, "remove");
-            lua_pushvalue(state, callbacks);
-            lua_pushinteger(state, i);
-            lua_call(state, 2, 0);
-            break;
-        }
-    }
-    return 0;
-}
-
-void push_operation_handle(lua_State* state, LuaConfig* config, guint64 id, const char* method) {
-    lua_newtable(state);
-    lua_pushinteger(state, id);
-    lua_setfield(state, -2, "id");
-    lua_pushstring(state, method);
-    lua_setfield(state, -2, "method");
-    lua_pushliteral(state, "pending");
-    lua_setfield(state, -2, "status");
-    lua_pushnil(state);
-    lua_setfield(state, -2, "value");
-    lua_pushnil(state);
-    lua_setfield(state, -2, "error");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_operation_on_complete, 1);
-    lua_setfield(state, -2, "on_complete");
-    if (config->operations) {
-        g_autofree char* key = g_strdup_printf("%" G_GUINT64_FORMAT, id);
-        lua_pushvalue(state, -1);
-        int reference = luaL_ref(state, LUA_REGISTRYINDEX);
-        g_hash_table_replace(config->operations, g_strdup(key), GINT_TO_POINTER(reference));
-    }
 }

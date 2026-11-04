@@ -6,26 +6,22 @@
 gnoblin = {}
 gnoblin.animations = {}
 gnoblin.appearance = {}
-gnoblin.auth = {}
-gnoblin.commands = {}
+gnoblin.capabilities = {}
 gnoblin.config = {}
 gnoblin.console = {}
-gnoblin.events = {}
-gnoblin.events.mutter = {}
 gnoblin.focus = {}
+gnoblin.idle = {}
 gnoblin.input = {}
-gnoblin.launch = {}
 gnoblin.launches = {}
-gnoblin.layer = {}
 gnoblin.layers = {}
-gnoblin.location = {}
-gnoblin.monitor = {}
-gnoblin.monitors = {}
+gnoblin.outputs = {}
 gnoblin.privacy = {}
-gnoblin.prompt = {}
+gnoblin.process = {}
 gnoblin.runtime = {}
 gnoblin.session = {}
+gnoblin.settings = {}
 gnoblin.shortcuts = {}
+gnoblin.timers = {}
 gnoblin.windows = {}
 gnoblin.workspaces = {}
 
@@ -72,26 +68,6 @@ gnoblin.workspaces = {}
 ---@field target? string Animation target hint.
 ---@field revision? integer Configuration revision for this record.
 
----@class AnimationSurface
----@field id string Stable surface ID.
----@field namespace string Layer-shell namespace.
----@field title string Surface title; may be empty.
-
----@class AnimationInspectArgs
----@field name string Animation name.
----@field target? string Target ID; defaults to "active".
----@field event? string Lifecycle event override.
----@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field targetType? "window"|"layer"|"namespace" Legacy spelling of target_type.
-
----@class AnimationPreviewArgs
----@field name string Animation name.
----@field target? string Target ID; defaults to "active".
----@field event? string Lifecycle event override.
----@field target_type? "window"|"layer"|"namespace" Target identifier kind. Default "window".
----@field targetType? "window"|"layer"|"namespace" Legacy spelling of target_type.
----@field autoplay? boolean Start the preview immediately. Default false.
-
 ---@class AnimationInspection
 ---@field name string Animation name.
 ---@field event string Lifecycle event.
@@ -106,9 +82,13 @@ gnoblin.workspaces = {}
 ---@field context table Compositor context used to resolve the animation.
 ---@field spec table Resolved animation specification.
 
+---A preview the compositor plays on one target. It is a live object: the same handle for one id,
+---with `alive`, `on` and `watch`. Each call on it updates this handle with the preview's new
+---state. It is alive until stop() has succeeded, a call on it fails because the preview is gone,
+---or a config reload ends the handle.
 ---@class AnimationPreview
----@field id string Preview session ID.
----@field session string Preview session ID used by control calls.
+---@field id string Preview ID. Calls to the compositor name the preview by it.
+---@field alive boolean False once the preview has ended.
 ---@field name string Animation name.
 ---@field event string Lifecycle event.
 ---@field target string Stable target ID.
@@ -123,19 +103,10 @@ gnoblin.workspaces = {}
 ---@field ok boolean True when the preview was stopped.
 ---@field session string Stopped preview session ID.
 
----@class AnimationSeekArgs
----@field session string Preview session ID.
----@field progress number Progress from 0 to 1.
-
----@class AnimationStepArgs
----@field session string Preview session ID.
----@field milliseconds integer Step duration, from 1 to 60000.
-
----@class AnimationSessionArgs
----@field session string Preview session ID.
-
----Declare or update a named animation in configuration.
+---Declare or update a named animation in configuration. Like `gnoblin.configure`, it returns an
+---Operation at run time and nothing while the config loads.
 ---@param animation AnimationArgs
+---@return Operation<nil>|nil
 function gnoblin.animation(animation) end
 
 ---Return the configured native animation records.
@@ -147,44 +118,31 @@ function gnoblin.animations.list() end
 ---@return AnimationInfo|nil
 function gnoblin.animations.get(name) end
 
----List visible layer-shell surfaces that can be targeted by animations.
----@return {surfaces: AnimationSurface[]}
-function gnoblin.animations.surfaces() end
+---Resolve an animation against this window without starting it.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@return Operation<AnimationInspection>
+function Window:inspect_animation(name, event) end
 
----Resolve an animation against a visible target without starting it.
----@param spec AnimationInspectArgs
----@return AnimationInspection
-function gnoblin.animations.inspect(spec) end
-
----Start a controllable preview of an animation on a visible target.
----@param spec AnimationPreviewArgs
+---Start a controllable preview of an animation on this window.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@param autoplay? boolean Start the preview immediately. Default false.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.preview(spec) end
+function Window:preview_animation(name, event, autoplay) end
 
----Set a preview session to a progress value from 0 to 1.
----@param request AnimationSeekArgs
+---Resolve an animation against this layer surface without starting it.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@return Operation<AnimationInspection>
+function LayerSurface:inspect_animation(name, event) end
+
+---Start a controllable preview of an animation on this layer surface.
+---@param name string Animation name.
+---@param event? string Lifecycle event override.
+---@param autoplay? boolean Start the preview immediately. Default false.
 ---@return Operation<AnimationPreview>
-function gnoblin.animations.seek(request) end
-
----Advance a preview session by a duration in milliseconds.
----@param request AnimationStepArgs
----@return Operation<AnimationPreview>
-function gnoblin.animations.step(request) end
-
----Resume a preview session.
----@param request AnimationSessionArgs
----@return Operation<AnimationPreview>
-function gnoblin.animations.play(request) end
-
----Pause a preview session.
----@param request AnimationSessionArgs
----@return Operation<AnimationPreview>
-function gnoblin.animations.pause(request) end
-
----Stop a preview session and restore the target's original actor state.
----@param request AnimationSessionArgs
----@return Operation<AnimationStopResult>
-function gnoblin.animations.stop(request) end
+function LayerSurface:preview_animation(name, event, autoplay) end
 
 ---Set preview progress from an AnimationPreview record.
 ---@param progress number Progress from 0 to 1.
@@ -208,72 +166,63 @@ function AnimationPreview:pause() end
 ---@return Operation<AnimationStopResult>
 function AnimationPreview:stop() end
 
----@class AuthBeginArgs
----@field request_id integer Positive request identifier.
----@field identity? integer Positive identity identifier; omitted when no identity is supplied.
+---Call fn(preview, detail) on a signal of this preview: "changed" (with the list of changed
+---fields) or "closed", with the reason when it has one: the message of the failure that showed the
+---preview gone, or "config_reloaded". Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(preview: AnimationPreview, detail?: string|string[])
+---@return Subscription
+function AnimationPreview:on(signal, fn) end
 
----@class AuthRespondArgs
----@field request_id integer Positive request identifier.
----@field response string UTF-8 response of at most 4096 bytes.
+---Call fn(preview, value, old) when one field of this preview changes.
+---@param property string A field of AnimationPreview, such as "progress".
+---@param fn fun(preview: AnimationPreview, value: any, old: any)
+---@return Subscription
+function AnimationPreview:watch(property, fn) end
 
----@class AuthCancelArgs
----@field request_id integer Positive request identifier.
+---Something a shell answers: a passphrase prompt, a polkit authentication, a location
+---authorization or a session-lock request. The event that offers it carries it as event.request,
+---and so do its follow-up events. Fields are read-only. Methods exist only on the kinds that use
+---them; calling another raises an error.
+---@class Request
+---@field id integer Identifier of the request among requests of its kind.
+---@field kind "password"|"confirm"|"authentication"|"location"|"lock"
+---@field status "pending"|"claimed"|"answered"|"finished"
+---@field result? string The outcome once status is "finished".
 
----@class PromptRespondArgs
----@field request_id integer Positive request identifier.
----@field password? string|nil UTF-8 password of at most 4096 bytes, or nil.
----@field confirmed? boolean Confirmation value.
----@field choice? boolean Choice value.
+---Answer the request. A password prompt takes (password, choice?), a confirm prompt takes
+---(confirmed, choice?), authentication takes the response for the current prompt, and location
+---takes (allow, accuracy?), where accuracy defaults to the requested accuracy when allowed.
+---@param value string|boolean Password, confirmed, response or allow, by kind.
+---@param option? boolean|integer The choice checkbox for prompts, or the accuracy for location.
+---@return Operation<{request_id: integer, submitted: boolean}>
+function Request:answer(value, option) end
 
----@class PromptCancelArgs
----@field request_id integer Positive request identifier.
+---Refuse the request: cancel a prompt or authentication, or deny location.
+---@return Operation<{request_id: integer, submitted: boolean}>
+function Request:cancel() end
 
----Begin an authentication request for an identity.
----@param request AuthBeginArgs
----@return Operation<any>
-function gnoblin.auth.begin(request) end
+---Take an authentication request and choose the identity, counted from 1 (the default). Answer
+---each later prompt with answer().
+---@param identity? integer
+---@return Operation<{request_id: integer, submitted: boolean}>
+function Request:claim(identity) end
 
----Submit a UTF-8 authentication response of at most 4096 bytes.
----@param request AuthRespondArgs
----@return Operation<any>
-function gnoblin.auth.respond(request) end
+---An Operation that succeeds once with the outcome: "answered", "cancelled" or "timeout" for
+---prompts; "authorized", "denied" or "cancelled" for authentication; "allowed", "denied" or
+---"timeout" for location; "locked" or "timeout" for lock.
+---@return Operation<string>
+function Request:finished() end
 
----Cancel an authentication request.
----@param request AuthCancelArgs
----@return Operation<any>
-function gnoblin.auth.cancel(request) end
-
----Answer a prompt with an optional password, confirmation, or choice.
----@param request PromptRespondArgs
----@return Operation<any>
-function gnoblin.prompt.respond(request) end
-
----Cancel a prompt request.
----@param request PromptCancelArgs
----@return Operation<any>
-function gnoblin.prompt.cancel(request) end
-
----@class CommandCaptureArgs
----@field argv string[] Command and arguments; 1 to 64 entries with a non-empty command name; total size at most 64 KiB.
----@field stdin? string UTF-8 input, at most 4096 bytes.
----@field timeout? integer Timeout in seconds, from 1 to 600. Default 60.
-
----@class CommandRunResult
----@field accepted boolean True when the command was queued for execution.
-
----@class CommandResult
----@field exit_code integer Exit status, or the negative signal number when terminated by a signal.
----@field stdout string Standard output, valid UTF-8 and at most 64 KiB.
-
----Queue a command for asynchronous execution.
----@param argv string[] Command and arguments; 1 to 64 UTF-8 entries, non-empty argv[1], total size at most 64 KiB.
----@return Operation<CommandRunResult>
-function gnoblin.commands.run(argv) end
-
----Run a command and return its standard output and exit code.
----@param request CommandCaptureArgs Command request. Standard error is discarded.
----@return Operation<CommandResult>
-function gnoblin.commands.capture(request) end
+---Call fn(request) for each later authentication prompt or message. Call fn(request, reason) on
+---"closed", which every kind of request has: it runs when a config reload or the worker's
+---shutdown takes the runtime away before the request is finished, with the reason
+---"config_reloaded" or "runtime_stopped". A request that finishes does not raise it; use
+---finished() for that.
+---@param signal "prompt"|"message"|"closed"
+---@param fn fun(request: Request, reason?: string)
+---@return Subscription
+function Request:on(signal, fn) end
 
 ---@alias Json nil|boolean|number|string|table
 
@@ -295,9 +244,53 @@ function gnoblin.commands.capture(request) end
 ---@field error OperationError|nil Failure once the status is "failed".
 
 ---Call callback when the operation finishes. The callback receives the value and the error; one
----of them is nil.
+---of them is nil. A callback added after the operation finished runs once, after the current
+---handler returns.
 ---@param callback fun(value: any, error: OperationError|nil)
+---@return Subscription
 function Operation:on_complete(callback) end
+
+---A new Operation that succeeds with fn(value) when this one succeeds. When this one fails, or fn
+---raises an error, the new one fails; an error raised by fn has the code "internal".
+---@param fn fun(value: any): any
+---@return Operation
+function Operation:map(fn) end
+
+---A new Operation that finishes with this one's result, or fails with the code "timed_out" after
+---the given time. The timeout does not cancel this operation.
+---@param seconds number From 0 to 86400.
+---@return Operation
+function Operation:timeout(seconds) end
+
+---Stop waiting for this operation. It fails with the code "cancelled" and its callbacks run. A
+---timer stops; an action already sent to the compositor still runs and its result is ignored.
+---@return boolean cancelled False when the operation had already finished.
+function Operation:cancel() end
+
+---An Operation that succeeds with nil after the given time. Use it from an event handler or an
+---operation callback, not while the config file loads.
+---@param seconds number From 0 to 86400.
+---@return Operation<nil>
+function gnoblin.timers.after(seconds) end
+
+---Seconds on a monotonic clock. Only differences between two readings are meaningful.
+---@return number
+function gnoblin.timers.now() end
+
+---@alias FindKind "Window"|"Workspace"|"LayerSurface"|"Output"|"Shortcut"|"Launch"|"InputSource"|"Process"
+
+---Return the live objects of one kind that match a filter, in the order of the kind's list
+---function (`gnoblin.windows.list` for "Window", and so on). Every result is the same handle that
+---the list and the events give. A table filter names fields of the kind and keeps the objects whose
+---field equals every value: strings, numbers and booleans, so `{app_id = "notes", focused = true}`.
+---A field that the kind does not declare, or that is not a scalar such as `frame`, is an error that
+---names the fields that work. A function filter is called with each object and keeps those for
+---which it returns true; use it for anything but equality, such as a title that contains a word.
+---Without a filter it returns every object.
+---@param kind FindKind The kind to search.
+---@param filter? table|fun(object: any): boolean Field values to match, or a predicate.
+---@return any[]
+function gnoblin.find(kind, filter) end
 
 ---@class WindowRuleMatch
 ---@field type? "window"|"layer" Match ordinary windows or layer surfaces.
@@ -348,11 +341,10 @@ function Operation:on_complete(callback) end
 ---@field inactive_background? string Inactive frame background color.
 ---@field button_layout? string[] Native frame buttons, without duplicates; an empty list hides them.
 
----Animation names by event. The reserved `in` key aliases `layer_open`; `out` aliases `layer_close`.
+---Animation names by event.
 ---@class WindowRuleAnimation
----@field out? string Animation used when a layer closes; alias for `layer_close`.
----@field open? string Animation used when a layer opens.
----@field close? string Animation used when a layer closes.
+---@field open? string Animation used when a window opens.
+---@field close? string Animation used when a window closes.
 ---@field dialog_open? string Animation used when a dialog opens.
 ---@field dialog_close? string Animation used when a dialog closes.
 ---@field layer_open? string Animation used when a layer opens.
@@ -364,7 +356,6 @@ function Operation:on_complete(callback) end
 ---@field resize? string Animation used when a window resizes.
 ---@field duration? integer Animation duration in milliseconds, from 0 to 5000.
 ---@field easing? string Animation easing.
----@field ease? string Alias for `easing`.
 
 ---@class WindowRuleArgs
 ---@field match? WindowRuleMatch Match patterns; all supplied patterns must match.
@@ -378,8 +369,11 @@ function Operation:on_complete(callback) end
 ---@field frame? WindowRuleFrame Frame options.
 ---@field corners? WindowRuleCorners Corner, border, and shadow options.
 
----Append a window rule to the ordered window-rules list.
+---Append a window rule to the ordered window-rules list. While the config loads this is all it
+---does. In an event handler or callback the change is committed after the handler returns, and
+---the call returns an Operation that finishes when it is.
 ---@param rule WindowRuleArgs
+---@return Operation<nil>|nil
 function gnoblin.window_rule(rule) end
 
 ---Load and merge Lua configuration files matching a path or glob.
@@ -392,8 +386,18 @@ function gnoblin.load(pattern) end
 ---@return table values
 function gnoblin.array(values) end
 
----Merge settings into the active Lua configuration.
+---Merge settings into the configuration. This is the one way to change settings from Lua; there
+---is no assignment to a settings table.
+---
+---While the config files load it only merges and returns nothing. In an event handler or
+---callback the merged settings are validated and committed after the handler returns, and the
+---call returns an Operation that succeeds when they are committed. It fails with the code
+---"invalid_argument" when validation rejects them, or when a handler of the same event raised an
+---error, which undoes every change of that event. A change lasts until the configuration is
+---reloaded. `gnoblin.settings.override(path, value)` is the revocable alternative for one
+---setting.
 ---@param settings table Settings table to merge into the active configuration.
+---@return Operation<nil>|nil
 function gnoblin.configure(settings) end
 
 ---Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.
@@ -413,39 +417,22 @@ function gnoblin.config.restore_default() end
 ---@class Event
 ---@field name string Name of the event that was dispatched.
 
----Handle returned by an event subscription.
----@class EventSubscription
----@field unsubscribe fun(self: EventSubscription) Stop receiving this event.
+---What every subscription returns: gnoblin.on and once, the on and watch of every object, the
+---on of a Request, and gnoblin.input.on. Call sub:unsubscribe() to stop; it may be called again.
+---@class Subscription
+---@field unsubscribe fun(self: Subscription) Stop receiving this event.
 
 ---Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.
 ---@param name string Event name, or `*` to receive every dispatched event.
 ---@param callback fun(event: Event) Called once for each matching event.
----@return EventSubscription
+---@return Subscription
 function gnoblin.on(name, callback) end
-
----Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.
----@param name string Event name, or `*` to receive every dispatched event.
----@param callback fun(event: Event) Called once for each matching event.
----@return EventSubscription
-function gnoblin.events.on(name, callback) end
 
 ---Register a callback that is removed after its first event.
 ---@param name string Event name, or `*` to receive the next dispatched event.
 ---@param callback fun(event: Event) Called once for the first matching event.
----@return EventSubscription
-function gnoblin.events.once(name, callback) end
-
----Register a callback for a Mutter event. The name must start with `mutter.`.
----@param name string Mutter event name, 1 to 128 UTF-8 bytes.
----@param callback fun(event: Event) Called once for each matching event.
----@return EventSubscription
-function gnoblin.events.mutter.on(name, callback) end
-
----Register a callback for one Mutter event. The name must start with `mutter.`.
----@param name string Mutter event name, 1 to 128 UTF-8 bytes.
----@param callback fun(event: Event) Called once for the first matching event.
----@return EventSubscription
-function gnoblin.events.mutter.once(name, callback) end
+---@return Subscription
+function gnoblin.once(name, callback) end
 
 ---@class FocusHistoryFilter
 ---@field workspace_id? string Exact workspace ID to include.
@@ -470,6 +457,48 @@ function gnoblin.focus.history(filter) end
 ---@return FocusPolicy
 function gnoblin.focus.policy() end
 
+---A watch on how long the session has had no input. It is the same object for as long as it is
+---alive. It is not idle when it starts. When the user does nothing for `seconds`, `idle` becomes
+---true and the "idle" signal runs; the next input makes `idle` false and runs "active". The
+---watch repeats for every idle period until it is cancelled. Mutter's idle monitor counts the
+---time, and an idle inhibitor of the session delays "idle" as it delays the screen blank.
+---A runtime reload ends every watch.
+---@class IdleWatch
+---@field id string Identifier, "idle-" and the number of the request that made it.
+---@field alive boolean False once the watch has ended.
+---@field seconds number How long without input makes the session idle.
+---@field idle boolean Whether the session has been idle for `seconds` and has not had input since.
+
+---@class IdleCancelResult
+---@field cancelled boolean True when the compositor removed the watch.
+
+---Watch for the session being idle for `seconds` and return the IdleWatch. Any number of watches
+---can exist, up to 256 for each runtime, each with its own time. The watch exists at once, not
+---idle; if the compositor refuses it, it ends and its "closed" listeners get the reason.
+---@param seconds number Idle time above 0 and at most 86400. Fractions are allowed.
+---@return IdleWatch
+function gnoblin.idle.watch(seconds) end
+
+---Stop this watch. The IdleWatch ends, and its "closed" listeners run, when the compositor has
+---removed it. A watch that has ended fails with `not_found`.
+---@return Operation<IdleCancelResult>
+function IdleWatch:cancel() end
+
+---Call fn(watch) on a signal of this watch: "idle" when the session has been idle for its
+---seconds, "active" for the first input after that, or "closed" when the watch ended. A watch
+---that the compositor refused passes the reason as a second argument to "closed". Listening
+---ends after "closed".
+---@param signal "idle"|"active"|"closed"
+---@param fn fun(watch: IdleWatch, reason?: string)
+---@return Subscription
+function IdleWatch:on(signal, fn) end
+
+---Call fn(watch, value, old) when one field of this watch changes.
+---@param property string A field of IdleWatch, such as "idle".
+---@param fn fun(watch: IdleWatch, value: any, old: any)
+---@return Subscription
+function IdleWatch:watch(property, fn) end
+
 ---@class InputDevice
 ---@field id string Stable ID for this compositor device instance.
 ---@field name string Device name; may be empty.
@@ -480,17 +509,16 @@ function gnoblin.focus.policy() end
 ---@field capabilities string[] Supported input capabilities.
 ---@field revision integer Input snapshot revision.
 
+---An XKB layout or IBus engine. The same object stands for one source (its type and id) for as
+---long as the source is listed: every read returns it and the compositor's events update it.
 ---@class InputSource
----@field id string Source ID used by select_source.
+---@field id string Source ID.
+---@field alive boolean False once the source has left the configured list.
 ---@field type "xkb"|"ibus" Source implementation.
 ---@field short_name string Short display name.
 ---@field name string Display name.
 ---@field current boolean True when this source is selected.
 ---@field revision integer Input source snapshot revision.
-
----@class InputSourceSelector
----@field type "xkb"|"ibus" Source implementation.
----@field id string Non-empty source ID.
 
 ---@class OrientationLock
 ---@field available boolean Whether orientation lock is supported.
@@ -506,7 +534,7 @@ function gnoblin.focus.policy() end
 ---@field modifiers? integer Match the event modifier mask.
 ---@field keycode? integer Match this hardware key code.
 ---@field button? integer Match this pointer button.
----@field accelerator? string Match this accelerator.
+---@field accelerator? string Match this chord, such as "<Super>q", or for type "button" a pointer chord such as "<Super>Button1". Any other form is an error that names the form to write.
 
 ---@class InputEvent
 ---@field type string Input event type.
@@ -544,37 +572,44 @@ function gnoblin.input.sources() end
 ---@return InputSource|nil
 function gnoblin.input.current_source() end
 
----Alias for input.sources.
----@return InputSource[]
-function gnoblin.input.list() end
-
----Alias for input.current_source.
----@return InputSource|nil
-function gnoblin.input.current() end
-
----Select an XKB layout or IBus engine.
----@param source InputSourceSelector
+---Select this source: the compositor switches to this XKB layout or IBus engine. The Operation
+---succeeds with this source once the switch is confirmed.
 ---@return Operation<InputSource>
-function gnoblin.input.select_source(source) end
+function InputSource:select() end
+
+---Call fn(source, ...) on a signal of this source: "changed" (with the list of changed fields),
+---"selected" when it becomes the current source, or "closed" when it leaves the configured list.
+---Listening ends after "closed". The compositor reports the current source with
+---gnoblin.input.source-changed and the list with gnoblin.input.sources-changed.
+---@param signal "changed"|"selected"|"closed"
+---@param fn fun(source: InputSource, changed?: string[])
+---@return Subscription
+function InputSource:on(signal, fn) end
+
+---Call fn(source, value, old) when one field of this source changes, such as "current".
+---@param property string A field of InputSource.
+---@param fn fun(source: InputSource, value: any, old: any)
+---@return Subscription
+function InputSource:watch(property, fn) end
 
 ---Return the current orientation lock state.
 ---@return OrientationLock
 function gnoblin.input.orientation_lock() end
 
----Set the runtime orientation lock override, or inherit the configured/system value.
----@param value boolean|"inherit" True locks orientation; false unlocks it; "inherit" clears the runtime override.
----@return Operation<OrientationLock>
-function gnoblin.input.set_orientation_lock(value) end
-
----Create a one-use text target from the active shortcut FocusContext.
----@param context FocusContext Context supplied to a shortcut event callback.
+---Create a one-use text target in the focused window, and spend the "text_target" scope of a
+---Grant. It works only while the window that had focus at the gesture still has it, so take it
+---before "focus".
+---@param grant Grant From a gesture with no modifier key held.
 ---@return Operation<TextTarget>
-function gnoblin.input.text_target(context) end
+function gnoblin.input.text_target(grant) end
 
----Register a Lua policy callback for matching input events.
+---Register a Lua policy callback for matching input events. The Subscription it returns has the
+---same shape as the one of gnoblin.on and of every object's on: sub:unsubscribe() removes the
+---handler, and input that matched it goes on to the next handler or the application. A handler
+---cannot be added or removed from inside an input callback.
 ---@param match InputHandlerMatch Event selectors. type is required; other selectors are optional.
 ---@param handler fun(event: InputEvent): InputHandlerResult|nil Return action="consume" to consume, "forward" or nil to pass through.
----@return string Handler ID.
+---@return Subscription
 function gnoblin.input.on(match, handler) end
 
 ---Insert one-use text through this target during a runtime event callback.
@@ -582,71 +617,129 @@ function gnoblin.input.on(match, handler) end
 ---@return Operation<boolean>
 function TextTarget:insert_text(text) end
 
+---A lease on the keyboard. While a Grab is alive, every key press and release goes to it: no
+---application, no shortcut and no other handler sees a key. The Grab ends by itself when it has
+---had no key and no `renew()` for its `timeout` seconds, so a script that stops cannot keep the
+---keyboard. There is one Grab for the whole compositor: a new one ends the old one with
+---"replaced". It is the same object for as long as it is alive.
+---@class Grab
+---@field id string Identifier, "grab-" and the number of the request that made it.
+---@field alive boolean False once the grab has ended.
+---@field timeout integer Seconds without a key or a renewal after which the grab expires.
+---@field device "keyboard" What the grab holds.
+
+---A key event that a Grab received.
+---@class GrabKey
+---@field key string Name of the keysym, such as "a", "A", "Return", "Escape" or "dead_acute".
+---@field keysym integer The keysym number.
+---@field keycode integer Hardware key code.
+---@field modifiers integer Modifier mask when the key came, as in InputEvent (Shift 1, Control 4, Alt 8, Super 67108864).
+---@field pressed boolean True for a press, false for a release.
+---@field repeated boolean True for a press made by key repeat.
+---@field text? string What a press types: one character, or the composed character that a dead key or Compose sequence completes. Absent on a release, on a key that types nothing (a modifier, Return, Tab, an arrow) and on a key pressed with Control, Alt or Super.
+---@field composing boolean True while a dead key or Compose sequence is in progress: the keys inside the sequence have no `text`, and the key that completes it has the composed text.
+---@field time integer Event time in milliseconds.
+
+---@class GrabOptions
+---@field timeout? integer Seconds without a key or a renewal after which the grab expires, from 1 to 60. Default 10.
+
+---@class GrabRenewResult
+---@field id string The grab that was renewed.
+---@field renewed boolean True when the compositor restarted the timeout.
+
+---@class GrabReleaseResult
+---@field id string The grab that was released.
+---@field released boolean True when the compositor gave the keyboard back.
+
+---Take the keyboard and return the Grab. The Grab exists at once; if the compositor refuses it
+---(the session is locked, or a modal or capture_input shortcut session or a shortcut capture
+---holds the keyboard, or any key is held down), it ends and its "closed" listeners get the
+---reason. A key held when a grab starts would have its release go to the grab, and the focused
+---application would never see the key lift, so the compositor refuses a grab while a key is down:
+---start it from a key release, or later. The grab starts with its timeout running, so renew it if
+---the script has nothing to receive for a while. Call this while handling an event, as with every
+---operation.
+---@param options? GrabOptions
+---@return Grab
+function gnoblin.input.grab(options) end
+
+---Restart the timeout of this grab. A key event does the same. A grab that has ended fails with
+---`not_found`.
+---@return Operation<GrabRenewResult>
+function Grab:renew() end
+
+---Give the keyboard back. The Grab ends, and its "closed" listeners run with the reason
+---"released", when the compositor has done it. A grab that has ended fails with `not_found`.
+---@return Operation<GrabReleaseResult>
+function Grab:release() end
+
+---Call fn(grab, key) for each key event, or fn(grab, reason) when the grab ends. The reason is
+---"released", "expired" (the timeout ran out), "replaced" (another grab took the keyboard),
+---"locked" (the session locked), "preempted" (Mutter gave the keyboard to a popup or other
+---grab), "config_reloaded" (a reload committed), "runtime_stopped" (the Lua worker is shutting
+---down), or the message of the compositor when it refused the grab. On "config_reloaded" and
+---"runtime_stopped" the listener runs as the old runtime goes, so it can read but cannot start an
+---operation. Listening ends after "closed".
+---@param signal "key"|"closed"
+---@param fn fun(grab: Grab, detail: GrabKey|string|nil)
+---@return Subscription
+function Grab:on(signal, fn) end
+
+---A launch the compositor is watching for. It is the same object for as long as the launch
+---exists: every read of one token returns it, and the compositor's changes update it. It is
+---alive while state is "pending". It ends when its window appears ("started"), when the
+---deadline passes ("timed_out"), or when it is finished ("ended"). The compositor does not
+---record which window or Process answered a launch, so a Launch has no link to either; match the
+---window by its app_id.
 ---@class Launch
 ---@field token string Caller-supplied launch token.
+---@field alive boolean False once the launch has left "pending".
 ---@field application string Application ID, WM class, or WM class instance to observe.
 ---@field started_at integer Start time in Unix milliseconds.
 ---@field timeout_ms integer Launch observation deadline in milliseconds.
 ---@field state "pending"|"started"|"timed_out"|"ended" Current launch state.
----@field revision integer Launch snapshot revision.
+---@field revision integer Launch snapshot revision; 0 until the compositor confirms the launch.
 
----@class LaunchBeginArgs
----@field token string Non-empty token, at most 128 characters.
----@field application string Non-empty application identifier, at most 512 characters.
+---@class LaunchBeginOptions
 ---@field timeout_ms? integer Timeout in milliseconds, from 100 to 10000. Default 3000.
-
----@class NativeLaunchBeginArgs
----@field token string Non-empty token, at most 128 characters.
----@field application string Non-empty application identifier, at most 512 characters.
----@field milliseconds? integer Timeout in milliseconds. Default 3000; native requests are clamped to 100–10000.
-
----@class LaunchEndArgs
----@field token string Non-empty token, at most 128 characters.
 
 ---@class LaunchEndResult
 ---@field ok boolean True when the request was accepted.
 ---@field token string Launch token.
 
----@class LaunchSnapshot
----@field launches Launch[] Current launch records.
----@field revision integer Revision of the launch snapshot.
-
----Begin tracking a matching application launch.
----@param launch LaunchBeginArgs
----@return Operation<Launch>
-function gnoblin.launches.begin(launch) end
-
----Finish tracking a launch token.
+---Begin tracking a matching application launch and return the Launch. It exists at once, pending,
+---with the values asked for; the compositor's confirmation and changes update it. A token that
+---is already in use ends the earlier Launch with the reason "replaced". If the compositor refuses
+---the launch, it ends with the reason and its state becomes "ended".
 ---@param token string Non-empty token, at most 128 characters.
----@return Operation<LaunchEndResult>
-function gnoblin.launches.finish(token) end
+---@param application string Non-empty application identifier, at most 512 characters.
+---@param options? LaunchBeginOptions
+---@return Launch
+function gnoblin.launches.begin(token, application, options) end
 
----Alias for launches.finish.
----@param token string Non-empty token, at most 128 characters.
----@return Operation<LaunchEndResult>
-gnoblin.launches["end"] = function(token) end
-
----Return the current launch records.
+---Return the current launch records, each the Launch object for its token.
 ---@return Launch[]
 function gnoblin.launches.list() end
 
----Return the launch records and their snapshot revision.
----@return LaunchSnapshot
-function gnoblin.launches.snapshot() end
-
----Begin tracking a matching application launch through the singular API.
----@param launch NativeLaunchBeginArgs
----@return Operation<Launch>
-function gnoblin.launch.begin(launch) end
-
----Stop tracking a launch token through the singular API.
----@param request LaunchEndArgs
+---Stop watching for this launch. A launch that is not pending is unchanged.
 ---@return Operation<LaunchEndResult>
-gnoblin.launch["end"] = function(request) end
+function Launch:finish() end
 
----Return the current launch snapshot through the singular API.
----@return LaunchSnapshot
-function gnoblin.launch.status() end
+---Call fn(launch, ...) on a signal of this launch: "changed" (with the list of changed fields),
+---"started" when its window appeared, "timed_out" when the deadline passed, or "closed" when it
+---left "pending" for any reason, after one of the other two. A launch that the compositor
+---refused or that a new begin replaced passes the reason as a second argument to "closed".
+---Listening ends after "closed".
+---@param signal "changed"|"started"|"timed_out"|"closed"
+---@param fn fun(launch: Launch, changed_or_reason?: string[]|string)
+---@return Subscription
+function Launch:on(signal, fn) end
+
+---Call fn(launch, value, old) when one field of this launch changes.
+---@param property string A field of Launch, such as "state".
+---@param fn fun(launch: Launch, value: any, old: any)
+---@return Subscription
+function Launch:watch(property, fn) end
 
 ---@class MonitorRect
 ---@field x integer X coordinate in compositor layout.
@@ -654,44 +747,16 @@ function gnoblin.launch.status() end
 ---@field width integer Width in logical pixels.
 ---@field height integer Height in logical pixels.
 
----@class Monitor
----@field id string Monitor ID.
----@field index integer Zero-based monitor index.
----@field x integer X coordinate in compositor layout.
----@field y integer Y coordinate in compositor layout.
----@field width integer Width in logical pixels.
----@field height integer Height in logical pixels.
----@field primary boolean Whether this is the primary monitor.
----@field scale number Display scale factor.
----@field enabled boolean Whether the monitor is enabled.
----@field name? string Display name when provided by the monitor.
----@field make? string Manufacturer when provided by the monitor.
----@field model? string Model when provided by the monitor.
----@field serial? string Serial number when provided by the monitor.
----@field refresh_rate? number Refresh rate in hertz when a current mode is available.
----@field transform? string Display transform, such as "normal" or "90".
----@field work_area? MonitorRect Work area after layer surfaces reserve exclusive zones.
----@field revision integer State revision for this snapshot.
-
----@class PrivacyScreenMonitor
----@field id string Monitor ID.
----@field available boolean Whether the monitor supports privacy screen control.
----@field enabled? boolean Whether privacy screen is enabled when available.
----@field locked? boolean Whether privacy screen state is locked when available.
-
----@class PrivacyScreenSnapshot
----@field requested_enabled boolean Requested global privacy screen state.
----@field source "runtime"|"system"|"config" Where the requested state comes from.
----@field revision integer Snapshot revision.
----@field monitors PrivacyScreenMonitor[] Per-monitor availability and state.
-
----@class LayerFilter
----@field monitor_id? string Exact monitor ID.
----@field namespace? string Exact layer namespace.
----@field layer? string Exact layer type.
+---@class OutputPrivacyScreen
+---@field available boolean Whether this output has a privacy screen that Gnoblin can control.
+---@field enabled? boolean Whether the privacy screen is on, when available.
+---@field locked? boolean Whether a hardware switch locks the privacy screen, when available.
+---@field requested boolean Whether the session asks for privacy screens to be on. This one request applies to every output.
+---@field source "runtime"|"system"|"config" What sets the request: a runtime override from gnoblin.settings.override("monitors.privacy_screen", value), the configuration, or the system setting.
 
 ---@class LayerSurface
 ---@field id string Stable layer surface ID.
+---@field alive boolean False once the surface has been removed. Every read of one surface returns this same object, updated with each change.
 ---@field namespace string Layer surface namespace.
 ---@field title string Layer surface title.
 ---@field layer string Layer-shell layer value.
@@ -705,43 +770,172 @@ function gnoblin.launch.status() end
 ---@field window_shadow any Shadow policy for windows matching the layer namespace.
 ---@field revision integer Configuration revision.
 
----@class PrivacyScreenSetArgs
----@field value boolean|"inherit" true or false sets an override; "inherit" clears the runtime override.
-
----Return the current monitor snapshot.
----@return Monitor[]
-function gnoblin.monitors.list() end
-
----Return the primary monitor, or nil when none is available.
----@return Monitor|nil
-function gnoblin.monitors.primary() end
-
----Return the current privacy screen settings and per-monitor states.
----@return PrivacyScreenSnapshot
-function gnoblin.monitors.privacy_screen() end
-
----Set the runtime privacy screen override.
----@param value boolean|"inherit" true or false sets the override; "inherit" restores the configured or system value.
----@return Operation<Json>
-function gnoblin.monitors.set_privacy_screen(value) end
-
----Return monitors through the legacy singular namespace alias.
----@return Monitor[]
-function gnoblin.monitor.list() end
-
----Return the current layer surface snapshot, optionally filtered.
----@param filter? LayerFilter
+---Return the current layer surface snapshot. Select layer surfaces with
+---`gnoblin.find("LayerSurface", filter)`.
 ---@return LayerSurface[]
-function gnoblin.layers.list(filter) end
+function gnoblin.layers.list() end
+
+---Call fn(layer, ...) on a signal of this layer surface: "changed" (with the list of changed
+---fields) or "closed". Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(layer: LayerSurface, changed?: string[])
+---@return Subscription
+function LayerSurface:on(signal, fn) end
+
+---Call fn(layer, value, old) when one field of this layer surface changes.
+---@param property string A field of LayerSurface, such as "title" or "layer".
+---@param fn fun(layer: LayerSurface, value: any, old: any)
+---@return Subscription
+function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
----@param namespace string UTF-8 namespace from 1 to 128 bytes.
+---@param layer LayerSurface|string A layer surface, or a UTF-8 namespace from 1 to 128 bytes.
 ---@return LayerAnimationPolicy
-function gnoblin.layers.animation_policy(namespace) end
+function gnoblin.layers.animation_policy(layer) end
 
----Return layer surfaces through the legacy singular namespace alias.
----@return LayerSurface[]
-function gnoblin.layer.list() end
+---@class OutputMode
+---@field width integer Width in physical pixels.
+---@field height integer Height in physical pixels.
+---@field refresh_rate number Refresh rate in hertz.
+
+---@class Renderer
+---@field name string GL renderer string, such as "llvmpipe".
+---@field vendor? string GL vendor string, when available.
+---@field api string GL API in use, such as "gles2".
+---@field accelerated boolean False for software rasterizers.
+
+---@class Output
+---@field id string Connector name, such as "DP-1". Stable per output.
+---@field alive boolean False once the output has been removed. Every read of one output returns this same object, updated with each change.
+---@field kind "display" Kind of output; "virtual" is reserved.
+---@field name? string Display name, when the hardware provides one.
+---@field make? string Manufacturer, when available.
+---@field model? string Model, when available.
+---@field serial? string Serial number, when available.
+---@field enabled boolean Whether the output is active in the current layout.
+---@field primary boolean Whether this is the primary output.
+---@field monitor_id? string ID of the logical monitor that shows this output: the lowest connector name in it. Windows and layer surfaces name it in their monitor_id.
+---@field index? integer Zero-based logical monitor index, when the output is enabled.
+---@field mode OutputMode Current mode.
+---@field scale number Compositing scale of the logical monitor.
+---@field transform string Current transformation, such as "normal" or "90".
+---@field x? integer Logical X position, when the output is enabled.
+---@field y? integer Logical Y position, when the output is enabled.
+---@field width? integer Logical width, when the output is enabled.
+---@field height? integer Logical height, when the output is enabled.
+---@field work_area? MonitorRect Area of the active workspace that windows can use: the logical monitor minus the space that panels reserve with exclusive zones.
+---@field privacy_screen OutputPrivacyScreen Privacy screen state of this output.
+---@field renderer Renderer GPU path that renders this output.
+---@field revision integer State revision for this snapshot.
+
+---Return all current outputs. The list is empty until the first output snapshot is published.
+---@return Output[]
+function gnoblin.outputs.list() end
+
+---Return the primary output, or nil when there is none.
+---@return Output|nil
+function gnoblin.outputs.primary() end
+
+---Return the output with this connector ID, or nil when it does not exist.
+---@param id string Connector ID, such as "DP-1".
+---@return Output|nil
+function gnoblin.outputs.by_id(id) end
+
+---Return the compositor renderer, or nil until the first output snapshot is published.
+---@return Renderer|nil
+function gnoblin.outputs.renderer() end
+
+---Call fn(output, ...) on a signal of this output: "changed" (with the list of changed fields)
+---or "closed" when the output is removed. Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(output: Output, changed?: string[])
+---@return Subscription
+function Output:on(signal, fn) end
+
+---Call fn(output, value, old) when one field of this output changes.
+---@param property string A field of Output, such as "scale" or "privacy_screen".
+---@param fn fun(output: Output, value: any, old: any)
+---@return Subscription
+function Output:watch(property, fn) end
+
+---Options for gnoblin.process.spawn. Every field is optional.
+---@class ProcessOptions
+---@field cwd? string Absolute working directory; the default is the compositor's.
+---@field env? table<string, string> Variables added to the session environment, at most 128.
+---@field stdin? string Bytes for standard input, at most 1 MiB; empty when unset.
+---@field stdout? "inherit"|"discard"|"capture" Where standard output goes; "inherit" by default.
+---@field stderr? "inherit"|"discard"|"capture" Where standard error goes; "inherit" by default.
+---@field output_limit? integer Bytes kept per captured stream, 0 to 4194304; 65536 by default.
+---@field timeout? number Seconds, up to 86400, before the process group is ended.
+
+---A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs. A
+---Process is a live object: the same handle for one id, with `alive`, `on` and `watch`.
+---@class Process
+---@field id integer Identifier for this process within the session.
+---@field alive boolean True from spawn until the process has exited or failed to start.
+---@field argv string[] The command line it was started with.
+---@field pid integer|nil Process ID, once the process has started.
+---@field status "starting"|"running"|"exited"|"failed" "failed" means it could not be started.
+---@field exit_code integer|nil Exit status, once it exited normally.
+---@field signal string|integer|nil Signal that ended it, such as "term", once it was killed.
+---@field revision integer Counts the changes of the fields above.
+
+---How a process ended, the value of Process:wait().
+---@class ProcessExit
+---@field exit_code integer|nil Exit status when the process exited normally.
+---@field signal string|integer|nil Signal that ended the process, such as "term" or "kill".
+---@field timed_out boolean True when the timeout option ended the process.
+---@field stdout? string Captured standard output, as raw bytes.
+---@field stdout_truncated? boolean True when standard output passed output_limit.
+---@field stderr? string Captured standard error, as raw bytes.
+---@field stderr_truncated? boolean True when standard error passed output_limit.
+
+---Start a program. The process runs in its own session and process group. It keeps running when
+---the config reloads, but the Process handle belongs to the runtime that started it.
+---@param argv string[] Program and arguments: 1 to 64 strings, at most 64 KiB in total.
+---@param options? ProcessOptions
+---@return Process
+function gnoblin.process.spawn(argv, options) end
+
+---The processes this runtime started that have not ended, oldest first.
+---@return Process[]
+function gnoblin.process.list() end
+
+---The Process with this id, or nil when the runtime does not know it: another runtime started
+---it, or it has ended and nothing holds it any more. Window.process holds the id of the Process
+---that started a window's program, so `gnoblin.process.by_id(window.process)` gives that Process.
+---@param id integer The Process.id.
+---@return Process|nil
+function gnoblin.process.by_id(id) end
+
+---An Operation that succeeds with a ProcessExit when the process ends, whatever its exit status,
+---and fails when the process could not be started. Every call returns the same Operation.
+---@return Operation<ProcessExit>
+function Process:wait() end
+
+---Call fn(process) on a signal of this process. "closed" runs when the process has ended,
+---however it ended: it exited, was killed, could not be started, or a config reload ended the
+---handle. It is the same signal as on Window, Workspace and Output. status, exit_code and signal
+---say how, and wait() has the captured output. The detail is "config_reloaded" or
+---"runtime_stopped" when the runtime ended the handle; the child keeps running then. "changed"
+---runs with the list of changed fields. Listening ends after "closed", and on fails once the
+---process has ended.
+---@param signal "changed"|"closed"
+---@param fn fun(process: Process, detail?: string|string[])
+---@return Subscription
+function Process:on(signal, fn) end
+
+---Call fn(process, value, old) when one field of this process changes: pid, status, exit_code or
+---signal.
+---@param property string A field of Process, such as "status".
+---@param fn fun(process: Process, value: any, old: any)
+---@return Subscription
+function Process:watch(property, fn) end
+
+---Send a signal to the process group.
+---@param signal? "term"|"kill"|"int"|"hup"|"usr1"|"usr2"|"stop"|"cont" The default is "term".
+---@return Operation<{signal: string}>
+function Process:kill(signal) end
 
 ---@class SessionStatus
 ---@field state "running" Session status returned by the compositor.
@@ -750,13 +944,6 @@ function gnoblin.layer.list() end
 ---@field lock_state? "unlocked"|"covering"|"locked"|"failsafe" Present when lock_available is true.
 ---@field session_state? "starting"|"running"|"stopping" Session lifecycle state when supported.
 ---@field session_revision? integer Lifecycle revision, present with session_state.
-
----@class SessionActivity
----@field available boolean Whether idle activity data is available.
----@field idle boolean Whether the session has been idle for at least threshold_ms.
----@field threshold_ms integer Idle threshold in milliseconds.
----@field idle_for_ms integer Time since the last activity in milliseconds.
----@field revision integer Activity snapshot revision.
 
 ---@class RuntimeStatus
 ---@field state "starting"|"running"|"restarting"|"unavailable" Runtime worker state.
@@ -802,10 +989,6 @@ function gnoblin.layer.list() end
 ---@class PrivacyStopResult
 ---@field requested integer Number of privacy sessions asked to stop.
 
----@class LocationAuthorizationResult
----@field request_id integer Identifier of the answered authorization request.
----@field submitted boolean Whether the response was submitted.
-
 ---@class ConsoleToggleResult
 ---@field toggled boolean Whether the console was toggled.
 
@@ -815,10 +998,6 @@ function gnoblin.layer.list() end
 ---@return SessionStatus
 function gnoblin.session.status() end
 
----Read the session idle state and elapsed idle time.
----@return SessionActivity
-function gnoblin.session.activity() end
-
 ---Request that the compositor lock the session.
 ---@return Operation<SessionLockResult>
 function gnoblin.session.lock() end
@@ -827,19 +1006,23 @@ function gnoblin.session.lock() end
 ---@return Operation<AcceptedResult>
 function gnoblin.session.logout() end
 
----Request that the session suspend through the native session supervisor and logind.
+---Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds
+---when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or
+---`internal` (the D-Bus error is in the message).
 ---@return Operation<AcceptedResult>
 function gnoblin.session.suspend() end
 
----Request that the session hibernate through the native session supervisor and logind.
+---Ask logind to hibernate the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.hibernate() end
 
----Request that the machine reboot through the native session supervisor and logind.
+---Ask logind to reboot the machine. The Operation finishes with logind's answer, as for `suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.reboot() end
 
----Request that the machine power off through the native session supervisor and logind.
+---Ask logind to power off the machine. The Operation finishes with logind's answer, as for
+---`suspend`.
 ---@return Operation<AcceptedResult>
 function gnoblin.session.poweroff() end
 
@@ -863,16 +1046,6 @@ function gnoblin.privacy.stop_sharing() end
 ---@return Operation<PrivacyStopResult>
 function gnoblin.privacy.stop_recording() end
 
----Answer a pending location authorization request. The request ID must have been received from an active authorization event subscription.
----@param request LocationAuthorizationArgs
----@return Operation<LocationAuthorizationResult>
-function gnoblin.location.authorize_app(request) end
-
----@class LocationAuthorizationArgs
----@field request_id integer Positive ID from a pending location authorization request.
----@field allow boolean Whether to allow location access.
----@field accuracy integer 0 when denied; when allowed, one of 1, 4, 5, 6, or 8 and no greater than the requested accuracy.
-
 ---Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.
 ---@return VersionInfo
 function gnoblin.version() end
@@ -885,9 +1058,70 @@ function gnoblin.console.toggle() end
 ---@return ColorScheme|nil
 function gnoblin.appearance.color_scheme() end
 
----Return a detached copy of the active Lua configuration table.
+---Return a detached copy of the configuration that the files loaded so far have built, with the
+---internal hyphenated names, such as `snapshot()["window-rules"]`. Use it only while the config
+---loads; at run time it is an error, and `gnoblin.settings` holds the committed settings.
 ---@return Json
 function gnoblin.snapshot() end
+
+---@class Capability
+---@field id string Capability ID.
+---@field description string What the capability provides.
+---@field available boolean Whether the capability is available now.
+---@field reason? string Why the capability is unavailable, when it is not.
+---@field revision integer State revision for this snapshot.
+
+---Return the native compositor and protocol capabilities as read-only records.
+---@return Capability[]
+function gnoblin.capabilities.list() end
+
+---A value that the runtime layers over the committed configuration, or an effect that it layers
+---over the window rules of one window, until the override ends. It is the same object for as long
+---as it is alive. The latest override of one setting, or of one effect on one window, wins: an
+---older one ends at once with the reason "replaced". An override ends too when it is revoked
+---("revoked"), when its window closes ("window_closed"), and when a configuration reload commits
+---("config_reloaded"). A stopped or restarted Lua worker drops its overrides as well. An override
+---never writes the configuration file, and `gnoblin.settings` keeps showing the committed values.
+---@class Override
+---@field id string Identifier, "override-" and the number of the request that made it.
+---@field alive boolean False once the override has ended.
+---@field scope "settings"|"window" What it changes: a setting, or an effect of one window.
+---@field name string The setting path, such as "window_management.focus_mode", or the effect name, such as "blur".
+---@field window? string The ID of the window an effect belongs to. Absent for a setting.
+---@field value any The value it layers.
+
+---@class OverrideRevokeResult
+---@field revoked boolean True when the compositor ended the override.
+
+---Layer a value over one committed setting, for this runtime, and return the Override. The path
+---is "section.key" with the names of the configuration, such as `window_management.focus_mode`.
+---Only a setting that can change while the session runs is accepted: `window_management.*`,
+---`compositor.*`, `cursor.theme`, `cursor.size`, `layer_shell.preserve_active_window`,
+---`monitors.privacy_screen` and `input.orientation_lock`. Any other path raises an error that
+---says why it cannot change at runtime. The value is checked the way the configuration checks it,
+---so a value the configuration would refuse raises an error too. The orientation lock and the
+---privacy screen take `true` or `false`; a privacy screen needs an output that has one. If the
+---compositor refuses the override, it ends and its "closed" listeners get the reason. Call this
+---while handling an event, as with every operation.
+---@param path string The setting, such as "compositor.visual_bell".
+---@param value boolean|number|string The value to layer.
+---@return Override
+function gnoblin.settings.override(path, value) end
+
+---End this override. The setting or effect returns to the next older layer, which is the
+---committed value when there is none. The Override ends, and its "closed" listeners run with the
+---reason "revoked". An override that has ended fails with `not_found`.
+---@return Operation<OverrideRevokeResult>
+function Override:revoke() end
+
+---Call fn(override, reason) when this override ends. `reason` is "revoked", "replaced",
+---"window_closed" or "config_reloaded", or the message of the compositor when it refused the
+---override. On "config_reloaded" the listener runs just before the old runtime goes, so it can
+---read but cannot start an operation. Listening ends after "closed".
+---@param signal "closed"
+---@param fn fun(override: Override, reason?: string)
+---@return Subscription
+function Override:on(signal, fn) end
 
 ---@class ShortcutAction
 ---@field id string Action identifier.
@@ -905,28 +1139,23 @@ function gnoblin.snapshot() end
 ---@field command? string[] Command argument vector.
 ---@field revision integer Shortcut snapshot revision.
 
----@class ShortcutBinding
+---A global key binding that this Lua runtime owns. It is the same object for as long as it is
+---bound: every read of one binding returns it. It ends when it is unbound or when the runtime
+---stops; a binding the compositor refused ends at once.
+---@class Shortcut
 ---@field id string Caller-supplied binding ID.
----@field accelerator string Accelerator accepted by Mutter.
+---@field alive boolean False once the binding has ended.
+---@field accelerator string The chord in its written form, such as "<Alt><Super>F9".
 ---@field hold "none"|"super"|"control"|"alt" Modifier family held for the binding. Default "none".
 ---@field trigger "press"|"release" Event edge that activates the binding. Default "press".
 ---@field mode "passive"|"modal" Whether other input continues while held. Default "passive".
 ---@field capture_input boolean Whether the bare Super session captures subsequent key input. Default false.
 
----@class ShortcutBindingArgs
----@field id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
----@field accelerator string Valid accelerator. Bare "Super" requires capture_input=true, trigger="release", and hold="none".
+---@class ShortcutBindOptions
 ---@field hold? "none"|"super"|"control"|"alt" Modifier family held for the binding. Default "none".
 ---@field trigger? "press"|"release" Activation edge. Default "press".
 ---@field mode? "passive"|"modal" Modal requires a non-none hold. Default "passive".
 ---@field capture_input? boolean Only bare "Super" supports input capture. Default false.
-
----@class ShortcutIdArgs
----@field id string Binding ID owned by this Lua runtime.
-
----@class ShortcutSessionArgs
----@field id string Binding ID owned by this Lua runtime.
----@field session_id integer Positive ID of the active binding session.
 
 ---@class ShortcutUnbindResult
 ---@field id string Unbound binding ID.
@@ -948,29 +1177,146 @@ function gnoblin.snapshot() end
 ---@return ShortcutAction[]
 function gnoblin.shortcuts.actions(group) end
 
----List the configured shortcut records.
+---List the shortcuts that the configuration declares. They are read-only records, not objects:
+---gnoblin.configure.shortcuts changes them.
 ---@return ShortcutState[]
+function gnoblin.shortcuts.configured() end
+
+---List the shortcuts this runtime has bound and not unbound, in ID order. Each is the object
+---that bind returned.
+---@return Shortcut[]
 function gnoblin.shortcuts.list() end
 
----Register a shortcut binding owned by the current Lua runtime.
----@param binding ShortcutBindingArgs
----@return Operation<ShortcutBinding>
-function gnoblin.shortcuts.bind(binding) end
+---Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once
+---with the values asked for, and its accelerator is the chord in its written form; if the
+---compositor refuses the binding (the chord is taken, for example) it ends and its "closed"
+---listeners get the reason. An ID that is already bound is an error, so unbind it first.
+---@param id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
+---@param accelerator string A chord such as "<Super><Alt>F9" (see the chord syntax). Any other form is an error that names the form to write. Bare "Super" requires capture_input=true, trigger="release", and hold="none".
+---@param options? ShortcutBindOptions
+---@return Shortcut
+function gnoblin.shortcuts.bind(id, accelerator, options) end
 
----Remove a shortcut binding owned by the current Lua runtime.
----@param binding ShortcutIdArgs
+---Unbind this shortcut. The Shortcut ends, and its "closed" listeners run, when the compositor
+---has removed the binding.
 ---@return Operation<ShortcutUnbindResult>
-function gnoblin.shortcuts.unbind(binding) end
+function Shortcut:unbind() end
+
+---End the active session of this binding and release its keyboard capture. The binding stays
+---bound. A stale session ID is rejected. The shortcut owns the session, so the call lives here
+---and not on gnoblin.shortcuts.
+---@param session_id integer Positive ID of the active session, from a session_activated event.
+---@return Operation<ShortcutEndSessionResult>
+function Shortcut:end_session(session_id) end
+
+---Call fn(shortcut, event) on a signal of this shortcut. The event is the one the compositor
+---sent (see the gnoblin.shortcut events), with a `grant` on a real activation.
+---
+---  - "activated": the accelerator was pressed, or released for a release trigger. A held
+---    binding reports its first activation only; its later repeats are session events.
+---  - "deactivated": a press-triggered binding was released.
+---  - "session_activated", "session_key" and "session_ended": the session of a held or modal
+---    binding starts, receives a key, and ends (the event has the reason).
+---  - "closed": the binding ended. A refused binding passes the reason as a second argument.
+---
+---Listening ends after "closed".
+---@param signal "activated"|"deactivated"|"session_activated"|"session_key"|"session_ended"|"closed"
+---@param fn fun(shortcut: Shortcut, event_or_reason?: table|string)
+---@return Subscription
+function Shortcut:on(signal, fn) end
 
 ---Capture one normalized keyboard accelerator.
 ---@param options? ShortcutCaptureOptions
 ---@return Operation<ShortcutCaptureResult>
 function gnoblin.shortcuts.capture(options) end
 
----End an active shortcut binding session.
----@param session ShortcutSessionArgs
----@return Operation<ShortcutEndSessionResult>
-function gnoblin.shortcuts.end_session(session) end
+---A timeline of steps that the compositor plays. Steps run one after another; parallel() makes
+---the next step run with the previous one. Build it, then call play(). A Tween is a live object:
+---the same handle for one id, with `alive`, `on` and `watch`. It is alive from gnoblin.tween()
+---until it has ended, and a config reload ends it too. The steps are private to the handle.
+---@class Tween
+---@field id string Identifier of this tween within the session.
+---@field alive boolean False once the tween has ended: it finished, was killed, or was cancelled.
+---@field status "idle"|"playing"|"paused"|"finished"|"killed"|"cancelled"
+---@field revision integer Counts the changes of `status`.
+
+---Return eased progress for t from 0 to 1.
+---@param name string linear, sine, quad, cubic, quart, quint, expo, circ, back, elastic or bounce.
+---@param t number Progress from 0 to 1; values outside are clamped.
+---@param direction? "in"|"out"|"in_out" Default "in_out".
+---@return number
+function gnoblin.ease(name, t, direction) end
+
+---Return a + (b - a) * t.
+---@param a number
+---@param b number
+---@param t number
+---@return number
+function gnoblin.lerp(a, b, t) end
+
+---Create an empty tween.
+---@return Tween
+function gnoblin.tween() end
+
+---Add a step that changes a property of a live object to `to` over `seconds`, starting from the
+---value the object has when the step begins. Each kind of object declares the properties a tween
+---can drive; today only a Window does: opacity, scale, rotation and offset. A property that the
+---target does not declare fails with an error that lists them. An offset takes {x, y}.
+---@param target Window The live object to animate.
+---@param property "opacity"|"scale"|"rotation"|"offset"
+---@param to number|{x: number, y: number}
+---@param seconds number From 0 to 600.
+---@param ease? string An ease name from gnoblin.ease. Default "linear".
+---@param direction? "in"|"out"|"in_out" Default "in_out".
+---@return Tween
+function Tween:property(target, property, to, seconds, ease, direction) end
+
+---Add a step that waits.
+---@param seconds number From 0 to 600.
+---@return Tween
+function Tween:interval(seconds) end
+
+---Add a step that calls fn(tween) when the timeline reaches it. The timeline does not wait for it.
+---@param fn fun(tween: Tween)
+---@return Tween
+function Tween:callback(fn) end
+
+---Make the next step run at the same time as the previous one.
+---@return Tween
+function Tween:parallel() end
+
+---Start the tween, or resume it after pause(). The Operation succeeds with {tween_id, outcome}
+---when the tween ends.
+---@return Operation<{tween_id: string, outcome: string}>
+function Tween:play() end
+
+---Pause the tween where it is.
+---@return Operation<{tween_id: string}>
+function Tween:pause() end
+
+---Jump to a time in seconds from the start. Callbacks before that time run.
+---@param seconds number
+---@return Operation<{tween_id: string}>
+function Tween:seek(seconds) end
+
+---Stop the tween. Windows keep the values they have; the outcome is "killed".
+---@return Operation<{tween_id: string}>
+function Tween:kill() end
+
+---Call fn(tween) on a signal of this tween. "finished" runs when the timeline reached its end.
+---"closed" runs when the tween has ended however it ended, as fn(tween, outcome): the outcome is
+---"finished", "killed", "cancelled", or "config_reloaded" when a reload ended it. "changed" runs
+---with the list of changed fields. Listening ends after "closed".
+---@param signal "changed"|"finished"|"closed"
+---@param fn fun(tween: Tween, detail?: string|string[])
+---@return Subscription
+function Tween:on(signal, fn) end
+
+---Call fn(tween, value, old) when `status` changes.
+---@param property "status" The field of Tween to watch.
+---@param fn fun(tween: Tween, value: any, old: any)
+---@return Subscription
+function Tween:watch(property, fn) end
 
 ---@class WindowFrame
 ---@field x integer Frame origin on the compositor layout, from -100000 to 100000.
@@ -980,6 +1326,7 @@ function gnoblin.shortcuts.end_session(session) end
 
 ---@class Window
 ---@field id string Stable window ID.
+---@field alive boolean False once the window has closed. Every read of one window returns this same object, updated with each change.
 ---@field title string Window title; empty when the native window has no title.
 ---@field app_id string Application ID used for matching.
 ---@field gtk_app_id? string GTK application ID, when present.
@@ -1005,45 +1352,41 @@ function gnoblin.shortcuts.end_session(session) end
 ---@field minimized? boolean Whether the window is minimized.
 ---@field last_user_time? integer Timestamp of the most recent user interaction.
 ---@field parent? string ID of the parent window, when present.
----@field monitor? integer Zero-based monitor index.
+---@field pid? integer Process ID of the client, from the display server, not the client.
+---@field process? integer Process.id when gnoblin.process.spawn started this window's program; gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.
+---@field monitor? {x: integer, y: integer} Origin of the monitor that holds the window, in compositor coordinates: the x and y of the Output with this monitor_id. It is not a monitor index; monitor_index and monitor_id name the monitor.
 ---@field frame WindowFrame Window frame rectangle.
+---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
+---@field scale number Drawn scale about the window's centre that the runtime set; 1 by default.
+---@field rotation number Drawn rotation in degrees about the window's centre; 0 by default.
+---@field offset {x: number, y: number} Drawn offset in logical pixels; {x = 0, y = 0} by default.
 ---@field focused boolean Whether the window currently has focus.
 ---@field modal boolean Whether the window is a modal dialog.
 ---@field revision integer State revision for this snapshot.
 
----@class WindowFilter
----@field app_id? string Exact application ID.
----@field title? string Case-insensitive substring of the title.
----@field focused? boolean Include focused windows when true, or unfocused windows when false.
----@field workspace_id? string Exact workspace ID.
----@field monitor_id? string Exact monitor ID.
+---@class WindowVisual
+---@field id string Window ID.
+---@field opacity number
+---@field scale number
+---@field rotation number
+---@field offset {x: number, y: number} Drawn offset in logical pixels.
 
----@class WindowPosition
----@field x integer X coordinate, from -100000 to 100000.
----@field y integer Y coordinate, from -100000 to 100000.
+---@alias GrantScope "focus"|"begin_move"|"begin_resize"|"snap_context"|"text_target"
 
----@class WindowSize
----@field width integer Width, from 1 to 32768.
----@field height integer Height, from 1 to 32768.
-
----@class WindowMonitorSelector
----@field id string Monitor ID.
-
----@class WindowThumbnailSize
----@field width integer Thumbnail width from 1 to 480 pixels.
----@field height integer Thumbnail height from 1 to 320 pixels.
-
----@class FocusContext
-
----@class SnapContextFrame
----@field x integer X coordinate, from -100000 to 100000.
----@field y integer Y coordinate, from -100000 to 100000.
----@field width integer Width, from 1 to 32768.
----@field height integer Height, from 1 to 32768.
-
----@class SnapContextCommitArgs
----@field monitor_id string Nonempty UTF-8 monitor ID of at most 128 bytes.
----@field frame SnapContextFrame Target frame rectangle.
+---Proof that a user gesture just happened, scoped to the operations it may start. The compositor
+---makes the proof; a script receives it as `event.grant` on a shortcut activation, a pointer
+---binding, an input handler event for a button press, a shortcut session key and a window menu
+---request. Timers, the other events and a script's own code have none.
+---
+---A Grant lists the operations it may take and may name one window. `narrow` returns a Grant
+---with fewer of both, and nothing widens one. Each operation of a gesture runs once, whichever
+---Grant takes it, so one key press can focus a window and then begin a move. A Grant ends five
+---seconds after the gesture, at a configuration reload, and when the session locks.
+---@class Grant
+---@field scope GrantScope[] Operations this Grant may still take, in the order of GrantScope.
+---@field window Window|nil The one window this Grant is narrowed to, or nil when it has no window.
+---@field expires_at_us integer Monotonic time, in microseconds, when the gesture ends.
+---@field alive boolean False when the Grant has expired, its runtime ended or it has no scope left.
 
 ---@class SnapContext
 ---@field window_id string ID of the focused window captured by this context.
@@ -1055,28 +1398,34 @@ function gnoblin.shortcuts.end_session(session) end
 ---@field settings_revision integer Configuration revision captured by the context.
 ---@field native_generation integer Native session generation captured by the context.
 
----Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.
----@param filter? WindowFilter
+---Return the current window snapshot. Select windows with `gnoblin.find("Window", filter)`.
 ---@return Window[]
-function gnoblin.windows.list(filter) end
+function gnoblin.windows.list() end
 
----Identity and window-rule fields for one window, the record that gnoblinctl window match
----prints. Selecting "active" means the focused window.
----@param window? string "active" or a stable window ID; the default is "active".
----@return WindowMatch
-function Window:match(window) end
+---Return the focused window, or nil when no window has focus.
+---@return Window|nil
+function gnoblin.windows.focused() end
 
----The record that Window:match returns.
----@class WindowMatch
----@field id string Stable window ID of the matched window.
----@field identity WindowMatchIdentity Verified identity.
----@field match WindowRuleMatch Fields a window rule can match on.
+---Return the window with this stable ID, or nil when it does not exist.
+---@param id string Stable window ID.
+---@return Window|nil
+function gnoblin.windows.by_id(id) end
 
----Identity verified from the window record.
----@class WindowMatchIdentity
----@field app_id string Application ID used for matching.
----@field gtk_app_id? string GTK application ID, when present.
----@field wm_class? string Window manager class, when present.
+---Return a SnapContext for the focused window and spend the "snap_context" scope of a Grant.
+---Callers cannot choose the window. Take it before "focus": the context holds only while the
+---window that had focus at the gesture still has it.
+---@param grant Grant From a shortcut, pointer binding or input event.
+---@return Operation<SnapContext>
+function gnoblin.windows.snap_context(grant) end
+
+---Return a Grant for fewer operations, and for one window if `window` is given. It shares the
+---gesture with the Grant it comes from: an operation that either one took is gone from both. It
+---fails when `scope` names an operation this Grant does not have or the gesture already used,
+---or when `window` is not the window this Grant is narrowed to.
+---@param scope GrantScope|GrantScope[] One operation, or a list of them.
+---@param window? Window|string The window, or its stable ID.
+---@return Grant
+function Grant:narrow(scope, window) end
 
 ---Close this window.
 ---@return Operation<Json>
@@ -1095,23 +1444,13 @@ function Window:lower() end
 ---@return Operation<Json>
 function Window:kill() end
 
----Minimize this window.
+---Set whether this window is minimized.
+---@param enabled boolean True to minimize; false to remove minimization.
 ---@return Operation<Json>
-function Window:minimize() end
+function Window:set_minimized(enabled) end
 
----Toggle this window's minimized state.
----@return Operation<Json>
-function Window:toggle_minimize() end
-
----Remove this window from its minimized state.
----@return Operation<Json>
-function Window:unminimize() end
-
----Restore this window from its minimized, maximized, or fullscreen state.
----@return Operation<Json>
-function Window:restore() end
-
----Restore this window, or minimize it when already restored.
+---Unmaximize this window, restore the frame it had before a snap, or minimize it, whichever
+---applies first.
 ---@return Operation<Json>
 function Window:restore_or_minimize() end
 
@@ -1136,89 +1475,136 @@ function Window:set_above(enabled) end
 function Window:set_sticky(enabled) end
 
 ---Move this window to a position in the compositor layout.
----@param position WindowPosition
+---@param x integer X coordinate, from -100000 to 100000.
+---@param y integer Y coordinate, from -100000 to 100000.
 ---@return Operation<Json>
-function Window:move(position) end
+function Window:move(x, y) end
 
 ---Resize this window.
----@param size WindowSize
+---@param width integer Width, from 1 to 32768.
+---@param height integer Height, from 1 to 32768.
 ---@return Operation<Json>
-function Window:resize(size) end
+function Window:resize(width, height) end
 
 ---Move this window to a workspace.
----@param workspace WorkspaceSelector Select by exactly one of id or one-based number.
+---@param workspace Workspace|string|integer The Workspace, its stable ID, or its one-based number
+---from 1 to 1024.
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<Json>
 function Window:move_to_workspace(workspace, options) end
 
 ---Move this window to a monitor.
----@param monitor string|WindowMonitorSelector Monitor ID or a table containing id.
+---@param monitor Output|string The Output that shows the monitor, or the monitor ID.
 ---@return Operation<Json>
 function Window:move_to_monitor(monitor) end
 
----Focus this window using a live shortcut-event context.
----@param context FocusContext Live context from the current shortcut event.
+---Focus this window. This takes the "focus" scope of a Grant, so the user's key press or click
+---gives focus without the compositor's focus-stealing rules getting in the way.
+---@param grant Grant From a shortcut, pointer binding, input or window menu event.
 ---@return Operation<Json>
-function Window:focus(context) end
+function Window:focus(grant) end
 
----Begin an interactive move using a live shortcut-event context.
----@param context FocusContext Live context from the current shortcut event.
+---Focus a window whose program the runtime started with gnoblin.process.spawn. No key press is
+---needed. It waits until the window is shown and no key press or click reached a window for
+---250 ms, at most 5 seconds, then succeeds when the window has focus.
+---@return Operation<{id: string, focused: boolean}>
+function Window:present() end
+
+---Draw this window at an opacity from 0 to 1. Visual changes affect only how the window is drawn
+---and picked, not its frame or what the client sees. The runtime's reload clears them.
+---@param opacity number
+---@return Operation<WindowVisual>
+function Window:set_opacity(opacity) end
+
+---Draw this window scaled about its centre, from 0.01 to 10.
+---@param scale number
+---@return Operation<WindowVisual>
+function Window:set_scale(scale) end
+
+---Draw this window rotated about its centre, in degrees from -3600 to 3600.
+---@param degrees number
+---@return Operation<WindowVisual>
+function Window:set_rotation(degrees) end
+
+---Draw this window moved by an offset in logical pixels, each from -100000 to 100000.
+---@param x number
+---@param y number
+---@return Operation<WindowVisual>
+function Window:set_offset(x, y) end
+
+---Draw this window without any visual change the runtime set.
+---@return Operation<WindowVisual>
+function Window:reset_visuals() end
+
+---Layer one window rule effect over this window and return the Override. The effects are those
+---that `gnoblin.window_rule` supports: `opacity` (0 to 1), `blur` (0 to 100), `blur_ignore_shadows`,
+---`shader` (a GLSL file path, or "" to clear it), `shader_uniforms`, `frame` and `corners`. The
+---last three take the same table as the rule. The value goes over every rule that matches the
+---window, as one more rule after them, so it changes only what it sets. The latest override of
+---one effect on one window wins; an older one ends with the reason "replaced". The override ends
+---when it is revoked, when the window closes, and when a configuration reload commits, and the
+---window then shows what its rules give. This is not `set_opacity`: that call changes how the
+---window actor is drawn, and `opacity` here is the rule's opacity of the window content, which
+---the two multiply. Call this while handling an event, as with every operation.
+---@param name string The effect, such as "blur".
+---@param value any The value for that effect.
+---@return Override
+function Window:set_effect(name, value) end
+
+---Call fn(window, ...) on a signal of this window: "changed" (with the list of changed fields),
+---"focused", "unfocused" or "closed". Listening ends after "closed".
+---@param signal "changed"|"focused"|"unfocused"|"closed"
+---@param fn fun(window: Window, changed?: string[])
+---@return Subscription
+function Window:on(signal, fn) end
+
+---Call fn(window, value, old) when one field of this window changes.
+---@param property string A field of Window, such as "title" or "frame".
+---@param fn fun(window: Window, value: any, old: any)
+---@return Subscription
+function Window:watch(property, fn) end
+
+---Begin an interactive move. This takes the "begin_move" scope of a Grant.
+---@param grant Grant From a shortcut, pointer binding, input or window menu event.
 ---@return Operation<Json>
-function Window:begin_move(context) end
+function Window:begin_move(grant) end
 
----Begin an interactive resize using a live shortcut-event context.
+---Begin an interactive resize. This takes the "begin_resize" scope of a Grant.
 ---@param edge "north"|"south"|"east"|"west"|"north_east"|"north_west"|"south_east"|"south_west"
----@param context FocusContext Live context from the current shortcut event.
+---@param grant Grant From a shortcut, pointer binding, input or window menu event.
 ---@return Operation<Json>
-function Window:begin_resize(edge, context) end
+function Window:begin_resize(edge, grant) end
 
 ---Capture a thumbnail at the requested dimensions.
----@param size WindowThumbnailSize
+---@param width integer Thumbnail width from 1 to 480 pixels.
+---@param height integer Thumbnail height from 1 to 320 pixels.
 ---@return Operation<Json>
-function Window:thumbnail(size) end
+function Window:thumbnail(width, height) end
 
 ---Commit a snap context to a monitor and frame. A context can be committed only once.
----@param request SnapContextCommitArgs
+---@param monitor Output|string The Output that shows the frame, or its monitor ID.
+---@param x integer X coordinate, from -100000 to 100000.
+---@param y integer Y coordinate, from -100000 to 100000.
+---@param width integer Width, from 1 to 32768.
+---@param height integer Height, from 1 to 32768.
 ---@return Operation<Json>
-function SnapContext:commit(request) end
+function SnapContext:commit(monitor, x, y, width, height) end
 
 ---@class Workspace
----@field id? string Stable workspace ID. The current native workspace snapshot does not provide this field.
+---@field alive boolean False once the workspace has been removed. Every read of one workspace returns this same object, updated with each change.
+---@field id string Stable workspace ID: the one declared in `gnoblin.configure.workspaces`, the one `create` was given, or the session ID `@session-N` that Gnoblin assigns.
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
----@field windows integer Number of windows on this workspace.
+---@field window_count integer Number of windows on this workspace.
+---@field revision integer State revision of this snapshot; it goes up with every change of the workspace list, so a rename gives a higher number.
 
----@class WorkspaceCreateArgs
----@field name string Nonempty UTF-8 name of at most 80 characters.
----@field id? string Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor rejects it.
+---@class WorkspaceCreateOptions
+---@field id? string Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. The workspace keeps it for the session only; an ID declared in `gnoblin.configure.workspaces` lasts across sessions.
 ---@field activate? boolean Activate the new workspace after creation. Default false.
-
----@class WorkspaceRenameArgs
----@field id? string Stable workspace ID; provide exactly one of id or number.
----@field number? integer One-based workspace number from 1 to 1024; provide exactly one of id or number.
----@field name string Nonempty UTF-8 name of at most 80 characters.
-
----@class WorkspaceSelector
----@field id? string Stable workspace ID; provide exactly one of id or number.
----@field number? integer One-based workspace number from 1 to 1024; provide exactly one of id or number.
 
 ---@class WorkspaceMoveOptions
 ---@field follow? boolean Activate the destination workspace after moving. Default false.
-
----@class WorkspaceMoveActiveArgs
----@field workspace WorkspaceSelector Destination workspace.
----@field follow? boolean Activate the destination after moving. Default false.
-
----@class WorkspaceMoveWindowArgs
----@field window string Stable window ID, or "active" for the focused window.
----@field workspace WorkspaceSelector Destination workspace.
----@field follow? boolean Activate the destination after moving. Default false.
-
----@class WorkspaceMoveResult
----@field workspace Workspace Destination workspace snapshot.
----@field window string ID of the moved window.
----@field follow boolean Whether the destination workspace was activated.
 
 ---Return the current workspace snapshot.
 ---@return Workspace[]
@@ -1228,30 +1614,18 @@ function gnoblin.workspaces.list() end
 ---@return Workspace|nil
 function gnoblin.workspaces.active() end
 
----Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.
+---Find a workspace by its stable ID. Returns nil when no workspace has it. The ID comes from
+---`gnoblin.configure.workspaces` or `create`, or is the session ID `@session-N` that Gnoblin gave
+---it.
 ---@param id string Stable workspace ID.
 ---@return Workspace|nil
 function gnoblin.workspaces.by_id(id) end
 
 ---Create a workspace with a name and optional activation.
----@param workspace WorkspaceCreateArgs
+---@param name string Nonempty UTF-8 name of at most 80 characters.
+---@param options? WorkspaceCreateOptions
 ---@return Operation<Workspace>
-function gnoblin.workspaces.create(workspace) end
-
----Rename a workspace selected by ID or one-based number.
----@param workspace WorkspaceRenameArgs
----@return Operation<Workspace>
-function gnoblin.workspaces.rename(workspace) end
-
----Remove an inactive, empty workspace when at least one other workspace remains.
----@param workspace WorkspaceSelector
----@return Operation<Workspace>
-function gnoblin.workspaces.remove(workspace) end
-
----Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.
----@param workspace WorkspaceSelector
----@return Operation<Workspace>
-function gnoblin.workspaces.activate(workspace) end
+function gnoblin.workspaces.create(name, options) end
 
 ---Activate the next workspace, wrapping to the first.
 ---@return Operation<Workspace>
@@ -1260,16 +1634,6 @@ function gnoblin.workspaces.next() end
 ---Activate the previous workspace, wrapping to the last.
 ---@return Operation<Workspace>
 function gnoblin.workspaces.previous() end
-
----Move the focused window to a workspace.
----@param request WorkspaceMoveActiveArgs
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_active(request) end
-
----Move a window to a workspace.
----@param request WorkspaceMoveWindowArgs
----@return Operation<WorkspaceMoveResult>
-function gnoblin.workspaces.move_window(request) end
 
 ---Activate this workspace.
 ---@return Operation<Workspace>
@@ -1284,8 +1648,15 @@ function Workspace:rename(name) end
 ---@return Operation<Workspace>
 function Workspace:remove() end
 
----Move a window into this workspace.
----@param window Window|string Window snapshot or stable window ID.
----@param options? WorkspaceMoveOptions
----@return Operation<WorkspaceMoveResult>
-function Workspace:move_here(window, options) end
+---Call fn(workspace, ...) on a signal of this workspace: "changed" (with the list of changed
+---fields), "activated" or "closed". Listening ends after "closed".
+---@param signal "changed"|"activated"|"closed"
+---@param fn fun(workspace: Workspace, changed?: string[])
+---@return Subscription
+function Workspace:on(signal, fn) end
+
+---Call fn(workspace, value, old) when one field of this workspace changes.
+---@param property string A field of Workspace, such as "name" or "active".
+---@param fn fun(workspace: Workspace, value: any, old: any)
+---@return Subscription
+function Workspace:watch(property, fn) end

@@ -21,8 +21,12 @@ seconds.
 This config uses `zenity` to ask for a password or a yes or no answer. For a
 password prompt, `zenity --password` prints the password to standard output.
 For a confirmation, `zenity --question` reports the answer in its exit status.
+When the prompt window opens, `window:present()` gives it keyboard focus, so you
+can type the password without clicking it first.
 
 ```lua
+local prompts = {}
+
 local function text(value, fallback)
     if value == nil or value == "" then
         return fallback
@@ -30,35 +34,44 @@ local function text(value, fallback)
     return value
 end
 
-gnoblin.on("gnoblin.prompt.requested", function(event)
-    local title = text(event.title, "Passphrase")
-    local message = text(event.message, title)
+-- Focus the window of a running prompt program.
+gnoblin.on("gnoblin.window.created", function(event)
+    if prompts[event.window.process] then
+        event.window:present()
+    end
+end)
 
-    if event.kind == "password" then
-        gnoblin.commands.capture {
-            argv = {"zenity", "--password", "--title", message},
-        }:on_complete(function(result, err)
-            if err or result.exit_code ~= 0 then
-                gnoblin.prompt.cancel {request_id = event.request_id}
+local function ask(argv, options, answer)
+    local prompt = gnoblin.process.spawn(argv, options)
+    prompts[prompt.id] = true
+    prompt:wait():on_complete(function(exit, err)
+        prompts[prompt.id] = nil
+        answer(exit, err)
+    end)
+end
+
+gnoblin.on("gnoblin.prompt.requested", function(event)
+    local request = event.request
+    local title = text(request.title, "Passphrase")
+    local message = text(request.message, title)
+
+    if request.kind == "password" then
+        ask({"zenity", "--password", "--title", message}, {stdout = "capture"}, function(exit, err)
+            if err or exit.exit_code ~= 0 then
+                request:cancel()
                 return
             end
-            local password = result.stdout:gsub("\n$", "")
-            gnoblin.prompt.respond {request_id = event.request_id, password = password}
+            request:answer((exit.stdout:gsub("\n$", "")))
         end)
         return
     end
 
-    gnoblin.commands.capture {
-        argv = {"zenity", "--question", "--title", title, "--text", message},
-    }:on_complete(function(result, err)
-        if err or result.exit_code < 0 then
-            gnoblin.prompt.cancel {request_id = event.request_id}
+    ask({"zenity", "--question", "--title", title, "--text", message}, nil, function(exit, err)
+        if err or exit.signal then
+            request:cancel()
             return
         end
-        gnoblin.prompt.respond {
-            request_id = event.request_id,
-            confirmed = result.exit_code == 0,
-        }
+        request:answer(exit.exit_code == 0)
     end)
 end)
 ```
@@ -67,53 +80,41 @@ Run `echo test | gpg --symmetric --output /dev/null` in a terminal with
 `pinentry-gnome3` as the pinentry program. The prompt appears, and `gpg`
 continues after you enter a passphrase.
 
-## Events
+## The request
 
-Both events carry `request_id`, an integer that stays the same for one prompt.
-Gnoblin does not reuse a `request_id` while it runs.
+`gnoblin.prompt.requested` carries `event.request`, a
+[`Request`](/shell-api/requests). Its `kind` is `"password"` when the program
+needs a password, or `"confirm"` when it needs a yes or no answer. Its fields:
 
-| Event                      | Extra fields                                                                                                                            | When it fires                                    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `gnoblin.prompt.requested` | `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label` | A program asks for a password or a confirmation. |
-| `gnoblin.prompt.finished`  | `result`                                                                                                                                | The prompt ended.                                |
-
-- `kind` is `"password"` when the program needs a password, or `"confirm"` when
-  it needs a yes or no answer.
-- `title`, `message`, `description`, and `warning` are text for the user. Any
-  of them can be an empty string.
-- `password_new` is `true` when the user chooses a new password. Ask for it
-  twice if your prompt program supports it.
-- `choice_label` is the text of an optional checkbox, for example "Automatically
+- `id`: the same for the prompt's events. Gnoblin does not reuse it while it
+  runs.
+- `title`, `message`, `description` and `warning`: text for the user. Any of
+  them can be an empty string.
+- `password_new`: `true` when the user chooses a new password. Ask for it twice
+  if your prompt program supports it.
+- `choice_label`: the text of an optional checkbox, for example "Automatically
   unlock this keyring". It is an empty string when there is no checkbox.
-- `caller_window` identifies the window of the program that asked, in the form
-  the program gave it. It is an empty string when the program gave none.
-- `continue_label` and `cancel_label` are the preferred button texts. They are
-  empty strings when the program gave none.
-- `result` is `"answered"` after `prompt.respond`, `"cancelled"` after
-  `prompt.cancel` or when the program withdraws the prompt, and `"timeout"`
-  when nothing answered in 120 seconds.
+- `caller_window`: the window of the program that asked, in the form the
+  program gave it, or an empty string.
+- `continue_label` and `cancel_label`: the preferred button texts, or empty
+  strings.
 
-## Methods
+| Method                       | Kind       | Effect                                                      |
+| ---------------------------- | ---------- | ----------------------------------------------------------- |
+| `answer(password, choice?)`  | `password` | Answer with the password, UTF-8 up to 4096 bytes.           |
+| `answer(confirmed, choice?)` | `confirm`  | `true` continues; `false` cancels.                          |
+| `cancel()`                   | both       | End the prompt. The program that asked sees a cancellation. |
+| `finished()`                 | both       | An Operation that succeeds with the outcome.                |
 
-Each method takes a table and returns an operation. The operation succeeds with
-`{request_id = ..., submitted = true}`.
+`choice` is the state of the checkbox that `choice_label` describes.
 
-| Method                   | Fields                                          | Effect                                                      |
-| ------------------------ | ----------------------------------------------- | ----------------------------------------------------------- |
-| `gnoblin.prompt.respond` | `request_id`, `password`, `confirmed`, `choice` | Answer the prompt.                                          |
-| `gnoblin.prompt.cancel`  | `request_id`                                    | End the prompt. The program that asked sees a cancellation. |
+The outcome is one of these values:
 
-For `prompt.respond`:
+- `"answered"`: the request got an answer.
+- `"cancelled"`: the prompt was cancelled, or the program withdrew it.
+- `"timeout"`: nothing answered in 120 seconds.
 
-| Field        | Type    | Required for        | Meaning                                                                |
-| ------------ | ------- | ------------------- | ---------------------------------------------------------------------- |
-| `request_id` | integer | Always              | The `request_id` from the event. Must be positive.                     |
-| `password`   | string  | `kind = "password"` | The password. UTF-8, up to 4096 bytes. Not allowed for a confirmation. |
-| `confirmed`  | boolean | `kind = "confirm"`  | `true` continues. `false` cancels. Not allowed for a password prompt.  |
-| `choice`     | boolean | Never               | The state of the checkbox that `choice_label` describes.               |
-
-A missing or wrong-typed field fails the operation with a message that names
-the field.
+`gnoblin.prompt.finished` reports the same outcome as `result`.
 
 ## Limits
 
@@ -133,16 +134,20 @@ Gnoblin keeps the password in secure memory while it holds it and wipes that
 copy when the prompt ends. The password also passes through the Lua runtime,
 and Lua strings are not wiped.
 
-- Do not log `password` or `result.stdout`.
+- Do not log the password or the prompt program's `stdout`.
 - Do not put a password in `argv`. Other users can read command lines.
 - A prompt program that prints the password to standard output keeps it off the
   command line.
 - A keyring password unlocks stored secrets. Show the prompt only for requests
   that come from your own session.
 
-## Use the methods from a shell process
+## Answer from a shell process
 
-A shell that connects to the [compositor bridge](/bridge/) uses the
-same methods as `prompt.respond` and `prompt.cancel` with API version 1.79 or
-later, and subscribes to the `gnoblin.prompt.*` events. Only a client that
-received `gnoblin.prompt.requested` can answer that prompt.
+A shell that connects to the [compositor bridge](/bridge/) needs API version
+1.79 or later. It subscribes to the `gnoblin.prompt.*` events and answers with
+these methods, each with `request_id`:
+
+- `prompt.respond`, with `password` or `confirmed` and optional `choice`.
+- `prompt.cancel`.
+
+Only a client that received `gnoblin.prompt.requested` can answer that prompt.

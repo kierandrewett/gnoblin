@@ -102,7 +102,7 @@ gboolean gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* c
     g_autoptr(GVariant) document =
         g_variant_lookup_value(payload, "document", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) current_document =
-        gnoblin_runtime_cache_get_document(control->runtime_cache);
+        gnoblin_runtime_cache_get_committed_document(control->runtime_cache);
     g_autoptr(GError) events_error = NULL;
     g_autoptr(GHashTable) subscriptions =
         gnoblin_control_runtime_event_subscriptions_from_payload(payload, &events_error);
@@ -297,7 +297,8 @@ gboolean gnoblin_control_runtime_flush_pending_events(GnoblinNativeControl* cont
 gboolean gnoblin_control_runtime_send_worker_suspended(GnoblinNativeControl* control,
                                                        GError** error) {
     guint64 revision = gnoblin_runtime_cache_get_settings_revision(control->runtime_cache);
-    g_autoptr(GVariant) document = gnoblin_runtime_cache_get_document(control->runtime_cache);
+    g_autoptr(GVariant) document =
+        gnoblin_runtime_cache_get_committed_document(control->runtime_cache);
     if (!document) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                             "cannot suspend Lua worker without an accepted configuration document");

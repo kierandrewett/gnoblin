@@ -1,4 +1,4 @@
-/* Annotations for the Lua API: shared types.
+/* Annotations for the Lua API: shared types, the Operation object and timers.
  *
  * The annotation blocks under src/config/lua/api/ describe the public gnoblin.* Lua API in LuaCATS,
  * the format Lua Language Server reads. scripts/gen-lua-api.py turns them into the console's
@@ -29,7 +29,56 @@
 
 /*** lua
 ---Call callback when the operation finishes. The callback receives the value and the error; one
----of them is nil.
+---of them is nil. A callback added after the operation finished runs once, after the current
+---handler returns.
 ---@param callback fun(value: any, error: OperationError|nil)
+---@return Subscription
 function Operation:on_complete(callback) end
+
+---A new Operation that succeeds with fn(value) when this one succeeds. When this one fails, or fn
+---raises an error, the new one fails; an error raised by fn has the code "internal".
+---@param fn fun(value: any): any
+---@return Operation
+function Operation:map(fn) end
+
+---A new Operation that finishes with this one's result, or fails with the code "timed_out" after
+---the given time. The timeout does not cancel this operation.
+---@param seconds number From 0 to 86400.
+---@return Operation
+function Operation:timeout(seconds) end
+
+---Stop waiting for this operation. It fails with the code "cancelled" and its callbacks run. A
+---timer stops; an action already sent to the compositor still runs and its result is ignored.
+---@return boolean cancelled False when the operation had already finished.
+function Operation:cancel() end
+*/
+
+/*** lua
+---An Operation that succeeds with nil after the given time. Use it from an event handler or an
+---operation callback, not while the config file loads.
+---@param seconds number From 0 to 86400.
+---@return Operation<nil>
+function gnoblin.timers.after(seconds) end
+
+---Seconds on a monotonic clock. Only differences between two readings are meaningful.
+---@return number
+function gnoblin.timers.now() end
+*/
+
+/*** lua
+---@alias FindKind
+"Window"|"Workspace"|"LayerSurface"|"Output"|"Shortcut"|"Launch"|"InputSource"|"Process"
+
+---Return the live objects of one kind that match a filter, in the order of the kind's list
+---function (`gnoblin.windows.list` for "Window", and so on). Every result is the same handle that
+---the list and the events give. A table filter names fields of the kind and keeps the objects whose
+---field equals every value: strings, numbers and booleans, so `{app_id = "notes", focused = true}`.
+---A field that the kind does not declare, or that is not a scalar such as `frame`, is an error that
+---names the fields that work. A function filter is called with each object and keeps those for
+---which it returns true; use it for anything but equality, such as a title that contains a word.
+---Without a filter it returns every object.
+---@param kind FindKind The kind to search.
+---@param filter? table|fun(object: any): boolean Field values to match, or a predicate.
+---@return any[]
+function gnoblin.find(kind, filter) end
 */

@@ -152,7 +152,19 @@ def parse_block(body, where, functions, classes, aliases, raw):
             kind, description = read_type(rest)
             if kind.endswith("?"):
                 optional, kind = True, kind[:-1]
-            current["fields"].append({"name": name, "type": kind, "optional": optional, "description": description})
+            current["fields"].append(
+                {"name": name, "type": kind, "optional": optional, "description": description, "observable": False}
+            )
+        elif tag == "observable":
+            # `---@observable a b c` after a class's fields lists the fields that `watch` accepts:
+            # the ones that change while the object is alive. The stub does not carry the line.
+            if current is None:
+                raise Error(f"{here}: @observable outside a @class")
+            for name in rest.split():
+                matches = [f for f in current["fields"] if f["name"] == name]
+                if not matches:
+                    raise Error(f"{here}: @observable names {name}, which the class does not declare")
+                matches[0]["observable"] = True
         elif tag == "alias":
             name, _, kind = rest.strip().partition(" ")
             aliases[name] = kind.strip()
@@ -170,7 +182,8 @@ def parse_block(body, where, functions, classes, aliases, raw):
             raise Error(f"{here}: unsupported tag @{tag}")
     if documentation or params or returns:
         raise Error(f"{where}: annotation block ends without a function stub")
-    raw.append(body.strip("\n"))
+    kept = [line for line in body.split("\n") if not line.strip().startswith("---@observable")]
+    raw.append("\n".join(kept).strip("\n"))
 
 
 def referenced_types(kind):
@@ -231,7 +244,8 @@ def emit_inc(all_functions, classes):
             for field in cls["fields"]:
                 out.append(
                     f"    {{{c_string(field['name'])}, {c_string(field['type'])}, "
-                    f"{'TRUE' if field['optional'] else 'FALSE'}, {c_string(field['description'])}}},"
+                    f"{'TRUE' if field['optional'] else 'FALSE'}, {c_string(field['description'])}, "
+                    f"{'TRUE' if field['observable'] else 'FALSE'}}},"
                 )
             out.append("};")
     out.append("")
@@ -248,7 +262,7 @@ def emit_inc(all_functions, classes):
             for param in function["params"]:
                 out.append(
                     f"    {{{c_string(param['name'])}, {c_string(param['type'])}, "
-                    f"{'TRUE' if param['optional'] else 'FALSE'}, {c_string(param['description'])}}},"
+                    f"{'TRUE' if param['optional'] else 'FALSE'}, {c_string(param['description'])}, FALSE}},"
                 )
             out.append("};")
     out.append("")
@@ -263,25 +277,6 @@ def emit_inc(all_functions, classes):
     out.append("    {NULL, NULL, NULL, 0, NULL},")
     out.append("};")
     return "\n".join(out) + "\n"
-
-
-LUA_KEYWORDS = {
-    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
-    "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
-}  # fmt: skip
-
-
-def lua_stub(line):
-    """A function named like a Lua keyword, such as launches.end, cannot be declared with the
-    function statement; declare it by assignment instead."""
-    match = FUNCTION.match(line.strip())
-    if not match or ":" in match.group(1):
-        return line
-    parts = match.group(1).split(".")
-    if not any(part in LUA_KEYWORDS for part in parts):
-        return line
-    target = parts[0] + "".join(f'["{p}"]' if p in LUA_KEYWORDS else f".{p}" for p in parts[1:])
-    return f"{target} = function({match.group(2)}) end"
 
 
 def emit_types(functions, raw):
@@ -302,7 +297,7 @@ def emit_types(functions, raw):
         out.append(f"{name} = {{}}")
     out.append("")
     for body in raw:
-        out.append("\n".join(lua_stub(line) for line in body.split("\n")))
+        out.append(body)
         out.append("")
     return "\n".join(out).rstrip("\n") + "\n"
 

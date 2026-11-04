@@ -16,7 +16,7 @@ out="$run/regression-$(date -u +%Y%m%dT%H%M%SZ).txt"
     echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "build: $(git rev-parse --short HEAD) with working tree changes"
     scp -q -P "$port" -o UserKnownHostsFile="$run/known_hosts" \
-        "$here"/configs/99-test-capture.lua "$here"/configs/99-test-doc.lua "$here"/configs/99-test-prompts.lua "$here"/configs/99-test-rules.lua "$here"/configs/99-test-opacity.lua luna@127.0.0.1:/tmp/
-    scripts/qemu-e2e guest "$run" -- env GNOBLIN_PREFIX="$prefix" bash -s < "$here/guest-regression.sh"
+        "$here"/configs/99-test-process.lua "$here"/configs/99-test-doc.lua "$here"/configs/99-test-prompts.lua "$here"/configs/99-test-rules.lua "$here"/configs/99-test-opacity.lua luna@127.0.0.1:/tmp/
+    scripts/qemu-e2e guest "$run" -- env GNOBLIN_PREFIX="$prefix" bash -s <"$here/guest-regression.sh"
 } 2>&1 | tee "$out"
 echo "saved: $out"

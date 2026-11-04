@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = [ROOT / "src/control" / name for name in ("gnoblin-control-command.c", "gnoblin-control-capture.c")]
+SOURCES = [ROOT / "src/control" / name for name in ("gnoblin-control-command.c", "gnoblin-control-process.c")]
 
 HEADER = r"""
 #pragma once
@@ -22,13 +22,13 @@ HEADER = r"""
 #include <json-glib/json-glib.h>
 #define MAX_NATIVE_COMMAND_ARGUMENTS 64
 #define MAX_NATIVE_COMMAND_BYTES (64 * 1024)
-typedef struct { gboolean stopping; GHashTable *pending_captures; } GnoblinNativeControl;
+typedef struct { gboolean stopping; GHashTable *processes; } GnoblinNativeControl;
 gboolean gnoblin_control_queue_command(const char *, const char *, char **, GError **);
 void gnoblin_control_launch_command(const char *, const char *, char **);
 gboolean gnoblin_control_reset_command_scheduling(void);
-gboolean gnoblin_control_capture_begin(GnoblinNativeControl *, gint64, GVariant *, GError **);
-void gnoblin_control_capture_init(GnoblinNativeControl *);
-void gnoblin_control_capture_clear(GnoblinNativeControl *);
+gboolean gnoblin_control_process_spawn(GnoblinNativeControl *, gint64, GVariant *, GError **);
+void gnoblin_control_process_init(GnoblinNativeControl *);
+void gnoblin_control_process_clear(GnoblinNativeControl *);
 const char *gnoblin_control_operation_error_code(const GError *);
 void gnoblin_control_dispatch_operation_completion_full(
     GnoblinNativeControl *, gint64, const char *, gboolean, JsonNode *,
@@ -39,6 +39,11 @@ typedef enum {
     GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED,
 } GnoblinNativeNoticeKind;
 void gnoblin_control_post_notice(GnoblinNativeNoticeKind, const char *);
+"""
+
+PRIVATE_HEADER = r"""
+#pragma once
+gboolean native_runtime_dispatch_event(GnoblinNativeControl *, const char *, GVariant *);
 """
 
 HARNESS = r"""
@@ -70,12 +75,25 @@ void gnoblin_control_post_notice(GnoblinNativeNoticeKind kind, const char *messa
 void gnoblin_control_dispatch_operation_completion_full(
     GnoblinNativeControl *control, gint64 id, const char *method, gboolean success,
     JsonNode *result, const char *code, const char *message, gboolean retry) {
+    g_assert_cmpstr(method, ==, "process.spawn");
     g_assert_true(success);
-    JsonObject *object = json_node_get_object(result);
-    g_assert_cmpint(json_object_get_int_member(object, "exit_code"), ==, 0);
-    g_assert_cmpint(sscanf(json_object_get_string_member(object, "stdout"), "%d %d",
-                           &captured_nice, &captured_policy), ==, 2);
+}
+
+/* process.spawn reports the exit with its captured output as this runtime event. */
+gboolean native_runtime_dispatch_event(GnoblinNativeControl *control, const char *event,
+                                       GVariant *payload) {
+    g_assert_cmpstr(event, ==, "gnoblin.process.exited");
+    gint64 exit_code = -1;
+    g_assert_true(g_variant_lookup(payload, "exit_code", "x", &exit_code));
+    g_assert_cmpint(exit_code, ==, 0);
+    g_autoptr(GVariant) out = g_variant_lookup_value(payload, "stdout", G_VARIANT_TYPE_BYTESTRING);
+    g_assert_nonnull(out);
+    gsize length = 0;
+    const char *bytes = g_variant_get_fixed_array(out, &length, 1);
+    g_autofree char *text = g_strndup(bytes, length);
+    g_assert_cmpint(sscanf(text, "%d %d", &captured_nice, &captured_policy), ==, 2);
     completed = TRUE;
+    return TRUE;
 }
 
 static void shared_task(GTask *task, gpointer source, gpointer data, GCancellable *cancel) {
@@ -139,7 +157,7 @@ int main(int argc, char **argv) {
     g_autofree char *record = g_build_filename(directory, "child", NULL);
     char *child_argv[] = {argv[0], "--child", record, NULL};
     GnoblinNativeControl control = {0};
-    gnoblin_control_capture_init(&control);
+    gnoblin_control_process_init(&control);
     for (int repeat = 0; repeat < 3; repeat++) {
         g_autoptr(GError) error = NULL;
         gnoblin_control_launch_command("shortcut", "priority", child_argv);
@@ -151,12 +169,13 @@ int main(int argc, char **argv) {
         GVariantBuilder builder;
         g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&builder, "{sv}", "argv", g_variant_new_strv((const char **)child_argv, -1));
+        g_variant_builder_add(&builder, "{sv}", "stdout", g_variant_new_string("capture"));
         g_autoptr(GVariant) arguments = g_variant_ref_sink(g_variant_builder_end(&builder));
         completed = FALSE;
-        g_assert_true(gnoblin_control_capture_begin(&control, repeat + 1, arguments, &error));
+        g_assert_true(gnoblin_control_process_spawn(&control, repeat + 1, arguments, &error));
         wait_completed();
         if (captured_nice != expected || captured_policy != parent_policy)
-            g_error("capture: child nice %d policy %d, expected %d/%d", captured_nice,
+            g_error("process.spawn: child nice %d policy %d, expected %d/%d", captured_nice,
                     captured_policy, expected, parent_policy);
         unlink(record);
         g_assert_cmpint(getpriority(PRIO_PROCESS, 0), ==, parent_nice);
@@ -173,10 +192,10 @@ int main(int argc, char **argv) {
     g_assert_cmpint(posted_kind, ==, GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED);
     g_assert_cmpstr(posted_notice, ==, "media-next could not start: No such file or directory");
     g_assert_cmpint(sample_shared_worker(), ==, shared_before);
-    gnoblin_control_capture_clear(&control);
-    g_hash_table_unref(control.pending_captures);
+    gnoblin_control_process_clear(&control);
+    g_hash_table_unref(control.processes);
     rmdir(directory);
-    g_print("PASS: run/capture children nice %d; parent nice %d policy %d and shared worker unchanged\n",
+    g_print("PASS: command and process children nice %d; parent nice %d policy %d and shared worker unchanged\n",
             expected, parent_nice, parent_policy);
     if (parent_nice >= 0)
         g_print("NOT CHECKED: negative-nice inheritance; run this probe at nice -5 separately\n");
@@ -190,6 +209,7 @@ def build(directory):
     (directory / "core").mkdir(exist_ok=True)
     (directory / "config.h").write_text("")
     (directory / "core/gnoblin-control-internal.h").write_text(HEADER)
+    (directory / "core/gnoblin-native-control-private.h").write_text(PRIVATE_HEADER)
     source = directory / "probe.c"
     source.write_text(HARNESS)
     binary = directory / "command-priority-probe"

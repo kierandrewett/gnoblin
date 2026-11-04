@@ -63,6 +63,45 @@ context remain denied.
 
 For the socket activation contract, see the [compositor bridge](/bridge/).
 
+## Focus a program the shell started
+
+A window whose `process` field is set belongs to a program the runtime started with
+[`gnoblin.process.spawn`](/shell-api/processes). The runtime can focus such a window with `window:present()` without a
+key press. This handler starts a terminal on a shortcut and focuses its window when it opens:
+
+```lua
+local present_when_open = {}
+
+gnoblin.on("gnoblin.window.created", function(event)
+    if present_when_open[event.window.process] then
+        event.window:present()
+    end
+end)
+
+gnoblin.on("gnoblin.shortcut.activated", function()
+    local terminal = gnoblin.process.spawn({"foot"})
+    present_when_open[terminal.id] = true
+    terminal:wait():on_complete(function()
+        present_when_open[terminal.id] = nil
+    end)
+end)
+```
+
+Gnoblin sets `process` when the window's client is the started process or runs in its session. The process ID comes
+from the display server, so an application cannot claim another program's windows. A program that starts a new
+session with `setsid`, such as a launcher that hands the window to an already running instance, is not covered.
+
+`present()` waits until the window is shown and no key press or click has reached a window for 250 ms, so the window
+does not take keystrokes the user is typing elsewhere. It gives up after five seconds. The Operation succeeds with
+`{id, focused = true}` once the window has focus, and fails with:
+
+- `denied` when the window does not belong to a started process, the session is locked, or the compositor refused
+  focus;
+- `busy` when the window was not shown, or the user kept typing or clicking, for five seconds;
+- `not_found` when the window closed first.
+
+Mutter's focus-stealing rules still apply to every other window.
+
 ## Launching from a layer surface
 
 Shells can use the standard [XDG activation protocol](https://wayland.app/protocols/xdg-activation-v1)

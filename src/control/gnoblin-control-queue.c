@@ -2,28 +2,11 @@
 #include "core/stack.h"
 
 gboolean native_api_animation_read_method(const char* method) {
-    return method &&
-           (g_str_equal(method, "animation.list") || g_str_equal(method, "animation.get") ||
-            g_str_equal(method, "animation.surfaces") || g_str_equal(method, "animation.inspect"));
+    return gnoblin_api_operation_has(method, GN_OP_ANIM_READ);
 }
 
 gboolean native_api_read_method(const char* method) {
-    return method &&
-           (g_str_equal(method, "window.list") || g_str_equal(method, "windows.list") ||
-            g_str_equal(method, "version") || g_str_equal(method, "capabilities.list") ||
-            g_str_equal(method, "focus.history") || g_str_equal(method, "settings") ||
-            g_str_equal(method, "config.path") || g_str_equal(method, "config.default") ||
-            g_str_equal(method, "appearance.color_scheme") || g_str_equal(method, "focus.policy") ||
-            g_str_equal(method, "session.activity") || g_str_equal(method, "session.status") ||
-            g_str_equal(method, "runtime.status") ||
-            g_str_equal(method, "layer.animation_policy") ||
-            g_str_equal(method, "workspaces.list") || g_str_equal(method, "output.list") ||
-            g_str_equal(method, "monitors.list") || g_str_equal(method, "outputs.list") ||
-            g_str_equal(method, "outputs.renderer") ||
-            g_str_equal(method, "monitors.privacy_screen") || g_str_equal(method, "layers.list") ||
-            g_str_equal(method, "launches.list") || g_str_equal(method, "launches.snapshot") ||
-            g_str_equal(method, "shortcuts.list") || g_str_equal(method, "shortcuts.actions") ||
-            g_str_equal(method, "input.orientation_lock"));
+    return gnoblin_api_operation_has(method, GN_OP_READ);
 }
 
 gboolean runtime_config_values_equal(GVariant* left, GVariant* right) {

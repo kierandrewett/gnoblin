@@ -124,6 +124,7 @@ const FOLDED = {
     "focus-transfer": "shell-api/focus-activation",
     "launch-feedback": "shell-api/launch-feedback",
     "shell-dbus-api": "dbus",
+    "shell-api/workspaces-monitors": "shell-api/workspaces",
 };
 for (const [from, to] of Object.entries(FOLDED)) {
     MOVED[from] = to;

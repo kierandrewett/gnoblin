@@ -1,12 +1,13 @@
 /* Dynamic shortcut bindings: the shortcut.bind, shortcut.unbind and shortcut.session.end socket
  * methods, the bare-Super arming, the lookup and cleanup of bound shortcuts per client and per
  * Lua owner, and the binding validators. Session start and end, key capture, activation and the
- * event routing stay in gnoblin-native-control.c because tests read their text there. */
+ * event routing stay in gnoblin-control-focus.c. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 #include "config.h"
 
+#include "core/gnoblin-chord.h"
 #include "core/gnoblin-control-internal.h"
 
 #include "meta/util.h"
@@ -209,14 +210,13 @@ NativeDynamicShortcut* gnoblin_control_arm_bare_super_shortcut(GnoblinNativeCont
     return shortcut;
 }
 
-gboolean gnoblin_control_dynamic_shortcut_accelerator_valid(const char* accelerator) {
-    if (!accelerator || !*accelerator || strlen(accelerator) > 128 ||
-        !g_utf8_validate(accelerator, -1, NULL))
-        return FALSE;
-    for (const char* cursor = accelerator; *cursor; cursor++)
-        if (g_ascii_iscntrl(*cursor))
-            return FALSE;
-    return TRUE;
+/* The chord in its one written form (gnoblin-chord.h), or NULL with a message that says what to
+ * write instead. The caller frees both. */
+char* gnoblin_control_dynamic_shortcut_chord(const char* accelerator, char** error) {
+    GnoblinChord chord;
+    if (!gnoblin_chord_parse(accelerator, GNOBLIN_CHORD_KEY, &chord, error))
+        return NULL;
+    return gnoblin_chord_format(&chord);
 }
 
 static gboolean dynamic_shortcut_arguments_have_only(JsonObject* arguments, const char* first,
@@ -257,14 +257,17 @@ char* gnoblin_control_dynamic_shortcut_bind(Client* client, const char* request_
             request_id, NULL,
             "shortcut.bind id must contain 1 to 64 letters, digits, underscores, or hyphens");
     if (!accelerator_node || !JSON_NODE_HOLDS_VALUE(accelerator_node) ||
-        json_node_get_value_type(accelerator_node) != G_TYPE_STRING ||
-        !gnoblin_control_dynamic_shortcut_accelerator_valid(json_node_get_string(accelerator_node)))
-        return gnoblin_control_encode_response(
-            request_id, NULL,
-            "shortcut.bind accelerator must be a non-empty GTK accelerator "
-            "string of at most 128 bytes");
+        json_node_get_value_type(accelerator_node) != G_TYPE_STRING)
+        return gnoblin_control_encode_response(request_id, NULL,
+                                               "shortcut.bind accelerator must be a string");
+    g_autofree char* chord_error = NULL;
+    g_autofree char* accelerator = gnoblin_control_dynamic_shortcut_chord(
+        json_node_get_string(accelerator_node), &chord_error);
+    if (!accelerator) {
+        g_autofree char* message = g_strdup_printf("shortcut.bind accelerator %s", chord_error);
+        return gnoblin_control_encode_response(request_id, NULL, message);
+    }
     const char* id = json_node_get_string(id_node);
-    const char* accelerator = json_node_get_string(accelerator_node);
     const char* trigger = "press";
     const char* hold = "none";
     const char* mode = "passive";

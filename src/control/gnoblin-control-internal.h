@@ -4,6 +4,8 @@
 #pragma once
 
 #include "core/gnoblin-native-control.h"
+#include "core/gnoblin-api-operations.h"
+#include "core/gnoblin-chord.h"
 #include "core/gnoblin-auth-agent.h"
 #include "core/gnoblin-location-agent.h"
 #ifdef HAVE_REMOTE_DESKTOP
@@ -189,6 +191,8 @@ typedef struct {
     gint64 expires_at_us;
     guint timeout_source_id;
     gboolean completed;
+    /* "allowed", "denied" or "timeout"; published in gnoblin.location.authorization-finished. */
+    const char* result;
 } PendingLocationAuthorization;
 
 struct _GnoblinNativeControl {
@@ -202,6 +206,7 @@ struct _GnoblinNativeControl {
     GHashTable* workspace_state;
     GHashTable* workspace_signal_handler_ids;
     GHashTable* monitor_state;
+    GHashTable* output_state;
     GHashTable* input_device_state;
     GHashTable* input_device_ids;
     GVariant* privacy_snapshot;
@@ -272,7 +277,9 @@ struct _GnoblinNativeControl {
     GnoblinControlPromptBroker* prompt_broker;
     GHashTable* pending_prompts;
     guint64 next_prompt_request_id;
-    GHashTable* pending_captures;
+    GHashTable* processes; /* process.spawn request ID -> RunningProcess */
+    GHashTable* presents;  /* window.present request ID -> PendingPresent */
+    GHashTable* tweens;    /* tween ID -> TweenPlayer (gnoblin-control-tweens.c) */
     GHashTable* runtime_operation_ids;
     GHashTable* runtime_cancelled_operation_ids;
     GHashTable* runtime_event_subscriptions;
@@ -287,6 +294,7 @@ struct _GnoblinNativeControl {
     GQueue* pending_runtime_events;
     GQueue* pending_input_events;
     GHashTable* held_input_dispositions;
+    GHashTable* pressed_keys; /* PressedKey of each key that is physically down, per keyboard */
     guint input_decision_timeout_id;
     guint64 next_input_request_id;
     gboolean input_policy_bypassed;
@@ -331,6 +339,7 @@ struct _GnoblinNativeControl {
     gboolean layer_state_initialized;
     gboolean workspace_state_initialized;
     gboolean monitor_state_initialized;
+    gboolean output_state_initialized;
     gboolean input_device_state_initialized;
     gboolean input_source_state_initialized;
     gboolean per_window_input_sources;
@@ -363,6 +372,7 @@ struct _GnoblinNativeControl {
     guint pending_input_source_ops;
     guint pending_ibus_queries;
     guint pending_thumbnail_count;
+    guint pending_power_calls; /* logind calls in flight (gnoblin-control-power.c) */
     GVariant* session_activity_snapshot;
     guint64 session_activity_revision;
     GVariant* orientation_lock_snapshot;
@@ -371,10 +381,11 @@ struct _GnoblinNativeControl {
     gboolean orientation_lock_config_value;
     gboolean orientation_lock_runtime_override;
     gboolean orientation_lock_notifications_suppressed;
-    guint session_activity_subscription_id;
-    guint session_activity_owner_subscription_id;
-    guint pending_activity_queries;
-    guint64 session_activity_generation;
+    gpointer session_activity_watch; /* the compositor's own idle watch (session-activity.c) */
+    GHashTable* idle_watches;        /* idle watch ID -> IdleWatch, Lua's (session-activity.c) */
+    GPtrArray* overrides;            /* runtime overrides, oldest first (overrides.c) */
+    gpointer input_grab;             /* the one leased keyboard grab, Lua's (grabs.c) */
+    gpointer compose_table;          /* the compose table of the locale, for grab text (grabs.c) */
     char* path;
     dev_t device;
     ino_t inode;
@@ -438,12 +449,58 @@ G_GNUC_INTERNAL GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl
                                                             const char* method, GVariant* arguments,
                                                             guint64 client_id, GError** error);
 
-/* gnoblin-control-capture.c: command.capture. */
-G_GNUC_INTERNAL void gnoblin_control_capture_init(GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_capture_clear(GnoblinNativeControl* control);
-G_GNUC_INTERNAL gboolean gnoblin_control_capture_begin(GnoblinNativeControl* control,
-                                                       gint64 operation_id, GVariant* arguments,
-                                                       GError** error);
+/* gnoblin-control-process.c: process.spawn and process.kill. */
+G_GNUC_INTERNAL void gnoblin_control_process_init(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_process_clear(GnoblinNativeControl* control);
+G_GNUC_INTERNAL gboolean gnoblin_control_process_spawn(GnoblinNativeControl* control, gint64 id,
+                                                       GVariant* arguments, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_process_kill(GnoblinNativeControl* control,
+                                                       GVariant* arguments, GError** error);
+G_GNUC_INTERNAL gint64 gnoblin_control_process_for_pid(GnoblinNativeControl* control, pid_t pid);
+
+/* gnoblin-control-present.c: window.present. */
+G_GNUC_INTERNAL void gnoblin_control_present_init(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_present_clear(GnoblinNativeControl* control);
+G_GNUC_INTERNAL gboolean gnoblin_control_present_window(GnoblinNativeControl* control,
+                                                        gint64 operation_id, GVariant* arguments,
+                                                        GError** error);
+
+/* gnoblin-control-window-visuals.c: window.set_visual, visual fields of window records. */
+G_GNUC_INTERNAL GVariant* gnoblin_control_window_set_visual(GnoblinNativeControl* control,
+                                                            GVariant* arguments,
+                                                            guint64 owner_generation,
+                                                            GError** error);
+G_GNUC_INTERNAL void gnoblin_control_window_visual_add_fields(MetaWindow* window,
+                                                              JsonObject* record);
+G_GNUC_INTERNAL void gnoblin_control_window_visuals_reset(GnoblinNativeControl* control);
+typedef enum {
+    GNOBLIN_VISUAL_OPACITY,
+    GNOBLIN_VISUAL_SCALE,
+    GNOBLIN_VISUAL_ROTATION,
+    GNOBLIN_VISUAL_OFFSET_X,
+    GNOBLIN_VISUAL_OFFSET_Y,
+    GNOBLIN_VISUAL_COUNT,
+} GnoblinVisualProperty;
+G_GNUC_INTERNAL void gnoblin_control_window_visual_values(MetaWindow* window,
+                                                          double values[GNOBLIN_VISUAL_COUNT]);
+G_GNUC_INTERNAL void gnoblin_control_window_visual_store(MetaWindow* window,
+                                                         const double values[GNOBLIN_VISUAL_COUNT],
+                                                         guint64 owner_generation);
+
+/* gnoblin-control-tweens.c: tween.play, tween.pause, tween.seek, tween.kill. */
+G_GNUC_INTERNAL gboolean gnoblin_control_tween_play(GnoblinNativeControl* control,
+                                                    gint64 operation_id, GVariant* arguments,
+                                                    guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_tween_control(GnoblinNativeControl* control,
+                                                        const char* method, GVariant* arguments,
+                                                        guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL void gnoblin_control_tweens_cancel(GnoblinNativeControl* control,
+                                                   const char* outcome);
+
+/* gnoblin-control-power.c: session.suspend, hibernate, reboot and poweroff through logind. */
+G_GNUC_INTERNAL gboolean gnoblin_control_power_action(GnoblinNativeControl* control,
+                                                      gint64 operation_id, const char* method,
+                                                      GVariant* arguments, GError** error);
 
 /* gnoblin-control-privacy.c: privacy snapshot and location authorization glue. */
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,
@@ -458,11 +515,69 @@ G_GNUC_INTERNAL void gnoblin_control_privacy_new_handle(MetaRemoteAccessControll
 G_GNUC_INTERNAL GVariant* gnoblin_control_stop_privacy_sessions(GnoblinNativeControl* control,
                                                                 gboolean recording, GError** error);
 
-/* gnoblin-control-session-activity.c: session activity. */
+/* gnoblin-control-session-activity.c: session activity and Lua's idle watches. */
 G_GNUC_INTERNAL void gnoblin_control_activity_watch(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_activity_stop(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void gnoblin_control_idle_watches_clear(GnoblinNativeControl* control);
+G_GNUC_INTERNAL GVariant* gnoblin_control_idle_watch(GnoblinNativeControl* control,
+                                                     gint64 operation_id, GVariant* arguments,
+                                                     guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_idle_cancel(GnoblinNativeControl* control,
+                                                      GVariant* arguments, guint64 owner_generation,
+                                                      GError** error);
 G_GNUC_INTERNAL void gnoblin_control_activity_publish(GnoblinNativeControl* control,
                                                       gboolean available, gboolean idle,
                                                       guint64 threshold_ms, guint64 idle_for_ms);
+
+/* gnoblin-control-overrides.c: runtime setting overrides and per-window effect overrides. */
+G_GNUC_INTERNAL GVariant* gnoblin_control_override_setting(GnoblinNativeControl* control,
+                                                           gint64 operation_id, GVariant* arguments,
+                                                           guint64 owner_generation,
+                                                           GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_override_window_effect(GnoblinNativeControl* control,
+                                                                 gint64 operation_id,
+                                                                 GVariant* arguments,
+                                                                 guint64 owner_generation,
+                                                                 GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_override_revoke(GnoblinNativeControl* control,
+                                                          GVariant* arguments,
+                                                          guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL gboolean gnoblin_control_override_socket_set(GnoblinNativeControl* control,
+                                                             const char* section, const char* key,
+                                                             GVariant* value, GError** error);
+G_GNUC_INTERNAL void gnoblin_control_overrides_clear(GnoblinNativeControl* control,
+                                                     gboolean include_socket);
+G_GNUC_INTERNAL void gnoblin_control_overrides_reapply(GnoblinNativeControl* control,
+                                                       gboolean orientation_lock,
+                                                       gboolean documents);
+G_GNUC_INTERNAL void gnoblin_control_overrides_window_closed(GnoblinNativeControl* control,
+                                                             const char* window_id);
+G_GNUC_INTERNAL GVariant* gnoblin_control_window_effect_rule(GnoblinNativeControl* control,
+                                                             MetaWindow* window);
+G_GNUC_INTERNAL void gnoblin_control_overrides_free(GnoblinNativeControl* control);
+
+/* gnoblin-control-grabs.c: the leased keyboard grab of the Lua runtime. */
+G_GNUC_INTERNAL GVariant* gnoblin_control_input_grab(GnoblinNativeControl* control,
+                                                     gint64 operation_id, GVariant* arguments,
+                                                     guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_input_grab_renew(GnoblinNativeControl* control,
+                                                           GVariant* arguments,
+                                                           guint64 owner_generation,
+                                                           GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_input_grab_release(GnoblinNativeControl* control,
+                                                             GVariant* arguments,
+                                                             guint64 owner_generation,
+                                                             GError** error);
+G_GNUC_INTERNAL void gnoblin_control_input_grab_key(GnoblinNativeControl* control,
+                                                    const ClutterEvent* event);
+G_GNUC_INTERNAL void gnoblin_control_input_grab_end(GnoblinNativeControl* control,
+                                                    const char* reason, gboolean publish);
+G_GNUC_INTERNAL void gnoblin_control_input_grab_free(GnoblinNativeControl* control);
+G_GNUC_INTERNAL GHashTable* gnoblin_control_pressed_keys_new(void);
+G_GNUC_INTERNAL void gnoblin_control_track_pressed_key(GnoblinNativeControl* control,
+                                                       const ClutterEvent* event);
+G_GNUC_INTERNAL void gnoblin_control_forget_pressed_keys(GnoblinNativeControl* control,
+                                                         ClutterInputDevice* device);
 
 /* gnoblin-control-input-sources.c: XKB and IBus input sources. */
 G_GNUC_INTERNAL void gnoblin_control_window_input_source_free(gpointer data);
@@ -490,7 +605,6 @@ G_GNUC_INTERNAL gboolean gnoblin_control_queue_command(const char* category, con
                                                        char** argv, GError** error);
 G_GNUC_INTERNAL void gnoblin_control_launch_command(const char* category, const char* name,
                                                     char** argv);
-G_GNUC_INTERNAL char** gnoblin_control_command_run_argv(GVariant* arguments, GError** error);
 
 /* gnoblin-control-publish.c: transient notices drawn by the compositor plugin. A no-op while no
  * plugin has registered a handler. */
@@ -514,11 +628,18 @@ G_GNUC_INTERNAL JsonNode* gnoblin_control_workspace_snapshot_json(GnoblinNativeC
 G_GNUC_INTERNAL JsonNode* gnoblin_control_monitor_snapshot_json(GnoblinNativeControl* control,
                                                                 gboolean update_lua_snapshot,
                                                                 GError** error);
+/* Output records merged with their logical monitor (index, size, work area) from `monitors` and
+ * their privacy screen state; `monitors` may be NULL. */
 G_GNUC_INTERNAL JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
+                                                               JsonNode* monitors,
                                                                gboolean update_lua_snapshot,
                                                                GError** error);
 G_GNUC_INTERNAL GHashTable* gnoblin_control_workspace_state_from_snapshot(JsonNode* snapshot);
 G_GNUC_INTERNAL GHashTable* gnoblin_control_monitor_state_from_snapshot(JsonNode* snapshot);
+G_GNUC_INTERNAL GHashTable* gnoblin_control_output_state_from_snapshot(JsonNode* snapshot);
+/* Raise gnoblin.output.added, changed and removed for the difference to the last outputs. */
+G_GNUC_INTERNAL void gnoblin_control_publish_output_changes(GnoblinNativeControl* control,
+                                                            JsonNode* snapshot, guint64 revision);
 G_GNUC_INTERNAL char* gnoblin_control_monitor_id_for_index(JsonNode* snapshot, int monitor_index);
 G_GNUC_INTERNAL void gnoblin_control_publish_workspace_changes(GnoblinNativeControl* control,
                                                                JsonNode* snapshot,
@@ -576,8 +697,7 @@ G_GNUC_INTERNAL void
 gnoblin_control_clear_configured_capture_shortcut(GnoblinNativeControl* control,
                                                   const char* reason);
 G_GNUC_INTERNAL gboolean gnoblin_control_dynamic_shortcut_id_valid(const char* id);
-G_GNUC_INTERNAL gboolean
-gnoblin_control_dynamic_shortcut_accelerator_valid(const char* accelerator);
+G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_chord(const char* accelerator, char** error);
 G_GNUC_INTERNAL NativeDynamicShortcut*
 gnoblin_control_arm_bare_super_shortcut(GnoblinNativeControl* control, const char* id,
                                         const char* owner_id, Client* client, guint64 session_id,

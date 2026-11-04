@@ -123,7 +123,7 @@ static gboolean tablet_pad_buttons_valid(GVariant* value) {
             if (!keybinding_value || !g_variant_is_of_type(keybinding_value, G_VARIANT_TYPE_STRING))
                 return FALSE;
             const char* keybinding = g_variant_get_string(keybinding_value, NULL);
-            if (!*keybinding || strlen(keybinding) > 160)
+            if (!gnoblin_chord_parse(keybinding, GNOBLIN_CHORD_KEY, NULL, NULL))
                 return FALSE;
         } else if (keybinding_value) {
             return FALSE;
@@ -359,8 +359,13 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return input_string_is(value, stylus_eraser_modes);
     if (g_str_has_suffix(key, "button-action"))
         return input_string_is(value, stylus_actions);
-    if (g_str_has_suffix(key, "button-keybinding"))
-        return g_variant_is_of_type(value, G_VARIANT_TYPE_STRING);
+    if (g_str_has_suffix(key, "button-keybinding")) {
+        /* An empty keybinding is none; anything else is a chord. */
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            return FALSE;
+        const char* text = g_variant_get_string(value, NULL);
+        return !*text || gnoblin_chord_parse(text, GNOBLIN_CHORD_KEY, NULL, NULL);
+    }
     static const char* boolean_fields[] = {
         "natural-scroll",
         "middle-click-emulation",
@@ -513,10 +518,19 @@ static gboolean input_fields_valid(const char* group, GVariant* values, GError**
             continue;
         }
         gboolean valid = input_value_valid(group, key, value);
+        g_autofree char* chord_error = NULL;
+        if (!valid && g_str_has_suffix(key, "button-keybinding") &&
+            g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            gnoblin_chord_parse(g_variant_get_string(value, NULL), GNOBLIN_CHORD_KEY, NULL,
+                                &chord_error);
         g_variant_unref(value);
         if (!valid) {
-            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                        "input.%s.%s is unsupported or has an invalid value", group, key);
+            if (chord_error)
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "input.%s.%s: %s", group, key,
+                            chord_error);
+            else
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "input.%s.%s is unsupported or has an invalid value", group, key);
             return FALSE;
         }
     }

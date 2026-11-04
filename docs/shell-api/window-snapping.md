@@ -1,6 +1,6 @@
 # Window Snapping
 
-Build and commit a window frame using a trusted focus context.
+Build and commit a window frame using a [grant](/shell-api/grants).
 
 Window snapping is available from a trusted event callback in a Gnoblin session.
 
@@ -54,15 +54,16 @@ Lua callbacks use `event.drag:offer_targets()` as described above.
 
 ### Keyboard snapping
 
-For keyboard-selected layouts, call `gnoblin.windows.snap_context(context)` in
-a trusted shortcut callback. It consumes the one-use focus context and returns
-an `Operation<SnapContext>` for the focused window; callers cannot provide a
+For keyboard-selected layouts, call `gnoblin.windows.snap_context(grant)` in
+a trusted shortcut callback, with the [grant](/shell-api/grants) of the event. It spends the `snap_context` scope
+and returns an `Operation<SnapContext>` for the focused window; callers cannot provide a
 window ID.
 
-Commit once with a monitor ID and frame rectangle. Gnoblin checks the window,
+Commit once with `context:commit(monitor, x, y, width, height)`. The monitor is an `Output` or a monitor ID, and
+the four numbers are the frame rectangle. Gnoblin checks the window,
 monitor, lock state, runtime generation, and work-area bounds again. The
 operation resolves to `{window_id, monitor_id, committed = true}`. The context
-expires with its source focus context and is revoked by lock or config reload.
+expires with its grant and is revoked by lock or config reload.
 
 The context is available only in a trusted shortcut callback. It expires
 after five seconds and is revoked by session lock or config reload. See the

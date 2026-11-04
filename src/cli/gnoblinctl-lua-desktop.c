@@ -95,74 +95,6 @@ int lua_cli_session_status(lua_State* state) {
     return 1;
 }
 
-static gboolean lua_cli_session_activity_valid(JsonObject* object) {
-    static const char* const boolean_fields[] = {"available", "idle"};
-    static const char* const integer_fields[] = {"threshold_ms", "idle_for_ms", "revision"};
-    for (guint i = 0; i < G_N_ELEMENTS(boolean_fields); i++) {
-        JsonNode* field = json_object_get_member(object, boolean_fields[i]);
-        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
-            json_node_get_value_type(field) != G_TYPE_BOOLEAN)
-            return FALSE;
-    }
-    for (guint i = 0; i < G_N_ELEMENTS(integer_fields); i++) {
-        JsonNode* field = json_object_get_member(object, integer_fields[i]);
-        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
-            (json_node_get_value_type(field) != G_TYPE_INT64 &&
-             json_node_get_value_type(field) != G_TYPE_INT) ||
-            json_node_get_int(field) < 0)
-            return FALSE;
-    }
-    return TRUE;
-}
-
-static int lua_cli_session_activity_tostring(lua_State* state) {
-    lua_pushliteral(state, "SessionActivity");
-    return 1;
-}
-
-void register_lua_cli_session_activity_record(lua_State* state) {
-    if (!luaL_newmetatable(state, GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE)) {
-        lua_pop(state, 1);
-        return;
-    }
-    lua_pushcfunction(state, lua_cli_readonly_index);
-    lua_setfield(state, -2, "__index");
-    lua_pushcfunction(state, lua_cli_readonly_newindex);
-    lua_setfield(state, -2, "__newindex");
-    lua_pushcfunction(state, lua_cli_window_pairs);
-    lua_setfield(state, -2, "__pairs");
-    lua_pushcfunction(state, lua_cli_session_activity_tostring);
-    lua_setfield(state, -2, "__tostring");
-    lua_pop(state, 1);
-}
-
-int lua_cli_session_activity(lua_State* state) {
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.session.activity takes no arguments");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    JsonObject* arguments = json_object_new();
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "session.activity", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "gnoblin.session.activity failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result) ||
-        !lua_cli_session_activity_valid(json_node_get_object(result)))
-        return luaL_error(state, "gnoblin.session.activity returned an invalid SessionActivity");
-
-    json_to_lua(state, result);
-    int backing = lua_absindex(state, -1);
-    lua_newuserdatauv(state, 1, 1);
-    int record = lua_absindex(state, -1);
-    lua_pushvalue(state, backing);
-    lua_setiuservalue(state, record, 1);
-    luaL_getmetatable(state, GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE);
-    lua_setmetatable(state, record);
-    lua_remove(state, backing);
-    return 1;
-}
-
 int lua_cli_focus_policy_property(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.focus.policy takes no arguments");
@@ -254,7 +186,7 @@ int lua_cli_input_snapshot(lua_State* state) {
         gint64 revision = json_object_get_int_member_with_default(snapshot, "revision", -1);
         if (revision < 0)
             return luaL_error(state, "%s returned an invalid revision", method);
-        lua_cli_push_input_record(state, source, revision, FALSE);
+        lua_cli_push_input_record(state, cli, source, revision, FALSE);
         return 1;
     }
 
@@ -269,7 +201,7 @@ int lua_cli_input_snapshot(lua_State* state) {
         JsonObject* record = json_array_get_object_element(records, i);
         if (!record)
             return luaL_error(state, "%s returned an invalid record", method);
-        lua_cli_push_input_record(state, record, revision, is_device);
+        lua_cli_push_input_record(state, cli, record, revision, is_device);
         lua_rawseti(state, -2, i + 1);
     }
     return 1;
@@ -314,98 +246,12 @@ int lua_cli_appearance_color_scheme(lua_State* state) {
     return 1;
 }
 
-int lua_cli_input_select_source(lua_State* state) {
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "input.select_source requires a {type, id} selector");
-    const char* type = NULL;
-    const char* id = NULL;
-    lua_pushnil(state);
-    while (lua_next(state, 1)) {
-        if (lua_type(state, -2) != LUA_TSTRING) {
-            lua_pop(state, 2);
-            return luaL_error(state, "input selector accepts only type and id strings");
-        }
-        const char* key = lua_tostring(state, -2);
-        if (g_str_equal(key, "type") && lua_type(state, -1) == LUA_TSTRING)
-            type = lua_tostring(state, -1);
-        else if (g_str_equal(key, "id") && lua_type(state, -1) == LUA_TSTRING)
-            id = lua_tostring(state, -1);
-        else {
-            lua_pop(state, 2);
-            return luaL_error(state, "input selector accepts only type and id strings");
-        }
-        lua_pop(state, 1);
-    }
-    if (!type || !*type || !id || !*id || (!g_str_equal(type, "xkb") && !g_str_equal(type, "ibus")))
-        return luaL_error(state, "input.select_source requires type xkb or ibus and a nonempty id");
-
-    JsonObject* arguments = json_object_new();
-    json_object_set_string_member(arguments, "type", type);
-    json_object_set_string_member(arguments, "id", id);
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "input.select", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "input.select_source failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return luaL_error(state, "input.select_source returned an invalid InputSource");
-    JsonObject* source = json_node_get_object(result);
-    gint64 revision = json_object_get_int_member_with_default(source, "revision", -1);
-    if (revision < 0)
-        return luaL_error(state, "input.select_source returned an invalid InputSource");
-    lua_cli_push_input_record(state, source, revision, FALSE);
-    return 1;
-}
-
-int lua_cli_input_set_orientation_lock(lua_State* state) {
-    if (lua_gettop(state) != 1 || (!lua_isboolean(state, 1) &&
-                                   !(lua_type(state, 1) == LUA_TSTRING && lua_isstring(state, 1) &&
-                                     g_str_equal(lua_tostring(state, 1), "inherit"))))
-        return luaL_error(state, "input.set_orientation_lock requires true, false, or 'inherit'");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    JsonObject* arguments = json_object_new();
-    if (lua_isboolean(state, 1))
-        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 1));
-    else
-        json_object_set_string_member(arguments, "value", "inherit");
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "input.set_orientation_lock", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "input.set_orientation_lock failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return luaL_error(state, "input.set_orientation_lock returned an invalid snapshot");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
 int lua_cli_layers_list(lua_State* state) {
-    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
-        return luaL_error(state, "gnoblin.layers.list accepts one optional filter table");
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.layers.list takes no arguments; select layer surfaces "
+                                 "with gnoblin.find(\"LayerSurface\", filter)");
 
-    JsonObject* arguments = NULL;
-    if (lua_gettop(state) == 1) {
-        static const char* fields[] = {"monitor_id", "namespace", "layer"};
-        lua_pushnil(state);
-        while (lua_next(state, 1)) {
-            const char* key = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
-            gboolean known = FALSE;
-            for (guint i = 0; key && i < G_N_ELEMENTS(fields); i++)
-                known |= g_str_equal(key, fields[i]);
-            if (!known || lua_type(state, -1) != LUA_TSTRING)
-                return luaL_error(state, "gnoblin.layers.list filter fields must be monitor_id, "
-                                         "namespace, or layer strings");
-            lua_pop(state, 1);
-        }
-        arguments = lua_cli_table_object(state, 1, "layer filter");
-    } else {
-        arguments = json_object_new();
-    }
+    JsonObject* arguments = json_object_new();
 
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     g_autoptr(GError) call_error = NULL;
@@ -423,7 +269,7 @@ int lua_cli_layers_list(lua_State* state) {
         if (!layer)
             return luaL_error(state,
                               "gnoblin.layers.list returned an invalid layer surface record");
-        lua_cli_push_layer_surface_record(state, layer);
+        lua_cli_push_layer_surface_record(state, cli, layer);
         lua_rawseti(state, -2, i + 1);
     }
     return 1;

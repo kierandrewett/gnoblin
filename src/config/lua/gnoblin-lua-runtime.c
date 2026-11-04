@@ -59,6 +59,11 @@ void lua_runtime_free(LuaRuntime* runtime) {
         g_clear_pointer(&runtime->config.operations, g_hash_table_unref);
     }
     g_clear_pointer(&runtime->config.focus_operations, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.grant_spent, g_hash_table_unref);
+    /* Timers hold registry references into this state; remove their sources before it closes. */
+    g_clear_pointer(&runtime->config.timers, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.processes, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.requests, g_hash_table_unref);
     if (runtime->config.deferred_callbacks && runtime->state) {
         for (guint i = 0; i < runtime->config.deferred_callbacks->len; i++)
             luaL_unref(runtime->state, LUA_REGISTRYINDEX,
@@ -85,7 +90,6 @@ void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.launch_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.animation_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.privacy_snapshot, g_variant_unref);
-    g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_lock_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_lifecycle_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.settings_document, g_variant_unref);
@@ -391,37 +395,6 @@ void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision)
     }
 }
 
-void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision) {
-    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
-        return;
-    if (snapshot) {
-        const struct {
-            const char* key;
-            const GVariantType* type;
-        } fields[] = {{"available", G_VARIANT_TYPE_BOOLEAN},
-                      {"idle", G_VARIANT_TYPE_BOOLEAN},
-                      {"threshold_ms", G_VARIANT_TYPE_UINT64},
-                      {"idle_for_ms", G_VARIANT_TYPE_UINT64}};
-        for (guint i = 0; i < G_N_ELEMENTS(fields); i++) {
-            g_autoptr(GVariant) value =
-                g_variant_lookup_value(snapshot, fields[i].key, fields[i].type);
-            if (!value)
-                return;
-        }
-    }
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
-    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
-        LuaRuntime* runtime = runtimes[i];
-        if (!runtime || (i == 1 && runtime == runtimes[0]))
-            continue;
-        g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
-        runtime->config.session_activity_revision = snapshot ? revision : 0;
-        runtime->config.session_activity_sampled_at_us = snapshot ? g_get_monotonic_time() : 0;
-        if (snapshot)
-            runtime->config.session_activity_snapshot = g_variant_ref(snapshot);
-    }
-}
-
 void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
@@ -566,8 +539,13 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
         g_ptr_array_new_with_free_func((GDestroyNotify)g_variant_unref);
     runtime->config.deferred_callbacks = g_ptr_array_new();
     runtime->config.operations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    runtime->config.timers = runtime_timers_new();
+    runtime->config.processes = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    runtime->config.requests = runtime_requests_new();
     runtime->config.focus_operations =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    runtime->config.grant_spent =
+        g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_free);
     runtime->config.focus_history_ids = g_ptr_array_new_with_free_func(g_free);
     runtime->config.active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     runtime->config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
@@ -650,14 +628,6 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     if (snapshot_source && snapshot_source->config.privacy_snapshot) {
         runtime->config.privacy_snapshot = g_variant_ref(snapshot_source->config.privacy_snapshot);
         runtime->config.privacy_revision = snapshot_source->config.privacy_revision;
-    }
-    if (snapshot_source && snapshot_source->config.session_activity_snapshot) {
-        runtime->config.session_activity_snapshot =
-            g_variant_ref(snapshot_source->config.session_activity_snapshot);
-        runtime->config.session_activity_revision =
-            snapshot_source->config.session_activity_revision;
-        runtime->config.session_activity_sampled_at_us =
-            snapshot_source->config.session_activity_sampled_at_us;
     }
     if (snapshot_source && snapshot_source->config.session_lock_snapshot) {
         runtime->config.session_lock_snapshot =
@@ -746,10 +716,7 @@ static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArra
             runtime->config.settings_document = g_variant_ref(repaired);
             g_clear_pointer(&runtime->document, g_variant_unref);
             runtime->document = g_variant_ref(repaired);
-            lua_getglobal(runtime->state, "gnoblin");
-            push_variant(runtime->state, repaired);
-            lua_setfield(runtime->state, -2, "config");
-            lua_pop(runtime->state, 1);
+            set_document(runtime->state, repaired);
         }
     }
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
@@ -858,10 +825,7 @@ GVariant* gnoblin_config_load_runtime_fallback(const char* path, GVariant* docum
     runtime->config.settings_document = g_variant_ref(recovered_document);
     g_clear_pointer(&runtime->document, g_variant_unref);
     runtime->document = g_variant_ref(recovered_document);
-    lua_getglobal(runtime->state, "gnoblin");
-    push_variant(runtime->state, recovered_document);
-    lua_setfield(runtime->state, -2, "config");
-    lua_pop(runtime->state, 1);
+    set_document(runtime->state, recovered_document);
 
     if (paths)
         *paths = g_ptr_array_ref(runtime->config.paths);
@@ -890,10 +854,7 @@ GVariant* gnoblin_config_load_runtime_recovery_snapshot(const char* path, GVaria
     runtime->config.settings_document = g_variant_ref(document);
     g_clear_pointer(&runtime->document, g_variant_unref);
     runtime->document = g_variant_ref(document);
-    lua_getglobal(runtime->state, "gnoblin");
-    push_variant(runtime->state, document);
-    lua_setfield(runtime->state, -2, "config");
-    lua_pop(runtime->state, 1);
+    set_document(runtime->state, document);
     if (paths)
         *paths = g_ptr_array_ref(runtime->config.paths);
     if (directories)
@@ -925,10 +886,7 @@ static void dispatch_rejected_operation_event(lua_State* state, GVariant* payloa
             push_variant(state, payload);
             lua_pushstring(state, event_name);
             lua_setfield(state, -2, "name");
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
-                g_warning("Lua event '%s' failed: %s", event_name, lua_error_text(state));
-                lua_pop(state, 1);
-            }
+            call_handler(state, 1, "event", event_name);
         }
         lua_pop(state, 2);
     }
@@ -962,40 +920,7 @@ void fail_dropped_operation(LuaRuntime* runtime, GVariant* operation, const char
     lua_setfield(state, -2, "message");
     lua_setfield(state, handle, "error");
 
-    lua_getfield(state, handle, "_callbacks");
-    if (lua_istable(state, -1)) {
-        int registered = lua_absindex(state, -1);
-        lua_newtable(state);
-        int callbacks = lua_absindex(state, -1);
-        lua_Integer count = lua_rawlen(state, registered);
-        for (lua_Integer i = 1; i <= count; i++) {
-            lua_rawgeti(state, registered, i);
-            lua_rawseti(state, callbacks, i);
-        }
-        for (lua_Integer i = 1; i <= count; i++) {
-            lua_rawgeti(state, callbacks, i);
-            int subscription = lua_absindex(state, -1);
-            lua_getfield(state, subscription, "_active");
-            gboolean active = lua_toboolean(state, -1);
-            lua_pop(state, 1);
-            if (!active) {
-                lua_pop(state, 1);
-                continue;
-            }
-            lua_pushboolean(state, FALSE);
-            lua_setfield(state, subscription, "_active");
-            lua_getfield(state, subscription, "_callback");
-            lua_getfield(state, handle, "value");
-            lua_getfield(state, handle, "error");
-            if (lua_pcall(state, 2, 0, 0) != LUA_OK) {
-                g_warning("Lua operation completion callback failed: %s", lua_error_text(state));
-                lua_pop(state, 1);
-            }
-            lua_pop(state, 1);
-        }
-        lua_newtable(state);
-        lua_setfield(state, handle, "_callbacks");
-    }
+    run_operation_callbacks(state, handle);
     lua_settop(state, base);
     luaL_unref(state, LUA_REGISTRYINDEX, GPOINTER_TO_INT(reference));
     g_hash_table_remove(config->operations, key);

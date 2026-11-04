@@ -55,7 +55,7 @@ calls return an operation descriptor and complete through
 Earlier API versions keep the synchronous native route.
 
 API 1.54 adds the Lua-backed `launch.status` route. Every supported client
-version now reads through `gnoblin.launches.snapshot()`. The request still
+version now reads through the Lua runtime. The request still
 enables launch-change events for the connection.
 
 Clients with API 1.29 or newer read `session.status` directly from Mutter
@@ -174,8 +174,10 @@ The snapshot's `source` value is one of:
 Runtime overrides apply for the current session and do not write the system
 preference.
 
-Set a session-only override with `true` or `false`. Pass `"inherit"` to clear
-the runtime override, exposing the configured value or the system preference:
+Set a session-only override with `true` or `false`. The call fails when no
+output has a privacy screen. Pass `"inherit"` to clear the runtime override,
+exposing the configured value or the system preference. A configuration reload
+that commits clears the override too:
 
 ```json
 {

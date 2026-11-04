@@ -9,16 +9,15 @@ and payloads are defined by the running Gnoblin API.
 Use the [shell runtime API overview](/shell-api/) to find methods by task.
 This page describes callback registration and event payloads.
 
-Register repeating callbacks with `gnoblin.events.on`; use
-`gnoblin.events.once` for one-time callbacks. Each returns a `Subscription`.
+Register repeating callbacks with `gnoblin.on`; use
+`gnoblin.once` for one-time callbacks. Each returns a `Subscription`.
 
 Remove a repeating callback with `subscription:unsubscribe()`. A `once`
-subscription removes itself before invocation. `gnoblin.on` remains an alias
-for `gnoblin.events.on`.
+subscription removes itself before invocation.
 
-Subscribe to compositor signals with `gnoblin.events.mutter.on` or
-`gnoblin.events.mutter.once`. Pass a full `mutter.*` event name. Available
-signals depend on the running Mutter build and are not stable across versions.
+Subscribe to compositor signals with the same two functions. Pass a full
+`mutter.*` event name. Available signals depend on the running Mutter build and
+are not stable across versions.
 
 Event names identify their source: `mutter.*` comes from Mutter and
 `gnoblin.*` comes from Gnoblin. The supervised Lua runtime stays alive for the

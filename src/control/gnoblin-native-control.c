@@ -24,6 +24,7 @@ void native_runtime_abort(GnoblinNativeControl* control) {
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session, "runtime_stopped");
     gnoblin_control_clear_runtime_dynamic_shortcuts(control, "runtime_stopped");
+    gnoblin_control_input_grab_end(control, "runtime_stopped", FALSE);
     g_clear_pointer(&control->window_shader_files, g_hash_table_unref);
     stop_native_shortcut_capture(control, FALSE, FALSE, NULL, NULL, NULL);
     gnoblin_control_cancel_window_drags(control, "runtime_stopped");
@@ -445,6 +446,7 @@ const char* native_socket_events[] = {
     "gnoblin.appearance.color-scheme-changed",
     "gnoblin.privacy.changed",
     "gnoblin.location.authorization-requested",
+    "gnoblin.location.authorization-finished",
     "gnoblin.auth.requested",
     "gnoblin.auth.prompt",
     "gnoblin.auth.message",
@@ -463,6 +465,9 @@ const char* native_socket_events[] = {
     "gnoblin.monitor.added",
     "gnoblin.monitor.changed",
     "gnoblin.monitor.removed",
+    "gnoblin.output.added",
+    "gnoblin.output.changed",
+    "gnoblin.output.removed",
     "gnoblin.input.device-added",
     "gnoblin.input.device-removed",
     "gnoblin.input.sources-changed",
@@ -494,7 +499,6 @@ gboolean start_native_session_bus(GnoblinNativeControl* control) {
         g_warning("gnoblin-native-control: session D-Bus unavailable: %s", error->message);
         return FALSE;
     }
-    gnoblin_control_activity_watch(control);
     return TRUE;
 }
 
@@ -518,18 +522,7 @@ void stop_native_session_bus(GnoblinNativeControl* control) {
     g_clear_object(&control->ibus_bus);
     if (!control->session_bus)
         return;
-    if (control->session_activity_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->session_activity_subscription_id);
-        control->session_activity_subscription_id = 0;
-    }
-    if (control->session_activity_owner_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->session_activity_owner_subscription_id);
-        control->session_activity_owner_subscription_id = 0;
-    }
     g_clear_object(&control->session_bus);
-    g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
 }
 
 void native_shortcut_free(gpointer data) {

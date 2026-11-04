@@ -199,14 +199,14 @@ The socket exposes these reads at the listed API versions:
 | 1.19        | `focus.policy`            | `gnoblin.focus.policy`              | None                                                       |
 | 1.37        | `windows.list`            | `gnoblin.windows.list(filter)`      | `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` |
 | 1.37        | `workspaces.list`         | `gnoblin.workspaces.list()`         | None                                                       |
-| 1.37        | `monitors.list`           | `gnoblin.monitors.list()`           | None                                                       |
-| 1.74        | `monitors.privacy_screen` | `gnoblin.monitors.privacy_screen()` | None                                                       |
+| 1.37        | `monitors.list`           | `gnoblin.outputs.list()`            | None                                                       |
+| 1.74        | `monitors.privacy_screen` | `output.privacy_screen`             | None                                                       |
 | 1.37        | `layers.list`             | `gnoblin.layers.list(filter)`       | `monitor_id`, `namespace`, `layer`                         |
 | 1.37        | `launches.list`           | `gnoblin.launches.list()`           | None                                                       |
-| 1.39        | `launches.snapshot`       | `gnoblin.launches.snapshot()`       | None                                                       |
-| 1.40        | `shortcuts.list`          | `gnoblin.shortcuts.list()`          | None                                                       |
+| 1.39        | `launches.snapshot`       | `gnoblin.launches.list()`           | None; the reply adds the collection revision               |
+| 1.40        | `shortcuts.list`          | `gnoblin.shortcuts.configured()`    | None                                                       |
 | 1.41        | `shortcuts.actions`       | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
-| 1.24        | `session.activity`        | `gnoblin.session.activity()`        | None                                                       |
+| 1.24        | `session.activity`        | `gnoblin.idle.watch(seconds)`       | None; the sample has a fixed 120 second threshold          |
 | 1.29        | `session.status`          | `gnoblin.session.status()`          | None                                                       |
 | 1.70        | `appearance.color_scheme` | `gnoblin.appearance.color_scheme()` | None                                                       |
 
@@ -263,12 +263,12 @@ validated a second config.
 
 ### API 1.68: modal key focus contexts
 
-- Lua listeners may receive a `FocusContext` userdata. API 1.68 socket clients
-  may receive `focus_context`, a one-use token bound to their connection.
+- Lua listeners may receive a [`Grant`](/shell-api/grants). API 1.68 socket clients
+  may receive `focus_context`, a token bound to their connection.
 - Gnoblin issues a context only for real, non-repeated key presses and
   releases. Synthetic and input-method events are excluded.
-- A context expires after five seconds and authorizes one focus-sensitive
-  compositor operation.
+- A context expires after five seconds. Since API 1.92 each focus-sensitive
+  compositor operation can use it once; before, the first operation used it up.
 - Gnoblin still delivers the key event if no context is available.
 
 If the Lua runtime stops while a socket client owns the active session, Gnoblin

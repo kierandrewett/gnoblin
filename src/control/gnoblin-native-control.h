@@ -13,7 +13,7 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 86
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 92
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error);
@@ -94,6 +94,10 @@ META_EXPORT
 void gnoblin_native_control_set_notice_handler(GnoblinNativeNoticeFunc handler, gpointer user_data);
 META_EXPORT
 gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
+/* Called first for every event of the stage input filter, before the diagnostic console can take
+ * a key: keeps the set of keys that are physically down. */
+META_EXPORT
+void gnoblin_native_control_track_key(MetaDisplay* display, const ClutterEvent* event);
 META_EXPORT
 gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const ClutterEvent* event,
                                                    ClutterActor* event_actor);
@@ -167,12 +171,15 @@ GVariant* gnoblin_native_control_request_session_lock(MetaDisplay* display, GVar
 /* Start a single native shortcut capture and complete its Lua operation later. */
 gboolean gnoblin_native_control_begin_shortcut_capture(MetaDisplay* display, GVariant* arguments,
                                                        gint64 request_id, GError** error);
+/* Each of these takes one scope of a gesture (its focus context). `grant_window`, when not NULL,
+ * is the one window the Lua grant was narrowed to: the operation fails on any other. */
 GVariant* gnoblin_native_control_focus_window(MetaDisplay* display, GVariant* arguments,
                                               guint64 context_handle, guint64 generation,
-                                              GError** error);
+                                              const char* grant_window, GError** error);
 GVariant* gnoblin_native_control_begin_window_grab(MetaDisplay* display, const char* method,
                                                    GVariant* arguments, guint64 context_handle,
-                                                   guint64 generation, GError** error);
+                                                   guint64 generation, const char* grant_window,
+                                                   GError** error);
 GVariant* gnoblin_native_control_begin_menu_window_grab(MetaDisplay* display, const char* method,
                                                         GVariant* arguments, guint64 context_handle,
                                                         guint64 generation,
@@ -180,7 +187,7 @@ GVariant* gnoblin_native_control_begin_menu_window_grab(MetaDisplay* display, co
                                                         GError** error);
 GVariant* gnoblin_native_control_create_text_target(MetaDisplay* display, guint64 context_handle,
                                                     guint64 generation, gint64 expires_at_us,
-                                                    GError** error);
+                                                    const char* grant_window, GError** error);
 GVariant* gnoblin_native_control_insert_text(MetaDisplay* display, GVariant* arguments,
                                              GError** error);
 void gnoblin_native_control_revoke_focus_contexts(MetaDisplay* display);
@@ -198,7 +205,7 @@ void gnoblin_native_control_window_drag_end(MetaDisplay* display, guint64 drag_i
                                             gboolean committed, const char* reason);
 GVariant* gnoblin_native_control_create_snap_context(MetaDisplay* display, guint64 context_handle,
                                                      guint64 generation, gint64 expires_at_us,
-                                                     GError** error);
+                                                     const char* grant_window, GError** error);
 GVariant* gnoblin_native_control_commit_snap_context(MetaDisplay* display, GVariant* arguments,
                                                      GError** error);
 GVariant* gnoblin_native_control_restore_or_minimize_window(MetaDisplay* display,

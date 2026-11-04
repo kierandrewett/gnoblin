@@ -83,6 +83,9 @@ void gnoblin_config_finish_load(gboolean commit);
  * current runtime before the candidate replaces it. */
 gboolean gnoblin_config_defer_load_commit(void);
 void gnoblin_config_finish_deferred_load(gboolean commit);
+/* End the runtime's live handles that cannot outlive it, with the reason "runtime_stopped".
+ * The Lua worker calls this when it shuts down. */
+void gnoblin_config_stop_runtime(void);
 guint64 gnoblin_config_deferred_runtime_generation(void);
 /* The committed runtime document; returns a new reference or NULL. */
 GVariant* gnoblin_config_current_document(void);
@@ -121,8 +124,6 @@ void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision)
 void gnoblin_config_update_animation_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache native privacy availability and activity fields for immediate Lua reads. */
 void gnoblin_config_update_privacy_snapshot(GVariant* snapshot, guint64 revision);
-/* Cache the current session activity state for immediate Lua reads. */
-void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the compositor's current lock availability and state for status reads. */
 void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision);
 void gnoblin_config_update_session_lifecycle_snapshot(GVariant* snapshot, guint64 revision);
@@ -146,7 +147,7 @@ char* gnoblin_config_take_runtime_callback_error(void);
  * only after delivering the decision. */
 GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error);
 /* Dispatch a trusted native shortcut event with a private, userdata-only
- * focus context. The context is never added to the public event payload. */
+ * grant. The proof is never added to the public event payload. */
 GVariant* gnoblin_config_dispatch_shortcut_event(const char* event, GVariant* payload,
                                                  guint64 context_handle, guint64 native_generation,
                                                  gint64 expires_at_us, GError** error);
@@ -155,9 +156,13 @@ guint64 gnoblin_config_runtime_generation(void);
  * Used only by a replacement runtime worker. */
 gboolean gnoblin_config_seed_runtime_counters(guint64 settings_revision, guint64 runtime_generation,
                                               guint64 operation_id_watermark, GError** error);
+/* Size of the buffer for the window a Lua grant was narrowed to (a stable window ID, or ""). */
+#define GNOBLIN_GRANT_WINDOW_ID_SIZE 24
+/* The grant behind queued operation `request_id`, once. `grant_window` is that window ID, or "". */
 gboolean gnoblin_config_take_focus_context(gint64 request_id, guint64* context_handle,
                                            guint64* generation, guint64* native_generation,
-                                           gint64* expires_at_us);
+                                           gint64* expires_at_us,
+                                           char grant_window[GNOBLIN_GRANT_WINDOW_ID_SIZE]);
 /* The compositor host schedules deferred Lua callbacks on its main loop and
  * dispatches them through the normal config validation/operation path. */
 typedef void (*GnoblinConfigRuntimeWakeupFunc)(gpointer user_data);
@@ -167,8 +172,16 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error);
 /* Deferred runtime operations use a shared method registry. Event callbacks
  * enqueue operations; the host drains them only after dispatch returns. */
 GVariant* gnoblin_config_drain_runtime_operations(void); /* aa{sv} */
-/* Operations and deferred completions that still belong to the active runtime. */
+/* Operations and deferred completions of the active runtime that a reload must wait for. A
+ * playing tween is not one of them: the compositor stops it when the reload commits, and its
+ * Tween closes with the reason "config_reloaded". */
 guint gnoblin_config_runtime_pending_operations(void);
+/* Whether operation `operation_id` is one that a reload does not wait for. */
+gboolean gnoblin_config_operation_survives_reload(guint64 operation_id);
+/* The supervisor has sent the candidate configuration to the compositor (TRUE), or the reload
+ * ended without replacing the runtime (FALSE). While it is TRUE, a tween that the compositor
+ * cancels closes with the reason "config_reloaded" instead of "cancelled". */
+void gnoblin_config_reload_in_flight(gboolean in_flight);
 GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error);
 /* Run one bounded Lua console chunk against the active configuration runtime.
  * The result is a vardict containing a display-safe value, its Lua type, and

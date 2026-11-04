@@ -19,31 +19,16 @@ gboolean table_fields_allowed(lua_State* state, int index, const char* const* al
     return TRUE;
 }
 
-static gboolean window_operation_valid_args(lua_State* state, const char* method) {
-    static const char* const id_only[] = {"id", NULL};
-    static const char* const enabled[] = {"id", "enabled", NULL};
-    static const char* const move[] = {"id", "x", "y", NULL};
-    static const char* const resize[] = {"id", "width", "height", NULL};
-    static const char* const workspace[] = {"id", "workspace", "follow", NULL};
-    static const char* const monitor[] = {"id", "monitor", NULL};
-    static const char* const thumbnail[] = {"id", "width", "height", NULL};
+/* The table that a window operation takes: the id of the window and the fields that the record
+ * methods of the operation declare (lua_api[]). The compositor checks the ranges of the visual
+ * transforms; Lua checks the types. */
+static gboolean window_operation_valid_args(lua_State* state,
+                                            const GnoblinApiOperation* operation) {
+    const char* method = operation->name;
+    const char* fields[8];
     static const char* const monitor_selector[] = {"id", NULL};
+    lua_api_operation_fields(operation, fields, G_N_ELEMENTS(fields));
     luaL_checktype(state, 1, LUA_TTABLE);
-    const char* const* fields = id_only;
-    if (g_str_equal(method, "window.set_maximized") ||
-        g_str_equal(method, "window.set_fullscreen") || g_str_equal(method, "window.set_above") ||
-        g_str_equal(method, "window.set_sticky"))
-        fields = enabled;
-    else if (g_str_equal(method, "window.move"))
-        fields = move;
-    else if (g_str_equal(method, "window.resize"))
-        fields = resize;
-    else if (g_str_equal(method, "window.move_to_workspace"))
-        fields = workspace;
-    else if (g_str_equal(method, "window.move_to_monitor"))
-        fields = monitor;
-    else if (g_str_equal(method, "window.thumbnail"))
-        fields = thumbnail;
     if (!table_fields_allowed(state, 1, fields))
         luaL_error(state, "%s arguments contain an unsupported field", method);
 
@@ -55,39 +40,60 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
         luaL_error(state, "%s requires a nonempty window id", method);
     lua_pop(state, 1);
 
-    if (fields == enabled) {
-        lua_getfield(state, 1, "enabled");
+    switch (operation->id) {
+    case GNOBLIN_OP_WINDOW_SET_MAXIMIZED:
+    case GNOBLIN_OP_WINDOW_SET_FULLSCREEN:
+    case GNOBLIN_OP_WINDOW_SET_ABOVE:
+    case GNOBLIN_OP_WINDOW_SET_STICKY:
+        lua_getfield(state, 1, fields[1]);
         if (!lua_isboolean(state, -1))
-            luaL_error(state, "%s requires boolean enabled", method);
+            luaL_error(state, "%s requires boolean %s", method, fields[1]);
         lua_pop(state, 1);
-    } else if (fields == move || fields == resize) {
-        const char* first = fields == move ? "x" : "width";
-        const char* second = fields == move ? "y" : "height";
-        gint64 low = fields == move ? -100000 : 1;
-        gint64 high = fields == move ? 100000 : 32768;
-        for (guint i = 0; i < 2; i++) {
-            lua_getfield(state, 1, i == 0 ? first : second);
+        break;
+    case GNOBLIN_OP_WINDOW_SET_VISUAL:
+        /* The compositor checks the ranges; Lua checks the types. */
+        for (guint i = 1; fields[i]; i++) {
+            lua_getfield(state, 1, fields[i]);
+            gboolean is_reset = g_str_equal(fields[i], "reset");
+            if (!lua_isnil(state, -1) &&
+                (is_reset ? !lua_isboolean(state, -1) : lua_type(state, -1) != LUA_TNUMBER))
+                luaL_error(state, "%s %s must be %s", method, fields[i],
+                           is_reset ? "a boolean" : "a number");
+            lua_pop(state, 1);
+        }
+        break;
+    case GNOBLIN_OP_WINDOW_MOVE:
+    case GNOBLIN_OP_WINDOW_RESIZE: {
+        gboolean move = operation->id == GNOBLIN_OP_WINDOW_MOVE;
+        gint64 low = move ? -100000 : 1;
+        gint64 high = move ? 100000 : 32768;
+        for (guint i = 1; i <= 2; i++) {
+            lua_getfield(state, 1, fields[i]);
             if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < low ||
                 lua_tointeger(state, -1) > high)
                 luaL_error(state, "%s %s is outside the supported integer range", method,
-                           i == 0 ? first : second);
+                           fields[i]);
             lua_pop(state, 1);
         }
-    } else if (fields == workspace) {
-        lua_getfield(state, 1, "workspace");
+        break;
+    }
+    case GNOBLIN_OP_WINDOW_MOVE_TO_WORKSPACE: {
+        lua_getfield(state, 1, fields[1]);
         GVariant* selector = workspace_selector(state, -1, FALSE);
         g_variant_unref(selector);
         lua_pop(state, 1);
-        lua_getfield(state, 1, "follow");
+        lua_getfield(state, 1, fields[2]);
         if (!lua_isnil(state, -1) && !lua_isboolean(state, -1))
-            luaL_error(state, "window.move_to_workspace follow must be a boolean");
+            luaL_error(state, "%s %s must be a boolean", method, fields[2]);
         lua_pop(state, 1);
-    } else if (fields == monitor) {
-        lua_getfield(state, 1, "monitor");
+        break;
+    }
+    case GNOBLIN_OP_WINDOW_MOVE_TO_MONITOR:
+        lua_getfield(state, 1, fields[1]);
         if (lua_type(state, -1) == LUA_TSTRING) {
             const char* id = lua_tostring(state, -1);
             if (!*id || strlen(id) > 128 || !g_utf8_validate(id, -1, NULL))
-                luaL_error(state, "window.move_to_monitor requires a valid monitor ID");
+                luaL_error(state, "%s requires a valid monitor ID", method);
         } else if (lua_istable(state, -1)) {
             if (!table_fields_allowed(state, -1, monitor_selector))
                 luaL_error(state, "monitor selector accepts only id");
@@ -97,24 +103,29 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
             } else {
                 const char* id = lua_tostring(state, -1);
                 if (!*id || strlen(id) > 128 || !g_utf8_validate(id, -1, NULL))
-                    luaL_error(state, "window.move_to_monitor requires a valid monitor ID");
+                    luaL_error(state, "%s requires a valid monitor ID", method);
             }
             lua_pop(state, 1);
         } else {
-            luaL_error(state, "window.move_to_monitor requires a monitor ID or {id = string}");
+            luaL_error(state, "%s requires a monitor ID or {id = string}", method);
         }
         lua_pop(state, 1);
-    } else if (fields == thumbnail) {
-        const char* dimensions[] = {"width", "height"};
-        const lua_Integer limits[] = {480, 320};
-        for (guint i = 0; i < G_N_ELEMENTS(dimensions); i++) {
-            lua_getfield(state, 1, dimensions[i]);
+        break;
+    case GNOBLIN_OP_WINDOW_THUMBNAIL: {
+        /* The limits are those of the record method's arguments (lua_api[]). */
+        for (guint i = 1; i <= 2; i++) {
+            lua_Integer limit = lua_api_operation_argument(operation, fields[i])->limit;
+            lua_getfield(state, 1, fields[i]);
             if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
-                lua_tointeger(state, -1) > limits[i])
-                luaL_error(state, "window.thumbnail %s must be an integer from 1 to %d",
-                           dimensions[i], (int)limits[i]);
+                lua_tointeger(state, -1) > limit)
+                luaL_error(state, "%s %s must be an integer from 1 to %d", method, fields[i],
+                           (int)limit);
             lua_pop(state, 1);
         }
+        break;
+    }
+    default:
+        break;
     }
     return TRUE;
 }
@@ -140,9 +151,52 @@ static void input_source_selector_valid_args(lua_State* state) {
     lua_pop(state, 1);
 }
 
-static GVariant* workspace_selector(lua_State* state, int index, gboolean allow_name) {
-    luaL_checktype(state, index, LUA_TTABLE);
+/* Push the selector table for a Workspace, a workspace ID string or a workspace number. Returns
+ * FALSE and pushes nothing for any other value. */
+gboolean lua_push_workspace_selector(lua_State* state, int index) {
     index = lua_absindex(state, index);
+    gboolean handle = lua_object_is(state, index, "Workspace");
+    if (handle) {
+        lua_getfield(state, index, "id");
+        if (lua_type(state, -1) != LUA_TSTRING) {
+            lua_pop(state, 1);
+            luaL_error(state, "this Workspace has no ID");
+        }
+    } else if (lua_type(state, index) != LUA_TSTRING && !lua_isinteger(state, index)) {
+        return FALSE;
+    } else {
+        lua_pushvalue(state, index);
+    }
+    lua_createtable(state, 0, 1);
+    lua_insert(state, -2);
+    lua_setfield(state, -2, lua_type(state, -1) == LUA_TSTRING ? "id" : "number");
+    return TRUE;
+}
+
+/* Push the monitor ID that the value at `index` names: an Output (the logical monitor that shows
+ * it) or a monitor ID string. Returns FALSE and pushes nothing for any other value. */
+gboolean lua_push_monitor_id(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    if (lua_type(state, index) == LUA_TSTRING) {
+        lua_pushvalue(state, index);
+        return TRUE;
+    }
+    if (!lua_object_is(state, index, "Output"))
+        return FALSE;
+    lua_getfield(state, index, "monitor_id");
+    if (lua_type(state, -1) != LUA_TSTRING)
+        luaL_error(state, "this Output is not enabled, so it shows no monitor");
+    return TRUE;
+}
+
+static GVariant* workspace_selector(lua_State* state, int index, gboolean allow_name) {
+    index = lua_absindex(state, index);
+    if (lua_push_workspace_selector(state, index)) {
+        GVariant* selector = workspace_selector(state, -1, FALSE);
+        lua_pop(state, 1);
+        return selector;
+    }
+    luaL_checktype(state, index, LUA_TTABLE);
     static const char* const fields[] = {"id", "number", NULL};
     static const char* const rename_fields[] = {"id", "number", "name", NULL};
     if (!table_fields_allowed(state, index, allow_name ? rename_fields : fields))
@@ -184,9 +238,24 @@ static void add_workspace_field(lua_State* state, GVariantBuilder* arguments, in
     lua_pop(state, 1);
 }
 
+/* Add id or number for the workspace that `table` names: either its `workspace` field (an ID
+ * string, a number or a selector table, as positional Lua calls pass it) or its own top-level id
+ * or number fields. */
 static void add_selector_arguments(lua_State* state, GVariantBuilder* arguments, int table,
                                    gboolean allow_name) {
-    g_autoptr(GVariant) selector = workspace_selector(state, table, allow_name);
+    table = lua_absindex(state, table);
+    luaL_checktype(state, table, LUA_TTABLE);
+    lua_getfield(state, table, "workspace");
+    gboolean nested = !lua_isnil(state, -1);
+    if (nested) {
+        static const char* const fields[] = {"workspace", NULL};
+        static const char* const rename_fields[] = {"workspace", "name", NULL};
+        if (!table_fields_allowed(state, table, allow_name ? rename_fields : fields))
+            luaL_error(state, "workspace selector accepts only one workspace");
+    }
+    g_autoptr(GVariant) selector = nested ? workspace_selector(state, -1, FALSE)
+                                          : workspace_selector(state, table, allow_name);
+    lua_pop(state, 1);
     GVariantIter iter;
     const char* key;
     GVariant* value;
@@ -200,6 +269,7 @@ static void add_selector_arguments(lua_State* state, GVariantBuilder* arguments,
 int lua_workspace_action(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
+    const GnoblinApiOperation* operation = gnoblin_api_operation_find(method);
     if (config && config->rejecting_operations)
         return luaL_error(state,
                           "runtime operations are unavailable while rejecting a failed event");
@@ -211,10 +281,12 @@ int lua_workspace_action(lua_State* state) {
 
     GVariantBuilder arguments;
     g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
-    if (g_str_equal(method, "workspace.next") || g_str_equal(method, "workspace.previous")) {
+    GnoblinApiOp workspace_id = operation ? operation->id : GNOBLIN_OP_COUNT;
+    if (workspace_id == GNOBLIN_OP_WORKSPACE_NEXT ||
+        workspace_id == GNOBLIN_OP_WORKSPACE_PREVIOUS) {
         if (lua_gettop(state) != 0)
             return luaL_error(state, "%s takes no arguments", method);
-    } else if (g_str_equal(method, "workspace.create")) {
+    } else if (workspace_id == GNOBLIN_OP_WORKSPACE_CREATE) {
         luaL_checktype(state, 1, LUA_TTABLE);
         static const char* const fields[] = {"id", "name", "activate", NULL};
         if (!table_fields_allowed(state, 1, fields))
@@ -243,11 +315,11 @@ int lua_workspace_action(lua_State* state) {
                                   g_variant_new_boolean(lua_toboolean(state, -1)));
         }
         lua_pop(state, 1);
-    } else if (g_str_equal(method, "workspace.rename")) {
+    } else if (workspace_id == GNOBLIN_OP_WORKSPACE_RENAME) {
         luaL_checktype(state, 1, LUA_TTABLE);
-        static const char* const fields[] = {"id", "number", "name", NULL};
+        static const char* const fields[] = {"id", "number", "workspace", "name", NULL};
         if (!table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "workspace.rename accepts only id or number and name");
+            return luaL_error(state, "workspace.rename accepts only a workspace and a name");
         add_selector_arguments(state, &arguments, 1, TRUE);
         lua_getfield(state, 1, "name");
         const char* name = luaL_checkstring(state, -1);
@@ -255,9 +327,10 @@ int lua_workspace_action(lua_State* state) {
             return luaL_error(state, "workspace name must contain 1 to 80 characters");
         g_variant_builder_add(&arguments, "{sv}", "name", g_variant_new_string(name));
         lua_pop(state, 1);
-    } else if (g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
+    } else if (workspace_id == GNOBLIN_OP_WORKSPACE_REMOVE ||
+               workspace_id == GNOBLIN_OP_WORKSPACE_SWITCH) {
         add_selector_arguments(state, &arguments, 1, FALSE);
-    } else if (g_str_equal(method, "workspace.move_active")) {
+    } else if (workspace_id == GNOBLIN_OP_WORKSPACE_MOVE_ACTIVE) {
         luaL_checktype(state, 1, LUA_TTABLE);
         static const char* const fields[] = {"workspace", "follow", NULL};
         if (!table_fields_allowed(state, 1, fields))
@@ -271,14 +344,20 @@ int lua_workspace_action(lua_State* state) {
                                   g_variant_new_boolean(lua_toboolean(state, -1)));
         }
         lua_pop(state, 1);
-    } else if (g_str_equal(method, "workspace.move_window")) {
+    } else if (workspace_id == GNOBLIN_OP_WORKSPACE_MOVE_WINDOW) {
         luaL_checktype(state, 1, LUA_TTABLE);
         static const char* const fields[] = {"window", "workspace", "follow", NULL};
         if (!table_fields_allowed(state, 1, fields))
             return luaL_error(state,
                               "workspace.move_window accepts only window, workspace, and follow");
         lua_getfield(state, 1, "window");
-        const char* window = luaL_checkstring(state, -1);
+        if (lua_isuserdata(state, -1)) {
+            lua_getfield(state, -1, "id");
+            lua_remove(state, -2);
+        }
+        if (lua_type(state, -1) != LUA_TSTRING)
+            return luaL_error(state, "window must be a Window, 'active' or a window ID");
+        const char* window = lua_tostring(state, -1);
         if (g_str_equal(window, "active")) {
             g_variant_builder_add(&arguments, "{sv}", "window", g_variant_new_string("active"));
         } else if (*window && g_utf8_validate(window, -1, NULL)) {
@@ -320,7 +399,7 @@ int lua_workspace_action(lua_State* state) {
 
 /* Validates the dense argv array at index and returns it as a floating string-array variant.
  * label names the Lua call in error messages. */
-static GVariant* lua_command_argv_variant(lua_State* state, int index, const char* label) {
+GVariant* lua_command_argv_variant(lua_State* state, int index, const char* label) {
     index = lua_absindex(state, index);
     lua_Integer count = lua_istable(state, index) ? (lua_Integer)lua_rawlen(state, index) : 0;
     if (count < 1 || !lua_dense_array(state, index, 64)) {
@@ -355,90 +434,53 @@ static GVariant* lua_command_argv_variant(lua_State* state, int index, const cha
     return g_variant_builder_end(&argv);
 }
 
+/* Raise the Lua error that every operation shares when it cannot be queued now. */
+void lua_check_operation_context(lua_State* state, LuaConfig* config) {
+    if (config && config->rejecting_operations)
+        luaL_error(state, "runtime operations are unavailable while rejecting a failed event");
+    if (!config || !config->runtime_actions || (!config->dispatching && !config->api_calling))
+        luaL_error(state, "Gnoblin session actions are available only at runtime");
+    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        luaL_error(state, "too many pending Gnoblin session actions");
+}
+
+/* Queue `method` with `arguments` (an a{sv} variant, consumed) for the compositor and push its
+ * Operation. */
+int lua_queue_operation(lua_State* state, LuaConfig* config, const char* method,
+                        GVariant* arguments) {
+    guint64 request_id = allocate_operation_id();
+    if (!request_id) {
+        g_variant_unref(g_variant_ref_sink(arguments));
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    }
+    GVariantBuilder action;
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
+    g_variant_builder_add(&action, "{sv}", "arguments", arguments);
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    if (config->api_calling)
+        lua_pushinteger(state, request_id); /* legacy socket/C caller contract */
+    else
+        push_operation_handle(state, config, request_id, method);
+    return 1;
+}
+
 int lua_generic_api_action(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
-    if (g_str_equal(method, "window.begin_move") || g_str_equal(method, "window.begin_resize"))
-        return luaL_error(state, "%s requires a Window record and trusted FocusContext", method);
-    if (config && config->rejecting_operations)
-        return luaL_error(state,
-                          "runtime operations are unavailable while rejecting a failed event");
-    if (!config || !config->runtime_actions || (!config->dispatching && !config->api_calling))
-        return luaL_error(state, "Gnoblin session actions are available only at runtime");
-    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
-        return luaL_error(state, "too many pending Gnoblin session actions");
+    const GnoblinApiOperation* operation = gnoblin_api_operation_find(method);
+    GnoblinApiOp id = operation ? operation->id : GNOBLIN_OP_COUNT;
+    if (id == GNOBLIN_OP_WINDOW_BEGIN_MOVE || id == GNOBLIN_OP_WINDOW_BEGIN_RESIZE)
+        return luaL_error(state, "%s requires a Window record and a Grant", method);
+    lua_check_operation_context(state, config);
 
-    if (g_str_equal(method, "command.run") || g_str_equal(method, "command.capture")) {
-        const gboolean capture = g_str_equal(method, "command.capture");
-        GVariantBuilder arguments;
-        g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
-        if (!capture) {
-            if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-                return luaL_error(state, "commands.run requires one argv array");
-            g_variant_builder_add(&arguments, "{sv}", "argv",
-                                  lua_command_argv_variant(state, 1, "commands.run"));
-        } else {
-            static const char* const fields[] = {"argv", "stdin", "timeout", NULL};
-            if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
-                !table_fields_allowed(state, 1, fields))
-                return luaL_error(state, "commands.capture accepts a table with argv, stdin, "
-                                         "and timeout");
-            lua_getfield(state, 1, "argv");
-            g_variant_builder_add(&arguments, "{sv}", "argv",
-                                  lua_command_argv_variant(state, -1, "commands.capture"));
-            lua_pop(state, 1);
-            lua_getfield(state, 1, "stdin");
-            if (!lua_isnil(state, -1)) {
-                size_t length = 0;
-                const char* text =
-                    lua_type(state, -1) == LUA_TSTRING ? lua_tolstring(state, -1, &length) : NULL;
-                if (!text || length > 4096 || memchr(text, '\0', length) ||
-                    !g_utf8_validate(text, length, NULL))
-                    return luaL_error(state, "commands.capture stdin must be UTF-8 text up to "
-                                             "4096 bytes");
-                g_variant_builder_add(&arguments, "{sv}", "stdin", g_variant_new_string(text));
-            }
-            lua_pop(state, 1);
-            lua_getfield(state, 1, "timeout");
-            if (!lua_isnil(state, -1)) {
-                if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
-                    lua_tointeger(state, -1) > 600)
-                    return luaL_error(state, "commands.capture timeout must be an integer from "
-                                             "1 to 600 seconds");
-                g_variant_builder_add(&arguments, "{sv}", "timeout",
-                                      g_variant_new_int64(lua_tointeger(state, -1)));
-            }
-            lua_pop(state, 1);
-        }
-        guint64 request_id = allocate_operation_id();
-        if (!request_id)
-            return luaL_error(state, "Gnoblin operation request ID space is exhausted");
-        GVariantBuilder action;
-        g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
-        g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
-        g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
-        g_ptr_array_add(config->runtime_actions,
-                        g_variant_ref_sink(g_variant_builder_end(&action)));
-        config->actions_in_dispatch++;
-        push_operation_handle(state, config, request_id, method);
-        return 1;
-    }
-    if ((g_str_equal(method, "privacy.stop_sharing") ||
-         g_str_equal(method, "privacy.stop_recording")) &&
-        lua_gettop(state) != 0)
+    if (operation && (operation->flags & GN_OP_NOTHING) && lua_gettop(state) != 0)
         return luaL_error(state, "%s takes no arguments", method);
-    if (g_str_equal(method, "session.lock") && lua_gettop(state) != 0)
-        return luaL_error(state, "session.lock takes no arguments");
-    if (g_str_equal(method, "session.logout") && lua_gettop(state) != 0)
-        return luaL_error(state, "session.logout takes no arguments");
-    if ((g_str_equal(method, "session.suspend") || g_str_equal(method, "session.hibernate") ||
-         g_str_equal(method, "session.reboot") || g_str_equal(method, "session.poweroff")) &&
-        lua_gettop(state) != 0)
-        return luaL_error(state, "%s takes no arguments", method);
-    if (g_str_equal(method, "console.toggle") && lua_gettop(state) != 0)
-        return luaL_error(state, "console.toggle takes no arguments");
-    if (g_str_equal(method, "location.authorize_app")) {
+    gboolean window_call = gnoblin_api_operation_in_family(method, GNOBLIN_OP_WINDOW_FAMILY) &&
+                           id != GNOBLIN_OP_WINDOW_MATCH;
+    if (id == GNOBLIN_OP_LOCATION_AUTHORIZE_APP) {
         static const char* const fields[] = {"request_id", "allow", "accuracy", NULL};
         if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
             !table_fields_allowed(state, 1, fields))
@@ -463,32 +505,32 @@ int lua_generic_api_action(lua_State* state) {
                               "and accuracy 0, 1, 4, 5, 6, or 8 (0 when denied)");
     }
 
-    if (g_str_has_prefix(method, "auth.")) {
+    if (operation && operation->dispatch == GN_DISPATCH_AUTH) {
         static const char* const begin_fields[] = {"request_id", "identity", NULL};
         static const char* const respond_fields[] = {"request_id", "response", NULL};
         static const char* const cancel_fields[] = {"request_id", NULL};
-        const char* const* fields = g_str_equal(method, "auth.begin")     ? begin_fields
-                                    : g_str_equal(method, "auth.respond") ? respond_fields
-                                                                          : cancel_fields;
+        const char* const* fields = id == GNOBLIN_OP_AUTH_BEGIN     ? begin_fields
+                                    : id == GNOBLIN_OP_AUTH_RESPOND ? respond_fields
+                                                                    : cancel_fields;
         if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
             !table_fields_allowed(state, 1, fields))
             return luaL_error(state, "%s accepts only a table with %s", method,
-                              g_str_equal(method, "auth.begin")     ? "request_id and identity"
-                              : g_str_equal(method, "auth.respond") ? "request_id and response"
-                                                                    : "request_id");
+                              id == GNOBLIN_OP_AUTH_BEGIN     ? "request_id and identity"
+                              : id == GNOBLIN_OP_AUTH_RESPOND ? "request_id and response"
+                                                              : "request_id");
         lua_getfield(state, 1, "request_id");
         gboolean valid_request_id = lua_isinteger(state, -1) && lua_tointeger(state, -1) > 0;
         lua_pop(state, 1);
         if (!valid_request_id)
             return luaL_error(state, "%s needs a positive integer request_id", method);
-        if (g_str_equal(method, "auth.begin")) {
+        if (id == GNOBLIN_OP_AUTH_BEGIN) {
             lua_getfield(state, 1, "identity");
             gboolean valid_identity =
                 lua_isnil(state, -1) || (lua_isinteger(state, -1) && lua_tointeger(state, -1) > 0);
             lua_pop(state, 1);
             if (!valid_identity)
                 return luaL_error(state, "auth.begin identity must be a positive integer");
-        } else if (g_str_equal(method, "auth.respond")) {
+        } else if (id == GNOBLIN_OP_AUTH_RESPOND) {
             lua_getfield(state, 1, "response");
             size_t length = 0;
             const char* text =
@@ -501,11 +543,11 @@ int lua_generic_api_action(lua_State* state) {
         }
     }
 
-    if (g_str_has_prefix(method, "prompt.")) {
+    if (operation && operation->dispatch == GN_DISPATCH_PROMPT) {
         static const char* const respond_fields[] = {"request_id", "password", "confirmed",
                                                      "choice", NULL};
         static const char* const cancel_fields[] = {"request_id", NULL};
-        gboolean respond = g_str_equal(method, "prompt.respond");
+        gboolean respond = id == GNOBLIN_OP_PROMPT_RESPOND;
         if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
             !table_fields_allowed(state, 1, respond ? respond_fields : cancel_fields))
             return luaL_error(state, "%s accepts only a table with %s", method,
@@ -538,7 +580,7 @@ int lua_generic_api_action(lua_State* state) {
         }
     }
 
-    if (g_str_equal(method, "input.set_orientation_lock") && config->api_calling) {
+    if (id == GNOBLIN_OP_INPUT_SET_ORIENTATION_LOCK && config->api_calling) {
         static const char* const fields[] = {"value", NULL};
         if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
             !table_fields_allowed(state, 1, fields))
@@ -549,7 +591,7 @@ int lua_generic_api_action(lua_State* state) {
     }
 
     GVariant* arguments = NULL;
-    if (g_str_equal(method, "input.set_orientation_lock")) {
+    if (id == GNOBLIN_OP_INPUT_SET_ORIENTATION_LOCK) {
         if (lua_gettop(state) != 1 ||
             (!lua_isboolean(state, 1) && !(lua_type(state, 1) == LUA_TSTRING &&
                                            g_str_equal(lua_tostring(state, 1), "inherit"))))
@@ -564,20 +606,17 @@ int lua_generic_api_action(lua_State* state) {
             g_variant_builder_add(&builder, "{sv}", "value", g_variant_new_string("inherit"));
         arguments = g_variant_builder_end(&builder);
     } else if (lua_gettop(state) == 0) {
-        if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind") ||
-            g_str_equal(method, "shortcut.session.end"))
-            return luaL_error(state, "%s requires an argument table", method);
-        if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.match"))
+        if ((operation && operation->dispatch == GN_DISPATCH_SHORTCUT) || window_call)
             return luaL_error(state, "%s requires an argument table", method);
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         arguments = g_variant_builder_end(&empty);
     } else if (lua_gettop(state) == 1 && lua_istable(state, 1)) {
-        if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.match"))
-            window_operation_valid_args(state, method);
-        if (g_str_equal(method, "input.select"))
+        if (window_call)
+            window_operation_valid_args(state, operation);
+        if (id == GNOBLIN_OP_INPUT_SELECT)
             input_source_selector_valid_args(state);
-        if (g_str_equal(method, "shortcut.capture")) {
+        if (id == GNOBLIN_OP_SHORTCUT_CAPTURE) {
             static const char* const fields[] = {"timeout", NULL};
             if (!table_fields_allowed(state, 1, fields))
                 return luaL_error(state, "shortcut.capture accepts only timeout");
@@ -591,7 +630,7 @@ int lua_generic_api_action(lua_State* state) {
             }
             lua_pop(state, 1);
         }
-        if (g_str_equal(method, "shortcut.bind")) {
+        if (id == GNOBLIN_OP_SHORTCUT_BIND) {
             static const char* const fields[] = {"id",   "accelerator",   "hold", "trigger",
                                                  "mode", "capture_input", NULL};
             if (!table_fields_allowed(state, 1, fields))
@@ -637,12 +676,12 @@ int lua_generic_api_action(lua_State* state) {
             if (!valid_hold || !valid_trigger || !valid_mode || !valid_capture)
                 return luaL_error(state, "shortcut.bind has an invalid option value");
         }
-        if (g_str_equal(method, "shortcut.unbind")) {
+        if (id == GNOBLIN_OP_SHORTCUT_UNBIND) {
             static const char* const fields[] = {"id", NULL};
             if (!table_fields_allowed(state, 1, fields))
                 return luaL_error(state, "shortcut.unbind accepts only id");
         }
-        if (g_str_equal(method, "shortcut.session.end")) {
+        if (id == GNOBLIN_OP_SHORTCUT_SESSION_END) {
             static const char* const fields[] = {"id", "session_id", NULL};
             if (!table_fields_allowed(state, 1, fields))
                 return luaL_error(state, "shortcut.session.end accepts only id and session_id");
@@ -671,8 +710,7 @@ int lua_generic_api_action(lua_State* state) {
             g_variant_unref(arguments);
             return luaL_error(state, "%s arguments must be a table", method);
         }
-    } else if (lua_gettop(state) == 1 && lua_isnil(state, 1) &&
-               g_str_equal(method, "shortcut.capture")) {
+    } else if (lua_gettop(state) == 1 && lua_isnil(state, 1) && id == GNOBLIN_OP_SHORTCUT_CAPTURE) {
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         arguments = g_variant_builder_end(&empty);
@@ -680,19 +718,5 @@ int lua_generic_api_action(lua_State* state) {
         return luaL_error(state, "%s takes no arguments or one argument table", method);
     }
 
-    guint64 request_id = allocate_operation_id();
-    if (!request_id)
-        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
-    GVariantBuilder action;
-    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
-    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
-    g_variant_builder_add(&action, "{sv}", "arguments", arguments);
-    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
-    config->actions_in_dispatch++;
-    if (config->api_calling)
-        lua_pushinteger(state, request_id); /* legacy socket/C caller contract */
-    else
-        push_operation_handle(state, config, request_id, method);
-    return 1;
+    return lua_queue_operation(state, config, method, arguments);
 }

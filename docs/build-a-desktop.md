@@ -96,7 +96,7 @@ several languages.
 | Place a bar or dock                  | `zwlr_layer_shell_v1`                                      |
 | Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
 | Apply per-app styling                | `gnoblin.window_rule` in Lua                               |
-| React to a window or workspace event | Lua callback registered with `gnoblin.events.on`           |
+| React to a window or workspace event | Lua callback registered with `gnoblin.on`                  |
 | Supply an application titlebar       | Frame rule and optional renderer service                   |
 
 The desktop portal backend decides what each app may do. Disabling a Wayland

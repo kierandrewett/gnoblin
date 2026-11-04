@@ -164,7 +164,7 @@ index 7d3c9af7f..cf227040f 100644
      preview_stop(preview, TRUE, TRUE);
      return;
    }
-@@ -1555,6 +1572,256 @@ static GVariant *preview_control(MetaDisplay *display, const char *method,
+@@ -1555,6 +1572,254 @@ static GVariant *preview_control(MetaDisplay *display, const char *method,
    return preview_result(preview, g_str_equal(method, "animation.play"));
  }
  
@@ -314,9 +314,7 @@ index 7d3c9af7f..cf227040f 100644
 +
 +static void apply_rule_overrides(AnimationSpec *spec, GVariant *overrides) {
 +  g_autoptr(GVariant) duration = lookup_field(overrides, "duration");
-+  g_autoptr(GVariant) ease = lookup_field(overrides, "ease");
-+  if (!ease)
-+    ease = lookup_field(overrides, "easing");
++  g_autoptr(GVariant) ease = lookup_field(overrides, "easing");
 +
 +  if (duration) {
 +    double value;

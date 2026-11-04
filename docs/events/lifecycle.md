@@ -79,23 +79,22 @@ families.
 | `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
 | `gnoblin.config.reload-failed`       | `path`, `error`, `sequence`, `time`                | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
 
-#### Workspaces, monitors, and layers
+#### Workspaces, outputs, and layers
 
-| Event name                               | Fields                                                                    | Dispatched when                                                                 |
-| ---------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `gnoblin.workspace.created`              | `workspace`                                                               | A runtime workspace is created.                                                 |
-| `gnoblin.workspace.renamed`              | `workspace`                                                               | A workspace display name changes.                                               |
-| `gnoblin.workspace.changed`              | `workspace`, `changed`                                                    | Its position, window count, or persistence state changes.                       |
-| `gnoblin.workspace.removed`              | `workspace_id`, `last`                                                    | A temporary workspace is removed.                                               |
-| `gnoblin.workspace.activated`            | `workspace`, optional `previous_id`                                       | The active workspace changes.                                                   |
-| `gnoblin.workspace.window-moved`         | `window_id`, `from_id`, `to_id`                                           | A window moves from one workspace to another.                                   |
-| `gnoblin.monitor.added`                  | `monitor`                                                                 | An active logical monitor appears in the native runtime.                        |
-| `gnoblin.monitor.changed`                | `monitor`, `changed`                                                      | A listed monitor property changes; `changed` names the changed properties.      |
-| `gnoblin.monitor.removed`                | `monitor_id`, `last`                                                      | An active logical monitor is removed.                                           |
-| `gnoblin.monitor.privacy-screen-changed` | `requested_enabled`, `source`, `revision`, `monitors`, `sequence`, `time` | The effective request, its source, or a monitor's privacy-screen state changes. |
-| `gnoblin.layer.created`                  | `layer`                                                                   | A layer-shell surface appears in the published snapshot.                        |
-| `gnoblin.layer.changed`                  | `layer_id`, `layer`, `changed`                                            | A published layer record changes, including mapped or unmapped transitions.     |
-| `gnoblin.layer.removed`                  | `layer_id`, `last`                                                        | A layer-shell surface disappears from the published snapshot.                   |
+| Event name                       | Fields                              | Dispatched when                                                             |
+| -------------------------------- | ----------------------------------- | --------------------------------------------------------------------------- |
+| `gnoblin.workspace.created`      | `workspace`                         | A runtime workspace is created.                                             |
+| `gnoblin.workspace.renamed`      | `workspace`                         | A workspace display name changes.                                           |
+| `gnoblin.workspace.changed`      | `workspace`, `changed`              | Its position, window count, or persistence state changes.                   |
+| `gnoblin.workspace.removed`      | `workspace_id`, `last`              | A temporary workspace is removed.                                           |
+| `gnoblin.workspace.activated`    | `workspace`, optional `previous_id` | The active workspace changes.                                               |
+| `gnoblin.workspace.window-moved` | `window_id`, `from_id`, `to_id`     | A window moves from one workspace to another.                               |
+| `gnoblin.output.added`           | `output_id`, `output`               | A display is connected.                                                     |
+| `gnoblin.output.changed`         | `output_id`, `output`, `changed`    | A field of an output changes; `changed` names the changed fields.           |
+| `gnoblin.output.removed`         | `output_id`, `last`                 | A display is disconnected.                                                  |
+| `gnoblin.layer.created`          | `layer`                             | A layer-shell surface appears in the published snapshot.                    |
+| `gnoblin.layer.changed`          | `layer_id`, `layer`, `changed`      | A published layer record changes, including mapped or unmapped transitions. |
+| `gnoblin.layer.removed`          | `layer_id`, `last`                  | A layer-shell surface disappears from the published snapshot.               |
 
 #### Windows and focus
 
@@ -127,14 +126,14 @@ families.
 
 #### Shortcuts
 
-| Event name                             | Fields                                                                        | Dispatched when                                                                                   |
-| -------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `gnoblin.shortcut.activated`           | `shortcut`, `trigger`, `focus_context`                                        | A configured native command shortcut is activated by a trusted key press in the native runtime.   |
-| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context` | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority. |
-| `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                             | A press-triggered dynamic shortcut is physically released.                                        |
-| `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                   | A held dynamic shortcut starts or repeats its modal session.                                      |
-| `gnoblin.shortcut.session.key`         | `id`, `session_id`, key fields, optional `focus_context`                      | A modal key event; real, non-repeat input may carry one-use focus authority.                      |
-| `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                          | A held shortcut session ends or is cancelled.                                                     |
+| Event name                             | Fields                                                                                   | Dispatched when                                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `gnoblin.shortcut.activated`           | `shortcut`, `trigger`, `grant` (Lua) or `focus_context` (socket)                         | A configured native command shortcut is activated by a trusted key press in the native runtime. |
+| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `grant` or `focus_context` | A Lua-registered dynamic shortcut activates. Only the first activation can carry a grant.       |
+| `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                                        | A press-triggered dynamic shortcut is physically released.                                      |
+| `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                              | A held dynamic shortcut starts or repeats its modal session.                                    |
+| `gnoblin.shortcut.session.key`         | `id`, `session_id`, key fields, optional `grant` or `focus_context`                      | A modal key event; real, non-repeat input may carry a [grant](/shell-api/grants).               |
+| `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                                     | A held shortcut session ends or is cancelled.                                                   |
 
 #### Shell requests: OSD, pointer, location, and authentication
 
@@ -143,12 +142,18 @@ families.
 | `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                                                                                                      | Mutter requests an OSD; a shell decides whether and how to display it. |
 | `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                                                                                                              | The user pressed the locate-pointer key; a listener shows the pointer. |
 | `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`                                                                                         | GeoClue asks Gnoblin to authorize an application's location request.   |
+| `gnoblin.location.authorization-finished`  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A location request ends with `allowed`, `denied` or `timeout`.         |
 | `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time`                                                                            | A program asks the session's polkit agent for authentication.          |
 | `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                                                                                                                        | The authentication check needs input from the user.                    |
 | `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                                                                                                                         | The authentication check has a line of text for the user.              |
 | `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                                                                                                                                | An authentication request ends.                                        |
 | `gnoblin.prompt.requested`                 | `request_id`, `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label`, `sequence`, `time` | A keyring or GPG prompt asks for a password or a confirmation.         |
 | `gnoblin.prompt.finished`                  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A keyring or GPG prompt ends.                                          |
+
+In the Lua configuration, the `location`, `auth` and `prompt` events above, and
+`gnoblin.session.lock-requested`, also carry `request`: a
+[`Request`](/shell-api/requests) that you answer with methods instead of
+`request_id`.
 
 #### Animations and operations
 

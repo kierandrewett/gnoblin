@@ -11,12 +11,16 @@ The event includes:
 - `menu_type`: `wm` for a window-manager menu or `app` for an application menu;
 - `x` and `y`: requested menu position in global logical coordinates.
 
-For a window-manager menu, API 1.30 also provides a one-use `menu_context`.
-Use it with `window.begin_move` or `window.begin_resize` if the shell offers
-those actions. The context is tied to the requesting window, expires after
-five seconds, and is revoked on disconnect or session lock. Application menu
-requests are informational and do not include this capability. See the
-[menu action details](/bridge/#api-130-wm-menu-actions).
+For a window-manager menu, a Lua callback receives a [`grant`](/shell-api/grants) in `event.grant`. Use it with
+`window:begin_move(event.grant)` or `window:begin_resize(edge, event.grant)` on `event.grant.window` if the shell
+offers those actions.
+
+A socket client receives a one-use `menu_context` token in the same event, and sends it with `window.begin_move` or
+`window.begin_resize`. API 1.30 added it.
+
+The `grant` and the token are tied to the requesting window and expire after five seconds. A session lock revokes
+both, and a disconnect also revokes a socket token. Application menu requests are informational and do not include
+this capability. See the [menu action details](/bridge/#api-130-wm-menu-actions).
 
 Use the supplied `window_id` for other window operations; do not target the
 focused window after the menu opens. Read the live window record to

@@ -65,8 +65,8 @@ static void request_reload(Runtime* runtime, const char* source, gboolean commit
     g_autofree char* with_event_probe = g_strconcat(
         source,
         "\nlocal warnings_seen\n"
-        "gnoblin.events.on('gnoblin.config.reloaded', function(e) warnings_seen = e.warnings end)\n"
-        "gnoblin.events.on('test.check-warnings', function(e)\n"
+        "gnoblin.on('gnoblin.config.reloaded', function(e) warnings_seen = e.warnings end)\n"
+        "gnoblin.on('test.check-warnings', function(e)\n"
         " assert(warnings_seen ~= nil, 'reload event has no warnings')\n"
         " assert(#warnings_seen == #e.expected)\n"
         " for i, warning in ipairs(e.expected) do assert(warnings_seen[i] == warning) end\n"
@@ -206,9 +206,10 @@ static void test_warning_bounds(void) {
     Runtime runtime = {.host_control_fd = -1, .ready_fd = -1};
     runtime_init(&runtime);
     g_autoptr(GString) source = g_string_new("gnoblin.configure {cursor = {size = 32}}");
-    /* Direct compatibility writes are accepted, and now get public feedback too. */
+    /* An unknown section is kept, and gets public feedback. */
     for (guint i = 0; i < 100; i++)
-        g_string_append_printf(source, "\ngnoblin.config[string.rep('x', 4096) .. '-%u'] = {}", i);
+        g_string_append_printf(source,
+                               "\ngnoblin.configure {[string.rep('x', 4096) .. '-%u'] = {}}", i);
     request_reload(&runtime, source->str, TRUE);
     g_autoptr(GVariant) warnings = successful_warnings();
     g_assert_cmpuint(g_variant_n_children(warnings), ==, 65);
@@ -218,7 +219,7 @@ static void test_warning_bounds(void) {
     g_assert_nonnull(notice);
     g_assert_cmpuint(strlen(notice), <, 16384);
 
-    request_reload(&runtime, "gnoblin.config[string.rep('x', 4096)] = {}", TRUE);
+    request_reload(&runtime, "gnoblin.configure {[string.rep('x', 4096)] = {}}", TRUE);
     g_autoptr(GVariant) long_name = successful_warnings();
     g_assert_cmpuint(g_variant_n_children(long_name), ==, 1);
     g_autoptr(GVariant) warning = g_variant_get_child_value(long_name, 0);

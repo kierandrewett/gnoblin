@@ -15,10 +15,10 @@ gnoblin.load("scripts/**/*.lua")
 LUA
 
 cat >"$config_dir/scripts/hello.lua" <<'LUA'
-gnoblin.events.on("gnoblin.config.reloaded", function()
+gnoblin.on("gnoblin.config.reloaded", function()
     print("LUA_SCRIPT A:reloaded")
 end)
-gnoblin.events.on("gnoblin.config.reload-failed", function()
+gnoblin.on("gnoblin.config.reload-failed", function()
     print("LUA_SCRIPT A:reload-failed")
 end)
 LUA
@@ -42,10 +42,10 @@ wait_for_runtime_log 'LUA_SCRIPT A:reloaded'
 gnoblinctl ping | grep -qx pong
 
 cat >"$XDG_CONFIG_HOME/gnoblin/scripts/hello.lua" <<'LUA'
-gnoblin.events.on("gnoblin.config.reloaded", function()
+gnoblin.on("gnoblin.config.reloaded", function()
     print("LUA_SCRIPT B:reloaded")
 end)
-gnoblin.events.on("gnoblin.config.reload-failed", function()
+gnoblin.on("gnoblin.config.reload-failed", function()
     print("LUA_SCRIPT B:reload-failed")
 end)
 LUA
