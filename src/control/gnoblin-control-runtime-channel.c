@@ -342,7 +342,7 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
 
     g_clear_error(&snapshot_error);
     g_autoptr(JsonNode) outputs =
-        gnoblin_control_output_snapshot_json(control, TRUE, &snapshot_error);
+        gnoblin_control_output_snapshot_json(control, monitors, TRUE, &snapshot_error);
     g_autoptr(GVariant) output_value = outputs ? variant_from_json(outputs) : NULL;
     native_publish_runtime_snapshot(control, "outputs", output_value, revision);
     native_monitor_privacy_screen_publish(control);

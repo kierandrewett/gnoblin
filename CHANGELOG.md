@@ -4,6 +4,14 @@
 
 ### Added
 
+- Outputs are live objects (bridge API 1.88). See [outputs](docs/shell-api/outputs.md).
+    - Every read of one display returns the same `Output`, with `alive`, `on` and `watch`.
+    - An output also has its logical monitor's index, size and work area, and its privacy
+      screen state.
+    - `output:set_privacy_screen(enabled)` sets the privacy screen request. The compositor
+      applies one request to every output that has a privacy screen.
+    - New events tell Lua and shell processes when a display is added, changes or is removed.
+    - Monitor events and monitor reads stay for shell processes only.
 - The `gnoblin.location.authorization-finished` event (bridge API 1.87) reports how each location
   request ended: `allowed`, `denied` or `timeout`. A Lua location `Request` now finishes from it,
   so `finished()` reports the real outcome when a shell process answered the request instead of
@@ -173,11 +181,18 @@ sending named fields.
 | `window:move {x = x, y = y}`, `resize`, `thumbnail`                   | `window:move(x, y)`, `resize(w, h)`, `thumbnail(w, h)`      |
 | `window:move_to_workspace({number = 2})`, `move_to_monitor({id = m})` | `window:move_to_workspace(2)`, `move_to_monitor(m)`         |
 
-Duplicate Lua names are removed. Use `monitors.list` for `gnoblin.monitor.list`,
-`layers.list` for `layer.list`, `input.sources` for `input.list`, `input.current_source`
-for `input.current`, and `launches.list` for `launches.snapshot` and `gnoblin.launch.status`.
-The bridge methods `monitor.list`, `layer.list` and `launch.*` stay for shell processes. The
-`targetType` spelling is no longer documented for Lua; use `target_type`.
+Duplicate Lua names are removed:
+
+| Removed                                      | Use instead            |
+| -------------------------------------------- | ---------------------- |
+| `gnoblin.monitor.list`                       | `gnoblin.outputs.list` |
+| `layer.list`                                 | `layers.list`          |
+| `input.list`                                 | `input.sources`        |
+| `input.current`                              | `input.current_source` |
+| `launches.snapshot`, `gnoblin.launch.status` | `launches.list`        |
+| `targetType`                                 | `target_type`          |
+
+Shell processes keep the bridge methods `monitor.list`, `layer.list` and `launch.*`.
 
 A second pass removes every Lua function that had another name for the same action:
 
@@ -189,6 +204,10 @@ A second pass removes every Lua function that had another name for the same acti
 | `window:minimize()`, `unminimize()`, `toggle_minimize()` | `window:set_minimized(enabled)`                                 |
 | `window:restore()`                                       | `window:set_minimized(false)` and `window:set_maximized(false)` |
 | `gnoblin.launches.snapshot()`                            | `gnoblin.launches.list()`; each `Launch` has its own `revision` |
+| `gnoblin.monitors.list()`, `gnoblin.monitors.primary()`  | `gnoblin.outputs.list()`, `gnoblin.outputs.primary()`           |
+| `gnoblin.monitors.privacy_screen()`                      | `output.privacy_screen`                                         |
+| `gnoblin.monitors.set_privacy_screen(value)`             | `output:set_privacy_screen(value)`                              |
+| Lua `gnoblin.monitor.*` events                           | `gnoblin.output.added`, `changed`, `removed`                    |
 
 `window:restore_or_minimize()` stays: it restores the frame saved before a snap, which no other
 call does. The bridge keeps every wire method name.

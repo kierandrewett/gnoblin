@@ -56,7 +56,7 @@ If you omit `output` or set it to `"inherit"`, Gnoblin follows the system
 tablet mapping, including its saved output or automatic selection. Set
 `output = "auto"` to explicitly use Mutter's automatic selection.
 
-To choose an output, use its connector ID from `gnoblin.monitors.list()`, such
+To choose an output, use its connector ID from `gnoblin.outputs.list()`, such
 as `"DP-1"`. The ID can change when you move the display to another port. A
 disconnected configured output leaves the tablet unmapped until it returns.
 Cloned outputs map to their shared logical monitor.
@@ -95,7 +95,7 @@ gnoblin.configure {
         tablets = {
             ["1234:5678"] = {
                 mapping = "absolute",
-                output = "DP-1", -- use an ID from gnoblin.monitors.list()
+                output = "DP-1", -- use an ID from gnoblin.outputs.list()
                 keep_aspect = true,
                 area = {0.03, 0.03, 0.05, 0.05},
                 pad_buttons = {

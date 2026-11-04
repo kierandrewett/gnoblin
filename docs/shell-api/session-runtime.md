@@ -187,6 +187,6 @@ continuously. The event also carries `threshold_ms`, `revision`, `sequence`,
 and monotonic-clock `time`.
 
 Native sessions provide immediate reads through `gnoblin.windows`,
-`gnoblin.workspaces`, `gnoblin.monitors`, `gnoblin.layers`,
+`gnoblin.workspaces`, `gnoblin.outputs`, `gnoblin.layers`,
 `gnoblin.input.devices()`, and `gnoblin.capabilities`. See
 [Lua events](/events/) for event names and callback behavior.

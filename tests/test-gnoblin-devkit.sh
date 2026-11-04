@@ -158,7 +158,7 @@ gnoblin.once("gnoblin.config.reloaded", function(event)
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
     assert(type(gnoblin.windows.list()) == "table")
-    assert(type(gnoblin.monitors.list()) == "table")
+    assert(type(gnoblin.outputs.list()) == "table")
     assert(type(gnoblin.focus.history()) == "table")
     local session_status = gnoblin.session.status()
     print(string.format("SESSION_STATUS_AT_RELOAD:state=%s revision=%s session_state=%s session_revision=%s",
@@ -443,7 +443,7 @@ gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
 cat > "$XDG_RUNTIME_DIR/lua-api.lua" <<'LUA'
 assert(type(gnoblin.windows.list()) == "table")
 assert(type(gnoblin.workspaces.list()) == "table")
-assert(type(gnoblin.monitors.list()) == "table")
+assert(type(gnoblin.outputs.list()) == "table")
 assert(type(gnoblin.focus.history()) == "table")
 local status = gnoblin.runtime.status()
 assert(status.state == "running" and status.generation > 0)

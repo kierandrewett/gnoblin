@@ -201,25 +201,6 @@ static const ApiMember api_fields_LayerSurface[] = {
     {"monitor_id", "string", TRUE, "Monitor ID when assigned."},
     {"revision", "integer", FALSE, "State revision for this snapshot."},
 };
-static const ApiMember api_fields_Monitor[] = {
-    {"id", "string", FALSE, "Monitor ID."},
-    {"index", "integer", FALSE, "Zero-based monitor index."},
-    {"x", "integer", FALSE, "X coordinate in compositor layout."},
-    {"y", "integer", FALSE, "Y coordinate in compositor layout."},
-    {"width", "integer", FALSE, "Width in logical pixels."},
-    {"height", "integer", FALSE, "Height in logical pixels."},
-    {"primary", "boolean", FALSE, "Whether this is the primary monitor."},
-    {"scale", "number", FALSE, "Display scale factor."},
-    {"enabled", "boolean", FALSE, "Whether the monitor is enabled."},
-    {"name", "string", TRUE, "Display name when provided by the monitor."},
-    {"make", "string", TRUE, "Manufacturer when provided by the monitor."},
-    {"model", "string", TRUE, "Model when provided by the monitor."},
-    {"serial", "string", TRUE, "Serial number when provided by the monitor."},
-    {"refresh_rate", "number", TRUE, "Refresh rate in hertz when a current mode is available."},
-    {"transform", "string", TRUE, "Display transform, such as \"normal\" or \"90\"."},
-    {"work_area", "MonitorRect", TRUE, "Work area after layer surfaces reserve exclusive zones."},
-    {"revision", "integer", FALSE, "State revision for this snapshot."},
-};
 static const ApiMember api_fields_MonitorRect[] = {
     {"x", "integer", FALSE, "X coordinate in compositor layout."},
     {"y", "integer", FALSE, "Y coordinate in compositor layout."},
@@ -249,6 +230,7 @@ static const ApiMember api_fields_OrientationLockValue[] = {
 };
 static const ApiMember api_fields_Output[] = {
     {"id", "string", FALSE, "Connector name, such as \"DP-1\". Stable per output."},
+    {"alive", "boolean", FALSE, "False once the output has been removed. Every read of one output returns this same object, updated with each change."},
     {"kind", "\"display\"", FALSE, "Kind of output; \"virtual\" is reserved."},
     {"name", "string", TRUE, "Display name, when the hardware provides one."},
     {"make", "string", TRUE, "Manufacturer, when available."},
@@ -256,12 +238,17 @@ static const ApiMember api_fields_Output[] = {
     {"serial", "string", TRUE, "Serial number, when available."},
     {"enabled", "boolean", FALSE, "Whether the output is active in the current layout."},
     {"primary", "boolean", FALSE, "Whether this is the primary output."},
-    {"monitor_id", "string", TRUE, "Matching logical monitor ID."},
+    {"monitor_id", "string", TRUE, "ID of the logical monitor that shows this output: the lowest connector name in it. Windows and layer surfaces name it in their monitor_id."},
+    {"index", "integer", TRUE, "Zero-based logical monitor index, when the output is enabled."},
     {"mode", "OutputMode", FALSE, "Current mode."},
     {"scale", "number", FALSE, "Compositing scale of the logical monitor."},
     {"transform", "string", FALSE, "Current transformation, such as \"normal\" or \"90\"."},
-    {"x", "integer", TRUE, "Logical X position of a display output."},
-    {"y", "integer", TRUE, "Logical Y position of a display output."},
+    {"x", "integer", TRUE, "Logical X position, when the output is enabled."},
+    {"y", "integer", TRUE, "Logical Y position, when the output is enabled."},
+    {"width", "integer", TRUE, "Logical width, when the output is enabled."},
+    {"height", "integer", TRUE, "Logical height, when the output is enabled."},
+    {"work_area", "MonitorRect", TRUE, "Area of the active workspace that windows can use: the logical monitor minus the space that panels reserve with exclusive zones."},
+    {"privacy_screen", "OutputPrivacyScreen", FALSE, "Privacy screen state of this output."},
     {"renderer", "Renderer", FALSE, "GPU path that renders this output."},
     {"revision", "integer", FALSE, "State revision for this snapshot."},
 };
@@ -270,27 +257,19 @@ static const ApiMember api_fields_OutputMode[] = {
     {"height", "integer", FALSE, "Height in physical pixels."},
     {"refresh_rate", "number", FALSE, "Refresh rate in hertz."},
 };
+static const ApiMember api_fields_OutputPrivacyScreen[] = {
+    {"available", "boolean", FALSE, "Whether this output has a privacy screen that Gnoblin can control."},
+    {"enabled", "boolean", TRUE, "Whether the privacy screen is on, when available."},
+    {"locked", "boolean", TRUE, "Whether a hardware switch locks the privacy screen, when available."},
+    {"requested", "boolean", FALSE, "Whether the session asks for privacy screens to be on. This one request applies to every output."},
+    {"source", "\"runtime\"|\"system\"|\"config\"", FALSE, "What sets the request: a runtime override from Output:set_privacy_screen, the configuration, or the system setting."},
+};
 static const ApiMember api_fields_PrivacyAvailability[] = {
     {"screen_sharing", "boolean", FALSE, "Whether screen sharing state is available."},
     {"recording", "boolean", FALSE, "Whether recording state is available."},
     {"microphone_in_use", "boolean", FALSE, "Whether microphone use can be observed."},
     {"camera_in_use", "boolean", FALSE, "Whether camera use can be observed."},
     {"location_in_use", "boolean", FALSE, "Whether location use can be observed."},
-};
-static const ApiMember api_fields_PrivacyScreenMonitor[] = {
-    {"id", "string", FALSE, "Monitor ID."},
-    {"available", "boolean", FALSE, "Whether the monitor supports privacy screen control."},
-    {"enabled", "boolean", TRUE, "Whether privacy screen is enabled when available."},
-    {"locked", "boolean", TRUE, "Whether privacy screen state is locked when available."},
-};
-static const ApiMember api_fields_PrivacyScreenSetArgs[] = {
-    {"value", "boolean|\"inherit\"", FALSE, "true or false sets an override; \"inherit\" clears the runtime override."},
-};
-static const ApiMember api_fields_PrivacyScreenSnapshot[] = {
-    {"requested_enabled", "boolean", FALSE, "Requested global privacy screen state."},
-    {"source", "\"runtime\"|\"system\"|\"config\"", FALSE, "Where the requested state comes from."},
-    {"revision", "integer", FALSE, "Snapshot revision."},
-    {"monitors", "PrivacyScreenMonitor[]", FALSE, "Per-monitor availability and state."},
 };
 static const ApiMember api_fields_PrivacyState[] = {
     {"available", "PrivacyAvailability", FALSE, "Availability of each privacy signal."},
@@ -639,19 +618,16 @@ static const ApiClass api_classes[] = {
     {"LayerAnimationPolicy", "", api_fields_LayerAnimationPolicy, 5},
     {"LayerFilter", "", api_fields_LayerFilter, 3},
     {"LayerSurface", "", api_fields_LayerSurface, 7},
-    {"Monitor", "", api_fields_Monitor, 17},
     {"MonitorRect", "", api_fields_MonitorRect, 4},
     {"Operation", "Handle for a request that completes asynchronously. Mutating calls return one; read the result with on_complete.", api_fields_Operation, 5},
     {"OperationError", "The failure of an Operation.", api_fields_OperationError, 2},
     {"OperationSubscription", "A callback added with on_complete.", NULL, 0},
     {"OrientationLock", "", api_fields_OrientationLock, 5},
     {"OrientationLockValue", "", api_fields_OrientationLockValue, 1},
-    {"Output", "", api_fields_Output, 16},
+    {"Output", "", api_fields_Output, 22},
     {"OutputMode", "", api_fields_OutputMode, 3},
+    {"OutputPrivacyScreen", "", api_fields_OutputPrivacyScreen, 5},
     {"PrivacyAvailability", "", api_fields_PrivacyAvailability, 5},
-    {"PrivacyScreenMonitor", "", api_fields_PrivacyScreenMonitor, 4},
-    {"PrivacyScreenSetArgs", "", api_fields_PrivacyScreenSetArgs, 1},
-    {"PrivacyScreenSnapshot", "", api_fields_PrivacyScreenSnapshot, 4},
     {"PrivacyState", "", api_fields_PrivacyState, 7},
     {"PrivacyStopResult", "", api_fields_PrivacyStopResult, 1},
     {"Process", "A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.", api_fields_Process, 6},
@@ -824,61 +800,58 @@ static const ApiMember api_params_56[] = {
 static const ApiMember api_params_57[] = {
     {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories."},
 };
-static const ApiMember api_params_61[] = {
-    {"value", "boolean|\"inherit\"", FALSE, "true or false sets the override; \"inherit\" restores the configured or system value."},
-};
-static const ApiMember api_params_62[] = {
+static const ApiMember api_params_58[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
-static const ApiMember api_params_63[] = {
+static const ApiMember api_params_59[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
 };
-static const ApiMember api_params_64[] = {
+static const ApiMember api_params_60[] = {
     {"id", "string", FALSE, "Connector ID, such as \"DP-1\"."},
 };
-static const ApiMember api_params_71[] = {
+static const ApiMember api_params_67[] = {
     {"argv", "string[]", FALSE, "Program and arguments: 1 to 64 strings, at most 64 KiB in total."},
     {"options", "ProcessOptions", TRUE, ""},
 };
-static const ApiMember api_params_82[] = {
+static const ApiMember api_params_78[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
 };
-static const ApiMember api_params_83[] = {
+static const ApiMember api_params_79[] = {
     {"id", "string", FALSE, "Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens."},
     {"accelerator", "string", FALSE, "Valid accelerator. Bare \"Super\" requires capture_input=true, trigger=\"release\", and hold=\"none\"."},
     {"options", "ShortcutBindOptions", TRUE, ""},
 };
-static const ApiMember api_params_84[] = {
+static const ApiMember api_params_80[] = {
     {"options", "ShortcutCaptureOptions", TRUE, ""},
 };
-static const ApiMember api_params_85[] = {
+static const ApiMember api_params_81[] = {
     {"id", "string", FALSE, "Binding ID owned by this Lua runtime."},
     {"session_id", "integer", FALSE, "Positive ID of the active binding session."},
 };
-static const ApiMember api_params_87[] = {
+static const ApiMember api_params_83[] = {
     {"id", "string", FALSE, "Binding ID owned by this Lua runtime."},
 };
-static const ApiMember api_params_89[] = {
+static const ApiMember api_params_85[] = {
     {"seconds", "number", FALSE, "From 0 to 86400."},
 };
-static const ApiMember api_params_93[] = {
+static const ApiMember api_params_89[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
-static const ApiMember api_params_94[] = {
+static const ApiMember api_params_90[] = {
     {"id", "string", FALSE, "Stable window ID."},
 };
-static const ApiMember api_params_96[] = {
+static const ApiMember api_params_92[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_97[] = {
+static const ApiMember api_params_93[] = {
     {"context", "FocusContext", FALSE, "Live context from a trusted shortcut event."},
 };
-static const ApiMember api_params_99[] = {
+static const ApiMember api_params_95[] = {
     {"id", "string", FALSE, "Stable workspace ID."},
 };
-static const ApiMember api_params_100[] = {
+static const ApiMember api_params_96[] = {
     {"name", "string", FALSE, "Nonempty UTF-8 name of at most 80 characters."},
     {"options", "WorkspaceCreateOptions", TRUE, ""},
 };
@@ -942,20 +915,16 @@ static const ApiFunction api_functions[] = {
     {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_55, 1, "LayerSurface[]"},
     {"lerp", "Return a + (b - a) * t.", api_params_56, 3, "number"},
     {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_57, 1, "boolean"},
-    {"monitors.list", "Return the current monitor snapshot.", NULL, 0, "Monitor[]"},
-    {"monitors.primary", "Return the primary monitor, or nil when none is available.", NULL, 0, "Monitor|nil"},
-    {"monitors.privacy_screen", "Return the current privacy screen settings and per-monitor states.", NULL, 0, "PrivacyScreenSnapshot"},
-    {"monitors.set_privacy_screen", "Set the runtime privacy screen override.", api_params_61, 1, "Operation<Json>"},
-    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_62, 2, "EventSubscription"},
-    {"once", "Register a callback that is removed after its first event.", api_params_63, 2, "EventSubscription"},
-    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_64, 1, "Output|nil"},
+    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_58, 2, "EventSubscription"},
+    {"once", "Register a callback that is removed after its first event.", api_params_59, 2, "EventSubscription"},
+    {"outputs.by_id", "Return the output with this connector ID, or nil when it does not exist.", api_params_60, 1, "Output|nil"},
     {"outputs.list", "Return all current outputs. The list is empty until the first output snapshot is published.", NULL, 0, "Output[]"},
     {"outputs.primary", "Return the primary output, or nil when there is none.", NULL, 0, "Output|nil"},
     {"outputs.renderer", "Return the compositor renderer, or nil until the first output snapshot is published.", NULL, 0, "Renderer|nil"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_71, 2, "Process"},
+    {"process.spawn", "Start a program. The process runs in its own session and process group. It keeps running when the config reloads, but the Process handle belongs to the runtime that started it.", api_params_67, 2, "Process"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.activity", "Read the session idle state and elapsed idle time.", NULL, 0, "SessionActivity"},
@@ -966,25 +935,25 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Request that the machine reboot through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Request that the session suspend through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
-    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_82, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_83, 3, "Operation<ShortcutBinding>"},
-    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_84, 1, "Operation<ShortcutCaptureResult>"},
-    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_85, 2, "Operation<ShortcutEndSessionResult>"},
+    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_78, 1, "ShortcutAction[]"},
+    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_79, 3, "Operation<ShortcutBinding>"},
+    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_80, 1, "Operation<ShortcutCaptureResult>"},
+    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_81, 2, "Operation<ShortcutEndSessionResult>"},
     {"shortcuts.list", "List the configured shortcut records.", NULL, 0, "ShortcutState[]"},
-    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_87, 1, "Operation<ShortcutUnbindResult>"},
+    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_83, 1, "Operation<ShortcutUnbindResult>"},
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
-    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_89, 1, "Operation<nil>"},
+    {"timers.after", "An Operation that succeeds with nil after the given time. Use it from an event handler or an operation callback, not while the config file loads.", api_params_85, 1, "Operation<nil>"},
     {"timers.now", "Seconds on a monotonic clock. Only differences between two readings are meaningful.", NULL, 0, "number"},
     {"tween", "Create an empty tween.", NULL, 0, "Tween"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_93, 1, ""},
-    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_94, 1, "Window|nil"},
+    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_89, 1, ""},
+    {"windows.by_id", "Return the window with this stable ID, or nil when it does not exist.", api_params_90, 1, "Window|nil"},
     {"windows.focused", "Return the focused window, or nil when no window has focus.", NULL, 0, "Window|nil"},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_96, 1, "Window[]"},
-    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_97, 1, "Operation<SnapContext>"},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_92, 1, "Window[]"},
+    {"windows.snap_context", "Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot choose the window.", api_params_93, 1, "Operation<SnapContext>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_99, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_100, 2, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_95, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_96, 2, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},

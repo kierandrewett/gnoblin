@@ -1,4 +1,4 @@
-/* Live handles for the things a shell touches: windows, workspaces and layer surfaces.
+/* Live handles for the things a shell touches: windows, workspaces, layer surfaces and outputs.
  *
  * A record of one of these kinds is interned by kind and id, so every read of the same window
  * returns the same userdata and that userdata always shows the newest state the runtime has seen.
@@ -22,14 +22,15 @@ typedef struct {
 
 static const char* const window_signals[] = {"changed", "closed", "focused", "unfocused", NULL};
 static const char* const workspace_signals[] = {"changed", "closed", "activated", NULL};
-static const char* const layer_signals[] = {"changed", "closed", NULL};
+static const char* const changed_closed[] = {"changed", "closed", NULL};
 static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
 static const char* const none[] = {NULL};
 
 static const LuaObjectKind object_kinds[] = {
     {"Window", window_signals, window_animatable},
     {"Workspace", workspace_signals, none},
-    {"LayerSurface", layer_signals, none},
+    {"LayerSurface", changed_closed, none},
+    {"Output", changed_closed, none},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
@@ -51,6 +52,8 @@ static const struct {
     {"gnoblin.workspace.removed", "Workspace", "last", "closed", NULL},
     {"gnoblin.layer.changed", "LayerSurface", "layer", "changed", NULL},
     {"gnoblin.layer.removed", "LayerSurface", "last", "closed", NULL},
+    {"gnoblin.output.changed", "Output", "output", "changed", NULL},
+    {"gnoblin.output.removed", "Output", "last", "closed", NULL},
 };
 
 static const LuaObjectKind* object_kind(const char* kind) {

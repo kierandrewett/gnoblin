@@ -73,34 +73,6 @@ void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* objec
     lua_remove(state, backing);
 }
 
-int lua_cli_monitor_tostring(lua_State* state) {
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, "id");
-    const char* id = lua_tostring(state, -1);
-    lua_pushfstring(state, "Monitor<%s>", id ? id : "unknown");
-    return 1;
-}
-
-void lua_cli_push_monitor_record(lua_State* state, JsonObject* object) {
-    const char* id = member_string(object, "id", NULL);
-    if (!id || !*id)
-        luaL_error(state, "gnoblin.monitors returned a monitor without a stable id");
-
-    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
-    json_node_set_object(node, object);
-    json_to_lua(state, node);
-    int backing = lua_absindex(state, -1);
-    lua_newuserdatauv(state, 1, 2);
-    int record = lua_absindex(state, -1);
-    lua_pushvalue(state, backing);
-    lua_setiuservalue(state, record, 1);
-    lua_newtable(state);
-    lua_setiuservalue(state, record, 2);
-    luaL_getmetatable(state, GNOBLINCTL_MONITOR_RECORD_METATABLE);
-    lua_setmetatable(state, record);
-    lua_remove(state, backing);
-}
-
 int lua_cli_layer_surface_tostring(lua_State* state) {
     lua_getiuservalue(state, 1, 1);
     lua_getfield(state, -1, "id");

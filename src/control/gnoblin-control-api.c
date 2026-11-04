@@ -372,10 +372,13 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->monitor_state_initialized = TRUE;
     }
     g_clear_error(&monitor_error);
-    initial_outputs = gnoblin_control_output_snapshot_json(control, TRUE, &monitor_error);
+    initial_outputs =
+        gnoblin_control_output_snapshot_json(control, initial_monitors, TRUE, &monitor_error);
     if (!initial_outputs)
         g_warning("gnoblin-native-control: cannot seed output snapshot: %s",
                   monitor_error ? monitor_error->message : "output listing unavailable");
+    else
+        gnoblin_control_publish_output_changes(control, initial_outputs, control->state_revision);
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
     g_signal_connect(control->display, "show-pad-osd", G_CALLBACK(native_show_pad_osd_requested),
                      control);
@@ -624,6 +627,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_hash_table_unref(control->workspace_state);
     if (control->monitor_state)
         g_hash_table_unref(control->monitor_state);
+    if (control->output_state)
+        g_hash_table_unref(control->output_state);
     if (control->input_device_state)
         g_hash_table_unref(control->input_device_state);
     if (control->input_device_ids)

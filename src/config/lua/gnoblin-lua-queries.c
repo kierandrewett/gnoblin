@@ -466,10 +466,11 @@ static GVariant* lua_monitor_array(LuaConfig* config) {
     return g_variant_lookup_value(config->monitor_snapshot, "monitors", G_VARIANT_TYPE("av"));
 }
 
-int lua_monitors_list(lua_State* state) {
+/* The monitors.list wire read. Lua reads displays as Output objects (gnoblin.outputs). */
+int lua_read_monitors(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.list takes no arguments");
+        return luaL_error(state, "monitors.list takes no arguments");
     if (!config || !config->monitor_snapshot)
         return luaL_error(state, "native monitor snapshot is unavailable");
 
@@ -482,8 +483,6 @@ int lua_monitors_list(lua_State* state) {
                                           ? g_variant_get_variant(wrapped)
                                           : g_variant_ref(wrapped);
         push_variant(state, monitor);
-        push_readonly_copy(state, -1);
-        lua_remove(state, -2);
         lua_rawseti(state, -2, i + 1);
     }
     return 1;
@@ -576,64 +575,66 @@ int lua_outputs_renderer(lua_State* state) {
     return 1;
 }
 
-int lua_monitors_primary(lua_State* state) {
+/* The monitors.privacy_screen wire read. Lua reads Output.privacy_screen. */
+int lua_read_privacy_screen(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.primary takes no arguments");
-    if (!config || !config->monitor_snapshot)
-        return luaL_error(state, "native monitor snapshot is unavailable");
-
-    g_autoptr(GVariant) monitors = lua_monitor_array(config);
-    for (gsize i = 0; monitors && i < g_variant_n_children(monitors); i++) {
-        g_autoptr(GVariant) wrapped = g_variant_get_child_value(monitors, i);
-        g_autoptr(GVariant) monitor = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
-                                          ? g_variant_get_variant(wrapped)
-                                          : g_variant_ref(wrapped);
-        gboolean primary = FALSE;
-        if (g_variant_lookup(monitor, "primary", "b", &primary) && primary) {
-            push_variant(state, monitor);
-            push_readonly_copy(state, -1);
-            lua_remove(state, -2);
-            return 1;
-        }
-    }
-    lua_pushnil(state);
-    return 1;
-}
-
-int lua_monitors_privacy_screen(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.monitors.privacy_screen takes no arguments");
+        return luaL_error(state, "monitors.privacy_screen takes no arguments");
     if (!config || !config->monitor_privacy_screen_snapshot)
         return luaL_error(state, "native monitor privacy-screen snapshot is unavailable");
     push_variant(state, config->monitor_privacy_screen_snapshot);
-    push_readonly_copy(state, -1);
-    lua_remove(state, -2);
     return 1;
 }
 
+/* Queue monitors.set_privacy_screen with the value at `value`: true, false or "inherit". */
+static int push_privacy_screen_operation(lua_State* state, LuaConfig* config, int value,
+                                         const char* caller) {
+    if (!lua_isboolean(state, value) && !(lua_type(state, value) == LUA_TSTRING &&
+                                          g_str_equal(lua_tostring(state, value), "inherit")))
+        return luaL_error(state, "%s requires true, false, or 'inherit'", caller);
+    lua_pushlightuserdata(state, config);
+    lua_pushstring(state, "monitors.set_privacy_screen");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_newtable(state);
+    lua_pushvalue(state, value);
+    lua_setfield(state, -2, "value");
+    lua_call(state, 1, 1);
+    return 1;
+}
+
+/* The monitors.set_privacy_screen wire call: {value = true|false|"inherit"}. */
 int lua_monitors_set_privacy_screen(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (config && config->api_calling && lua_gettop(state) == 1 && lua_istable(state, 1)) {
-        static const char* const fields[] = {"value", NULL};
-        if (!table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "monitors.set_privacy_screen accepts only value");
-        lua_getfield(state, 1, "value");
-        lua_replace(state, 1);
-        lua_settop(state, 1);
-    }
-    if (lua_gettop(state) != 1 ||
-        (!lua_isboolean(state, 1) &&
-         !(lua_type(state, 1) == LUA_TSTRING && g_str_equal(lua_tostring(state, 1), "inherit"))))
-        return luaL_error(state,
-                          "gnoblin.monitors.set_privacy_screen requires true, false, or 'inherit'");
+    static const char* const fields[] = {"value", NULL};
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1) || !table_fields_allowed(state, 1, fields))
+        return luaL_error(state, "monitors.set_privacy_screen accepts only value");
+    lua_getfield(state, 1, "value");
+    return push_privacy_screen_operation(state, config, lua_gettop(state),
+                                         "monitors.set_privacy_screen");
+}
 
-    lua_newtable(state);
-    lua_pushvalue(state, 1);
-    lua_setfield(state, -2, "value");
-    int arguments = lua_absindex(state, -1);
-    return call_launch_operation(state, "monitors.set_privacy_screen", arguments);
+/* Output:set_privacy_screen(enabled). The compositor has one privacy screen request for every
+ * output that has the hardware, so this sets that request; it fails on an output without it. */
+int lua_output_set_privacy_screen(lua_State* state) {
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    if (!config || !lua_object_is(state, 1, "Output"))
+        return luaL_error(state, "Output:set_privacy_screen needs an Output");
+    if (lua_gettop(state) != 2)
+        return luaL_error(state, "Output:set_privacy_screen takes one value");
+    lua_getfield(state, 1, "alive");
+    gboolean alive = lua_toboolean(state, -1);
+    gboolean available = FALSE;
+    if (lua_getfield(state, 1, "privacy_screen") == LUA_TUSERDATA) {
+        lua_getfield(state, -1, "available");
+        available = lua_toboolean(state, -1);
+    }
+    lua_getfield(state, 1, "id");
+    if (!alive)
+        return luaL_error(state, "output %s has been removed", lua_tostring(state, -1));
+    if (!available)
+        return luaL_error(state, "output %s has no privacy screen", lua_tostring(state, -1));
+    lua_settop(state, 2);
+    return push_privacy_screen_operation(state, config, 2, "Output:set_privacy_screen");
 }
 
 static GVariant* lua_layer_array(LuaConfig* config) {

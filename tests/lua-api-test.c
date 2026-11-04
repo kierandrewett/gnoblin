@@ -38,6 +38,54 @@ static void assert_equal(GVariant* actual, GVariant* expected) {
     }
 }
 
+/* An output record as the compositor publishes it, with a privacy screen when `privacy`. */
+static GVariant* test_output(const char* id, gboolean primary, double scale, gboolean privacy) {
+    GVariantBuilder mode;
+    g_variant_builder_init(&mode, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&mode, "{sv}", "width", g_variant_new_int32(1280));
+    g_variant_builder_add(&mode, "{sv}", "height", g_variant_new_int32(800));
+    g_variant_builder_add(&mode, "{sv}", "refresh_rate", g_variant_new_double(60.0));
+    GVariantBuilder work_area;
+    g_variant_builder_init(&work_area, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&work_area, "{sv}", "x", g_variant_new_int32(0));
+    g_variant_builder_add(&work_area, "{sv}", "y", g_variant_new_int32(0));
+    g_variant_builder_add(&work_area, "{sv}", "width", g_variant_new_int32(1280));
+    g_variant_builder_add(&work_area, "{sv}", "height", g_variant_new_int32(768));
+    GVariantBuilder privacy_screen;
+    g_variant_builder_init(&privacy_screen, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&privacy_screen, "{sv}", "available", g_variant_new_boolean(privacy));
+    if (privacy) {
+        g_variant_builder_add(&privacy_screen, "{sv}", "enabled", g_variant_new_boolean(FALSE));
+        g_variant_builder_add(&privacy_screen, "{sv}", "locked", g_variant_new_boolean(FALSE));
+    }
+    g_variant_builder_add(&privacy_screen, "{sv}", "requested", g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&privacy_screen, "{sv}", "source", g_variant_new_string("system"));
+    GVariantBuilder output;
+    g_variant_builder_init(&output, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&output, "{sv}", "id", g_variant_new_string(id));
+    g_variant_builder_add(&output, "{sv}", "kind", g_variant_new_string("display"));
+    g_variant_builder_add(&output, "{sv}", "enabled", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&output, "{sv}", "primary", g_variant_new_boolean(primary));
+    g_variant_builder_add(&output, "{sv}", "scale", g_variant_new_double(scale));
+    g_variant_builder_add(&output, "{sv}", "mode", g_variant_builder_end(&mode));
+    g_variant_builder_add(&output, "{sv}", "work_area", g_variant_builder_end(&work_area));
+    g_variant_builder_add(&output, "{sv}", "privacy_screen",
+                          g_variant_builder_end(&privacy_screen));
+    return g_variant_builder_end(&output);
+}
+
+/* Dispatch `event` with `payload` (sunk here) and return how many operations it queued. */
+static gsize dispatch_counting_operations(const char* event, GVariant* payload) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) sunk = g_variant_ref_sink(payload);
+    g_autoptr(GVariant) result = gnoblin_config_dispatch_event(event, sunk, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(result);
+    g_autoptr(GVariant) operations = gnoblin_config_drain_runtime_operations();
+    gnoblin_config_finish_event(TRUE);
+    return g_variant_n_children(operations);
+}
+
 int main(void) {
     g_autoptr(GError) error = NULL;
     g_autofree char* directory = g_dir_make_tmp("gnoblin-api-XXXXXX", &error);
@@ -207,6 +255,35 @@ int main(void) {
         "    assert(not pcall(function()\n"
         "      event.window:thumbnail(481,200)\n"
         "    end))\n"
+        "  end\n"
+        "end)\n"
+        "local output, output_log=nil, {}\n"
+        "g.on('test.outputs', function(event)\n"
+        "  if event.step=='read' then\n"
+        "    assert(g.monitors==nil)\n"
+        "    local list=g.outputs.list()\n"
+        "    output=g.outputs.by_id('eDP-1')\n"
+        "    assert(#list==2 and list[1]==output and g.outputs.primary()==output and "
+        "output.alive)\n"
+        "    assert(output.privacy_screen.available and output.work_area.width==1280)\n"
+        "    output:watch('scale', function(o, value, old)\n"
+        "      output_log[#output_log+1]=string.format('%g>%g', old, value)\n"
+        "    end)\n"
+        "    output:on('changed', function(o, changed)\n"
+        "      output_log[#output_log+1]=table.concat(changed, ',')\n"
+        "    end)\n"
+        "    output:on('closed', function(o) output_log[#output_log+1]='closed' end)\n"
+        "    assert(not pcall(function() output:watch('missing', print) end))\n"
+        "    assert(not pcall(function() list[2]:set_privacy_screen(true) end))\n"
+        "    assert(not pcall(function() output:set_privacy_screen('on') end))\n"
+        "    local operation=output:set_privacy_screen(true)\n"
+        "    assert(operation.method=='monitors.set_privacy_screen')\n"
+        "  else\n"
+        "    assert(table.concat(output_log, ';')=='1>2;scale;closed', table.concat(output_log, "
+        "';'))\n"
+        "    assert(not output.alive and output.scale==2)\n"
+        "    assert(not pcall(function() output:on('changed', print) end))\n"
+        "    g.workspaces.next()\n"
         "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
@@ -574,6 +651,45 @@ int main(void) {
     g_autoptr(GVariant) app_menu_operations = gnoblin_config_drain_runtime_operations();
     g_assert_cmpuint(g_variant_n_children(app_menu_operations), ==, 0);
     gnoblin_config_finish_event(TRUE);
+
+    /* Outputs are live objects: one handle per connector that watches and signals follow. */
+    GVariantBuilder outputs;
+    g_variant_builder_init(&outputs, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&outputs, "v", test_output("eDP-1", TRUE, 1.0, TRUE));
+    g_variant_builder_add(&outputs, "v", test_output("HDMI-1", FALSE, 1.0, FALSE));
+    GVariantBuilder output_snapshot;
+    g_variant_builder_init(&output_snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&output_snapshot, "{sv}", "outputs", g_variant_builder_end(&outputs));
+    g_autoptr(GVariant) output_snapshot_value =
+        g_variant_ref_sink(g_variant_builder_end(&output_snapshot));
+    gnoblin_config_update_output_snapshot(output_snapshot_value, 3);
+    GVariantBuilder read_step;
+    g_variant_builder_init(&read_step, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&read_step, "{sv}", "step", g_variant_new_string("read"));
+    g_assert_cmpuint(
+        dispatch_counting_operations("test.outputs", g_variant_builder_end(&read_step)), ==, 1);
+    GVariantBuilder output_changed;
+    g_variant_builder_init(&output_changed, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&output_changed, "{sv}", "output_id", g_variant_new_string("eDP-1"));
+    g_variant_builder_add(&output_changed, "{sv}", "output", test_output("eDP-1", TRUE, 2.0, TRUE));
+    const char* changed_fields[] = {"scale", NULL};
+    g_variant_builder_add(&output_changed, "{sv}", "changed",
+                          g_variant_new_strv(changed_fields, -1));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.output.changed",
+                                                  g_variant_builder_end(&output_changed)),
+                     ==, 0);
+    GVariantBuilder output_removed;
+    g_variant_builder_init(&output_removed, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&output_removed, "{sv}", "output_id", g_variant_new_string("eDP-1"));
+    g_variant_builder_add(&output_removed, "{sv}", "last", test_output("eDP-1", TRUE, 2.0, TRUE));
+    g_assert_cmpuint(dispatch_counting_operations("gnoblin.output.removed",
+                                                  g_variant_builder_end(&output_removed)),
+                     ==, 0);
+    GVariantBuilder check_step;
+    g_variant_builder_init(&check_step, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&check_step, "{sv}", "step", g_variant_new_string("check"));
+    g_assert_cmpuint(
+        dispatch_counting_operations("test.outputs", g_variant_builder_end(&check_step)), ==, 1);
 
     g_unlink(root);
     g_unlink(component);

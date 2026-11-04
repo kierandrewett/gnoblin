@@ -79,23 +79,22 @@ families.
 | `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
 | `gnoblin.config.reload-failed`       | `path`, `error`, `sequence`, `time`                | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
 
-#### Workspaces, monitors, and layers
+#### Workspaces, outputs, and layers
 
-| Event name                               | Fields                                                                    | Dispatched when                                                                 |
-| ---------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `gnoblin.workspace.created`              | `workspace`                                                               | A runtime workspace is created.                                                 |
-| `gnoblin.workspace.renamed`              | `workspace`                                                               | A workspace display name changes.                                               |
-| `gnoblin.workspace.changed`              | `workspace`, `changed`                                                    | Its position, window count, or persistence state changes.                       |
-| `gnoblin.workspace.removed`              | `workspace_id`, `last`                                                    | A temporary workspace is removed.                                               |
-| `gnoblin.workspace.activated`            | `workspace`, optional `previous_id`                                       | The active workspace changes.                                                   |
-| `gnoblin.workspace.window-moved`         | `window_id`, `from_id`, `to_id`                                           | A window moves from one workspace to another.                                   |
-| `gnoblin.monitor.added`                  | `monitor`                                                                 | An active logical monitor appears in the native runtime.                        |
-| `gnoblin.monitor.changed`                | `monitor`, `changed`                                                      | A listed monitor property changes; `changed` names the changed properties.      |
-| `gnoblin.monitor.removed`                | `monitor_id`, `last`                                                      | An active logical monitor is removed.                                           |
-| `gnoblin.monitor.privacy-screen-changed` | `requested_enabled`, `source`, `revision`, `monitors`, `sequence`, `time` | The effective request, its source, or a monitor's privacy-screen state changes. |
-| `gnoblin.layer.created`                  | `layer`                                                                   | A layer-shell surface appears in the published snapshot.                        |
-| `gnoblin.layer.changed`                  | `layer_id`, `layer`, `changed`                                            | A published layer record changes, including mapped or unmapped transitions.     |
-| `gnoblin.layer.removed`                  | `layer_id`, `last`                                                        | A layer-shell surface disappears from the published snapshot.                   |
+| Event name                       | Fields                              | Dispatched when                                                             |
+| -------------------------------- | ----------------------------------- | --------------------------------------------------------------------------- |
+| `gnoblin.workspace.created`      | `workspace`                         | A runtime workspace is created.                                             |
+| `gnoblin.workspace.renamed`      | `workspace`                         | A workspace display name changes.                                           |
+| `gnoblin.workspace.changed`      | `workspace`, `changed`              | Its position, window count, or persistence state changes.                   |
+| `gnoblin.workspace.removed`      | `workspace_id`, `last`              | A temporary workspace is removed.                                           |
+| `gnoblin.workspace.activated`    | `workspace`, optional `previous_id` | The active workspace changes.                                               |
+| `gnoblin.workspace.window-moved` | `window_id`, `from_id`, `to_id`     | A window moves from one workspace to another.                               |
+| `gnoblin.output.added`           | `output_id`, `output`               | A display is connected.                                                     |
+| `gnoblin.output.changed`         | `output_id`, `output`, `changed`    | A field of an output changes; `changed` names the changed fields.           |
+| `gnoblin.output.removed`         | `output_id`, `last`                 | A display is disconnected.                                                  |
+| `gnoblin.layer.created`          | `layer`                             | A layer-shell surface appears in the published snapshot.                    |
+| `gnoblin.layer.changed`          | `layer_id`, `layer`, `changed`      | A published layer record changes, including mapped or unmapped transitions. |
+| `gnoblin.layer.removed`          | `layer_id`, `last`                  | A layer-shell surface disappears from the published snapshot.               |
 
 #### Windows and focus
 

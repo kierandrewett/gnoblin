@@ -299,13 +299,15 @@ print(selected.name)
 Source selection waits for Mutter or IBus to confirm the change and returns the
 completed `InputSource` record.
 
-Monitor snapshots are available through `gnoblin.monitors.list()` and
-`gnoblin.monitors.primary()`. They return read-only `Monitor` records, or
-`nil` when the session has no primary monitor:
+Read displays with `gnoblin.outputs.list()`, `gnoblin.outputs.primary()` and
+`gnoblin.outputs.by_id(id)`. They return read-only `Output` records, or `nil`
+when no output matches. `output:set_privacy_screen(enabled)` takes `true`,
+`false` or `"inherit"`, waits for the compositor and returns the privacy screen
+state. It fails on an output without a privacy screen:
 
 ```lua
-for _, monitor in ipairs(gnoblin.monitors.list()) do
-    print(monitor.id, monitor.width, monitor.height, monitor.scale)
+for _, output in ipairs(gnoblin.outputs.list()) do
+    print(output.id, output.width, output.height, output.scale)
 end
 ```
 

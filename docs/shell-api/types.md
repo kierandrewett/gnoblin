@@ -9,7 +9,7 @@ The Lua runtime exposes immutable snapshot records after native startup complete
 Runtime APIs return records including `Window`, `Workspace`, `Monitor`, `LayerSurface`, `InputDevice`, `InputSource`, `Launch`, `Capability`, `PrivacyState`, and `SessionStatus`. Each domain page lists the fields and methods for its records:
 
 - [Windows](/shell-api/windows)
-- [Workspaces and monitors](/shell-api/workspaces-monitors)
+- [Workspaces](/shell-api/workspaces)
 - [Layer surfaces](/shell-api/layer-surfaces)
 - [Input](/shell-api/input)
 - [Launch feedback](/shell-api/launch-feedback)

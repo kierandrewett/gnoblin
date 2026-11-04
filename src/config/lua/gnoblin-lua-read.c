@@ -487,9 +487,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "monitor.list") || g_str_equal(method, "monitors.list")) {
-        lua_getfield(state, -1, "monitors");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
+        /* Wire reads only: Lua reads displays as Output objects. */
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_monitors, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "outputs.list") || g_str_equal(method, "output.list")) {
         lua_getfield(state, -1, "outputs");
@@ -502,9 +502,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "monitors.privacy_screen")) {
-        lua_getfield(state, -1, "monitors");
-        lua_getfield(state, -1, "privacy_screen");
-        lua_remove(state, -2);
+        lua_pushlightuserdata(state, config);
+        lua_pushcclosure(state, lua_read_privacy_screen, 1);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "layers.list") || g_str_equal(method, "layer.list")) {
         lua_getfield(state, -1, "layers");

@@ -119,8 +119,15 @@ and gap 7 stay open.
   `Window:restore_or_minimize` stays, because it restores the frame saved before a snap.
 - `launches.snapshot` is gone from Lua. Each `Launch` in `launches.list` has its own revision.
 - Socket clients keep every wire name.
-- Steps (b), (c) and (d) are not done: `gnoblin.monitors` and `gnoblin.outputs` are still two
-  namespaces; `shortcuts.bind`, `launches.begin` and `input.select_source` still take IDs.
+- Step (b), done. `Output` is a live object (`alive`, `on`, `watch`, `changed` and `closed`)
+  and `gnoblin.monitors` is gone from Lua. An `Output` carries its logical monitor's index,
+  size and work area and a `privacy_screen` record. The control publishes merged records and
+  `gnoblin.output.added`, `changed` and `removed` (API 1.88); `gnoblin.monitor.*` events and
+  the `monitors.*` wire reads stay for socket clients only. `Output:set_privacy_screen` sets
+  the one global request: Mutter applies a single privacy screen setting to every capable
+  monitor and syncs the hotkey back to it, so a per-output request would need a Mutter patch.
+- Steps (c) and (d) are not done: `shortcuts.bind`, `launches.begin` and
+  `input.select_source` still take IDs.
 
 ## Decisions
 

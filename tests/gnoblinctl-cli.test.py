@@ -1280,11 +1280,10 @@ def main() -> int:
         subscriptions: list[dict[str, object]] = []
         server_error: list[BaseException] = []
         ready = threading.Event()
-        monitor_request_count = 0
         status_request_count = 0
 
         def serve_once() -> None:
-            nonlocal monitor_request_count, status_request_count
+            nonlocal status_request_count
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
@@ -1342,32 +1341,52 @@ def main() -> int:
                                     "revision": 7,
                                 }
                             elif request["method"] == "monitors.list":
-                                monitor_request_count += 1
-                                if monitor_request_count >= 5:
-                                    result = []
-                                elif monitor_request_count <= 2:
-                                    result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
-                                else:
-                                    result = [
-                                        {
-                                            "id": "HDMI-1",
-                                            "index": 0,
-                                            "name": "Test Display",
-                                            "make": "Acme",
-                                            "model": "Panel 1",
-                                            "serial": "ABC123",
-                                            "primary": True,
-                                            "enabled": True,
-                                            "x": 10,
-                                            "y": 20,
-                                            "width": 1920,
-                                            "height": 1080,
-                                            "scale": 1.5,
-                                            "refresh_rate": 144.0,
-                                            "transform": "normal",
-                                            "revision": 5,
-                                        }
-                                    ]
+                                result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
+                            elif request["method"] == "outputs.list":
+                                result = [
+                                    {
+                                        "id": "HDMI-1",
+                                        "kind": "display",
+                                        "index": 0,
+                                        "name": "Test Display",
+                                        "make": "Acme",
+                                        "model": "Panel 1",
+                                        "serial": "ABC123",
+                                        "primary": True,
+                                        "enabled": True,
+                                        "monitor_id": "HDMI-1",
+                                        "x": 10,
+                                        "y": 20,
+                                        "width": 1920,
+                                        "height": 1080,
+                                        "scale": 1.5,
+                                        "mode": {"width": 2880, "height": 1620, "refresh_rate": 144.0},
+                                        "transform": "normal",
+                                        "privacy_screen": {
+                                            "available": True,
+                                            "enabled": False,
+                                            "locked": False,
+                                            "requested": False,
+                                            "source": "system",
+                                        },
+                                        "revision": 5,
+                                    },
+                                    {
+                                        "id": "DP-1",
+                                        "kind": "display",
+                                        "primary": False,
+                                        "enabled": False,
+                                        "scale": 1.0,
+                                        "mode": {"width": 1920, "height": 1080, "refresh_rate": 60.0},
+                                        "transform": "normal",
+                                        "privacy_screen": {
+                                            "available": False,
+                                            "requested": False,
+                                            "source": "system",
+                                        },
+                                        "revision": 5,
+                                    },
+                                ]
                             elif request["method"] == "windows.list":
                                 result = [
                                     {
@@ -1467,21 +1486,6 @@ def main() -> int:
                                         "revision": 5,
                                     }
                                 ]
-                            elif request["method"] == "monitors.privacy_screen":
-                                result = {
-                                    "requested_enabled": False,
-                                    "source": "system",
-                                    "revision": 31,
-                                    "monitors": [
-                                        {
-                                            "id": "HDMI-1",
-                                            "available": True,
-                                            "enabled": False,
-                                            "locked": False,
-                                        },
-                                        {"id": "DP-1", "available": False},
-                                    ],
-                                }
                             elif request["method"] == "monitors.set_privacy_screen":
                                 result = {"request_id": 41, "method": request["method"]}
                             elif request["method"] == "layers.list":
@@ -2330,21 +2334,23 @@ def main() -> int:
             "assert(workspace:activate().active)\n"
             'assert(workspace:rename("Renamed").name == "Renamed")\n'
             'assert(workspace:remove().id == "codex-probe")\n'
-            "local monitors = gnoblin.monitors.list()\n"
-            'assert(#monitors == 1 and monitors[1].id == "HDMI-1")\n'
-            "local monitor = monitors[1]\n"
-            'assert(monitor.name == "Test Display" and monitor.make == "Acme")\n'
-            'assert(monitor.model == "Panel 1" and monitor.serial == "ABC123")\n'
-            "assert(monitor.primary and monitor.enabled)\n"
-            "assert(monitor.x == 10 and monitor.y == 20)\n"
-            "assert(monitor.width == 1920 and monitor.height == 1080)\n"
-            "assert(monitor.scale == 1.5 and monitor.refresh_rate == 144.0)\n"
-            'assert(monitor.transform == "normal" and monitor.revision == 5)\n'
-            'assert(not pcall(function() monitor.id = "DP-1" end))\n'
-            "assert(not pcall(function() monitor.missing = true end))\n"
-            'assert(tostring(monitor) == "Monitor<HDMI-1>")\n'
-            'assert(gnoblin.monitors.primary().id == "HDMI-1")\n'
-            "assert(gnoblin.monitors.primary() == nil)\n"
+            "local outputs = gnoblin.outputs.list()\n"
+            'assert(#outputs == 2 and outputs[1].id == "HDMI-1")\n'
+            "local output = outputs[1]\n"
+            'assert(output.name == "Test Display" and output.make == "Acme")\n'
+            'assert(output.model == "Panel 1" and output.serial == "ABC123")\n'
+            "assert(output.primary and output.enabled and output.index == 0)\n"
+            "assert(output.x == 10 and output.y == 20)\n"
+            "assert(output.width == 1920 and output.height == 1080)\n"
+            "assert(output.scale == 1.5 and output.mode.refresh_rate == 144.0)\n"
+            'assert(output.transform == "normal" and output.revision == 5)\n'
+            'assert(not pcall(function() output.id = "DP-1" end))\n'
+            "assert(not pcall(function() output.missing = true end))\n"
+            'assert(tostring(output) == "Output<HDMI-1>")\n'
+            'assert(gnoblin.outputs.primary().id == "HDMI-1")\n'
+            'assert(gnoblin.outputs.by_id("missing") == nil)\n'
+            "local removed_ok, removed_error = pcall(function() return gnoblin.monitors.list end)\n"
+            'assert(not removed_ok and removed_error:match("use gnoblin.outputs.list"))\n'
             "local layers = gnoblin.layers.list()\n"
             'assert(#layers == 1 and layers[1].id == "surface-1")\n'
             "local layer = layers[1]\n"
@@ -2805,26 +2811,30 @@ def main() -> int:
         )
         orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
         assert orientation_lua.returncode == 0, orientation_lua.stderr
-        privacy_screen_file = Path(temporary) / "monitor-privacy-screen.lua"
+        privacy_screen_file = Path(temporary) / "output-privacy-screen.lua"
         privacy_screen_file.write_text(
-            "local initial = gnoblin.monitors.privacy_screen()\n"
-            'assert(not initial.requested_enabled and initial.source == "system" and initial.revision == 31)\n'
-            'assert(initial.monitors[1].id == "HDMI-1" and initial.monitors[1].available)\n'
-            "assert(not initial.monitors[1].enabled and not initial.monitors[1].locked)\n"
-            'assert(initial.monitors[2].id == "DP-1" and not initial.monitors[2].available)\n'
-            "assert(initial.monitors[2].enabled == nil and initial.monitors[2].locked == nil)\n"
+            "local outputs = gnoblin.outputs.list()\n"
+            "local hdmi, dp = outputs[1], outputs[2]\n"
+            "local initial = hdmi.privacy_screen\n"
+            'assert(initial.available and not initial.requested and initial.source == "system")\n'
+            "assert(not initial.enabled and not initial.locked)\n"
+            'assert(dp.id == "DP-1" and not dp.privacy_screen.available)\n'
+            "assert(dp.privacy_screen.enabled == nil and dp.privacy_screen.locked == nil)\n"
             'assert(not pcall(function() initial.source = "runtime" end))\n'
             'assert(not pcall(function() rawset(initial, "source", "runtime") end))\n'
-            "local enabled = gnoblin.monitors.set_privacy_screen(true)\n"
+            "local enabled = hdmi:set_privacy_screen(true)\n"
             'assert(enabled.requested_enabled and enabled.source == "runtime" and enabled.revision == 32)\n'
             "assert(enabled.monitors[1].enabled and not enabled.monitors[2].available)\n"
             "assert(not pcall(function() enabled.monitors[1].enabled = false end))\n"
-            "local disabled = gnoblin.monitors.set_privacy_screen(false)\n"
+            "local disabled = hdmi:set_privacy_screen(false)\n"
             'assert(not disabled.requested_enabled and disabled.source == "runtime")\n'
-            'local inherited = gnoblin.monitors.set_privacy_screen("inherit")\n'
+            'local inherited = hdmi:set_privacy_screen("inherit")\n'
             'assert(not inherited.requested_enabled and inherited.source == "system")\n'
-            'assert(not pcall(function() gnoblin.monitors.set_privacy_screen("on") end))\n'
-            "assert(not pcall(function() gnoblin.monitors.privacy_screen(true) end))\n",
+            'assert(not pcall(function() hdmi:set_privacy_screen("on") end))\n'
+            "local dp_ok, dp_error = pcall(function() dp:set_privacy_screen(true) end)\n"
+            'assert(not dp_ok and dp_error:match("no privacy screen"))\n'
+            "local removed_ok, removed_error = pcall(function() return gnoblin.monitors.set_privacy_screen end)\n"
+            'assert(not removed_ok and removed_error:match("output:set_privacy_screen"))\n',
             encoding="utf-8",
         )
         privacy_screen_result = run(binary, "--socket", socket_path, "lua", str(privacy_screen_file))
@@ -2985,16 +2995,14 @@ def main() -> int:
             if request.get("method") in {"monitors.privacy_screen", "monitors.set_privacy_screen"}
         ]
         assert [request["method"] for request in privacy_screen_requests] == [
-            "monitors.privacy_screen",
             "monitors.set_privacy_screen",
             "monitors.set_privacy_screen",
             "monitors.set_privacy_screen",
         ]
         assert all(request["api_version"] == {"major": 1, "minor": 74} for request in privacy_screen_requests)
-        assert privacy_screen_requests[0]["arguments"] == {}
-        assert privacy_screen_requests[1]["arguments"] == {"value": True}
-        assert privacy_screen_requests[2]["arguments"] == {"value": False}
-        assert privacy_screen_requests[3]["arguments"] == {"value": "inherit"}
+        assert privacy_screen_requests[0]["arguments"] == {"value": True}
+        assert privacy_screen_requests[1]["arguments"] == {"value": False}
+        assert privacy_screen_requests[2]["arguments"] == {"value": "inherit"}
         assert all(call["api_version"] == {"major": 1, "minor": 18} for call in animation_calls)
         assert received[57]["method"] == "privacy.state"
         assert received[57]["api_version"] == {"major": 1, "minor": 47}
@@ -3098,12 +3106,12 @@ def main() -> int:
         assert received[33]["arguments"] == {"id": "codex-probe", "name": "Renamed"}
         assert received[34]["method"] == "workspace.remove"
         assert received[34]["arguments"] == {"id": "codex-probe"}
-        assert received[35]["method"] == "monitors.list"
-        assert received[35]["api_version"] == {"major": 1, "minor": 37}
+        assert received[35]["method"] == "outputs.list"
+        assert received[35]["api_version"] == {"major": 1, "minor": 82}
         assert received[35]["arguments"] == {}
-        assert received[36]["method"] == "monitors.list"
+        assert received[36]["method"] == "outputs.list"
         assert received[36]["arguments"] == {}
-        assert received[37]["method"] == "monitors.list"
+        assert received[37]["method"] == "outputs.list"
         assert received[37]["arguments"] == {}
         assert received[38]["method"] == "layers.list"
         assert received[38]["api_version"] == {"major": 1, "minor": 37}

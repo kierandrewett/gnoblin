@@ -135,22 +135,6 @@ int lua_api_index(lua_State* state) {
             g_str_equal(name, "by_id") || g_str_equal(name, "renderer"))
             return 1;
     }
-    if (g_str_equal(prefix, "monitors")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        if (g_str_equal(name, "list"))
-            lua_pushcclosure(state, lua_cli_monitors_list, 1);
-        else if (g_str_equal(name, "primary"))
-            lua_pushcclosure(state, lua_cli_monitors_primary, 1);
-        else if (g_str_equal(name, "privacy_screen"))
-            lua_pushcclosure(state, lua_cli_monitors_privacy_screen, 1);
-        else if (g_str_equal(name, "set_privacy_screen"))
-            lua_pushcclosure(state, lua_cli_monitors_set_privacy_screen, 1);
-        else
-            lua_pop(state, 1);
-        if (g_str_equal(name, "list") || g_str_equal(name, "primary") ||
-            g_str_equal(name, "privacy_screen") || g_str_equal(name, "set_privacy_screen"))
-            return 1;
-    }
     if (g_str_equal(prefix, "layers")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         if (g_str_equal(name, "list"))
@@ -327,7 +311,11 @@ int lua_api_index(lua_State* state) {
         }
     }
     static const char* const removed[][2] = {
-        {"monitor.list", "gnoblin.monitors.list"},
+        {"monitor.list", "gnoblin.outputs.list"},
+        {"monitors.list", "gnoblin.outputs.list"},
+        {"monitors.primary", "gnoblin.outputs.primary"},
+        {"monitors.privacy_screen", "output.privacy_screen"},
+        {"monitors.set_privacy_screen", "output:set_privacy_screen"},
         {"layer.list", "gnoblin.layers.list"},
         {"input.list", "gnoblin.input.sources"},
         {"input.current", "gnoblin.input.current_source"},
@@ -394,8 +382,8 @@ void register_lua_cli_workspace_record(lua_State* state) {
     lua_pop(state, 1);
 }
 
-void register_lua_cli_monitor_record(lua_State* state) {
-    if (!luaL_newmetatable(state, GNOBLINCTL_MONITOR_RECORD_METATABLE)) {
+void register_lua_cli_output_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_OUTPUT_RECORD_METATABLE)) {
         lua_pop(state, 1);
         return;
     }
@@ -407,7 +395,7 @@ void register_lua_cli_monitor_record(lua_State* state) {
     lua_setfield(state, -2, "__len");
     lua_pushcfunction(state, lua_cli_window_pairs);
     lua_setfield(state, -2, "__pairs");
-    lua_pushcfunction(state, lua_cli_monitor_tostring);
+    lua_pushcfunction(state, lua_cli_output_tostring);
     lua_setfield(state, -2, "__tostring");
     lua_pop(state, 1);
 }

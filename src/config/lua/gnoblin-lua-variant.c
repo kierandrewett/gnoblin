@@ -500,10 +500,21 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
     lua_getfield(state, backing, "playing");
     is_animation_preview &= lua_isboolean(state, -1);
     lua_pop(state, 1);
+    /* An output is a display ("virtual" is reserved) with a current mode. */
+    lua_getfield(state, backing, "kind");
+    gboolean is_output =
+        lua_type(state, -1) == LUA_TSTRING && (g_str_equal(lua_tostring(state, -1), "display") ||
+                                               g_str_equal(lua_tostring(state, -1), "virtual"));
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "mode");
+    is_output &= lua_istable(state, -1) ||
+                 luaL_testudata(state, -1, LUA_READONLY_SNAPSHOT_METATABLE) != NULL;
+    lua_pop(state, 1);
     const char* kind = is_window              ? "Window"
                        : is_animation_preview ? "AnimationPreview"
                        : is_workspace         ? "Workspace"
                        : is_layer             ? "LayerSurface"
+                       : is_output            ? "Output"
                                               : NULL;
     if (kind)
         add_record_methods(state, method_table, kind);
@@ -521,9 +532,9 @@ static int lua_readonly_pairs(lua_State* state) {
 }
 
 /* Snapshot userdata cannot be changed with ordinary assignment or rawset; nested tables use the
- * same wrapper. A window, workspace or layer surface record becomes the live handle for its id
- * (gnoblin-lua-objects.c): the one userdata per object, moved to the newest state. Its memory
- * block holds whether the object has ended. */
+ * same wrapper. A window, workspace, layer surface or output record becomes the live handle for
+ * its id (gnoblin-lua-objects.c): the one userdata per object, moved to the newest state. Its
+ * memory block holds whether the object has ended. */
 void push_readonly_copy(lua_State* state, int index) {
     index = lua_absindex(state, index);
     if (!lua_istable(state, index)) {

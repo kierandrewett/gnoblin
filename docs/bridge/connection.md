@@ -161,3 +161,4 @@ Malformed JSON and oversized input disconnect the client. Other invalid requests
 | 1.85            | Replaces `window_management.center_new_windows` with `new_window_placement` (`free_space`, `center` or `cascade`) |
 | 1.86            | Removes the permission and portal grant API and its events; see `CHANGELOG.md`                                    |
 | 1.87            | Adds the `gnoblin.location.authorization-finished` event                                                          |
+| 1.88            | Adds the `gnoblin.output.added`, `gnoblin.output.changed` and `gnoblin.output.removed` events and output fields   |

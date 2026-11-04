@@ -156,14 +156,13 @@ const LuaApiEntry lua_api[] = {
     {"Workspace:on", NULL, lua_object_on},
     {"Workspace:watch", NULL, lua_object_watch},
 
-    {"monitors.list", NULL, lua_monitors_list},
-    {"monitors.primary", NULL, lua_monitors_primary},
-    {"monitors.privacy_screen", NULL, lua_monitors_privacy_screen},
-    {"monitors.set_privacy_screen", "monitors.set_privacy_screen", lua_monitors_set_privacy_screen},
     {"outputs.list", NULL, lua_outputs_list},
     {"outputs.primary", NULL, lua_outputs_primary},
     {"outputs.by_id", NULL, lua_outputs_by_id},
     {"outputs.renderer", NULL, lua_outputs_renderer},
+    {"Output:set_privacy_screen", NULL, lua_output_set_privacy_screen},
+    {"Output:on", NULL, lua_object_on},
+    {"Output:watch", NULL, lua_object_watch},
     {"layers.list", NULL, lua_layers_list},
     {"layers.animation_policy", NULL, lua_layers_animation_policy},
     {"LayerSurface:on", NULL, lua_object_on},
@@ -246,6 +245,7 @@ static const LuaApiEntry bridge_operations[] = {
     {"animation.play", "animation.play", NULL},
     {"animation.pause", "animation.pause", NULL},
     {"animation.stop", "animation.stop", NULL},
+    {"monitors.set_privacy_screen", "monitors.set_privacy_screen", lua_monitors_set_privacy_screen},
     {NULL, NULL, NULL},
 };
 

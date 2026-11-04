@@ -204,6 +204,7 @@ struct _GnoblinNativeControl {
     GHashTable* workspace_state;
     GHashTable* workspace_signal_handler_ids;
     GHashTable* monitor_state;
+    GHashTable* output_state;
     GHashTable* input_device_state;
     GHashTable* input_device_ids;
     GVariant* privacy_snapshot;
@@ -335,6 +336,7 @@ struct _GnoblinNativeControl {
     gboolean layer_state_initialized;
     gboolean workspace_state_initialized;
     gboolean monitor_state_initialized;
+    gboolean output_state_initialized;
     gboolean input_device_state_initialized;
     gboolean input_source_state_initialized;
     gboolean per_window_input_sources;
@@ -558,11 +560,18 @@ G_GNUC_INTERNAL JsonNode* gnoblin_control_workspace_snapshot_json(GnoblinNativeC
 G_GNUC_INTERNAL JsonNode* gnoblin_control_monitor_snapshot_json(GnoblinNativeControl* control,
                                                                 gboolean update_lua_snapshot,
                                                                 GError** error);
+/* Output records merged with their logical monitor (index, size, work area) from `monitors` and
+ * their privacy screen state; `monitors` may be NULL. */
 G_GNUC_INTERNAL JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
+                                                               JsonNode* monitors,
                                                                gboolean update_lua_snapshot,
                                                                GError** error);
 G_GNUC_INTERNAL GHashTable* gnoblin_control_workspace_state_from_snapshot(JsonNode* snapshot);
 G_GNUC_INTERNAL GHashTable* gnoblin_control_monitor_state_from_snapshot(JsonNode* snapshot);
+G_GNUC_INTERNAL GHashTable* gnoblin_control_output_state_from_snapshot(JsonNode* snapshot);
+/* Raise gnoblin.output.added, changed and removed for the difference to the last outputs. */
+G_GNUC_INTERNAL void gnoblin_control_publish_output_changes(GnoblinNativeControl* control,
+                                                            JsonNode* snapshot, guint64 revision);
 G_GNUC_INTERNAL char* gnoblin_control_monitor_id_for_index(JsonNode* snapshot, int monitor_index);
 G_GNUC_INTERNAL void gnoblin_control_publish_workspace_changes(GnoblinNativeControl* control,
                                                                JsonNode* snapshot,

@@ -102,7 +102,7 @@ typedef struct {
 #define GNOBLINCTL_READONLY_TABLE_METATABLE "gnoblinctl.ReadonlyTable"
 #define GNOBLINCTL_WINDOW_RECORD_METATABLE "gnoblinctl.Window"
 #define GNOBLINCTL_WORKSPACE_RECORD_METATABLE "gnoblinctl.Workspace"
-#define GNOBLINCTL_MONITOR_RECORD_METATABLE "gnoblinctl.Monitor"
+#define GNOBLINCTL_OUTPUT_RECORD_METATABLE "gnoblinctl.Output"
 #define GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE "gnoblinctl.LayerSurface"
 #define GNOBLINCTL_ANIMATION_PREVIEW_RECORD_METATABLE "gnoblinctl.AnimationPreview"
 #define GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE "gnoblinctl.InputDevice"
@@ -212,8 +212,7 @@ int lua_cli_text_target_tostring(lua_State* state);
 int lua_cli_input_text_target(lua_State* state);
 int lua_cli_workspace_tostring(lua_State* state);
 void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* object);
-int lua_cli_monitor_tostring(lua_State* state);
-void lua_cli_push_monitor_record(lua_State* state, JsonObject* object);
+int lua_cli_output_tostring(lua_State* state);
 int lua_cli_layer_surface_tostring(lua_State* state);
 void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object);
 void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revision,
@@ -257,10 +256,6 @@ int lua_cli_layers_list(lua_State* state);
 void register_lua_cli_layer_surface_record(lua_State* state);
 void register_lua_cli_animation_preview_record(lua_State* state);
 void register_lua_cli_input_record(lua_State* state, const char* metatable);
-int lua_cli_monitors_list(lua_State* state);
-int lua_cli_monitors_primary(lua_State* state);
-int lua_cli_monitors_privacy_screen(lua_State* state);
-int lua_cli_monitors_set_privacy_screen(lua_State* state);
 int lua_cli_workspaces_list(lua_State* state);
 int lua_cli_workspaces_active(lua_State* state);
 int lua_cli_workspaces_by_id(lua_State* state);
@@ -291,7 +286,7 @@ void cli_lua_events_clear(Cli* cli);
 int lua_api_index(lua_State* state);
 void register_lua_cli_window_record(lua_State* state);
 void register_lua_cli_workspace_record(lua_State* state);
-void register_lua_cli_monitor_record(lua_State* state);
+void register_lua_cli_output_record(lua_State* state);
 void print_lua_error(lua_State* state, const char* prefix);
 int run_lua_console(Cli* cli, const char* file);
 void render(const char* command, const char* action, JsonNode* result, const char* format,

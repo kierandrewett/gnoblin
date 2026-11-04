@@ -387,14 +387,16 @@ JsonNode* gnoblin_control_monitor_snapshot_json(GnoblinNativeControl* control,
     return g_steal_pointer(&json);
 }
 
-GHashTable* gnoblin_control_monitor_state_from_snapshot(JsonNode* snapshot) {
+/* Map the id of each record in the `member` array of `snapshot` to its JSON text. */
+static GHashTable* record_state_from_snapshot(JsonNode* snapshot, const char* member) {
     GHashTable* state =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_monitor_state_free);
-    if (!JSON_NODE_HOLDS_OBJECT(snapshot))
+    if (!JSON_NODE_HOLDS_OBJECT(snapshot) ||
+        !json_object_has_member(json_node_get_object(snapshot), member))
         return state;
-    JsonArray* monitors = json_object_get_array_member(json_node_get_object(snapshot), "monitors");
-    for (guint i = 0; monitors && i < json_array_get_length(monitors); i++) {
-        JsonNode* record = json_array_get_element(monitors, i);
+    JsonArray* records = json_object_get_array_member(json_node_get_object(snapshot), member);
+    for (guint i = 0; records && i < json_array_get_length(records); i++) {
+        JsonNode* record = json_array_get_element(records, i);
         if (!JSON_NODE_HOLDS_OBJECT(record))
             continue;
         const char* id =
@@ -406,6 +408,14 @@ GHashTable* gnoblin_control_monitor_state_from_snapshot(JsonNode* snapshot) {
         g_hash_table_insert(state, g_strdup(id), value);
     }
     return state;
+}
+
+GHashTable* gnoblin_control_monitor_state_from_snapshot(JsonNode* snapshot) {
+    return record_state_from_snapshot(snapshot, "monitors");
+}
+
+GHashTable* gnoblin_control_output_state_from_snapshot(JsonNode* snapshot) {
+    return record_state_from_snapshot(snapshot, "outputs");
 }
 
 char* gnoblin_control_monitor_id_for_index(JsonNode* snapshot, int monitor_index) {
@@ -428,9 +438,11 @@ char* gnoblin_control_monitor_id_for_index(JsonNode* snapshot, int monitor_index
     return g_strdup(matched_id);
 }
 
-static void dispatch_lua_monitor_event(GnoblinNativeControl* control, guint64 revision,
-                                       const char* event, const char* id, JsonNode* monitor,
-                                       JsonNode* last, JsonArray* changed) {
+/* Monitor events go to socket clients only; the Lua runtime follows displays through the
+ * gnoblin.output events (gnoblin-control-monitors.c). */
+static void publish_monitor_event(GnoblinNativeControl* control, guint64 revision,
+                                  const char* event, const char* id, JsonNode* monitor,
+                                  JsonNode* last, JsonArray* changed) {
     g_autoptr(JsonNode) root = json_node_new(JSON_NODE_OBJECT);
     JsonObject* object = json_object_new();
     json_node_take_object(root, object);
@@ -447,9 +459,6 @@ static void dispatch_lua_monitor_event(GnoblinNativeControl* control, guint64 re
             json_object_set_array_member(object, "changed", json_array_ref(changed));
     }
     gnoblin_control_publish_socket_event(control, root);
-    g_autoptr(GVariant) payload = gnoblin_control_variant_from_json(root);
-    if (payload)
-        gnoblin_control_dispatch_event(control, event, payload);
 }
 
 gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control, JsonNode* snapshot,
@@ -474,8 +483,8 @@ gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control, 
             JsonNode* record = json_parser_get_root(parser);
             if (!previous) {
                 changed_state = TRUE;
-                dispatch_lua_monitor_event(control, revision, "gnoblin.monitor.added", key, record,
-                                           NULL, NULL);
+                publish_monitor_event(control, revision, "gnoblin.monitor.added", key, record, NULL,
+                                      NULL);
                 continue;
             }
             g_autoptr(JsonParser) previous_parser = json_parser_new();
@@ -490,8 +499,8 @@ gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control, 
             }
             if (json_array_get_length(changed)) {
                 changed_state = TRUE;
-                dispatch_lua_monitor_event(control, revision, "gnoblin.monitor.changed", key,
-                                           record, NULL, changed);
+                publish_monitor_event(control, revision, "gnoblin.monitor.changed", key, record,
+                                      NULL, changed);
             }
             json_array_unref(changed);
         }
@@ -504,8 +513,8 @@ gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control, 
             NativeMonitorState* previous = value;
             g_autoptr(JsonParser) parser = json_parser_new();
             if (json_parser_load_from_data(parser, previous->json, -1, NULL))
-                dispatch_lua_monitor_event(control, revision, "gnoblin.monitor.removed", key, NULL,
-                                           json_parser_get_root(parser), NULL);
+                publish_monitor_event(control, revision, "gnoblin.monitor.removed", key, NULL,
+                                      json_parser_get_root(parser), NULL);
         }
     }
     if (control->monitor_state)

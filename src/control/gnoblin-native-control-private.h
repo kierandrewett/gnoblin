@@ -317,6 +317,7 @@ GVariant* normalize_input_fields(const char* group, GVariant* fields, GError** e
 gboolean valid_input_device(const char* group, const char* device);
 GVariant* native_orientation_lock_snapshot(GnoblinNativeControl* control, guint64 revision);
 void native_orientation_lock_publish(GnoblinNativeControl* control);
+gboolean native_monitor_privacy_screen_request(GnoblinNativeControl* control, const char** source);
 GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, guint64 revision);
 void native_monitor_privacy_screen_publish(GnoblinNativeControl* control);
 void native_orientation_manager_notified(GObject* manager, GParamSpec* property,

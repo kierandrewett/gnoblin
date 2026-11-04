@@ -76,7 +76,7 @@ int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_text_target(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
-    register_lua_cli_monitor_record(state);
+    register_lua_cli_output_record(state);
     register_lua_cli_layer_surface_record(state);
     register_lua_cli_animation_preview_record(state);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE);

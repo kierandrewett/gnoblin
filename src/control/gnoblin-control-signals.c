@@ -74,7 +74,7 @@ static gboolean publish_windows(gpointer user_data) {
         gnoblin_control_monitor_snapshot_json(control, TRUE, &monitor_error);
     g_autoptr(GError) output_error = NULL;
     g_autoptr(JsonNode) output_json =
-        gnoblin_control_output_snapshot_json(control, TRUE, &output_error);
+        gnoblin_control_output_snapshot_json(control, monitor_json, TRUE, &output_error);
     g_autoptr(GError) layer_error = NULL;
     g_autoptr(JsonNode) layer_json =
         gnoblin_control_layer_snapshot_json(control, TRUE, &layer_error);
@@ -98,6 +98,11 @@ static gboolean publish_windows(gpointer user_data) {
     else
         g_warning("gnoblin-native-control: cannot publish monitors: %s",
                   monitor_error ? monitor_error->message : "monitor listing unavailable");
+    if (output_json)
+        gnoblin_control_publish_output_changes(control, output_json, revision);
+    else
+        g_warning("gnoblin-native-control: cannot publish outputs: %s",
+                  output_error ? output_error->message : "output listing unavailable");
     if (layer_json)
         publish_layer_changes(control, layer_json, revision);
     else

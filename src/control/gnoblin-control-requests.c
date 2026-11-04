@@ -140,6 +140,10 @@ char* handle_request(Client* client, const char* data, gsize length) {
                                        "location authorization finished events require API "
                                        "version 1.87");
             }
+            if (g_str_has_prefix(name, "gnoblin.output.") && client->api_minor < 88) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL, "output events require API version 1.88");
+            }
             if (g_str_has_prefix(name, "gnoblin.auth.") && client->api_minor < 78) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "auth events require API version 1.78");

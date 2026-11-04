@@ -1086,17 +1086,25 @@ void native_orientation_lock_publish(GnoblinNativeControl* control) {
     native_runtime_dispatch_event(control, "gnoblin.input.orientation-lock-changed", event_payload);
 }
 
-GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, guint64 revision) {
+/* The privacy screen state the session asks every capable panel for, and where that request
+ * comes from: a runtime override, the configuration or the system setting. Mutter applies one
+ * request to all outputs; there is no per-output request. */
+gboolean native_monitor_privacy_screen_request(GnoblinNativeControl* control, const char** source) {
     MetaSettings* settings = meta_backend_get_settings(control->backend);
-    const char* source = control->monitor_privacy_screen_runtime_override ? "runtime" : "system";
+    *source = control->monitor_privacy_screen_runtime_override ? "runtime" : "system";
     gboolean configured = FALSE;
     g_autoptr(GVariant) document = gnoblin_runtime_cache_get_document(control->runtime_cache);
     g_autoptr(GVariant) preferences =
         document ? g_variant_lookup_value(document, "monitors", G_VARIANT_TYPE_VARDICT) : NULL;
     if (!control->monitor_privacy_screen_runtime_override && preferences &&
         g_variant_lookup(preferences, "privacy-screen", "b", &configured))
-        source = "config";
+        *source = "config";
+    return settings && meta_settings_is_privacy_screen_enabled(settings);
+}
 
+GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, guint64 revision) {
+    const char* source = NULL;
+    gboolean requested = native_monitor_privacy_screen_request(control, &source);
     GVariantBuilder monitors;
     g_variant_builder_init(&monitors, G_VARIANT_TYPE("av"));
     GList* logical_monitors =
@@ -1136,9 +1144,7 @@ GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control, 
 
     GVariantBuilder snapshot;
     g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(
-        &snapshot, "{sv}", "requested_enabled",
-        g_variant_new_boolean(settings && meta_settings_is_privacy_screen_enabled(settings)));
+    g_variant_builder_add(&snapshot, "{sv}", "requested_enabled", g_variant_new_boolean(requested));
     g_variant_builder_add(&snapshot, "{sv}", "source", g_variant_new_string(source));
     g_variant_builder_add(&snapshot, "{sv}", "revision", g_variant_new_uint64(revision));
     g_variant_builder_add(&snapshot, "{sv}", "monitors", g_variant_builder_end(&monitors));
@@ -1168,6 +1174,10 @@ void native_monitor_privacy_screen_publish(GnoblinNativeControl* control) {
     if (!initialized)
         return;
 
+    /* Each Output record carries its privacy screen state, so publish the outputs again; Lua
+     * sees the change as gnoblin.output.changed. The event below is for socket clients. */
+    schedule_windows(control);
+
     guint64 sequence = ++control->event_sequence;
     gint64 time = g_get_monotonic_time();
     GVariantBuilder event_builder;
@@ -1188,7 +1198,6 @@ void native_monitor_privacy_screen_publish(GnoblinNativeControl* control) {
     g_autoptr(JsonNode) json = json_from_variant(event_payload);
     if (JSON_NODE_HOLDS_OBJECT(json))
         publish_native_socket_event(control, json);
-    native_runtime_dispatch_event(control, "gnoblin.monitor.privacy-screen-changed", event_payload);
 }
 
 void native_orientation_manager_notified(GObject* manager, GParamSpec* property,

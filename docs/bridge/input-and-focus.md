@@ -199,8 +199,8 @@ The socket exposes these reads at the listed API versions:
 | 1.19        | `focus.policy`            | `gnoblin.focus.policy`              | None                                                       |
 | 1.37        | `windows.list`            | `gnoblin.windows.list(filter)`      | `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` |
 | 1.37        | `workspaces.list`         | `gnoblin.workspaces.list()`         | None                                                       |
-| 1.37        | `monitors.list`           | `gnoblin.monitors.list()`           | None                                                       |
-| 1.74        | `monitors.privacy_screen` | `gnoblin.monitors.privacy_screen()` | None                                                       |
+| 1.37        | `monitors.list`           | `gnoblin.outputs.list()`            | None                                                       |
+| 1.74        | `monitors.privacy_screen` | `output.privacy_screen`             | None                                                       |
 | 1.37        | `layers.list`             | `gnoblin.layers.list(filter)`       | `monitor_id`, `namespace`, `layer`                         |
 | 1.37        | `launches.list`           | `gnoblin.launches.list()`           | None                                                       |
 | 1.39        | `launches.snapshot`       | `gnoblin.launches.list()`           | None; the reply adds the collection revision               |
