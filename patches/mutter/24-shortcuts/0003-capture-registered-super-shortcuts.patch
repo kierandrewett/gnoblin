@@ -3,9 +3,37 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 29 Sep 2026 07:36:32 +0100
 Subject: [PATCH] mutter: capture registered bare Super shortcut sessions
 
+Capture the sessions of registered bare Super shortcuts, enable the registered overlay modifier capture, and observe
+the passive releases of shortcut modifiers held down.
 ---
+ src/core/events.c      |  3 +++
+ src/core/keybindings.c | 15 +++++++++++++++
+ src/core/mutter.c      |  3 +++
+ 3 files changed, 21 insertions(+)
+
+diff --git a/src/core/events.c b/src/core/events.c
+index c909e7eb..b2cfc5fa 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -31,6 +31,7 @@
+ #include "compositor/compositor-private.h"
+ #include "compositor/meta-window-actor-private.h"
+ #include "core/display-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "core/window-private.h"
+ #include "meta/meta-backend.h"
+ #include "wayland/meta-wayland-private.h"
+@@ -354,6 +355,8 @@ event_callback (const ClutterEvent *event,
+   MetaDisplay *display = data;
+   gboolean retval;
+ 
++  gnoblin_native_control_observe_key_event (display, event);
++
+   display->current_time = clutter_event_get_time (event);
+   retval = meta_display_handle_event (display, event, event_actor);
+   display->current_time = META_CURRENT_TIME;
 diff --git a/src/core/keybindings.c b/src/core/keybindings.c
-index 3a4920d8a..c74074dde 100644
+index 3a4920d8..c74074dd 100644
 --- a/src/core/keybindings.c
 +++ b/src/core/keybindings.c
 @@ -38,6 +38,7 @@
@@ -44,3 +72,20 @@ index 3a4920d8a..c74074dde 100644
    return process_special_modifier_key (display,
                                         event,
                                         window,
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index bed7552d..0d081560 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -210,6 +210,9 @@ main (int argc, char **argv)
+       return EXIT_FAILURE;
+     }
+ 
++  gnoblin_native_control_set_overlay_modifier_hook_available (
++    meta_context_get_display (context), TRUE);
++
+   native_control = gnoblin_native_control_start (
+     context, native_document, gnoblin_runtime_fd,
+     native_settings_revision, &error);
+-- 
+2.55.0
+

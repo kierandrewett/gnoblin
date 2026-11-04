@@ -85,8 +85,6 @@
 22-supervisor-runtime/0002-bootstrap-supervised-runtime.patch
 15-preferences/0009-use-supervisor-config-snapshots.patch
 24-shortcuts/0003-capture-registered-super-shortcuts.patch
-24-shortcuts/0004-register-overlay-modifier-hook.patch
-24-shortcuts/0005-observe-passive-shortcut-hold-releases.patch
 13-screen-capture/0003-window-actor-png-preview.patch
 26-text-target/0001-native-text-target.patch
 05-window-drag/0005-pointer-drag-snap.patch
@@ -116,13 +114,13 @@
 14-input-settings/0012-lua-tablet-output-mapping.patch
 29-privacy-screen/0001-lua-privacy-screen-settings-override.patch
 15-preferences/0013-gnoblin-new-window-placement.patch
-24-shortcuts/0006-validate-handler-backed-actions.patch
-24-shortcuts/0007-flush-keybindings-before-shortcuts.patch
+24-shortcuts/0004-validate-handler-backed-actions.patch
+24-shortcuts/0005-flush-keybindings-before-shortcuts.patch
 25-animation/0005-explicit-animation-policy.patch
-24-shortcuts/0008-configured-pointer-bindings.patch
+24-shortcuts/0006-configured-pointer-bindings.patch
 05-window-drag/0006-pointer-binding-drag-button.patch
 21-input-routing/0002-lua-input-policy-event-routing.patch
-24-shortcuts/0009-lua-input-accelerator-matching.patch
+24-shortcuts/0007-lua-input-accelerator-matching.patch
 08-background-blur/0004-window-rule-background-blur.patch
 08-background-blur/0005-blur-policy.patch
 08-background-blur/0006-fade-blur-with-surface-alpha.patch
