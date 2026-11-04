@@ -60,7 +60,6 @@
 16-session-lock/0005-session-lock-route-verified-lock-surfaces-only.patch
 16-session-lock/0006-session-lock-embargo-clipboard-and-drag-offers.patch
 17-distro-compat/0001-pipewire-1.4-screen-cast-compat.patch
-17-distro-compat/0002-lower-pipewire-minimum.patch
 14-input-settings/0005-input-configure-touchpad-scroll-speed.patch
 18-build-wiring/0001-include-gnoblin-meson-fragments.patch
 18-build-wiring/0002-include-gnoblin-test-fragment.patch
@@ -74,8 +73,8 @@
 06-core-fixes/0004-safe-shutdown-signal-disconnects.patch
 02-wayland-fixes/0004-wayland-retain-surfaces-for-xdg-resources.patch
 02-wayland-fixes/0005-wayland-allow-xdg-constraint-teardown.patch
-17-distro-compat/0003-resolve-monitor-vendors-with-libudev.patch
-17-distro-compat/0004-lower-wayland-minimum-to-1.25.patch
+17-distro-compat/0002-resolve-monitor-vendors-with-libudev.patch
+17-distro-compat/0003-lower-wayland-minimum-to-1.25.patch
 02-wayland-fixes/0006-wayland-tolerate-unavailable-keymap.patch
 22-supervisor-runtime/0001-host-compositor-control-socket-in-native-process.patch
 23-native-workspaces/0001-own-workspace-ids-in-native-compositor.patch
@@ -98,7 +97,7 @@
 09-focus-activation/0002-focus-with-xdg-activation-token.patch
 27-window-clipping/0001-native-rounded-window-clipping.patch
 27-window-clipping/0002-native-x11-window-clipping.patch
-17-distro-compat/0005-lower-libinput-to-1.30.patch
+17-distro-compat/0004-lower-libinput-to-1.30.patch
 27-window-clipping/0003-native-rounded-clip-padding.patch
 27-window-clipping/0004-native-csd-reconstruction.patch
 27-window-clipping/0005-native-window-shadow-geometry-and-scanout.patch
