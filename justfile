@@ -1,0 +1,42 @@
+# Canonical task runner for the Rust workspace.
+#
+# Everything CI runs is a recipe here, so a local `just ci` and the GitHub job
+# cannot drift. Tools these recipes expect on PATH: the toolchain pinned in
+# rust-toolchain.toml, `just`, and `cargo-deny`
+# (`cargo install cargo-deny --locked`).
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default: ci
+
+# Compile every crate and every target, including tests and examples.
+build:
+    cargo build --workspace --all-targets
+
+# Rewrite the tree with rustfmt.
+fmt:
+    cargo fmt --all
+
+# Fail if any file is not rustfmt-clean. CI runs this instead of `fmt`.
+fmt-check:
+    cargo fmt --all --check
+
+# Lint every target. Workspace lints already deny clippy::all, so warnings that
+# only clippy can promote (from dependencies of a future feature set) also fail.
+clippy:
+    cargo clippy --workspace --all-targets -- --deny warnings
+
+# Run unit tests, including the dependency-rule checker's own tests.
+test:
+    cargo test --workspace --all-targets
+
+# Enforce the dependency rules in design/rust-compositor.md over `cargo metadata`.
+deps:
+    cargo xtask deps
+
+# Check advisories, licences, duplicate versions and git sources.
+deny:
+    cargo deny check
+
+# The whole gate, in the order that fails fastest.
+ci: fmt-check build clippy test deps deny
