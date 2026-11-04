@@ -119,10 +119,9 @@
 08-background-blur/0005-blur-policy.patch
 08-background-blur/0006-fade-blur-with-surface-alpha.patch
 08-background-blur/0007-reuse-native-backdrop-blur-targets.patch
-03-layer-shell/0007-invalidate-surface-input-region-picks.patch
-03-layer-shell/0008-constrain-ui-session-layer-companions.patch
-03-layer-shell/0009-keep-layer-order-on-pointer-crossing.patch
-03-layer-shell/0010-preserve-layer-activation-context.patch
+03-layer-shell/0007-constrain-ui-session-layer-companions.patch
+03-layer-shell/0008-keep-layer-order-on-pointer-crossing.patch
+03-layer-shell/0009-preserve-layer-activation-context.patch
 30-diagnostic-console/0001-route-diagnostic-input-before-wayland.patch
 08-background-blur/0008-precompute-panel-gaussian-kernel.patch
 22-supervisor-runtime/0002-build-monolithic-gnoblin.patch
