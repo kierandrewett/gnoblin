@@ -148,7 +148,17 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 
 The generic default mode is `off`. GTK Wayland windows that create a KDE
 server-decoration object use `auto` behavior by default and receive Gnoblin's
-native frame. A matching rule's `frame.mode` overrides that behavior.
+native frame. X11 apps running through Xwayland use `auto` when no rule sets
+`frame.mode`, because an X11 app has always left decorations to the window
+manager. A matching rule's `frame.mode` overrides that behavior.
+
+An X11 app asks for a server frame when it is a normal, dialog or utility
+window and does not turn decorations off. An app that sets its Motif
+decorations hint to 0 draws its own frame and gets none under `auto`.
+
+- `_GTK_FRAME_EXTENTS` declares the visible bounds, like
+  `xdg_surface.set_window_geometry`.
+- `client_type = "x11"` in `match` gives X11 apps their own frame rule.
 
 `auto` supplies SSD only for explicit client requests. `replace` crops client
 pixels and adds a frame.

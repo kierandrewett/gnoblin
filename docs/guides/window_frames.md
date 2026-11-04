@@ -58,6 +58,12 @@ Gnoblin's native renderer supplies their frame. A matching Lua window rule can
 select another mode. `auto` uses client requests instead of guessing from
 appearance.
 
+X11 apps count as asking for a server frame when they do not turn
+decorations off with `_MOTIF_WM_HINTS`; with no rule they use `auto`. The
+frame is drawn by the compositor around the client, so `_NET_FRAME_EXTENTS`
+reports Gnoblin's border and `client_type = "x11"` in a rule match selects
+only these windows.
+
 GTK apps with a custom titlebar can still draw titlebar controls inside their
 surface. Gnoblin applies its frame and clips declared client shadow margins,
 but it cannot identify arbitrary pixels inside an app surface as a border
@@ -151,8 +157,13 @@ or failure. A compositor upgrade still needs logout and login.
 
 ## Limits
 
-Frames work on normal Wayland application windows (`xdg-toplevel`). They do
-not apply to X11 apps running through Xwayland, popups, bars or launchers.
+Frames work on normal Wayland application windows (`xdg-toplevel`) and on
+X11 apps running through Xwayland, which have the same frame, rules, effects
+and input as Wayland windows. They do not apply to popups, menus, bars or
+launchers.
+
+Text input, client-driven background blur and activation tokens come from
+Wayland protocols, so X11 apps do not use them.
 Moving framed windows between displays with different scales and cropping apps
 with many popups have limited test coverage.
 

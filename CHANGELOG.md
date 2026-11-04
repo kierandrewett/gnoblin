@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- `Window.client_type` (`"wayland"` or `"x11"`, bridge API 1.93) in window records, `gnoblin.find("Window", {client_type = ...})`,
+  the window rule `match.client_type` key and `gnoblinctl window list` and `window match`.
+
+### Changed
+
+- Xwayland windows get Gnoblin's own frame, rules and effects like Wayland windows. Mutter no longer launches
+  `mutter-x11-frames` or reparents X11 clients into frame windows. An X11 window that does not turn decorations off is
+  framed under `frame.mode = "auto"` (the default for X11 when no rule sets a mode), `_GTK_FRAME_EXTENTS` feeds the
+  visible bounds, `_NET_FRAME_EXTENTS` and `_NET_REQUEST_FRAME_EXTENTS` report Gnoblin's border, and Mutter's stock
+  shadow no longer draws for managed X11 windows. A border change keeps the client where it is.
+
 ### Changed
 
 - `patches/` is organised into topic directories (`patches/mutter/<NN>-<topic>/<NNNN>-<slug>.patch`) with dense numbers,
