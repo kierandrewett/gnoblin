@@ -11,6 +11,9 @@
 #        guest.sh info                  print the guest versions as JSON
 #        guest.sh unbind NAME           detach the virtio input device NAME from its driver (a broken-guest check)
 #        guest.sh unbind-gpu            detach the virtio GPU from its driver (a broken-guest check)
+#        guest.sh threads USER PATTERN  print the threads of USER's compositor (pgrep -f PATTERN): state, CPU time
+#                                       twice 2 s apart, kernel wait channel and stack, and a user-space backtrace
+#                                       (eu-stack, installed with elfutils when missing) after a failed session check
 #
 # The session starts the way a display manager starts it: the Exec line of the installed wayland-sessions entry, in a
 # logind session of type wayland on seat0 and tty1 (see prepare_session). No display manager is installed, because
@@ -328,6 +331,51 @@ unbind_input() {
     exit 1
 }
 
+# Where each thread of the compositor is: a session that does not come up is either busy (CPU time grows between the
+# two samples) or waiting (the wait channel and the kernel stack say on what).
+compositor_threads() {
+    local user="$1" pattern="$2" pid task sample stat
+    local -a fields
+    pid="$(pgrep -u "$user" -f -- "$pattern" | head -n 1 || true)"
+    if [[ -z "$pid" ]]; then
+        echo "no compositor process"
+        return
+    fi
+    echo "compositor $pid: $(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    for sample in first "after 2 s"; do
+        echo "-- $sample: thread, name, state, user and system CPU ticks, wait channel"
+        for task in "/proc/$pid/task/"*; do
+            # The fields after the name: state is the 1st, utime the 12th, stime the 13th (proc(5)). A thread that
+            # ended since the glob is skipped.
+            stat="$(sed 's/.*) //' "$task/stat" 2>/dev/null)" || continue
+            read -r -a fields <<<"$stat"
+            ((${#fields[@]} >= 13)) || continue
+            echo "${task##*/} $(cat "$task/comm" 2>/dev/null) ${fields[0]} ${fields[11]} ${fields[12]}" \
+                "$(cat "$task/wchan" 2>/dev/null)"
+        done
+        if [[ "$sample" == first ]]; then
+            sleep 2
+        fi
+    done
+    for task in "/proc/$pid/task/"*; do
+        echo "-- kernel stack of ${task##*/} $(cat "$task/comm" 2>/dev/null)"
+        cat "$task/stack" 2>/dev/null || echo "(not readable)"
+    done
+    # The image has neither tool, so eu-stack is installed now, only for a session that failed: the passing path
+    # installs nothing more. A failed install leaves the samples above as the evidence.
+    if ! command -v eu-stack >/dev/null && ! command -v gdb >/dev/null; then
+        echo "-- installing elfutils for eu-stack"
+        timeout 600 bash -c "$(declare -f pm_install); kind=$kind; pm_install elfutils" >/dev/null 2>&1 || true
+    fi
+    if command -v eu-stack >/dev/null; then
+        eu-stack -p "$pid" 2>&1 | head -n 400 || true
+    elif command -v gdb >/dev/null; then
+        gdb -q -batch -p "$pid" -ex "thread apply all bt" 2>&1 | head -n 400 || true
+    else
+        echo "-- no eu-stack or gdb in the guest: no user-space backtrace"
+    fi
+}
+
 unbind_gpu() {
     local device
     for device in /sys/bus/virtio/drivers/virtio_gpu/virtio*; do
@@ -361,6 +409,10 @@ case "${1:-}" in
         unbind_input "$2"
         ;;
     unbind-gpu) unbind_gpu ;;
+    threads)
+        (($# == 3)) || exit 2
+        compositor_threads "$2" "$3"
+        ;;
     *)
         sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2
         exit 2

@@ -148,6 +148,17 @@ STUCK = re.compile(
     r"|Kernel panic - not syncing"
 )
 
+# What Gnoblin logs when its Lua runtime is gone for the rest of the session: the supervisor could not recover it and
+# keeps the compositor alive without it, so "runtime running" never comes (src/session, notify_runtime_recovery_failed
+# follows each). A runtime failure that the supervisor recovers ("restarting Lua runtime worker") is not one of them.
+RUNTIME_LOST = re.compile(
+    r"gnoblin: (?:could not suspend Mutter for supervisor recovery"
+    r"|could not complete worker suspension"
+    r"|Mutter rejected supervisor recovery"
+    r"|session supervisor recovery failed repeatedly"
+    r"|Lua runtime recovery failed repeatedly)[^\n]*"
+)
+
 
 def guest_of(entry):
     return entry.get("guest") or DEFAULT_GUEST
@@ -663,19 +674,19 @@ class Guest:
         self.keep_screen()
         raise CheckFailed(f"no SSH login within {timeout} s", tail(serial.read_text(errors="replace")))
 
-    def keep_screen(self, settle=0):
-        """The guest's screen after a failed boot, as boot-screen.png. Where /dev/console is tty1 (Fedora 41 and 42
+    def keep_screen(self, settle=0, name="boot-screen"):
+        """The guest's screen after a failed check, as <name>.png. Where /dev/console is tty1 (Fedora 41 and 42
         aarch64), systemd's boot messages, the failed unit among them, are there and not on the serial console. settle
         seconds first give an emulated guest time to bring up its frame buffer and print the emergency prompt."""
         if getattr(self, "qmp", None) is None:
             return
         time.sleep(settle)
-        ppm = self.out / "boot-screen.ppm"
+        ppm = self.out / f"{name}.ppm"
         try:
             self.screendump(ppm)
-            write_png(self.out / "boot-screen.png", *read_ppm(ppm))
+            write_png(self.out / f"{name}.png", *read_ppm(ppm))
         except (CheckFailed, OSError, ValueError) as error:
-            print(f"[graphical] no picture of the boot screen: {error}", flush=True)
+            print(f"[graphical] no picture of the screen ({name}): {error}", flush=True)
         finally:
             ppm.unlink(missing_ok=True)
 
@@ -956,33 +967,61 @@ class Run:
         last = ""
         while time.monotonic() < deadline:
             # The compositor is not dumpable, so only root can read its file descriptors.
-            code, _, _ = guest.root(
+            code, _, errors = guest.root(
                 f"pid=$(pgrep -u {USER} -f -- '{COMPOSITOR}' | head -n 1); [ -n \"$pid\" ] || exit 3; "
                 "ls -l /proc/$pid/fd 2>/dev/null | grep -q /dev/dri/card || exit 4",
                 check=False, timeout=60,
             )  # fmt: skip
-            if code == 0:
-                code, output, _ = guest.user(
+            if code in (3, 4):
+                last = {3: "no compositor process", 4: "the compositor holds no DRM device"}[code]
+            elif code != 0:
+                last = f"the compositor check failed ({code}): {errors.strip()}"
+            else:
+                code, output, errors = guest.user(
                     f"[ -S \"$XDG_RUNTIME_DIR/wayland-0\" ] || exit 5; gnoblinctl lua {GUEST_DIR}/ready.lua",
                     check=False, timeout=60,
                 )  # fmt: skip
-            last = {3: "no compositor process", 4: "the compositor holds no DRM device", 5: "no wayland-0 socket"}.get(
-                code, output.strip() if code == 0 else f"gnoblinctl failed ({code})"
-            )
-            if code == 0:
-                ready = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
-                if ready.get("runtime") == "running" and ready.get("session") == "running":
-                    _, outputs, _ = guest.user("gnoblinctl output list --json", check=False)
-                    self.facts["renderer"] = outputs.strip()
-                    (self.out / "outputs.json").write_text(outputs)
-                    return f"runtime and session running, {self.renderer_name()}"
-                last = ", ".join(f"{key} {value}" for key, value in ready.items())
+                if code == 5:
+                    last = "no wayland-0 socket"
+                elif code != 0:
+                    # gnoblinctl says on stderr why it cannot reach the session or its runtime.
+                    last = f"gnoblinctl failed ({code})" + (f": {errors.strip()}" if errors.strip() else "")
+                else:
+                    ready = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+                    if ready.get("runtime") == "running" and ready.get("session") == "running":
+                        _, outputs, _ = guest.user("gnoblinctl output list --json", check=False)
+                        self.facts["renderer"] = outputs.strip()
+                        (self.out / "outputs.json").write_text(outputs)
+                        return f"runtime and session running, {self.renderer_name()}"
+                    last = ", ".join(f"{key} {value}" for key, value in ready.items()) or output.strip()
             _, state, _ = guest.root(f"bash {GUEST_DIR}/guest.sh status", check=False)
             if state.startswith("ended"):
-                raise CheckFailed(f"the session {state.strip()} before it reached running", tail(self.session_log()))
+                raise self.session_failed(f"the session {state.strip()} before it reached running")
+            lost = RUNTIME_LOST.search(self.gnoblin_log())
+            if lost:
+                raise self.session_failed(f"the Lua runtime is lost, so the session cannot reach running: {lost[0]}")
             time.sleep(2)
-        raise CheckFailed(f"the session did not reach running in {self.arguments.session_timeout} s: {last}",
-                          tail(self.session_log()))  # fmt: skip
+        raise self.session_failed(f"the session did not reach running in {self.arguments.session_timeout} s: {last}")
+
+    def session_failed(self, detail):
+        """The check failure of a session that did not come up, with Gnoblin's own log lines as the excerpt. The
+        evidence also gets the screen (session-screen.png) and where each compositor thread is
+        (compositor-threads.txt): busy, or waiting and on what."""
+        self.guest.keep_screen(name="session-screen")
+        _, threads, _ = self.guest.root(f"bash {GUEST_DIR}/guest.sh threads {USER} '{COMPOSITOR}'", check=False,
+                                        timeout=900)  # fmt: skip
+        (self.out / "compositor-threads.txt").write_text(threads)
+        return CheckFailed(detail, tail(self.gnoblin_log()))
+
+    def gnoblin_log(self):
+        """Gnoblin's log lines of this boot, then the session log. On a systemd guest Gnoblin's lines are in the test
+        user's journal (the session scope), and guest.sh log prints only the journal of the session unit."""
+        _, text, _ = self.guest.root(
+            f"journalctl -b --no-pager -o short-monotonic _UID=$(id -u {USER}) 2>/dev/null | grep -a -e gnoblin "
+            f"-e mutter; bash {GUEST_DIR}/guest.sh log",
+            check=False, timeout=60,
+        )  # fmt: skip
+        return text
 
     def globals(self):
         guest = self.guest

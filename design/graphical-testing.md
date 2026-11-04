@@ -172,8 +172,17 @@ How each check fails, and what the result names:
   for the release. `install.log` holds the output.
 - `session` fails when the session service ends before it is ready (the detail has its exit status), or when within
   120 s (600 s with TCG) there is no compositor process, the compositor holds no `/dev/dri/card*` file (it did not
-  take the native KMS backend), there is no `wayland-0` socket, or `gnoblinctl status --json` does not report the
-  session state `running`. The excerpt is the session log.
+  take the native KMS backend), there is no `wayland-0` socket, or `gnoblinctl lua ready.lua` does not report the
+  runtime and session states `running` (the detail has gnoblinctl's own error). It fails at once when Gnoblin logs
+  that its Lua runtime is lost for the session (the supervisor could not recover it, for example "could not suspend
+  Mutter for supervisor recovery"), because the runtime cannot come back. The excerpt is Gnoblin's lines from the
+  test user's journal, then the session log. A failed `session` also keeps `session-screen.png` and
+  `compositor-threads.txt`: each compositor thread's state, CPU time twice 2 s apart, wait channel and kernel stack,
+  and an `eu-stack` backtrace (elfutils is installed in the guest for it then, and only then). That tells a busy
+  compositor from one that waits, and on what. In run 41905248345 (openSUSE Tumbleweed aarch64, TCG) Mutter logged
+  nothing after native control started, the Lua worker gave up waiting for its greeting after 10 s, and the
+  supervisor could not suspend Mutter; the session never came up, and the harness waited the full 600 s. The arm64
+  sessions of runs 41896060198 and 41905248345 reached `running` in 15 to 31 s, so 600 s is not too short.
 - `globals` fails when the client cannot connect or writes no globals, or when a listed global is missing.
 - `window` fails when the client does not report `mapped` within 30 s (a protocol error, a missing configure or no
   frame callback), or when `gnoblinctl window list --json` does not list `org.gnoblin.GraphicalTest`.
@@ -221,7 +230,8 @@ Every run writes a folder:
   version, the accelerator, the image URL and checksum, and the total time.
 - `harness.txt` and `command.txt`: the harness command line and the full QEMU command line.
 - `qemu-version.txt`, `qemu.log`, `serial.log`.
-- `install.log`, `session.log`, `journal.txt` (the test user's journal), `journal-system.txt`.
+- `install.log`, `session.log`, `journal.txt` (the test user's journal), `journal-system.txt`; after a failed
+  `session`, `session-screen.png` and `compositor-threads.txt`.
 - `screenshot.png` and `screenshot-typed.png`.
 - `globals.json`, `client-events.jsonl`, `client.log`, `windows.json`, `gnoblinctl-status.json`, `log-errors.txt`.
 

@@ -450,6 +450,10 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
   on Fedora 41 and 42, where SELinux kept the drop-in out of the real root. A guest that goes to emergency mode or
   freezes fails `boot` at once, with a picture of its screen, and is booted once more from a fresh disk. This also
   covers a guest whose serial console shows only sulogin or the audit record of the emergency service.
+- The graphical VM test fails `session` at once when Gnoblin logs that its Lua runtime is lost for the session,
+  instead of after the 600 s session timeout, and says why gnoblinctl cannot reach the session. A failed `session`
+  keeps a picture of the screen and where each compositor thread is (`compositor-threads.txt`, with an `eu-stack`
+  backtrace), and its excerpt now holds Gnoblin's own log lines.
 - The graphical VM test starts arm64 guests. Their network device asked for an option ROM (`efi-virtio.rom`) that
   QEMU on an Ubuntu arm64 runner does not have, so QEMU stopped at start. The device has no ROM now, and a QEMU that
   stops at start is reported with its own message.

@@ -475,6 +475,89 @@ class BootRetry(unittest.TestCase):
             self.run_boot("kvm", 1)
 
 
+# Run 41905248345, openSUSE Tumbleweed aarch64: Gnoblin's lines in the test user's journal. Mutter logs nothing after
+# native control starts, the worker gives up waiting for its HELLO, and the supervisor cannot suspend Mutter.
+TUMBLEWEED_LOST = """\
+[  593.468374] gnoblin-graphical sh[2555]: libmutter-Message: 20:44:03.689: Using Wayland display name 'wayland-0'
+[  593.570404] gnoblin-graphical sh[2555]: libmutter-Message: 20:44:03.794: gnoblin-compositor: scheduling policy \
+0->0, nice 0->0, io 0->0
+[  598.437903] gnoblin-graphical sh[2664]: gnoblin: runtime supervisor: compositor did not complete the private \
+runtime handshake
+[  618.533133] gnoblin-graphical sh[2555]: gnoblin: could not suspend Mutter for supervisor recovery; keeping the \
+session alive: Mutter did not acknowledge worker suspension
+"""
+
+# Run 41896060198, the same guest where the session came up: its lines of the same stretch.
+TUMBLEWEED_RUNNING = """\
+[  589.835181] gnoblin-graphical sh[2553]: libmutter-Message: 19:45:46.090: Using Wayland display name 'wayland-0'
+[  589.937197] gnoblin-graphical sh[2553]: libmutter-Message: 19:45:46.197: gnoblin-compositor: scheduling policy \
+0->0, nice 0->0, io 0->0
+[  590.337346] gnoblin-graphical sh[2553]: (gnoblin:2646): libmutter-WARNING **: 19:45:46.630: There is no colord \
+server available
+"""
+
+
+class SessionCheck(unittest.TestCase):
+    """A session that can no longer come up fails at once, with Gnoblin's own lines, the reason gnoblinctl gives, the
+    screen and where each compositor thread is. A session that is still starting is waited for."""
+
+    def test_a_lost_runtime_matches(self):
+        found = harness.RUNTIME_LOST.search(TUMBLEWEED_LOST)
+        self.assertTrue(found[0].startswith("gnoblin: could not suspend Mutter for supervisor recovery"))
+        self.assertTrue(found[0].endswith("Mutter did not acknowledge worker suspension"))
+
+    def test_a_runtime_that_can_still_recover_does_not_match(self):
+        handshake = TUMBLEWEED_LOST.split("[  618.533133]")[0]
+        for text in (handshake, TUMBLEWEED_RUNNING, "gnoblin: restarting Lua runtime worker (attempt 1 of 3)"):
+            self.assertIsNone(harness.RUNTIME_LOST.search(text), text)
+
+    def run_session(self, journal, timeout, gnoblinctl=(1, "", "gnoblinctl: cannot connect to the session\n")):
+        commands = []
+
+        class Guest:
+            def root(self, command, **options):
+                commands.append(command)
+                if "pgrep" in command and "guest.sh" not in command:
+                    # The first poll comes before the compositor exists (exit 3), as on a real guest.
+                    return (3 if sum("pgrep" in c for c in commands) == 1 else 0), "", ""
+                if "guest.sh status" in command:
+                    return 0, "running\n", ""
+                if "guest.sh threads" in command:
+                    return 0, "compositor 2646: /usr/lib/gnoblin/bin/gnoblin --wayland\n", ""
+                if "journalctl" in command:
+                    return 0, journal, ""
+                return 0, "", ""
+
+            def user(self, command, **options):
+                return gnoblinctl
+
+            def keep_screen(self, settle=0, name="boot-screen"):
+                commands.append(f"screen {name}")
+
+        work = Path(tempfile.mkdtemp())
+        run = harness.Run(argparse.Namespace(out=str(work), breaks=[], session_timeout=timeout), {"name": "x"})
+        run.guest = Guest()
+        started = time.monotonic()
+        with self.assertRaises(harness.CheckFailed) as failed:
+            run.session()
+        return failed.exception, time.monotonic() - started, commands, work
+
+    def test_a_lost_runtime_fails_at_once_with_its_line(self):
+        failure, seconds, commands, work = self.run_session(TUMBLEWEED_LOST, 10)  # not "did not reach running in 10 s"
+        self.assertLess(seconds, 5)
+        self.assertIn("the Lua runtime is lost", failure.detail)
+        self.assertIn("Mutter did not acknowledge worker suspension", failure.detail)
+        self.assertIn("did not complete the private runtime handshake", failure.excerpt)
+        self.assertIn("screen session-screen", commands)
+        self.assertIn("gnoblin --wayland", (work / "compositor-threads.txt").read_text())
+
+    def test_a_session_that_is_still_starting_waits_and_names_the_gnoblinctl_error(self):
+        failure, seconds, _, _ = self.run_session(TUMBLEWEED_RUNNING, 3)
+        self.assertGreaterEqual(seconds, 3)
+        self.assertIn("did not reach running in 3 s", failure.detail)
+        self.assertIn("gnoblinctl failed (1): gnoblinctl: cannot connect to the session", failure.detail)
+
+
 class PollEvents(unittest.TestCase):
     """Run 41672380634: on TCG the client's events come later than the fixed waits of a KVM guest. The checks poll
     until the event they need arrives, up to the client timeout."""
