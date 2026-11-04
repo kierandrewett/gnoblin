@@ -53,9 +53,42 @@ pm_refresh() {
             grep -q '^DisableSandbox' /etc/pacman.conf || sed -i 's/^\[options\]$/[options]\nDisableSandbox/' /etc/pacman.conf
             pacman -Syu --noconfirm --needed diffutils findutils xz >/dev/null
             ;;
-        apk) apk update >/dev/null && apk add diffutils findutils xz >/dev/null ;;
+        apk) apk_fetch update >/dev/null && apk_fetch add diffutils findutils xz >/dev/null ;;
         deb) apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-recommends diffutils findutils xz-utils >/dev/null ;;
     esac
+}
+# The errors with which apk-tools 2 and 3 report a fetch from a repository that failed in transit: TLS, DNS, the
+# connection, an HTTP timeout or server error. A mirror or runner network can have them for a moment (run 41918451629,
+# Alpine edge aarch64: "ERROR: diffutils-3.12-r0: TLS: unspecified error", while the same command passed on every other
+# Alpine leg). A missing or broken package, a conflict or an untrusted certificate is not one of them. apk-tools 2
+# says "IO ERROR" for a dropped connection, and "Permission denied" for an https index whose connection was closed.
+APK_TRANSIENT='TLS: unspecified error|TLS: handshake failed|DNS: transient error|DNS lookup error|temporary error'
+APK_TRANSIENT+='|network error|could not connect to server|Connection closed|Connection reset|Connection refused'
+APK_TRANSIENT+='|Connection timed out|Operation timed out|Network unreachable|HTTP 408|HTTP 50[0234]|unexpected end of file'
+APK_TRANSIENT+='|I/O error|IO ERROR|opening https://[^ ]*: Permission denied'
+# apk with a bounded retry of such a fetch error: at most 3 attempts in all, each failed one with its reason on stderr.
+# Any other failure fails at once, and a fetch error that persists fails after the third attempt, both with the exit
+# status and the messages of apk.
+apk_fetch() {
+    local attempt status log reason
+    log="$(mktemp)"
+    for attempt in 1 2 3; do
+        status=0
+        apk "$@" 2>"$log" || status=$?
+        cat "$log" >&2
+        reason="$(grep -Eo -m1 "$APK_TRANSIENT" "$log" || true)"
+        if [ "$status" -eq 0 ] || [ -z "$reason" ]; then
+            break
+        fi
+        if [ "$attempt" -lt 3 ]; then
+            echo "[packages] apk $1: attempt $attempt of 3 failed in a fetch ($reason), again in $((attempt * 10)) s" >&2
+            sleep $((attempt * 10))
+        else
+            echo "[packages] apk $1: attempt 3 of 3 failed in a fetch ($reason), giving up" >&2
+        fi
+    done
+    rm -f "$log"
+    return "$status"
 }
 # Say why an apk command failed: apk-tools 2 keeps the packages that it marks as broken in its database, with an "f:"
 # line (f: files without a checksum or not extracted, s: a failed script).
@@ -71,7 +104,7 @@ pm_install_files() {
         rpm) dnf -y --setopt=install_weak_deps=False install "$@" ;;
         suse) zypper -n --no-gpg-checks install --no-recommends --allow-unsigned-rpm "$@" ;;
         arch) pacman -U --noconfirm "$@" ;;
-        apk) apk add --allow-untrusted "$@" || apk_failed ;;
+        apk) apk_fetch add --allow-untrusted "$@" || apk_failed ;;
         deb) apt-get install -y --no-install-recommends "$@" ;;
     esac
 }
@@ -80,7 +113,7 @@ pm_reinstall_files() {
         rpm) dnf -y --setopt=install_weak_deps=False reinstall "$@" ;;
         suse) zypper -n --no-gpg-checks install --force --no-recommends --allow-unsigned-rpm "$@" ;;
         arch) pacman -U --noconfirm "$@" ;;
-        apk) apk add --allow-untrusted "$@" || apk_failed ;;
+        apk) apk_fetch add --allow-untrusted "$@" || apk_failed ;;
         deb) apt-get install -y --no-install-recommends --reinstall "$@" ;;
     esac
 }
@@ -89,7 +122,7 @@ pm_install() {
         rpm) dnf -y install "$@" ;;
         suse) zypper -n install --no-recommends "$@" ;;
         arch) pacman -S --noconfirm --needed "$@" ;;
-        apk) apk add "$@" || apk_failed ;;
+        apk) apk_fetch add "$@" || apk_failed ;;
         deb) apt-get install -y --no-install-recommends "$@" ;;
     esac
 }

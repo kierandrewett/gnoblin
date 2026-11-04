@@ -13,7 +13,7 @@
 #        guest.sh unbind-gpu            detach the virtio GPU from its driver (a broken-guest check)
 #        guest.sh threads USER PATTERN  print the threads of USER's compositor (pgrep -f PATTERN): state, CPU time
 #                                       twice 2 s apart, kernel wait channel and stack, and a user-space backtrace
-#                                       (eu-stack, installed with elfutils when missing) after a failed session check
+#                                       (eu-stack, installed when missing) after a failed check that needs the session
 #
 # The session starts the way a display manager starts it: the Exec line of the installed wayland-sessions entry, in a
 # logind session of type wayland on seat0 and tty1 (see prepare_session). No display manager is installed, because
@@ -361,11 +361,14 @@ compositor_threads() {
         echo "-- kernel stack of ${task##*/} $(cat "$task/comm" 2>/dev/null)"
         cat "$task/stack" 2>/dev/null || echo "(not readable)"
     done
-    # The image has neither tool, so eu-stack is installed now, only for a session that failed: the passing path
-    # installs nothing more. A failed install leaves the samples above as the evidence.
+    # The image has neither tool, so eu-stack is installed now, only for a check that failed: the passing path
+    # installs nothing more. A failed install leaves the samples above as the evidence. musl has no unwind tables of
+    # its own, so on Alpine eu-stack needs musl-dbg to walk past the first frame.
     if ! command -v eu-stack >/dev/null && ! command -v gdb >/dev/null; then
-        echo "-- installing elfutils for eu-stack"
-        timeout 600 bash -c "$(declare -f pm_install); kind=$kind; pm_install elfutils" >/dev/null 2>&1 || true
+        local tools=elfutils
+        [[ "$kind" != apk ]] || tools="elfutils musl-dbg"
+        echo "-- installing $tools for eu-stack"
+        timeout 600 bash -c "$(declare -f pm_install); kind=$kind; pm_install $tools" >/dev/null 2>&1 || true
     fi
     if command -v eu-stack >/dev/null; then
         eu-stack -p "$pid" 2>&1 | head -n 400 || true

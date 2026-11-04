@@ -194,11 +194,21 @@ How each check fails, and what the result names:
   see one left press and one release.
 - `keyboard` fails when the key codes that the client sees do not end with G, N, O, B (34, 49, 24, 48), or when the
   second screenshot does not show the green box.
-- `shutdown` fails when the session does not end within 60 s of `gnoblinctl logout`, when it ends with another
-  status or a signal, when a Gnoblin process is left, or when the journal or `coredumpctl` reports a core dump.
+- `shutdown` fails when the session does not end within 60 s of `gnoblinctl logout` (the detail has the exit status
+  and message of `gnoblinctl logout` when it failed), when it ends with another status or a signal, when a Gnoblin
+  process is left, or when the journal or `coredumpctl` reports a core dump.
 - `logs` fails on a line with the word `CRITICAL` or `ERROR` that no rule of the allow-list matches. The allow-list is
   `tests/packages/log-allowlist.txt`, which the package tests own. Until that file exists the harness reads
   `tests/graphical/log-allowlist.txt` if it is there. The two lists are to be one.
+
+When a check that needs the compositor fails (`globals` to `shutdown`), the detail ends with whether the compositor
+still answers `gnoblinctl status` within 10 s, and the first such failure keeps `<check>-screen.png` and
+`compositor-threads.txt`, as a failed `session` does. In run 41918451629 (Alpine 3.24 amd64, KVM) the window mapped and
+the screenshot passed, then `pointer`, `keyboard` and `shutdown` failed: the client saw no input event, and
+`gnoblinctl logout` returned after about 5 s (its own reply timeout) without ending the session. Nothing in the logs
+said why. The same leg passed in runs 41835867674 to 41905248345, and the input devices were enumerated as in those
+runs (the client saw a seat with pointer and keyboard). With this evidence, the next such failure says whether the
+compositor stopped answering and where its threads are.
 
 ### Proof that each check can fail
 
@@ -230,8 +240,8 @@ Every run writes a folder:
   version, the accelerator, the image URL and checksum, and the total time.
 - `harness.txt` and `command.txt`: the harness command line and the full QEMU command line.
 - `qemu-version.txt`, `qemu.log`, `serial.log`.
-- `install.log`, `session.log`, `journal.txt` (the test user's journal), `journal-system.txt`; after a failed
-  `session`, `session-screen.png` and `compositor-threads.txt`.
+- `install.log`, `session.log`, `journal.txt` (the test user's journal), `journal-system.txt`; after the first
+  failed check from `session` to `shutdown`, `<check>-screen.png` and `compositor-threads.txt`.
 - `screenshot.png` and `screenshot-typed.png`.
 - `globals.json`, `client-events.jsonl`, `client.log`, `windows.json`, `gnoblinctl-status.json`, `log-errors.txt`.
 

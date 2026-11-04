@@ -558,6 +558,66 @@ class SessionCheck(unittest.TestCase):
         self.assertIn("gnoblinctl failed (1): gnoblinctl: cannot connect to the session", failure.detail)
 
 
+class CompositorState(unittest.TestCase):
+    """Run 41918451629, Alpine 3.24 amd64: after the window was mapped, the pointer, keyboard and shutdown checks failed
+    with no message from the compositor. A check that needs the compositor now says whether it still answers, and the
+    first such failure keeps the screen and where each compositor thread is."""
+
+    def run_checks(self, status_code, names=("pointer", "keyboard")):
+        commands = []
+
+        class Guest:
+            def user(self, command, **options):
+                commands.append(command)
+                return (
+                    (status_code, "", "gnoblinctl: the session is gone\n")
+                    if "gnoblinctl status" in command
+                    else (0, "", "")
+                )
+
+            def root(self, command, **options):
+                commands.append(command)
+                return 0, "compositor 3873: /usr/lib/gnoblin/bin/gnoblin --wayland\n1 gnoblin S 5 3 do_epoll_wait\n", ""
+
+            def keep_screen(self, settle=0, name="boot-screen"):
+                commands.append(f"screen {name}")
+
+        work = Path(tempfile.mkdtemp())
+        run = harness.Run(argparse.Namespace(out=str(work), breaks=[]), {"name": "x"})
+        run.guest = Guest()
+
+        def failing():
+            raise harness.CheckFailed("the pointer never entered the client window")
+
+        for name in names:
+            run.check(name, failing)
+        return run, commands, work
+
+    def test_a_stalled_compositor_is_named_and_its_threads_kept_once(self):
+        run, commands, work = self.run_checks(124)
+        details = [item["detail"] for item in run.checks]
+        self.assertTrue(all(d.endswith("; the compositor does not answer gnoblinctl within 10 s") for d in details))
+        self.assertEqual([c for c in commands if c.startswith("screen")], ["screen pointer-screen"])
+        self.assertEqual(sum("guest.sh threads" in c for c in commands), 1)
+        self.assertTrue((work / "compositor-threads.txt").read_text().startswith("after the pointer check failed\n"))
+
+    def test_a_compositor_that_answers_says_so(self):
+        run, _, _ = self.run_checks(0)
+        self.assertTrue(run.checks[0]["detail"].endswith("; the compositor answers gnoblinctl"))
+
+    def test_another_error_is_quoted(self):
+        run, _, _ = self.run_checks(1)
+        self.assertTrue(
+            run.checks[0]["detail"].endswith("; gnoblinctl status exited 1: gnoblinctl: the session is gone")
+        )
+
+    def test_a_check_before_the_session_does_not_ask(self):
+        run, commands, work = self.run_checks(124, names=("install",))
+        self.assertEqual(run.checks[0]["detail"], "the pointer never entered the client window")
+        self.assertEqual(commands, [])
+        self.assertFalse((work / "compositor-threads.txt").exists())
+
+
 class PollEvents(unittest.TestCase):
     """Run 41672380634: on TCG the client's events come later than the fixed waits of a KVM guest. The checks poll
     until the event they need arrives, up to the client timeout."""

@@ -454,6 +454,12 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
   instead of after the 600 s session timeout, and says why gnoblinctl cannot reach the session. A failed `session`
   keeps a picture of the screen and where each compositor thread is (`compositor-threads.txt`, with an `eu-stack`
   backtrace), and its excerpt now holds Gnoblin's own log lines.
+- When a graphical check after the session fails (`globals` to `shutdown`), its detail says whether the compositor
+  still answers `gnoblinctl status`, and the first such failure keeps the screen and `compositor-threads.txt`. A failed
+  `shutdown` also gives the exit status and message of `gnoblinctl logout`.
+- The package suite runs an apk command again, at most 3 times in all, when a fetch from the repository fails in
+  transit (TLS, DNS, a closed or reset connection, an HTTP timeout or server error), and prints the error each time.
+  Any other apk failure, and a fetch error that stays, still fails the case.
 - The graphical VM test starts arm64 guests. Their network device asked for an option ROM (`efi-virtio.rom`) that
   QEMU on an Ubuntu arm64 runner does not have, so QEMU stopped at start. The device has no ROM now, and a QEMU that
   stops at start is reported with its own message.

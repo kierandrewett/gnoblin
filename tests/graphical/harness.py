@@ -68,6 +68,8 @@ CHECKS = (
     "shutdown",
     "logs",
 )
+# The checks that need the compositor running. When one fails, compositor_state says whether it still answers.
+AFTER_SESSION = ("globals", "window", "screenshot", "pointer", "keyboard", "shutdown")
 # What the client draws (wlclient.py). The screenshot check looks for these colours.
 FIRST_COLOUR, SECOND_COLOUR = (255, 0, 255), (0, 200, 0)
 CLIENT_SIZE = (480, 360)
@@ -802,7 +804,10 @@ class Run:
         try:
             detail = function() or ""
         except CheckFailed as failure:
-            self.record(name, "fail", failure.detail, failure.excerpt, time.monotonic() - started)
+            detail = failure.detail
+            if name in AFTER_SESSION:
+                detail += self.compositor_state(name)
+            self.record(name, "fail", detail, failure.excerpt, time.monotonic() - started)
             return False
         except subprocess.TimeoutExpired as exception:
             self.record(name, "fail", f"timed out: {exception.cmd[-1] if exception.cmd else ''}", "",
@@ -1004,14 +1009,34 @@ class Run:
         raise self.session_failed(f"the session did not reach running in {self.arguments.session_timeout} s: {last}")
 
     def session_failed(self, detail):
-        """The check failure of a session that did not come up, with Gnoblin's own log lines as the excerpt. The
-        evidence also gets the screen (session-screen.png) and where each compositor thread is
-        (compositor-threads.txt): busy, or waiting and on what."""
-        self.guest.keep_screen(name="session-screen")
-        _, threads, _ = self.guest.root(f"bash {GUEST_DIR}/guest.sh threads {USER} '{COMPOSITOR}'", check=False,
-                                        timeout=900)  # fmt: skip
-        (self.out / "compositor-threads.txt").write_text(threads)
+        """The check failure of a session that did not come up, with Gnoblin's own log lines as the excerpt and the
+        evidence of compositor_state."""
+        self.compositor_state("session")
         return CheckFailed(detail, tail(self.gnoblin_log()))
+
+    def compositor_state(self, name):
+        """After a check that needs a running compositor failed: whether the compositor still answers gnoblinctl, as
+        a clause for the detail, and, once in a run, the screen (<check>-screen.png) and where each compositor thread
+        is (compositor-threads.txt): busy, or waiting and on what. A compositor that stalls after the session came up
+        fails the input checks and the shutdown with no message of its own (run 41918451629, Alpine 3.24 amd64)."""
+        guest = self.guest
+        try:
+            code, _, errors = guest.user("timeout 10 gnoblinctl status >/dev/null", check=False, timeout=60)
+            if code == 0:
+                clause = "; the compositor answers gnoblinctl"
+            elif code == 124:
+                clause = "; the compositor does not answer gnoblinctl within 10 s"
+            else:
+                clause = f"; gnoblinctl status exited {code}: {errors.strip() or 'no message'}"
+            threads = self.out / "compositor-threads.txt"
+            if not threads.exists():
+                guest.keep_screen(name=f"{name}-screen")
+                _, text, _ = guest.root(f"bash {GUEST_DIR}/guest.sh threads {USER} '{COMPOSITOR}'", check=False,
+                                        timeout=900)  # fmt: skip
+                threads.write_text(f"after the {name} check failed\n{text}")
+            return clause
+        except (subprocess.TimeoutExpired, OSError) as error:
+            return f"; no compositor state: {error}"
 
     def gnoblin_log(self):
         """Gnoblin's log lines of this boot, then the session log. On a systemd guest Gnoblin's lines are in the test
@@ -1151,7 +1176,7 @@ class Run:
             guest.user(f"pkill -SEGV -u $(id -u) -f -- '{COMPOSITOR}'", check=False)
             time.sleep(3)
         guest.user(f"pkill -f -- '{CLIENT}'", check=False)
-        guest.user("gnoblinctl logout", check=False, timeout=60)
+        code, _, errors = guest.user("gnoblinctl logout", check=False, timeout=60)
         deadline = time.monotonic() + 60
         state = ""
         while time.monotonic() < deadline:
@@ -1160,7 +1185,9 @@ class Run:
                 break
             time.sleep(1)
         if not state.startswith("ended"):
-            raise CheckFailed("the session did not end within 60 s of gnoblinctl logout", tail(self.session_log()))
+            answer = "" if code == 0 else f" (gnoblinctl logout exited {code}: {errors.strip() or 'no message'})"
+            raise CheckFailed(f"the session did not end within 60 s of gnoblinctl logout{answer}",
+                              tail(self.session_log()))  # fmt: skip
         _, left, _ = guest.root(f"pgrep -u {USER} -af gnoblin", check=False)
         _, cores, _ = guest.root(
             "(coredumpctl --no-legend --no-pager list 2>/dev/null; journalctl -b --no-pager -q 2>/dev/null | "

@@ -87,6 +87,14 @@ the Alpine targets pass these cases. The suite and every build job take pkgsmith
 The install layer starts a clean container of the install image of the target and runs `tests/packages/install.sh`. It
 contains the checks of the former `scripts/check-package-install.sh`, which it replaces.
 
+On Alpine, each apk command that fetches from a repository (`pm_refresh`, `pm_install`, `pm_install_files`,
+`pm_reinstall_files` in `tests/packages/lib.sh`) runs again, at most 3 times in all, when it fails with a fetch error
+in transit: TLS, DNS, a closed or reset connection, an HTTP timeout or server error. Each retry prints the error. In run
+41918451629 the I0 refresh of Alpine edge aarch64 failed with "ERROR: diffutils-3.12-r0: TLS: unspecified error",
+the only fetch error in the 170 suite jobs of runs 41835867674 to 41918451629. Any other failure fails at once, and a
+fetch error that stays fails after the third attempt. The other package managers are not changed: no fetch error of
+theirs failed a job in those runs, and zypper tried the next mirror itself twice ("Connection reset by peer").
+
 Failure modes:
 
 - `I1` gnoblin does not install with the package manager of the release, or installs only with recommended packages,
