@@ -106,7 +106,7 @@ function Shortcut:end_session(session_id) end
 ---@param signal
 "activated"|"deactivated"|"session_activated"|"session_key"|"session_ended"|"closed"
 ---@param fn fun(shortcut: Shortcut, event_or_reason?: table|string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Shortcut:on(signal, fn) end
 
 ---Capture one normalized keyboard accelerator.

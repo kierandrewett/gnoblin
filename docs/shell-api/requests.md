@@ -62,13 +62,21 @@ ends for any reason.
 A method exists only on the kinds that use it. Calling it on another kind
 raises an error that names the kind and the method.
 
-| Method                   | Kinds             | Effect                                                |
-| ------------------------ | ----------------- | ----------------------------------------------------- |
-| `answer(value, option?)` | all except `lock` | Answer the request. Arguments depend on the kind.     |
-| `cancel()`               | all except `lock` | Refuse the request.                                   |
-| `claim(identity?)`       | `authentication`  | Start the check for one identity, counted from 1.     |
-| `on(signal, fn)`         | `authentication`  | Call `fn(request)` on each `"prompt"` or `"message"`. |
-| `finished()`             | all               | An Operation that succeeds once with the outcome.     |
+| Method                   | Kinds             | Effect                                            |
+| ------------------------ | ----------------- | ------------------------------------------------- |
+| `answer(value, option?)` | all except `lock` | Answer the request. Arguments depend on the kind. |
+| `cancel()`               | all except `lock` | Refuse the request.                               |
+| `claim(identity?)`       | `authentication`  | Start the check for one identity, counted from 1. |
+| `on(signal, fn)`         | all               | Listen to a signal; it returns a subscription.    |
+| `finished()`             | all               | An Operation that succeeds once with the outcome. |
+
+`on` takes these signals:
+
+- `"prompt"` and `"message"` of an `authentication` request call `fn(request)` for each.
+- `"closed"`, on every kind, calls `fn(request, reason)` when a config reload or the worker's shutdown takes the runtime
+  away before the request is finished. The reason is `"config_reloaded"` or `"runtime_stopped"`.
+
+A request that finishes does not raise `"closed"`; use `finished()` for that.
 
 `answer` takes these arguments:
 

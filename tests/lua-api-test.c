@@ -592,6 +592,44 @@ int main(void) {
         "    assert(not grab.alive and not refused_grab.alive)\n"
         "    assert(not pcall(function() grab:on('key', print) end))\n"
         "  end\n"
+        "end)\n"
+        "local live_log, proc, kept_tween = {}, nil, nil\n"
+        "g.on('gnoblin.process.exited', function() end)\n"
+        "g.on('test.live', function(event)\n"
+        "  if event.step=='make' then\n"
+        "    local t=g.tween()\n"
+        "    assert(t.alive and t.status=='idle' and t.revision==1 and t.id:match('^%d+$'))\n"
+        "    assert(not pcall(function() t:on('bogus', print) end))\n"
+        "    local ok, err=pcall(function() t:watch('id', print) end)\n"
+        "    assert(not ok and err:find('not an observable', 1, true), err)\n"
+        "    ok, err=pcall(function() t:property(t, 'opacity', 0.5, 1) end)\n"
+        "    assert(not ok and err:find('Window: opacity', 1, true), err)\n"
+        "    local sub=t:watch('status', print)\n"
+        "    sub:unsubscribe(); sub:unsubscribe()\n"
+        "    assert(#g.process.list()==0 and g.process.by_id(99)==nil)\n"
+        "    assert(not pcall(g.process.by_id, 'x'))\n"
+        "    proc=g.process.spawn({'true'})\n"
+        "    assert(proc.alive and proc.status=='starting' and proc.revision==1 and proc.id>0)\n"
+        "    assert(g.process.list()[1]==proc and g.process.by_id(proc.id)==proc)\n"
+        "    ok, err=pcall(function() proc:watch('alive', print) end)\n"
+        "    assert(not ok and err:find('pid, status, exit_code, signal', 1, true), err)\n"
+        "    assert(not pcall(function() proc:watch('bogus', print) end))\n"
+        "    proc:watch('status', function(pr, v, o) live_log[#live_log+1]=o..'>'..v end)\n"
+        "    proc:on('closed', function(pr, reason) "
+        "live_log[#live_log+1]='closed:'..tostring(reason) end)\n"
+        "    local input=g.input.on({type='key', accelerator='<Alt>F1'}, function() end)\n"
+        "    local before=#g.config['input-handlers']\n"
+        "    input:unsubscribe(); input:unsubscribe()\n"
+        "    assert(before==1 and #(g.config['input-handlers'] or {})==0)\n"
+        "  elseif event.step=='check' then\n"
+        "    assert(table.concat(live_log, ';')=='starting>running;running>exited;closed:nil', "
+        "table.concat(live_log, ';'))\n"
+        "    assert(not proc.alive and proc.status=='exited' and proc.exit_code==0 and "
+        "proc.revision==3)\n"
+        "    assert(g.process.by_id(proc.id)==proc and #g.process.list()==0)\n"
+        "    kept_tween=g.tween()\n"
+        "    kept_tween:on('closed', function(t, reason) error('TWEEN '..reason) end)\n"
+        "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
     g_autoptr(GVariant) menu_runtime = gnoblin_config_load_runtime(root, NULL, NULL, &error);
@@ -1281,6 +1319,33 @@ int main(void) {
                                                   g_variant_builder_end(&grab_closed)),
                      ==, 0);
     g_assert_cmpuint(dispatch_counting_operations("test.grab", step_payload("check")), ==, 0);
+
+    /* Tweens and processes are live objects: a process moves through its states and ends once, a
+     * subscription of input.on can be undone, and a reload ends a tween that is still alive. */
+    g_autoptr(GArray) live_ids = dispatch_operation_ids("test.live", step_payload("make"));
+    g_assert_cmpuint(live_ids->len, ==, 1);
+    GVariantBuilder spawned;
+    g_variant_builder_init(&spawned, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&spawned, "{sv}", "pid", g_variant_new_int64(4242));
+    complete_operation(g_array_index(live_ids, gint64, 0), TRUE, g_variant_builder_end(&spawned),
+                       NULL);
+    g_free(gnoblin_config_take_runtime_callback_error());
+    GVariantBuilder exited;
+    g_variant_builder_init(&exited, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&exited, "{sv}", "id",
+                          g_variant_new_int64(g_array_index(live_ids, gint64, 0)));
+    g_variant_builder_add(&exited, "{sv}", "exit_code", g_variant_new_int64(0));
+    g_assert_cmpuint(
+        dispatch_counting_operations("gnoblin.process.exited", g_variant_builder_end(&exited)), ==,
+        0);
+    g_assert_cmpuint(dispatch_counting_operations("test.live", step_payload("check")), ==, 0);
+    g_autoptr(GVariant) live_reloaded = gnoblin_config_load_runtime(root, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(live_reloaded);
+    gnoblin_config_finish_load(TRUE);
+    g_autofree char* tween_reload_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(tween_reload_error);
+    g_assert_nonnull(strstr(tween_reload_error, "TWEEN config_reloaded"));
 
     /* A worker that shuts down in order tells the grab that is left; so does a reload. */
     g_autoptr(GArray) stop_ids = dispatch_operation_ids("test.grab", step_payload("doomed"));

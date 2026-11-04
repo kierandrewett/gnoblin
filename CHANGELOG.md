@@ -4,6 +4,26 @@
 
 ### Changed
 
+- `Tween`, `Process` and `AnimationPreview` are live objects, and every subscription has one shape (no wire change;
+  the tween track gains an optional `target_kind`).
+    - Each has `id`, `alive`, `revision`, `on` and `watch`, and one handle per id. `tween:on("finished")` runs when
+      the timeline ends; `on("closed")` runs for every end, with the outcome (`"finished"`, `"killed"`,
+      `"cancelled"`) as its reason. `Tween:on_finished` is gone. `Tween:property` reads the properties it may drive
+      from the `animatable` list of each kind, not from the word "Window".
+    - `gnoblin.process.list()` and `gnoblin.process.by_id(id)` find a process again;
+      `gnoblin.process.by_id(window.process)` resolves a window's `process`. `process:watch` follows `pid`,
+      `status`, `exit_code` and `signal`. The process `closed` signal still runs once at the end. An
+      `AnimationPreview` has no `session` field (use `id`) and ends when `stop()` succeeds.
+    - `gnoblin.input.on`, `Request:on` and every object's `on` and `watch` return a `Subscription`; call
+      `sub:unsubscribe()`. `gnoblin.input.on` returned a handler ID string before and could not be undone.
+    - `watch` takes only fields that change while the object is alive (`@observable` in the annotations).
+      `id`, `alive`, `revision` and fixed fields raise an error that lists the fields that work. `Workspace` has
+      `revision`.
+    - A config reload ends every object the runtime owns, not only `Override` and `Grab`: `Shortcut`,
+      `IdleWatch`, `Launch`, `Process`, `Tween` and `AnimationPreview` run their `"closed"` listeners with the
+      reason `"config_reloaded"` (`"runtime_stopped"` when the worker stops), and a pending `Request` takes
+      `on("closed")` with the same reasons. See `docs/shell-api/types.md`.
+
 - `FocusContext` and `MenuContext` are one scoped `Grant` (bridge API 1.92). A shortcut, pointer binding,
   shortcut session key, input event or window menu request carries `event.grant`. `grant:narrow(scope, window?)`
   returns a grant for fewer operations (`focus`, `begin_move`, `begin_resize`, `snap_context`, `text_target`)

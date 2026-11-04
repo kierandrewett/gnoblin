@@ -1,20 +1,24 @@
 /* Live handles for the things a shell touches: windows, workspaces, layer surfaces, outputs,
- * shortcuts, launches, input sources, idle watches, overrides and keyboard grabs.
+ * shortcuts, launches, input sources, idle watches, overrides, keyboard grabs, processes, tweens
+ * and animation previews.
  *
  * A record of one of these kinds is interned by kind and key, so every read of the same window
  * returns the same userdata and that userdata always shows the newest state the runtime has seen.
- * The key is the record's id, except that a launch has its token and an input source has its type
- * and id. Each kind declares its signals here; its properties are the fields of its annotated
- * class (the one declaration, see api/windows.h). A handle reports its end with the "closed"
- * signal and `alive == false`, and `watch` calls back when one declared property changes.
+ * The key is the record's id (a string, or an integer for a process), except that a launch has its
+ * token and an input source has its type and id. Each kind declares its signals here; its
+ * properties are the fields of its annotated class (the one declaration, see api/windows.h). A
+ * handle reports its end with the "closed" signal and `alive == false`, and `watch` calls back when
+ * one declared property changes.
  *
  *   handle:on(signal, fn)       fn(handle, ...) for each signal; returns {unsubscribe = fn}
- *   handle:watch(property, fn)  fn(handle, value, old) when the property changes
+ *   handle:watch(property, fn)  fn(handle, value, old) when the property changes; only the fields
+ *                               an annotation lists as @observable
  *   handle.alive                false once the object has ended */
 #include "gnoblin-lua-internal.h"
 
 #define LUA_OBJECT_HANDLES_KEY "gnoblin.object_handles"
 #define LUA_OBJECT_LISTENERS_KEY "gnoblin.object_listeners"
+#define LUA_OBJECT_PRIVATE_KEY "gnoblin.object_private"
 
 typedef struct {
     const char* kind;
@@ -35,6 +39,8 @@ static const char* const input_source_signals[] = {"changed", "selected", "close
 static const char* const idle_watch_signals[] = {"idle", "active", "closed", NULL};
 static const char* const closed_only[] = {"closed", NULL};
 static const char* const grab_signals[] = {"key", "closed", NULL};
+static const char* const process_signals[] = {"changed", "closed", NULL};
+static const char* const tween_signals[] = {"changed", "finished", "closed", NULL};
 static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
 static const char* const none[] = {NULL};
 
@@ -49,6 +55,9 @@ static const LuaObjectKind object_kinds[] = {
     {"IdleWatch", idle_watch_signals, none, NULL, FALSE},
     {"Override", closed_only, none, NULL, FALSE},
     {"Grab", grab_signals, none, NULL, FALSE},
+    {"Process", process_signals, none, NULL, FALSE},
+    {"Tween", tween_signals, none, NULL, FALSE},
+    {"AnimationPreview", changed_closed, none, NULL, FALSE},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
@@ -120,12 +129,28 @@ gboolean lua_object_kind_is_live(const char* kind) {
     return object_kind(kind) != NULL;
 }
 
-gboolean lua_object_property_animatable(const char* kind, const char* property) {
-    const LuaObjectKind* type = object_kind(kind);
-    for (guint i = 0; type && property && type->animatable[i]; i++)
-        if (g_str_equal(type->animatable[i], property))
-            return TRUE;
-    return FALSE;
+/* The kind of the live handle at `index` when its kind declares `property` animatable, else
+ * NULL. The `animatable` lists above are the one place that says what a tween can drive. */
+const char* lua_object_animatable_kind(lua_State* state, int index, const char* property) {
+    for (gsize k = 0; property && k < G_N_ELEMENTS(object_kinds); k++)
+        for (guint i = 0; object_kinds[k].animatable[i]; i++)
+            if (g_str_equal(object_kinds[k].animatable[i], property) &&
+                lua_object_is(state, index, object_kinds[k].kind))
+                return object_kinds[k].kind;
+    return NULL;
+}
+
+/* What each kind lets a tween drive, such as "Window: opacity, scale, rotation, offset". */
+char* lua_object_describe_animatable(void) {
+    g_autoptr(GPtrArray) parts = g_ptr_array_new_with_free_func(g_free);
+    for (gsize k = 0; k < G_N_ELEMENTS(object_kinds); k++) {
+        if (!object_kinds[k].animatable[0])
+            continue;
+        g_autofree char* names = g_strjoinv(", ", (gchar**)object_kinds[k].animatable);
+        g_ptr_array_add(parts, g_strdup_printf("%s: %s", object_kinds[k].kind, names));
+    }
+    g_ptr_array_add(parts, NULL);
+    return g_strjoinv("; ", (gchar**)parts->pdata);
 }
 
 /* Push the registry table `key`, created on first use; weak values when `weak`. */
@@ -154,10 +179,9 @@ static gboolean push_handle_key(lua_State* state, int index, const char* kind) {
     int base = lua_gettop(state);
     lua_getiuservalue(state, index, 1);
     int backing = lua_absindex(state, -1);
+    int key_type = lua_getfield(state, backing, type && type->key ? type->key : "id");
     const char* id =
-        lua_getfield(state, backing, type && type->key ? type->key : "id") == LUA_TSTRING
-            ? lua_tostring(state, -1)
-            : NULL;
+        key_type == LUA_TSTRING || key_type == LUA_TNUMBER ? lua_tostring(state, -1) : NULL;
     /* Two input sources of different types can share an id. */
     gboolean typed = g_str_equal(kind, "InputSource");
     const char* source_type = NULL;
@@ -345,7 +369,9 @@ static int lua_object_unsubscribe(lua_State* state) {
     return 0;
 }
 
-static void push_subscription(lua_State* state, int entry) {
+/* Push the Subscription of the listener entry {fn, active} at `entry`. */
+void lua_object_push_subscription(lua_State* state, int entry) {
+    entry = lua_absindex(state, entry);
     lua_createtable(state, 0, 1);
     lua_pushvalue(state, entry);
     lua_pushcclosure(state, lua_object_unsubscribe, 1);
@@ -377,7 +403,7 @@ int lua_object_on(lua_State* state) {
     lua_pushvalue(state, entry);
     append_entry(state, -2, signal);
     lua_pop(state, 1);
-    push_subscription(state, entry);
+    lua_object_push_subscription(state, entry);
     return 1;
 }
 
@@ -387,6 +413,13 @@ int lua_object_watch(lua_State* state) {
     luaL_checktype(state, 3, LUA_TFUNCTION);
     if (!lua_api_class_has_field(kind, property))
         return luaL_error(state, "a %s has no %s property", kind, property);
+    if (!lua_api_class_field_observable(kind, property)) {
+        char* names = lua_api_class_observable_names(kind);
+        lua_pushstring(state, names);
+        g_free(names);
+        return luaL_error(state, "%s.%s is not an observable property; watch one of: %s", kind,
+                          property, lua_tostring(state, -1));
+    }
     if (handle_closed(state, 1))
         return luaL_error(state, "this %s has ended", kind);
     if (!push_listener_record(state, 1, kind, TRUE))
@@ -404,7 +437,7 @@ int lua_object_watch(lua_State* state) {
     lua_pushvalue(state, entry);
     append_entry(state, -2, property);
     lua_pop(state, 1);
-    push_subscription(state, entry);
+    lua_object_push_subscription(state, entry);
     return 1;
 }
 
@@ -935,4 +968,101 @@ void lua_object_forget(lua_State* state, const char* kind, const char* key) {
     lua_pushnil(state);
     lua_rawset(state, handles);
     lua_pop(state, 1);
+}
+
+/* The private table of the live handle at `handle`: state a kind keeps beside its public fields,
+ * such as the Operation a Process:wait returns. It lives as long as the handle does. */
+int lua_object_private(lua_State* state, int handle) {
+    handle = lua_absindex(state, handle);
+    if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_OBJECT_PRIVATE_KEY) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_createtable(state, 0, 1);
+        lua_pushliteral(state, "k");
+        lua_setfield(state, -2, "__mode");
+        lua_setmetatable(state, -2);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, LUA_REGISTRYINDEX, LUA_OBJECT_PRIVATE_KEY);
+    }
+    lua_pushvalue(state, handle);
+    if (lua_rawget(state, -2) != LUA_TTABLE) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, handle);
+        lua_pushvalue(state, -2);
+        lua_rawset(state, -4);
+    }
+    lua_remove(state, -2);
+    return lua_absindex(state, -1);
+}
+
+/* Make the plain record table at `record` the state of its live object of `kind`: the handle is
+ * created when none exists, and when one does, its watches and its "changed" listeners run for
+ * each field that differs. Leaves the handle on the stack. */
+void lua_object_apply(lua_State* state, const char* kind, int record) {
+    record = lua_absindex(state, record);
+    const LuaObjectKind* type = object_kind(kind);
+    int before = 0;
+    int key_type = lua_getfield(state, record, type && type->key ? type->key : "id");
+    if (key_type == LUA_TSTRING || key_type == LUA_TNUMBER) {
+        g_autofree char* key = g_strdup_printf("%s:%s", kind, lua_tostring(state, -1));
+        if (push_registered_handle(state, key)) {
+            push_field_copy(state, -1);
+            lua_remove(state, -2);
+            before = lua_gettop(state);
+        }
+    }
+    lua_remove(state, before ? before - 1 : -1); /* the key value */
+    if (before)
+        before--;
+    push_readonly_record(state, record, kind);
+    if (!before)
+        return;
+    int handle = lua_gettop(state);
+    g_autoptr(GPtrArray) names = g_ptr_array_new_with_free_func(g_free);
+    collect_field_changes(state, before, handle, names);
+    if (names->len)
+        raise_signals(state, handle, kind, names, "changed");
+    lua_remove(state, before);
+}
+
+/* Set the fields in the table at `changes` on the live object at `handle`: its revision goes up by
+ * one and its watches and "changed" listeners run. Does nothing when no field differs. */
+void lua_object_update(lua_State* state, const char* kind, int handle, int changes) {
+    handle = lua_absindex(state, handle);
+    changes = lua_absindex(state, changes);
+    int base = lua_gettop(state);
+    gboolean differs = FALSE;
+    lua_pushnil(state);
+    while (lua_next(state, changes)) {
+        if (lua_type(state, -2) == LUA_TSTRING) {
+            lua_getfield(state, handle, lua_tostring(state, -2));
+            differs |= !lua_rawequal(state, -1, -2);
+            lua_pop(state, 1);
+        }
+        lua_pop(state, 1);
+    }
+    if (!differs)
+        return;
+    push_field_copy(state, handle);
+    int copy = lua_gettop(state);
+    lua_pushnil(state);
+    while (lua_next(state, changes)) {
+        lua_pushvalue(state, -2);
+        lua_insert(state, -2);
+        lua_rawset(state, copy);
+    }
+    if (lua_getfield(state, copy, "revision") == LUA_TNUMBER) {
+        lua_pushinteger(state, lua_tointeger(state, -1) + 1);
+        lua_setfield(state, copy, "revision");
+    }
+    lua_pop(state, 1);
+    lua_object_apply(state, kind, copy);
+    lua_settop(state, base);
+}
+
+/* Run the listeners of `signal` of the live object at `handle`, with no change to its fields. */
+void lua_object_raise(lua_State* state, const char* kind, int handle, const char* signal) {
+    g_autoptr(GPtrArray) names = g_ptr_array_new();
+    raise_signals(state, handle, kind, names, signal);
 }

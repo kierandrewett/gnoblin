@@ -6,12 +6,15 @@
  * the timeline into one description that the compositor plays in its render loop
  * (src/control/gnoblin-control-tweens.c), so frames never wait on Lua. A tween drives only the
  * animatable properties a live object kind declares (gnoblin-lua-objects.c); callbacks run when
- * the compositor reaches them. */
+ * the compositor reaches them.
+ *
+ * A Tween is a live object (gnoblin-lua-objects.c): its id and status are fields, "finished" runs
+ * when the timeline reaches its end, and "closed" runs when the tween has ended, however it
+ * ended, with the outcome as its reason. The timeline itself is private to the handle. */
 #include "gnoblin-lua-internal.h"
 
 #include "../../control/gnoblin-easing.h"
 
-#define LUA_TWEEN_METATABLE "gnoblin.Tween"
 #define LUA_TWEENS_KEY "gnoblin.tweens"
 #define TWEEN_MAX_SECONDS 600.0
 
@@ -49,22 +52,38 @@ int lua_lerp(lua_State* state) {
     return 1;
 }
 
-/* The tween's state table: steps, status, id and callbacks. */
-static int tween_state(lua_State* state) {
-    luaL_checkudata(state, 1, LUA_TWEEN_METATABLE);
-    lua_getiuservalue(state, 1, 1);
-    return lua_absindex(state, -1);
+static LuaConfig* tween_config(void) {
+    return active_runtime ? &active_runtime->config : NULL;
 }
 
-static const char* tween_status(lua_State* state, int tween) {
-    lua_getfield(state, tween, "status");
+/* The private table of the Tween that is argument 1: its steps and callbacks. */
+static int tween_state(lua_State* state) {
+    if (!lua_object_is(state, 1, "Tween"))
+        luaL_error(state, "Tween methods are called on a Tween, as tween:method()");
+    return lua_object_private(state, 1);
+}
+
+/* The status of the Tween at `handle`. */
+static const char* handle_status(lua_State* state, int handle) {
+    lua_getfield(state, handle, "status");
     const char* status = lua_tostring(state, -1);
     lua_pop(state, 1);
     return status ? status : "idle";
 }
 
-static void require_idle(lua_State* state, int tween, const char* method) {
-    if (!g_str_equal(tween_status(state, tween), "idle"))
+/* Move the Tween at `handle` to `status`: its watches and "changed" listeners run. */
+static void set_status(lua_State* state, int handle, const char* status) {
+    handle = lua_absindex(state, handle);
+    int base = lua_gettop(state);
+    lua_createtable(state, 0, 1);
+    lua_pushstring(state, status);
+    lua_setfield(state, -2, "status");
+    lua_object_update(state, "Tween", handle, base + 1);
+    lua_settop(state, base);
+}
+
+static void require_idle(lua_State* state, const char* method) {
+    if (!g_str_equal(handle_status(state, 1), "idle"))
         luaL_error(state, "Tween:%s works only before play()", method);
 }
 
@@ -97,28 +116,37 @@ static double check_seconds(lua_State* state, int index, const char* method) {
 }
 
 /* property(target, property, to, seconds, ease?, direction?) */
-static int lua_tween_property(lua_State* state) {
+int lua_tween_property(lua_State* state) {
     lua_settop(state, 7); /* Fixed argument slots; the state table goes above them. */
     int tween = tween_state(state);
-    require_idle(state, tween, "property");
+    require_idle(state, "property");
     const char* property = luaL_checkstring(state, 3);
-    if (!lua_object_is(state, 2, "Window") || !lua_object_property_animatable("Window", property))
-        return luaL_error(state, "Tween:property takes a Window and one of opacity, scale, "
-                                 "rotation or offset");
+    const char* target_kind = lua_object_animatable_kind(state, 2, property);
+    if (!target_kind) {
+        char* animatable = lua_object_describe_animatable();
+        lua_pushstring(state, animatable);
+        g_free(animatable);
+        return luaL_error(state,
+                          "Tween:property takes a live object and a property it can "
+                          "animate (%s)",
+                          lua_tostring(state, -1));
+    }
     lua_getfield(state, 2, "alive");
     gboolean alive = lua_toboolean(state, -1);
     lua_pop(state, 1);
     if (!alive)
         return luaL_error(state, "Tween:property target has ended");
     double seconds = check_seconds(state, 5, "property");
-    int ease = check_ease(state, 6, "linear");
-    int direction = check_direction(state, 7);
-    lua_createtable(state, 0, 8);
+    check_ease(state, 6, "linear");
+    check_direction(state, 7);
+    lua_createtable(state, 0, 9);
     int step = lua_absindex(state, -1);
     lua_pushliteral(state, "track");
     lua_setfield(state, step, "kind");
     lua_getfield(state, 2, "id");
     lua_setfield(state, step, "window");
+    lua_pushstring(state, target_kind);
+    lua_setfield(state, step, "target_kind");
     lua_pushstring(state, property);
     lua_setfield(state, step, "property");
     if (g_str_equal(property, "offset")) {
@@ -143,17 +171,15 @@ static int lua_tween_property(lua_State* state) {
     lua_setfield(state, step, "ease");
     lua_pushstring(state, lua_tostring(state, 7) ? lua_tostring(state, 7) : "in_out");
     lua_setfield(state, step, "direction");
-    (void)ease;
-    (void)direction;
     add_step(state, tween);
     lua_settop(state, 1);
     return 1;
 }
 
-static int lua_tween_interval(lua_State* state) {
+int lua_tween_interval(lua_State* state) {
     lua_settop(state, 2);
     int tween = tween_state(state);
-    require_idle(state, tween, "interval");
+    require_idle(state, "interval");
     double seconds = check_seconds(state, 2, "interval");
     lua_createtable(state, 0, 2);
     lua_pushliteral(state, "interval");
@@ -165,10 +191,10 @@ static int lua_tween_interval(lua_State* state) {
     return 1;
 }
 
-static int lua_tween_callback(lua_State* state) {
+int lua_tween_callback(lua_State* state) {
     lua_settop(state, 2);
     int tween = tween_state(state);
-    require_idle(state, tween, "callback");
+    require_idle(state, "callback");
     luaL_checktype(state, 2, LUA_TFUNCTION);
     lua_createtable(state, 0, 3);
     lua_pushliteral(state, "callback");
@@ -182,22 +208,11 @@ static int lua_tween_callback(lua_State* state) {
     return 1;
 }
 
-static int lua_tween_parallel(lua_State* state) {
+int lua_tween_parallel(lua_State* state) {
     int tween = tween_state(state);
-    require_idle(state, tween, "parallel");
+    require_idle(state, "parallel");
     lua_pushboolean(state, TRUE);
     lua_setfield(state, tween, "next_parallel");
-    lua_settop(state, 1);
-    return 1;
-}
-
-static int lua_tween_on_finished(lua_State* state) {
-    lua_settop(state, 2);
-    int tween = tween_state(state);
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_getfield(state, tween, "finished_fns");
-    lua_pushvalue(state, 2);
-    lua_rawseti(state, -2, (lua_Integer)lua_rawlen(state, -2) + 1);
     lua_settop(state, 1);
     return 1;
 }
@@ -212,13 +227,14 @@ static void queue_tween_operation(lua_State* state, LuaConfig* config, const cha
     lua_call(state, 1, 1);
 }
 
-static void push_tween_arguments(lua_State* state, int tween) {
+static void push_tween_arguments(lua_State* state) {
     lua_newtable(state);
-    lua_getfield(state, tween, "id");
+    lua_getfield(state, 1, "id");
     lua_setfield(state, -2, "tween_id");
 }
 
-/* Completion of tween.play: record the outcome and run the on_finished callbacks. */
+/* Completion of tween.play: record the outcome, run "finished" when the timeline reached its end,
+ * and end the Tween with the outcome as the reason. Upvalue 1 is the Tween. */
 static int lua_tween_ended(lua_State* state) {
     int tween = lua_upvalueindex(1);
     const char* outcome = "cancelled";
@@ -227,37 +243,30 @@ static int lua_tween_ended(lua_State* state) {
         if (lua_type(state, -1) == LUA_TSTRING)
             outcome = lua_tostring(state, -1);
     }
-    lua_pushstring(state, outcome);
-    lua_setfield(state, tween, "status");
-    lua_getfield(state, LUA_REGISTRYINDEX, LUA_TWEENS_KEY);
-    if (lua_istable(state, -1)) {
+    set_status(state, tween, outcome);
+    if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_TWEENS_KEY) == LUA_TTABLE) {
         lua_getfield(state, tween, "id");
         lua_pushnil(state);
         lua_rawset(state, -3);
     }
-    lua_getfield(state, tween, "finished_fns");
-    int fns = lua_absindex(state, -1);
-    for (lua_Integer i = 1; i <= (lua_Integer)lua_rawlen(state, fns); i++) {
-        lua_rawgeti(state, fns, i);
-        lua_pushvalue(state, lua_upvalueindex(2));
-        lua_pushstring(state, outcome);
-        call_handler(state, 2, "Tween callback", "on_finished");
-    }
+    lua_pop(state, 1);
+    if (g_str_equal(outcome, "finished"))
+        lua_object_raise(state, "Tween", tween, "finished");
+    lua_object_end(state, "Tween", tween, outcome);
     return 0;
 }
 
 /* play(): start the timeline, or resume a paused one. Returns the play Operation, which succeeds
  * with "finished", "killed" or "cancelled". */
-static int lua_tween_play(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+int lua_tween_play(lua_State* state) {
+    LuaConfig* config = tween_config();
     int tween = tween_state(state);
-    const char* status = tween_status(state, tween);
+    const char* status = handle_status(state, 1);
     if (g_str_equal(status, "paused")) {
-        push_tween_arguments(state, tween);
+        push_tween_arguments(state);
         queue_tween_operation(state, config, "tween.resume");
         lua_pop(state, 1);
-        lua_pushliteral(state, "playing");
-        lua_setfield(state, tween, "status");
+        set_status(state, 1, "playing");
         lua_getfield(state, tween, "operation");
         return 1;
     }
@@ -292,8 +301,9 @@ static int lua_tween_play(lua_State* state) {
             lua_pop(state, 1);
             if (g_str_equal(kind, "track")) {
                 lua_createtable(state, 0, 8);
-                static const char* const copied[] = {"window", "property", "to",        "to_x",
-                                                     "to_y",   "ease",     "direction", NULL};
+                static const char* const copied[] = {"window", "target_kind", "property",
+                                                     "to",     "to_x",        "to_y",
+                                                     "ease",   "direction",   NULL};
                 for (guint i = 0; copied[i]; i++) {
                     lua_getfield(state, step, copied[i]);
                     lua_setfield(state, -2, copied[i]);
@@ -323,10 +333,9 @@ static int lua_tween_play(lua_State* state) {
     lua_pushvalue(state, callback_fns);
     lua_setfield(state, tween, "callback_fns");
 
-    g_autofree char* id = g_strdup_printf("%" G_GUINT64_FORMAT, ++next_tween_id);
-    lua_pushstring(state, id);
-    lua_setfield(state, tween, "id");
-    lua_pushstring(state, id);
+    lua_getfield(state, 1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushvalue(state, -1);
     lua_setfield(state, arguments, "tween_id");
     lua_pushinteger(state, (lua_Integer)MAX(start_ms, 1.0));
     lua_setfield(state, arguments, "duration_ms");
@@ -339,8 +348,7 @@ static int lua_tween_play(lua_State* state) {
     int operation = lua_absindex(state, -1);
     lua_pushvalue(state, operation);
     lua_setfield(state, tween, "operation");
-    lua_pushliteral(state, "playing");
-    lua_setfield(state, tween, "status");
+    set_status(state, 1, "playing");
 
     /* Keep the tween alive while it plays, so its callbacks can run. */
     if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_TWEENS_KEY) != LUA_TTABLE) {
@@ -353,9 +361,8 @@ static int lua_tween_play(lua_State* state) {
     lua_setfield(state, -2, id);
     lua_pop(state, 1);
 
-    lua_pushvalue(state, tween);
     lua_pushvalue(state, 1);
-    lua_pushcclosure(state, lua_tween_ended, 2);
+    lua_pushcclosure(state, lua_tween_ended, 1);
     subscribe_operation(state, config, operation);
     lua_pop(state, 1);
     lua_pushvalue(state, operation);
@@ -363,98 +370,54 @@ static int lua_tween_play(lua_State* state) {
 }
 
 static int lua_tween_control(lua_State* state, const char* method, const char* status) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    LuaConfig* config = tween_config();
     lua_settop(state, 2);
-    int tween = tween_state(state);
-    const char* current = tween_status(state, tween);
+    tween_state(state);
+    const char* current = handle_status(state, 1);
     if (!g_str_equal(current, "playing") && !g_str_equal(current, "paused"))
         return luaL_error(state, "this tween is not playing");
-    push_tween_arguments(state, tween);
+    push_tween_arguments(state);
     if (g_str_equal(method, "tween.seek")) {
         double seconds = check_seconds(state, 2, "seek");
         lua_pushinteger(state, (lua_Integer)(seconds * 1000.0));
         lua_setfield(state, -2, "milliseconds");
     }
     queue_tween_operation(state, config, method);
-    if (status) {
-        lua_pushstring(state, status);
-        lua_setfield(state, tween, "status");
-    }
+    if (status)
+        set_status(state, 1, status);
     return 1;
 }
 
-static int lua_tween_pause(lua_State* state) {
+int lua_tween_pause(lua_State* state) {
     return lua_tween_control(state, "tween.pause", "paused");
 }
 
-static int lua_tween_seek(lua_State* state) {
+int lua_tween_seek(lua_State* state) {
     return lua_tween_control(state, "tween.seek", NULL);
 }
 
-static int lua_tween_kill(lua_State* state) {
+int lua_tween_kill(lua_State* state) {
     return lua_tween_control(state, "tween.kill", NULL);
-}
-
-static int lua_tween_index(lua_State* state) {
-    const char* key = luaL_checkstring(state, 2);
-    static const struct {
-        const char* name;
-        lua_CFunction function;
-    } methods[] = {
-        {"property", lua_tween_property},
-        {"interval", lua_tween_interval},
-        {"callback", lua_tween_callback},
-        {"parallel", lua_tween_parallel},
-        {"on_finished", lua_tween_on_finished},
-        {"play", lua_tween_play},
-        {"pause", lua_tween_pause},
-        {"seek", lua_tween_seek},
-        {"kill", lua_tween_kill},
-    };
-    for (gsize i = 0; i < G_N_ELEMENTS(methods); i++) {
-        if (g_str_equal(key, methods[i].name)) {
-            lua_pushvalue(state, lua_upvalueindex(1));
-            lua_pushcclosure(state, methods[i].function, 1);
-            return 1;
-        }
-    }
-    if (g_str_equal(key, "status")) {
-        int tween = tween_state(state);
-        lua_pushstring(state, tween_status(state, tween));
-        return 1;
-    }
-    lua_pushnil(state);
-    return 1;
-}
-
-static int lua_tween_newindex(lua_State* state) {
-    return luaL_error(state, "Tween fields are read-only");
 }
 
 /* gnoblin.tween(): a new, empty tween. */
 int lua_tween_new(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.tween takes no arguments");
-    lua_newuserdatauv(state, 0, 1);
-    lua_createtable(state, 0, 6);
+    lua_createtable(state, 0, 3);
+    int record = lua_absindex(state, -1);
+    g_autofree char* id = g_strdup_printf("%" G_GUINT64_FORMAT, ++next_tween_id);
+    lua_pushstring(state, id);
+    lua_setfield(state, record, "id");
     lua_pushliteral(state, "idle");
-    lua_setfield(state, -2, "status");
+    lua_setfield(state, record, "status");
+    lua_pushinteger(state, 1);
+    lua_setfield(state, record, "revision");
+    lua_object_apply(state, "Tween", record);
+    lua_object_private(state, -1);
     lua_newtable(state);
     lua_setfield(state, -2, "groups");
-    lua_newtable(state);
-    lua_setfield(state, -2, "finished_fns");
-    lua_setiuservalue(state, -2, 1);
-    if (luaL_newmetatable(state, LUA_TWEEN_METATABLE)) {
-        lua_pushlightuserdata(state, config);
-        lua_pushcclosure(state, lua_tween_index, 1);
-        lua_setfield(state, -2, "__index");
-        lua_pushcfunction(state, lua_tween_newindex);
-        lua_setfield(state, -2, "__newindex");
-        lua_pushliteral(state, "Tween");
-        lua_setfield(state, -2, "__metatable");
-    }
-    lua_setmetatable(state, -2);
+    lua_pop(state, 1);
     return 1;
 }
 
@@ -472,7 +435,7 @@ gboolean lua_tween_dispatch_event(lua_State* state, const char* event, GVariant*
     if (lua_getfield(state, LUA_REGISTRYINDEX, LUA_TWEENS_KEY) == LUA_TTABLE &&
         lua_getfield(state, -1, id) == LUA_TUSERDATA) {
         int tween = lua_absindex(state, -1);
-        lua_getiuservalue(state, tween, 1);
+        lua_object_private(state, tween);
         lua_getfield(state, -1, "callback_fns");
         if (lua_istable(state, -1) && lua_rawgeti(state, -1, index) == LUA_TFUNCTION) {
             lua_pushvalue(state, tween);

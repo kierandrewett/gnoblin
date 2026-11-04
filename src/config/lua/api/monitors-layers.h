@@ -32,6 +32,7 @@ this same object, updated with each change.
 ---@field layer string Layer-shell layer value.
 ---@field monitor_id? string Monitor ID when assigned.
 ---@field revision integer State revision for this snapshot.
+---@observable title layer monitor_id
 
 ---@class LayerAnimationPolicy
 ---@field namespace string Layer namespace.
@@ -49,13 +50,13 @@ function gnoblin.layers.list(filter) end
 ---fields) or "closed". Listening ends after "closed".
 ---@param signal "changed"|"closed"
 ---@param fn fun(layer: LayerSurface, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function LayerSurface:on(signal, fn) end
 
 ---Call fn(layer, value, old) when one field of this layer surface changes.
 ---@param property string A field of LayerSurface, such as "geometry".
 ---@param fn fun(layer: LayerSurface, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
@@ -100,6 +101,8 @@ monitor minus the space that panels reserve with exclusive zones.
 ---@field privacy_screen OutputPrivacyScreen Privacy screen state of this output.
 ---@field renderer Renderer GPU path that renders this output.
 ---@field revision integer State revision for this snapshot.
+---@observable enabled primary monitor_id index mode scale transform x y width height work_area
+---@observable privacy_screen renderer
 
 ---Return all current outputs. The list is empty until the first output snapshot is published.
 ---@return Output[]
@@ -122,12 +125,12 @@ function gnoblin.outputs.renderer() end
 ---or "closed" when the output is removed. Listening ends after "closed".
 ---@param signal "changed"|"closed"
 ---@param fn fun(output: Output, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function Output:on(signal, fn) end
 
 ---Call fn(output, value, old) when one field of this output changes.
 ---@param property string A field of Output, such as "scale" or "privacy_screen".
 ---@param fn fun(output: Output, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Output:watch(property, fn) end
 */

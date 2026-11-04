@@ -48,6 +48,6 @@ function Override:revoke() end
 ---read but cannot start an operation. Listening ends after "closed".
 ---@param signal "closed"
 ---@param fn fun(override: Override, reason?: string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Override:on(signal, fn) end
 */

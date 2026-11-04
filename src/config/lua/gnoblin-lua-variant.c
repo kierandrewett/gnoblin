@@ -458,8 +458,14 @@ static int backing_field_type(lua_State* state, int backing, const char* name) {
 }
 
 /* Install the record methods for the kind of record `backing` holds and return that kind, or
- * NULL for plain data. */
-static const char* add_snapshot_methods(lua_State* state, int backing, int method_table) {
+ * NULL for plain data. `forced` names the kind when the caller knows it (a process, a tween). */
+static const char* add_snapshot_methods(lua_State* state, int backing, int method_table,
+                                        const char* forced) {
+    if (forced) {
+        add_record_methods(state, method_table, forced);
+        lua_object_add_methods(state, method_table, forced);
+        return forced;
+    }
     /* A launch is named by its token and has a launch state. */
     if (backing_field_type(state, backing, "token") == LUA_TSTRING &&
         backing_field_type(state, backing, "application") == LUA_TSTRING &&
@@ -487,12 +493,8 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
     lua_getfield(state, backing, "layer");
     is_layer &= lua_type(state, -1) == LUA_TSTRING;
     lua_pop(state, 1);
-    lua_getfield(state, backing, "session");
-    gboolean is_animation_preview = lua_type(state, -1) == LUA_TSTRING;
-    lua_pop(state, 1);
-    lua_getfield(state, backing, "name");
-    is_animation_preview &= lua_type(state, -1) == LUA_TSTRING;
-    lua_pop(state, 1);
+    /* A preview names its animation, its target and where its timeline is. */
+    gboolean is_animation_preview = backing_field_type(state, backing, "name") == LUA_TSTRING;
     lua_getfield(state, backing, "target_type");
     is_animation_preview &= lua_type(state, -1) == LUA_TSTRING;
     lua_pop(state, 1);
@@ -553,6 +555,11 @@ static const char* add_snapshot_methods(lua_State* state, int backing, int metho
                                               : NULL;
     if (kind)
         add_record_methods(state, method_table, kind);
+    if (kind && g_str_equal(kind, "AnimationPreview")) {
+        /* The compositor repeats the id as `session`; the id is the one name. */
+        lua_pushnil(state);
+        lua_setfield(state, backing, "session");
+    }
     if (lua_object_kind_is_live(kind))
         lua_object_add_methods(state, method_table, kind);
     return kind;
@@ -571,6 +578,11 @@ static int lua_readonly_pairs(lua_State* state) {
  * its id (gnoblin-lua-objects.c): the one userdata per object, moved to the newest state. Its
  * memory block holds whether the object has ended. */
 void push_readonly_copy(lua_State* state, int index) {
+    push_readonly_record(state, index, NULL);
+}
+
+/* push_readonly_copy for a record whose kind the caller names. */
+void push_readonly_record(lua_State* state, int index, const char* forced_kind) {
     index = lua_absindex(state, index);
     if (!lua_istable(state, index)) {
         lua_pushvalue(state, index);
@@ -594,7 +606,7 @@ void push_readonly_copy(lua_State* state, int index) {
         mark_array_table(state, backing);
     lua_newtable(state); /* Methods stay out of pairs()/snapshot fields. */
     int method_table = lua_absindex(state, -1);
-    const char* kind = add_snapshot_methods(state, backing, method_table);
+    const char* kind = add_snapshot_methods(state, backing, method_table, forced_kind);
     lua_pushvalue(state, method_table);
     lua_setiuservalue(state, readonly, 2);
     lua_pushvalue(state, backing);
@@ -639,13 +651,13 @@ void push_readonly_event_fields(lua_State* state, GVariant* payload, int event_i
 }
 
 static gboolean variant_is_animation_preview(GVariant* value) {
-    const char* session = NULL;
+    const char* id = NULL;
     const char* name = NULL;
     const char* target_type = NULL;
     double progress = 0.0;
     gboolean playing = FALSE;
     return value && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT) &&
-           g_variant_lookup(value, "session", "&s", &session) && session && *session &&
+           g_variant_lookup(value, "id", "&s", &id) && id && *id &&
            g_variant_lookup(value, "name", "&s", &name) && name && *name &&
            g_variant_lookup(value, "target_type", "&s", &target_type) && target_type &&
            *target_type && g_variant_lookup(value, "progress", "d", &progress) &&
@@ -765,12 +777,19 @@ void push_operation_result(lua_State* state, const char* method, GVariant* value
         return;
     }
     push_variant(state, value);
+    if (g_str_has_prefix(method, "animation.") && variant_is_animation_preview(value)) {
+        /* The compositor repeats the preview's id as `session`; the id is the one name. */
+        lua_pushnil(state);
+        lua_setfield(state, -2, "session");
+        lua_object_apply(state, "AnimationPreview", -1);
+        lua_remove(state, -2);
+        return;
+    }
     /* These return the live object they started or changed. */
     gboolean live_result = g_str_equal(method, "shortcut.bind") ||
                            g_str_equal(method, "launch.begin") ||
                            g_str_equal(method, "input.select");
-    if (!live_result &&
-        (!g_str_has_prefix(method, "animation.") || !variant_is_animation_preview(value)))
+    if (!live_result)
         return;
     push_readonly_copy(state, -1);
     lua_remove(state, -2);

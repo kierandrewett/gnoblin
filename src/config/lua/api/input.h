@@ -24,6 +24,7 @@
 ---@field name string Display name.
 ---@field current boolean True when this source is selected.
 ---@field revision integer Input source snapshot revision.
+---@observable name short_name current
 
 ---@class OrientationLock
 ---@field available boolean Whether orientation lock is supported.
@@ -89,13 +90,13 @@ function InputSource:select() end
 ---gnoblin.input.source-changed and the list with gnoblin.input.sources-changed.
 ---@param signal "changed"|"selected"|"closed"
 ---@param fn fun(source: InputSource, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function InputSource:on(signal, fn) end
 
 ---Call fn(source, value, old) when one field of this source changes, such as "current".
 ---@param property string A field of InputSource.
 ---@param fn fun(source: InputSource, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function InputSource:watch(property, fn) end
 
 ---Return the current orientation lock state.
@@ -109,11 +110,14 @@ function gnoblin.input.orientation_lock() end
 ---@return Operation<TextTarget>
 function gnoblin.input.text_target(grant) end
 
----Register a Lua policy callback for matching input events.
+---Register a Lua policy callback for matching input events. The Subscription it returns has the
+---same shape as the one of gnoblin.on and of every object's on: sub:unsubscribe() removes the
+---handler, and input that matched it goes on to the next handler or the application. A handler
+---cannot be added or removed from inside an input callback.
 ---@param match InputHandlerMatch Event selectors. type is required; other selectors are optional.
 ---@param handler fun(event: InputEvent): InputHandlerResult|nil Return action="consume" to consume,
 "forward" or nil to pass through.
----@return string Handler ID.
+---@return Subscription
 function gnoblin.input.on(match, handler) end
 
 ---Insert one-use text through this target during a runtime event callback.
@@ -191,6 +195,6 @@ function Grab:release() end
 ---operation. Listening ends after "closed".
 ---@param signal "key"|"closed"
 ---@param fn fun(grab: Grab, detail: GrabKey|string|nil)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Grab:on(signal, fn) end
 */

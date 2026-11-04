@@ -249,6 +249,24 @@ and gap 7 are done (see the end of this list).
       slot and nothing else.
     - Not done: a grab that also takes pointer input, and a key the grab lets through to the focused window.
 
+- Object completeness (round 2, audit items 3, 7, 8, 9, 12, 13, 14, 17), done.
+    - `Tween`, `Process` and `AnimationPreview` are live kinds in `gnoblin-lua-objects.c`: interned by `id`, with
+      `alive`, `on`, `watch`, `revision` and a `closed` signal. A tween has `"finished"` and `"closed"` (the outcome is
+      the reason) and no `on_finished`. `Tween:property` takes its allowed `(kind, property)` pairs from the
+      `animatable` table of the kinds, and the wire track carries `target_kind`. A process has
+      `gnoblin.process.list()` and `by_id(id)`; `Window.process` is that id. A preview has no `session` field, only `id`.
+    - One subscription shape: `on`, `watch`, `gnoblin.on`, `Request:on` and `gnoblin.input.on` return a
+      `Subscription` with `unsubscribe`. `input.on` removes the handler from the configuration document.
+    - `watch` takes only fields the annotation lists with `@observable`; others raise an error that names the
+      fields that work. `Workspace` has `revision`. `Shortcut`, `Override` and `Grab` have none, because their
+      fields never change, and a `Request` has none, because its `status` is its own outcome.
+    - A reload (and a stopping worker) ends `Shortcut`, `IdleWatch`, `Launch`, `Process`, `Tween` and
+      `AnimationPreview` as it already ended `Override` and `Grab`, and runs the `closed` listeners of pending
+      `Request`s with `config_reloaded`. A reload waits for the pending `Operation` of a playing tween, so only an
+      unplayed tween is alive at a commit.
+    - `scripts/audit-lua-annotations.py` derives the record classes from the annotations and checks the hand-built
+      methods (`Operation`, `Request`, `Grant`, `TextTarget`, `SnapContext`) in both directions.
+
 - Gap 7, done. `FocusContext` and `MenuContext` are one `Grant` (bridge API 1.92): `event.grant` on a
   shortcut, pointer binding, shortcut session key, input event and WM menu request.
     - Source facts. The compositor made one `NativeFocusContext` per gesture (key press, pointer binding,
@@ -332,7 +350,7 @@ Three layers, each usable alone:
     tween:parallel():property(layer, "opacity", 0.4, 0.25)
     tween:interval(0.1)
     tween:callback(function() window:close() end)
-    tween:on_finished(function() end)
+    tween:on("finished", function() end)
     tween:pause() tween:play() tween:seek(0.5) tween:kill()
     ```
 
@@ -347,7 +365,7 @@ Three layers, each usable alone:
 - Native steps in one tween compile to one description that the compositor plays. First-frame timing and frame pacing do
   not depend on the Lua runtime.
 - A timeline runs on one backend. Native tracks and Lua-driven steps are not mixed in one tween, because they would
-  visibly diverge. Order them with `on_finished` instead.
+  visibly diverge. Order them with the `"finished"` signal instead.
 - Verified: a tween owned by the runtime is cancelled when the runtime reloads, and a tween whose targets all close
   ends early and still reports `finished`.
 - Named lifecycle animations (`gnoblin.animation`) stay declarative and run natively, so a window opening never waits on

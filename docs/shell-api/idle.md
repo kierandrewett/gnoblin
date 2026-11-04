@@ -60,7 +60,8 @@ end)
 ```
 
 A configuration reload ends every watch, and the new configuration makes its own. The same happens when the Lua
-worker restarts and when the compositor stops.
+worker restarts and when the compositor stops. The `"closed"` listeners of a watch run once, with the reason
+`"config_reloaded"` or `"runtime_stopped"`, as the old runtime goes. They can read, but they cannot start an operation.
 
 ## Idle watches in `gnoblinctl lua`
 

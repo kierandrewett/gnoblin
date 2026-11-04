@@ -11,6 +11,9 @@ this field.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
 ---@field windows integer Number of windows on this workspace.
+---@field revision integer State revision of this snapshot; it goes up with every change of the
+workspace list, so a rename gives a higher number.
+---@observable number name active windows
 
 ---@class WorkspaceCreateOptions
 ---@field id? string Optional ID. Must start with a letter or number and contain only letters,
@@ -66,12 +69,12 @@ function Workspace:remove() end
 ---fields), "activated" or "closed". Listening ends after "closed".
 ---@param signal "changed"|"activated"|"closed"
 ---@param fn fun(workspace: Workspace, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function Workspace:on(signal, fn) end
 
 ---Call fn(workspace, value, old) when one field of this workspace changes.
 ---@param property string A field of Workspace, such as "name" or "active".
 ---@param fn fun(workspace: Workspace, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Workspace:watch(property, fn) end
 */

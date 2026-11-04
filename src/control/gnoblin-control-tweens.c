@@ -200,6 +200,14 @@ static gboolean parse_track(GnoblinNativeControl* control, GVariant* dict, Tween
                             "tween track needs window, property, start_ms and duration_ms");
         return FALSE;
     }
+    /* Only a window declares animatable properties (gnoblin-lua-objects.c lists them). */
+    const char* target_kind = "Window";
+    g_variant_lookup(dict, "target_kind", "&s", &target_kind);
+    if (!g_str_equal(target_kind, "Window")) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                    "a %s has no animatable property %s", target_kind, property);
+        return FALSE;
+    }
     g_variant_lookup(dict, "ease", "&s", &ease);
     g_variant_lookup(dict, "direction", "&s", &direction);
     int ease_index = gnoblin_ease_from_name(ease);

@@ -226,13 +226,20 @@ static int lua_request_finished(lua_State* state) {
     return 1;
 }
 
-/* on("prompt" | "message", fn): run fn(request) for each later prompt or message. */
+/* on("prompt" | "message", fn): run fn(request) for each later prompt or message of an
+ * authentication. on("closed", fn): run fn(request, reason) when the runtime that holds the
+ * request goes away before the request is answered; the reason is "config_reloaded" or
+ * "runtime_stopped". */
 static int lua_request_on(lua_State* state) {
     int backing = request_backing(state);
     const char* signal = luaL_checkstring(state, 2);
     luaL_checktype(state, 3, LUA_TFUNCTION);
-    if (!g_str_equal(signal, "prompt") && !g_str_equal(signal, "message"))
-        return luaL_error(state, "Request:on takes \"prompt\" or \"message\"");
+    gboolean stream = g_str_equal(signal, "prompt") || g_str_equal(signal, "message");
+    if (!stream && !g_str_equal(signal, "closed"))
+        return luaL_error(state, "Request:on takes \"prompt\", \"message\" or \"closed\"");
+    if (stream && !g_str_equal(backing_kind(state, backing), "authentication"))
+        return luaL_error(state, "a %s request has no %s signal", backing_kind(state, backing),
+                          signal);
     lua_getfield(state, backing, "_signals");
     lua_getfield(state, -1, signal);
     if (!lua_istable(state, -1)) {
@@ -241,9 +248,27 @@ static int lua_request_on(lua_State* state) {
         lua_pushvalue(state, -1);
         lua_setfield(state, -3, signal);
     }
+    lua_createtable(state, 0, 2);
+    int entry = lua_absindex(state, -1);
     lua_pushvalue(state, 3);
-    lua_rawseti(state, -2, (lua_Integer)lua_rawlen(state, -2) + 1);
-    return 0;
+    lua_setfield(state, entry, "fn");
+    lua_pushboolean(state, TRUE);
+    lua_setfield(state, entry, "active");
+    lua_pushvalue(state, entry);
+    lua_rawseti(state, -3, (lua_Integer)lua_rawlen(state, -3) + 1);
+    lua_object_push_subscription(state, entry);
+    return 1;
+}
+
+/* Push the function of the listener entry at `entry` when it is active, else nothing; TRUE when
+ * it pushed one. */
+static gboolean push_active_listener(lua_State* state, int entry) {
+    lua_getfield(state, entry, "active");
+    gboolean active = lua_toboolean(state, -1);
+    lua_pop(state, 1);
+    if (active)
+        lua_getfield(state, entry, "fn");
+    return active;
 }
 
 static gboolean kind_has(const char* kind, const char* member) {
@@ -251,7 +276,7 @@ static gboolean kind_has(const char* kind, const char* member) {
                           g_str_equal(kind, "authentication") || g_str_equal(kind, "location");
     if (g_str_equal(member, "answer") || g_str_equal(member, "cancel"))
         return answerable;
-    if (g_str_equal(member, "claim") || g_str_equal(member, "on"))
+    if (g_str_equal(member, "claim"))
         return g_str_equal(kind, "authentication");
     return g_str_equal(member, "finished");
 }
@@ -373,8 +398,11 @@ static void run_signal(lua_State* state, int backing, const char* signal) {
         int callbacks = lua_absindex(state, -1);
         for (lua_Integer i = 1; i <= (lua_Integer)lua_rawlen(state, callbacks); i++) {
             lua_rawgeti(state, callbacks, i);
-            lua_getfield(state, backing, "_object");
-            call_handler(state, 1, "Request signal", signal);
+            if (push_active_listener(state, lua_gettop(state))) {
+                lua_getfield(state, backing, "_object");
+                call_handler(state, 1, "Request signal", signal);
+            }
+            lua_pop(state, 1);
         }
     }
     lua_pop(state, 2);
@@ -464,4 +492,38 @@ int request_for_event(lua_State* state, LuaConfig* config, const char* event, GV
 
 GHashTable* runtime_requests_new(void) {
     return g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+}
+
+/* The runtime is going away: tell the listeners of every request it still holds with `reason`.
+ * They run with no dispatch open, so they can read but cannot start an operation. */
+void request_end_all(lua_State* state, LuaConfig* config, const char* reason) {
+    if (!config->requests)
+        return;
+    g_autoptr(GArray) references = g_array_new(FALSE, FALSE, sizeof(int));
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, config->requests);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        int reference = GPOINTER_TO_INT(value);
+        g_array_append_val(references, reference);
+    }
+    for (guint i = 0; i < references->len; i++) {
+        int base = lua_gettop(state);
+        lua_rawgeti(state, LUA_REGISTRYINDEX, g_array_index(references, int, i));
+        int backing = lua_absindex(state, -1);
+        lua_getfield(state, backing, "_signals");
+        if (lua_istable(state, -1) && lua_getfield(state, -1, "closed") == LUA_TTABLE) {
+            int callbacks = lua_absindex(state, -1);
+            for (lua_Integer c = 1; c <= (lua_Integer)lua_rawlen(state, callbacks); c++) {
+                lua_rawgeti(state, callbacks, c);
+                if (push_active_listener(state, lua_gettop(state))) {
+                    lua_getfield(state, backing, "_object");
+                    lua_pushstring(state, reason);
+                    call_handler(state, 2, "Request signal", "closed");
+                }
+                lua_pop(state, 1);
+            }
+        }
+        lua_settop(state, base);
+    }
 }

@@ -46,6 +46,7 @@ typedef struct {
     const char* type;
     gboolean optional;
     const char* description;
+    gboolean observable; /* a field `watch` accepts: it changes while its object is alive */
 } ApiMember;
 
 typedef struct {
@@ -90,6 +91,33 @@ gboolean lua_api_class_has_field(const char* class_name, const char* field) {
         return FALSE;
     }
     return FALSE;
+}
+
+/* Whether `watch` accepts the annotated field: one that changes while its object is alive. */
+gboolean lua_api_class_field_observable(const char* class_name, const char* field) {
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (g_str_equal(type->fields[i].name, field))
+                return type->fields[i].observable;
+        return FALSE;
+    }
+    return FALSE;
+}
+
+/* The observable fields of the class, comma separated; "none" when it has none. */
+char* lua_api_class_observable_names(const char* class_name) {
+    g_autoptr(GPtrArray) names = g_ptr_array_new();
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (type->fields[i].observable)
+                g_ptr_array_add(names, (gpointer)type->fields[i].name);
+    }
+    g_ptr_array_add(names, NULL);
+    return names->len > 1 ? g_strjoinv(", ", (gchar**)names->pdata) : g_strdup("none");
 }
 
 #define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"

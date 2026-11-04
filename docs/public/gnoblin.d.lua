@@ -98,9 +98,13 @@ gnoblin.workspaces = {}
 ---@field context table Compositor context used to resolve the animation.
 ---@field spec table Resolved animation specification.
 
+---A preview the compositor plays on one target. It is a live object: the same handle for one id,
+---with `alive`, `on` and `watch`. Each call on it updates this handle with the preview's new
+---state. It is alive until stop() has succeeded, a call on it fails because the preview is gone,
+---or a config reload ends the handle.
 ---@class AnimationPreview
----@field id string Preview session ID.
----@field session string Preview session ID used by control calls.
+---@field id string Preview ID. Calls to the compositor name the preview by it.
+---@field alive boolean False once the preview has ended.
 ---@field name string Animation name.
 ---@field event string Lifecycle event.
 ---@field target string Stable target ID.
@@ -166,6 +170,20 @@ function AnimationPreview:pause() end
 ---@return Operation<AnimationStopResult>
 function AnimationPreview:stop() end
 
+---Call fn(preview, detail) on a signal of this preview: "changed" (with the list of changed
+---fields) or "closed", with the reason when it has one: the message of the failure that showed the
+---preview gone, or "config_reloaded". Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(preview: AnimationPreview, detail?: string|string[])
+---@return Subscription
+function AnimationPreview:on(signal, fn) end
+
+---Call fn(preview, value, old) when one field of this preview changes.
+---@param property string A field of AnimationPreview, such as "progress".
+---@param fn fun(preview: AnimationPreview, value: any, old: any)
+---@return Subscription
+function AnimationPreview:watch(property, fn) end
+
 ---Something a shell answers: a passphrase prompt, a polkit authentication, a location
 ---authorization or a session-lock request. The event that offers it carries it as event.request,
 ---and so do its follow-up events. Fields are read-only. Methods exist only on the kinds that use
@@ -200,9 +218,14 @@ function Request:claim(identity) end
 ---@return Operation<string>
 function Request:finished() end
 
----Call fn(request) for each later authentication prompt or message.
----@param signal "prompt"|"message"
----@param fn fun(request: Request)
+---Call fn(request) for each later authentication prompt or message. Call fn(request, reason) on
+---"closed", which every kind of request has: it runs when a config reload or the worker's
+---shutdown takes the runtime away before the request is finished, with the reason
+---"config_reloaded" or "runtime_stopped". A request that finishes does not raise it; use
+---finished() for that.
+---@param signal "prompt"|"message"|"closed"
+---@param fn fun(request: Request, reason?: string)
+---@return Subscription
 function Request:on(signal, fn) end
 
 ---@alias Json nil|boolean|number|string|table
@@ -228,14 +251,8 @@ function Request:on(signal, fn) end
 ---of them is nil. A callback added after the operation finished runs once, after the current
 ---handler returns.
 ---@param callback fun(value: any, error: OperationError|nil)
----@return OperationSubscription
+---@return Subscription
 function Operation:on_complete(callback) end
-
----A callback added with on_complete.
----@class OperationSubscription
-
----Stop calling this callback.
-function OperationSubscription:unsubscribe() end
 
 ---A new Operation that succeeds with fn(value) when this one succeeds. When this one fails, or fn
 ---raises an error, the new one fails; an error raised by fn has the code "internal".
@@ -378,20 +395,21 @@ function gnoblin.config.restore_default() end
 ---@class Event
 ---@field name string Name of the event that was dispatched.
 
----Handle returned by an event subscription.
----@class EventSubscription
----@field unsubscribe fun(self: EventSubscription) Stop receiving this event.
+---What every subscription returns: gnoblin.on and once, the on and watch of every object, the
+---on of a Request, and gnoblin.input.on. Call sub:unsubscribe() to stop; it may be called again.
+---@class Subscription
+---@field unsubscribe fun(self: Subscription) Stop receiving this event.
 
 ---Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.
 ---@param name string Event name, or `*` to receive every dispatched event.
 ---@param callback fun(event: Event) Called once for each matching event.
----@return EventSubscription
+---@return Subscription
 function gnoblin.on(name, callback) end
 
 ---Register a callback that is removed after its first event.
 ---@param name string Event name, or `*` to receive the next dispatched event.
 ---@param callback fun(event: Event) Called once for the first matching event.
----@return EventSubscription
+---@return Subscription
 function gnoblin.once(name, callback) end
 
 ---@class FocusHistoryFilter
@@ -450,13 +468,13 @@ function IdleWatch:cancel() end
 ---ends after "closed".
 ---@param signal "idle"|"active"|"closed"
 ---@param fn fun(watch: IdleWatch, reason?: string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function IdleWatch:on(signal, fn) end
 
 ---Call fn(watch, value, old) when one field of this watch changes.
 ---@param property string A field of IdleWatch, such as "idle".
 ---@param fn fun(watch: IdleWatch, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function IdleWatch:watch(property, fn) end
 
 ---@class InputDevice
@@ -543,13 +561,13 @@ function InputSource:select() end
 ---gnoblin.input.source-changed and the list with gnoblin.input.sources-changed.
 ---@param signal "changed"|"selected"|"closed"
 ---@param fn fun(source: InputSource, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function InputSource:on(signal, fn) end
 
 ---Call fn(source, value, old) when one field of this source changes, such as "current".
 ---@param property string A field of InputSource.
 ---@param fn fun(source: InputSource, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function InputSource:watch(property, fn) end
 
 ---Return the current orientation lock state.
@@ -563,10 +581,13 @@ function gnoblin.input.orientation_lock() end
 ---@return Operation<TextTarget>
 function gnoblin.input.text_target(grant) end
 
----Register a Lua policy callback for matching input events.
+---Register a Lua policy callback for matching input events. The Subscription it returns has the
+---same shape as the one of gnoblin.on and of every object's on: sub:unsubscribe() removes the
+---handler, and input that matched it goes on to the next handler or the application. A handler
+---cannot be added or removed from inside an input callback.
 ---@param match InputHandlerMatch Event selectors. type is required; other selectors are optional.
 ---@param handler fun(event: InputEvent): InputHandlerResult|nil Return action="consume" to consume, "forward" or nil to pass through.
----@return string Handler ID.
+---@return Subscription
 function gnoblin.input.on(match, handler) end
 
 ---Insert one-use text through this target during a runtime event callback.
@@ -639,7 +660,7 @@ function Grab:release() end
 ---operation. Listening ends after "closed".
 ---@param signal "key"|"closed"
 ---@param fn fun(grab: Grab, detail: GrabKey|string|nil)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Grab:on(signal, fn) end
 
 ---A launch the compositor is watching for. It is the same object for as long as the launch
@@ -689,13 +710,13 @@ function Launch:finish() end
 ---Listening ends after "closed".
 ---@param signal "changed"|"started"|"timed_out"|"closed"
 ---@param fn fun(launch: Launch, changed_or_reason?: string[]|string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Launch:on(signal, fn) end
 
 ---Call fn(launch, value, old) when one field of this launch changes.
 ---@param property string A field of Launch, such as "state".
 ---@param fn fun(launch: Launch, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Launch:watch(property, fn) end
 
 ---@class MonitorRect
@@ -741,13 +762,13 @@ function gnoblin.layers.list(filter) end
 ---fields) or "closed". Listening ends after "closed".
 ---@param signal "changed"|"closed"
 ---@param fn fun(layer: LayerSurface, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function LayerSurface:on(signal, fn) end
 
 ---Call fn(layer, value, old) when one field of this layer surface changes.
 ---@param property string A field of LayerSurface, such as "geometry".
 ---@param fn fun(layer: LayerSurface, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
@@ -811,13 +832,13 @@ function gnoblin.outputs.renderer() end
 ---or "closed" when the output is removed. Listening ends after "closed".
 ---@param signal "changed"|"closed"
 ---@param fn fun(output: Output, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function Output:on(signal, fn) end
 
 ---Call fn(output, value, old) when one field of this output changes.
 ---@param property string A field of Output, such as "scale" or "privacy_screen".
 ---@param fn fun(output: Output, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Output:watch(property, fn) end
 
 ---Options for gnoblin.process.spawn. Every field is optional.
@@ -830,7 +851,8 @@ function Output:watch(property, fn) end
 ---@field output_limit? integer Bytes kept per captured stream, 0 to 4194304; 65536 by default.
 ---@field timeout? number Seconds, up to 86400, before the process group is ended.
 
----A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.
+---A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs. A
+---Process is a live object: the same handle for one id, with `alive`, `on` and `watch`.
 ---@class Process
 ---@field id integer Identifier for this process within the session.
 ---@field alive boolean True from spawn until the process has exited or failed to start.
@@ -839,6 +861,7 @@ function Output:watch(property, fn) end
 ---@field status "starting"|"running"|"exited"|"failed" "failed" means it could not be started.
 ---@field exit_code integer|nil Exit status, once it exited normally.
 ---@field signal string|integer|nil Signal that ended it, such as "term", once it was killed.
+---@field revision integer Counts the changes of the fields above.
 
 ---How a process ended, the value of Process:wait().
 ---@class ProcessExit
@@ -857,20 +880,40 @@ function Output:watch(property, fn) end
 ---@return Process
 function gnoblin.process.spawn(argv, options) end
 
+---The processes this runtime started that have not ended, oldest first.
+---@return Process[]
+function gnoblin.process.list() end
+
+---The Process with this id, or nil when the runtime does not know it: another runtime started
+---it, or it has ended and nothing holds it any more. Window.process holds the id of the Process
+---that started a window's program, so `gnoblin.process.by_id(window.process)` gives that Process.
+---@param id integer The Process.id.
+---@return Process|nil
+function gnoblin.process.by_id(id) end
+
 ---An Operation that succeeds with a ProcessExit when the process ends, whatever its exit status,
 ---and fails when the process could not be started. Every call returns the same Operation.
 ---@return Operation<ProcessExit>
 function Process:wait() end
 
----Call fn(process) when the process has ended, however it ended: it exited, was killed, or
----could not be started. The signal is called "closed", as on Window, Workspace and Output, so
----code can treat every object alike; status, exit_code and signal say how it ended, and wait()
----has the captured output. Listening ends after "closed", and on fails once the process has
----ended.
----@param signal "closed"
----@param fn fun(process: Process)
----@return {unsubscribe: fun()}
+---Call fn(process) on a signal of this process. "closed" runs when the process has ended,
+---however it ended: it exited, was killed, could not be started, or a config reload ended the
+---handle. It is the same signal as on Window, Workspace and Output. status, exit_code and signal
+---say how, and wait() has the captured output. The detail is "config_reloaded" or
+---"runtime_stopped" when the runtime ended the handle; the child keeps running then. "changed"
+---runs with the list of changed fields. Listening ends after "closed", and on fails once the
+---process has ended.
+---@param signal "changed"|"closed"
+---@param fn fun(process: Process, detail?: string|string[])
+---@return Subscription
 function Process:on(signal, fn) end
+
+---Call fn(process, value, old) when one field of this process changes: pid, status, exit_code or
+---signal.
+---@param property string A field of Process, such as "status".
+---@param fn fun(process: Process, value: any, old: any)
+---@return Subscription
+function Process:watch(property, fn) end
 
 ---Send a signal to the process group.
 ---@param signal? "term"|"kill"|"int"|"hup"|"usr1"|"usr2"|"stop"|"cont" The default is "term".
@@ -1058,7 +1101,7 @@ function Override:revoke() end
 ---read but cannot start an operation. Listening ends after "closed".
 ---@param signal "closed"
 ---@param fn fun(override: Override, reason?: string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Override:on(signal, fn) end
 
 ---@class ShortcutAction
@@ -1160,7 +1203,7 @@ function Shortcut:end_session(session_id) end
 ---Listening ends after "closed".
 ---@param signal "activated"|"deactivated"|"session_activated"|"session_key"|"session_ended"|"closed"
 ---@param fn fun(shortcut: Shortcut, event_or_reason?: table|string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Shortcut:on(signal, fn) end
 
 ---Capture one normalized keyboard accelerator.
@@ -1169,9 +1212,14 @@ function Shortcut:on(signal, fn) end
 function gnoblin.shortcuts.capture(options) end
 
 ---A timeline of steps that the compositor plays. Steps run one after another; parallel() makes
----the next step run with the previous one. Build it, then call play().
+---the next step run with the previous one. Build it, then call play(). A Tween is a live object:
+---the same handle for one id, with `alive`, `on` and `watch`. It is alive from gnoblin.tween()
+---until it has ended, and a config reload ends it too. The steps are private to the handle.
 ---@class Tween
+---@field id string Identifier of this tween within the session.
+---@field alive boolean False once the tween has ended: it finished, was killed, or was cancelled.
 ---@field status "idle"|"playing"|"paused"|"finished"|"killed"|"cancelled"
+---@field revision integer Counts the changes of `status`.
 
 ---Return eased progress for t from 0 to 1.
 ---@param name string linear, sine, quad, cubic, quart, quint, expo, circ, back, elastic or bounce.
@@ -1191,9 +1239,11 @@ function gnoblin.lerp(a, b, t) end
 ---@return Tween
 function gnoblin.tween() end
 
----Add a step that changes a window's opacity, scale, rotation or offset to `to` over `seconds`,
----starting from the value the window has when the step begins. An offset takes {x, y}.
----@param target Window
+---Add a step that changes a property of a live object to `to` over `seconds`, starting from the
+---value the object has when the step begins. Each kind of object declares the properties a tween
+---can drive; today only a Window does: opacity, scale, rotation and offset. A property that the
+---target does not declare fails with an error that lists them. An offset takes {x, y}.
+---@param target Window The live object to animate.
 ---@param property "opacity"|"scale"|"rotation"|"offset"
 ---@param to number|{x: number, y: number}
 ---@param seconds number From 0 to 600.
@@ -1216,11 +1266,6 @@ function Tween:callback(fn) end
 ---@return Tween
 function Tween:parallel() end
 
----Call fn(tween, outcome) when the tween ends: "finished", "killed" or "cancelled".
----@param fn fun(tween: Tween, outcome: string)
----@return Tween
-function Tween:on_finished(fn) end
-
 ---Start the tween, or resume it after pause(). The Operation succeeds with {tween_id, outcome}
 ---when the tween ends.
 ---@return Operation<{tween_id: string, outcome: string}>
@@ -1238,6 +1283,21 @@ function Tween:seek(seconds) end
 ---Stop the tween. Windows keep the values they have; the outcome is "killed".
 ---@return Operation<{tween_id: string}>
 function Tween:kill() end
+
+---Call fn(tween) on a signal of this tween. "finished" runs when the timeline reached its end.
+---"closed" runs when the tween has ended however it ended, as fn(tween, outcome): the outcome is
+---"finished", "killed", "cancelled", or "config_reloaded" when a reload ended it. "changed" runs
+---with the list of changed fields. Listening ends after "closed".
+---@param signal "changed"|"finished"|"closed"
+---@param fn fun(tween: Tween, detail?: string|string[])
+---@return Subscription
+function Tween:on(signal, fn) end
+
+---Call fn(tween, value, old) when `status` changes.
+---@param property "status" The field of Tween to watch.
+---@param fn fun(tween: Tween, value: any, old: any)
+---@return Subscription
+function Tween:watch(property, fn) end
 
 ---@class WindowFrame
 ---@field x integer Frame origin on the compositor layout, from -100000 to 100000.
@@ -1274,7 +1334,7 @@ function Tween:kill() end
 ---@field last_user_time? integer Timestamp of the most recent user interaction.
 ---@field parent? string ID of the parent window, when present.
 ---@field pid? integer Process ID of the client, from the display server, not the client.
----@field process? integer Process.id when gnoblin.process.spawn started this window's program.
+---@field process? integer Process.id when gnoblin.process.spawn started this window's program; gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.
 ---@field monitor? integer Zero-based monitor index.
 ---@field frame WindowFrame Window frame rectangle.
 ---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
@@ -1494,13 +1554,13 @@ function Window:set_effect(name, value) end
 ---"focused", "unfocused" or "closed". Listening ends after "closed".
 ---@param signal "changed"|"focused"|"unfocused"|"closed"
 ---@param fn fun(window: Window, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function Window:on(signal, fn) end
 
 ---Call fn(window, value, old) when one field of this window changes.
 ---@param property string A field of Window, such as "title" or "frame".
 ---@param fn fun(window: Window, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Window:watch(property, fn) end
 
 ---Begin an interactive move. This takes the "begin_move" scope of a Grant.
@@ -1532,6 +1592,7 @@ function SnapContext:commit(request) end
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
 ---@field windows integer Number of windows on this workspace.
+---@field revision integer State revision of this snapshot; it goes up with every change of the workspace list, so a rename gives a higher number.
 
 ---@class WorkspaceCreateOptions
 ---@field id? string Optional ID. Must start with a letter or number and contain only letters, numbers, '.', '_' or '-'; at most 64 characters. Lua accepts it, but the current native compositor rejects it.
@@ -1584,11 +1645,11 @@ function Workspace:remove() end
 ---fields), "activated" or "closed". Listening ends after "closed".
 ---@param signal "changed"|"activated"|"closed"
 ---@param fn fun(workspace: Workspace, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function Workspace:on(signal, fn) end
 
 ---Call fn(workspace, value, old) when one field of this workspace changes.
 ---@param property string A field of Workspace, such as "name" or "active".
 ---@param fn fun(workspace: Workspace, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Workspace:watch(property, fn) end

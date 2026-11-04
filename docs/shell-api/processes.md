@@ -55,17 +55,46 @@ When `timeout` passes, Gnoblin sends SIGTERM to the process group and SIGKILL tw
 
 The fields are read-only and change as the process runs.
 
-`process:on("closed", fn)` calls `fn(process)` once the process has ended, however
-it ended: it exited, was killed, or could not be started.
+A `Process` is a live object, like a [window](/shell-api/windows#live-window-objects): one handle for one
+`id`, whose fields change as the process runs.
 
-- The end signal is called `closed`, as on `Window`, `Workspace` and `Output`, so
-  code can treat every object alike.
+- `process:on(signal, fn)` returns a subscription. `on` fails once the process has ended, and listening ends after
+  `"closed"`. The signals are:
+    - `"closed"` calls `fn(process)` once the process has ended, however it ended: it exited, was killed, or could
+      not be started. It is the same signal as on windows, workspaces and outputs, so code can treat every object
+      alike.
+    - `"changed"` calls `fn(process, changed)` with the list of changed fields.
+- `process:watch(field, fn)` calls `fn(process, value, old)` when `pid`, `status`, `exit_code` or `signal` changes.
+  `id`, `argv` and `alive` never change, so `watch` refuses them.
+- `process.revision` counts the changes of those fields, starting at 1.
 - The fields above say how it ended, and `wait()` has the captured output.
-- `on` fails once the process has ended, and listening ends after `closed`.
 
 ```lua
 local job = gnoblin.process.spawn({"sleep", "1"})
+job:watch("status", function(p, status, old) print(old .. " -> " .. status) end)
 job:on("closed", function(p) print(p.status, p.exit_code) end)
+```
+
+Find a process again with these functions:
+
+| Function                    | Result                                                                    |
+| --------------------------- | ------------------------------------------------------------------------- |
+| `gnoblin.process.list()`    | The processes this runtime started that have not ended, oldest first.     |
+| `gnoblin.process.by_id(id)` | The `Process` with this `id`, or `nil` when the runtime does not know it. |
+
+Every call returns the same object for one `id`. A process that has ended is known only while something holds it, so
+`by_id` can return `nil` for an old `id`.
+
+`Window.process` holds the `id` of the `Process` that started a window's program. Resolve it with
+`gnoblin.process.by_id(window.process)`:
+
+```lua
+gnoblin.on("gnoblin.window.created", function(event)
+    local job = gnoblin.process.by_id(event.window.process)
+    if job then
+        print(event.window.title, "was started by", table.concat(job.argv, " "))
+    end
+end)
 ```
 
 `process:wait()` returns an Operation that succeeds when the process ends, whatever its exit status. Every call returns
@@ -100,8 +129,13 @@ Gnoblin resets an inherited negative CPU nice value to `0` and keeps a positive 
 way run at once.
 
 A process keeps running when the config reloads. The `Process` object belongs to the runtime that started it, so the
-reloaded config cannot wait for it or kill it. When Gnoblin itself stops, it sends SIGTERM to every process that is
-still running.
+reloaded config cannot wait for it or kill it.
+
+A reload ends the handle:
+
+- Its `"closed"` listeners run with the reason `"config_reloaded"` as a second argument.
+- `status` stays `"running"`, and `alive` is `false`. When Gnoblin itself stops, it sends SIGTERM to every process that is
+  still running.
 
 ## See also
 

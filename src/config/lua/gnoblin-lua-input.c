@@ -150,21 +150,13 @@ static int lua_shortcut_input_callback(lua_State* state) {
     return 1;
 }
 
-static void clear_configured_input_binding(lua_State* state, const char* group, const char* name) {
+static int lua_input_register(lua_State* state);
+
+/* Forget the input handler `id`: its function and its entry in the configuration. */
+static void remove_input_handler(lua_State* state, const char* id) {
     int base = lua_gettop(state);
     lua_getglobal(state, "gnoblin");
     int api = lua_gettop(state);
-    lua_getfield(state, api, "_configured_input_bindings");
-    if (!lua_istable(state, -1))
-        goto done;
-    lua_getfield(state, -1, group);
-    if (!lua_istable(state, -1))
-        goto done;
-    int group_index = lua_gettop(state);
-    lua_getfield(state, group_index, name);
-    const char* id = lua_tostring(state, -1);
-    if (!id)
-        goto done;
     lua_getfield(state, api, "_input_handlers");
     if (lua_istable(state, -1)) {
         lua_pushnil(state);
@@ -193,6 +185,25 @@ static void clear_configured_input_binding(lua_State* state, const char* group, 
             break;
         }
     }
+    lua_settop(state, base);
+}
+
+static void clear_configured_input_binding(lua_State* state, const char* group, const char* name) {
+    int base = lua_gettop(state);
+    lua_getglobal(state, "gnoblin");
+    int api = lua_gettop(state);
+    lua_getfield(state, api, "_configured_input_bindings");
+    if (!lua_istable(state, -1))
+        goto done;
+    lua_getfield(state, -1, group);
+    if (!lua_istable(state, -1))
+        goto done;
+    int group_index = lua_gettop(state);
+    lua_getfield(state, group_index, name);
+    const char* id = lua_tostring(state, -1);
+    if (!id)
+        goto done;
+    remove_input_handler(state, id);
     lua_pushnil(state);
     lua_setfield(state, group_index, name);
 done:
@@ -290,7 +301,7 @@ static void register_keyboard_binding_callbacks(lua_State* state, int config_ind
                 luaL_error(state, "keyboard binding '%s' requires a callback function", name);
             int callback = lua_absindex(state, -1);
             lua_pushlightuserdata(state, config);
-            lua_pushcclosure(state, lua_input_on, 1);
+            lua_pushcclosure(state, lua_input_register, 1);
             lua_newtable(state);
             lua_pushliteral(state, "key");
             lua_setfield(state, -2, "type");
@@ -383,7 +394,7 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
         lua_pop(state, 1);
 
         lua_pushlightuserdata(state, runtime_config);
-        lua_pushcclosure(state, lua_input_on, 1);
+        lua_pushcclosure(state, lua_input_register, 1);
         lua_newtable(state);
         lua_pushliteral(state, "button");
         lua_setfield(state, -2, "type");
@@ -547,8 +558,8 @@ int lua_configure_call(lua_State* state) {
 
 /* Input handlers are deliberately registered separately from ordinary event
  * listeners: the native matcher receives only immutable metadata while the
- * function remains in this Lua runtime. */
-int lua_input_on(lua_State* state) {
+ * function remains in this Lua runtime. Pushes the new handler's ID. */
+static int lua_input_register(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (!config || lua_gettop(state) != 2 || !lua_istable(state, 1) || !lua_isfunction(state, 2))
         return luaL_error(state, "gnoblin.input.on requires a match table and handler function");
@@ -617,6 +628,27 @@ int lua_input_on(lua_State* state) {
     lua_rawseti(state, handlers, lua_rawlen(state, handlers) + 1);
     lua_pop(state, 3); /* handlers, config, gnoblin */
     lua_pushstring(state, id);
+    return 1;
+}
+
+/* Subscription:unsubscribe() of an input handler: the handler stops receiving input. */
+static int lua_input_unsubscribe(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(2));
+    if (config && config->input_dispatching)
+        return luaL_error(state, "input handlers cannot be removed from an input callback");
+    remove_input_handler(state, lua_tostring(state, lua_upvalueindex(1)));
+    return 0;
+}
+
+/* gnoblin.input.on(match, handler): register the handler and return its Subscription, the same
+ * shape as gnoblin.on and the on of every object. */
+int lua_input_on(lua_State* state) {
+    lua_input_register(state);
+    lua_createtable(state, 0, 1);
+    lua_pushvalue(state, -2);
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_pushcclosure(state, lua_input_unsubscribe, 2);
+    lua_setfield(state, -2, "unsubscribe");
     return 1;
 }
 

@@ -611,14 +611,14 @@ int lua_animation_preview_method(lua_State* state) {
     lua_getiuservalue(state, 1, 1);
     if (!lua_istable(state, -1))
         return luaL_error(state, "animation preview record is unavailable");
-    lua_getfield(state, -1, "session");
+    lua_getfield(state, -1, "id");
     if (lua_type(state, -1) != LUA_TSTRING)
-        return luaL_error(state, "animation preview record has no session ID");
+        return luaL_error(state, "animation preview record has no ID");
 
     lua_newtable(state);
     int arguments = lua_absindex(state, -1);
     lua_pushvalue(state, -2);
-    lua_setfield(state, arguments, "session");
+    lua_setfield(state, arguments, "session"); /* the wire call names the preview "session" */
 
     if (g_str_equal(method, "animation.seek")) {
         if (supplied != 1 || lua_type(state, 2) != LUA_TNUMBER)
@@ -644,13 +644,16 @@ int lua_animation_preview_method(lua_State* state) {
         return luaL_error(state, "unsupported animation preview method");
     }
 
-    lua_pushvalue(state, arguments);
-    lua_replace(state, 1);
-    lua_settop(state, 1);
-    lua_pushlightuserdata(state, active_runtime ? &active_runtime->config : NULL);
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    lua_pushlightuserdata(state, config);
     lua_pushstring(state, method);
     lua_pushcclosure(state, lua_generic_api_action, 2);
-    lua_insert(state, 1);
+    lua_pushvalue(state, arguments);
     lua_call(state, 1, 1);
+    /* The preview ends when the compositor has stopped it, or when a call on it fails because it
+     * is gone. */
+    if (config)
+        lua_object_end_after(state, config, lua_gettop(state), "AnimationPreview", 1,
+                             g_str_equal(method, "animation.stop"));
     return 1;
 }

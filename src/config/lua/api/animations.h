@@ -76,9 +76,13 @@
 ---@field context table Compositor context used to resolve the animation.
 ---@field spec table Resolved animation specification.
 
+---A preview the compositor plays on one target. It is a live object: the same handle for one id,
+---with `alive`, `on` and `watch`. Each call on it updates this handle with the preview's new
+---state. It is alive until stop() has succeeded, a call on it fails because the preview is gone,
+---or a config reload ends the handle.
 ---@class AnimationPreview
----@field id string Preview session ID.
----@field session string Preview session ID used by control calls.
+---@field id string Preview ID. Calls to the compositor name the preview by it.
+---@field alive boolean False once the preview has ended.
 ---@field name string Animation name.
 ---@field event string Lifecycle event.
 ---@field target string Stable target ID.
@@ -88,6 +92,7 @@
 ---@field paused boolean Whether the timeline is paused.
 ---@field revision integer Configuration revision.
 ---@field spec table Resolved animation specification.
+---@observable event progress playing paused spec
 
 ---@class AnimationStopResult
 ---@field ok boolean True when the preview was stopped.
@@ -143,4 +148,18 @@ function AnimationPreview:pause() end
 ---Stop this preview and restore the target's original actor state.
 ---@return Operation<AnimationStopResult>
 function AnimationPreview:stop() end
+
+---Call fn(preview, detail) on a signal of this preview: "changed" (with the list of changed
+---fields) or "closed", with the reason when it has one: the message of the failure that showed the
+---preview gone, or "config_reloaded". Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(preview: AnimationPreview, detail?: string|string[])
+---@return Subscription
+function AnimationPreview:on(signal, fn) end
+
+---Call fn(preview, value, old) when one field of this preview changes.
+---@param property string A field of AnimationPreview, such as "progress".
+---@param fn fun(preview: AnimationPreview, value: any, old: any)
+---@return Subscription
+function AnimationPreview:watch(property, fn) end
 */

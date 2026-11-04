@@ -12,7 +12,8 @@
 ---@field output_limit? integer Bytes kept per captured stream, 0 to 4194304; 65536 by default.
 ---@field timeout? number Seconds, up to 86400, before the process group is ended.
 
----A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs.
+---A process started by gnoblin.process.spawn. Its fields are read-only and change as it runs. A
+---Process is a live object: the same handle for one id, with `alive`, `on` and `watch`.
 ---@class Process
 ---@field id integer Identifier for this process within the session.
 ---@field alive boolean True from spawn until the process has exited or failed to start.
@@ -21,6 +22,8 @@
 ---@field status "starting"|"running"|"exited"|"failed" "failed" means it could not be started.
 ---@field exit_code integer|nil Exit status, once it exited normally.
 ---@field signal string|integer|nil Signal that ended it, such as "term", once it was killed.
+---@field revision integer Counts the changes of the fields above.
+---@observable pid status exit_code signal
 
 ---How a process ended, the value of Process:wait().
 ---@class ProcessExit
@@ -39,20 +42,40 @@
 ---@return Process
 function gnoblin.process.spawn(argv, options) end
 
+---The processes this runtime started that have not ended, oldest first.
+---@return Process[]
+function gnoblin.process.list() end
+
+---The Process with this id, or nil when the runtime does not know it: another runtime started
+---it, or it has ended and nothing holds it any more. Window.process holds the id of the Process
+---that started a window's program, so `gnoblin.process.by_id(window.process)` gives that Process.
+---@param id integer The Process.id.
+---@return Process|nil
+function gnoblin.process.by_id(id) end
+
 ---An Operation that succeeds with a ProcessExit when the process ends, whatever its exit status,
 ---and fails when the process could not be started. Every call returns the same Operation.
 ---@return Operation<ProcessExit>
 function Process:wait() end
 
----Call fn(process) when the process has ended, however it ended: it exited, was killed, or
----could not be started. The signal is called "closed", as on Window, Workspace and Output, so
----code can treat every object alike; status, exit_code and signal say how it ended, and wait()
----has the captured output. Listening ends after "closed", and on fails once the process has
----ended.
----@param signal "closed"
----@param fn fun(process: Process)
----@return {unsubscribe: fun()}
+---Call fn(process) on a signal of this process. "closed" runs when the process has ended,
+---however it ended: it exited, was killed, could not be started, or a config reload ended the
+---handle. It is the same signal as on Window, Workspace and Output. status, exit_code and signal
+---say how, and wait() has the captured output. The detail is "config_reloaded" or
+---"runtime_stopped" when the runtime ended the handle; the child keeps running then. "changed"
+---runs with the list of changed fields. Listening ends after "closed", and on fails once the
+---process has ended.
+---@param signal "changed"|"closed"
+---@param fn fun(process: Process, detail?: string|string[])
+---@return Subscription
 function Process:on(signal, fn) end
+
+---Call fn(process, value, old) when one field of this process changes: pid, status, exit_code or
+---signal.
+---@param property string A field of Process, such as "status".
+---@param fn fun(process: Process, value: any, old: any)
+---@return Subscription
+function Process:watch(property, fn) end
 
 ---Send a signal to the process group.
 ---@param signal? "term"|"kill"|"int"|"hup"|"usr1"|"usr2"|"stop"|"cont" The default is "term".

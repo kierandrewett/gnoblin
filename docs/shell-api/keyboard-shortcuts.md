@@ -102,7 +102,8 @@ end)
 ```
 
 Dynamic registrations belong to the Lua runtime that created them. They end
-when the runtime stops or reloads. Active sessions end on modifier release,
+when the runtime stops or reloads, and the `"closed"` listeners of a `Shortcut`
+run with the reason `"config_reloaded"` or `"runtime_stopped"`. Active sessions end on modifier release,
 unbind, config reload, session lock, capture preemption, owner disconnect, or
 after ten seconds.
 

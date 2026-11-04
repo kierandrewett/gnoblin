@@ -17,6 +17,7 @@
 ---@field timeout_ms integer Launch observation deadline in milliseconds.
 ---@field state "pending"|"started"|"timed_out"|"ended" Current launch state.
 ---@field revision integer Launch snapshot revision; 0 until the compositor confirms the launch.
+---@observable state
 
 ---@class LaunchBeginOptions
 ---@field timeout_ms? integer Timeout in milliseconds, from 100 to 10000. Default 3000.
@@ -50,12 +51,12 @@ function Launch:finish() end
 ---Listening ends after "closed".
 ---@param signal "changed"|"started"|"timed_out"|"closed"
 ---@param fn fun(launch: Launch, changed_or_reason?: string[]|string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Launch:on(signal, fn) end
 
 ---Call fn(launch, value, old) when one field of this launch changes.
 ---@param property string A field of Launch, such as "state".
 ---@param fn fun(launch: Launch, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Launch:watch(property, fn) end
 */

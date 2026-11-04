@@ -28,12 +28,12 @@ the tween, so calls chain. Steps run one after another.
 | `interval(seconds)`                                    | Wait.                                                   |
 | `callback(fn)`                                         | Call `fn(tween)` when the timeline reaches this step.   |
 | `parallel()`                                           | Run the next step at the same time as the previous one. |
-| `on_finished(fn)`                                      | Call `fn(tween, outcome)` when the tween ends.          |
 
 A property step starts from the value the window has when the step begins.
 `seconds` is from 0 to 600. A callback does not hold the timeline back.
 
-The animatable window properties are:
+What a tween can drive is a property that a live object declares animatable. Only a
+`Window` declares any today. The animatable window properties are:
 
 - `opacity`, from 0 to 1.
 - `scale`, from 0.01 to 10, about the window's centre.
@@ -41,8 +41,8 @@ The animatable window properties are:
 - `offset`, a table `{x = number, y = number}` in logical pixels.
 
 They are the same values as the [window draw methods](/shell-api/windows#change-how-a-window-is-drawn),
-and the window keeps the values a tween ends with. Any other property raises an
-error.
+and the window keeps the values a tween ends with. A target or a property that no
+kind declares raises an error that lists the kinds and their properties.
 
 ## Play and control a tween
 
@@ -64,6 +64,38 @@ outcome. The outcome is one of these values:
 
 You cannot add steps after `play()`. A tween cannot start while the session is
 locked.
+
+## The Tween object
+
+A `Tween` is a live object, like a [window](/shell-api/windows#live-window-objects).
+It has an `id` from the moment `gnoblin.tween()` returns it, and these fields:
+
+| Field      | Value                                             |
+| ---------- | ------------------------------------------------- |
+| `id`       | Identifier of the tween in the session.           |
+| `alive`    | `false` once the tween has ended.                 |
+| `status`   | `"idle"`, `"playing"`, `"paused"` or the outcome. |
+| `revision` | Counts the changes of `status`; it starts at 1.   |
+
+`tween:on(signal, fn)` takes one of these signals and returns a subscription:
+
+- `"finished"` calls `fn(tween)` when the timeline reaches its end. A killed or cancelled tween
+  does not raise it.
+- `"closed"` calls `fn(tween, outcome)` when the tween has ended, however it ended. The outcome is
+  `"finished"`, `"killed"`, `"cancelled"` or `"config_reloaded"`. Listening ends after `"closed"`.
+- `"changed"` calls `fn(tween, changed)` with the list of changed fields.
+
+`tween:watch("status", fn)` calls `fn(tween, value, old)` when the status changes.
+
+```lua
+local fade = gnoblin.tween():property(window, "opacity", 0.3, 0.4)
+fade:on("finished", function() window:close() end)
+fade:play()
+```
+
+A config reload commits only when every pending operation has finished, so it waits for the
+`Operation` of a playing tween, up to 15 seconds, and then fails. A tween that has not played
+when a reload commits ends with `"config_reloaded"`.
 
 ## Easing
 

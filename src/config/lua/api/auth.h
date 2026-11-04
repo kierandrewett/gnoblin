@@ -35,8 +35,13 @@ function Request:claim(identity) end
 ---@return Operation<string>
 function Request:finished() end
 
----Call fn(request) for each later authentication prompt or message.
----@param signal "prompt"|"message"
----@param fn fun(request: Request)
+---Call fn(request) for each later authentication prompt or message. Call fn(request, reason) on
+---"closed", which every kind of request has: it runs when a config reload or the worker's
+---shutdown takes the runtime away before the request is finished, with the reason
+---"config_reloaded" or "runtime_stopped". A request that finishes does not raise it; use
+---finished() for that.
+---@param signal "prompt"|"message"|"closed"
+---@param fn fun(request: Request, reason?: string)
+---@return Subscription
 function Request:on(signal, fn) end
 */

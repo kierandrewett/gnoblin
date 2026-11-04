@@ -14,6 +14,7 @@
 ---@field alive boolean False once the watch has ended.
 ---@field seconds number How long without input makes the session idle.
 ---@field idle boolean Whether the session has been idle for `seconds` and has not had input since.
+---@observable idle
 
 ---@class IdleCancelResult
 ---@field cancelled boolean True when the compositor removed the watch.
@@ -36,12 +37,12 @@ function IdleWatch:cancel() end
 ---ends after "closed".
 ---@param signal "idle"|"active"|"closed"
 ---@param fn fun(watch: IdleWatch, reason?: string)
----@return {unsubscribe: fun()}
+---@return Subscription
 function IdleWatch:on(signal, fn) end
 
 ---Call fn(watch, value, old) when one field of this watch changes.
 ---@param property string A field of IdleWatch, such as "idle".
 ---@param fn fun(watch: IdleWatch, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function IdleWatch:watch(property, fn) end
 */

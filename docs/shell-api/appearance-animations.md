@@ -46,7 +46,16 @@ operation and returns the updated read-only preview, or the stop result.
 
 See the [animation guide](/guides/animations) for supported animation events.
 In Lua, `gnoblin.animations.preview(name, options?)` returns an `Operation`. Its
-successful value is an immutable preview record.
+successful value is an `AnimationPreview`, a live object like a
+[window](/shell-api/windows#live-window-objects): one handle for one `id`, which each call
+on it updates. The compositor names a preview by its `id`; the record has no other name for it.
+
+- `preview.alive` is `false` once `stop()` has succeeded, a call on the preview has failed
+  because it is gone, or a config reload has ended the handle.
+- `preview:on(signal, fn)` takes `"changed"`, with the list of changed fields, or `"closed"`,
+  with the reason when there is one. It returns a subscription.
+- `preview:watch(field, fn)` calls `fn(preview, value, old)` when `event`, `progress`,
+  `playing`, `paused` or `spec` changes.
 
 Control a preview with the methods of its record. They return new operations:
 
@@ -54,7 +63,7 @@ Control a preview with the methods of its record. They return new operations:
 - `preview:step(milliseconds)` takes 1 to 60000.
 - `preview:play()`, `preview:pause()` and `preview:stop()` take no argument.
 
-The stop result contains an `ok` flag and a `session` ID.
+The stop result contains an `ok` flag and the `session` ID of the stopped preview, which is its `id`.
 
 Configured `open` and `close` animations run for normal windows during their
 map and destroy lifecycles. The compositor starts built-in or registered

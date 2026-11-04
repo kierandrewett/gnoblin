@@ -17,8 +17,10 @@ end)
 
 Use a device ID returned by `gnoblin.input.devices()`; IDs last for the current
 session. Omitting `device_id` matches every device of the selected event type.
-The registration returns its handler ID. Reloading the config replaces the
-registry.
+The registration returns a subscription, the same shape as `gnoblin.on` and the
+`on` of every object: `subscription:unsubscribe()` removes the handler. A handler
+cannot be added or removed from inside an input callback. Reloading the config
+replaces the registry.
 
 The callback returns `"forward"` to continue normal routing or `"consume"` to
 withhold delivery. Nil means forward for raw handlers. The table forms

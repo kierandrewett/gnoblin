@@ -32,14 +32,8 @@
 ---of them is nil. A callback added after the operation finished runs once, after the current
 ---handler returns.
 ---@param callback fun(value: any, error: OperationError|nil)
----@return OperationSubscription
+---@return Subscription
 function Operation:on_complete(callback) end
-
----A callback added with on_complete.
----@class OperationSubscription
-
----Stop calling this callback.
-function OperationSubscription:unsubscribe() end
 
 ---A new Operation that succeeds with fn(value) when this one succeeds. When this one fails, or fn
 ---raises an error, the new one fails; an error raised by fn has the code "internal".

@@ -1,23 +1,22 @@
-/* The Lua Process object: gnoblin.process.spawn and the handle it returns.
+/* The Lua Process object: gnoblin.process.spawn, gnoblin.process.list and by_id, and the handle
+ * they return.
  *
  * The compositor spawns the child (process.spawn completes with its pid) and reports its end with
- * the runtime event gnoblin.process.exited. The handle's wait() Operation is runtime-local, so a
- * long-lived process never holds a config reload back. A Process belongs to the runtime that
- * spawned it: after a reload the old handle is gone, the child keeps running, and its exit is
- * ignored. */
+ * the runtime event gnoblin.process.exited. A Process is a live object (gnoblin-lua-objects.c):
+ * the same handle for one process id, with `status`, `pid`, `exit_code` and `signal` that change
+ * as it runs, watches over them, and "closed" when it has ended. The handle's wait() Operation is
+ * runtime-local, so a long-lived process never holds a config reload back. A Process belongs to
+ * the runtime that spawned it: a reload ends the handle with the reason "config_reloaded", the
+ * child keeps running, and its exit is ignored. */
 #include "gnoblin-lua-internal.h"
 
 #include <signal.h>
 
-#define LUA_PROCESS_METATABLE "gnoblin.Process"
 #define MAX_PROCESS_STDIN_BYTES (1024 * 1024)
 #define MAX_PROCESS_OUTPUT_LIMIT (4 * 1024 * 1024)
 #define MAX_PROCESS_TIMEOUT_SECONDS 86400.0
 
-static void run_process_closed(lua_State* state, int process);
-
-static LuaConfig* process_config(lua_State* state, const char* name) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+static LuaConfig* process_config(lua_State* state, LuaConfig* config, const char* name) {
     if (!config || !config->processes || !config->runtime_actions ||
         (!config->dispatching && !config->api_calling))
         luaL_error(state, "%s is available only at runtime", name);
@@ -155,12 +154,8 @@ static GVariant* spawn_arguments(lua_State* state) {
     return g_variant_builder_end(&arguments);
 }
 
-static void push_process_key(lua_State* state, int process) {
-    lua_getfield(state, process, "id");
-}
-
 static char* process_key(lua_State* state, int process) {
-    push_process_key(state, process);
+    lua_getfield(state, process, "id");
     char* key = g_strdup_printf("%" G_GUINT64_FORMAT, (guint64)lua_tointeger(state, -1));
     lua_pop(state, 1);
     return key;
@@ -175,19 +170,34 @@ static void forget_process(lua_State* state, LuaConfig* config, int process) {
     }
 }
 
-/* Callback on the process.spawn Operation: record the pid, or fail wait() when spawning failed. */
+/* Push the wait() Operation of the Process at `process`. */
+static void push_exit_operation(lua_State* state, int process) {
+    lua_object_private(state, process);
+    lua_getfield(state, -1, "exit");
+    lua_remove(state, -2);
+}
+
+/* Change fields of the Process at `process`; the table at the top of the stack holds them. */
+static void update_process(lua_State* state, int process) {
+    lua_object_update(state, "Process", process, lua_gettop(state));
+}
+
+/* Callback on the process.spawn Operation: record the pid, or fail wait() when spawning failed.
+ * Upvalue 1 is the config and 2 the Process. */
 static int lua_process_started(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     int process = lua_upvalueindex(2);
     lua_settop(state, 2);
-    lua_getfield(state, process, "_exit");
-    int exit = lua_absindex(state, -1);
     if (!lua_isnil(state, 2)) {
+        lua_createtable(state, 0, 1);
         lua_pushliteral(state, "failed");
-        lua_setfield(state, process, "status");
+        lua_setfield(state, -2, "status");
+        update_process(state, process);
+        lua_pop(state, 1);
         forget_process(state, config, process);
-        finish_operation(state, config, exit, FALSE, 0, 2);
-        run_process_closed(state, process);
+        push_exit_operation(state, process);
+        finish_operation(state, config, lua_gettop(state), FALSE, 0, 2);
+        lua_object_end(state, "Process", process, NULL);
         return 0;
     }
     lua_getfield(state, process, "status");
@@ -195,24 +205,27 @@ static int lua_process_started(lua_State* state) {
     lua_pop(state, 1);
     if (!starting)
         return 0; /* The exit event arrived first. */
+    lua_createtable(state, 0, 2);
     lua_getfield(state, 1, "pid");
-    lua_setfield(state, process, "pid");
+    lua_setfield(state, -2, "pid");
     lua_pushliteral(state, "running");
-    lua_setfield(state, process, "status");
+    lua_setfield(state, -2, "status");
+    update_process(state, process);
     return 0;
 }
 
-static int lua_process_wait(lua_State* state) {
-    luaL_checkudata(state, 1, LUA_PROCESS_METATABLE);
-    if (lua_gettop(state) != 1)
+/* Process:wait(): the Operation that finishes with the process's exit. */
+int lua_process_wait(lua_State* state) {
+    if (!lua_object_is(state, 1, "Process") || lua_gettop(state) != 1)
         return luaL_error(state, "Process:wait takes no arguments");
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, "_exit");
+    push_exit_operation(state, 1);
     return 1;
 }
 
-static int lua_process_kill(lua_State* state) {
-    luaL_checkudata(state, 1, LUA_PROCESS_METATABLE);
+/* Process:kill(signal?) */
+int lua_process_kill(lua_State* state) {
+    if (!lua_object_is(state, 1, "Process"))
+        return luaL_error(state, "Process:kill is called on a Process, as process:kill()");
     const char* signal = luaL_optstring(state, 2, "term");
     static const char* const signals[] = {"term", "kill", "int",  "hup", "usr1",
                                           "usr2", "stop", "cont", NULL};
@@ -222,9 +235,9 @@ static int lua_process_kill(lua_State* state) {
     if (!known || lua_gettop(state) > 2)
         return luaL_error(state, "Process:kill takes one of term, kill, int, hup, usr1, usr2, stop "
                                  "or cont");
-    LuaConfig* config = process_config(state, "Process:kill");
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, "id");
+    LuaConfig* config =
+        process_config(state, active_runtime ? &active_runtime->config : NULL, "Process:kill");
+    lua_getfield(state, 1, "id");
     GVariantBuilder arguments;
     g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&arguments, "{sv}", "id", g_variant_new_int64(lua_tointeger(state, -1)));
@@ -233,186 +246,90 @@ static int lua_process_kill(lua_State* state) {
     return 1;
 }
 
-/* A Process is alive from spawn until it exits or fails to start. */
-static gboolean process_alive(lua_State* state, int process) {
-    lua_getfield(state, process, "status");
-    const char* status = lua_tostring(state, -1);
-    gboolean alive = g_strcmp0(status, "starting") == 0 || g_strcmp0(status, "running") == 0;
-    lua_pop(state, 1);
-    return alive;
-}
-
-static int lua_process_unsubscribe(lua_State* state) {
-    lua_pushvalue(state, lua_upvalueindex(1));
-    lua_pushboolean(state, FALSE);
-    lua_setfield(state, -2, "active");
-    return 0;
-}
-
-/* Process:on("closed", fn): fn(process) once the process has ended, however it ended. The
- * name matches Window, Workspace and Output; status, exit_code and signal say how, and wait()
- * carries the captured output. */
-static int lua_process_on(lua_State* state) {
-    luaL_checkudata(state, 1, LUA_PROCESS_METATABLE);
-    const char* signal = luaL_checkstring(state, 2);
-    luaL_checktype(state, 3, LUA_TFUNCTION);
-    if (lua_gettop(state) != 3)
-        return luaL_error(state, "Process:on takes a signal and a function");
-    if (!g_str_equal(signal, "closed"))
-        return luaL_error(state, "a Process has no %s signal", signal);
-    lua_getiuservalue(state, 1, 1);
-    int backing = lua_absindex(state, -1);
-    if (!process_alive(state, backing))
-        return luaL_error(state, "this Process has ended");
-    if (lua_getfield(state, backing, "_listeners") != LUA_TTABLE) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_pushvalue(state, -1);
-        lua_setfield(state, backing, "_listeners");
-    }
-    int listeners = lua_absindex(state, -1);
-    lua_createtable(state, 0, 2);
-    int entry = lua_absindex(state, -1);
-    lua_pushvalue(state, 3);
-    lua_setfield(state, entry, "fn");
-    lua_pushboolean(state, TRUE);
-    lua_setfield(state, entry, "active");
-    lua_pushvalue(state, entry);
-    lua_rawseti(state, listeners, (lua_Integer)lua_rawlen(state, listeners) + 1);
-    lua_createtable(state, 0, 1);
-    lua_pushvalue(state, entry);
-    lua_pushcclosure(state, lua_process_unsubscribe, 1);
-    lua_setfield(state, -2, "unsubscribe");
-    return 1;
-}
-
-/* Run the "closed" listeners of the Process whose backing table is at `process`. */
-static void run_process_closed(lua_State* state, int process) {
-    process = lua_absindex(state, process);
-    if (lua_getfield(state, process, "_listeners") != LUA_TTABLE) {
-        lua_pop(state, 1);
-        return;
-    }
-    int listeners = lua_absindex(state, -1);
-    lua_pushnil(state);
-    lua_setfield(state, process, "_listeners");
-    lua_Integer count = (lua_Integer)lua_rawlen(state, listeners);
-    for (lua_Integer i = 1; i <= count; i++) {
-        lua_rawgeti(state, listeners, i);
-        lua_getfield(state, -1, "active");
-        gboolean active = lua_toboolean(state, -1);
-        lua_pop(state, 1);
-        if (active) {
-            lua_getfield(state, -1, "fn");
-            /* The handle the script holds is the userdata; its metatable reads this backing. */
-            lua_getfield(state, process, "_handle");
-            call_handler(state, 1, "Process signal", "closed");
-        }
-        lua_pop(state, 1);
-    }
-    lua_pop(state, 1);
-}
-
-/* Reads come from the backing table, except the private _exit Operation; writes are refused. */
-static int lua_process_index(lua_State* state) {
-    const char* key = lua_tostring(state, 2);
-    if (key && g_str_equal(key, "wait")) {
-        lua_pushcfunction(state, lua_process_wait);
-        return 1;
-    }
-    if (key && g_str_equal(key, "on")) {
-        lua_pushcfunction(state, lua_process_on);
-        return 1;
-    }
-    if (key && g_str_equal(key, "alive")) {
-        lua_getiuservalue(state, 1, 1);
-        lua_pushboolean(state, process_alive(state, -1));
-        return 1;
-    }
-    if (key && g_str_equal(key, "kill")) {
-        lua_pushvalue(state, lua_upvalueindex(1));
-        lua_pushcclosure(state, lua_process_kill, 1);
-        return 1;
-    }
-    if (!key || key[0] == '_') {
-        lua_pushnil(state);
-        return 1;
-    }
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, key);
-    return 1;
-}
-
-static int lua_process_newindex(lua_State* state) {
-    return luaL_error(state, "Process fields are read-only");
-}
-
-static int lua_process_tostring(lua_State* state) {
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, "id");
-    lua_pushfstring(state, "Process %I", (LUAI_UACINT)lua_tointeger(state, -1));
-    return 1;
-}
-
-static void push_process_metatable(lua_State* state, LuaConfig* config) {
-    if (!luaL_newmetatable(state, LUA_PROCESS_METATABLE))
-        return;
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_process_index, 1);
-    lua_setfield(state, -2, "__index");
-    lua_pushcfunction(state, lua_process_newindex);
-    lua_setfield(state, -2, "__newindex");
-    lua_pushcfunction(state, lua_process_tostring);
-    lua_setfield(state, -2, "__tostring");
-    lua_pushliteral(state, "Process");
-    lua_setfield(state, -2, "__metatable");
-}
-
 int lua_process_spawn(lua_State* state) {
     if (lua_gettop(state) < 1 || lua_gettop(state) > 2)
         return luaL_error(state, "gnoblin.process.spawn takes argv and an optional options table");
-    LuaConfig* config = process_config(state, "gnoblin.process.spawn");
+    LuaConfig* config =
+        process_config(state, lua_touserdata(state, lua_upvalueindex(1)), "gnoblin.process.spawn");
     GVariant* arguments = spawn_arguments(state);
     lua_settop(state, 1);
     guint64 id = queue_operation(state, config, "process.spawn", arguments);
     int spawn = lua_absindex(state, -1);
 
-    /* The backing table holds the state; the userdata in front keeps it read-only. */
-    lua_createtable(state, 0, 6);
-    int backing = lua_absindex(state, -1);
+    lua_createtable(state, 0, 4);
+    int record = lua_absindex(state, -1);
     lua_pushinteger(state, (lua_Integer)id);
-    lua_setfield(state, backing, "id");
+    lua_setfield(state, record, "id");
     lua_newtable(state);
+    mark_array_table(state, -1);
     for (lua_Integer i = 1; i <= (lua_Integer)lua_rawlen(state, 1); i++) {
         lua_rawgeti(state, 1, i);
         lua_rawseti(state, -2, i);
     }
-    lua_setfield(state, backing, "argv");
+    lua_setfield(state, record, "argv");
     lua_pushliteral(state, "starting");
-    lua_setfield(state, backing, "status");
-    push_local_operation(state, config, "process.wait");
-    lua_setfield(state, backing, "_exit");
-
-    lua_newuserdatauv(state, 0, 1);
+    lua_setfield(state, record, "status");
+    lua_pushinteger(state, 1);
+    lua_setfield(state, record, "revision");
+    lua_object_apply(state, "Process", record);
     int process = lua_absindex(state, -1);
-    lua_pushvalue(state, backing);
-    lua_setiuservalue(state, process, 1);
-    lua_pushvalue(state, process);
-    lua_setfield(state, backing, "_handle");
-    push_process_metatable(state, config);
-    lua_setmetatable(state, process);
+    lua_object_private(state, process);
+    push_local_operation(state, config, "process.wait");
+    lua_setfield(state, -2, "exit");
+    lua_pop(state, 1);
 
     g_autofree char* key = g_strdup_printf("%" G_GUINT64_FORMAT, id);
-    lua_pushvalue(state, backing);
+    lua_pushvalue(state, process);
     g_hash_table_replace(config->processes, g_strdup(key),
                          GINT_TO_POINTER(luaL_ref(state, LUA_REGISTRYINDEX)));
 
     lua_pushlightuserdata(state, config);
-    lua_pushvalue(state, backing);
+    lua_pushvalue(state, process);
     lua_pushcclosure(state, lua_process_started, 2);
     subscribe_operation(state, config, spawn);
     lua_pop(state, 1);
     lua_pushvalue(state, process);
+    return 1;
+}
+
+static int compare_process_ids(gconstpointer a, gconstpointer b) {
+    guint64 x = g_ascii_strtoull(*(const char* const*)a, NULL, 10);
+    guint64 y = g_ascii_strtoull(*(const char* const*)b, NULL, 10);
+    return x < y ? -1 : x > y;
+}
+
+/* gnoblin.process.list(): the processes this runtime started that have not ended, oldest first. */
+int lua_process_list(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.process.list takes no arguments");
+    g_autoptr(GPtrArray) keys = g_ptr_array_new();
+    GHashTableIter iter;
+    gpointer key;
+    if (config && config->processes) {
+        g_hash_table_iter_init(&iter, config->processes);
+        while (g_hash_table_iter_next(&iter, &key, NULL))
+            g_ptr_array_add(keys, key);
+    }
+    g_ptr_array_sort(keys, compare_process_ids);
+    lua_createtable(state, (int)keys->len, 0);
+    mark_array_table(state, -1);
+    for (guint i = 0; i < keys->len; i++) {
+        lua_rawgeti(state, LUA_REGISTRYINDEX,
+                    GPOINTER_TO_INT(g_hash_table_lookup(config->processes, keys->pdata[i])));
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+/* gnoblin.process.by_id(id): the Process with this id, or nil when the runtime does not know it:
+ * it is another runtime's, or it has ended and nothing holds it any more. */
+int lua_process_by_id(lua_State* state) {
+    if (lua_gettop(state) != 1 || !lua_isinteger(state, 1) || lua_tointeger(state, 1) <= 0)
+        return luaL_error(state, "gnoblin.process.by_id takes a process id, a positive integer");
+    g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, (gint64)lua_tointeger(state, 1));
+    if (!lua_object_push_registered(state, "Process", key))
+        lua_pushnil(state);
     return 1;
 }
 
@@ -478,14 +395,17 @@ void process_exited(lua_State* state, LuaConfig* config, GVariant* payload) {
         lua_pushboolean(state, flag);
         lua_setfield(state, result, truncated);
     }
+    lua_createtable(state, 0, 3);
+    int changes = lua_absindex(state, -1);
     lua_pushliteral(state, "exited");
-    lua_setfield(state, process, "status");
+    lua_setfield(state, changes, "status");
     lua_getfield(state, result, "exit_code");
-    lua_setfield(state, process, "exit_code");
+    lua_setfield(state, changes, "exit_code");
     lua_getfield(state, result, "signal");
-    lua_setfield(state, process, "signal");
-    lua_getfield(state, process, "_exit");
+    lua_setfield(state, changes, "signal");
+    lua_object_update(state, "Process", process, changes);
+    push_exit_operation(state, process);
     finish_operation(state, config, -1, TRUE, result, 0);
-    run_process_closed(state, process);
+    lua_object_end(state, "Process", process, NULL);
     lua_settop(state, base);
 }

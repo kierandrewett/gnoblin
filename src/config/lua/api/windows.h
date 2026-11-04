@@ -38,7 +38,8 @@ same object, updated with each change.
 ---@field last_user_time? integer Timestamp of the most recent user interaction.
 ---@field parent? string ID of the parent window, when present.
 ---@field pid? integer Process ID of the client, from the display server, not the client.
----@field process? integer Process.id when gnoblin.process.spawn started this window's program.
+---@field process? integer Process.id when gnoblin.process.spawn started this window's program;
+gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.
 ---@field monitor? integer Zero-based monitor index.
 ---@field frame WindowFrame Window frame rectangle.
 ---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
@@ -48,6 +49,11 @@ same object, updated with each change.
 ---@field focused boolean Whether the window currently has focus.
 ---@field modal boolean Whether the window is a modal dialog.
 ---@field revision integer State revision for this snapshot.
+---@observable title app_id gtk_app_id wm_class rule_app_id workspace_id workspace_number
+---@observable monitor_index monitor_id above sticky demands_attention unresponsive closable
+---@observable minimizable maximizable movable resizable role type maximized fullscreen
+---@observable minimized last_user_time parent monitor frame opacity scale rotation offset
+---@observable focused modal
 
 ---@class WindowVisual
 ---@field id string Window ID.
@@ -260,13 +266,13 @@ function Window:set_effect(name, value) end
 ---"focused", "unfocused" or "closed". Listening ends after "closed".
 ---@param signal "changed"|"focused"|"unfocused"|"closed"
 ---@param fn fun(window: Window, changed?: string[])
----@return {unsubscribe: fun()}
+---@return Subscription
 function Window:on(signal, fn) end
 
 ---Call fn(window, value, old) when one field of this window changes.
 ---@param property string A field of Window, such as "title" or "frame".
 ---@param fn fun(window: Window, value: any, old: any)
----@return {unsubscribe: fun()}
+---@return Subscription
 function Window:watch(property, fn) end
 
 ---Begin an interactive move. This takes the "begin_move" scope of a Grant.

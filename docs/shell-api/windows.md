@@ -53,10 +53,12 @@ end)
   `"closed"`, and `fn(window, changed)` for `"changed"`, where `changed` lists
   the fields that moved. Listening ends after `"closed"`.
 - `window:watch(field, fn)` calls `fn(window, value, old)` when one field
-  changes. The field must be one that `Window` declares; another name raises an
-  error.
+  changes. The field must be one that `Window` declares as observable, which
+  means it changes while the window is alive. `watch` refuses a field that never
+  moves and names the fields that work.
+- The fields that never move are `id`, `alive`, `revision`, `pid` and `process`.
 
-Both return a table whose `unsubscribe()` stops the callback. The global
+Both return a subscription, and `subscription:unsubscribe()` stops the callback. Every `on` and `watch` in the API returns this same shape. The global
 events `gnoblin.window.created`, `closed`, `changed`, `attention-changed`,
 `activation-denied`, `focused` and `unfocused` still fire as before.
 

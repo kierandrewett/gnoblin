@@ -1,5 +1,20 @@
 #include "gnoblin-lua-internal.h"
 
+/* Every live object this runtime made ends when the runtime does: the compositor drops what it
+ * holds for them, or the handle has no state left to describe. Each "closed" listener runs once
+ * with `reason`, with no dispatch open, so it can read but cannot start an operation. Windows,
+ * workspaces, outputs, layer surfaces and input sources belong to the compositor and stay. */
+static void end_runtime_objects(LuaRuntime* runtime, const char* reason) {
+    static const char* const kinds[] = {"Override", "Grab",    "Shortcut", "IdleWatch",
+                                        "Launch",   "Process", "Tween",    "AnimationPreview",
+                                        NULL};
+    if (!runtime || !runtime->state)
+        return;
+    for (guint i = 0; kinds[i]; i++)
+        lua_object_end_all(runtime->state, kinds[i], reason);
+    request_end_all(runtime->state, &runtime->config, reason);
+}
+
 static GVariant* focus_policy_snapshot(GVariant* document, guint64 revision);
 
 void gnoblin_config_finish_load(gboolean commit) {
@@ -12,13 +27,8 @@ void gnoblin_config_finish_load(gboolean commit) {
             !active_runtime || !active_runtime->document ||
             !g_variant_equal(active_runtime->document, pending_runtime->document);
         guint64 settings_revision = active_runtime ? active_runtime->config.settings_revision : 0;
-        /* The compositor ends every override and keyboard grab at a committed reload. Tell the
-         * old runtime's handles before it goes, so "closed" listeners run once. They run with no
-         * dispatch open, so they can read but cannot start an operation. */
-        if (active_runtime && active_runtime->state) {
-            lua_object_end_all(active_runtime->state, "Override", "config_reloaded");
-            lua_object_end_all(active_runtime->state, "Grab", "config_reloaded");
-        }
+        /* Tell the old runtime's objects before it goes, so "closed" listeners run once. */
+        end_runtime_objects(active_runtime, "config_reloaded");
         lua_runtime_free(active_runtime);
         active_runtime = g_steal_pointer(&pending_runtime);
         if (revision_counters_seeded) {
@@ -77,12 +87,10 @@ void gnoblin_config_finish_deferred_load(gboolean commit) {
     gnoblin_config_finish_load(commit);
 }
 
-/* The worker is shutting down in order: tell the handles that cannot outlive it, so their
- * "closed" listeners run once. They run with no dispatch open, so they can read but cannot start
- * an operation. */
+/* The worker is shutting down in order: tell the objects that cannot outlive it, so their
+ * "closed" listeners run once. */
 void gnoblin_config_stop_runtime(void) {
-    if (active_runtime && active_runtime->state)
-        lua_object_end_all(active_runtime->state, "Grab", "runtime_stopped");
+    end_runtime_objects(active_runtime, "runtime_stopped");
 }
 
 guint64 gnoblin_config_deferred_runtime_generation(void) {

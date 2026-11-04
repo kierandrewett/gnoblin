@@ -35,8 +35,11 @@ one workspace returns the same object, updated with each change:
 
 - `workspace.alive` turns `false` when the workspace is removed.
 - `workspace:on(signal, fn)` takes `"changed"`, `"activated"` or `"closed"`.
-- `workspace:watch(field, fn)` calls `fn(workspace, value, old)` when a declared
-  field, such as `name` or `active`, changes.
+- `workspace:watch(field, fn)` calls `fn(workspace, value, old)` when an
+  observable field, `number`, `name`, `active` or `windows`, changes.
+- `workspace.revision` is the state revision of the snapshot. It goes up with
+  every change of the workspace list, so reading it again after a rename gives a
+  higher number.
 
 Gnoblin assigns session workspace IDs once the config is committed at startup.
 A workspace object read before then ends, and the same workspace appears again
