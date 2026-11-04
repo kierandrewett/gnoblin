@@ -4,8 +4,7 @@
 
 ### Changed
 
-- `gnoblin.find`, a read-only `gnoblin.config` and handle arguments (round 2; no wire change except one added
-  key, see the last bullet).
+- `gnoblin.find`, a read-only `gnoblin.config` and handle arguments (round 2; no wire change).
     - `gnoblin.find(kind, filter?)` lists the live objects of `Window`, `Workspace`, `LayerSurface`, `Output`,
       `Shortcut`, `Launch`, `InputSource` or `Process`. A table filter matches declared scalar fields
       (`gnoblin.find("Window", {app_id = "notes", focused = true})`); a function filter is a predicate. An unknown
@@ -28,13 +27,15 @@
       `animation.preview` stay.
     - `SnapContext:commit(monitor, x, y, width, height)` replaces `commit({monitor_id = ..., frame = {...}})`.
       `monitor` is an `Output` or a monitor ID.
-    - `Window.monitor` is now `Window.monitor_origin`, `{x, y}`: the field always held the origin of the monitor
-      that holds the window, and not a monitor index. `Window.offset` is `{x, y}` in the Lua record.
+    - `Window.monitor` is annotated as what it holds: the origin `{x, y}` of the monitor that holds the window, not a
+      monitor index (`monitor_index` and `monitor_id` name the monitor). The name stays, because the socket
+      `windows.list` returns the same record as Lua and `window.list` keeps `monitor`. `Window.offset` is `{x, y}` in
+      the Lua record.
     - The layer animation rule loses the `in`, `out` and `ease` aliases. Use `layer_open`, `layer_close` and
       `easing`.
-    - The generated stub is corrected: `Workspace.id` is required, and `create` accepts an ID.
-    - The control events and `window.list` keep `monitor`, and the window records of the control events gain
-      `monitor_origin` next to it, in the way they already carry `appId` next to `app_id`.
+    - The generated stub is corrected: `Workspace.id` is required, `create` accepts an ID, and the window count of a
+      `Workspace` is `window_count`, the key the record always had. The stub said `windows`, and
+      `workspace:watch("windows", fn)` never fired.
 - `Tween`, `Process` and `AnimationPreview` are live objects, and every subscription has one shape (no wire change;
   the tween track gains an optional `target_kind`).
     - Each has `id`, `alive`, `revision`, `on` and `watch`, and one handle per id. `tween:on("finished")` runs when

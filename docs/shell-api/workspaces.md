@@ -44,7 +44,7 @@ one workspace returns the same object, updated with each change:
 - `workspace.alive` turns `false` when the workspace is removed.
 - `workspace:on(signal, fn)` takes `"changed"`, `"activated"` or `"closed"`.
 - `workspace:watch(field, fn)` calls `fn(workspace, value, old)` when an
-  observable field, `number`, `name`, `active` or `windows`, changes.
+  observable field, `number`, `name`, `active` or `window_count`, changes.
 - `workspace.revision` is the state revision of the snapshot. It goes up with
   every change of the workspace list, so reading it again after a rename gives a
   higher number.
@@ -91,7 +91,7 @@ across reloads and sessions.
 
 ## Workspace records
 
-A `Workspace` record has `id`, `number`, `name`, `active`, `windows`, and
+A `Workspace` record has `id`, `number`, `name`, `active`, `window_count`, and
 `persistent` fields. Gnoblin does not remove a declared workspace, the active
 workspace, or a workspace that still contains windows.
 

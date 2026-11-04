@@ -1354,7 +1354,7 @@ function Tween:watch(property, fn) end
 ---@field parent? string ID of the parent window, when present.
 ---@field pid? integer Process ID of the client, from the display server, not the client.
 ---@field process? integer Process.id when gnoblin.process.spawn started this window's program; gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.
----@field monitor_origin? {x: integer, y: integer} Top-left corner of the monitor that holds the window, in compositor coordinates. It equals the x and y of the Output with this monitor_id.
+---@field monitor? {x: integer, y: integer} Origin of the monitor that holds the window, in compositor coordinates: the x and y of the Output with this monitor_id. It is not a monitor index; monitor_index and monitor_id name the monitor.
 ---@field frame WindowFrame Window frame rectangle.
 ---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
 ---@field scale number Drawn scale about the window's centre that the runtime set; 1 by default.
@@ -1596,7 +1596,7 @@ function SnapContext:commit(monitor, x, y, width, height) end
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
----@field windows integer Number of windows on this workspace.
+---@field window_count integer Number of windows on this workspace.
 ---@field revision integer State revision of this snapshot; it goes up with every change of the workspace list, so a rename gives a higher number.
 
 ---@class WorkspaceCreateOptions

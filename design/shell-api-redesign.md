@@ -288,10 +288,10 @@ and gap 7 are done (see the end of this list).
       `LayerSurface`. The wire names stay.
     - `SnapContext:commit(monitor, x, y, width, height)` is positional.
     - `WindowVisual.offset` is `{x, y}`. The `in`, `out` and `ease` aliases of the layer animation rule are gone,
-      also from the typed-window-api patch 0027. `Window.monitor` held the origin `{x, y}` of the monitor, not an
-      index, so it is `Window.monitor_origin`. The control publication keeps the native name and adds the new name,
-      as it does for `appId` and `app_id`; `window.list` on the socket still says `monitor`. Dropping it would have
-      changed that legacy output.
+      also from the typed-window-api patch 0027. `Window.monitor` holds the origin `{x, y}` of the monitor, not an
+      index, and the annotation now says so. It keeps its name: the socket `windows.list` returns the Lua record
+      as it is, and `window.list` maps it back to `monitor`, so a rename would change socket output. Dropping it
+      would change the same output.
     - `Workspace.id` is required in the stub.
     - Console parity is not done: `gnoblinctl lua` still has the old forms of `windows.list` filters,
       `animations.inspect`, `animations.preview` and `animations.surfaces`, the table form of `SnapContext:commit`,

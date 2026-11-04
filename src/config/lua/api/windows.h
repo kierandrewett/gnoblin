@@ -40,8 +40,9 @@ same object, updated with each change.
 ---@field pid? integer Process ID of the client, from the display server, not the client.
 ---@field process? integer Process.id when gnoblin.process.spawn started this window's program;
 gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.
----@field monitor_origin? {x: integer, y: integer} Top-left corner of the monitor that holds the
-window, in compositor coordinates. It equals the x and y of the Output with this monitor_id.
+---@field monitor? {x: integer, y: integer} Origin of the monitor that holds the window, in
+compositor coordinates: the x and y of the Output with this monitor_id. It is not a monitor
+index; monitor_index and monitor_id name the monitor.
 ---@field frame WindowFrame Window frame rectangle.
 ---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
 ---@field scale number Drawn scale about the window's centre that the runtime set; 1 by default.
@@ -53,7 +54,7 @@ window, in compositor coordinates. It equals the x and y of the Output with this
 ---@observable title app_id gtk_app_id wm_class rule_app_id workspace_id workspace_number
 ---@observable monitor_index monitor_id above sticky demands_attention unresponsive closable
 ---@observable minimizable maximizable movable resizable role type maximized fullscreen
----@observable minimized last_user_time parent monitor_origin frame opacity scale rotation offset
+---@observable minimized last_user_time parent monitor frame opacity scale rotation offset
 ---@observable focused modal
 
 ---@class WindowVisual

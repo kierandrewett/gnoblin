@@ -486,7 +486,7 @@ static const ApiMember api_fields_Window[] = {
     {"parent", "string", TRUE, "ID of the parent window, when present.", TRUE},
     {"pid", "integer", TRUE, "Process ID of the client, from the display server, not the client.", FALSE},
     {"process", "integer", TRUE, "Process.id when gnoblin.process.spawn started this window's program; gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.", FALSE},
-    {"monitor_origin", "{x: integer, y: integer}", TRUE, "Top-left corner of the monitor that holds the window, in compositor coordinates. It equals the x and y of the Output with this monitor_id.", TRUE},
+    {"monitor", "{x: integer, y: integer}", TRUE, "Origin of the monitor that holds the window, in compositor coordinates: the x and y of the Output with this monitor_id. It is not a monitor index; monitor_index and monitor_id name the monitor.", TRUE},
     {"frame", "WindowFrame", FALSE, "Window frame rectangle.", TRUE},
     {"opacity", "number", FALSE, "Drawn opacity from 0 to 1 that the runtime set; 1 by default.", TRUE},
     {"scale", "number", FALSE, "Drawn scale about the window's centre that the runtime set; 1 by default.", TRUE},
@@ -591,7 +591,7 @@ static const ApiMember api_fields_Workspace[] = {
     {"number", "integer", FALSE, "One-based workspace number.", TRUE},
     {"name", "string", FALSE, "Workspace name.", TRUE},
     {"active", "boolean", FALSE, "Whether this is the active workspace.", TRUE},
-    {"windows", "integer", FALSE, "Number of windows on this workspace.", TRUE},
+    {"window_count", "integer", FALSE, "Number of windows on this workspace.", TRUE},
     {"revision", "integer", FALSE, "State revision of this snapshot; it goes up with every change of the workspace list, so a rename gives a higher number.", FALSE},
 };
 static const ApiMember api_fields_WorkspaceCreateOptions[] = {

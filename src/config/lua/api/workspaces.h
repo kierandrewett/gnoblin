@@ -10,10 +10,10 @@ one `create` was given, or the session ID `@session-N` that Gnoblin assigns.
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
 ---@field active boolean Whether this is the active workspace.
----@field windows integer Number of windows on this workspace.
+---@field window_count integer Number of windows on this workspace.
 ---@field revision integer State revision of this snapshot; it goes up with every change of the
 workspace list, so a rename gives a higher number.
----@observable number name active windows
+---@observable number name active window_count
 
 ---@class WorkspaceCreateOptions
 ---@field id? string Optional ID. Must start with a letter or number and contain only letters,
