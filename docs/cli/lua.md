@@ -241,13 +241,17 @@ Read displays with `gnoblin.outputs.list()`, `gnoblin.outputs.primary()` and
 `gnoblin.outputs.by_id(id)`. They return read-only `Output` records, or `nil`
 when no output matches.
 
-`output:set_privacy_screen(enabled)` takes `true`, `false` or `"inherit"`, waits for the compositor and returns the privacy screen
-state. It fails on an output without a privacy screen:
+`gnoblin.outputs.set_privacy_screen(value)` takes `true`, `false` or
+`"inherit"`, waits for the compositor and returns the privacy screen state. It
+sets one request for the whole session, not for one output. It fails when no
+output has a privacy screen and `value` is `true` or `false`:
 
 ```lua
 for _, output in ipairs(gnoblin.outputs.list()) do
     print(output.id, output.width, output.height, output.scale)
 end
+
+gnoblin.outputs.set_privacy_screen("inherit")
 ```
 
 Use `gnoblin.layers.list(filter?)` to read layer surfaces. Each result is a

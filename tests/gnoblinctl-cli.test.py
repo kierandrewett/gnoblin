@@ -1290,7 +1290,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(100):
+                    for _ in range(102):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -2824,19 +2824,20 @@ def main() -> int:
             "assert(dp.privacy_screen.enabled == nil and dp.privacy_screen.locked == nil)\n"
             'assert(not pcall(function() initial.source = "runtime" end))\n'
             'assert(not pcall(function() rawset(initial, "source", "runtime") end))\n'
-            "local enabled = hdmi:set_privacy_screen(true)\n"
+            "local enabled = gnoblin.outputs.set_privacy_screen(true)\n"
             'assert(enabled.requested_enabled and enabled.source == "runtime" and enabled.revision == 32)\n'
             "assert(enabled.monitors[1].enabled and not enabled.monitors[2].available)\n"
             "assert(not pcall(function() enabled.monitors[1].enabled = false end))\n"
-            "local disabled = hdmi:set_privacy_screen(false)\n"
+            "local disabled = gnoblin.outputs.set_privacy_screen(false)\n"
             'assert(not disabled.requested_enabled and disabled.source == "runtime")\n'
-            'local inherited = hdmi:set_privacy_screen("inherit")\n'
+            'local inherited = gnoblin.outputs.set_privacy_screen("inherit")\n'
             'assert(not inherited.requested_enabled and inherited.source == "system")\n'
-            'assert(not pcall(function() hdmi:set_privacy_screen("on") end))\n'
-            "local dp_ok, dp_error = pcall(function() dp:set_privacy_screen(true) end)\n"
-            'assert(not dp_ok and dp_error:match("no privacy screen"))\n'
+            'assert(not pcall(function() gnoblin.outputs.set_privacy_screen("on") end))\n'
+            "assert(not pcall(function() gnoblin.outputs.set_privacy_screen() end))\n"
+            "assert(hdmi.set_privacy_screen == nil and dp.set_privacy_screen == nil)\n"
+            "assert(not pcall(function() hdmi:set_privacy_screen(true) end))\n"
             "local removed_ok, removed_error = pcall(function() return gnoblin.monitors.set_privacy_screen end)\n"
-            'assert(not removed_ok and removed_error:match("output:set_privacy_screen"))\n',
+            'assert(not removed_ok and removed_error:match("gnoblin.outputs.set_privacy_screen"))\n',
             encoding="utf-8",
         )
         privacy_screen_result = run(binary, "--socket", socket_path, "lua", str(privacy_screen_file))
@@ -2870,8 +2871,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 100
-        assert len(subscriptions) == 100
+        assert len(received) == 102
+        assert len(subscriptions) == 102
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"

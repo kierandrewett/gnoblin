@@ -27,7 +27,7 @@ privacy screen are unaffected. Remove the setting or use `"inherit"` to follow
 the system preference again.
 
 Runtime Lua can temporarily override this setting with
-`output:set_privacy_screen(value)`. Passing `"inherit"` clears that
+`gnoblin.outputs.set_privacy_screen(value)`. Passing `"inherit"` clears that
 runtime override and restores this configured value. If the config omits
 `privacy_screen`, `"inherit"` follows the system preference. See the
 [output API](/shell-api/outputs#privacy-screens) for the state and change

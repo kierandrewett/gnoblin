@@ -310,3 +310,4 @@ int lua_cli_outputs_list(lua_State* state);
 int lua_cli_outputs_primary(lua_State* state);
 int lua_cli_outputs_by_id(lua_State* state);
 int lua_cli_outputs_renderer(lua_State* state);
+int lua_cli_outputs_set_privacy_screen(lua_State* state);

@@ -50,8 +50,12 @@
     - Every read of one display returns the same `Output`, with `alive`, `on` and `watch`.
     - An output also has its logical monitor's index, size and work area, and its privacy
       screen state.
-    - `output:set_privacy_screen(enabled)` sets the privacy screen request. The compositor
-      applies one request to every output that has a privacy screen.
+    - `gnoblin.outputs.set_privacy_screen(value)` sets the privacy screen request for the whole
+      session. The compositor keeps one request and applies it to every output that has a privacy
+      screen, so the write is a session call and an `Output` has no method for it. `true` and
+      `false` raise an error when no output has a privacy screen; `"inherit"` is always accepted.
+      `output.privacy_screen` and `output:watch("privacy_screen", fn)` read the state. The wire
+      call `monitors.set_privacy_screen` is unchanged.
     - New events tell Lua and shell processes when a display is added, changes or is removed.
     - Monitor events and monitor reads stay for shell processes only.
 - The `gnoblin.location.authorization-finished` event (bridge API 1.87) reports how each location
@@ -248,7 +252,7 @@ A second pass removes every Lua function that had another name for the same acti
 | `gnoblin.launches.snapshot()`                            | `gnoblin.launches.list()`; each `Launch` has its own `revision` |
 | `gnoblin.monitors.list()`, `gnoblin.monitors.primary()`  | `gnoblin.outputs.list()`, `gnoblin.outputs.primary()`           |
 | `gnoblin.monitors.privacy_screen()`                      | `output.privacy_screen`                                         |
-| `gnoblin.monitors.set_privacy_screen(value)`             | `output:set_privacy_screen(value)`                              |
+| `gnoblin.monitors.set_privacy_screen(value)`             | `gnoblin.outputs.set_privacy_screen(value)`                     |
 | Lua `gnoblin.monitor.*` events                           | `gnoblin.output.added`, `changed`, `removed`                    |
 
 `window:restore_or_minimize()` stays: it restores the frame saved before a snap, which no other

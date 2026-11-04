@@ -15,7 +15,7 @@
 ---@field requested boolean Whether the session asks for privacy screens to be on. This one
 request applies to every output.
 ---@field source "runtime"|"system"|"config" What sets the request: a runtime override from
-Output:set_privacy_screen, the configuration, or the system setting.
+gnoblin.outputs.set_privacy_screen, the configuration, or the system setting.
 
 ---@class LayerFilter
 ---@field monitor_id? string Exact monitor ID.
@@ -117,13 +117,15 @@ function gnoblin.outputs.by_id(id) end
 ---@return Renderer|nil
 function gnoblin.outputs.renderer() end
 
----Turn privacy screens on or off. The compositor keeps one privacy screen request for every
----output that has one, so this changes the request for all of them; it fails on an output whose
----privacy_screen.available is false. "inherit" removes the runtime override and restores the
----configured or system value.
----@param enabled boolean|"inherit"
+---Turn privacy screens on or off for the whole session. The compositor keeps one privacy screen
+---request and applies it to every output that has a privacy screen, so this call belongs to the
+---session and not to one Output. Read each output's state in Output.privacy_screen, and watch it
+---with Output:watch("privacy_screen", fn). true and false raise an error when no output has a
+---privacy screen (every output has privacy_screen.available false). "inherit" removes the runtime
+---override, restores the configured or system value, and is always accepted.
+---@param value boolean|"inherit"
 ---@return Operation<Json>
-function Output:set_privacy_screen(enabled) end
+function gnoblin.outputs.set_privacy_screen(value) end
 
 ---Call fn(output, ...) on a signal of this output: "changed" (with the list of changed fields)
 ---or "closed" when the output is removed. Listening ends after "closed".

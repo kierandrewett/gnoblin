@@ -57,45 +57,6 @@ static gboolean lua_cli_privacy_screen_snapshot_valid(JsonObject* snapshot) {
     return TRUE;
 }
 
-/* Output:set_privacy_screen(enabled): the compositor keeps one request for every output with a
- * privacy screen, set through the monitors.set_privacy_screen wire call. */
-static int lua_cli_output_set_privacy_screen(lua_State* state) {
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    luaL_checkudata(state, 1, GNOBLINCTL_OUTPUT_RECORD_METATABLE);
-    if (lua_gettop(state) != 2 ||
-        (!lua_isboolean(state, 2) &&
-         !(lua_type(state, 2) == LUA_TSTRING && g_str_equal(lua_tostring(state, 2), "inherit"))))
-        return luaL_error(state, "Output:set_privacy_screen requires true, false, or 'inherit'");
-    lua_getiuservalue(state, 1, 1);
-    lua_getfield(state, -1, "id");
-    const char* id = lua_tostring(state, -1);
-    gboolean available = FALSE;
-    if (lua_getfield(state, -2, "privacy_screen") == LUA_TTABLE) {
-        lua_getfield(state, -1, "available");
-        available = lua_toboolean(state, -1);
-    }
-    if (!available)
-        return luaL_error(state, "output %s has no privacy screen", id ? id : "unknown");
-    JsonObject* arguments = json_object_new();
-    if (lua_isboolean(state, 2))
-        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 2));
-    else
-        json_object_set_string_member(arguments, "value", "inherit");
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "monitors.set_privacy_screen", arguments, &call_error);
-    json_object_unref(arguments);
-    if (!result)
-        return luaL_error(state, "Output:set_privacy_screen failed: %s",
-                          call_error ? call_error->message : "unknown compositor error");
-    if (!JSON_NODE_HOLDS_OBJECT(result) ||
-        !lua_cli_privacy_screen_snapshot_valid(json_node_get_object(result)))
-        return luaL_error(state, "Output:set_privacy_screen returned an invalid snapshot");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    return 1;
-}
-
 int lua_cli_output_tostring(lua_State* state) {
     lua_getiuservalue(state, 1, 1);
     lua_getfield(state, -1, "id");
@@ -104,7 +65,7 @@ int lua_cli_output_tostring(lua_State* state) {
     return 1;
 }
 
-static void lua_cli_push_output_record(lua_State* state, Cli* cli, JsonNode* node) {
+static void lua_cli_push_output_record(lua_State* state, JsonNode* node) {
     if (!JSON_NODE_HOLDS_OBJECT(node) || !member_string(json_node_get_object(node), "id", NULL))
         luaL_error(state, "gnoblin.outputs returned an output without a stable id");
     json_to_lua(state, node);
@@ -113,10 +74,7 @@ static void lua_cli_push_output_record(lua_State* state, Cli* cli, JsonNode* nod
     int record = lua_absindex(state, -1);
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
-    lua_newtable(state);
-    lua_pushlightuserdata(state, cli);
-    lua_pushcclosure(state, lua_cli_output_set_privacy_screen, 1);
-    lua_setfield(state, -2, "set_privacy_screen");
+    lua_newtable(state); /* An Output has no methods in gnoblinctl lua. */
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_OUTPUT_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -569,7 +527,7 @@ int lua_cli_outputs_list(lua_State* state) {
     JsonArray* outputs = json_node_get_array(result);
     lua_createtable(state, (int)json_array_get_length(outputs), 0);
     for (guint i = 0; i < json_array_get_length(outputs); i++) {
-        lua_cli_push_output_record(state, cli, json_array_get_element(outputs, i));
+        lua_cli_push_output_record(state, json_array_get_element(outputs, i));
         lua_rawseti(state, -2, i + 1);
     }
     return 1;
@@ -590,7 +548,7 @@ int lua_cli_outputs_find(lua_State* state, gboolean by_id) {
         if (output &&
             ((by_id && g_str_equal(member_string(output, "id", ""), id)) ||
              (!by_id && json_object_get_boolean_member_with_default(output, "primary", FALSE)))) {
-            lua_cli_push_output_record(state, cli, json_array_get_element(outputs, i));
+            lua_cli_push_output_record(state, json_array_get_element(outputs, i));
             return 1;
         }
     }
@@ -618,5 +576,53 @@ int lua_cli_outputs_renderer(lua_State* state) {
     json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
+    return 1;
+}
+
+/* gnoblin.outputs.set_privacy_screen(value): one request for the whole session, set through the
+ * monitors.set_privacy_screen wire call. true and false fail when no output has a privacy
+ * screen; "inherit" is always accepted. */
+int lua_cli_outputs_set_privacy_screen(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 1 ||
+        (!lua_isboolean(state, 1) &&
+         !(lua_type(state, 1) == LUA_TSTRING && g_str_equal(lua_tostring(state, 1), "inherit"))))
+        return luaL_error(state,
+                          "gnoblin.outputs.set_privacy_screen requires true, false, or 'inherit'");
+    if (lua_isboolean(state, 1)) {
+        g_autoptr(JsonNode) outputs_node =
+            lua_cli_output_snapshot(state, cli, "set_privacy_screen");
+        JsonArray* outputs = json_node_get_array(outputs_node);
+        gboolean available = FALSE;
+        for (guint i = 0; i < json_array_get_length(outputs) && !available; i++) {
+            JsonObject* output = json_array_get_object_element(outputs, i);
+            JsonObject* privacy =
+                output && json_object_has_member(output, "privacy_screen") &&
+                        JSON_NODE_HOLDS_OBJECT(json_object_get_member(output, "privacy_screen"))
+                    ? json_object_get_object_member(output, "privacy_screen")
+                    : NULL;
+            available =
+                privacy && json_object_get_boolean_member_with_default(privacy, "available", FALSE);
+        }
+        if (!available)
+            return luaL_error(state, "no output has a privacy screen");
+    }
+    JsonObject* arguments = json_object_new();
+    if (lua_isboolean(state, 1))
+        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 1));
+    else
+        json_object_set_string_member(arguments, "value", "inherit");
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "monitors.set_privacy_screen", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.outputs.set_privacy_screen failed: %s",
+                          call_error ? call_error->message : "unknown compositor error");
+    if (!JSON_NODE_HOLDS_OBJECT(result) ||
+        !lua_cli_privacy_screen_snapshot_valid(json_node_get_object(result)))
+        return luaL_error(state, "gnoblin.outputs.set_privacy_screen returned an invalid snapshot");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
     return 1;
 }

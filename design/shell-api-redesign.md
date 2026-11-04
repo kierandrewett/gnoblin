@@ -123,9 +123,12 @@ and gap 7 stay open.
   and `gnoblin.monitors` is gone from Lua. An `Output` carries its logical monitor's index,
   size and work area and a `privacy_screen` record. The control publishes merged records and
   `gnoblin.output.added`, `changed` and `removed` (API 1.88); `gnoblin.monitor.*` events and
-  the `monitors.*` wire reads stay for socket clients only. `Output:set_privacy_screen` sets
-  the one global request: Mutter applies a single privacy screen setting to every capable
-  monitor and syncs the hotkey back to it, so a per-output request would need a Mutter patch.
+  the `monitors.*` wire reads stay for socket clients only. Privacy screen is one global
+  request: Mutter applies a single setting to every capable monitor and syncs the hotkey back
+  to it, so a per-output request would need a Mutter patch. A method on one `Output` that
+  changes the other outputs was misleading, so the write is `gnoblin.outputs.set_privacy_screen(value)`
+  (`true`, `false` or `"inherit"`; `true` and `false` fail when no output has the hardware) and
+  `Output` keeps only the `privacy_screen` read property, its `watch` and the `changed` signal.
 - Step (c), done. `shortcuts.bind` returns a `Shortcut` and `launches.begin` returns a `Launch`
   (both interned, with `alive`, `on`; a `Launch` also has `watch`). `unbind`, `end_session` and
   `finish` are methods; `shortcuts.unbind`, `shortcuts.end_session` and `launches.finish` are

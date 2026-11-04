@@ -342,7 +342,7 @@ int lua_outputs_by_id(lua_State* state);
 int lua_outputs_renderer(lua_State* state);
 int lua_read_privacy_screen(lua_State* state);
 int lua_monitors_set_privacy_screen(lua_State* state);
-int lua_output_set_privacy_screen(lua_State* state);
+int lua_outputs_set_privacy_screen(lua_State* state);
 int lua_layers_list(lua_State* state);
 int lua_capabilities_list(lua_State* state);
 int lua_privacy_state(lua_State* state);

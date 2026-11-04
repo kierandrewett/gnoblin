@@ -1,8 +1,8 @@
 # Outputs
 
 An output is a connected display. Use outputs to read the layout, display
-modes, work areas and privacy screens, to follow display changes, and to read
-the GPU path for this session.
+modes, work areas and privacy screens, to follow display changes, to turn
+privacy screens on or off, and to read the GPU path for this session.
 
 `gnoblinctl output list` prints the same records from the command line, with
 `--json` for machine-readable output.
@@ -115,28 +115,35 @@ The `transform` values describe the output orientation:
 
 `source` has one of these values:
 
-- `runtime`: `output:set_privacy_screen` set a runtime override.
+- `runtime`: `gnoblin.outputs.set_privacy_screen` set a runtime override.
 - `config`: `monitors.privacy_screen` is set in the Lua configuration.
 - `system`: neither a runtime override nor the configuration sets a value.
 
-`output:set_privacy_screen(enabled)` returns an `Operation`. It accepts:
+`gnoblin.outputs.set_privacy_screen(value)` returns an `Operation`. It accepts:
 
 - `true`: turn privacy screens on for this session.
 - `false`: turn them off for this session.
 - `"inherit"`: remove the runtime override and use the configured value, or
   the system preference when the configuration has none.
 
-The compositor keeps one privacy screen request for all outputs. The method
-changes that request, so every output with a privacy screen follows it. It
-fails on an output whose `privacy_screen.available` is false. A runtime
-override does not change the system preference.
+The compositor keeps one privacy screen request for the whole session and
+applies it to every output that has a privacy screen. For this reason the
+call belongs to `gnoblin.outputs`, and an `Output` has no `set_privacy_screen`
+method. Note these rules:
+
+- `true` and `false` raise an error when `privacy_screen.available` is false
+  on every output.
+- `"inherit"` is always accepted.
+- A runtime override does not change the system preference.
 
 ```lua
-for _, output in ipairs(gnoblin.outputs.list()) do
-    if output.privacy_screen.available then
-        output:set_privacy_screen(true)
-        break
-    end
+gnoblin.outputs.set_privacy_screen(true)
+
+local primary = gnoblin.outputs.primary()
+if primary then
+    primary:watch("privacy_screen", function(output, privacy, old)
+        print(output.id, "privacy screen enabled:", privacy.enabled)
+    end)
 end
 ```
 

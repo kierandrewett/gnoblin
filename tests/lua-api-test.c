@@ -325,9 +325,12 @@ int main(void) {
         "    end)\n"
         "    output:on('closed', function(o) output_log[#output_log+1]='closed' end)\n"
         "    assert(not pcall(function() output:watch('missing', print) end))\n"
-        "    assert(not pcall(function() list[2]:set_privacy_screen(true) end))\n"
-        "    assert(not pcall(function() output:set_privacy_screen('on') end))\n"
-        "    local operation=output:set_privacy_screen(true)\n"
+        "    assert(output.set_privacy_screen==nil)\n"
+        "    assert(not pcall(function() output:set_privacy_screen(true) end))\n"
+        "    assert(not pcall(g.outputs.set_privacy_screen, 'on'))\n"
+        "    assert(not pcall(g.outputs.set_privacy_screen))\n"
+        "    assert(not pcall(g.outputs.set_privacy_screen, true, false))\n"
+        "    local operation=g.outputs.set_privacy_screen(true)\n"
         "    assert(operation.method=='monitors.set_privacy_screen')\n"
         "  else\n"
         "    assert(table.concat(output_log, ';')=='1>2;scale;closed', table.concat(output_log, "
@@ -336,6 +339,13 @@ int main(void) {
         "    assert(not pcall(function() output:on('changed', print) end))\n"
         "    g.workspaces.next()\n"
         "  end\n"
+        "end)\n"
+        "g.on('test.no-privacy', function(event)\n"
+        "  local ok, err=pcall(g.outputs.set_privacy_screen, false)\n"
+        "  assert(not ok and tostring(err):find('no output has a privacy screen', 1, true), "
+        "tostring(err))\n"
+        "  local operation=g.outputs.set_privacy_screen('inherit')\n"
+        "  assert(operation.method=='monitors.set_privacy_screen')\n"
         "end)\n"
         "local launch, launch_log, replaced_log=nil, {}, {}\n"
         "g.on('test.launches', function(event)\n"
@@ -832,6 +842,23 @@ int main(void) {
     g_variant_builder_add(&check_step, "{sv}", "step", g_variant_new_string("check"));
     g_assert_cmpuint(
         dispatch_counting_operations("test.outputs", g_variant_builder_end(&check_step)), ==, 1);
+
+    /* The privacy screen request belongs to the session: with no capable output, true and false
+     * fail and "inherit" is still accepted. */
+    GVariantBuilder bare_outputs;
+    g_variant_builder_init(&bare_outputs, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&bare_outputs, "v", test_output("HDMI-1", TRUE, 1.0, FALSE));
+    GVariantBuilder bare_snapshot;
+    g_variant_builder_init(&bare_snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&bare_snapshot, "{sv}", "outputs", g_variant_builder_end(&bare_outputs));
+    g_autoptr(GVariant) bare_snapshot_value =
+        g_variant_ref_sink(g_variant_builder_end(&bare_snapshot));
+    gnoblin_config_update_output_snapshot(bare_snapshot_value, 4);
+    GVariantBuilder no_privacy_step;
+    g_variant_builder_init(&no_privacy_step, G_VARIANT_TYPE_VARDICT);
+    g_assert_cmpuint(
+        dispatch_counting_operations("test.no-privacy", g_variant_builder_end(&no_privacy_step)),
+        ==, 1);
 
     /* Launches are live objects: the compositor's events move one handle per token. */
     g_autoptr(GArray) launch_ids = dispatch_operation_ids("test.launches", step_payload("begin"));

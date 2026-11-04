@@ -160,7 +160,7 @@ const LuaApiEntry lua_api[] = {
     {"outputs.primary", NULL, lua_outputs_primary},
     {"outputs.by_id", NULL, lua_outputs_by_id},
     {"outputs.renderer", NULL, lua_outputs_renderer},
-    {"Output:set_privacy_screen", NULL, lua_output_set_privacy_screen},
+    {"outputs.set_privacy_screen", NULL, lua_outputs_set_privacy_screen},
     {"Output:on", NULL, lua_object_on},
     {"Output:watch", NULL, lua_object_watch},
     {"layers.list", NULL, lua_layers_list},

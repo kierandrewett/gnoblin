@@ -586,11 +586,15 @@ int lua_read_privacy_screen(lua_State* state) {
     return 1;
 }
 
+static gboolean privacy_screen_value_valid(lua_State* state, int value) {
+    return lua_isboolean(state, value) || (lua_type(state, value) == LUA_TSTRING &&
+                                           g_str_equal(lua_tostring(state, value), "inherit"));
+}
+
 /* Queue monitors.set_privacy_screen with the value at `value`: true, false or "inherit". */
 static int push_privacy_screen_operation(lua_State* state, LuaConfig* config, int value,
                                          const char* caller) {
-    if (!lua_isboolean(state, value) && !(lua_type(state, value) == LUA_TSTRING &&
-                                          g_str_equal(lua_tostring(state, value), "inherit")))
+    if (!privacy_screen_value_valid(state, value))
         return luaL_error(state, "%s requires true, false, or 'inherit'", caller);
     lua_pushlightuserdata(state, config);
     lua_pushstring(state, "monitors.set_privacy_screen");
@@ -613,28 +617,32 @@ int lua_monitors_set_privacy_screen(lua_State* state) {
                                          "monitors.set_privacy_screen");
 }
 
-/* Output:set_privacy_screen(enabled). The compositor has one privacy screen request for every
- * output that has the hardware, so this sets that request; it fails on an output without it. */
-int lua_output_set_privacy_screen(lua_State* state) {
-    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
-    if (!config || !lua_object_is(state, 1, "Output"))
-        return luaL_error(state, "Output:set_privacy_screen needs an Output");
-    if (lua_gettop(state) != 2)
-        return luaL_error(state, "Output:set_privacy_screen takes one value");
-    lua_getfield(state, 1, "alive");
-    gboolean alive = lua_toboolean(state, -1);
-    gboolean available = FALSE;
-    if (lua_getfield(state, 1, "privacy_screen") == LUA_TUSERDATA) {
-        lua_getfield(state, -1, "available");
-        available = lua_toboolean(state, -1);
+static gboolean any_output_has_privacy_screen(LuaConfig* config) {
+    g_autoptr(GVariant) outputs = lua_output_array(config);
+    for (gsize i = 0; outputs && i < g_variant_n_children(outputs); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(outputs, i);
+        g_autoptr(GVariant) output = g_variant_get_variant(wrapped);
+        g_autoptr(GVariant) privacy =
+            g_variant_lookup_value(output, "privacy_screen", G_VARIANT_TYPE_VARDICT);
+        gboolean available = FALSE;
+        if (privacy && g_variant_lookup(privacy, "available", "b", &available) && available)
+            return TRUE;
     }
-    lua_getfield(state, 1, "id");
-    if (!alive)
-        return luaL_error(state, "output %s has been removed", lua_tostring(state, -1));
-    if (!available)
-        return luaL_error(state, "output %s has no privacy screen", lua_tostring(state, -1));
-    lua_settop(state, 2);
-    return push_privacy_screen_operation(state, config, 2, "Output:set_privacy_screen");
+    return FALSE;
+}
+
+/* gnoblin.outputs.set_privacy_screen(value). The compositor keeps one privacy screen request for
+ * the whole session and applies it to every output that has the hardware, so the call belongs to
+ * the session, not to one Output. true and false fail when no output has a privacy screen;
+ * "inherit" only drops the runtime override and is always accepted. */
+int lua_outputs_set_privacy_screen(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 1 || !privacy_screen_value_valid(state, 1))
+        return luaL_error(state,
+                          "gnoblin.outputs.set_privacy_screen requires true, false, or 'inherit'");
+    if (lua_isboolean(state, 1) && !any_output_has_privacy_screen(config))
+        return luaL_error(state, "no output has a privacy screen");
+    return push_privacy_screen_operation(state, config, 1, "gnoblin.outputs.set_privacy_screen");
 }
 
 static GVariant* lua_layer_array(LuaConfig* config) {
