@@ -189,23 +189,27 @@ mixed patches stay too.
 | `30-privacy-screen/0005-test-runtime-privacy-screen-override`           | edits the file above                                    | yes                                                 |
 
 All five use `meta-backend-private.h`, `meta-settings-private.h` or `meta-input-settings-private.h` and run in mutter's
-`meta-test` harness, so they cannot move to Gnoblin's own `tests/`. They move to the overlay (`src/mutter-build/tests/`,
-destination `src/tests/`) and their `test_cases` entries move into one fragment that `src/tests/meson.build` includes
-with one `subdir()` line. `15-preferences/0002`, `14-input-settings/0018` and the privacy-screen settings patches keep their non-test hooks
-(settings entry points, private-header declarations); `14-input-settings/0014`, `30-privacy-screen/0002` and
-`30-privacy-screen/0005` are deleted.
+`meta-test` harness, so they cannot move to Gnoblin's own `tests/`. They move to the overlay
+(`src/mutter-build/tests/`, destination `src/tests/`) and their `test_cases` entries move into one fragment,
+`src/mutter-build/tests.meson` (installed as `src/tests/gnoblin-tests/meson.build`), that `src/tests/meson.build` includes
+with one `subdir()` line before it builds `test_cases`. The test sources must sit in `src/tests/` itself, because Meson
+resolves a test case's `sources` against the directory of the file that builds the test, not that of the fragment that
+lists it. `15-preferences/0002` and the input-settings export patch (the old `14-input-settings/0018`) keep their non-test
+hooks (settings entry points, private-header declarations); `14-input-settings/0014`, `30-privacy-screen/0002` and
+`30-privacy-screen/0005` are deleted, and one new patch, `18-build-wiring/0002-include-gnoblin-test-fragment`, holds the
+include.
 The roughly 20 `.metatest` files edited by `15-preferences/0014-gnoblin-new-window-placement` are upstream test data
 for a changed default, not Gnoblin-owned files, and stay.
 
 ### E. Portal patches
 
-| Patch                                                                                    | Gnoblin-owned part                                                                   | Target                                                                                                                                          |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `04-native-portals/0003-route-global-shortcuts-through-gnoblin` (880 added lines)        | rewrites `src/globalshortcuts.c`; adds two D-Bus XML files                           | `src/portal/backend/gnoblin-globalshortcuts.c`, `data/org.gnoblin.Shell.GlobalShortcuts{Provider,Rebind}.xml`; patch keeps the Meson lines only |
-| `04-native-portals/0004-preview-wallpapers-with-gtk` (188 added lines)                   | rewrites `src/wallpaperpreview.c`                                                    | `src/portal/backend/gnoblin-wallpaperpreview.c`; patch keeps the Meson lines only                                                               |
-| `03-file-chooser/0002`, `04-native-portals/0001`, `0002`, `0005`                         | Meson and `xdg-desktop-portal-gnome.c` wiring for overlay sources that already exist | stay                                                                                                                                            |
-| `02-identity`, `05-access-and-screencast/*`, `01-build-compat/*`, `03-file-chooser/0001` | small edits to upstream code (`access.c`, `screencast.c`, `settings.c`)              | stay: edits of upstream behaviour, not Gnoblin-owned files                                                                                      |
-| `portal-dependencies/01-libgxdp/0001`                                                    | GTK 4.20 compatibility fix in upstream `libgxdp`                                     | stays                                                                                                                                           |
+| Patch                                                                                    | Gnoblin-owned part                                                                   | Target                                                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `04-native-portals/0003-route-global-shortcuts-through-gnoblin` (880 added lines)        | rewrites `src/globalshortcuts.c`; adds two D-Bus XML files                           | `src/portal/backend/gnoblin-globalshortcuts.c` and `org.gnoblin.Shell.GlobalShortcuts{Provider,Rebind}.xml` (destinations `src/gnoblin-globalshortcuts.c`, `data/`); patch keeps the Meson lines only |
+| `04-native-portals/0004-preview-wallpapers-with-gtk` (188 added lines)                   | rewrites `src/wallpaperpreview.c`                                                    | `src/portal/backend/gnoblin-wallpaperpreview.c` (destination `src/gnoblin-wallpaperpreview.c`); patch keeps the Meson lines only                                                                      |
+| `03-file-chooser/0002`, `04-native-portals/0001`, `0002`, `0005`                         | Meson and `xdg-desktop-portal-gnome.c` wiring for overlay sources that already exist | stay                                                                                                                                                                                                  |
+| `02-identity`, `05-access-and-screencast/*`, `01-build-compat/*`, `03-file-chooser/0001` | small edits to upstream code (`access.c`, `screencast.c`, `settings.c`)              | stay: edits of upstream behaviour, not Gnoblin-owned files                                                                                                                                            |
+| `portal-dependencies/01-libgxdp/0001`                                                    | GTK 4.20 compatibility fix in upstream `libgxdp`                                     | stays                                                                                                                                                                                                 |
 
 Upstream `globalshortcuts.c` and `wallpaperpreview.c` stay in the tree, unmodified and unbuilt, because the overlay may
 not overwrite a tracked file.
@@ -242,12 +246,11 @@ and the static patch tests match the baseline, and a nested-session smoke runs t
 
 ## Results
 
-Phases 1 to 4 are done, each in its own commit. Phases 5 (test files) and 6 (portal) are not done: they are planned
-above and left for a later change.
+All six phases are done, each in its own commit.
 
 | Project                    | Patches before | Patches after |
 | -------------------------- | -------------- | ------------- |
-| `mutter`                   | 237            | 176           |
+| `mutter`                   | 237            | 174           |
 | `xdg-desktop-portal-gnome` | 14             | 14            |
 | `portal-dependencies`      | 1              | 1             |
 
@@ -257,15 +260,44 @@ above and left for a later change.
 - **Native dispatch** (phase 3): `src/control/gnoblin-native-dispatch.{c,h}`. 27 patches that touched only `util.c`
   are deleted, `util.c` is back to upstream and keeps no hook. The added lines of the old `util.c` and the body of the
   new file differ by one blank line. `meta/util.h` keeps the window frame and native event declarations in one small
-  patch.
+  patch. The file kept Mutter's style for the move; a later commit formats it with the repo's clang-format and drops
+  its `clang-check` exclusion. That commit is whitespace only: the files are byte-identical with all whitespace removed,
+  and `git diff -w --word-diff=porcelain --word-diff-regex='[^[:space:]]'` shows no changed character. (A plain
+  `git diff -w` is not empty, because `-w` does not ignore the line breaks that clang-format moves.)
 - **Meson** (phase 4): `src/mutter-build/wiring.meson` and `executable.meson` (installed as
   `src/gnoblin-wiring/meson.build` and `src/gnoblin-executable/meson.build`). One patch,
   `18-build-wiring/0001-include-gnoblin-meson-fragments`, replaces 23 wiring patches and the `src/meson.build` hunks
   of 14 others. It keeps the IBus and Hyprcursor `mutter_lib_deps` lines because that list is read before any fragment
   can run. The root `meson.build`, `meson.options` and `config.h.meson` patches stay: they define options and feature
   flags. The four plugin `meson.build` edits cancelled out (one blank line) and are gone.
+- **Tests** (phase 5): `src/mutter-build/tests/*-test.c` (destination `src/tests/`) and the fragment
+  `src/mutter-build/tests.meson` (installed as `src/tests/gnoblin-tests/meson.build`). Three patches that only added
+  test code are deleted; the trackball patch keeps its header exports as `14-input-settings/0017-export-input-settings-to-tests`
+  and `15-preferences/0002` keeps its settings hooks. One new patch, `18-build-wiring/0002-include-gnoblin-test-fragment`,
+  adds the `subdir()` line, so `mutter` goes from 176 to 174 patches. The patched tree equals the old one except for
+  `src/tests/meson.build`. The four tests build and pass in a Mutter build with `-Dtests=enabled` (five test cases, none
+  skipped). The normal build uses `-Dtests=disabled`, which never reads `src/tests/`, so the check needs that separate
+  configuration; it also needs `mutter = gnoblin` added in a scratch copy, because `src/tests/meson.build` still runs
+  `test('get-state-tool-gio', mutter, ...)` and the monolithic `gnoblin` executable replaced Mutter's `mutter` target
+  long before this work (already so at `a6c07358`). That is not fixed here.
+- **Portal** (phase 6): `src/portal/backend/gnoblin-globalshortcuts.c`, `gnoblin-wallpaperpreview.c` and the two
+  `org.gnoblin.Shell.GlobalShortcuts{Provider,Rebind}.xml` files. The existing overlay mechanism already copies files
+  into the portal project (`manifest` names the project), so CMake needed no change. An overlay may not replace a
+  tracked file, so the Gnoblin files get their own names and `0003-route-global-shortcuts-through-gnoblin` and
+  `0004-preview-wallpapers-with-gtk` shrink to Meson lines (the Shell interfaces, `json-glib`, `glycin`, the source
+  names). Upstream `globalshortcuts.c` and `wallpaperpreview.c` stay in the tree, unbuilt. The patched tree equals the
+  old one except that the two files sit under their new names (equal to the old rewritten files byte for byte before
+  formatting) and `src/meson.build` names them. The portal builds with them and `ctest` passes 20 of 20.
 - Compiled sources after phase 4: the target list of `meson introspect` equals the baseline except that
   `libmutter` gains `native-dispatch.c` (phase 3); the `compile_commands.json` flags differ only in the build
   directory of the `gnoblin` executable. The 1091 exported `libmutter` symbols are unchanged after every phase.
 - Tests that read patch text now read the overlay (`native-socket-text-snap-api`, `session-lock-api`,
-  `location-agent-contract`, `session-environment`). `ctest` stays at 19 of 20 (`gnoblinctl-cli` needs the portal).
+  `location-agent-contract`, `session-environment`). `ctest` stays at 19 of 20 in a `--without-portal` build
+  (`gnoblinctl-cli` needs the portal) and is 20 of 20 with the portal.
+- `design/patches-layout-mapping.tsv`: the `new` column is the patch's current path. A patch deleted because its code
+  moved to an overlay has `overlay:<path>` instead (a path that no longer exists would mislead).
+- **`clutter_actor_insert_child_above` criticals.** The nested smoke (animation lifecycle and the native dispatch calls)
+  prints `Clutter-CRITICAL ... clutter_actor_insert_child_above: assertion 'child->priv->parent == NULL' failed` in
+  pairs. They are not new: a build of `origin/main` `a6c07358` (Mutter 51.0 plus its overlay and 237 patches, built
+  from a scratch worktree and a scratch patched Mutter checkout) prints the same four in the animation smoke and the same three pairs in the native smoke as
+  this branch does, with the same animation and workspace event counts. No fix belongs to this change.

@@ -15,8 +15,11 @@ file with one `From: kierandrewett <kieran@drewett.dev>` header.
 An overlay file is copied into the subproject before the patches apply, so a patch cannot edit one, and it cannot
 replace a tracked upstream file. Gnoblin code that is a whole function or file therefore lives in an overlay under
 `src/` and is wired in by a patch that adds only the include, call or build line upstream needs. Examples:
-`src/compositor/animation/gnoblin-animation.c` and the hooks that call it in `meta-window-actor.c`, and
-`src/control/gnoblin-native-dispatch.c`, which `util.c` no longer carries. A fix to upstream
+`src/compositor/animation/gnoblin-animation.c` and the hooks that call it in `meta-window-actor.c`,
+`src/control/gnoblin-native-dispatch.c`, which `util.c` no longer carries, the Meson fragments in
+`src/mutter-build/` (including the Gnoblin test cases and their test files), and the portal's
+`src/portal/backend/gnoblin-globalshortcuts.c` and `gnoblin-wallpaperpreview.c`, which sit beside the upstream files
+they replace under a new name. A fix to upstream
 behaviour, or a few lines of Gnoblin policy in a function that uses upstream static state, stays a patch. The note
 `design/patches-to-overlays.md` records what moved and what stays.
 
@@ -40,7 +43,8 @@ patches/<project>/
   `scripts/manage-patches.py path PROJECT SLUG` prints the path of one patch.
 
 The old layout (`10-tooling`, `99-typed-window-api`, `zz-monolithic-compositor`, ...) is mapped to this one in
-`design/patches-layout-mapping.tsv`.
+`design/patches-layout-mapping.tsv`. The `new` column holds the patch's current path. A patch whose code moved to an
+overlay and that no longer exists has `overlay:<path>` there, naming the overlay file that carries its code.
 
 ## Check
 
