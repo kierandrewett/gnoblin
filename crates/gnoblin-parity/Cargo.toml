@@ -6,5 +6,14 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# Scenarios are TOML deserialised into typed structs with `deny_unknown_fields`,
+# so a misspelt key fails the run instead of being ignored.
+serde.workspace = true
+toml.workspace = true
+# Recordings are JSON, and an observation keeps its JSON shape rather than being
+# flattened to text, so a numeric configure size compares as a number.
+serde_json.workspace = true
+
 [lints]
 workspace = true

@@ -1,0 +1,20 @@
+# A host Gnoblin starts a nested session through gnoblin_session_host_v1 and lists
+# it over the control socket. The extension and the IPC call are both Rust
+# candidate work, so the scenario waits for the lane that can serve it.
+#
+# A skipped scenario still declares its target and its steps: the report names the
+# target it will run against, and the skip reason says what is missing. It is not
+# a stand-in for a run.
+name = "nested-session-ipc"
+description = "A host Gnoblin reports the nested session it started over the control socket."
+target = { mutter-gnoblin = {} }
+skip = "needs a live headless Mutter session with gnoblin_session_host_v1; the Mutter target arrives with lane P2"
+
+[[steps]]
+id = "sessions.list"
+description = "Nested sessions the host is running, with their state."
+expect = [{ state = "running" }]
+
+[[steps]]
+id = "windows.list"
+description = "Windows owned by the nested session, as the host reports them."
