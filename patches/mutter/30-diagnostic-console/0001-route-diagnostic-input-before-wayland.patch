@@ -1,17 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 20:13:16 +0000
 Subject: [PATCH] Route diagnostic input before window and Wayland dispatch
 
-Stage captured-event is downstream of Mutter's Clutter event filter. A
-Wayland pointer with a focused surface consumes motion and buttons in that
-filter, so the non-reactive recovery overlay never sees them. Dispatch its
-private callback after the existing embargoes, physical seat update and
-keybindings, before window click handling or Wayland delivery. The plugin
-keeps panel hit testing and press ownership; no focus or Lua policy changes.
+Route input to the diagnostic console before the window and Wayland dispatch: the console gets its keys before the
+keybindings, keeps pointer input from clients while it is open and tracks the held keys before it takes them.
+---
+ src/core/events.c | 39 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
 
 diff --git a/src/core/events.c b/src/core/events.c
+index 1a757529..81d845f2 100644
 --- a/src/core/events.c
 +++ b/src/core/events.c
-@@ -32,6 +32,7 @@
+@@ -33,11 +33,14 @@
  #include "backends/meta-idle-manager.h"
  #include "compositor/compositor-private.h"
  #include "compositor/meta-window-actor-private.h"
@@ -19,7 +21,32 @@ diff --git a/src/core/events.c b/src/core/events.c
  #include "core/display-private.h"
  #include "core/gnoblin-native-control.h"
  #include "core/window-private.h"
-@@ -358,6 +359,12 @@ meta_display_handle_event (MetaDisplay        *display,
+ #include "meta/meta-backend.h"
++#include "wayland/meta-wayland-pointer.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-seat.h"
+ #include "wayland/meta-wayland-session-lock.h"
+ 
+ #include "backends/native/meta-backend-native.h"
+@@ -256,6 +259,17 @@ meta_display_handle_event (MetaDisplay        *display,
+       !clutter_event_get_device_tool (event))
+     meta_display_handle_sticky_mouse_focus_event (display, event);
+ 
++  /* The modal diagnostic console owns the pointer. Withdraw pointer focus from the client under it
++   * and drop the event before the Wayland seat sees it, so no surface keeps hover or receives
++   * enter, motion or buttons while the console is open. */
++  if (gnoblin_plugin_input_pointer_modal (G_OBJECT (display), event))
++    {
++      gnoblin_plugin_input_handle_event (G_OBJECT (display), event);
++      if (wayland_compositor)
++        meta_wayland_pointer_focus_surface (wayland_compositor->seat->pointer, NULL);
++      return CLUTTER_EVENT_STOP;
++    }
++
+   meta_wayland_compositor_update (wayland_compositor, event);
+ 
+   if (event_type == CLUTTER_PAD_BUTTON_PRESS ||
+@@ -359,6 +373,12 @@ meta_display_handle_event (MetaDisplay        *display,
    if (stage_has_grab (display))
      return CLUTTER_EVENT_PROPAGATE;
  
@@ -32,3 +59,32 @@ diff --git a/src/core/events.c b/src/core/events.c
    if (window)
      {
        if (meta_window_handle_ungrabbed_event (window, event))
+@@ -409,6 +429,25 @@ gnoblin_input_policy_stage_filter (ClutterStage       *stage,
+   MetaDisplay *display = user_data;
+ 
+   (void) stage;
++  /* The set of held keys sees every key press and release first, also the ones the console takes
++   * just below. A release that the console swallowed would otherwise leave its key held for
++   * ever, and every keyboard grab would be refused. */
++  gnoblin_native_control_track_key (display, event);
++  /* The diagnostic console is modal: while it is open it takes key events before Lua input
++   * handlers, keybindings and shortcuts can act on them. */
++  if (gnoblin_plugin_input_handle_key (G_OBJECT (display), event))
++    {
++#ifdef HAVE_WAYLAND
++      /* The console is open, so a client the pointer rests on loses its hover now rather than at
++       * the next pointer motion. */
++      MetaWaylandCompositor *wayland_compositor =
++        meta_context_get_wayland_compositor (meta_display_get_context (display));
++
++      if (wayland_compositor)
++        meta_wayland_pointer_focus_surface (wayland_compositor->seat->pointer, NULL);
++#endif
++      return TRUE;
++    }
+   return gnoblin_native_control_filter_input_event (display, event, NULL);
+ }
+ 
+-- 
+2.55.0
+
