@@ -34,9 +34,17 @@ test:
 deps:
     cargo xtask deps
 
+# Write crates/gnoblin-proto/proto from the object schema. Commit the result.
+gen-proto:
+    cargo xtask gen-proto
+
+# Fail when a checked-in .proto file is stale, missing or not generated at all.
+gen-proto-check:
+    cargo xtask gen-proto --check
+
 # Check advisories, licences, duplicate versions and git sources.
 deny:
     cargo deny check
 
 # The whole gate, in the order that fails fastest.
-ci: fmt-check build clippy test deps deny
+ci: fmt-check gen-proto-check build clippy test deps deny

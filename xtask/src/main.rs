@@ -1,7 +1,8 @@
-//! Workspace automation: dependency-rule checks over `cargo metadata`, and
-//! later the code generation the schema drives.
+//! Workspace automation: dependency-rule checks over `cargo metadata`, and the
+//! code generation the schema drives.
 
 mod deps;
+mod gen_proto;
 mod metadata;
 
 use std::path::Path;
@@ -11,28 +12,30 @@ const USAGE: &str = "\
 usage: cargo xtask <subcommand>
 
 subcommands:
-  deps    check the workspace dependency rules from design/rust-compositor.md";
+  deps               check the workspace dependency rules from design/rust-compositor.md
+  gen-proto          write crates/gnoblin-proto/proto from the object schema
+  gen-proto --check  fail when a checked-in .proto file is stale or orphaned";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
-    let subcommand = args.next();
-    if args.next().is_some() {
-        eprintln!("[xtask] unexpected extra argument");
+    let Some(subcommand) = args.next() else {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
+    };
+    let rest: Vec<String> = args.collect();
+    match (subcommand.as_str(), rest.as_slice()) {
+        ("deps", []) => deps_command(),
+        ("gen-proto", []) => gen_proto::run(false),
+        ("gen-proto", [flag]) if flag == "--check" => gen_proto::run(true),
+        ("deps" | "gen-proto", _) => usage_error("unexpected argument"),
+        (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
-    match subcommand.as_deref() {
-        Some("deps") => deps_command(),
-        Some(other) => {
-            eprintln!("[xtask] unknown subcommand `{other}`");
-            eprintln!("{USAGE}");
-            ExitCode::from(2)
-        }
-        None => {
-            eprintln!("{USAGE}");
-            ExitCode::from(2)
-        }
-    }
+}
+
+fn usage_error(message: &str) -> ExitCode {
+    eprintln!("[xtask] {message}");
+    eprintln!("{USAGE}");
+    ExitCode::from(2)
 }
 
 /// Load the workspace graph and report every dependency-rule violation.
