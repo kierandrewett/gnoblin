@@ -36,28 +36,28 @@ the "Choosing the targets" section of `design/distribution.md` in the source tre
 
 ## Status by release
 
-| Distribution        | Releases            | Status      | Available path                                                                                                                                                       |
-| ------------------- | ------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fedora              | 39, 40              | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                                         |
-| Fedora              | 41, 42              | Unsupported | Experimental CI job builds and install-checks the packages. No release package claim                                                                                 |
-| Fedora              | 43, 44              | Unsupported | CI builds and install-checks the packages, no release package claim                                                                                                  |
-| Fedora              | 45 (pre-release)    | Candidate   | [Repository or RPMs](install-fedora.md)                                                                                                                              |
-| Enterprise Linux    | 8, 9, 10            | Unsupported | No release package claim                                                                                                                                             |
-| Debian              | 10, 11, 12          | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                                         |
-| Debian              | 13                  | Unsupported | Experimental CI job builds and install-checks the packages. No release package claim. [Source build](install-source.md) if library versions meet requirements        |
-| Debian              | Testing (forky)     | Unsupported | [Packages](install-debian.md), install checks pass, no session login yet                                                                                             |
-| Ubuntu              | 20.04, 22.04        | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                                         |
-| Ubuntu              | 24.04               | Unsupported | Experimental CI job builds and install-checks the packages. No release package claim. Loses the most features: see [older system libraries](#older-system-libraries) |
-| Ubuntu              | 26.04               | Unsupported | Experimental CI job builds and install-checks the packages. No release package claim. [Source build](install-source.md) if library versions meet requirements        |
-| Arch                | Rolling             | Candidate   | [Repository or packages](install-arch.md)                                                                                                                            |
-| openSUSE Leap       | 15.4, 15.5, 15.6    | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                                         |
-| openSUSE Leap       | 16.0                | Unsupported | Experimental CI job builds and install-checks an rpm built on Leap 16.0. No release package claim                                                                    |
-| Alpine              | Edge                | Unsupported | [Packages](install-alpine.md), install checks pass, no session login yet                                                                                             |
-| Alpine              | 3.21 to 3.24        | Unsupported | Experimental CI job for each branch builds and install-checks apk packages built on that branch. No release package claim                                            |
-| Alpine              | 3.15 to 3.20        | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                                         |
-| openSUSE Tumbleweed | Rolling             | Candidate   | [Repository or RPMs](install-opensuse.md)                                                                                                                            |
-| NixOS               | 25.05, 25.11, 26.05 | Unsupported | [Channel requirements](install-nixos.md)                                                                                                                             |
-| NixOS               | unstable            | Unsupported | [Experimental flake package](install-nixos.md), pending session verification                                                                                         |
+| Distribution        | Releases            | Status      | Available path                                                                                                                                      |
+| ------------------- | ------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fedora              | 39, 40              | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                        |
+| Fedora              | 41 to 44            | Unsupported | CI builds and install-checks the packages, no release package claim                                                                                 |
+| Fedora              | 45                  | Candidate   | [Repository or RPMs](install-fedora.md)                                                                                                             |
+| Enterprise Linux    | 8, 9, 10            | Unsupported | No release package claim                                                                                                                            |
+| Debian              | 10, 11, 12          | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                        |
+| Debian              | 13                  | Unsupported | CI builds and install-checks the packages. No release package claim. [Source build](install-source.md) if library versions meet requirements        |
+| Debian              | Testing (forky)     | Unsupported | [Packages](install-debian.md), install checks pass, no session login yet                                                                            |
+| Ubuntu              | 20.04, 22.04        | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                        |
+| Ubuntu              | 24.04               | Unsupported | CI builds and install-checks the packages. No release package claim. Loses the most features: see [older system libraries](#older-system-libraries) |
+| Ubuntu              | 26.04               | Unsupported | CI builds and install-checks the packages. No release package claim. [Source build](install-source.md) if library versions meet requirements        |
+| Arch                | Rolling             | Candidate   | [Repository or packages](install-arch.md)                                                                                                           |
+| openSUSE Leap       | 15.4, 15.5, 15.6    | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                        |
+| openSUSE Leap       | 16.0                | Unsupported | CI builds and install-checks an rpm built on Leap 16.0. No release package claim                                                                    |
+| Alpine              | Edge                | Unsupported | [Packages](install-alpine.md), install checks pass, no session login yet                                                                            |
+| Alpine              | 3.22 to 3.24        | Unsupported | CI for each branch builds and install-checks apk packages built on that branch. No release package claim                                            |
+| Alpine              | 3.21                | Unsupported | Experimental CI job builds and install-checks apk packages built on that branch. Its runtime test fails in CI. No release package claim             |
+| Alpine              | 3.15 to 3.20        | Unsupported | No CI job yet. Its libraries are older than the build floors                                                                                        |
+| openSUSE Tumbleweed | Rolling             | Candidate   | [Repository or RPMs](install-opensuse.md)                                                                                                           |
+| NixOS               | 25.05, 25.11, 26.05 | Unsupported | [Channel requirements](install-nixos.md)                                                                                                            |
+| NixOS               | unstable            | Unsupported | [Experimental flake package](install-nixos.md), pending session verification                                                                        |
 
 The status changes only when a release passes the gates in the first table. A
 successful build or package installation does not establish graphical-session

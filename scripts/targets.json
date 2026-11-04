@@ -54,7 +54,7 @@
       "lane": "fedora",
       "published": true,
       "build_from": "41",
-      "verified_from": "43",
+      "verified_from": "41",
       "verified_through": "45",
       "planned_reason": {
         "40": "GLib 2.80.5, GTK 4.14.5, libadwaita 1.5.8, libinput 1.26.2, PipeWire 1.0.9, gsettings-desktop-schemas 46.1 and Meson 1.4.1 are below the build floors",
@@ -83,8 +83,8 @@
       "lane": "deb",
       "lts_only": true,
       "build_from": "24.04",
-      "verified_from": null,
-      "verified_through": null,
+      "verified_from": "24.04",
+      "verified_through": "26.04",
       "planned_reason": {
         "22.04": "GLib 2.72.4, GTK 4.6.9, libadwaita 1.1.7, libinput 1.20.0, libwayland 1.20.0, wayland-protocols 1.25, PipeWire 0.3.48, gsettings-desktop-schemas 42.0, xdg-desktop-portal 1.14.4, libgudev 237, libdrm 2.4.113, pixman 0.40.0 and Python 3.10 are below the build floors; libei, libdisplay-info and gcr-4 are not packaged"
       },
@@ -105,8 +105,8 @@
       "deps_script": "install-debian-build-deps.sh",
       "lane": "deb",
       "build_from": "13",
-      "verified_from": null,
-      "verified_through": null,
+      "verified_from": "13",
+      "verified_through": "13",
       "planned_reason": {
         "12": "GLib 2.74.6, GTK 4.8.3, libadwaita 1.2.2, libinput 1.22.1, libwayland 1.21.0 and PipeWire 0.3.65 are below the build floors; libei, libdisplay-info and gcr-4 are not packaged",
         "11": "GLib 2.66.8, libinput 1.16.4, libwayland 1.18.0, PipeWire 0.3.19 and Python 3.9 are below the build floors; GTK 4, libadwaita, libei, libdisplay-info and gcr-4 are not packaged"
@@ -129,15 +129,14 @@
       "lane": "other",
       "install_prepare": "apk add --no-cache bash",
       "build_from": "3.21",
-      "verified_from": null,
-      "verified_through": null,
+      "verified_from": "3.22",
+      "verified_through": "3.24",
       "planned_reason": {
         "3.20": "GLib 2.80.5, GTK 4.14.4, libadwaita 1.5.2, libinput 1.25.0, libwayland 1.22.0, wayland-protocols 1.36, PipeWire 1.0.6, libdisplay-info 0.1.1, libei 1.2.1, gsettings-desktop-schemas 46.0 and Meson 1.4.0 are below the build floors",
         "3.19": "GLib 2.78.6, GTK 4.12.5, libadwaita 1.4.4, libinput 1.24.0, libwayland 1.22.0, wayland-protocols 1.32, PipeWire 1.0.0, libdisplay-info 0.1.1, libei 1.2.0, gsettings-desktop-schemas 45.0, xdg-desktop-portal 1.18.3 and Meson 1.3.0 are below the build floors"
       },
       "experimental_reason": {
-        "3.22": "install check fails: apk-tools 2 marks the gnoblin apk broken, because pkgsmith writes no checksum for its symbolic links. Not the dbus or icon-cache triggers",
-        "3.21": "install check fails: apk-tools 2 marks the gnoblin apk broken, because pkgsmith writes no checksum for its symbolic links. Not the dbus or icon-cache triggers"
+        "3.21": "runtime case R2 fails: zwp_linux_dmabuf_v1 is not advertised in a container, because Mesa 24.2.8 (llvmpipe) offers no EGL_EXT_image_dma_buf_import_modifiers on the surfaceless EGL platform. Mesa 25.1.9 of Alpine 3.22 offers it"
       },
       "graphical": {
         "index": ["https://dl-cdn.alpinelinux.org/alpine/v{release}/releases/cloud/"],
@@ -157,8 +156,8 @@
       "lane": "opensuse",
       "install_prepare": "zypper -n install --no-recommends update-alternatives",
       "build_from": "16.0",
-      "verified_from": null,
-      "verified_through": null,
+      "verified_from": "16.0",
+      "verified_through": "16.0",
       "planned_reason": {
         "15.6": "GLib 2.78.6, GTK 4.12.4, libadwaita 1.4.2, libinput 1.25.0, libwayland 1.22.0, wayland-protocols 1.36, PipeWire 1.0.5, libdisplay-info 0.1.1, libei 1.1.0, gsettings-desktop-schemas 45.0, xdg-desktop-portal 1.18.2 and Meson 1.3.1 are below the build floors",
         "15.5": "GLib 2.70.5, GTK 4.6.9, libadwaita 1.1.0, libinput 1.21.0, PipeWire 0.3.64 and Meson 0.61.4 are below the build floors; libei and libdisplay-info are not packaged"

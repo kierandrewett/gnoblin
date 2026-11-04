@@ -78,11 +78,9 @@ Failure modes:
   checks both directions there. deb and Arch name packages, so the static layer checks the version floors there and
   the install layer checks the package names in the image (`I5`).
 
-Until `scripts/pkgsmith.ref` moves to a pkgsmith that writes a checksum for each symbolic link of an apk, every apk
-fails `S12`, and `I12` fails because `apk audit` cannot verify the links. That is the expected result: the layers
-detect the defect that broke the Alpine 3.21 and 3.22 installs. The Alpine targets stay out of the publish set until
-the pin moves, and Alpine edge, a built target, fails the release. The suite and every build job take pkgsmith from
-the one pin in `scripts/pkgsmith.ref`, so moving the pin fixes all of them at once.
+The pkgsmith pin 1041e4c wrote no checksum for the symbolic links of an apk, so every apk failed `S12` and `I12`, and
+apk-tools 2 refused the packages on Alpine 3.21 and 3.22. The pin c810012 in `scripts/pkgsmith.ref` writes them, and
+the Alpine targets pass these cases. The suite and every build job take pkgsmith from that one pin.
 
 ### Layer 2: install
 
@@ -133,7 +131,10 @@ Failure modes:
 - `R2` A Wayland global that the build holds is not advertised. The expected list is the inventory in
   `tests/packages/globals.json`, limited to the interfaces that the installed binaries hold. A release with an older
   libwayland or wayland-protocols compiles some interfaces out, so its list is shorter. An interface that needs a DRM
-  device, Xwayland or a frame renderer client is listed with that reason and is not expected in a container.
+  device, Xwayland or a frame renderer client is listed with that reason and is not expected in a container. Mutter
+  registers `zwp_linux_dmabuf_v1` only when the EGL display offers `EGL_EXT_image_dma_buf_import_modifiers`. The
+  llvmpipe of Mesa 25.1.9 (Alpine 3.22) offers it on the surfaceless platform; that of Mesa 24.2.8 (Alpine 3.21) does
+  not, so `R2` fails there. That is a cause, not an exemption: the case stays, and the target stays `experimental`.
 - `R3` The compositor bridge does not greet, does not answer a ping, or reports no API version.
 - `R4` `gnoblinctl` does not reach the session: `ping`, `version`, `status`, `output list`.
 - `R5` The default configuration does not load: `gnoblinctl init` then `gnoblinctl config reload` fails. Or a broken
@@ -274,3 +275,18 @@ Not run: any arm64 target (no arm64 machine), a GPU, KMS, a graphical login, and
 was added to the target list during this work and was not built here. The upgrade case `I13` ran against the
 published tree only where one exists for the target and holds an older version: for the targets above it was skipped
 with the reason in the report (no tree, or no older version than 0.1.13).
+
+## CI proof, 2026-11-04
+
+Run 41835867674 of `release.yml` (commit 54d98c28, pkgsmith c810012) ran every target of the generated list that has
+a job, on amd64 and arm64. Every stage passed for each of them except Alpine 3.21, which fails `R2` on both
+architectures (see `R2` above). The gate left Alpine 3.21 out of the release and passed. This one run is the
+evidence for the `verified_from` and `verified_through` values in `scripts/targets.json`: Fedora 41 to 45, Ubuntu
+24.04 and 26.04, Debian 13, Alpine 3.22 to 3.24 and openSUSE Leap 16.0 are `built`, and a failure there now fails the
+run. Earlier runs had flaky boots of the emulated Fedora arm64 guests in the graphical VM test
+(`design/graphical-testing.md`).
+
+The `R2` cause was found again with the packages of that run in a local `alpine:3.21` container: with
+`MUTTER_DEBUG=wayland`, Mutter logs "Wayland DMA buffer protocol support not enabled: Missing
+'EGL_EXT_image_dma_buf_import_modifiers'". `eglinfo -p surfaceless` lists no dmabuf import extension with Mesa 24.2.8
+(Alpine 3.21) and lists both with Mesa 25.1.9 (Alpine 3.22).

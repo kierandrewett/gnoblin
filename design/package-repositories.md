@@ -382,9 +382,9 @@ Gnoblin (`.github/workflows`):
   calls `package-repository.yml` with the gate's publish set. A leg builds the prefix of its release, writes its
   packages, runs the package suite and the graphical VM test. The shared stage of `release.yml` writes the openSUSE
   rpm, deb, Arch, apk and tar packages from the shared prefixes. A package goes to the repository only when every
-  target and architecture that installs it passed every stage. An experimental target, because it is newer than
-  the last verified release of its family or not out yet, may fail without failing the run, and nothing else waits
-  on it. `design/release-pipeline.md` has the details.
+  target and architecture that installs it passed every stage. An experimental target, because it is outside the
+  verified releases of its family or not out yet, may fail without failing the run, and nothing else waits on it.
+  `design/release-pipeline.md` has the details.
 - A release tag builds the stable channel and publishes it. A push to `main`, a pull request or a
   manual dry run builds and verifies the tree with a throw-away key and publishes nothing.
 - `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the
@@ -412,16 +412,16 @@ Jobs are gated so that a fork builds and verifies only. Publication needs all of
 
 ## What each project builds today
 
-| Project | Format | Targets built by CI                                       | Not built                                        |
-| ------- | ------ | --------------------------------------------------------- | ------------------------------------------------ |
-| Gnoblin | RPM    | Fedora 43, 44 and 45, and openSUSE Tumbleweed, both archs | Enterprise Linux, Leap                           |
-| Gnoblin | pacman | Arch Linux, both archs                                    |                                                  |
-| Gnoblin | deb    | Debian testing (`forky`), both archs                      | Debian 13 and Ubuntu: the libraries are older    |
-| Gnoblin | apk    | Alpine edge, both archs                                   | Alpine release branches: the libraries are older |
+| Project | Format | Published to the repository, both archs | Built and tested by CI, not published                |
+| ------- | ------ | --------------------------------------- | ---------------------------------------------------- |
+| Gnoblin | RPM    | Fedora 41 to 45, openSUSE Tumbleweed    | openSUSE Leap 16.0                                   |
+| Gnoblin | pacman | Arch Linux                              |                                                      |
+| Gnoblin | deb    | Debian testing (`forky`)                | Debian 13, Ubuntu 24.04 and 26.04 (per-release debs) |
+| Gnoblin | apk    | Alpine edge                             | Alpine 3.21 to 3.24 (apks built on each branch)      |
 
-Both architectures are built, installed in containers and published by the same jobs.
-The arm64 packages have been written and checked here only from an amd64 prefix (names, metadata);
-the first arm64 CI run is the first real arm64 build.
+`scripts/supported-targets.py --table` lists the targets and their state. Both architectures are built, installed
+in containers, tested and published by the same jobs. Run 41835867674 of `release.yml` (2026-11-04) was the first
+full run that passed every stage on both architectures, except Alpine 3.21 (`scripts/targets.json` gives the cause).
 
 ## Rejected alternatives
 

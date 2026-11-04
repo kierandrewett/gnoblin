@@ -81,7 +81,7 @@
   build, a package set and an install check for each target, on the image of that target. Debian and Ubuntu
   releases make debs that are install checks only. Their revision carries the release (`1~deb13`) and no
   repository takes them yet.
-- Experimental CI jobs for Fedora 41 and 42, Debian 13, Ubuntu 26.04 LTS, Alpine 3.21 to 3.24 and openSUSE Leap 16.0.
+- CI jobs for Fedora 41 and 42, Debian 13, Ubuntu 24.04 and 26.04 LTS, Alpine 3.21 to 3.24 and openSUSE Leap 16.0.
   Each builds a prefix on its own image, writes its own packages and install-checks them. Each Alpine branch makes
   its own apks, because an apk binds the library sonames of the branch that built it. Leap 16.0 makes its own rpm
   with the new `opensuse` lane (`scripts/build-packages.sh --lanes opensuse --opensuse-release leap16.0`), named
@@ -109,6 +109,11 @@
 
 ### Changed
 
+- Fedora 41 to 45, Ubuntu 24.04 and 26.04 LTS, Debian 13, Alpine 3.22 to 3.24 and openSUSE Leap 16.0 are `built`
+  CI targets, not experimental: a full release run passed every stage on them on amd64 and arm64. A failure there now
+  fails the release run. Alpine 3.21 stays experimental: its Mesa 24.2.8 offers no
+  `EGL_EXT_image_dma_buf_import_modifiers` to the software renderer, so the package suite finds no
+  `zwp_linux_dmabuf_v1` global in a container.
 - The source builds against the libraries of Debian 13 and Ubuntu 26.04 LTS, not only Fedora 43 and newer. The floors
   were then GLib 2.84, gsettings-desktop-schemas 48.0, libwayland 1.23, wayland-protocols 1.44, libinput 1.28, PipeWire
   1.4.2, IBus 1.5.32 and, for the portal backend, GTK 4.18. Glycin is optional. With these older libraries pens report

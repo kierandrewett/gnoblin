@@ -246,7 +246,7 @@ with the reason. The table shows the owner where the age goal is not met.
 
 - a release newer than the last verified release of its family
 - a release between `build_from` and `verified_from`: a job covers it, and no full run has passed
-  on it yet (Fedora 41 and 42 while Fedora 43 and newer are verified)
+  on it yet (Alpine 3.21 while Alpine 3.22 and newer are verified)
 - a release of a family that has `build_from` and no verified release
 - a release that is not out yet
 
@@ -547,11 +547,12 @@ no Gnoblin path may remain.
   installed, because a distribution's own GTK 4 can pull GTK 3. On Fedora 42 `gtk4` pulls `SDL3`,
   then `libdecor`, which requires `gtk3`.
 - Every package manager command must succeed. apk-tools 2 (Alpine 3.21 and 3.22) marks a package as broken
-  when a file of it has no embedded checksum, and then exits 1 in every command. pkgsmith writes the
-  `APK-TOOLS.checksum.SHA1` record for regular files only, not for symbolic links, so the `gnoblin`
-  apk is broken there and the Alpine 3.21 and 3.22 checks fail until pkgsmith writes it for links too.
-  apk-tools 3 (Alpine 3.23 and newer) accepts a file without a checksum. The triggers of Alpine's
-  own packages that fail in a container (`dbus`, `gtk-update-icon-cache`) do not change the exit code.
+  when a file of it has no embedded checksum, and then exits 1 in every command. The pinned pkgsmith
+  (`scripts/pkgsmith.ref`) writes the `APK-TOOLS.checksum.SHA1` record for every member, symbolic links
+  included, so the install checks of Alpine 3.21 and 3.22 pass. The static case `S12` fails an apk
+  without it. apk-tools 3 (Alpine 3.23 and newer) accepts a file without a checksum. The triggers of
+  Alpine's own packages that fail in a container (`dbus`, `gtk-update-icon-cache`) do not change the
+  exit code.
 - `install_prepare` of the target runs first in the image, for a tool that the image lacks: `bash` on
   Alpine, and `update-alternatives` on the minimal Leap image, which the `gnome-session` scripts need.
 
