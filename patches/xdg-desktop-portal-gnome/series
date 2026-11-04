@@ -2,7 +2,6 @@
 01-build-compat/0002-read-reduced-motion-by-nick.patch
 02-identity/0001-give-gnoblin-portal-its-own-service-identity.patch
 03-file-chooser/0001-use-gtk-file-chooser-without-nautilus.patch
-03-file-chooser/0002-provide-gnoblin-filechooser.patch
 04-native-portals/0001-provide-gnoblin-email-portal.patch
 04-native-portals/0002-add-native-gnoblin-inhibit-backend.patch
 04-native-portals/0003-route-global-shortcuts-through-gnoblin.patch
