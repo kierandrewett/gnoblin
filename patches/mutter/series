@@ -58,10 +58,7 @@
 16-session-lock/0003-session-lock-controller-finalize-before-context.patch
 16-session-lock/0004-session-lock-embargo-input-before-global-handling.patch
 16-session-lock/0005-session-lock-route-verified-lock-surfaces-only.patch
-16-session-lock/0006-session-lock-avoid-normal-pointer-repick.patch
-16-session-lock/0007-session-lock-keep-pointer-and-touch-on-lock-role.patch
-16-session-lock/0008-session-lock-allow-verified-pointer-focus-while-hidden.patch
-16-session-lock/0009-session-lock-embargo-clipboard-and-drag-offers.patch
+16-session-lock/0006-session-lock-embargo-clipboard-and-drag-offers.patch
 17-distro-compat/0001-pipewire-1.4-screen-cast-compat.patch
 17-distro-compat/0002-lower-pipewire-minimum.patch
 14-input-settings/0005-input-configure-touchpad-scroll-speed.patch
@@ -73,7 +70,7 @@
 10-compositor-paint/0004-compositor-repaint-surface-after-window-effects.patch
 20-native-window-api/0001-meta-expose-window-readiness.patch
 21-input-routing/0001-forward-touchpad-gesture-events.patch
-16-session-lock/0010-session-lock-emit-frame-callbacks-for-lock-surfaces.patch
+16-session-lock/0007-session-lock-emit-frame-callbacks-for-lock-surfaces.patch
 06-core-fixes/0004-safe-shutdown-signal-disconnects.patch
 02-wayland-fixes/0004-wayland-retain-surfaces-for-xdg-resources.patch
 02-wayland-fixes/0005-wayland-allow-xdg-constraint-teardown.patch
