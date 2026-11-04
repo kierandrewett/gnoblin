@@ -1,0 +1,29 @@
+# The `session` object: the small slice a shell needs to know the compositor is
+# up and which version it speaks.
+#
+# Every member records `since`, the full Gnoblin version that added it. A client
+# compares `since` with the compositor's version before it uses a member
+# (design/rust-compositor.md, "Versioning").
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "session"
+since = "0.2.0"
+
+# The IPC version the compositor serves, which is exactly the Gnoblin version.
+[[object.property]]
+name = "version"
+type = "string"
+since = "0.2.0"
+
+# Sent once when the session can accept requests.
+[[object.signal]]
+name = "ready"
+since = "0.2.0"
+
+# A client asked for a member this compositor does not serve. Returned instead of
+# silently ignoring the frame, so an old client reports what it needed.
+[[error]]
+name = "unknown-member"
+since = "0.2.0"

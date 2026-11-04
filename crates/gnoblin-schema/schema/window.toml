@@ -1,0 +1,43 @@
+# The `window` object: the first slice of the window vocabulary. Properties feed
+# property diffs; `focus` is a method; `closed` ends the object.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "window"
+since = "0.2.0"
+
+# The compositor's identity for the window, stable for its lifetime.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+
+# The title the client set. Not trustworthy for attribution: any client can pick
+# one (design/rust-compositor.md, "Attribution is not authority").
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+# The Wayland app ID the client set.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+
+# Ask the compositor to focus the window. Focus policy decides whether it does;
+# the result arrives as a change to the `focused` property.
+[[object.method]]
+name = "focus"
+since = "0.2.0"
+
+# The window is gone. A client drops its view of the object on this signal.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
