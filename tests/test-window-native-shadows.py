@@ -75,7 +75,7 @@ with (root / "native-shadow-client.log").open("w") as log:
                 text=True,
             )
             windows = json.loads(result.stdout)["windows"]
-            geometry = windows[0]["geometry"] if windows else None
+            geometry = windows[0].get("frame", windows[0].get("geometry")) if windows else None
             if geometry:
                 break
             time.sleep(0.1)

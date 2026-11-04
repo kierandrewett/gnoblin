@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 20 Sep 2026 12:00:00 +0100
+Subject: [PATCH] wayland: place XDG popups relative to SSD client geometry
+
+Place XDG popups relative to the client geometry of a server-side decorated parent and keep the popup client origin
+when the parent is configured and when the popup is finished.
+---
+ src/core/constraints.c               |  2 ++
+ src/wayland/meta-wayland-xdg-shell.c | 34 +++++++++++++++++++++++-----
+ src/wayland/meta-window-wayland.c    |  1 +
+ 3 files changed, 31 insertions(+), 6 deletions(-)
+
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+index 54046edb..e9dce429 100644
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -39,6 +39,7 @@
+ #include "core/workspace-private.h"
+ #include "meta/meta-external-constraint.h"
+ #include "meta/prefs.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ 
+ #ifdef HAVE_XWAYLAND
+ #include "x11/meta-x11-frame.h"
+@@ -951,6 +952,7 @@ constrain_custom_rule (MetaWindow         *window,
+ 
+   parent = meta_window_get_transient_for (window);
+   parent_rect = meta_window_config_get_rect (parent->config);
++  meta_gnoblin_window_frame_rect_to_client (parent, NULL, &parent_rect);
+   if (window->placement.state == META_PLACEMENT_STATE_CONSTRAINED_FINISHED)
+     {
+       placement_rule->parent_rect.x = parent_rect.x;
+diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
+index 1b83417a..695f5a14 100644
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -2541,28 +2541,50 @@ meta_wayland_xdg_positioner_to_placement (MetaWaylandXdgPositioner *xdg_position
+               if (configuration->has_size)
+                 {
+                   parent_rect.width =
+-                    configuration->width / configuration->scale;
++                    configuration->width;
+                   parent_rect.height =
+-                    configuration->height / configuration->scale;
++                    configuration->height;
+                 }
++              meta_gnoblin_window_frame_rect_to_client (parent_window,
++                                                         configuration,
++                                                         &parent_rect);
+             }
+           else if (xdg_positioner->has_parent_size)
+             {
++              meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                         &parent_rect);
+               meta_rectangle_resize_with_gravity (&parent_rect,
+                                                   &parent_rect,
+                                                   configuration->gravity,
+-                                                  xdg_positioner->parent_width,
+-                                                  xdg_positioner->parent_height);
++                                                  xdg_positioner->parent_width * meta_window_wayland_get_geometry_scale (parent_window),
++                                                  xdg_positioner->parent_height * meta_window_wayland_get_geometry_scale (parent_window));
+             }
++          else
++            {
++              meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                         &parent_rect);
++            }
++        }
++      else
++        {
++          meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                     &parent_rect);
+         }
+     }
+   else if (xdg_positioner->has_parent_size)
+     {
++      meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                 &parent_rect);
+       meta_rectangle_resize_with_gravity (&parent_rect,
+                                           &parent_rect,
+                                           META_GRAVITY_SOUTH_EAST,
+-                                          xdg_positioner->parent_width,
+-                                          xdg_positioner->parent_height);
++                                          xdg_positioner->parent_width * meta_window_wayland_get_geometry_scale (parent_window),
++                                          xdg_positioner->parent_height * meta_window_wayland_get_geometry_scale (parent_window));
++    }
++  else
++    {
++      meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                 &parent_rect);
+     }
+ 
+   return (MetaPlacementRule) {
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 2634deaa..660e3df4 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -1730,6 +1730,7 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+ 
+               parent = meta_window_get_transient_for (window);
+               parent_rect = meta_window_config_get_rect (parent->config);
++              meta_gnoblin_window_frame_rect_to_client (parent, NULL, &parent_rect);
+               rect.x = parent_rect.x + acked_configuration->rel_x;
+               rect.y = parent_rect.y + acked_configuration->rel_y;
+             }
+-- 
+2.55.0
+

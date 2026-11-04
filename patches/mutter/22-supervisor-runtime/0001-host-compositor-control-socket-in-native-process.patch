@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] core: host compositor control socket in native process
+
+Host the compositor control socket in the native process and bootstrap the supervised Gnoblin runtime from mutter.c.
+---
+ src/core/mutter.c | 38 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index b94e905d..bed7552d 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -25,6 +25,7 @@
+ #include <stdlib.h>
+ 
+ #include "compositor/meta-plugin-manager.h"
++#include "core/gnoblin-native-control.h"
+ #include "meta/main.h"
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
+@@ -66,6 +67,7 @@ command_exited_cb (GPid     command_pid,
+ }
+ 
+ static const char *plugin = "libdefault";
++static gint gnoblin_runtime_fd = -1;
+ static char **argv_ignored = NULL;
+ 
+ GOptionEntry mutter_options[] = {
+@@ -81,6 +83,12 @@ GOptionEntry mutter_options[] = {
+     N_("Mutter plugin to use"),
+     "PLUGIN",
+   },
++  {
++    "gnoblin-runtime-fd", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_INT,
++    &gnoblin_runtime_fd,
++    N_("Inherited private Gnoblin supervisor channel"),
++    "FD",
++  },
+   {
+     G_OPTION_REMAINING,
+     .arg = G_OPTION_ARG_STRING_ARRAY,
+@@ -156,6 +164,9 @@ main (int argc, char **argv)
+   g_autoptr (MetaContext) context = NULL;
+   g_autoptr (GError) error = NULL;
+   g_auto (GStrv) command_argv = NULL;
++  g_autoptr (GVariant) native_document = NULL;
++  guint64 native_settings_revision = 1;
++  GnoblinNativeControl *native_control = NULL;
+ 
+   context = meta_create_context ("Mutter");
+ 
+@@ -166,6 +177,21 @@ main (int argc, char **argv)
+       return EXIT_FAILURE;
+     }
+ 
++  if (gnoblin_runtime_fd < 0)
++    {
++      g_printerr ("Gnoblin requires a supervised runtime channel\n");
++      return EXIT_FAILURE;
++    }
++
++  native_document = gnoblin_native_control_receive_runtime_config (
++    gnoblin_runtime_fd, &native_settings_revision, &error);
++  if (!native_document)
++    {
++      g_printerr ("Failed to receive Gnoblin runtime config: %s\n",
++                  error ? error->message : "invalid config packet");
++      return EXIT_FAILURE;
++    }
++
+   command_argv = g_steal_pointer (&argv_ignored);
+ 
+   meta_context_set_plugin_name (context, plugin);
+@@ -184,6 +210,16 @@ main (int argc, char **argv)
+       return EXIT_FAILURE;
+     }
+ 
++  native_control = gnoblin_native_control_start (
++    context, native_document, gnoblin_runtime_fd,
++    native_settings_revision, &error);
++  if (!native_control)
++    {
++      g_printerr ("Failed to start Gnoblin control: %s\n",
++                  error ? error->message : "unknown error");
++      return EXIT_FAILURE;
++    }
++
+   meta_context_notify_ready (context);
+ 
+   if (command_argv)
+@@ -202,9 +238,11 @@ main (int argc, char **argv)
+ 
+   if (!meta_context_run_main_loop (context, &error))
+     {
++      gnoblin_native_control_stop (native_control);
+       g_printerr ("Mutter terminated with a failure: %s\n", error->message);
+       return EXIT_FAILURE;
+     }
+ 
++  gnoblin_native_control_stop (native_control);
+   return EXIT_SUCCESS;
+ }
+-- 
+2.55.0
+

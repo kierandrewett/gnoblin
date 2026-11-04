@@ -1,11 +1,19 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 14 Sep 2026 16:33:21 +0200
-Subject: [PATCH] core: add Gnoblin native preferences with strict focus default
+Subject: [PATCH] core: add Gnoblin native preferences with strict focus
+ default
 
+Native Gnoblin preferences are read through the supervisor session predicate gnoblin_native_control_is_session,
+not GNOME_SHELL_SESSION_MODE, and new windows take focus strictly by default (focus_new_windows starts at
+G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT).
 ---
+ src/core/prefs.c | 424 ++++++++++++++++++++++++++++++++++++++++++++++-
+ src/meta/prefs.h |  12 ++
+ 2 files changed, 434 insertions(+), 2 deletions(-)
+
 diff --git a/src/core/prefs.c b/src/core/prefs.c
-index fe38b341..425cc796 100644
+index fe38b341..0af2f5eb 100644
 --- a/src/core/prefs.c
 +++ b/src/core/prefs.c
 @@ -41,6 +41,10 @@
@@ -19,7 +27,7 @@ index fe38b341..425cc796 100644
  /* If you add a key, it needs updating in init() and in the gsettings
   * notify listener and of course in the .schemas file.
   *
-@@ -76,6 +80,8 @@ static GList *changes = NULL;
+@@ -76,12 +80,14 @@ static GList *changes = NULL;
  static guint changed_idle;
  static GList *listeners = NULL;
  static GHashTable *settings_schemas;
@@ -28,6 +36,13 @@ index fe38b341..425cc796 100644
  
  static ClutterModifierType mouse_button_mods = CLUTTER_MOD1_MASK;
  static MetaKeyCombo overlay_key_combos[2] = { 0 };
+ static MetaKeyCombo locate_pointer_key_combos[2] = { 0 };
+ static GDesktopFocusMode focus_mode = G_DESKTOP_FOCUS_MODE_CLICK;
+-static GDesktopFocusNewWindows focus_new_windows = G_DESKTOP_FOCUS_NEW_WINDOWS_SMART;
++static GDesktopFocusNewWindows focus_new_windows = G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT;
+ static gboolean raise_on_click = TRUE;
+ static gboolean center_new_windows = FALSE;
+ static gboolean attach_modal_dialogs = FALSE;
 @@ -971,6 +977,285 @@ queue_changed (MetaPreference pref)
      }
  }
@@ -35,7 +50,7 @@ index fe38b341..425cc796 100644
 +static gboolean
 +is_gnoblin_session (void)
 +{
-+  return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
++  return meta_is_gnoblin_session ();
 +}
 +
 +static gboolean
@@ -314,7 +329,7 @@ index fe38b341..425cc796 100644
  
  /****************************************************************************/
  /* Initialisation.                                                          */
-@@ -1024,7 +1308,43 @@ meta_prefs_init (void)
+@@ -1024,7 +1309,43 @@ meta_prefs_init (void)
    handle_preference_init_int ();
    handle_preference_init_uint ();
  
@@ -358,7 +373,7 @@ index fe38b341..425cc796 100644
  }
  
  static gboolean
-@@ -1069,6 +1389,17 @@ settings_changed (GSettings *settings,
+@@ -1069,6 +1390,17 @@ settings_changed (GSettings *settings,
    MetaEnumPreference *cursor;
    gboolean found_enum;
  
@@ -376,7 +391,7 @@ index fe38b341..425cc796 100644
    value = g_settings_get_value (settings, key);
    type = g_variant_get_type (value);
  
-@@ -1114,6 +1445,8 @@ bindings_changed (GSettings *settings,
+@@ -1114,6 +1446,8 @@ bindings_changed (GSettings *settings,
                    gpointer data)
  {
    gchar **strokes;
@@ -385,7 +400,7 @@ index fe38b341..425cc796 100644
    strokes = g_settings_get_strv (settings, key);
  
    if (update_key_binding (key, strokes))
-@@ -1854,6 +2187,77 @@ update_key_binding (const char *key,
+@@ -1854,6 +2188,77 @@ update_key_binding (const char *key,
      return FALSE;
  }
  
@@ -463,7 +478,7 @@ index fe38b341..425cc796 100644
  const char*
  meta_prefs_get_workspace_name (int i)
  {
-@@ -1996,7 +2400,22 @@ meta_prefs_add_keybinding (const char           *name,
+@@ -1996,7 +2401,22 @@ meta_prefs_add_keybinding (const char           *name,
        queue_changed (META_PREF_KEYBINDINGS);
      }
  
@@ -510,3 +525,6 @@ index 47c6e5ee..b16405b3 100644
  META_EXPORT
  void meta_prefs_add_listener    (MetaPrefsChangedFunc func,
                                   gpointer             user_data);
+-- 
+2.55.0
+

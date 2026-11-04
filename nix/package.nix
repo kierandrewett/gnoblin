@@ -80,7 +80,11 @@ let
     src = mutterSrc;
     patches = patchesFor "mutter";
     prePatch = (old.prePatch or "") + copyOverlay "mutter" + addSubproject gvdbSrc "gvdb";
-    postPatch = (old.postPatch or "") + ''
+    # nixpkgs' postPatch also points src/frames/main.c at libadwaita. Gnoblin
+    # removes src/frames (Xwayland windows use Gnoblin's frames), so keep only
+    # the shebang fix from it.
+    postPatch = ''
+      patchShebangs src/backends/native/gen-default-modes.py
       python3 ${gnoblinSrc}/scripts/generate-mutter-keybinding-catalog.py \
         "$PWD" \
         ${gsettingsDesktopSchemasSrc} \

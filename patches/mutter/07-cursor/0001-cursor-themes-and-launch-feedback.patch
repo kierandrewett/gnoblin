@@ -1,22 +1,23 @@
-From 2003ec261ab70e80f28ee805becbdca00ffaef2c Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:00:26 +0100
 Subject: [PATCH] cursor: load Hyprcursor themes and support global launch
  feedback
 
+Only a Gnoblin session may show the launch cursor; the check uses the supervisor session predicate
+gnoblin_native_control_is_session instead of reading GNOME_SHELL_SESSION_MODE.
 ---
  config.h.meson                     |  1 +
- meson.build                        |  7 ++++++
+ meson.build                        |  7 +++++
  meson.options                      |  6 +++++
  src/backends/meta-cursor-theme.c   |  6 +++++
- src/backends/meta-cursor-tracker.c | 40 ++++++++++++++++++++++++++++++
+ src/backends/meta-cursor-tracker.c | 41 ++++++++++++++++++++++++++++++
  src/backends/meta-cursor-xcursor.c | 15 +++++++++++
- src/meson.build                    |  7 ++++++
- src/meta/meta-cursor-tracker.h     |  7 ++++++
- 8 files changed, 89 insertions(+)
+ src/meta/meta-cursor-tracker.h     |  7 +++++
+ 7 files changed, 83 insertions(+)
 
 diff --git a/config.h.meson b/config.h.meson
-index 5e7e09b10..420e749b1 100644
+index 5e7e09b1..420e749b 100644
 --- a/config.h.meson
 +++ b/config.h.meson
 @@ -27,6 +27,7 @@
@@ -28,7 +29,7 @@ index 5e7e09b10..420e749b1 100644
  /* Have GLES 2.0 for rendering */
  #mesondefine HAVE_GLES2
 diff --git a/meson.build b/meson.build
-index cdd13b683..6359dbf40 100644
+index cdd13b68..6359dbf4 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -116,6 +116,12 @@ subproject('gvdb')
@@ -53,7 +54,7 @@ index cdd13b683..6359dbf40 100644
  cdata.set_quoted('VERSION', meson.project_version())
  cdata.set_quoted('PACKAGE_NAME', meson.project_name())
 diff --git a/meson.options b/meson.options
-index 4f8c0c9ba..a9ba38738 100644
+index 4f8c0c9b..fff441f3 100644
 --- a/meson.options
 +++ b/meson.options
 @@ -1,3 +1,9 @@
@@ -67,7 +68,7 @@ index 4f8c0c9ba..a9ba38738 100644
    type: 'boolean',
    value: true,
 diff --git a/src/backends/meta-cursor-theme.c b/src/backends/meta-cursor-theme.c
-index 36431184d..6c7f88872 100644
+index 36431184..6c7f8887 100644
 --- a/src/backends/meta-cursor-theme.c
 +++ b/src/backends/meta-cursor-theme.c
 @@ -23,6 +23,9 @@
@@ -90,10 +91,18 @@ index 36431184d..6c7f88872 100644
    g_hash_table_remove_all (cursor_theme->cursors);
  }
 diff --git a/src/backends/meta-cursor-tracker.c b/src/backends/meta-cursor-tracker.c
-index 8d8432f36..bdc6aaf8d 100644
+index 8d8432f3..b62568fb 100644
 --- a/src/backends/meta-cursor-tracker.c
 +++ b/src/backends/meta-cursor-tracker.c
-@@ -58,6 +58,7 @@ typedef struct _MetaCursorTrackerPrivate
+@@ -37,6 +37,7 @@
+ #include "backends/meta-sprite.h"
+ #include "cogl/cogl.h"
+ #include "core/display-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "clutter/clutter-mutter.h"
+ #include "clutter/clutter.h"
+ #include "meta/main.h"
+@@ -58,6 +59,7 @@ typedef struct _MetaCursorTrackerPrivate
    MetaBackend *backend;
  
    ClutterCursor *current_cursor;
@@ -101,7 +110,7 @@ index 8d8432f36..bdc6aaf8d 100644
  
    int cursor_visibility_inhibitors;
  
-@@ -163,6 +164,9 @@ meta_cursor_tracker_real_get_sprite (MetaCursorTracker *tracker)
+@@ -163,6 +165,9 @@ meta_cursor_tracker_real_get_sprite (MetaCursorTracker *tracker)
      meta_backend_get_clutter_backend (backend);
    ClutterSeat *seat = clutter_backend_get_default_seat (clutter_backend);
  
@@ -111,7 +120,7 @@ index 8d8432f36..bdc6aaf8d 100644
    if (!clutter_seat_is_unfocus_inhibited (seat))
      return NULL;
  
-@@ -242,6 +246,7 @@ meta_cursor_tracker_finalize (GObject *object)
+@@ -242,6 +247,7 @@ meta_cursor_tracker_finalize (GObject *object)
      meta_cursor_tracker_get_instance_private (tracker);
  
    g_clear_object (&priv->current_cursor);
@@ -119,7 +128,7 @@ index 8d8432f36..bdc6aaf8d 100644
    meta_prefs_remove_listener (on_prefs_changed, tracker);
  
    G_OBJECT_CLASS (meta_cursor_tracker_parent_class)->finalize (object);
-@@ -465,3 +470,38 @@ meta_cursor_tracker_get_backend (MetaCursorTracker *tracker)
+@@ -465,3 +471,38 @@ meta_cursor_tracker_get_backend (MetaCursorTracker *tracker)
  
    return priv->backend;
  }
@@ -138,7 +147,7 @@ index 8d8432f36..bdc6aaf8d 100644
 +  MetaCursorTrackerPrivate *priv =
 +    meta_cursor_tracker_get_instance_private (tracker);
 +
-+  if (active && g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") != 0)
++  if (active && !gnoblin_native_control_is_session (NULL))
 +    return;
 +
 +  if (active && !priv->gnoblin_launch_cursor)
@@ -159,7 +168,7 @@ index 8d8432f36..bdc6aaf8d 100644
 +  return priv->gnoblin_launch_cursor != NULL;
 +}
 diff --git a/src/backends/meta-cursor-xcursor.c b/src/backends/meta-cursor-xcursor.c
-index 2f0acfc69..70783fe3e 100644
+index 2f0acfc6..70783fe3 100644
 --- a/src/backends/meta-cursor-xcursor.c
 +++ b/src/backends/meta-cursor-xcursor.c
 @@ -19,6 +19,9 @@
@@ -191,33 +200,8 @@ index 2f0acfc69..70783fe3e 100644
    for (i = 0; i < G_N_ELEMENTS (cursor_names); i++)
      {
        xcursor_images =
-diff --git a/src/meson.build b/src/meson.build
-index 2960cc433..cfc4bebdb 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -11,6 +11,9 @@ mutter_includes = [
- mutter_lib_deps = [
-   m_dep,
- ]
-+if have_hyprcursor
-+  mutter_lib_deps += hyprcursor_dep
-+endif
- 
- mutter_pkg_deps = [
-   gio_unix_dep,
-@@ -372,6 +375,10 @@ mutter_sources = [
-   'core/workspace-private.h',
- ]
- 
-+if have_hyprcursor
-+  mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
-+endif
-+
- if have_xwayland
-   mutter_sources += [
-     'compositor/meta-window-actor-x11.c',
 diff --git a/src/meta/meta-cursor-tracker.h b/src/meta/meta-cursor-tracker.h
-index 60c16f5d6..bdd5b944f 100644
+index 60c16f5d..bdd5b944 100644
 --- a/src/meta/meta-cursor-tracker.h
 +++ b/src/meta/meta-cursor-tracker.h
 @@ -60,3 +60,10 @@ void           meta_cursor_tracker_inhibit_cursor_visibility (MetaCursorTracker
@@ -233,3 +217,4 @@ index 60c16f5d6..bdd5b944f 100644
 +gboolean meta_cursor_tracker_get_gnoblin_launch_cursor (MetaCursorTracker *tracker);
 -- 
 2.55.0
+

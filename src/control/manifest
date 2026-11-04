@@ -37,3 +37,5 @@ mutter gnoblin-control-connection.c src/core/gnoblin-control-connection.c
 mutter gnoblin-control-runtime-channel.c src/core/gnoblin-control-runtime-channel.c
 mutter gnoblin-control-api.c src/core/gnoblin-control-api.c
 mutter gnoblin-native-control-private.h src/core/gnoblin-native-control-private.h
+mutter gnoblin-native-dispatch.c src/core/gnoblin-native-dispatch.c
+mutter gnoblin-native-dispatch.h src/core/gnoblin-native-dispatch.h

@@ -1,0 +1,36 @@
+# Gnoblin: the Mutter test cases for Gnoblin's settings. src/tests/meson.build includes this directory before it
+# builds test_cases. The test sources are overlay files that the manifest copies into src/tests/ itself, because
+# Meson resolves the sources of a test case against the directory of the file that builds the test, not the
+# directory of the fragment that lists it. The tests use Mutter's private settings and backend headers and run in
+# its meta-test harness, so they cannot live in Gnoblin's own tests/.
+
+test_cases += [
+  {
+    'name': 'a11y-gnoblin-settings',
+    'suite': 'a11y',
+    'sources': [
+      'a11y-gnoblin-settings-test.c',
+    ],
+  },
+  {
+    'name': 'gnoblin-monitor-settings',
+    'suite': 'backend',
+    'sources': [
+      'gnoblin-monitor-settings-test.c',
+    ],
+  },
+  {
+    'name': 'gnoblin-privacy-screen-settings',
+    'suite': 'backend',
+    'sources': [
+      'gnoblin-privacy-screen-settings-test.c',
+    ],
+  },
+  {
+    'name': 'trackball-gnoblin-settings',
+    'suite': 'input',
+    'sources': [
+      'trackball-gnoblin-settings-test.c',
+    ],
+  },
+]

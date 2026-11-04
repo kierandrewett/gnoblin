@@ -41,7 +41,7 @@ def function(source, name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline", action="store_true", help="apply only patches 0001/0002")
+    parser.add_argument("--baseline", action="store_true", help="apply only patch 0001")
     parser.add_argument("--test", help="run one GLib test path")
     parser.add_argument("--cogl-pc", default="mutter-cogl-51")
     parser.add_argument("--sanitize", action="store_true", help="enable ASan/UBSan in the fixture")
@@ -60,12 +60,12 @@ def main():
                 )
             )
         patches = PATCHES
-        for patch in patches[:2]:
+        for patch in patches[:1]:
             run("git", "-C", directory, "apply", str(patch))
         target = temporary / "src/compositor/meta-shaped-texture.c"
         baseline = target.read_text()
         if not args.baseline:
-            for patch in patches[2:]:
+            for patch in patches[1:]:
                 run("git", "-C", directory, "apply", str(patch))
         source = target.read_text()
         for name in (

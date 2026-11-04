@@ -1,0 +1,33 @@
+From b4445ab3845b57ebd81eafaa77ae2d61c8c6b6c0 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: animate explicitly configured normal windows on first
+ map
+
+---
+ src/compositor/meta-window-actor.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index 5e2f15fdc..4a733e958 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -34,6 +34,7 @@
+ #include "compositor/meta-window-actor-private.h"
+ #include "compositor/meta-surface-actor-wayland.h"
+ #include "core/boxes-private.h"
++#include "core/gnoblin-animation.h"
+ #include "core/window-private.h"
+ #include "meta/window.h"
+ #include "wayland/meta-wayland-surface-private.h"
+@@ -185,6 +186,7 @@ meta_window_actor_map (ClutterActor *actor)
+ {
+   MetaWindowActor *window_actor = META_WINDOW_ACTOR (actor);
+ 
++  meta_gnoblin_animation_window_mapped (window_actor);
+   CLUTTER_ACTOR_CLASS (meta_window_actor_parent_class)->map (actor);
+ 
+   update_is_effectively_visible (window_actor);
+-- 
+2.55.0
+

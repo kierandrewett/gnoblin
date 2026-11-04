@@ -31,12 +31,16 @@ tree (Mutter or the GNOME portal backend).
     - `plugin/` — the Gnoblin Mutter plugin entry point and its console and
       recovery panels.
     - `effects/` — window effects drawn by the compositor.
+    - `animation/` — the native animation runtime (`gnoblin-animation.c`): open, close, minimize, restore, resize,
+      workspace-switch and dialog animations, and the animation preview sessions.
 - `config/` — configuration loading and the shared schema.
     - `lua/` — the Lua configuration loader, parser, and pattern matching used
       by the runtime and the portal backend.
 - `control/` — the private runtime protocol: the native control socket, cached
   configuration snapshots, and the operation files that serve it.
     - `gnoblin-native-control.c` — control object setup, the socket server start and stop, and policy checks.
+    - `gnoblin-native-dispatch.c` — the compositor-side entry points the control socket and Lua runtime call: runtime
+      events, and the monitor, layer, window and workspace operations.
     - `gnoblin-native-control-private.h` — types and declarations that the files below share.
     - `gnoblin-control-internal.h` — shared state struct and helper declarations for the operation files.
     - `gnoblin-control-focus.c` — focus and menu contexts, pointer buttons and trusted shortcuts.
@@ -68,6 +72,9 @@ tree (Mutter or the GNOME portal backend).
   IBus input sources, and dynamic shortcut bindings.
     - `method/` — the IBus input method that gives Wayland text-input clients
       preedit and commit, built when `libibus` is available.
+- `mutter-build/` — the Meson fragments that add Gnoblin's sources, protocols and the `gnoblin` executable to Mutter's
+  build, and `tests/`, the Mutter test cases for Gnoblin's settings (they use Mutter's private headers and `meta-test`
+  harness, so they cannot live in the repo's own `tests/`).
 - `portal/` — portal support.
     - `interfaces/` — the portal D-Bus interface XML.
     - `backend/` — Gnoblin portal policy, identity, file chooser, email and

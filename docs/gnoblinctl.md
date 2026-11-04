@@ -594,6 +594,9 @@ gnoblinctl window close 42
 gnoblinctl window thumbnail 42 --output window.png
 ```
 
+The `window list` table has a `CLIENT TYPE` column that shows `wayland` or
+`x11` (an Xwayland client); `--json` reports the same value as `client_type`.
+
 Each ID from `window list` lasts for that window's lifetime, not across
 logins. Commands that accept `active` use the focused window's ID and fail
 without sending a request when no window is focused. `toggle-minimize` requires
@@ -617,9 +620,9 @@ gnoblinctl window match
 gnoblinctl window match 42 --json
 ```
 
-The result shows the GTK application ID, WM class, and `rule_app_id` used by
-window rules. Gnoblin uses the GTK ID when available and otherwise uses the WM
-class.
+The result shows the GTK application ID, WM class, `rule_app_id` used by
+window rules, and `client_type` (`wayland` or `x11`). Gnoblin uses the GTK ID
+when available and otherwise uses the WM class.
 
 The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
 raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`

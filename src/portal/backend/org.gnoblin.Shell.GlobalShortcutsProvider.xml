@@ -1,0 +1,32 @@
+<!DOCTYPE node PUBLIC
+'-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
+'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
+<node>
+  <!-- UI provider contract between the Gnoblin portal and the active shell. -->
+  <interface name="org.gnoblin.Shell.GlobalShortcutsProvider">
+    <!--
+      BindShortcuts presents the shell's approval UI and returns only the
+      accelerators approved by the user. The shell may remember those choices.
+      Each shortcut entry is (id, {description?: s, preferred_trigger?: s});
+      each result is (id, {description?: s, shortcuts: as}).
+      The handle is the caller's Request object path. The shell uses it,
+      with app_id, to identify the requester; ConfigureShortcuts takes the
+      handle from the BindShortcuts call that created the session.
+    -->
+    <method name="BindShortcuts">
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="a(sa{sv})" name="shortcuts" direction="in"/>
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="a(sa{sv})" name="results" direction="out"/>
+    </method>
+
+    <!-- Present shortcut configuration and return the resulting selection. -->
+    <method name="ConfigureShortcuts">
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="a(sa{sv})" name="results" direction="out"/>
+    </method>
+  </interface>
+</node>

@@ -1,0 +1,1879 @@
+From 1f20c122b820fc9790da855980055ac8b4a86a8e Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 18:41:44 +0000
+Subject: [PATCH] build: drop the mutter-x11-frames helper
+
+X11 windows are framed by the compositor, so nothing launches the GTK4 frames
+client any more. Remove it and the tests' dependency on it.
+---
+ src/frames/main.c                | 128 ------
+ src/frames/meson.build           |  25 --
+ src/frames/meta-frame-content.c  | 132 ------
+ src/frames/meta-frame-content.h  |  32 --
+ src/frames/meta-frame-header.c   | 129 ------
+ src/frames/meta-frame-header.h   |  29 --
+ src/frames/meta-frame.c          | 670 -------------------------------
+ src/frames/meta-frame.h          |  32 --
+ src/frames/meta-frames-client.h  |  22 -
+ src/frames/meta-window-tracker.c | 497 -----------------------
+ src/frames/meta-window-tracker.h |  30 --
+ src/meson.build                  |   3 -
+ src/tests/meson.build            |   4 -
+ 13 files changed, 1733 deletions(-)
+ delete mode 100644 src/frames/main.c
+ delete mode 100644 src/frames/meson.build
+ delete mode 100644 src/frames/meta-frame-content.c
+ delete mode 100644 src/frames/meta-frame-content.h
+ delete mode 100644 src/frames/meta-frame-header.c
+ delete mode 100644 src/frames/meta-frame-header.h
+ delete mode 100644 src/frames/meta-frame.c
+ delete mode 100644 src/frames/meta-frame.h
+ delete mode 100644 src/frames/meta-frames-client.h
+ delete mode 100644 src/frames/meta-window-tracker.c
+ delete mode 100644 src/frames/meta-window-tracker.h
+
+diff --git a/src/frames/main.c b/src/frames/main.c
+deleted file mode 100644
+index d3bdc0a0af..0000000000
+--- a/src/frames/main.c
++++ /dev/null
+@@ -1,128 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#include "config.h"
+-
+-#include "meta-frames-client.h"
+-#include "meta-window-tracker.h"
+-
+-#include <gdk/x11/gdkx.h>
+-#include <glib-unix.h>
+-#include <gmodule.h>
+-#include <X11/extensions/Xfixes.h>
+-
+-static gboolean should_monitor_color_scheme = TRUE;
+-
+-typedef void (* InitFunc) (void);
+-
+-static gboolean
+-should_load_libadwaita (void)
+-{
+-  g_auto(GStrv) desktops = NULL;
+-  const char *current_desktop;
+-  const char *platform_library;
+-
+-  platform_library = g_getenv ("MUTTER_FRAMES_PLATFORM_LIBRARY");
+-
+-  if (g_strcmp0 (platform_library, "none") == 0)
+-    return FALSE;
+-
+-  if (g_strcmp0 (platform_library, "adwaita") == 0)
+-    return TRUE;
+-
+-  current_desktop = g_getenv ("XDG_CURRENT_DESKTOP");
+-  if (current_desktop != NULL)
+-    desktops = g_strsplit (current_desktop, ":", -1);
+-
+-  return desktops && g_strv_contains ((const char * const *) desktops, "GNOME");
+-}
+-
+-static void
+-load_libadwaita (void)
+-{
+-  GModule *libadwaita;
+-  InitFunc adw_init;
+-
+-  libadwaita = g_module_open ("libadwaita-1.so.0", G_MODULE_BIND_LAZY);
+-  if (!libadwaita)
+-    return;
+-
+-  if (!g_module_symbol (libadwaita, "adw_init", (gpointer *) &adw_init))
+-    return;
+-
+-  should_monitor_color_scheme = FALSE;
+-  adw_init ();
+-}
+-
+-static gboolean
+-on_sigterm (gpointer user_data)
+-{
+-  exit (0);
+-
+-  return G_SOURCE_REMOVE;
+-}
+-
+-gboolean
+-meta_frames_client_should_monitor_color_scheme (void)
+-{
+-  return should_monitor_color_scheme;
+-}
+-
+-int
+-main (int   argc,
+-      char *argv[])
+-{
+-  g_autoptr (MetaWindowTracker) window_tracker = NULL;
+-  GdkDisplay *display;
+-  GMainLoop *loop;
+-  Display *xdisplay;
+-
+-  g_setenv ("GSK_RENDERER", "cairo", TRUE);
+-
+-  /* We do know the desired GDK backend, don't let
+-   * anyone tell us otherwise.
+-   */
+-  g_unsetenv ("GDK_BACKEND");
+-
+-  gdk_set_allowed_backends ("x11");
+-
+-  g_set_prgname ("mutter-x11-frames");
+-
+-  gtk_init ();
+-
+-  display = gdk_display_get_default ();
+-
+-  if (should_load_libadwaita ())
+-    load_libadwaita ();
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-  XFixesSetClientDisconnectMode (xdisplay,
+-                                 XFixesClientDisconnectFlagTerminate);
+-
+-  window_tracker = meta_window_tracker_new (display);
+-
+-  loop = g_main_loop_new (NULL, FALSE);
+-  g_unix_signal_add (SIGTERM, on_sigterm, NULL);
+-  g_main_loop_run (loop);
+-  g_main_loop_unref (loop);
+-
+-  return 0;
+-}
+diff --git a/src/frames/meson.build b/src/frames/meson.build
+deleted file mode 100644
+index c33bb52ad7..0000000000
+--- a/src/frames/meson.build
++++ /dev/null
+@@ -1,25 +0,0 @@
+-x11_frames_sources = [
+-  'main.c',
+-  'meta-frame.c',
+-  'meta-frame-content.c',
+-  'meta-frame-header.c',
+-  'meta-window-tracker.c',
+-]
+-
+-x11_frames = executable('mutter-x11-frames',
+-  sources: x11_frames_sources,
+-  dependencies: [
+-    gmodule_no_export_dep,
+-    gsettings_desktop_schemas_dep,
+-    gtk4_dep,
+-    x11_dep,
+-    xfixes_dep,
+-    xi_dep,
+-  ],
+-  c_args: [
+-    '-DG_LOG_DOMAIN="mutter-x11-frames"',
+-  ],
+-  include_directories: top_includepath,
+-  install: true,
+-  install_dir: get_option('libexecdir'),
+-)
+diff --git a/src/frames/meta-frame-content.c b/src/frames/meta-frame-content.c
+deleted file mode 100644
+index 731d718530..0000000000
+--- a/src/frames/meta-frame-content.c
++++ /dev/null
+@@ -1,132 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#include "config.h"
+-
+-#include "meta-frame-content.h"
+-
+-struct _MetaFrameContent
+-{
+-  GtkWidget parent_instance;
+-  Window window;
+-};
+-
+-enum {
+-  PROP_0,
+-  PROP_XWINDOW,
+-  N_PROPS
+-};
+-
+-static GParamSpec *props[N_PROPS] = { 0, };
+-
+-G_DEFINE_TYPE (MetaFrameContent, meta_frame_content, GTK_TYPE_WIDGET)
+-
+-static void
+-meta_frame_content_set_property (GObject      *object,
+-                                 guint         prop_id,
+-                                 const GValue *value,
+-                                 GParamSpec   *pspec)
+-{
+-  MetaFrameContent *frame_content = META_FRAME_CONTENT (object);
+-
+-  switch (prop_id)
+-    {
+-    case PROP_XWINDOW:
+-      frame_content->window = (Window) g_value_get_ulong (value);
+-      break;
+-    default:
+-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+-      break;
+-    }
+-}
+-
+-static void
+-meta_frame_content_get_property (GObject    *object,
+-                                 guint       prop_id,
+-                                 GValue     *value,
+-                                 GParamSpec *pspec)
+-{
+-  MetaFrameContent *frame_content = META_FRAME_CONTENT (object);
+-
+-  switch (prop_id)
+-    {
+-    case PROP_XWINDOW:
+-      g_value_set_ulong (value, (gulong) frame_content->window);
+-      break;
+-    default:
+-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+-      break;
+-    }
+-}
+-
+-static void
+-meta_frame_content_measure (GtkWidget      *widget,
+-                            GtkOrientation  orientation,
+-                            int             for_size,
+-                            int            *minimum,
+-                            int            *natural,
+-                            int            *minimum_baseline,
+-                            int            *natural_baseline)
+-{
+-  *minimum_baseline = *natural_baseline = -1;
+-  *minimum = *natural = 1;
+-}
+-
+-static void
+-meta_frame_content_class_init (MetaFrameContentClass *klass)
+-{
+-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+-
+-  object_class->set_property = meta_frame_content_set_property;
+-  object_class->get_property = meta_frame_content_get_property;
+-
+-  widget_class->measure = meta_frame_content_measure;
+-
+-  props[PROP_XWINDOW] = g_param_spec_ulong ("xwindow", NULL, NULL,
+-                                            0, G_MAXULONG, 0,
+-                                            G_PARAM_READWRITE |
+-                                            G_PARAM_CONSTRUCT_ONLY |
+-                                            G_PARAM_STATIC_NAME |
+-                                            G_PARAM_STATIC_NICK |
+-                                            G_PARAM_STATIC_BLURB);
+-
+-  g_object_class_install_properties (object_class,
+-                                     G_N_ELEMENTS (props),
+-                                     props);
+-}
+-
+-static void
+-meta_frame_content_init (MetaFrameContent *content)
+-{
+-}
+-
+-GtkWidget *
+-meta_frame_content_new (Window window)
+-{
+-  return g_object_new (META_TYPE_FRAME_CONTENT,
+-                       "xwindow", window,
+-                       NULL);
+-}
+-
+-Window
+-meta_frame_content_get_window (MetaFrameContent *content)
+-{
+-  return content->window;
+-}
+diff --git a/src/frames/meta-frame-content.h b/src/frames/meta-frame-content.h
+deleted file mode 100644
+index 03871fcee4..0000000000
+--- a/src/frames/meta-frame-content.h
++++ /dev/null
+@@ -1,32 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#pragma once
+-
+-#include <gtk/gtk.h>
+-
+-#include <X11/Xlib.h>
+-
+-#define META_TYPE_FRAME_CONTENT (meta_frame_content_get_type ())
+-G_DECLARE_FINAL_TYPE (MetaFrameContent, meta_frame_content,
+-                      META, FRAME_CONTENT, GtkWidget)
+-
+-GtkWidget * meta_frame_content_new (Window window);
+-
+-Window meta_frame_content_get_window (MetaFrameContent *content);
+diff --git a/src/frames/meta-frame-header.c b/src/frames/meta-frame-header.c
+deleted file mode 100644
+index f84afb5235..0000000000
+--- a/src/frames/meta-frame-header.c
++++ /dev/null
+@@ -1,129 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#include "config.h"
+-
+-#include "meta-frame-header.h"
+-
+-struct _MetaFrameHeader
+-{
+-  GtkWidget parent_instance;
+-};
+-
+-G_DEFINE_TYPE (MetaFrameHeader, meta_frame_header, GTK_TYPE_WIDGET)
+-
+-static void
+-meta_frame_header_dispose (GObject *object)
+-{
+-  GtkWidget *widget = GTK_WIDGET (object);
+-  GtkWidget *child;
+-
+-  child = gtk_widget_get_first_child (widget);
+-  if (child)
+-    gtk_widget_unparent (child);
+-
+-  G_OBJECT_CLASS (meta_frame_header_parent_class)->dispose (object);
+-}
+-
+-static void
+-meta_frame_header_measure (GtkWidget      *widget,
+-                           GtkOrientation  orientation,
+-                           int             for_size,
+-                           int            *minimum,
+-                           int            *natural,
+-                           int            *minimum_baseline,
+-                           int            *natural_baseline)
+-{
+-  *minimum_baseline = *natural_baseline = -1;
+-
+-  if (orientation == GTK_ORIENTATION_HORIZONTAL)
+-    {
+-      *minimum = *natural = 1;
+-    }
+-  else
+-    {
+-      GtkWidget *child;
+-
+-      child = gtk_widget_get_first_child (widget);
+-      gtk_widget_measure (child,
+-                          orientation, for_size,
+-                          minimum, natural,
+-                          minimum_baseline,
+-                          natural_baseline);
+-    }
+-}
+-
+-static void
+-meta_frame_header_size_allocate (GtkWidget *widget,
+-                                 int        width,
+-                                 int        height,
+-                                 int        baseline)
+-{
+-  GtkWidget *child;
+-  int minimum;
+-  gboolean shrunk;
+-  GtkAllocation child_allocation;
+-
+-  child = gtk_widget_get_first_child (widget);
+-
+-  gtk_widget_measure (child,
+-                      GTK_ORIENTATION_HORIZONTAL,
+-                      height,
+-                      &minimum, NULL, NULL, NULL);
+-
+-  shrunk = width < minimum;
+-
+-  child_allocation.x = shrunk ? width - minimum : 0;
+-  child_allocation.y = 0;
+-  child_allocation.width = shrunk ? minimum : width;
+-  child_allocation.height = height;
+-
+-  gtk_widget_size_allocate (child, &child_allocation, baseline);
+-}
+-
+-static void
+-meta_frame_header_class_init (MetaFrameHeaderClass *klass)
+-{
+-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+-
+-  object_class->dispose = meta_frame_header_dispose;
+-
+-  widget_class->measure = meta_frame_header_measure;
+-  widget_class->size_allocate = meta_frame_header_size_allocate;
+-}
+-
+-static void
+-meta_frame_header_init (MetaFrameHeader *content)
+-{
+-  GtkWidget *header_bar;
+-
+-  header_bar = gtk_header_bar_new ();
+-  gtk_widget_add_css_class (header_bar, "titlebar");
+-  gtk_widget_add_css_class (header_bar, "default-decoration");
+-  gtk_widget_insert_before (header_bar, GTK_WIDGET (content), NULL);
+-
+-  gtk_widget_add_css_class (GTK_WIDGET (content), "default-decoration");
+-}
+-
+-GtkWidget *
+-meta_frame_header_new (void)
+-{
+-  return g_object_new (META_TYPE_FRAME_HEADER, NULL);
+-}
+diff --git a/src/frames/meta-frame-header.h b/src/frames/meta-frame-header.h
+deleted file mode 100644
+index aaef68a7f8..0000000000
+--- a/src/frames/meta-frame-header.h
++++ /dev/null
+@@ -1,29 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#pragma once
+-
+-#include <gtk/gtk.h>
+-
+-#define META_TYPE_FRAME_HEADER (meta_frame_header_get_type ())
+-G_DECLARE_FINAL_TYPE (MetaFrameHeader, meta_frame_header,
+-                      META, FRAME_HEADER, GtkWidget)
+-
+-GtkWidget * meta_frame_header_new (void);
+-
+diff --git a/src/frames/meta-frame.c b/src/frames/meta-frame.c
+deleted file mode 100644
+index 75754bc43f..0000000000
+--- a/src/frames/meta-frame.c
++++ /dev/null
+@@ -1,670 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#include "config.h"
+-
+-#include "meta-frame.h"
+-
+-#include "meta-frame-content.h"
+-#include "meta-frame-header.h"
+-
+-#include <gdk/x11/gdkx.h>
+-#include <X11/Xatom.h>
+-
+-struct _MetaFrame
+-{
+-  GtkWindow parent_instance;
+-  GtkBorder extents;
+-
+-  Atom atom__NET_WM_VISIBLE_NAME;
+-  Atom atom__NET_WM_NAME;
+-  Atom atom__MOTIF_WM_HINTS;
+-  Atom atom__NET_WM_STATE;
+-  Atom atom__NET_WM_STATE_FULLSCREEN;
+-
+-  char *net_wm_visible_name;
+-  char *net_wm_name;
+-  char *wm_name;
+-};
+-
+-typedef struct
+-{
+-  unsigned long flags;
+-  unsigned long functions;
+-  unsigned long decorations;
+-} MotifWmHints;
+-
+-#define MWM_HINTS_FUNCTIONS (1L << 0)
+-
+-#define MWM_FUNC_ALL (1L << 0)
+-#define MWM_FUNC_RESIZE (1L << 1)
+-#define MWM_FUNC_MINIMIZE (1L << 3)
+-#define MWM_FUNC_MAXIMIZE (1L << 4)
+-#define MWM_FUNC_CLOSE (1L << 5)
+-
+-G_DEFINE_TYPE (MetaFrame, meta_frame, GTK_TYPE_WINDOW)
+-
+-static gboolean
+-client_window_has_wm_protocol (MetaFrame *frame,
+-                               Window     client_window,
+-                               Atom       protocol)
+-{
+-  GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (frame));
+-  Atom *wm_protocols, wm_protocols_atom;
+-  int format;
+-  Atom type;
+-  unsigned long i, nitems, bytes_after;
+-  gboolean found = FALSE;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  wm_protocols_atom =
+-    gdk_x11_get_xatom_by_name_for_display (display, "WM_PROTOCOLS");
+-
+-  if (XGetWindowProperty (gdk_x11_display_get_xdisplay (display),
+-                          client_window,
+-                          wm_protocols_atom,
+-                          0, G_MAXLONG, False,
+-                          XA_ATOM,
+-                          &type, &format,
+-                          &nitems, &bytes_after,
+-                          (unsigned char **) &wm_protocols) != Success)
+-    {
+-      gdk_x11_display_error_trap_pop_ignored (display);
+-      return FALSE;
+-    }
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    return FALSE;
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  for (i = 0; i < nitems; i++)
+-    {
+-      if (wm_protocols[i] == protocol)
+-        {
+-          found = TRUE;
+-          break;
+-        }
+-    }
+-
+-  XFree (wm_protocols);
+-
+-  return found;
+-}
+-
+-static gboolean
+-on_frame_close_request (GtkWindow *window,
+-                        gpointer   user_data)
+-{
+-  GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (window));
+-  GtkWidget *content;
+-  XClientMessageEvent ev = { 0 };
+-  Window client_xwindow;
+-  Atom delete_window_atom;
+-
+-  content = gtk_window_get_child (window);
+-  if (!content)
+-    return FALSE;
+-
+-  client_xwindow =
+-    meta_frame_content_get_window (META_FRAME_CONTENT (content));
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  delete_window_atom =
+-    gdk_x11_get_xatom_by_name_for_display (display, "WM_DELETE_WINDOW");
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  if (client_window_has_wm_protocol (META_FRAME (window),
+-                                     client_xwindow,
+-                                     delete_window_atom))
+-    {
+-      ev.type = ClientMessage;
+-      ev.window = client_xwindow;
+-      ev.message_type =
+-        gdk_x11_get_xatom_by_name_for_display (display, "WM_PROTOCOLS");
+-      ev.format = 32;
+-      ev.data.l[0] = delete_window_atom;
+-      ev.data.l[1] = 0; /* FIXME: missing timestamp */
+-
+-      XSendEvent (gdk_x11_display_get_xdisplay (display),
+-                  client_xwindow, False, 0, (XEvent*) &ev);
+-    }
+-  else
+-    {
+-      XKillClient (gdk_x11_display_get_xdisplay (display),
+-                   client_xwindow);
+-    }
+-
+-  gdk_x11_display_error_trap_pop_ignored (display);
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  return TRUE;
+-}
+-
+-static void
+-update_extents (MetaFrame *frame,
+-                GtkBorder  border)
+-{
+-  GtkWindow *window = GTK_WINDOW (frame);
+-  GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (frame));
+-  GdkSurface *surface;
+-  Window xframe;
+-  unsigned long data[4];
+-
+-  surface = gtk_native_get_surface (GTK_NATIVE (window));
+-  if (!surface)
+-    return;
+-
+-  data[0] = border.left;
+-  data[1] = border.right;
+-  data[2] = border.top;
+-  data[3] = border.bottom;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  xframe = gdk_x11_surface_get_xid (surface);
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  XChangeProperty (gdk_x11_display_get_xdisplay (display),
+-                   xframe,
+-                   gdk_x11_get_xatom_by_name_for_display (display, "_MUTTER_FRAME_EXTENTS"),
+-                   XA_CARDINAL,
+-                   32,
+-                   PropModeReplace,
+-                   (guchar *) &data, 4);
+-
+-  gdk_x11_display_error_trap_pop_ignored (display);
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  frame->extents = border;
+-}
+-
+-static char *
+-get_utf8_string_prop (GtkWindow *window,
+-                      Window     client_window,
+-                      Atom       prop)
+-{
+-  MetaFrame *frame = META_FRAME (window);
+-  GdkDisplay *display;
+-  char *str = NULL;
+-  int format;
+-  Atom type;
+-  unsigned long nitems, bytes_after;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  display = gtk_widget_get_display (GTK_WIDGET (frame));
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  if (XGetWindowProperty (gdk_x11_display_get_xdisplay (display),
+-                          client_window,
+-                          prop,
+-                          0, G_MAXLONG, False,
+-                          gdk_x11_get_xatom_by_name_for_display (display,
+-                                                                 "UTF8_STRING"),
+-                          &type, &format,
+-                          &nitems, &bytes_after,
+-                          (unsigned char **) &str) != Success)
+-    {
+-      gdk_x11_display_error_trap_pop_ignored (display);
+-      return NULL;
+-    }
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    return NULL;
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  return str;
+-}
+-
+-static void
+-update_frame_title (MetaFrame *frame)
+-{
+-  const char *title = NULL;
+-
+-  if (frame->net_wm_visible_name)
+-    title = frame->net_wm_visible_name;
+-  else if (frame->net_wm_name)
+-    title = frame->net_wm_name;
+-  else if (frame->wm_name)
+-    title = frame->wm_name;
+-  else
+-    title = "";
+-
+-  gtk_window_set_title (GTK_WINDOW (frame), title);
+-}
+-
+-static void
+-frame_sync_net_wm_visible_name (GtkWindow *window,
+-                                Window     client_window)
+-{
+-  MetaFrame *frame = META_FRAME (window);
+-
+-  g_clear_pointer (&frame->net_wm_visible_name, g_free);
+-  frame->net_wm_visible_name =
+-    get_utf8_string_prop (window, client_window, frame->atom__NET_WM_VISIBLE_NAME);
+-  update_frame_title (frame);
+-}
+-
+-static void
+-frame_sync_net_wm_name (GtkWindow *window,
+-                        Window     client_window)
+-{
+-  MetaFrame *frame = META_FRAME (window);
+-
+-  g_clear_pointer (&frame->net_wm_visible_name, g_free);
+-  frame->net_wm_name =
+-    get_utf8_string_prop (window, client_window, frame->atom__NET_WM_NAME);
+-  update_frame_title (frame);
+-}
+-
+-static char *
+-text_property_to_utf8 (GdkDisplay          *display,
+-                       const XTextProperty *prop)
+-{
+-  Display *xdisplay;
+-  char *ret = NULL;
+-  char **local_list = NULL;
+-  int count = 0;
+-  int res;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  res = XmbTextPropertyToTextList (xdisplay, prop,
+-                                   &local_list, &count);
+-  if (res == XNoMemory || res == XLocaleNotSupported || res == XConverterNotFound)
+-    goto out;
+-
+-  if (count == 0)
+-    goto out;
+-
+-  if (!g_utf8_validate (local_list[0], -1, NULL))
+-    ret = NULL;
+-  else
+-    ret = g_strdup (local_list[0]);
+-
+- out:
+-  XFreeStringList (local_list);
+-  return ret;
+-}
+-
+-static void
+-frame_sync_wm_name (GtkWindow *window,
+-                    Window     client_window)
+-{
+-  MetaFrame *frame = META_FRAME (window);
+-  GdkDisplay *display;
+-  XTextProperty text_prop;
+-  int retval;
+-
+-  display = gtk_widget_get_display (GTK_WIDGET (frame));
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  retval = XGetWMName (gdk_x11_display_get_xdisplay (display),
+-                       client_window,
+-                       &text_prop);
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    return;
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  if (retval == 0)
+-    return;
+-
+-  frame->wm_name = text_property_to_utf8 (display, &text_prop);
+-  update_frame_title (frame);
+-  XFree (text_prop.value);
+-}
+-
+-static void
+-frame_sync_motif_wm_hints (GtkWindow *window,
+-                           Window     client_window)
+-{
+-  MetaFrame *frame = META_FRAME (window);
+-  GdkDisplay *display;
+-  MotifWmHints *mwm_hints = NULL;
+-  int format;
+-  Atom type;
+-  unsigned long nitems, bytes_after;
+-  gboolean deletable = TRUE;
+-
+-  display = gtk_widget_get_display (GTK_WIDGET (frame));
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  if (XGetWindowProperty (gdk_x11_display_get_xdisplay (display),
+-                          client_window,
+-                          frame->atom__MOTIF_WM_HINTS,
+-                          0, sizeof (MotifWmHints) / sizeof (long),
+-                          False, AnyPropertyType,
+-                          &type, &format,
+-                          &nitems, &bytes_after,
+-                          (unsigned char **) &mwm_hints) != Success)
+-    {
+-      gdk_x11_display_error_trap_pop_ignored (display);
+-      return;
+-    }
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    return;
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  if (mwm_hints &&
+-      (mwm_hints->flags & MWM_HINTS_FUNCTIONS) != 0)
+-    {
+-      if ((mwm_hints->functions & MWM_FUNC_ALL) == 0)
+-        deletable = (mwm_hints->functions & MWM_FUNC_CLOSE) != 0;
+-      else
+-        deletable = (mwm_hints->functions & MWM_FUNC_CLOSE) == 0;
+-    }
+-
+-  gtk_window_set_deletable (window, deletable);
+-  g_free (mwm_hints);
+-}
+-
+-static void
+-frame_sync_wm_normal_hints (GtkWindow *frame,
+-                            Window     client_window)
+-{
+-  GdkDisplay *display;
+-  XSizeHints size_hints;
+-  long nitems;
+-  gboolean resizable = TRUE;
+-
+-  display = gtk_widget_get_display (GTK_WIDGET (frame));
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  if (!XGetWMNormalHints (gdk_x11_display_get_xdisplay (display),
+-                          client_window,
+-                          &size_hints,
+-                          &nitems))
+-    {
+-      gdk_x11_display_error_trap_pop_ignored (display);
+-      return;
+-    }
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    return;
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  if (nitems > 0)
+-    {
+-      resizable = ((size_hints.flags & PMinSize) == 0 ||
+-                   (size_hints.flags & PMaxSize) == 0 ||
+-                   size_hints.min_width != size_hints.max_width ||
+-                   size_hints.min_height != size_hints.max_height);
+-    }
+-
+-  gtk_window_set_resizable (frame, resizable);
+-}
+-
+-static void
+-frame_sync_wm_state (MetaFrame *frame,
+-                     Window     client_window)
+-{
+-  GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (frame));
+-  Display *xdisplay;
+-  Atom *data = NULL, type;
+-  int format;
+-  unsigned long i, nitems, bytes_after;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-  gdk_x11_display_error_trap_push (display);
+-
+-  XGetWindowProperty (xdisplay,
+-                      client_window,
+-                      frame->atom__NET_WM_STATE,
+-                      0, 32,
+-                      False, XA_ATOM,
+-                      &type, &format,
+-                      &nitems, &bytes_after,
+-                      (unsigned char **) &data);
+-
+-  for (i = 0; i < nitems; i++)
+-    {
+-      if (data[i] == frame->atom__NET_WM_STATE_FULLSCREEN)
+-        gtk_window_fullscreen (GTK_WINDOW (frame));
+-    }
+-
+-  gdk_x11_display_error_trap_pop_ignored (display);
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  XFree (data);
+-}
+-
+-static void
+-meta_frame_constructed (GObject *object)
+-{
+-  MetaFrame *frame = META_FRAME (object);
+-  GdkDisplay *display;
+-
+-  display = gtk_widget_get_display (GTK_WIDGET (object));
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  frame->atom__NET_WM_VISIBLE_NAME =
+-    gdk_x11_get_xatom_by_name_for_display (display, "_NET_WM_VISIBLE_NAME");
+-  frame->atom__NET_WM_NAME =
+-    gdk_x11_get_xatom_by_name_for_display (display, "_NET_WM_NAME");
+-  frame->atom__MOTIF_WM_HINTS =
+-    gdk_x11_get_xatom_by_name_for_display (display, "_MOTIF_WM_HINTS");
+-  frame->atom__NET_WM_STATE =
+-    gdk_x11_get_xatom_by_name_for_display (display, "_NET_WM_STATE");
+-  frame->atom__NET_WM_STATE_FULLSCREEN =
+-    gdk_x11_get_xatom_by_name_for_display (display, "_NET_WM_STATE_FULLSCREEN");
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  G_OBJECT_CLASS (meta_frame_parent_class)->constructed (object);
+-}
+-
+-static void
+-meta_frame_finalize (GObject *object)
+-{
+-  MetaFrame *frame = META_FRAME (object);
+-
+-  g_clear_pointer (&frame->net_wm_visible_name, g_free);
+-  g_clear_pointer (&frame->net_wm_name, g_free);
+-  g_clear_pointer (&frame->wm_name, g_free);
+-
+-  G_OBJECT_CLASS (meta_frame_parent_class)->finalize (object);
+-}
+-
+-static void
+-meta_frame_size_allocate (GtkWidget *widget,
+-                          int        width,
+-                          int        height,
+-                          int        baseline)
+-{
+-  MetaFrame *frame = META_FRAME (widget);
+-  GtkWidget *content;
+-  GtkBorder extents;
+-  graphene_point_t point = {};
+-  double scale;
+-
+-  GTK_WIDGET_CLASS (meta_frame_parent_class)->size_allocate (widget, width, height, baseline);
+-
+-  content = gtk_window_get_child (GTK_WINDOW (frame));
+-  if (!content)
+-    return;
+-
+-  if (!gtk_widget_compute_point (content, widget, &point, &point))
+-    return;
+-
+-  scale = gdk_surface_get_scale_factor (gtk_native_get_surface (GTK_NATIVE (widget)));
+-  /* FIXME: right/bottom are broken, if they are ever other than 0. */
+-  extents = (GtkBorder) {
+-    (int16_t) (point.x * scale),
+-    0,
+-    (int16_t) (point.y * scale),
+-    0
+-  };
+-
+-  if (frame->extents.left == extents.left &&
+-      frame->extents.right == extents.right &&
+-      frame->extents.top == extents.top &&
+-      frame->extents.bottom == extents.bottom)
+-    return;
+-
+-  update_extents (frame, extents);
+-}
+-
+-static void
+-meta_frame_class_init (MetaFrameClass *klass)
+-{
+-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-
+-  widget_class->size_allocate = meta_frame_size_allocate;
+-  object_class->constructed = meta_frame_constructed;
+-  object_class->finalize = meta_frame_finalize;
+-}
+-
+-static void
+-meta_frame_init (MetaFrame *frame)
+-{
+-  gtk_widget_add_css_class (GTK_WIDGET (frame), "ssd-frame");
+-
+-  g_signal_connect (frame, "close-request",
+-                    G_CALLBACK (on_frame_close_request), NULL);
+-}
+-
+-GtkWidget *
+-meta_frame_new (Window window)
+-{
+-  GdkDisplay *display;
+-  GtkWidget *frame, *header, *content;
+-  GdkSurface *surface;
+-  int frame_height = 0;
+-  double scale;
+-
+-  frame = g_object_new (META_TYPE_FRAME, NULL);
+-
+-  header = meta_frame_header_new ();
+-
+-  gtk_window_set_titlebar (GTK_WINDOW (frame), header);
+-
+-  content = meta_frame_content_new (window);
+-  gtk_window_set_child (GTK_WINDOW (frame), content);
+-
+-  gtk_widget_realize (GTK_WIDGET (frame));
+-  surface = gtk_native_get_surface (GTK_NATIVE (frame));
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-  gdk_x11_surface_set_frame_sync_enabled (surface, TRUE);
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  frame_sync_wm_state (META_FRAME (frame), window);
+-
+-  if (!gtk_window_is_fullscreen (GTK_WINDOW (frame)))
+-    {
+-      gtk_widget_measure (header,
+-                          GTK_ORIENTATION_VERTICAL, 1,
+-                          &frame_height,
+-                          NULL, NULL, NULL);
+-    }
+-
+-  scale = gdk_surface_get_scale_factor (gtk_native_get_surface (GTK_NATIVE (frame)));
+-
+-  update_extents (META_FRAME (frame),
+-                  (GtkBorder) { 0, 0, (int16_t) (frame_height * scale), 0 });
+-
+-  frame_sync_net_wm_visible_name (GTK_WINDOW (frame), window);
+-  frame_sync_net_wm_name (GTK_WINDOW (frame), window);
+-  frame_sync_wm_name (GTK_WINDOW (frame), window);
+-  frame_sync_motif_wm_hints (GTK_WINDOW (frame), window);
+-  frame_sync_wm_normal_hints (GTK_WINDOW (frame), window);
+-
+-  /* Disable XDND support on the frame window, because it can cause some clients
+-   * to try use it instead of the client window as drop target */
+-  display = gtk_widget_get_display (GTK_WIDGET (frame));
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-  XDeleteProperty (gdk_x11_display_get_xdisplay (display),
+-                   gdk_x11_surface_get_xid (surface),
+-                   gdk_x11_get_xatom_by_name_for_display (display, "XdndAware"));
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  return frame;
+-}
+-
+-void
+-meta_frame_handle_xevent (MetaFrame *frame,
+-                          Window     window,
+-                          XEvent    *xevent)
+-{
+-  GtkWidget *content;
+-  gboolean is_frame, is_content;
+-  GdkSurface *surface;
+-
+-  surface = gtk_native_get_surface (GTK_NATIVE (frame));
+-  if (!surface)
+-    return;
+-
+-  content = gtk_window_get_child (GTK_WINDOW (frame));
+-  if (!content)
+-    return;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-  is_frame = window == gdk_x11_surface_get_xid (surface);
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-  is_content =
+-    window == meta_frame_content_get_window (META_FRAME_CONTENT (content));
+-
+-  if (!is_frame && !is_content)
+-    return;
+-
+-  if (is_content && xevent->type == PropertyNotify)
+-    {
+-      if (xevent->xproperty.atom == frame->atom__NET_WM_VISIBLE_NAME)
+-        frame_sync_net_wm_visible_name (GTK_WINDOW (frame), xevent->xproperty.window);
+-      else if (xevent->xproperty.atom == frame->atom__NET_WM_NAME)
+-        frame_sync_net_wm_name (GTK_WINDOW (frame), xevent->xproperty.window);
+-      else if (xevent->xproperty.atom == XA_WM_NAME)
+-        frame_sync_wm_name (GTK_WINDOW (frame), xevent->xproperty.window);
+-      else if (xevent->xproperty.atom == frame->atom__MOTIF_WM_HINTS)
+-        frame_sync_motif_wm_hints (GTK_WINDOW (frame), xevent->xproperty.window);
+-      else if (xevent->xproperty.atom == XA_WM_NORMAL_HINTS)
+-        frame_sync_wm_normal_hints (GTK_WINDOW (frame), xevent->xproperty.window);
+-    }
+-}
+diff --git a/src/frames/meta-frame.h b/src/frames/meta-frame.h
+deleted file mode 100644
+index b67542b615..0000000000
+--- a/src/frames/meta-frame.h
++++ /dev/null
+@@ -1,32 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#pragma once
+-
+-#include <gtk/gtk.h>
+-#include <X11/Xlib.h>
+-
+-#define META_TYPE_FRAME (meta_frame_get_type ())
+-G_DECLARE_FINAL_TYPE (MetaFrame, meta_frame, META, FRAME, GtkWindow)
+-
+-GtkWidget * meta_frame_new (Window window);
+-
+-void meta_frame_handle_xevent (MetaFrame *frame,
+-                               Window     window,
+-                               XEvent    *xevent);
+diff --git a/src/frames/meta-frames-client.h b/src/frames/meta-frames-client.h
+deleted file mode 100644
+index 37207090d4..0000000000
+--- a/src/frames/meta-frames-client.h
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/*
+- * Copyright (C) 2025 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- */
+-
+-#pragma once
+-
+-#include <glib.h>
+-
+-gboolean meta_frames_client_should_monitor_color_scheme (void);
+diff --git a/src/frames/meta-window-tracker.c b/src/frames/meta-window-tracker.c
+deleted file mode 100644
+index 3f08388b5e..0000000000
+--- a/src/frames/meta-window-tracker.c
++++ /dev/null
+@@ -1,497 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#include "config.h"
+-
+-#include "meta-window-tracker.h"
+-
+-#include "meta-frame.h"
+-#include "meta-frames-client.h"
+-
+-#include <gdesktop-enums.h>
+-#include <gdk/x11/gdkx.h>
+-#include <X11/Xatom.h>
+-#include <X11/extensions/XInput2.h>
+-
+-struct _MetaWindowTracker
+-{
+-  GObject parent_instance;
+-
+-  GSettings *interface_settings;
+-
+-  GdkDisplay *display;
+-  GHashTable *frames;
+-  GHashTable *client_windows;
+-  int xinput_opcode;
+-};
+-
+-enum {
+-  PROP_0,
+-  PROP_DISPLAY,
+-  N_PROPS
+-};
+-
+-static GParamSpec *props[N_PROPS] = { 0, };
+-
+-G_DEFINE_TYPE (MetaWindowTracker, meta_window_tracker, G_TYPE_OBJECT)
+-
+-static void
+-meta_window_tracker_set_property (GObject      *object,
+-                                  guint         prop_id,
+-                                  const GValue *value,
+-                                  GParamSpec   *pspec)
+-{
+-  MetaWindowTracker *window_tracker = META_WINDOW_TRACKER (object);
+-
+-  switch (prop_id)
+-    {
+-    case PROP_DISPLAY:
+-      window_tracker->display = g_value_get_object (value);
+-      break;
+-    default:
+-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+-      break;
+-    }
+-}
+-
+-static void
+-meta_window_tracker_get_property (GObject    *object,
+-                                  guint       prop_id,
+-                                  GValue     *value,
+-                                  GParamSpec *pspec)
+-{
+-  MetaWindowTracker *window_tracker = META_WINDOW_TRACKER (object);
+-
+-  switch (prop_id)
+-    {
+-    case PROP_DISPLAY:
+-      g_value_set_object (value, window_tracker->display);
+-      break;
+-    default:
+-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+-      break;
+-    }
+-}
+-
+-static void
+-update_color_scheme (MetaWindowTracker *window_tracker)
+-{
+-  GDesktopColorScheme color_scheme;
+-  gboolean is_dark;
+-
+-  g_assert (window_tracker->interface_settings != NULL);
+-
+-  color_scheme = g_settings_get_enum (window_tracker->interface_settings,
+-                                      "color-scheme");
+-  is_dark = color_scheme == G_DESKTOP_COLOR_SCHEME_PREFER_DARK;
+-
+-  g_object_set (gtk_settings_get_default (),
+-                "gtk-application-prefer-dark-theme", is_dark,
+-                NULL);
+-}
+-
+-static void
+-on_color_scheme_changed_cb (GSettings         *interface_settings,
+-                            GParamSpec        *pspec,
+-                            MetaWindowTracker *window_tracker)
+-{
+-  update_color_scheme (window_tracker);
+-}
+-
+-static void
+-set_up_frame (MetaWindowTracker *window_tracker,
+-              Window             xwindow)
+-{
+-  GdkDisplay *display = window_tracker->display;
+-  Display *xdisplay;
+-  GdkSurface *surface;
+-  Window xframe;
+-  unsigned long data[1];
+-  GtkWidget *frame;
+-
+-  frame = g_hash_table_lookup (window_tracker->client_windows,
+-                               GUINT_TO_POINTER (xwindow));
+-  if (frame)
+-    return;
+-
+-  /* Double check it's not a request for a frame of our own. */
+-  if (g_hash_table_contains (window_tracker->frames,
+-                             GUINT_TO_POINTER (xwindow)))
+-    return;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  /* Create a frame window */
+-  frame = meta_frame_new (xwindow);
+-  surface = gtk_native_get_surface (GTK_NATIVE (frame));
+-  xframe = gdk_x11_surface_get_xid (surface);
+-
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-  gdk_x11_display_error_trap_push (display);
+-
+-  XAddToSaveSet (xdisplay, xwindow);
+-
+-  data[0] = xwindow;
+-  XChangeProperty (xdisplay,
+-                   xframe,
+-                   gdk_x11_get_xatom_by_name_for_display (display, "_MUTTER_FRAME_FOR"),
+-                   XA_WINDOW,
+-                   32,
+-                   PropModeReplace,
+-                   (guchar *) data, 1);
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    {
+-      gtk_window_destroy (GTK_WINDOW (frame));
+-      return;
+-    }
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  g_hash_table_insert (window_tracker->frames,
+-                       GUINT_TO_POINTER (xframe), frame);
+-  g_hash_table_insert (window_tracker->client_windows,
+-                       GUINT_TO_POINTER (xwindow), frame);
+-  gtk_widget_set_visible (frame, TRUE);
+-}
+-
+-static void
+-listen_set_up_frame (MetaWindowTracker *window_tracker,
+-                     Window             xwindow)
+-{
+-  GdkDisplay *display = window_tracker->display;
+-  Display *xdisplay;
+-  int format;
+-  Atom type;
+-  unsigned long nitems, bytes_after;
+-  unsigned char *data;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-  gdk_x11_display_error_trap_push (display);
+-
+-  XSelectInput (xdisplay, xwindow,
+-                PropertyChangeMask | StructureNotifyMask);
+-
+-  XGetWindowProperty (xdisplay,
+-                      xwindow,
+-                      gdk_x11_get_xatom_by_name_for_display (display,
+-                                                             "_MUTTER_NEEDS_FRAME"),
+-                      0, 1,
+-                      False, XA_CARDINAL,
+-                      &type, &format,
+-                      &nitems, &bytes_after,
+-                      (unsigned char **) &data);
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    return;
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  if (nitems > 0 && data[0])
+-    set_up_frame (window_tracker, xwindow);
+-
+-  XFree (data);
+-}
+-
+-static void
+-remove_frame (MetaWindowTracker *window_tracker,
+-              Window             xwindow)
+-{
+-  GdkDisplay *display = window_tracker->display;
+-  Display *xdisplay;
+-  GtkWidget *frame;
+-  GdkSurface *surface;
+-  Window xframe;
+-
+-  frame = g_hash_table_lookup (window_tracker->client_windows,
+-                               GUINT_TO_POINTER (xwindow));
+-  if (!frame)
+-    return;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-
+-  surface = gtk_native_get_surface (GTK_NATIVE (frame));
+-  xframe = gdk_x11_surface_get_xid (surface);
+-
+-  gdk_x11_display_error_trap_push (display);
+-  XRemoveFromSaveSet (xdisplay, xwindow);
+-  gdk_x11_display_error_trap_pop_ignored (display);
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  g_hash_table_remove (window_tracker->client_windows,
+-                       GUINT_TO_POINTER (xwindow));
+-  g_hash_table_remove (window_tracker->frames,
+-                       GUINT_TO_POINTER (xframe));
+-}
+-
+-static gboolean
+-on_xevent (GdkDisplay *display,
+-           XEvent     *xevent,
+-           gpointer    user_data)
+-{
+-  Window xroot;
+-  Window xwindow = xevent->xany.window;
+-  MetaWindowTracker *window_tracker = user_data;
+-  GtkWidget *frame;
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  xroot = gdk_x11_display_get_xrootwindow (display);
+-
+-  if (xevent->type == CreateNotify &&
+-      xevent->xcreatewindow.parent == xroot &&
+-      !xevent->xcreatewindow.override_redirect &&
+-      !g_hash_table_contains (window_tracker->frames,
+-                              GUINT_TO_POINTER (xevent->xcreatewindow.window)))
+-    {
+-      xwindow = xevent->xcreatewindow.window;
+-      listen_set_up_frame (window_tracker, xwindow);
+-    }
+-  else if (xevent->type == ConfigureNotify &&
+-           xevent->xconfigure.event == xroot &&
+-           xevent->xconfigure.window != xroot &&
+-           !g_hash_table_contains (window_tracker->frames,
+-                                   GUINT_TO_POINTER (xevent->xconfigure.window)))
+-    {
+-      gboolean has_frame;
+-
+-      xwindow = xevent->xconfigure.window;
+-      has_frame =
+-        g_hash_table_contains (window_tracker->client_windows,
+-                               GUINT_TO_POINTER (xwindow));
+-
+-      if (!xevent->xconfigure.override_redirect && !has_frame)
+-        listen_set_up_frame (window_tracker, xwindow);
+-      else if (xevent->xconfigure.override_redirect && has_frame)
+-        remove_frame (window_tracker, xwindow);
+-    }
+-  else if (xevent->type == DestroyNotify)
+-    {
+-      xwindow = xevent->xdestroywindow.window;
+-      remove_frame (window_tracker, xwindow);
+-    }
+-  else if (xevent->type == PropertyNotify &&
+-           xevent->xproperty.atom ==
+-           gdk_x11_get_xatom_by_name_for_display (display, "_MUTTER_NEEDS_FRAME"))
+-    {
+-      if (xevent->xproperty.state == PropertyNewValue)
+-        set_up_frame (window_tracker, xwindow);
+-      else if (xevent->xproperty.state == PropertyDelete)
+-        remove_frame (window_tracker, xwindow);
+-    }
+-  else if (xevent->type == PropertyNotify)
+-    {
+-      frame = g_hash_table_lookup (window_tracker->frames,
+-                                   GUINT_TO_POINTER (xwindow));
+-
+-      if (!frame)
+-        {
+-          frame = g_hash_table_lookup (window_tracker->client_windows,
+-                                       GUINT_TO_POINTER (xwindow));
+-        }
+-
+-      if (frame)
+-        meta_frame_handle_xevent (META_FRAME (frame), xwindow, xevent);
+-    }
+-  else if (xevent->type == GenericEvent &&
+-           xevent->xcookie.extension == window_tracker->xinput_opcode)
+-    {
+-      Display *xdisplay = gdk_x11_display_get_xdisplay (display);
+-      XIEvent *xi_event;
+-
+-      xi_event = (XIEvent *) xevent->xcookie.data;
+-
+-      if (xi_event->evtype == XI_Leave)
+-        {
+-          XILeaveEvent *crossing = (XILeaveEvent *) xi_event;
+-
+-          xwindow = crossing->event;
+-          frame = g_hash_table_lookup (window_tracker->frames,
+-                                       GUINT_TO_POINTER (xwindow));
+-
+-          /* When crossing from the frame to the client
+-           * window, we may need to restore the cursor to
+-           * its default.
+-           */
+-          if (frame && crossing->detail == XINotifyInferior)
+-            {
+-              gdk_x11_display_error_trap_push (display);
+-              XIUndefineCursor (xdisplay, crossing->deviceid, xwindow);
+-              gdk_x11_display_error_trap_pop_ignored (display);
+-            }
+-        }
+-    }
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  return GDK_EVENT_PROPAGATE;
+-}
+-
+-static gboolean
+-query_xi_extension (MetaWindowTracker *window_tracker,
+-                    Display           *xdisplay)
+-{
+-  int major = 2, minor = 3;
+-  int unused;
+-
+-  if (XQueryExtension (xdisplay,
+-                       "XInputExtension",
+-                       &window_tracker->xinput_opcode,
+-                       &unused,
+-                       &unused))
+-    {
+-      if (XIQueryVersion (xdisplay, &major, &minor) == Success)
+-        return TRUE;
+-    }
+-
+-  return FALSE;
+-}
+-
+-static void
+-meta_window_tracker_constructed (GObject *object)
+-{
+-  MetaWindowTracker *window_tracker = META_WINDOW_TRACKER (object);
+-  GdkDisplay *display = window_tracker->display;
+-  Display *xdisplay;
+-  Window xroot;
+-  Window *windows, ignored1, ignored2;
+-  unsigned int i, n_windows;
+-
+-  G_OBJECT_CLASS (meta_window_tracker_parent_class)->constructed (object);
+-
+-  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+-
+-  xdisplay = gdk_x11_display_get_xdisplay (display);
+-  xroot = gdk_x11_display_get_xrootwindow (display);
+-
+-  query_xi_extension (window_tracker, xdisplay);
+-
+-  XSelectInput (xdisplay, xroot,
+-                KeyPressMask |
+-                PropertyChangeMask |
+-                StructureNotifyMask |
+-                SubstructureNotifyMask);
+-
+-  g_signal_connect (display, "xevent",
+-                    G_CALLBACK (on_xevent), object);
+-
+-  gdk_x11_display_error_trap_push (display);
+-
+-  XQueryTree (xdisplay,
+-              xroot,
+-              &ignored1, &ignored2,
+-              &windows, &n_windows);
+-
+-  if (gdk_x11_display_error_trap_pop (display))
+-    {
+-      g_warning ("Could not query existing windows");
+-      return;
+-    }
+-
+-  for (i = 0; i < n_windows; i++)
+-    {
+-      XWindowAttributes attrs;
+-
+-      gdk_x11_display_error_trap_push (display);
+-
+-      XGetWindowAttributes (xdisplay,
+-                            windows[i],
+-                            &attrs);
+-
+-      if (gdk_x11_display_error_trap_pop (display))
+-        continue;
+-
+-      if (attrs.override_redirect)
+-        continue;
+-
+-      listen_set_up_frame (window_tracker, windows[i]);
+-    }
+-
+-  G_GNUC_END_IGNORE_DEPRECATIONS
+-
+-  XFree (windows);
+-}
+-
+-static void
+-meta_window_tracker_finalize (GObject *object)
+-{
+-  MetaWindowTracker *window_tracker = META_WINDOW_TRACKER (object);
+-
+-  g_clear_object (&window_tracker->interface_settings);
+-  g_clear_pointer (&window_tracker->frames,
+-                   g_hash_table_unref);
+-  g_clear_pointer (&window_tracker->client_windows,
+-                   g_hash_table_unref);
+-
+-  G_OBJECT_CLASS (meta_window_tracker_parent_class)->finalize (object);
+-}
+-
+-static void
+-meta_window_tracker_class_init (MetaWindowTrackerClass *klass)
+-{
+-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-
+-  object_class->set_property = meta_window_tracker_set_property;
+-  object_class->get_property = meta_window_tracker_get_property;
+-  object_class->constructed = meta_window_tracker_constructed;
+-  object_class->finalize = meta_window_tracker_finalize;
+-
+-  props[PROP_DISPLAY] = g_param_spec_object ("display", NULL, NULL,
+-                                             GDK_TYPE_DISPLAY,
+-                                             G_PARAM_READWRITE |
+-                                             G_PARAM_CONSTRUCT_ONLY |
+-                                             G_PARAM_STATIC_NAME |
+-                                             G_PARAM_STATIC_NICK |
+-                                             G_PARAM_STATIC_BLURB);
+-
+-  g_object_class_install_properties (object_class,
+-                                     G_N_ELEMENTS (props),
+-                                     props);
+-}
+-
+-static void
+-meta_window_tracker_init (MetaWindowTracker *window_tracker)
+-{
+-  if (meta_frames_client_should_monitor_color_scheme ())
+-    {
+-      window_tracker->interface_settings = g_settings_new ("org.gnome.desktop.interface");
+-      g_signal_connect (window_tracker->interface_settings,
+-                        "changed::color-scheme",
+-                        G_CALLBACK (on_color_scheme_changed_cb),
+-                        window_tracker);
+-      update_color_scheme (window_tracker);
+-    }
+-
+-  window_tracker->frames =
+-    g_hash_table_new_full (NULL, NULL, NULL,
+-                           (GDestroyNotify) gtk_window_destroy);
+-  window_tracker->client_windows = g_hash_table_new (NULL, NULL);
+-}
+-
+-MetaWindowTracker *
+-meta_window_tracker_new (GdkDisplay *display)
+-{
+-  return g_object_new (META_TYPE_WINDOW_TRACKER,
+-                       "display", display,
+-                       NULL);
+-}
+diff --git a/src/frames/meta-window-tracker.h b/src/frames/meta-window-tracker.h
+deleted file mode 100644
+index f4cc11b8a1..0000000000
+--- a/src/frames/meta-window-tracker.h
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/*
+- * Copyright (C) 2022 Red Hat Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of the
+- * License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+- * Author: Carlos Garnacho <carlosg@gnome.org>
+- */
+-
+-#pragma once
+-
+-#include <gtk/gtk.h>
+-#include <X11/Xlib.h>
+-
+-#define META_TYPE_WINDOW_TRACKER (meta_window_tracker_get_type ())
+-G_DECLARE_FINAL_TYPE (MetaWindowTracker, meta_window_tracker,
+-                      META, WINDOW_TRACKER,
+-                      GObject)
+-
+-MetaWindowTracker * meta_window_tracker_new (GdkDisplay *display);
+diff --git a/src/meson.build b/src/meson.build
+index 3ce67428af..16f324f6e5 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1217,9 +1217,6 @@ pkg.generate(libmutter,
+ )
+ 
+ subdir('compositor/plugins')
+-if have_xwayland
+-  subdir('frames')
+-endif
+ 
+ if have_tests
+   subdir('tests')
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index 262c952f5a..bc818efff9 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -277,7 +277,6 @@ monitor_tests_common = [
+ 
+ monitor_tests_common_deps = [
+   test_client,
+-  x11_frames,
+ ]
+ 
+ # The test_cases is a list of dictionaries each one representing one test case.
+@@ -486,7 +485,6 @@ test_cases += [
+     'sources': [ 'stage-view-tests.c', ],
+     'depends': [
+       test_client,
+-      x11_frames,
+     ],
+   },
+   {
+@@ -1245,7 +1243,6 @@ if have_xwayland
+       ],
+       'depends': [
+         test_client,
+-        x11_frames,
+       ],
+     },
+     {
+@@ -1254,7 +1251,6 @@ if have_xwayland
+       'depends': [
+         test_client,
+         x11_compositor_checker,
+-        x11_frames,
+       ],
+       'sources': [
+         'xwayland-tests.c',
+-- 
+2.55.0
+

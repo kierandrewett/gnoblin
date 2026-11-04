@@ -3,21 +3,31 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 6 Oct 2026 22:05:00 +0100
 Subject: [PATCH] mutter: apply window rule background blur
 
+Apply the background blur that a window rule configures. A client that sets an explicit empty blur region keeps it
+and is not blurred by the rule.
 ---
+ src/compositor/meta-surface-actor.c          | 126 +++++++++++++++----
+ src/compositor/meta-surface-actor.h          |   4 +
+ src/wayland/meta-wayland-actor-surface.c     |   8 ++
+ src/wayland/meta-wayland-background-effect.c |   7 ++
+ src/wayland/meta-wayland-background-effect.h |   3 +
+ 5 files changed, 126 insertions(+), 22 deletions(-)
+
 diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
-index 14f9a7a8a1..9481559ec2 100644
+index 14f9a7a8..677d2f14 100644
 --- a/src/compositor/meta-surface-actor.c
 +++ b/src/compositor/meta-surface-actor.c
-@@ -52,6 +52,8 @@ typedef struct _MetaSurfaceActorPrivate
+@@ -52,6 +52,9 @@ typedef struct _MetaSurfaceActorPrivate
    MtkRegion *input_region;
    MtkRegion *background_blur_region;
    MtkRegion *background_blur_sample_region;
 +  MtkRegion *rule_blur_region;
 +  float rule_blur_radius;
++  gboolean rule_blur_enabled;
    MetaBackgroundBlur *background_blur;
  
    /* MetaCullable regions, see that documentation for more details */
-@@ -354,6 +356,7 @@ meta_surface_actor_dispose (GObject *object)
+@@ -354,6 +357,7 @@ meta_surface_actor_dispose (GObject *object)
                     meta_background_blur_destroy);
    g_clear_pointer (&priv->background_blur_region, mtk_region_unref);
    g_clear_pointer (&priv->background_blur_sample_region, mtk_region_unref);
@@ -25,13 +35,14 @@ index 14f9a7a8a1..9481559ec2 100644
    clutter_actor_set_content (CLUTTER_ACTOR (self), NULL);
    g_clear_object (&priv->content);
  
-@@ -483,32 +486,57 @@ cullable_iface_init (MetaCullableInterface *iface)
+@@ -483,32 +487,64 @@ cullable_iface_init (MetaCullableInterface *iface)
    iface->cull_unobscured = meta_surface_actor_cull_unobscured;
  }
  
-+/* A client region from ext-background-effect always wins. Otherwise the
-+ * window rule region, if any, blurs with the rule radius. Saturation and
-+ * noise stay global. */
++/* A client region from ext-background-effect always wins over the rule's
++ * fallback region. An empty client region is an explicit request for no
++ * blur. A matching window rule sets the radius of either region, and a rule
++ * radius of zero disables both. Saturation and noise stay global. */
 +static MtkRegion *
 +get_effective_blur (MetaSurfaceActor *surface_actor,
 +                    float            *radius)
@@ -39,18 +50,24 @@ index 14f9a7a8a1..9481559ec2 100644
 +  MetaSurfaceActorPrivate *priv =
 +    meta_surface_actor_get_instance_private (surface_actor);
 +
++  if (priv->rule_blur_enabled)
++    *radius = priv->rule_blur_radius;
++  else
++    meta_compositor_get_background_blur_params (priv->compositor,
++                                                radius, NULL, NULL);
++
++  if (*radius <= 0.0f)
++    return NULL;
++
 +  if (priv->background_blur_region)
 +    {
-+      meta_compositor_get_background_blur_params (priv->compositor,
-+                                                  radius, NULL, NULL);
++      if (mtk_region_is_empty (priv->background_blur_region))
++        return NULL;
 +      return priv->background_blur_region;
 +    }
 +
-+  if (priv->rule_blur_region)
-+    {
-+      *radius = priv->rule_blur_radius;
-+      return priv->rule_blur_region;
-+    }
++  if (priv->rule_blur_enabled)
++    return priv->rule_blur_region;
 +
 +  return NULL;
 +}
@@ -91,7 +108,7 @@ index 14f9a7a8a1..9481559ec2 100644
  }
  
  static void
-@@ -516,20 +544,20 @@ update_background_blur_sample_region (MetaSurfaceActor *surface_actor)
+@@ -516,20 +552,20 @@ update_background_blur_sample_region (MetaSurfaceActor *surface_actor)
  {
    MetaSurfaceActorPrivate *priv =
      meta_surface_actor_get_instance_private (surface_actor);
@@ -120,7 +137,18 @@ index 14f9a7a8a1..9481559ec2 100644
  }
  
  static void
-@@ -797,6 +825,43 @@ meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
+@@ -776,9 +812,7 @@ meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (surface_actor);
+ 
+-  if (region && mtk_region_is_empty (region))
+-    region = NULL;
+-
++  /* Keep an empty region: it records that the client asked for no blur. */
+   if (mtk_region_equal (priv->background_blur_region, region))
+     return;
+ 
+@@ -797,6 +831,49 @@ meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
    queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
  }
  
@@ -133,15 +161,22 @@ index 14f9a7a8a1..9481559ec2 100644
 +  MetaSurfaceActorPrivate *priv =
 +    meta_surface_actor_get_instance_private (surface_actor);
 +
-+  if (!enabled || radius <= 0.0f || !region || mtk_region_is_empty (region))
++  if (!enabled)
 +    {
-+      if (!priv->rule_blur_region)
-+        return;
++      radius = 0.0f;
 +      region = NULL;
 +    }
-+  else if (priv->rule_blur_region &&
-+           priv->rule_blur_radius == radius &&
-+           mtk_region_equal (priv->rule_blur_region, region))
++  else if (radius < 0.0f)
++    {
++      radius = 0.0f;
++    }
++
++  if (region && mtk_region_is_empty (region))
++    region = NULL;
++
++  if (priv->rule_blur_enabled == enabled &&
++      priv->rule_blur_radius == radius &&
++      mtk_region_equal (priv->rule_blur_region, region))
 +    return;
 +
 +  queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
@@ -150,10 +185,9 @@ index 14f9a7a8a1..9481559ec2 100644
 +
 +  g_clear_pointer (&priv->rule_blur_region, mtk_region_unref);
 +  if (region)
-+    {
-+      priv->rule_blur_region = mtk_region_copy (region);
-+      priv->rule_blur_radius = radius;
-+    }
++    priv->rule_blur_region = mtk_region_copy (region);
++  priv->rule_blur_enabled = enabled;
++  priv->rule_blur_radius = radius;
 +  update_background_blur_sample_region (surface_actor);
 +  sync_background_blur (surface_actor);
 +
@@ -164,7 +198,7 @@ index 14f9a7a8a1..9481559ec2 100644
  void
  meta_surface_actor_invalidate_background_blur (MetaSurfaceActor *surface_actor)
  {
-@@ -825,15 +890,20 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+@@ -825,15 +902,20 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
  {
    MetaSurfaceActorPrivate *priv =
      meta_surface_actor_get_instance_private (surface_actor);
@@ -187,7 +221,7 @@ index 14f9a7a8a1..9481559ec2 100644
                                                &saturation,
                                                &noise);
    meta_background_effect_paint_blur_region (root_node,
-@@ -842,7 +912,7 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+@@ -842,7 +924,7 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
                                              content_box,
                                              content_width,
                                              content_height,
@@ -197,7 +231,7 @@ index 14f9a7a8a1..9481559ec2 100644
                                              blur_radius,
                                              saturation,
 diff --git a/src/compositor/meta-surface-actor.h b/src/compositor/meta-surface-actor.h
-index 9dce861587..6f4bdcf11d 100644
+index 9dce8615..6f4bdcf1 100644
 --- a/src/compositor/meta-surface-actor.h
 +++ b/src/compositor/meta-surface-actor.h
 @@ -44,6 +44,10 @@ void meta_surface_actor_set_opaque_region (MetaSurfaceActor *self,
@@ -211,3 +245,66 @@ index 9dce861587..6f4bdcf11d 100644
  void meta_surface_actor_invalidate_background_blur (MetaSurfaceActor *surface_actor);
  void meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
                                                    ClutterPaintNode    *root_node,
+diff --git a/src/wayland/meta-wayland-actor-surface.c b/src/wayland/meta-wayland-actor-surface.c
+index d1e1d770..49fc6813 100644
+--- a/src/wayland/meta-wayland-actor-surface.c
++++ b/src/wayland/meta-wayland-actor-surface.c
+@@ -25,6 +25,7 @@
+ #include "backends/meta-logical-monitor-private.h"
+ #include "compositor/meta-surface-actor-wayland.h"
+ #include "compositor/meta-window-actor-wayland.h"
++#include "wayland/meta-wayland-background-effect.h"
+ #include "wayland/meta-wayland-buffer.h"
+ #include "wayland/meta-wayland-surface-private.h"
+ #include "wayland/meta-window-wayland.h"
+@@ -263,6 +264,13 @@ meta_wayland_actor_surface_real_sync_actor_state (MetaWaylandActorSurface *actor
+         meta_surface_actor_set_background_blur_region (surface_actor,
+                                                        background_blur_region);
+       }
++    else if (meta_wayland_background_effect_has_effect (surface))
++      {
++        g_autoptr (MtkRegion) no_blur = mtk_region_create ();
++
++        /* A null region from a live effect object turns blur off. */
++        meta_surface_actor_set_background_blur_region (surface_actor, no_blur);
++      }
+     else
+       {
+         meta_surface_actor_set_background_blur_region (surface_actor, NULL);
+diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-wayland-background-effect.c
+index 2bd0e409..ccc26cae 100644
+--- a/src/wayland/meta-wayland-background-effect.c
++++ b/src/wayland/meta-wayland-background-effect.c
+@@ -269,6 +269,13 @@ meta_wayland_background_effect_apply_state (MetaWaylandSurface      *surface,
+   clutter_actor_queue_redraw (actor);
+ }
+ 
++gboolean
++meta_wayland_background_effect_has_effect (MetaWaylandSurface *surface)
++{
++  return g_object_get_data (G_OBJECT (surface),
++                            BACKGROUND_EFFECT_SURFACE_DATA) != NULL;
++}
++
+ MtkRegion *
+ meta_gnoblin_background_effect_get_region (ClutterActor *actor)
+ {
+diff --git a/src/wayland/meta-wayland-background-effect.h b/src/wayland/meta-wayland-background-effect.h
+index 75a96392..ff3e90ac 100644
+--- a/src/wayland/meta-wayland-background-effect.h
++++ b/src/wayland/meta-wayland-background-effect.h
+@@ -17,8 +17,11 @@
+ 
+ #pragma once
+ 
++#include <glib.h>
++
+ #include "wayland/meta-wayland-types.h"
+ 
+ void meta_wayland_init_background_effect (MetaWaylandCompositor *compositor);
+ void meta_wayland_background_effect_apply_state (MetaWaylandSurface      *surface,
+                                                  MetaWaylandSurfaceState *state);
++gboolean meta_wayland_background_effect_has_effect (MetaWaylandSurface *surface);
+-- 
+2.55.0
+

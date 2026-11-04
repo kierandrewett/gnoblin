@@ -562,6 +562,8 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
     const char* wm_class = meta_window_get_wm_class(window);
     const char* layer_namespace = g_object_get_data(G_OBJECT(window), "gnoblin-layer-namespace");
     const char* rule_app_id = gtk_app_id && *gtk_app_id ? gtk_app_id : (wm_class ? wm_class : "");
+    const char* client_type =
+        meta_window_get_client_type(window) == META_WINDOW_CLIENT_TYPE_X11 ? "x11" : "wayland";
     MetaWorkspace* workspace = meta_window_get_workspace(window);
     const char* workspace_id =
         workspace ? g_object_get_data(G_OBJECT(workspace), "gnoblin-native-id") : NULL;
@@ -597,6 +599,9 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
         } else if (g_str_equal(key, "focused")) {
             matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
                       g_variant_get_boolean(value) == focused;
+        } else if (g_str_equal(key, "client_type") || g_str_equal(key, "client-type")) {
+            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+                      g_str_equal(g_variant_get_string(value, NULL), client_type);
         } else if (g_str_equal(key, "workspace_id") || g_str_equal(key, "workspace-id")) {
             const char* expected = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
                                        ? g_variant_get_string(value, NULL)
@@ -1054,6 +1059,47 @@ void gnoblin_control_refresh_window_rule_blur(MetaWindow* window) {
         native_window_rule_blur_update(window, surface);
 }
 
+/* An Xwayland window is laid out before it has an actor, so the rules that decide its frame have
+ * to be read earlier than the effect rules: only the frame policy, extents and crop are applied
+ * here, in the same order and with the same defaults as native_apply_window_rules. */
+static void native_apply_early_frame_rules(GnoblinNativeControl* control, MetaWindow* window) {
+    g_autoptr(GVariant) document = gnoblin_control_native_config_document(control);
+    g_autoptr(GVariant) rules =
+        document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
+    int policy = 1;
+    int extents[4] = {32, 1, 1, 1};
+    int crop[4] = {0, 0, 0, 0};
+
+    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
+        g_autoptr(GVariant) boxed_rule = g_variant_get_child_value(rules, i);
+        g_autoptr(GVariant) rule = g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
+                                       ? g_variant_get_variant(boxed_rule)
+                                       : g_variant_ref(boxed_rule);
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        if (!match || !native_window_rule_matches(match, window, control))
+            continue;
+        g_autoptr(GVariant) frame = g_variant_lookup_value(rule, "frame", NULL);
+        g_autoptr(GVariant) unboxed = NULL;
+        GVariant* frame_options = frame;
+        if (frame_options && g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARIANT)) {
+            unboxed = g_variant_get_variant(frame_options);
+            frame_options = unboxed;
+        }
+        if (!frame_options || !g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARDICT))
+            continue;
+        g_autoptr(GVariant) frame_mode = native_rule_lookup_alias(frame_options, "mode", NULL);
+        if (frame_mode && g_variant_is_of_type(frame_mode, G_VARIANT_TYPE_STRING))
+            policy = native_frame_policy_from_name(g_variant_get_string(frame_mode, NULL));
+        native_frame_read_extents(frame_options, "extents", extents);
+        native_frame_read_extents(frame_options, "crop", crop);
+    }
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) policy_value =
+        g_variant_ref_sink(g_variant_new("(iiiiiiiii)", policy, crop[0], crop[1], crop[2], crop[3],
+                                         extents[0], extents[1], extents[2], extents[3]));
+    meta_gnoblin_window_frame_set(window, policy_value, &error);
+}
+
 static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow* window) {
     if (!control || !window)
         return;
@@ -1062,8 +1108,11 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     MetaSurfaceActor* surface = actor ? meta_window_actor_get_surface(actor) : NULL;
     if (!surface)
         surface = meta_wayland_layer_shell_get_actor(window);
-    if (!surface)
+    if (!surface) {
+        if (meta_window_get_client_type(window) == META_WINDOW_CLIENT_TYPE_X11)
+            native_apply_early_frame_rules(control, window);
         return;
+    }
 
     double radius = 0;
     double smoothing = 0;
@@ -1086,7 +1135,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     };
     g_autoptr(GVariant) shadow_animation_config = NULL;
     g_autofree char* mode = g_strdup("auto");
-    int frame_policy = 0;
+    /* Wayland clients opt in to a native frame. An X11 client has always asked the window manager
+     * for decorations, so with no frame rule its policy is "auto". */
+    int frame_policy = meta_window_get_client_type(window) == META_WINDOW_CLIENT_TYPE_X11 ? 1 : 0;
     int frame_extents[4] = {32, 1, 1, 1};
     int frame_crop[4] = {0, 0, 0, 0};
     GVariantDict frame_style;
@@ -1315,6 +1366,17 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
     native_shadow_animation_resolve(document, shadow_animation_config, &shadow_transition);
 
+    /* Set the frame policy before the effect geometry is read below: an Xwayland window has its
+     * layout at once, so the clip and the shadow already see the frame. */
+    g_autoptr(GError) frame_error = NULL;
+    g_autoptr(GVariant) frame_policy_value = g_variant_ref_sink(g_variant_new(
+        "(iiiiiiiii)", frame_policy, frame_crop[0], frame_crop[1], frame_crop[2], frame_crop[3],
+        frame_extents[0], frame_extents[1], frame_extents[2], frame_extents[3]));
+    if (!meta_gnoblin_window_frame_set(window, frame_policy_value, &frame_error) && frame_error &&
+        frame_error->code != G_IO_ERROR_INVALID_ARGUMENT)
+        g_warning("gnoblin-frame: could not apply frame rule for %s: %s",
+                  meta_window_get_title(window) ?: "(untitled)", frame_error->message);
+
     const MetaMaximizeFlags maximize_flags = meta_window_get_maximize_flags(window);
     const gboolean partially_maximized = !!(maximize_flags & META_MAXIMIZE_HORIZONTAL) !=
                                          !!(maximize_flags & META_MAXIMIZE_VERTICAL);
@@ -1322,7 +1384,7 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     const MetaWindowType window_type = meta_window_get_window_type(window);
     const gboolean normal =
         (window_type == META_WINDOW_NORMAL || window_type == META_WINDOW_DIALOG ||
-         window_type == META_WINDOW_MODAL_DIALOG) &&
+         window_type == META_WINDOW_MODAL_DIALOG || window_type == META_WINDOW_UTILITY) &&
         !meta_window_is_override_redirect(window);
     const gboolean allowed = normal && !g_str_equal(mode, "off") &&
                              (!meta_window_is_maximized(window) || keep_maximized) &&
@@ -1391,14 +1453,14 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
             }
         }
     }
+    /* Both actor kinds take the same inputs; they differ only in which actor holds the clip. */
+    const gboolean clip_automatic = g_str_equal(mode, "auto") && !csd_detected && !framed_by_server;
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
-        meta_window_actor_wayland_set_rounded_clip(
-            actor, effect_radius, exponent,
-            g_str_equal(mode, "auto") && !csd_detected && !framed_by_server, clip_padding);
+        meta_window_actor_wayland_set_rounded_clip(actor, effect_radius, exponent, clip_automatic,
+                                                   clip_padding);
     else if (META_IS_WINDOW_ACTOR_X11(actor))
         meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), effect_radius,
-                                               exponent, g_str_equal(mode, "auto") && !csd_detected,
-                                               padding);
+                                               exponent, clip_automatic, clip_padding);
     /* The frame follows the content clip. A maximised, fullscreen or tiled
      * window with rounding disabled must not keep rounded frame corners. */
     g_variant_dict_insert(&frame_style, "radius", "d", clip_enabled ? radius : 0.);
@@ -1408,14 +1470,6 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                           border_color[2], border_color[3]);
     g_autoptr(GVariant) frame_style_options = g_variant_ref_sink(g_variant_dict_end(&frame_style));
     meta_gnoblin_window_frame_style(window, frame_style_options);
-    g_autoptr(GError) frame_error = NULL;
-    g_autoptr(GVariant) frame_policy_value = g_variant_ref_sink(g_variant_new(
-        "(iiiiiiiii)", frame_policy, frame_crop[0], frame_crop[1], frame_crop[2], frame_crop[3],
-        frame_extents[0], frame_extents[1], frame_extents[2], frame_extents[3]));
-    if (!meta_gnoblin_window_frame_set(window, frame_policy_value, &frame_error) && frame_error &&
-        frame_error->code != G_IO_ERROR_INVALID_ARGUMENT)
-        g_warning("gnoblin-frame: could not apply frame rule for %s: %s",
-                  meta_window_get_title(window) ?: "(untitled)", frame_error->message);
     meta_gnoblin_window_effects_set_rounded_border(CLUTTER_ACTOR(actor),
                                                    effect_enabled ? border_width : 0, border_color);
     const gboolean shadow_state_allowed =
@@ -1428,22 +1482,23 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor)) {
         meta_window_actor_wayland_get_surface_container_bounds(actor, shadow_geometry);
         shadow_child_index = meta_window_actor_wayland_get_shadow_child_index(actor);
-        MtkRectangle effect_geometry = {0};
-        if (meta_gnoblin_window_frame_get_effect_geometry(window, &effect_geometry)) {
-            shadow_geometry[0] = effect_geometry.x;
-            shadow_geometry[1] = effect_geometry.y;
-            shadow_geometry[2] = effect_geometry.x + effect_geometry.width;
-            shadow_geometry[3] = effect_geometry.y + effect_geometry.height;
-        }
-    } else {
-        if (surface && clutter_actor_has_allocation(CLUTTER_ACTOR(surface))) {
-            ClutterActorBox surface_box;
-            clutter_actor_get_allocation_box(CLUTTER_ACTOR(surface), &surface_box);
-            shadow_geometry[0] = surface_box.x1;
-            shadow_geometry[1] = surface_box.y1;
-            shadow_geometry[2] = surface_box.x2;
-            shadow_geometry[3] = surface_box.y2;
-        }
+    } else if (surface && clutter_actor_has_allocation(CLUTTER_ACTOR(surface))) {
+        ClutterActorBox surface_box;
+        clutter_actor_get_allocation_box(CLUTTER_ACTOR(surface), &surface_box);
+        shadow_geometry[0] = surface_box.x1;
+        shadow_geometry[1] = surface_box.y1;
+        shadow_geometry[2] = surface_box.x2;
+        shadow_geometry[3] = surface_box.y2;
+    }
+    /* The visible bounds the client declared, widened by the server frame: for a Wayland window
+     * xdg_surface.set_window_geometry, for an Xwayland window _GTK_FRAME_EXTENTS. Without them the
+     * shadow would follow the buffer, with its transparent client-drawn margins. */
+    MtkRectangle effect_geometry = {0};
+    if (meta_gnoblin_window_frame_get_effect_geometry(window, &effect_geometry)) {
+        shadow_geometry[0] = effect_geometry.x;
+        shadow_geometry[1] = effect_geometry.y;
+        shadow_geometry[2] = effect_geometry.x + effect_geometry.width;
+        shadow_geometry[3] = effect_geometry.y + effect_geometry.height;
     }
     /* Client geometry is already in window-local coordinates. The window
      * actor may still be unallocated when this rule first runs, so clamping
@@ -1465,9 +1520,69 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                                                      clip_enabled && csd_detected, csd_insets);
 }
 
+/* _NET_REQUEST_FRAME_EXTENTS arrives before the window exists, so no rule can match its title or
+ * application. Answer with what the rules give a plain normal X11 window: the rules whose match
+ * holds only the window type and client type, merged in order like native_apply_window_rules. */
+static void native_update_default_x11_border(GnoblinNativeControl* control) {
+    g_autoptr(GVariant) document = gnoblin_control_native_config_document(control);
+    g_autoptr(GVariant) rules =
+        document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
+    int policy = 1;
+    int extents[4] = {32, 1, 1, 1};
+
+    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
+        g_autoptr(GVariant) boxed_rule = g_variant_get_child_value(rules, i);
+        g_autoptr(GVariant) rule = g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
+                                       ? g_variant_get_variant(boxed_rule)
+                                       : g_variant_ref(boxed_rule);
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        gboolean applies = match && g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* key;
+        GVariant* value;
+        if (applies) {
+            g_variant_iter_init(&iter, match);
+            while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+                g_autoptr(GVariant) owned = value;
+                const char* text = g_variant_is_of_type(owned, G_VARIANT_TYPE_STRING)
+                                       ? g_variant_get_string(owned, NULL)
+                                       : NULL;
+                if (g_str_equal(key, "type"))
+                    applies &= text && g_str_equal(text, "window");
+                else if (g_str_equal(key, "client_type") || g_str_equal(key, "client-type"))
+                    applies &= text && g_str_equal(text, "x11");
+                else
+                    applies = FALSE;
+            }
+        }
+        if (!applies)
+            continue;
+        g_autoptr(GVariant) frame = g_variant_lookup_value(rule, "frame", NULL);
+        g_autoptr(GVariant) unboxed = NULL;
+        GVariant* frame_options = frame;
+        if (frame_options && g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARIANT)) {
+            unboxed = g_variant_get_variant(frame_options);
+            frame_options = unboxed;
+        }
+        if (!frame_options || !g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARDICT))
+            continue;
+        g_autoptr(GVariant) frame_mode = native_rule_lookup_alias(frame_options, "mode", NULL);
+        if (frame_mode && g_variant_is_of_type(frame_mode, G_VARIANT_TYPE_STRING))
+            policy = native_frame_policy_from_name(g_variant_get_string(frame_mode, NULL));
+        native_frame_read_extents(frame_options, "extents", extents);
+    }
+
+    MetaFrameBorder border = {0};
+    if (policy != 0)
+        border = (MetaFrameBorder){
+            .left = extents[3], .right = extents[1], .top = extents[0], .bottom = extents[2]};
+    meta_gnoblin_window_frame_x11_set_default_border(&border);
+}
+
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
     if (!control || !control->display || !control->windows)
         return;
+    native_update_default_x11_border(control);
     GHashTableIter iter;
     gpointer window;
     g_hash_table_iter_init(&iter, control->windows);

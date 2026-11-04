@@ -3,9 +3,13 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 21 Jun 2026 14:20:00 +0100
 Subject: [PATCH] window-management: constrain drags to reserved work areas
 
+Constrain window drags to the reserved work area: the drag struct carries the constraint state and the drag applies it.
 ---
+ src/compositor/meta-window-drag.c | 46 +++++++++++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
 diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
-index 85a999756..059785ab9 100644
+index 85a99975..40f8fb1e 100644
 --- a/src/compositor/meta-window-drag.c
 +++ b/src/compositor/meta-window-drag.c
 @@ -27,6 +27,7 @@
@@ -16,7 +20,66 @@ index 85a999756..059785ab9 100644
  
  #ifdef HAVE_XWAYLAND
  #include "x11/meta-x11-frame.h"
-@@ -1991,6 +1992,13 @@ meta_window_drag_begin (MetaWindowDrag      *window_drag,
+@@ -72,6 +73,7 @@ struct _MetaWindowDrag {
+   int initial_x, initial_y;            /* These are only relevant for */
+   gboolean threshold_movement_reached; /* raise_on_click == FALSE.    */
+   unsigned int last_edge_resistance_flags;
++  gboolean constrain_drag_to_work_area;
+   unsigned int move_resize_later_id;
+   /* if TRUE, window was maximized at start of current grab op */
+   gboolean shaken_loose;
+@@ -1268,6 +1270,39 @@ update_move_maybe_tile (MetaWindowDrag *window_drag,
+     }
+ }
+ 
++static void
++constrain_move_to_work_area (MetaWindowDrag *window_drag,
++                             int             window_width,
++                             int             window_height,
++                             int            *x,
++                             int            *y)
++{
++  MetaWindow *window = window_drag->effective_grab_window;
++  MetaDisplay *display = meta_window_get_display (window);
++  MetaContext *context = meta_display_get_context (display);
++  MetaBackend *backend = meta_context_get_backend (context);
++  MetaMonitorManager *monitor_manager =
++    meta_backend_get_monitor_manager (backend);
++  MetaLogicalMonitor *logical_monitor;
++  MtkRectangle work_area;
++  int max_x, max_y;
++
++  logical_monitor =
++    meta_monitor_manager_get_logical_monitor_at (monitor_manager,
++                                                 window_drag->latest_motion_x,
++                                                 window_drag->latest_motion_y);
++  if (!logical_monitor)
++    return;
++
++  meta_window_get_work_area_for_monitor (window, logical_monitor->number,
++                                         &work_area);
++
++  max_x = MAX (work_area.x, work_area.x + work_area.width - window_width);
++  max_y = MAX (work_area.y, work_area.y + work_area.height - window_height);
++  *x = CLAMP (*x, work_area.x, max_x);
++  *y = CLAMP (*y, work_area.y, max_y);
++}
++
+ static void
+ calculate_window_position (MetaWindowDrag          *window_drag,
+                            MetaEdgeResistanceFlags  flags,
+@@ -1302,6 +1337,10 @@ calculate_window_position (MetaWindowDrag          *window_drag,
+                                              &new_y,
+                                              flags);
+ 
++  if (window_drag->constrain_drag_to_work_area)
++    constrain_move_to_work_area (window_drag, window_width, window_height,
++                                 &new_x, &new_y);
++
+   *out_x = new_x;
+   *out_y = new_y;
+ }
+@@ -1991,6 +2030,13 @@ meta_window_drag_begin (MetaWindowDrag      *window_drag,
  
    meta_window_get_frame_rect (grab_window, &window_drag->drag_rect);
  
@@ -30,3 +93,6 @@ index 85a999756..059785ab9 100644
    if ((grab_op & META_GRAB_OP_KEYBOARD_MOVING) == META_GRAB_OP_KEYBOARD_MOVING)
      {
        warp_grab_pointer (window_drag, window, grab_op, &root_x, &root_y);
+-- 
+2.55.0
+

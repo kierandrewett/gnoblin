@@ -123,6 +123,7 @@ static GVariant* legacy_window_list_from_lua(GVariant* windows, GError** error) 
                   {"gtk_app_id", "gtkAppId"},
                   {"wm_class", "wmClass"},
                   {"rule_app_id", "ruleAppId"},
+                  {"client_type", "clientType"},
                   {"focused", "focused"},
                   {"minimized", "minimized"},
                   {"last_user_time", "lastUserTime"},

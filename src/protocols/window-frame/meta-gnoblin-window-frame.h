@@ -30,3 +30,14 @@ gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window, MtkR
 gboolean meta_gnoblin_window_frame_get_effect_geometry(MetaWindow* window, MtkRectangle* geometry);
 void meta_gnoblin_window_frame_emit_changed(MetaWindow* window);
 gboolean meta_gnoblin_window_frame_is_active(MetaWindow* window);
+
+/* Xwayland windows. Mutter creates no X11 frame window; the frame around the client is drawn by
+ * the frame renderer and the geometry follows the Wayland commit (custom_frame_extents). */
+gboolean meta_gnoblin_window_frame_x11_supported(MetaWindow* window);
+void meta_gnoblin_window_frame_x11_update(MetaWindow* window);
+void meta_gnoblin_window_frame_x11_set_declared_extents(MetaWindow* window,
+                                                        const MetaFrameBorder* extents);
+gboolean meta_gnoblin_window_frame_x11_get_declared_extents(MetaWindow* window,
+                                                            MetaFrameBorder* extents);
+void meta_gnoblin_window_frame_x11_set_default_border(const MetaFrameBorder* border);
+gboolean meta_gnoblin_window_frame_x11_get_border(MetaWindow* window, MetaFrameBorder* border);

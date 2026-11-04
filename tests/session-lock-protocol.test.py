@@ -26,9 +26,6 @@ INPUT_PATCHES = [
     for slug in (
         "session-lock-embargo-input-before-global-handling",
         "session-lock-route-verified-lock-surfaces-only",
-        "session-lock-avoid-normal-pointer-repick",
-        "session-lock-keep-pointer-and-touch-on-lock-role",
-        "session-lock-allow-verified-pointer-focus-while-hidden",
     )
 ]
 

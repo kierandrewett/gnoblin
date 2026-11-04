@@ -36,6 +36,7 @@ match both focused and unfocused windows.
 | `layer`                     | Layer-shell namespace supplied by the client             |
 | `workspace_id`              | Stable ID of the current workspace                       |
 | `workspace_number`          | Current one-based workspace position, 1–1024             |
+| `client_type`               | `"wayland"`, or `"x11"` for an Xwayland client           |
 
 Choose the match field based on what should identify the window:
 

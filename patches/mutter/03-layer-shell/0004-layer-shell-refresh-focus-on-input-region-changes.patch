@@ -1,26 +1,25 @@
-From 827f9c080d550e543f0939a4022e18078ee881e1 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 20 Jun 2026 20:41:00 +0100
 Subject: [PATCH] layer-shell: refresh focus on input-region changes
 
-Layer-shell clients often expand their surface input region while a menu or
-popover is open, then shrink it again from the button-press handler that
-dismisses the menu. If the pointer stays stationary, Clutter's sprite keeps the
-old current actor until the next motion event. Wayland pointer focus is then
-synced from that stale actor, so the next click can still be delivered to the
-closed menu surface even though the committed input region no longer contains
-that coordinate.
+Layer-shell clients often expand their surface input region while a menu or popover is open, then shrink it again
+from the button-press handler that dismisses the menu. If the pointer stays stationary, Clutter's sprite keeps the
+old current actor until the next motion event. Wayland pointer focus is then synced from that stale actor, so the
+next click can still be delivered to the closed menu surface even though the committed input region no longer
+contains that coordinate.
 
-Invalidate the current stage focus whenever a surface actor's input region
-changes. This forces a pick at the sprite's current coordinates using the new
-input shape, so stale focus is cleared without requiring pointer motion.
+Invalidate the current stage focus whenever a surface actor's input region changes. This forces a pick at the
+sprite's current coordinates using the new input shape, so stale focus is cleared without requiring pointer motion.
+A cached clear area may belong to an underlying surface while an overlay expands its input region, so refresh
+every view on region changes, retaining the immediate focused-surface update for shrinking regions.
 ---
- clutter/clutter/clutter-stage-private.h |  1 +
- src/compositor/meta-surface-actor.c     | 13 +++++++++++++
- 2 files changed, 14 insertions(+)
+ clutter/clutter/clutter-stage-private.h |  2 ++
+ src/compositor/meta-surface-actor.c     | 20 ++++++++++++++++++++
+ 2 files changed, 22 insertions(+)
 
 diff --git a/clutter/clutter/clutter-stage-private.h b/clutter/clutter/clutter-stage-private.h
-index bb9141ccf..d4f62f033 100644
+index bb9141cc..f2338443 100644
 --- a/clutter/clutter/clutter-stage-private.h
 +++ b/clutter/clutter/clutter-stage-private.h
 @@ -115,6 +115,7 @@ void clutter_stage_unlink_grab (ClutterStage *self,
@@ -31,8 +30,16 @@ index bb9141ccf..d4f62f033 100644
  void clutter_stage_maybe_invalidate_focus (ClutterStage *self,
                                             ClutterActor *actor);
  
+@@ -140,6 +141,7 @@ ClutterGrab * clutter_stage_grab_input_only_inactive (ClutterStage        *self,
+                                                       gpointer             user_data,
+                                                       GDestroyNotify       user_data_destroy);
+ 
++CLUTTER_EXPORT
+ void clutter_stage_invalidate_devices (ClutterStage *stage);
+ 
+ GPtrArray * clutter_stage_get_active_gestures_array (ClutterStage *self);
 diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
-index 472be8596..14f9a7a8a 100644
+index 472be859..2fb2d2a3 100644
 --- a/src/compositor/meta-surface-actor.c
 +++ b/src/compositor/meta-surface-actor.c
 @@ -20,6 +20,7 @@
@@ -53,7 +60,7 @@ index 472be8596..14f9a7a8a 100644
  
    g_clear_pointer (&priv->input_region, mtk_region_unref);
  
-@@ -745,6 +749,15 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
+@@ -745,6 +749,22 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
      priv->input_region = mtk_region_ref (region);
    else
      priv->input_region = NULL;
@@ -64,7 +71,14 @@ index 472be8596..14f9a7a8a 100644
 +      ClutterActor *stage = clutter_actor_get_stage (actor);
 +
 +      if (stage)
-+        clutter_stage_maybe_invalidate_focus (CLUTTER_STAGE (stage), actor);
++        {
++          /* Expanding an input region can cover a sprite focused on another
++           * actor. Its cached clear area must be rebuilt too, not just the
++           * sprites already focused on this surface. */
++          clutter_stage_invalidate_devices (CLUTTER_STAGE (stage));
++          clutter_stage_schedule_update (CLUTTER_STAGE (stage));
++          clutter_stage_maybe_invalidate_focus (CLUTTER_STAGE (stage), actor);
++        }
 +    }
  }
  

@@ -2,8 +2,8 @@
 
 `src/protocols/` contains Gnoblin-owned Mutter overlay code. These sources are
 not built in place. The `overlay` step in `cmake/source-step.cmake` copies the paths declared by each
-`manifest` into the Mutter checkout before the patch stack adds Meson and
-startup wiring.
+`manifest` into the Mutter checkout before the patch stack adds the startup
+wiring. The Meson entries are the overlay `src/mutter-build/wiring.meson`.
 
 ## Implemented protocols
 
@@ -32,8 +32,8 @@ remains XML only and does not register a global.
 
 1. Add the implementation, protocol XML, and `manifest` under this directory.
 2. Add its init call to `aggregator/meta-gnoblin-protocols.c`.
-3. Add its source and XML basenames to `scripts/gen-gnoblin-protocols-patch.sh`.
-4. Regenerate and reapply the Mutter wiring patch.
+3. Add its source and XML basenames to `src/mutter-build/wiring.meson`.
+4. Reapply the Mutter patches; no patch changes.
 5. Add a `[protocols]` gate and update `src/data/gnoblin.conf.example`.
 6. Add a focused protocol client under `tests/` and include it in
    `tests/test-protocol-boundaries.sh`.

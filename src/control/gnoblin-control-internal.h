@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/gnoblin-native-control.h"
+#include "core/gnoblin-native-dispatch.h"
 #include "core/gnoblin-api-operations.h"
 #include "core/gnoblin-chord.h"
 #include "core/gnoblin-auth-agent.h"

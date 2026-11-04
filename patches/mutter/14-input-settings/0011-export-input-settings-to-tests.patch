@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: export input settings helpers to tests
+
+---
+diff --git a/src/backends/meta-backend-private.h b/src/backends/meta-backend-private.h
+index 3512df64e1..b61846f17f 100644
+--- a/src/backends/meta-backend-private.h
++++ b/src/backends/meta-backend-private.h
+@@ -182,6 +182,7 @@ void meta_backend_monitors_changed (MetaBackend *backend);
+ gboolean meta_backend_is_stage_views_scaled (MetaBackend *backend);
+ 
+ MetaInputMapper *meta_backend_get_input_mapper (MetaBackend *backend);
++META_EXPORT_TEST
+ MetaInputSettings *meta_backend_get_input_settings (MetaBackend *backend);
+ 
+ void meta_backend_notify_keymap_changed (MetaBackend *backend);
+diff --git a/src/backends/meta-input-settings-private.h b/src/backends/meta-input-settings-private.h
+index 0773b14ad4..738be65f2f 100644
+--- a/src/backends/meta-input-settings-private.h
++++ b/src/backends/meta-input-settings-private.h
+@@ -28,6 +28,7 @@
+ #endif
+ 
+ #include "backends/meta-backend-types.h"
++#include "core/util-private.h"
+ #include "clutter/clutter.h"
+ #include "meta/display.h"
+ 
+@@ -207,8 +208,10 @@ void meta_input_settings_set_device_aspect_ratio (MetaInputSettings  *input_sett
+ void meta_input_settings_get_kbd_a11y_settings (MetaInputSettings   *input_settings,
+                                                 MetaKbdA11ySettings *a11y_settings);
+ 
++META_EXPORT_TEST
+ void meta_input_settings_add_device (MetaInputSettings  *input_settings,
+                                      ClutterInputDevice *device);
++META_EXPORT_TEST
+ void meta_input_settings_remove_device (MetaInputSettings  *input_settings,
+                                         ClutterInputDevice *device);
+ void meta_input_settings_notify_tool_change (MetaInputSettings      *input_settings,

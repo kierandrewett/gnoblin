@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] route global shortcuts through Gnoblin
+
+The Gnoblin global shortcuts backend is the overlay src/portal/backend/gnoblin-globalshortcuts.c, installed as
+src/gnoblin-globalshortcuts.c, with its two Shell D-Bus interface files in data/. An overlay may not replace a
+tracked file, so the backend gets its own name and Mutter's globalshortcuts.c stays in the tree unbuilt. This patch
+is the build side: the Shell interfaces for the code generator, json-glib, and the source name.
+---
+ src/meson.build | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 2e1dbe4..1774f79 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -38,8 +38,8 @@ shell_dbus_interfaces = files(
+   top_srcdir / 'data' / 'org.gnome.Shell.Screenshot.xml',
+   top_srcdir / 'data' / 'org.gtk.Notifications.xml',
+   top_srcdir / 'data' / 'org.gnome.Shell.xml',
+-  top_srcdir / 'data' / 'org.gnome.GlobalShortcutsProvider.xml',
+-  top_srcdir / 'data' / 'org.gnome.GlobalShortcutsRebind.xml',
++  top_srcdir / 'data' / 'org.gnoblin.Shell.GlobalShortcutsProvider.xml',
++  top_srcdir / 'data' / 'org.gnoblin.Shell.GlobalShortcutsRebind.xml',
+ )
+ 
+ built_sources += gnome.gdbus_codegen(
+@@ -82,6 +82,7 @@ deps = [
+   dependency('fontconfig'),
+   dependency('glib-2.0', version: '>= 2.76'),
+   dependency('gio-unix-2.0'),
++  dependency('json-glib-1.0'),
+   dependency('gtk4', version: '>= 4.0'),
+   dependency('gtk4-unix-print', version: '>= 4.0'),
+   dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),
+@@ -109,7 +110,7 @@ sources = built_sources + files(
+   'gnoblin-filechooser.c',
+   'inputcapture.c',
+   'inputcapturedialog.c',
+-  'globalshortcuts.c',
++  'gnoblin-globalshortcuts.c',
+   'gnomeinputcapture.c',
+   'gnomescreencast.c',
+   'lockdown.c',
+-- 
+2.55.0
+

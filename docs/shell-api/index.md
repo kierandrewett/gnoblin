@@ -2,7 +2,7 @@
 
 Use the Lua runtime API to read compositor state, handle events, and request session actions from a shell integration.
 
-The supervised Lua runtime is available in the standalone Gnoblin session. Its API version is `1.92` in the current source. Callback code runs outside Mutter's compositor thread; keep event callbacks short and nonblocking.
+The supervised Lua runtime is available in the standalone Gnoblin session. Its API version is `1.93` in the current source. Callback code runs outside Mutter's compositor thread; keep event callbacks short and nonblocking.
 
 ## API domains
 

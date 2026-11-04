@@ -59,7 +59,7 @@ This is what `wlr-randr`/`kanshi` need to _enumerate_ outputs. Enumerate from
 
 Overlay `.c/.h` + `manifest`; aggregator init call in
 `src/protocols/aggregator/meta-gnoblin-protocols.c`; add to
-`scripts/gen-gnoblin-protocols-patch.sh`; gate via a `[protocols]` key in
+`src/mutter-build/wiring.meson`; gate via a `[protocols]` key in
 `gnoblin.conf` (see "Authoring a protocol overlay" in the root README).
 
 ## Runtime validation checklist
