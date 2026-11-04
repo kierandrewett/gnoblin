@@ -51,8 +51,10 @@
 - The graphical VM test starts the Gnoblin session on Alpine. Busybox login has no PAM, so no logind session was
   opened and Gnoblin refused to start. The guest now logs in with util-linux login and `pam_elogind`, runs eudev so
   that mutter finds the GPU, and starts a D-Bus session bus.
-- An emulated graphical guest waits 10 minutes for its disks (a systemd credential, without changing the image), and
-  a guest that goes to emergency mode or freezes fails `boot` at once and is booted once more from a fresh disk.
+- An emulated graphical guest waits 10 minutes for its disks (systemd credentials, without changing the image), also
+  on Fedora 41 and 42, where SELinux kept the drop-in out of the real root. A guest that goes to emergency mode or
+  freezes fails `boot` at once, with a picture of its screen, and is booted once more from a fresh disk. This also
+  covers a guest whose serial console shows only sulogin or the audit record of the emergency service.
 - The graphical VM test starts arm64 guests. Their network device asked for an option ROM (`efi-virtio.rom`) that
   QEMU on an Ubuntu arm64 runner does not have, so QEMU stopped at start. The device has no ROM now, and a QEMU that
   stops at start is reported with its own message.

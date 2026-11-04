@@ -85,9 +85,27 @@ BTN_LEFT = 272
 POINTER_STEP = (40, 30)
 ALLOW_LISTS = (ROOT / "tests/packages/log-allowlist.txt", HERE / "log-allowlist.txt")
 LOG_LEVEL = re.compile(r"(?<![A-Za-z])(CRITICAL|ERROR)(?![A-Za-z])")
-# The systemd credential of an emulated guest: a drop-in for every device unit (prefix "dev-") that waits 10 minutes.
+# The systemd credentials of an emulated guest. The first gives every device unit (prefix "dev-") a drop-in with a
+# 10-minute wait, through systemd-debug-generator (systemd 256 and newer). In the real root of Fedora 41 and 42, SELinux
+# does not let that generator read the credential ("avc: denied { read } ... systemd_debug_generator_t", run
+# 41867851183), so the drop-in applied in the initrd only. The second credential copies the drop-in to
+# /run/systemd/system before the initrd switches to the real root: SELinux is not loaded yet there, /run stays across
+# the switch, and PID 1 reads its own unit folders. A failed copy does not stop the switch (the "-" prefix).
 DEVICE_WAIT_DROPIN = "[Unit]\nJobRunningTimeoutSec=10min\nJobTimeoutSec=10min\n"
-DEVICE_WAIT_CREDENTIAL = "systemd.unit-dropin.dev-.device=" + base64.b64encode(DEVICE_WAIT_DROPIN.encode()).decode()
+DEVICE_WAIT_COPY = (
+    "[Service]\n"
+    "ImportCredential=systemd.unit-dropin.dev-.device\n"
+    "ExecStartPre=-mkdir -p /run/systemd/system/dev-.device.d\n"
+    "ExecStartPre=-cp %d/systemd.unit-dropin.dev-.device"
+    " /run/systemd/system/dev-.device.d/50-gnoblin-device-wait.conf\n"
+)
+DEVICE_WAIT_CREDENTIALS = [
+    f"{name}={base64.b64encode(text.encode()).decode()}"
+    for name, text in (
+        ("systemd.unit-dropin.dev-.device", DEVICE_WAIT_DROPIN),
+        ("systemd.unit-dropin.initrd-switch-root.service", DEVICE_WAIT_COPY),
+    )
+]
 
 # The guest of an entry without "guest" data: an amd64 guest on the default BIOS. scripts/targets.json gives every
 # architecture its own data (architectures[].guest).
@@ -115,8 +133,20 @@ class GuestStuck(CheckFailed):
     """The serial console shows that the guest gave up booting, so SSH will never come up."""
 
 
-# What a guest prints on its serial console when it has given up booting.
-STUCK = re.compile(r"You are in emergency mode|Freezing execution|Kernel panic - not syncing")
+# What a guest prints on its serial console when it has given up booting. systemd prints "You are in emergency mode" to
+# /dev/console only, which is tty1 on Fedora 41 and 42 aarch64 (their console=ttyS0 does not exist on that machine).
+# sulogin writes to every console, and the kernel prints the audit record of the emergency service on the serial one
+# (run 41867851183, Fedora 42 aarch64). Dracut's emergency shell says "Entering emergency mode".
+STUCK = re.compile(
+    r"You are in (?:emergency|rescue) mode"
+    r"|Entering emergency mode"
+    r"|Cannot open access to console, the root account is locked"
+    r"|Give root password for maintenance"
+    r"|type=1130 audit\([^)]*\): pid=1 [^']*msg='unit=(?:emergency|rescue) comm=\"systemd\""
+    r"|Failed to start up manager"
+    r"|Freezing execution"
+    r"|Kernel panic - not syncing"
+)
 
 
 def guest_of(entry):
@@ -170,11 +200,13 @@ def qemu_command(guest, accel, memory, cpus, disk, seed, port, qmp_path, serial,
         "-m", str(memory),
     ]  # fmt: skip
     if accel != "kvm":
-        # systemd waits 90 s for a device of /etc/fstab, and an emulated guest can need longer to find its disks
-        # (run 41770211755: Fedora 43 aarch64, "Timed out waiting for device", then emergency mode). The cloud image
-        # is not changed: a systemd credential in SMBIOS type 11 gives every device unit a drop-in (the dev- prefix,
-        # through systemd-debug-generator, systemd 256 and newer) with a 10-minute wait. An older systemd ignores it.
-        command += ["-smbios", f"type=11,value=io.systemd.credential.binary:{DEVICE_WAIT_CREDENTIAL}"]
+        # systemd waits 45 s (Fedora 42) to 90 s for a device of /etc/fstab, and an emulated guest can need longer to
+        # find its disks (run 41770211755: Fedora 43 aarch64, "Timed out waiting for device", then emergency mode;
+        # run 41867851183: Fedora 42 aarch64, emergency mode 48 s after systemd began to wait). The cloud image
+        # is not changed: systemd credentials in SMBIOS type 11 give every device unit a drop-in with a 10-minute wait
+        # (DEVICE_WAIT_CREDENTIALS, systemd 256 and newer). An older systemd ignores them.
+        values = ",".join(f"value=io.systemd.credential.binary:{credential}" for credential in DEVICE_WAIT_CREDENTIALS)
+        command += ["-smbios", f"type=11,{values}"]
     if firmware:
         code, variables = firmware
         command += [
@@ -619,6 +651,7 @@ class Guest:
             text = serial.read_text(errors="replace") if serial.exists() else ""
             stuck = STUCK.search(text)
             if stuck:
+                self.keep_screen(settle=30)
                 raise GuestStuck(f"the guest stopped booting: {stuck.group(0)}", tail(text))
             try:
                 code, _, _ = self.root("test -e /var/lib/cloud/instance/boot-finished", timeout=30, check=False)
@@ -627,14 +660,34 @@ class Guest:
             except subprocess.TimeoutExpired:
                 pass
             time.sleep(5)
+        self.keep_screen()
         raise CheckFailed(f"no SSH login within {timeout} s", tail(serial.read_text(errors="replace")))
 
+    def keep_screen(self, settle=0):
+        """The guest's screen after a failed boot, as boot-screen.png. Where /dev/console is tty1 (Fedora 41 and 42
+        aarch64), systemd's boot messages, the failed unit among them, are there and not on the serial console. settle
+        seconds first give an emulated guest time to bring up its frame buffer and print the emergency prompt."""
+        if getattr(self, "qmp", None) is None:
+            return
+        time.sleep(settle)
+        ppm = self.out / "boot-screen.ppm"
+        try:
+            self.screendump(ppm)
+            write_png(self.out / "boot-screen.png", *read_ppm(ppm))
+        except (CheckFailed, OSError, ValueError) as error:
+            print(f"[graphical] no picture of the boot screen: {error}", flush=True)
+        finally:
+            ppm.unlink(missing_ok=True)
+
     def restart(self, base, seed, reason):
-        """Stop the guest at once and boot it again from a fresh copy of the image. The first serial log is kept."""
+        """Stop the guest at once and boot it again from a fresh copy of the image. The first serial log and boot
+        screen are kept."""
         print(f"[graphical] boot again from a fresh disk: {reason}", flush=True)
         self.process.kill()
         self.process.wait()
         (self.out / "serial.log").rename(self.out / "serial-first-boot.log")
+        if (self.out / "boot-screen.png").exists():
+            (self.out / "boot-screen.png").rename(self.out / "boot-screen-first-boot.png")
         self.qmp_path.unlink(missing_ok=True)
         self.start(base, seed)
 

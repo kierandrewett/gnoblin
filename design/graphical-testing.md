@@ -291,13 +291,21 @@ not finish in time fails its graphical stage, and its packages are not published
 
 Two more settings apply to a guest without KVM:
 
-- systemd waits 90 s for each device of `/etc/fstab`, and an emulated guest can need longer (Fedora 43 aarch64 went
-  to emergency mode). The harness passes a systemd credential in SMBIOS type 11 that gives every device unit a
-  10-minute wait (`systemd.unit-dropin.dev-.device`, systemd 256 and newer). The cloud image is not changed.
-- A guest whose serial console shows emergency mode, a frozen PID 1 or a kernel panic fails `boot` at once, not
-  after the boot timeout. An emulated guest then boots once more from a fresh disk, with the reason printed and kept
-  in `result.json` (`boot_retry`). The first boot races the host's speed (Fedora 44 aarch64 froze after a soft
-  lockup in one run and passed in the runs before), so a second boot is a new draw. A KVM guest is not booted again.
+- systemd waits a short time for each device of `/etc/fstab` (45 s on Fedora 42), and an emulated guest can need
+  longer (Fedora 43 and 42 aarch64 went to emergency mode). The harness passes systemd credentials in SMBIOS type 11
+  that give every device unit a 10-minute wait (`systemd.unit-dropin.dev-.device`, systemd 256 and newer). On Fedora
+  41 and 42, SELinux does not let `systemd-debug-generator` read a credential in the real root, so that drop-in
+  applied in the initrd only. A second credential (`systemd.unit-dropin.initrd-switch-root.service`) copies it to
+  `/run/systemd/system` in the initrd, before SELinux is loaded, and the real root reads it from there. The cloud
+  image is not changed.
+- A guest that has given up booting fails `boot` at once, not after the boot timeout. The serial console shows it:
+  emergency or rescue mode, sulogin ("the root account is locked"), the audit record of the emergency service, a
+  frozen PID 1 or a kernel panic. On Fedora 41 and 42 aarch64 `/dev/console` is tty1 (their `console=ttyS0` does not
+  exist on that machine), so systemd's own messages are only on the screen: the harness keeps a picture of it,
+  `boot-screen.png`, after a failed boot. An emulated guest then boots once more from a fresh disk, with the reason
+  printed and kept in `result.json` (`boot_retry`). The first boot races the host's speed (Fedora 44 aarch64 froze
+  after a soft lockup in one run and passed in the runs before), so a second boot is a new draw. A KVM guest is not
+  booted again.
 
 The aarch64 guests run on the CPU model `max,pauth-impdef=on`, which is much faster under TCG than `max`. Every
 arm64 graphical target has run in CI.

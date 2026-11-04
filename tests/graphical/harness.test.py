@@ -281,22 +281,107 @@ class TcgCpu(unittest.TestCase):
 
 
 class DeviceWait(unittest.TestCase):
-    """An emulated guest gets a systemd credential (SMBIOS type 11) that gives every device unit a 10-minute wait."""
+    """An emulated guest gets systemd credentials (SMBIOS type 11) that give every device unit a 10-minute wait, in the
+    initrd and, through a copy to /run/systemd/system, in the real root of Fedora 41 and 42 too."""
 
     def command(self, accel):
         return harness.qemu_command(shipped_guest("arm64"), accel, 4096, 4, "d", "s", 2222, "q", "ser", ("c", "v"))
 
-    def test_tcg_passes_the_drop_in_and_kvm_does_not(self):
+    def credentials(self):
         import base64
 
         command = self.command("tcg")
-        value = command[command.index("-smbios") + 1]
-        prefix = "type=11,value=io.systemd.credential.binary:systemd.unit-dropin.dev-.device="
-        self.assertTrue(value.startswith(prefix))
-        dropin = base64.b64decode(value[len(prefix) :]).decode()
-        self.assertIn("JobRunningTimeoutSec=10min", dropin)
-        self.assertNotIn(",", value.split(",value=", 1)[1])  # a comma in the value would end the QEMU option
+        option = command[command.index("-smbios") + 1]
+        self.assertTrue(option.startswith("type=11,value="))
+        found = {}
+        for value in option.split(",")[1:]:  # a comma inside a value would end the QEMU option
+            prefix = "value=io.systemd.credential.binary:"
+            self.assertTrue(value.startswith(prefix), value)
+            name, _, encoded = value[len(prefix) :].partition("=")
+            found[name] = base64.b64decode(encoded).decode()
+        return found
+
+    def test_tcg_passes_the_drop_in_and_kvm_does_not(self):
+        credentials = self.credentials()
+        self.assertIn("JobRunningTimeoutSec=10min", credentials["systemd.unit-dropin.dev-.device"])
         self.assertNotIn("-smbios", self.command("kvm"))
+
+    def test_the_initrd_copies_the_drop_in_where_the_real_root_reads_it(self):
+        credentials = self.credentials()
+        copy = credentials["systemd.unit-dropin.initrd-switch-root.service"]
+        self.assertIn("ImportCredential=systemd.unit-dropin.dev-.device", copy)
+        steps = [line.split("=", 1)[1] for line in copy.splitlines() if line.startswith("ExecStartPre=")]
+        self.assertTrue(steps and all(step.startswith("-") for step in steps), "a failed copy must not stop the switch")
+        self.assertTrue(steps[-1].endswith("/run/systemd/system/dev-.device.d/50-gnoblin-device-wait.conf"))
+
+
+# Run 41867851183, Fedora 42 aarch64: the serial console of a guest that went into emergency mode. systemd's own
+# messages went to tty1, so "You are in emergency mode" is not there.
+FEDORA_42_EMERGENCY = """\
+[   77.789696] audit: type=1130 audit(1793810755.633:24): pid=1 uid=0 auid=4294967295 ses=4294967295 \
+subj=system_u:system_r:init_t:s0 msg='unit=systemd-zram-setup@zram0 comm="systemd" exe="/usr/lib/systemd/systemd" \
+hostname=? addr=? terminal=? res=success'
+[  106.756924] audit: type=1130 audit(1793810784.600:25): pid=1 uid=0 auid=4294967295 ses=4294967295 \
+subj=system_u:system_r:init_t:s0 msg='unit=emergency comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? \
+addr=? terminal=? res=success'
+[  106.810872] Adding 3982332k swap on /dev/zram0.  Priority:100 extents:1 across:3982332k SSDsc
+[  122.132037] audit: type=1334 audit(1793810799.962:30): prog-id=39 op=LOAD
+
+Cannot open access to console, the root account is locked.
+See sulogin(8) man page for more details.
+
+Press Enter to continue.
+[  148.364370] BTRFS info (device vda3): resize device /dev/vda3 (devid 1) from 4214206464 to 16025366528
+"""
+
+# The same guest in run 41835867674, where it booted: the lines of the same stretch of the boot.
+FEDORA_42_BOOT = """\
+[  103.862037] systemd[1]: Listening on systemd-initctl.socket - initctl Compatibility Named Pipe.
+[  115.742344] audit: type=1130 audit(1793799028.388:24): pid=1 uid=0 auid=4294967295 ses=4294967295 \
+subj=system_u:system_r:init_t:s0 msg='unit=systemd-zram-setup@zram0 comm="systemd" exe="/usr/lib/systemd/systemd" \
+hostname=? addr=? terminal=? res=success'
+[  119.700024] audit: type=1130 audit(1793799032.345:25): pid=1 uid=0 auid=4294967295 ses=4294967295 \
+subj=system_u:system_r:init_t:s0 msg='unit=systemd-random-seed comm="systemd" exe="/usr/lib/systemd/systemd" \
+hostname=? addr=? terminal=? res=success'
+[  120.196339] audit: type=1130 audit(1793799032.839:26): pid=1 uid=0 auid=4294967295 ses=4294967295 \
+subj=system_u:system_r:init_t:s0 msg='unit=systemd-binfmt comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? \
+addr=? terminal=? res=success'
+[  123.141144] virtio_net virtio3 enp0s4: renamed from eth0
+"""
+
+
+class StuckForms(unittest.TestCase):
+    """Each form of a boot that gave up matches, and a boot that goes on does not."""
+
+    def test_the_fedora_42_emergency_matches_at_its_first_sign(self):
+        found = harness.STUCK.search(FEDORA_42_EMERGENCY)
+        self.assertIsNotNone(found)
+        self.assertIn("unit=emergency", found.group(0))  # the audit record at 106 s, before sulogin at 122 s
+
+    def test_sulogin_alone_matches(self):
+        text = (
+            FEDORA_42_EMERGENCY.split("[  106.756924]")[0]
+            + "Cannot open access to console, the root account is locked."
+        )
+        self.assertIn("root account is locked", harness.STUCK.search(text).group(0))
+
+    def test_other_forms_match(self):
+        for line in (
+            'You are in emergency mode. After logging in, type "journalctl -xb" to view system logs,',
+            'You are in rescue mode. After logging in, type "journalctl -xb" to view system logs,',
+            "Entering emergency mode. Exit the shell to continue.",
+            "Give root password for maintenance",
+            "[  100.1] systemd[1]: Failed to start up manager.",
+            "[  100.2] systemd[1]: Freezing execution.",
+            "[  100.3] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100",
+        ):
+            self.assertIsNotNone(harness.STUCK.search(line), line)
+
+    def test_a_boot_that_goes_on_does_not_match(self):
+        self.assertIsNone(harness.STUCK.search(FEDORA_42_BOOT))
+        record = next(line for line in FEDORA_42_EMERGENCY.splitlines() if "unit=emergency" in line)
+        stopped = record.replace("type=1130", "type=1131")  # the service stopped, not started
+        self.assertIsNone(harness.STUCK.search(stopped))
 
 
 class BootRetry(unittest.TestCase):
@@ -317,6 +402,29 @@ class BootRetry(unittest.TestCase):
         with self.assertRaisesRegex(harness.GuestStuck, "emergency mode"):
             guest.wait_ssh(600)
         self.assertLess(time.monotonic() - started, 5)
+
+    def test_the_fedora_42_serial_fails_at_once(self):
+        guest = self.guest_with_serial(FEDORA_42_EMERGENCY)
+        started = time.monotonic()
+        with self.assertRaisesRegex(harness.GuestStuck, "unit=emergency"):  # not "no SSH login within 8 s"
+            guest.wait_ssh(8)
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_the_screen_is_kept_as_png(self):
+        guest = self.guest_with_serial("")
+
+        class Qmp:
+            def command(self, name, filename):
+                Path(filename).write_bytes(b"P6\n2 1\n255\n" + bytes((255, 0, 255, 0, 0, 0)))
+
+        guest.qmp = Qmp()
+        guest.keep_screen()
+        data = (guest.out / "boot-screen.png").read_bytes()
+        self.assertEqual(struct.unpack(">II", data[16:24]), (2, 1))
+        start = data.index(b"IDAT") + 4
+        length = struct.unpack(">I", data[start - 8 : start - 4])[0]
+        self.assertEqual(zlib.decompress(data[start : start + length])[1:4], bytes((255, 0, 255)))
+        self.assertFalse((guest.out / "boot-screen.ppm").exists())
 
     def run_boot(self, accel, stuck_boots):
         calls = []
