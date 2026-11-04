@@ -3,12 +3,20 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 2 Oct 2026 04:59:28 +0100
 Subject: [PATCH] mutter: read tablet pad buttons from Gnoblin config
 
+Read the tablet pad button actions from the Gnoblin config. A help request for a pad without a layout file is
+emitted without the layout instead of being dropped.
 ---
+ src/backends/meta-input-settings.c |  18 +++++
+ src/core/display.c                 |   3 -
+ src/core/meta-pad-action-mapper.c  | 103 +++++++++++++++++++++++++++--
+ src/meta/display.h                 |  11 +++
+ 4 files changed, 128 insertions(+), 7 deletions(-)
+
 diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
-index a1ff39fb6..02aecbd27 100644
+index 3e9334a0..5c869c4c 100644
 --- a/src/backends/meta-input-settings.c
 +++ b/src/backends/meta-input-settings.c
-@@ -2601,6 +2601,24 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+@@ -2608,6 +2608,24 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
      }
  }
  
@@ -33,8 +41,22 @@ index a1ff39fb6..02aecbd27 100644
  void
  meta_input_settings_get_keyboard_repeat (MetaInputSettings *input_settings,
                                          gboolean          *repeat,
+diff --git a/src/core/display.c b/src/core/display.c
+index b9931eaf..8fa8bee6 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -2445,9 +2445,6 @@ meta_display_request_pad_osd (MetaDisplay        *display,
+ #endif
+     }
+ 
+-  if (!layout_path || !settings)
+-    return;
+-
+   if (!logical_monitor)
+     logical_monitor = meta_backend_get_current_logical_monitor (backend);
+ 
 diff --git a/src/core/meta-pad-action-mapper.c b/src/core/meta-pad-action-mapper.c
-index e87957e27..31b46b73a 100644
+index e87957e2..31b46b73 100644
 --- a/src/core/meta-pad-action-mapper.c
 +++ b/src/core/meta-pad-action-mapper.c
 @@ -184,6 +184,82 @@ lookup_pad_button_settings (ClutterInputDevice *device,
@@ -184,7 +206,7 @@ index e87957e27..31b46b73a 100644
          char *accel;
  
 diff --git a/src/meta/display.h b/src/meta/display.h
-index 11a268a2f..b387cf5f5 100644
+index 11a268a2..b387cf5f 100644
 --- a/src/meta/display.h
 +++ b/src/meta/display.h
 @@ -105,6 +105,17 @@ META_EXPORT
@@ -205,3 +227,6 @@ index 11a268a2f..b387cf5f5 100644
  META_EXPORT
  gboolean meta_display_dispatch_gnoblin_event (MetaDisplay *display,
                                            const char  *event,
+-- 
+2.55.0
+

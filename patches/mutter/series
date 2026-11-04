@@ -118,13 +118,12 @@
 28-xwayland/0001-configure-xwayland-settings.patch
 28-xwayland/0002-publish-xwayland-xsettings.patch
 14-input-settings/0009-configure-tablet-pad-buttons.patch
-14-input-settings/0010-emit-tablet-pad-help-without-layout.patch
 15-preferences/0011-configure-mouse-double-click-time.patch
 13-screen-capture/0004-restore-stage-viewport-on-framebuffer-capture.patch
-14-input-settings/0011-gnoblin-trackball-pointing-stick-settings.patch
-14-input-settings/0012-export-input-settings-to-tests.patch
+14-input-settings/0010-gnoblin-trackball-pointing-stick-settings.patch
+14-input-settings/0011-export-input-settings-to-tests.patch
 15-preferences/0012-configure-titlebar-button-layout.patch
-14-input-settings/0013-lua-tablet-output-mapping.patch
+14-input-settings/0012-lua-tablet-output-mapping.patch
 29-privacy-screen/0001-lua-privacy-screen-settings-override.patch
 29-privacy-screen/0002-export-privacy-settings-to-tests.patch
 29-privacy-screen/0003-lua-privacy-screen-runtime-override.patch
