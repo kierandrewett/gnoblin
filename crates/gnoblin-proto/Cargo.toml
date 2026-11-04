@@ -13,5 +13,17 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # Protocol Buffers messages (design/rust-compositor.md, D16).
 prost.workspace = true
 
+[build-dependencies]
+# The pure-Rust protobuf front end, so a build needs no protoc binary.
+protox.workspace = true
+# The code generator: `proto/` becomes this crate's wire types.
+prost-build.workspace = true
+# build.rs encodes the descriptor set it writes for the tag test.
+prost.workspace = true
+
+[dev-dependencies]
+# The tag test decodes that descriptor set.
+prost-types.workspace = true
+
 [lints]
 workspace = true

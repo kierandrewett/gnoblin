@@ -93,11 +93,17 @@ all = { level = "deny", priority = -1 }
 # Versions every member shares, so a bump is one line per dependency instead of
 # one line per crate. Members inherit these with `serde_json.workspace = true`.
 #
-# Every entry's licence is on the allow-list in deny.toml: prost (Apache-2.0),
-# serde and serde_json (MIT or Apache-2.0), toml (MIT).
+# Every entry's licence is on the allow-list in deny.toml: prost, prost-build,
+# prost-types and prost-reflect (Apache-2.0), protox and protox-parse (MIT or
+# Apache-2.0), serde and serde_json (MIT or Apache-2.0), toml (MIT).
 [workspace.dependencies]
 # Protocol Buffers messages for the IPC (design/rust-compositor.md, D16).
 prost = "0.14.4"
+# `build.rs` in gnoblin-proto compiles `proto/` with the pure-Rust front end, so a
+# build needs no protoc binary and no C++ toolchain.
+prost-build = "0.14.4"
+prost-types = "0.14.4"
+protox = "0.10.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.140"
 # The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).

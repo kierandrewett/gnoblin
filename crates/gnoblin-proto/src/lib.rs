@@ -10,26 +10,34 @@
 //! frames without decoding the extension's payload, and drop the payload of a
 //! [`FLAG_SENSITIVE`] frame before it reaches a log.
 //!
+//! The message types are the `.proto` files in `proto/`, compiled by `build.rs`:
+//! [`gnoblin`] and [`bsm_greeter`] are grouped by `cargo xtask gen-proto` from the
+//! object schema, and `proto/envelope.proto` is the one hand-written file. A test
+//! (`proto_tags`) compares the compiled descriptor with the checked-in text, so a
+//! field tag in the types cannot drift from the tag the file states.
+//!
 //! Frame layout: a four-byte big-endian body length, then the encoded envelope.
 //! The first frame on a connection is not an envelope at all but a fixed-layout
 //! [`Handshake`], so a version mismatch is always reportable. Descriptors travel
 //! beside a frame through the [`Transport`] seam.
-//!
-//! The `.proto` files generated from the object schema live in `proto/` and are
-//! checked by `cargo xtask gen-proto --check`. The envelope in [`envelope`] is
-//! hand-written because it is not a schema member: it is the layer that carries
-//! schema members.
 
 mod envelope;
 mod error;
 mod frame;
+mod generated;
 mod handshake;
+#[cfg(test)]
+mod proto_tags;
+mod sensitive;
 mod transport;
 mod version;
 
-pub use envelope::{Envelope, Error, Event, FLAG_SENSITIVE, Kind, Reply, Request, UNKNOWN_MEMBER};
+pub use envelope::{FLAG_SENSITIVE, UNKNOWN_MEMBER};
 pub use error::CodecError;
 pub use frame::{LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
+pub use generated::ipc::envelope::Kind;
+pub use generated::ipc::{Envelope, Error, Event, Reply, Request};
+pub use generated::{bsm_greeter, gnoblin};
 pub use handshake::{HANDSHAKE_LEN, Handshake, HandshakeKind, MAGIC};
 #[cfg(unix)]
 pub use transport::Transport;

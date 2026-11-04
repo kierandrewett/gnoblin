@@ -24,7 +24,7 @@ pub use unix::Transport;
 mod unix {
     use std::os::fd::{BorrowedFd, OwnedFd};
 
-    use crate::envelope::Envelope;
+    use crate::Envelope;
     use crate::error::CodecError;
 
     /// A connection that carries frames and their descriptors.

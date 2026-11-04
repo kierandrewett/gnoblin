@@ -10,7 +10,7 @@ use std::io::{self, Read, Write};
 
 use prost::Message as _;
 
-use crate::envelope::Envelope;
+use crate::Envelope;
 use crate::error::CodecError;
 
 /// Largest accepted body, in bytes.
@@ -65,7 +65,10 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<Option<Envelope>, CodecErro
         io::ErrorKind::UnexpectedEof => CodecError::Truncated,
         _ => CodecError::Io(error),
     })?;
-    Ok(Some(Envelope::decode(&body[..])?))
+    let mut envelope = Envelope::decode(&body[..])?;
+    // A peer cannot make a secret member look plain by sending zero flags.
+    envelope.flag_schema_sensitivity();
+    Ok(Some(envelope))
 }
 
 #[cfg(test)]
@@ -73,7 +76,7 @@ mod tests {
     use std::io::{Cursor, Write};
 
     use super::{MAX_FRAME_LEN, read_frame, write_frame};
-    use crate::envelope::{Envelope, Kind};
+    use crate::{Envelope, Kind};
 
     fn round_trip(envelope: Envelope) -> Envelope {
         let mut buffer = Vec::new();
@@ -83,17 +86,36 @@ mod tests {
 
     #[test]
     fn round_trips_every_kind() {
-        let mut sensitive = Envelope::request("bsm.greeter", "greeter", 9, b"payload".to_vec());
-        sensitive.mark_sensitive();
         let frames = [
-            sensitive,
-            Envelope::reply("gnoblin", "window", 9, b"ok".to_vec()),
-            Envelope::event("gnoblin", "session", b"ready".to_vec()),
+            Envelope::request("bsm.greeter", "auth_response", 9, b"payload".to_vec()),
+            Envelope::reply("gnoblin", "focus", 9, b"ok".to_vec()),
+            Envelope::event("gnoblin", "ready", b"ready".to_vec()),
             Envelope::error("gnoblin", "window", 9, "unknown-member", "no such member"),
         ];
         for frame in frames {
             assert_eq!(round_trip(frame.clone()), frame);
         }
+    }
+
+    #[test]
+    fn a_peer_cannot_clear_the_sensitive_flag() {
+        // A frame for a schema-secret member, built by hand with zero flags, as a
+        // hostile or outdated peer would send it.
+        let forged = Envelope {
+            namespace: "bsm.greeter".to_owned(),
+            member: "auth_response".to_owned(),
+            request_id: 1,
+            flags: 0,
+            kind: Some(Kind::Request(crate::Request {
+                payload: b"hunter2".to_vec(),
+            })),
+        };
+        assert!(!forged.is_sensitive());
+        let decoded = round_trip(forged);
+        assert!(
+            decoded.is_sensitive(),
+            "the decoder re-applies the schema's flag, so nothing downstream sees a plain secret"
+        );
     }
 
     #[test]

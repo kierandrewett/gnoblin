@@ -1,98 +1,27 @@
-//! The RPC envelope every frame carries.
+//! The envelope's Rust helpers, on top of the generated types.
 //!
-//! Gnoblin owns this layer rather than using a Protocol Buffers service
-//! definition (design/rust-compositor.md, D16): the compositor has to route an
-//! extension's frames by namespace without decoding the extension's payload, and
-//! has to drop the payload of a `sensitive` frame before anything logs it. Both
-//! are envelope work, so the envelope is a message of its own.
+//! The message itself is `proto/envelope.proto`, compiled by `build.rs` like every
+//! other `.proto` file, so the struct and its tags come from the text rather than
+//! from hand-written Rust that could drift. This module adds the behaviour the
+//! wire type cannot express: constructors that pair a frame with its request id,
+//! redaction, and the rule that sets [`FLAG_SENSITIVE`] from the schema.
 //!
-//! Tags are fixed for good. A field number that has been used is never reused,
-//! even after a member is removed, because a client built against an older
-//! version would silently decode the new meaning.
+//! Sensitivity is not the caller's decision. `sensitive.rs` lists the members the
+//! schema marks secret; every constructor flags a frame for one of them, and the
+//! frame decoder re-applies the flag, so a peer that sends zero cannot clear it.
+//! There is no public way to set or clear the flag by hand.
+
+use crate::generated::ipc::envelope::Kind;
+use crate::generated::ipc::{Envelope, Error, Event, Reply, Request};
+use crate::sensitive;
 
 /// The envelope flag that marks a frame as carrying secret material.
+///
 /// The generated client sets it on any message with a field the schema marks
 /// `secret` (for example `bsm.greeter.auth_response`). Logs, the parity recorder
-/// and `gnoblinctl ipc dump` drop the payload of such a frame, so none of them
-/// needs the extension's schema to keep the secret out.
+/// and `gnoblinctl ipc dump` call [`Envelope::redact`] before they show anything,
+/// so none of them needs the extension's schema to keep the secret out.
 pub const FLAG_SENSITIVE: u32 = 1 << 0;
-
-/// One IPC message: where it goes, what it is, and the kind-specific body.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Envelope {
-    /// The schema namespace the member belongs to, for example `gnoblin` or
-    /// `bsm.greeter`. The compositor routes on this and never decodes a payload
-    /// from a namespace it does not serve itself.
-    #[prost(string, tag = "1")]
-    pub namespace: String,
-    /// The object type the message is about, such as `window`.
-    #[prost(string, tag = "2")]
-    pub member: String,
-    /// Pairs a reply or an error with its request. Zero on events.
-    #[prost(uint64, tag = "3")]
-    pub request_id: u64,
-    /// See [`FLAG_SENSITIVE`]. Absent flags are zero, so a client that sends
-    /// nothing means "not sensitive".
-    #[prost(uint32, tag = "4")]
-    pub flags: u32,
-    #[prost(oneof = "Kind", tags = "5, 6, 7, 8")]
-    pub kind: Option<Kind>,
-}
-
-/// The four kinds of frame.
-#[derive(Clone, PartialEq, prost::Oneof)]
-pub enum Kind {
-    #[prost(message, tag = "5")]
-    Request(Request),
-    #[prost(message, tag = "6")]
-    Reply(Reply),
-    #[prost(message, tag = "7")]
-    Event(Event),
-    #[prost(message, tag = "8")]
-    Error(Error),
-}
-
-/// A call: `member` in `namespace`, answered by a [`Reply`] or an [`Error`] with
-/// the same request id.
-///
-/// The payload is a message generated from the schema for that member, or an
-/// extension's own message, which the compositor forwards undecoded.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Request {
-    #[prost(bytes = "vec", tag = "1")]
-    pub payload: Vec<u8>,
-}
-
-/// The answer to a request.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Reply {
-    #[prost(bytes = "vec", tag = "1")]
-    pub payload: Vec<u8>,
-}
-
-/// Something that happened without anyone asking: a property change, a signal, a
-/// completion.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Event {
-    #[prost(bytes = "vec", tag = "1")]
-    pub payload: Vec<u8>,
-}
-
-/// A request that failed.
-///
-/// The code is the schema's kebab-case error name, carried as text rather than as
-/// a number so an older peer can still report a code this build has never heard
-/// of.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Error {
-    #[prost(string, tag = "1")]
-    pub code: String,
-    /// Human-readable detail. Never carries a secret: a message like "wrong
-    /// password" is not the password, and the reply to a sensitive request is
-    /// sensitive itself.
-    #[prost(string, tag = "2")]
-    pub message: String,
-}
 
 /// The error code a peer sends when it does not serve the requested member.
 ///
@@ -107,13 +36,17 @@ impl Envelope {
         request_id: u64,
         payload: Vec<u8>,
     ) -> Envelope {
-        Envelope {
-            namespace: namespace.into(),
-            member: member.into(),
-            request_id,
-            flags: 0,
-            kind: Some(Kind::Request(Request { payload })),
-        }
+        Envelope::build(namespace, member, request_id, Kind::Request(Request { payload }))
+    }
+
+    /// A request whose payload is a generated message.
+    pub fn request_message<M: prost::Message>(
+        namespace: impl Into<String>,
+        member: impl Into<String>,
+        request_id: u64,
+        message: &M,
+    ) -> Envelope {
+        Envelope::request(namespace, member, request_id, message.encode_to_vec())
     }
 
     /// The answer to a request.
@@ -123,24 +56,21 @@ impl Envelope {
         request_id: u64,
         payload: Vec<u8>,
     ) -> Envelope {
-        Envelope {
-            namespace: namespace.into(),
-            member: member.into(),
-            request_id,
-            flags: 0,
-            kind: Some(Kind::Reply(Reply { payload })),
-        }
+        Envelope::build(namespace, member, request_id, Kind::Reply(Reply { payload }))
     }
 
     /// An unsolicited event. Request id is zero because nothing is waiting.
     pub fn event(namespace: impl Into<String>, member: impl Into<String>, payload: Vec<u8>) -> Envelope {
-        Envelope {
-            namespace: namespace.into(),
-            member: member.into(),
-            request_id: 0,
-            flags: 0,
-            kind: Some(Kind::Event(Event { payload })),
-        }
+        Envelope::build(namespace, member, 0, Kind::Event(Event { payload }))
+    }
+
+    /// An event whose payload is a generated message.
+    pub fn event_message<M: prost::Message>(
+        namespace: impl Into<String>,
+        member: impl Into<String>,
+        message: &M,
+    ) -> Envelope {
+        Envelope::event(namespace, member, message.encode_to_vec())
     }
 
     /// A failed request.
@@ -151,22 +81,15 @@ impl Envelope {
         code: impl Into<String>,
         message: impl Into<String>,
     ) -> Envelope {
-        Envelope {
-            namespace: namespace.into(),
-            member: member.into(),
+        Envelope::build(
+            namespace,
+            member,
             request_id,
-            flags: 0,
-            kind: Some(Kind::Error(Error {
+            Kind::Error(Error {
                 code: code.into(),
                 message: message.into(),
-            })),
-        }
-    }
-
-    /// Mark the frame as carrying secret material.
-    pub fn mark_sensitive(&mut self) -> &mut Envelope {
-        self.flags |= FLAG_SENSITIVE;
-        self
+            }),
+        )
     }
 
     /// Whether the payload is secret and must not be logged or stored.
@@ -184,6 +107,12 @@ impl Envelope {
         }
     }
 
+    /// The payload decoded as a generated message, or `None` when this kind has no
+    /// payload or it does not decode.
+    pub fn payload_as<M: prost::Message + Default>(&self) -> Option<M> {
+        M::decode(self.payload()?).ok()
+    }
+
     /// The error code, if this is an error frame.
     pub fn error_code(&self) -> Option<&str> {
         match &self.kind {
@@ -192,8 +121,12 @@ impl Envelope {
         }
     }
 
-    /// A copy safe to log or record: a sensitive frame keeps its routing fields
-    /// and loses its payload.
+    /// The only way to show a frame to a log, a dump or a recorder.
+    ///
+    /// A sensitive frame keeps its routing fields and loses its payload; a plain
+    /// frame comes back unchanged. Because the secret bytes are dropped here
+    /// rather than at each call site, no consumer has to know which members are
+    /// secret.
     pub fn redact(&self) -> Envelope {
         if !self.is_sensitive() {
             return self.clone();
@@ -216,40 +149,128 @@ impl Envelope {
             kind,
         }
     }
+
+    /// Build a frame and let the schema decide the sensitive flag.
+    fn build(namespace: impl Into<String>, member: impl Into<String>, request_id: u64, kind: Kind) -> Envelope {
+        let mut envelope = Envelope {
+            namespace: namespace.into(),
+            member: member.into(),
+            request_id,
+            flags: 0,
+            kind: Some(kind),
+        };
+        envelope.flag_schema_sensitivity();
+        envelope
+    }
+
+    /// Set [`FLAG_SENSITIVE`] when the schema says this member is secret.
+    ///
+    /// Called by every constructor and by the frame decoder, so neither a forgetful
+    /// caller nor a peer that omits the flag can make a secret frame look plain.
+    pub(crate) fn flag_schema_sensitivity(&mut self) {
+        if sensitive::is_sensitive(&self.namespace, &self.member) {
+            self.flags |= FLAG_SENSITIVE;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use prost::Message as _;
+
     use super::{Envelope, Kind, UNKNOWN_MEMBER};
+    use crate::generated::bsm_greeter::greeter::AuthResponseArgs;
+    use crate::generated::gnoblin::window::Properties;
+
+    const SECRET: &str = "hunter2";
 
     #[test]
-    fn a_sensitive_frame_redacts_its_payload() {
-        let mut envelope = Envelope::request("bsm.greeter", "greeter", 7, b"hunter2".to_vec());
-        envelope.mark_sensitive();
+    fn a_schema_secret_member_is_always_flagged() {
+        // Built through the public API with no extra call: the schema decides.
+        let envelope = Envelope::request_message(
+            "bsm.greeter",
+            "auth_response",
+            7,
+            &AuthResponseArgs {
+                response: SECRET.to_owned(),
+            },
+        );
         assert!(envelope.is_sensitive());
-        assert_eq!(envelope.payload(), Some(&b"hunter2"[..]));
+        assert_eq!(
+            envelope.payload_as::<AuthResponseArgs>().expect("payload").response,
+            SECRET
+        );
+
+        // Every constructor, not only requests.
+        for envelope in [
+            Envelope::request("bsm.greeter", "auth_response", 1, Vec::new()),
+            Envelope::reply("bsm.greeter", "auth_response", 1, Vec::new()),
+            Envelope::event("bsm.greeter", "auth_response", Vec::new()),
+            Envelope::error("bsm.greeter", "auth_response", 1, UNKNOWN_MEMBER, "no"),
+        ] {
+            assert!(envelope.is_sensitive(), "{envelope:?}");
+        }
+    }
+
+    #[test]
+    fn a_plain_member_is_not_flagged() {
+        let envelope = Envelope::request_message(
+            "gnoblin",
+            "focus",
+            1,
+            &Properties {
+                id: 12,
+                title: "editor".to_owned(),
+                app_id: "code".to_owned(),
+                focused: true,
+            },
+        );
+        assert!(!envelope.is_sensitive());
+        assert_eq!(
+            envelope.payload_as::<Properties>().expect("payload").title,
+            "editor".to_owned()
+        );
+    }
+
+    #[test]
+    fn redaction_drops_the_secret_bytes() {
+        let envelope = Envelope::request_message(
+            "bsm.greeter",
+            "auth_response",
+            7,
+            &AuthResponseArgs {
+                response: SECRET.to_owned(),
+            },
+        );
+        let encoded = envelope.encode_to_vec();
+        assert!(
+            encoded.windows(SECRET.len()).any(|window| window == SECRET.as_bytes()),
+            "the flag is what protects the bytes, not the encoding"
+        );
 
         let redacted = envelope.redact();
         assert!(
             redacted.is_sensitive(),
-            "the flag survives so consumers keep treating it as secret"
+            "a redacted frame stays marked so nothing re-logs it as plain"
         );
         assert_eq!(redacted.payload(), Some(&b""[..]));
-        assert_eq!(redacted.member, "greeter");
-        assert_eq!(redacted.request_id, 7);
+        let encoded = redacted.encode_to_vec();
+        assert!(
+            !encoded.windows(SECRET.len()).any(|window| window == SECRET.as_bytes()),
+            "a redacted frame must not contain the secret"
+        );
     }
 
     #[test]
     fn a_plain_frame_redacts_to_itself() {
-        let envelope = Envelope::event("gnoblin", "session", vec![1, 2, 3]);
+        let envelope = Envelope::event("gnoblin", "ready", vec![1, 2, 3]);
         assert!(!envelope.is_sensitive());
         assert_eq!(envelope.redact(), envelope);
     }
 
     #[test]
     fn an_error_redacts_to_its_code() {
-        let mut envelope = Envelope::error("gnoblin", "window", 3, UNKNOWN_MEMBER, "no such member");
-        envelope.mark_sensitive();
+        let envelope = Envelope::error("bsm.greeter", "auth_response", 3, UNKNOWN_MEMBER, "no such member");
         let redacted = envelope.redact();
         assert_eq!(redacted.error_code(), Some("redacted"));
         assert!(matches!(redacted.kind, Some(Kind::Error(_))));

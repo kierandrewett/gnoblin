@@ -34,7 +34,8 @@ test:
 deps:
     cargo xtask deps
 
-# Write crates/gnoblin-proto/proto from the object schema. Commit the result.
+# Write the .proto files and the sensitive-member table from the object schema.
+# Commit the result; `cargo xtask gen-proto --check` fails while they are stale.
 gen-proto:
     cargo xtask gen-proto
 
