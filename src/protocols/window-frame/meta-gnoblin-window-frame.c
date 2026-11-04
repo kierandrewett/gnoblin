@@ -9,6 +9,9 @@
 #include <math.h>
 #include <string.h>
 #include <wayland-server.h>
+#include "compositor/compositor-private.h"
+#include "compositor/meta-window-actor-private.h"
+#include "core/meta-window-config-private.h"
 #include "core/window-private.h"
 #include "core/gnoblin-native-control.h"
 #include "wayland/meta-gnoblin-live-protocols.h"
@@ -34,6 +37,13 @@ typedef struct {
     guint32 serial;
     gboolean changed;
     gboolean policy_set;
+    /* Xwayland clients only. The client declares extents with _GTK_FRAME_EXTENTS (invisible CSD
+     * margins, like xdg_surface.set_window_geometry); the window's custom_frame_extents are
+     * those plus the crop minus the server border, as a Wayland commit computes them. */
+    MetaFrameBorder declared;
+    gboolean has_declared;
+    int applied[4]; /* crop - border, top/right/bottom/left, that custom_frame_extents holds */
+    gboolean x11_fullscreen;
 } FrameState;
 
 typedef struct {
@@ -78,9 +88,48 @@ static MetaWaylandSurface* window_surface(MetaWindow* window) {
     return surface && META_IS_WAYLAND_XDG_TOPLEVEL(surface->role) ? surface : NULL;
 }
 
+/* An Xwayland window that gets a Gnoblin frame: a managed toplevel of a type that has a titlebar.
+ * Override-redirect menus, tooltips, docks and splash screens never do. */
+gboolean meta_gnoblin_window_frame_x11_supported(MetaWindow* window) {
+#ifdef HAVE_XWAYLAND
+    if (window->client_type != META_WINDOW_CLIENT_TYPE_X11 || window->override_redirect ||
+        window->unmanaging)
+        return FALSE;
+    switch (window->type) {
+    case META_WINDOW_NORMAL:
+    case META_WINDOW_DIALOG:
+    case META_WINDOW_MODAL_DIALOG:
+    case META_WINDOW_UTILITY:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+#else
+    return FALSE;
+#endif
+}
+
+static gboolean frame_supported(MetaWindow* window) {
+    return window_surface(window) != NULL || meta_gnoblin_window_frame_x11_supported(window);
+}
+
+/* Layout scale: logical pixels per surface unit. Xwayland actors keep their children in stage
+ * coordinates, so it is 1 for them. */
+static int window_scale(MetaWindow* window) {
+    if (META_IS_WINDOW_WAYLAND(window))
+        return meta_window_wayland_get_geometry_scale(window);
+    MetaWindowActor* actor = meta_window_actor_from_window(window);
+    return actor ? meta_window_actor_get_geometry_scale(actor) : 1;
+}
+
 static int effective_policy(MetaWindow* window, FrameState* state) {
     MetaWaylandSurface* surface;
     Decoration* decoration;
+
+    /* An X11 client has always asked the window manager for decorations, so an unset policy
+     * is "auto" there, as the KDE decoration object makes it for Wayland. */
+    if (!state->policy_set && meta_gnoblin_window_frame_x11_supported(window))
+        return 1;
 
     if (!state->policy_set && (surface = window_surface(window))) {
         decoration = g_object_get_data(G_OBJECT(surface->role), "gnoblin-decoration");
@@ -97,7 +146,14 @@ static int effective_policy(MetaWindow* window, FrameState* state) {
 static void request_configuration(MetaWindow* window) {
     g_autoptr(MetaWaylandWindowConfiguration) configuration = NULL;
     MtkRectangle rect;
-    if (!window || window->unmanaging || !window_surface(window))
+    if (!window || window->unmanaging)
+        return;
+    /* An Xwayland window has no client to acknowledge a configure: its layout is exact at once. */
+    if (meta_gnoblin_window_frame_x11_supported(window)) {
+        meta_gnoblin_window_frame_x11_update(window);
+        return;
+    }
+    if (!window_surface(window))
         return;
     /* xdg-decoration requests can arrive before the first client commit.
      * Mutter's initial configure consumes the saved frame state; sending an
@@ -173,9 +229,9 @@ void meta_gnoblin_window_frame_surface_role_assigned(MetaWaylandSurface* surface
 gboolean meta_gnoblin_window_frame_set(MetaWindow* window, GVariant* policy, GError** error) {
     int values[9];
     FrameState* state;
-    if (!window_surface(window) || !g_variant_is_of_type(policy, G_VARIANT_TYPE("(iiiiiiiii)"))) {
+    if (!frame_supported(window) || !g_variant_is_of_type(policy, G_VARIANT_TYPE("(iiiiiiiii)"))) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "Frame policy requires a Wayland toplevel and nine integers");
+                            "Frame policy requires a toplevel window and nine integers");
         return FALSE;
     }
     for (int i = 0; i < 9; i++) {
@@ -189,8 +245,13 @@ gboolean meta_gnoblin_window_frame_set(MetaWindow* window, GVariant* policy, GEr
     state = frame_state(window);
     if (state->policy_set && state->policy == values[0] &&
         memcmp(state->requested.crop, values + 1, 4 * sizeof(int)) == 0 &&
-        memcmp(state->requested.border, values + 5, 4 * sizeof(int)) == 0)
+        memcmp(state->requested.border, values + 5, 4 * sizeof(int)) == 0) {
+        /* The rule engine runs on every window change. For Xwayland that is also how a state
+         * the layout depends on (fullscreen, a changed window type) reaches this code. */
+        if (meta_gnoblin_window_frame_x11_supported(window))
+            meta_gnoblin_window_frame_x11_update(window);
         return TRUE;
+    }
     state->policy_set = TRUE;
     state->policy = values[0];
     memcpy(state->requested.crop, values + 1, 4 * sizeof(int));
@@ -211,12 +272,9 @@ GVariant* meta_gnoblin_window_frame_get(MetaWindow* window) {
     g_variant_builder_init(&b, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&b, "{sv}", "native", g_variant_new_boolean(TRUE));
     g_variant_builder_add(&b, "{sv}", "presentation", meta_gnoblin_frame_renderer_status(window));
-    g_variant_builder_add(&b, "{sv}", "supported",
-                          g_variant_new_boolean(window_surface(window) != NULL));
+    g_variant_builder_add(&b, "{sv}", "supported", g_variant_new_boolean(frame_supported(window)));
     g_variant_builder_add(&b, "{sv}", "scale",
-                          g_variant_new_int32(window_surface(window)
-                                                  ? meta_window_wayland_get_geometry_scale(window)
-                                                  : 1));
+                          g_variant_new_int32(frame_supported(window) ? window_scale(window) : 1));
     g_variant_builder_add(&b, "{sv}", "mode", g_variant_new_int32(layout->mode));
     g_variant_builder_add(&b, "{sv}", "crop",
                           g_variant_new("(iiii)", layout->crop[0], layout->crop[1], layout->crop[2],
@@ -328,10 +386,204 @@ void meta_gnoblin_window_frame_sync_renderer(MetaWindow* window) {
         meta_gnoblin_frame_renderer_sync(window, &state->committed);
 }
 
+/* --- Xwayland windows ------------------------------------------------------------------------
+ *
+ * Mutter creates no X11 frame window. The client is a child of the root and a Wayland-style frame
+ * is drawn around it by the frame renderer, so the geometry follows the Wayland commit: the
+ * window's frame rect includes the server border, and custom_frame_extents (negative when the
+ * frame sticks out of the buffer) is what maps between the frame rect and the client rect. */
+
+#ifdef HAVE_XWAYLAND
+/* The border an Xwayland window with no frame yet is told about (_NET_REQUEST_FRAME_EXTENTS is
+ * asked before the window exists, so no rule has run). It follows the last border given out. */
+static MetaFrameBorder x11_default_border = {.left = 1, .right = 1, .top = 32, .bottom = 1};
+
+/* The client-declared visible bounds inside the buffer: the whole buffer, or what is left of it
+ * after _GTK_FRAME_EXTENTS, as xdg_surface.set_window_geometry gives for Wayland. */
+static void x11_refresh_client_geometry(MetaWindow* window, FrameState* state) {
+    MtkRectangle buffer;
+    MetaFrameBorder declared = {0};
+    meta_window_get_buffer_rect(window, &buffer);
+    if (state->has_declared)
+        declared = state->declared;
+    state->client_geometry =
+        (MtkRectangle){declared.left, declared.top, buffer.width - declared.left - declared.right,
+                       buffer.height - declared.top - declared.bottom};
+    if (state->client_geometry.width <= 0 || state->client_geometry.height <= 0)
+        state->client_geometry = (MtkRectangle){0};
+}
+
+/* A border change must keep the client where it is: the frame rect grows or shrinks outward, as a
+ * Wayland commit does. Apply the difference of crop - border to a frame rect. */
+static void x11_shift_rect(MtkRectangle* rect, const int before[4], const int after[4]) {
+    if (rect->width <= 0 && rect->height <= 0)
+        return;
+    const int top = after[0] - before[0], right = after[1] - before[1];
+    const int bottom = after[2] - before[2], left = after[3] - before[3];
+    rect->x += left;
+    rect->y += top;
+    rect->width -= left + right;
+    rect->height -= top + bottom;
+}
+#endif
+
+/**
+ * meta_gnoblin_window_frame_x11_update:
+ * @window: Xwayland window
+ *
+ * Compute the frame layout of an Xwayland window from its policy and its X11 hints, the way
+ * meta_gnoblin_window_frame_configure() does for an xdg toplevel, and make it the committed
+ * layout at once: an X11 client has nothing to acknowledge. Call it whenever an input of the
+ * layout changes (policy, decorations hint, window type, fullscreen, declared extents).
+ */
+void meta_gnoblin_window_frame_x11_update(MetaWindow* window) {
+#ifdef HAVE_XWAYLAND
+    FrameState* state;
+    MetaGnoblinFrameLayout layout = {.mode = 1};
+    MetaFrameBorder declared = {0};
+    MetaFrameBorder extents;
+    int wanted[4];
+    int previous[4];
+    gboolean border_moved;
+    gboolean floating_moved = FALSE;
+
+    if (window->client_type != META_WINDOW_CLIENT_TYPE_X11)
+        return;
+    state = frame_state(window);
+    const gboolean fullscreen = meta_window_is_fullscreen(window);
+
+    if (meta_gnoblin_window_frame_x11_supported(window)) {
+        const int policy = effective_policy(window, state);
+        /* Decorations the client left to the window manager: no MWM hints, or hints that keep
+         * them, on a normal window. MWM_DECOR_BORDER alone (input method popups) is not a request
+         * for a titlebar. */
+        const gboolean asked_for_server_frame = window->decorated && !window->border_only;
+        if (policy != 0 && policy != 3 && (policy == 2 || asked_for_server_frame))
+            layout.mode = 2;
+        if (!fullscreen &&
+            (layout.mode == 2 || policy == 3 ||
+             (policy == 2 && (state->requested.crop[0] || state->requested.crop[1] ||
+                              state->requested.crop[2] || state->requested.crop[3])))) {
+            memcpy(layout.border, state->requested.border, sizeof layout.border);
+            if (layout.mode != 2)
+                memcpy(layout.crop, state->requested.crop, sizeof layout.crop);
+        }
+    }
+
+    x11_refresh_client_geometry(window, state);
+    if (state->client_geometry.width > 0 &&
+        (layout.crop[1] + layout.crop[3] >= state->client_geometry.width ||
+         layout.crop[0] + layout.crop[2] >= state->client_geometry.height))
+        memset(layout.crop, 0, sizeof layout.crop);
+    state->changed |= memcmp(&layout, &state->committed, sizeof layout) != 0;
+    state->committed = layout;
+    if (layout.border[0] || layout.border[1] || layout.border[2] || layout.border[3])
+        x11_default_border = (MetaFrameBorder){.left = layout.border[3],
+                                               .right = layout.border[1],
+                                               .top = layout.border[0],
+                                               .bottom = layout.border[2]};
+
+    /* The same arithmetic as a Wayland commit: the frame sticks out of the buffer by the border
+     * and is cut back by the crop, on top of what the client declared. */
+    for (int i = 0; i < 4; i++)
+        wanted[i] = layout.crop[i] - layout.border[i];
+    if (state->has_declared)
+        declared = state->declared;
+    extents = (MetaFrameBorder){.left = declared.left + wanted[3],
+                                .right = declared.right + wanted[1],
+                                .top = declared.top + wanted[0],
+                                .bottom = declared.bottom + wanted[2]};
+    memcpy(previous, state->applied, sizeof previous);
+    border_moved = memcmp(previous, wanted, sizeof wanted) != 0;
+    const gboolean extents_moved =
+        memcmp(&window->custom_frame_extents, &extents, sizeof extents) != 0;
+    /* Entering or leaving fullscreen changes the border while the frame rects (saved sizes and
+     * the rect the window returns to) stay valid as they are; only a border change on a window
+     * that keeps its state moves them. */
+    const gboolean state_transition = fullscreen != state->x11_fullscreen;
+    state->x11_fullscreen = fullscreen;
+
+    if (extents_moved || border_moved) {
+        MtkRectangle rect;
+        window->custom_frame_extents = extents;
+        memcpy(state->applied, wanted, sizeof wanted);
+        if (border_moved && !state_transition) {
+            x11_shift_rect(&window->unconstrained_rect, previous, wanted);
+            x11_shift_rect(&window->saved_rect, previous, wanted);
+            if (meta_window_config_is_floating(window->config)) {
+                rect = meta_window_config_get_rect(window->config);
+                x11_shift_rect(&rect, previous, wanted);
+                meta_window_config_update_rect(window->config, rect);
+                floating_moved = TRUE;
+            }
+        }
+        if (meta_window_is_ready(window) && !window->unmanaging) {
+            meta_window_queue(window, META_QUEUE_MOVE_RESIZE);
+            if (floating_moved) {
+                g_signal_emit_by_name(window, "position-changed");
+                g_signal_emit_by_name(window, "size-changed");
+            }
+            if (window->known_to_compositor)
+                meta_compositor_sync_window_geometry(window->display->compositor, window, FALSE);
+        }
+    }
+    if ((extents_moved || border_moved || state->changed) && !window->unmanaging &&
+        meta_window_get_compositor_private(window))
+        meta_gnoblin_window_frame_sync_renderer(window);
+    meta_gnoblin_window_frame_emit_changed(window);
+#endif
+}
+
+/**
+ * meta_gnoblin_window_frame_x11_set_declared_extents:
+ * @window: Xwayland window
+ * @extents: (nullable): invisible margins from _GTK_FRAME_EXTENTS, or %NULL when the client
+ *   declares none
+ *
+ * The client's own declaration of how much of its buffer is shadow, like the window geometry of
+ * an xdg surface. Recomputes custom_frame_extents.
+ */
+void meta_gnoblin_window_frame_x11_set_declared_extents(MetaWindow* window,
+                                                        const MetaFrameBorder* extents) {
+    FrameState* state = frame_state(window);
+    state->has_declared = extents != NULL;
+    state->declared = extents ? *extents : (MetaFrameBorder){0};
+    meta_gnoblin_window_frame_x11_update(window);
+}
+
+/**
+ * meta_gnoblin_window_frame_x11_get_border:
+ * @window: (nullable): Xwayland window, or %NULL for a window that is not managed yet
+ * @border: (out): server border in logical pixels
+ *
+ * Returns: whether the border is not empty
+ */
+gboolean meta_gnoblin_window_frame_x11_get_border(MetaWindow* window, MetaFrameBorder* border) {
+#ifdef HAVE_XWAYLAND
+    FrameState* state = window ? g_object_get_data(G_OBJECT(window), "gnoblin-frame") : NULL;
+    if (!window) {
+        *border = x11_default_border;
+    } else if (state && meta_gnoblin_window_frame_x11_supported(window)) {
+        *border = (MetaFrameBorder){.left = state->committed.border[3],
+                                    .right = state->committed.border[1],
+                                    .top = state->committed.border[0],
+                                    .bottom = state->committed.border[2]};
+    } else {
+        *border = (MetaFrameBorder){0};
+    }
+    return border->left || border->right || border->top || border->bottom;
+#else
+    *border = (MetaFrameBorder){0};
+    return FALSE;
+#endif
+}
+
 void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surface) {
     FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
     if (!state)
         return;
+    if (meta_gnoblin_window_frame_x11_supported(window))
+        x11_refresh_client_geometry(window, state);
     /* Negotiated SSD owns one outer shape through the frame renderer. The
      * window rule extends the client-surface clip by the frame extents and
      * forces it, so square client content takes that same outer rounded shape
@@ -367,8 +619,7 @@ void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surf
                                effect_geometry.x + effect_geometry.width,
                                effect_geometry.y + effect_geometry.height};
     meta_gnoblin_window_effects_set_rounded_clip_geometry(
-        surface, has_effect_geometry ? effect_bounds : NULL,
-        meta_window_wayland_get_geometry_scale(window));
+        surface, has_effect_geometry ? effect_bounds : NULL, window_scale(window));
     meta_gnoblin_frame_renderer_sync(window, &state->committed);
 }
 
@@ -428,7 +679,7 @@ gboolean meta_gnoblin_window_frame_get_effect_geometry(MetaWindow* window, MtkRe
  * Configuration bridge only; all presentation and input live in native code.
  */
 void meta_gnoblin_window_frame_style(MetaWindow* window, GVariant* options) {
-    if (!window_surface(window) || !g_variant_is_of_type(options, G_VARIANT_TYPE_VARDICT))
+    if (!frame_supported(window) || !g_variant_is_of_type(options, G_VARIANT_TYPE_VARDICT))
         return;
     double radius = 0, exponent = 2;
     g_variant_lookup(options, "radius", "d", &radius);

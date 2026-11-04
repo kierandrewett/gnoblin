@@ -4,6 +4,7 @@
 #include "backends/meta-backend-private.h"
 #include "clutter/clutter-pango.h"
 #include "compositor/meta-surface-actor.h"
+#include "compositor/meta-window-actor-private.h"
 #include "compositor/meta-gnoblin-window-effects.h"
 #include "config.h"
 #include "core/window-private.h"
@@ -766,7 +767,10 @@ static void update_frame(Frame* frame) {
     const char *name = "native", *style = "default", *bg = "#242424", *fg = "#eeeeee";
     GVariant* options = g_object_get_data(G_OBJECT(frame->window), "gnoblin-frame-style");
     Renderer* renderer;
-    int scale = meta_window_wayland_get_geometry_scale(frame->window);
+    /* The actor's child scale: the Wayland surface scale, or 1 for an Xwayland window, whose
+     * rects are already in stage pixels. */
+    MetaWindowActor* window_actor = meta_window_actor_from_window(frame->window);
+    int scale = window_actor ? meta_window_actor_get_geometry_scale(window_actor) : 1;
     int* b = frame->layout.border;
     double outline_width = 0;
     double outline_radius = 0;
