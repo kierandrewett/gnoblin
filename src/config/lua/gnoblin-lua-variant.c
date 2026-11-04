@@ -276,6 +276,10 @@ static char* record_arity_error(const LuaApiEntry* entry, const LuaApiArg* argum
         return g_strdup_printf("%s takes %d number%s", label, required, required == 1 ? "" : "s");
     case LUA_ARG_STRING: {
         g_autofree char* words = field_words(arguments->field);
+        if (arguments[1].kind == LUA_ARG_ANY) {
+            g_autofree char* value_words = field_words(arguments[1].field);
+            return g_strdup_printf("%s takes a %s and a %s", label, words, value_words);
+        }
         return g_strdup_printf("%s requires a %s", label, words);
     }
     case LUA_ARG_POSITIVE_INTEGER: {
@@ -288,6 +292,7 @@ static char* record_arity_error(const LuaApiEntry* entry, const LuaApiArg* argum
         return g_strdup_printf("%s takes a workspace and optional options", label);
     case LUA_ARG_MONITOR:
         return g_strdup_printf("%s takes an Output or a monitor ID", label);
+    case LUA_ARG_ANY:
     case LUA_ARG_OPTION_BOOLEAN:
     case LUA_ARG_END:
         break;
@@ -358,6 +363,9 @@ static int pack_record_arguments(lua_State* state, const LuaApiEntry* entry, int
             break;
         case LUA_ARG_MONITOR:
             valid = lua_push_monitor_id(state, index);
+            break;
+        case LUA_ARG_ANY:
+            valid = !lua_isnil(state, index);
             break;
         case LUA_ARG_OPTION_BOOLEAN: {
             if (index > supplied + 1 || lua_isnil(state, index))
@@ -452,9 +460,10 @@ static int lua_record_method(lua_State* state) {
         return lua_window_grant_operation(state, config, method, id, begin_resize ? 3 : 2, edge);
     }
     if (operation->id == GNOBLIN_OP_WINDOW_SET_EFFECT) {
-        /* Returns an Override, not the Operation (gnoblin-lua-state-queries.c). */
-        if (supplied != 2)
-            return luaL_error(state, "window:set_effect takes an effect name and a value");
+        /* Returns an Override, not the Operation (gnoblin-lua-state-queries.c). The schema in
+         * lua_api[] checks the arity and that a name and a value are given; the effect and its
+         * value are checked against the rules in lua_window_set_effect. */
+        pack_record_arguments(state, entry, supplied, arguments);
         return lua_window_set_effect(state, config, id, 2, 3);
     }
     if (operation->id == GNOBLIN_OP_ANIMATION_INSPECT ||

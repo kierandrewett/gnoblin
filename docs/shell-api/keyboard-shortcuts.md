@@ -215,7 +215,7 @@ gnoblin.once("gnoblin.window.focused", function()
     local operation = gnoblin.shortcuts.capture({timeout = 10})
     operation:on_complete(function(value, err)
         if err then
-            print("Shortcut capture failed: " .. err)
+            print("Shortcut capture failed: " .. err.message)
         else
             print(value.accelerator)
         end

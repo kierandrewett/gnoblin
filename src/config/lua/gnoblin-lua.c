@@ -126,7 +126,8 @@ const LuaApiEntry lua_api[] = {
      ARGS({"reset", LUA_ARG_CONSTANT_TRUE})},
     {"Window:inspect_animation", OPERATION(ANIMATION_INSPECT), NULL},
     {"Window:preview_animation", OPERATION(ANIMATION_PREVIEW), NULL},
-    {"Window:set_effect", OPERATION(WINDOW_SET_EFFECT), NULL},
+    {"Window:set_effect", OPERATION(WINDOW_SET_EFFECT), NULL, FALSE,
+     ARGS({"name", LUA_ARG_STRING}, {"value", LUA_ARG_ANY})},
     {"Window:on", NULL, lua_object_on},
     {"Window:watch", NULL, lua_object_watch},
 

@@ -76,9 +76,9 @@ then play from there:
 
 ```lua
 gnoblin.on("gnoblin.window.created", function(event)
-    local request = event.window:preview_animation("gnome-open", "open")
+    local operation = event.window:preview_animation("gnome-open", "open")
 
-    request:on_complete(function(preview, error)
+    operation:on_complete(function(preview, error)
         if error then
             print(error.message)
             return

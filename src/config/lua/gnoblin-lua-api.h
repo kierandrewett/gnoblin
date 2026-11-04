@@ -34,6 +34,8 @@ typedef enum {
     LUA_ARG_OPTION_BOOLEAN,
     /* Takes no argument; the field is true. */
     LUA_ARG_CONSTANT_TRUE,
+    /* Any value but nil. */
+    LUA_ARG_ANY,
 } LuaApiArgKind;
 
 typedef struct {

@@ -129,6 +129,8 @@ def argument_schemas():
     text = TABLE.read_text()
     block = text[text.index("const LuaApiEntry lua_api[] = {") :]
     block = block[: block.index("{NULL, NULL, NULL}")]
+    # clang-format wraps a long entry onto a second line; read it as one.
+    block = re.sub(r",\n\s+(ARGS\(|lua_no_arguments)", r", \1", block)
     schemas = {}
     for match in re.finditer(r'^\s*\{"([A-Za-z_.:]+)",[^\n]*?(ARGS\((.*)\)|lua_no_arguments)\},', block, re.M):
         kinds = re.findall(r"LUA_ARG_(\w+)", match.group(3) or "")
