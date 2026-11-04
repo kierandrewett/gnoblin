@@ -125,8 +125,6 @@
 15-preferences/0012-configure-titlebar-button-layout.patch
 14-input-settings/0012-lua-tablet-output-mapping.patch
 29-privacy-screen/0001-lua-privacy-screen-settings-override.patch
-29-privacy-screen/0002-export-privacy-settings-to-tests.patch
-29-privacy-screen/0003-lua-privacy-screen-runtime-override.patch
 15-preferences/0013-gnoblin-new-window-placement.patch
 24-shortcuts/0008-validate-handler-backed-actions.patch
 24-shortcuts/0009-flush-keybindings-before-shortcuts.patch
