@@ -452,5 +452,5 @@ Three layers, each usable alone:
 - The preview session API (`preview`, `seek`, `step`, `play`, `pause`, `stop`) and `inspect` stay separate from tweens.
   In Lua they are `inspect_animation` and `preview_animation` on `Window` and `LayerSurface`, and the methods of
   `AnimationPreview`. They appear to inspect a configured animation on a visible target, not to run a user-owned
-  animation, but that is not verified. Check the lifecycle in `patches/mutter/99-typed-window-api/0024-native-animation-runtime.patch` before
+  animation, but that is not verified. Check the lifecycle in `patches/mutter/26-animation/0001-native-animation-runtime.patch` before
   merging any of it with tweens. Runtime tweens are a separate, additive capability.

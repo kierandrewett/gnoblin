@@ -121,12 +121,17 @@ Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
 configuration.
 
 Export a committed subproject change through `scripts/manage-patches.py` so its
-mail header uses the Gnoblin patch identity:
+mail header uses the Gnoblin patch identity. The export appends the patch to the
+project's `patches/<project>/series`, the file that orders the patches:
 
 ```sh
 scripts/manage-patches.py export mutter HEAD \
-  patches/mutter/90-example/0001-example.patch
+  patches/mutter/<NN>-<topic>/<NNNN>-<slug>.patch
+scripts/manage-patches.py check
 ```
+
+[`patches/README.md`](patches/README.md) describes the layout, how to insert or
+reorder a patch (`renumber`) and what `check` rejects.
 
 The source build patches Mutter and `xdg-desktop-portal-gnome`; it does not
 build or patch GNOME Shell. For uncommitted tracked changes, use
@@ -134,7 +139,8 @@ build or patch GNOME Shell. For uncommitted tracked changes, use
 For a patch that follows existing patches on the same lines, use a temporary
 subproject worktree. Apply the earlier patches, stage that state as the baseline,
 make the new edit, then export with `--source-tree WORKTREE --against-index`.
-The `apply-patches` step (`cmake/source-step.cmake`) checks every patch header before use.
+The `apply-patches` step (`cmake/source-step.cmake`) runs `scripts/manage-patches.py check`, then applies the patches in
+series order.
 
 ## Packaging
 

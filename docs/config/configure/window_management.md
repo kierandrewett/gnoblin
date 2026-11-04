@@ -153,7 +153,7 @@ Mutter's standard policy has two choices.
   them.
 
 In a Gnoblin session, `"prevent"` makes Mutter use its focus-stealing checks.
-See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
+See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/09-focus-activation/0001-honour-app-activation.patch)
 for this session-specific behavior.
 See the [focus prevention guide](/shell-api/focus-activation) for a ready-to-use config
 example.

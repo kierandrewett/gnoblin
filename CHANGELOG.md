@@ -4,6 +4,12 @@
 
 ### Changed
 
+- `patches/` is organised into topic directories (`patches/mutter/<NN>-<topic>/<NNNN>-<slug>.patch`) with dense numbers,
+  and each patch project has a `series` file that is the only source of apply order. The patch bodies, their order and
+  the patched trees are unchanged (`design/patches-layout-mapping.tsv` maps old paths to new). CMake, the Nix package,
+  `scripts/check-build-deps.py`, `scripts/list-tarball-sources.sh` and the tests read the series instead of sorting a
+  glob. `scripts/manage-patches.py check` now fails when a patch file is missing from its series or the series names
+  a missing file, and `renumber` and `path` are new. `patches/README.md` describes the layout.
 - One table of wire operations (`src/control/gnoblin-api-operations.h`, round 2; no wire change, API stays 1.92).
   The version gates and their errors, the hello method list, the `gnoblinctl` minors, the supervisor packet flags and
   the compositor dispatch read it instead of repeating names in chains. Record methods of `lua_api[]` declare their
