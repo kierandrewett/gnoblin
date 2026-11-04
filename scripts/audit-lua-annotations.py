@@ -8,7 +8,10 @@ table and the LuaCATS annotations that scripts/gen-lua-api.py collects, and repo
   * an annotated function of the gnoblin global or of a record class that the runtime does not
     install, unless it is installed by hand (STRUCTURAL below), and
   * a method of a class that is built by hand outside lua_api[] (HAND_BUILT below) that is
-    annotated but not listed, listed but not annotated, or listed but not in the C source.
+    annotated but not listed, listed but not annotated, or listed but not in the C source, and
+  * a name in the console's call table (src/cli/gnoblinctl-lua-api.c) that lua_api[] does not
+    hold, and a wire operation of lua_api[] on a record that the console builds but that the
+    console has no method for.
 
 A record class is every class that has an annotated `Class:method`; the annotations are the one
 declaration, so a new class needs no entry here.
@@ -70,6 +73,27 @@ STRUCTURAL = {
 }
 
 
+# The console (`gnoblinctl lua`) reads lua_api[] for the names. Its own implementations are in
+# the call tables of this file; every other name raises the "no runtime" error. The records the
+# console builds have the wire operations below as methods, so each one needs a console method,
+# except the ones that only a runtime can run.
+CONSOLE = ROOT / "src/cli/gnoblinctl-lua-api.c"
+CONSOLE_RECORD_CLASSES = {
+    "Window",
+    "Workspace",
+    "LayerSurface",
+    "Output",
+    "AnimationPreview",
+    "InputSource",
+    "Shortcut",
+    "Launch",
+}
+CONSOLE_RUNTIME_ONLY = {
+    "Window:present",  # focuses a window of a process that the runtime started
+    "Window:set_effect",  # an override ends with the runtime that holds it
+}
+
+
 def load_generator():
     spec = importlib.util.spec_from_file_location("gen_lua_api", ROOT / "scripts/gen-lua-api.py")
     module = importlib.util.module_from_spec(spec)
@@ -85,6 +109,49 @@ def installed_paths():
     for path in re.findall(r'\{"([A-Za-z_.:]+)",', block):
         paths.add(path if ":" in path else "gnoblin." + path)
     return paths
+
+
+def lua_api_entries():
+    """Each lua_api[] entry as (path, has_operation, has_function)."""
+    text = TABLE.read_text()
+    block = text[text.index("const LuaApiEntry lua_api[] = {") :]
+    block = block[: block.index("{NULL, NULL, NULL}")]
+    entries = []
+    for match in re.finditer(r'\{"([A-Za-z_.:]+)",\s*(NULL|"[\w.]+"),\s*(NULL|\w+)', block):
+        entries.append((match.group(1), match.group(2) != "NULL", match.group(3) != "NULL"))
+    return entries
+
+
+def console_table(name):
+    """The paths in one `static const ... name[] = {...};` table of the console's source."""
+    text = CONSOLE.read_text()
+    start = text.index(f"{name}[] = {{")
+    body = text[start : text.index("};", start)]
+    return re.findall(r'\{"([A-Za-z_.:]+)",', body)
+
+
+def console_problems(structural):
+    problems = []
+    entries = lua_api_entries()
+    functions = {path for path, _op, _fn in entries if ":" not in path}
+    methods = {path for path, _op, _fn in entries if ":" in path}
+    for path in console_table("console_functions"):
+        if path not in functions:
+            problems.append(f"console function is not in lua_api[]: {path}")
+    for path in console_table("console_extras"):
+        if "gnoblin." + path not in structural:
+            problems.append(f"console extra is not a structural name: {path}")
+    implemented = set(console_table("console_methods"))
+    for path in sorted(implemented - methods):
+        problems.append(f"console method is not in lua_api[]: {path}")
+    for path, has_operation, has_function in entries:
+        owner = path.split(":")[0]
+        if ":" not in path or owner not in CONSOLE_RECORD_CLASSES:
+            continue
+        if has_operation and not has_function and path not in implemented:
+            if path not in CONSOLE_RUNTIME_ONLY:
+                problems.append(f"console has no method for the wire operation {path}")
+    return problems
 
 
 def hand_built_problems(annotated):
@@ -117,7 +184,8 @@ def main():
         if owner == "gnoblin" and path.startswith("gnoblin.") or owner in record_classes:
             problems.append(f"annotated but not installed: {path}")
     problems += hand_built_problems(annotated)
-    print(f"{len(problems)} mismatches between lua_api[] and the annotations")
+    problems += console_problems(STRUCTURAL)
+    print(f"{len(problems)} mismatches between lua_api[], the annotations and the console")
     for problem in problems:
         print(problem)
     return 1 if problems else 0

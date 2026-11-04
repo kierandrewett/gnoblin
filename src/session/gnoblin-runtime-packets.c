@@ -132,6 +132,8 @@ void runtime_reload_finish(Runtime* runtime, gboolean commit, const char* messag
     if (!reload)
         return;
     runtime->pending_reload = NULL;
+    if (!commit)
+        gnoblin_config_reload_in_flight(FALSE); /* the old runtime stays */
     gnoblin_config_finish_deferred_load(commit);
     if (commit) {
         gboolean recovered_snapshot = reload->startup && runtime->recovery_snapshot;
@@ -255,14 +257,30 @@ gboolean runtime_reload_timeout(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+/* Whether an operation that the compositor has not completed holds the reload back. A playing
+ * tween does not: the compositor stops it when the new configuration takes effect. */
+static gboolean runtime_operations_block_reload(Runtime* runtime) {
+    GHashTableIter iter;
+    gpointer key;
+    g_hash_table_iter_init(&iter, runtime->pending_operation_ids);
+    while (g_hash_table_iter_next(&iter, &key, NULL))
+        if (!gnoblin_config_operation_survives_reload(*(guint64*)key))
+            return TRUE;
+    return FALSE;
+}
+
 static gboolean runtime_reload_progress(gpointer user_data) {
     Runtime* runtime = user_data;
     runtime->reload_progress_id = 0;
     RuntimeReload* reload = runtime->pending_reload;
     if (!reload || runtime->failed)
         return G_SOURCE_REMOVE;
-    if (g_hash_table_size(runtime->pending_operation_ids) != 0 ||
-        !g_queue_is_empty(&runtime->policy_events) ||
+    /* The compositor has the candidate configuration. The completion of a playing tween that its
+     * commit stops arrives before the acknowledgement and schedules this again: send nothing
+     * twice, because the compositor rejects a second packet for one generation. */
+    if (reload->sent)
+        return G_SOURCE_REMOVE;
+    if (runtime_operations_block_reload(runtime) || !g_queue_is_empty(&runtime->policy_events) ||
         gnoblin_config_runtime_pending_operations() != 0)
         return G_SOURCE_REMOVE;
     g_autoptr(GVariant) active_document = gnoblin_config_current_document();
@@ -277,6 +295,7 @@ static gboolean runtime_reload_progress(gpointer user_data) {
         return G_SOURCE_REMOVE;
     }
     reload->sent = TRUE;
+    gnoblin_config_reload_in_flight(TRUE);
     return G_SOURCE_REMOVE;
 }
 

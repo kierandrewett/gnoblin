@@ -174,8 +174,9 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error) {
         g_ptr_array_set_size(config->runtime_actions, action_start);
         config->dispatching = TRUE;
         config->rejecting_operations = TRUE;
-        const char* reason =
-            error && *error ? (*error)->message : "deferred callback configuration was rejected";
+        g_autofree char* reason = g_strdup(error && *error ? (*error)->message
+                                                           : "deferred callback configuration "
+                                                             "was rejected");
         for (guint i = 0; i < dropped->len; i++)
             fail_dropped_operation(runtime, g_ptr_array_index(dropped, i), reason);
         config->rejecting_operations = FALSE;
@@ -184,6 +185,9 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error) {
         set_document(state, runtime->document);
         finish_configure_operations(state, config, FALSE, reason);
         g_clear_pointer(&runtime->pending_document, g_variant_unref);
+        /* The rejection reached the Operation of every configure call that it covered. The
+         * caller treats an error as a failed callback and logs it, so leave none. */
+        g_clear_error(error);
         return NULL;
     }
 
@@ -737,12 +741,40 @@ GVariant* gnoblin_config_drain_runtime_operations(void) {
     return g_variant_ref_sink(g_variant_builder_end(&operations));
 }
 
+/* Whether the Operation at registry `reference` is a tween's play. */
+static gboolean operation_is_tween_play(lua_State* state, gpointer reference) {
+    lua_rawgeti(state, LUA_REGISTRYINDEX, GPOINTER_TO_INT(reference));
+    lua_getfield(state, -1, "method");
+    gboolean play = g_strcmp0(lua_tostring(state, -1), "tween.play") == 0;
+    lua_pop(state, 2);
+    return play;
+}
+
 guint gnoblin_config_runtime_pending_operations(void) {
     if (!active_runtime)
         return 0;
 
-    return g_hash_table_size(active_runtime->config.operations) +
-           (active_runtime->config.deferred_callbacks
-                ? active_runtime->config.deferred_callbacks->len
-                : 0);
+    guint pending = 0;
+    GHashTableIter iter;
+    gpointer reference;
+    g_hash_table_iter_init(&iter, active_runtime->config.operations);
+    while (g_hash_table_iter_next(&iter, NULL, &reference))
+        if (!operation_is_tween_play(active_runtime->state, reference))
+            pending++;
+    return pending + (active_runtime->config.deferred_callbacks
+                          ? active_runtime->config.deferred_callbacks->len
+                          : 0);
+}
+
+gboolean gnoblin_config_operation_survives_reload(guint64 operation_id) {
+    if (!active_runtime || operation_id > G_MAXINT64)
+        return FALSE;
+    g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, (gint64)operation_id);
+    gpointer reference = g_hash_table_lookup(active_runtime->config.operations, key);
+    return reference && operation_is_tween_play(active_runtime->state, reference);
+}
+
+void gnoblin_config_reload_in_flight(gboolean in_flight) {
+    if (active_runtime)
+        active_runtime->config.reload_in_flight = in_flight;
 }

@@ -55,11 +55,13 @@ under its session ID.
 
 ## Create and change workspaces
 
-| Method                                      | Arguments                      | Successful result            |
-| ------------------------------------------- | ------------------------------ | ---------------------------- |
-| `gnoblin.workspaces.create(name, options?)` | Name; options `id`, `activate` | New `Workspace` record       |
-| `gnoblin.workspaces.next()`                 | None                           | Activated `Workspace` record |
-| `gnoblin.workspaces.previous()`             | None                           | Activated `Workspace` record |
+| Method                                      | Arguments                      | Successful result     |
+| ------------------------------------------- | ------------------------------ | --------------------- |
+| `gnoblin.workspaces.create(name, options?)` | Name; options `id`, `activate` | New `Workspace`       |
+| `gnoblin.workspaces.next()`                 | None                           | Activated `Workspace` |
+| `gnoblin.workspaces.previous()`             | None                           | Activated `Workspace` |
+
+Each result is the same `Workspace` object that `gnoblin.workspaces.by_id(id)` returns, so the two compare equal.
 
 Change one workspace through its object, and move a window with
 `window:move_to_workspace(workspace, options?)`. A workspace argument there is a

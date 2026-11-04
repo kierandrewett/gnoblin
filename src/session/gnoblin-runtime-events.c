@@ -7,6 +7,11 @@ static gboolean commit_event_result(Runtime* runtime, GVariant* document, GError
     if (!document)
         return TRUE;
     gnoblin_config_finish_event(TRUE);
+    /* The compositor has the candidate configuration of a reload, and the runtime that ran this
+     * event goes away with it. Its generation is stale to the compositor: send no document. This
+     * happens when the compositor stops a playing tween as it commits and reports the end. */
+    if (runtime->pending_reload && runtime->pending_reload->sent)
+        return TRUE;
     g_autoptr(GVariant) committed = gnoblin_config_current_document();
     if (!committed) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,

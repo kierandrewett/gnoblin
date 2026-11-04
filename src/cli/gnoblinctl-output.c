@@ -73,6 +73,7 @@ int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_grant(state);
     register_lua_cli_snap_context(state);
     register_lua_cli_text_target(state);
+    register_lua_cli_request(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_output_record(state);
@@ -136,10 +137,12 @@ int run_lua_console(Cli* cli, const char* file) {
         if (g_str_equal(line, ":quit") || g_str_equal(line, ":q"))
             break;
         if (g_str_equal(line, ":help")) {
-            g_print("Enter Lua expressions or statements. Use gnoblin.<area>.<method>{...} "
-                    "to call the typed session API.\n"
-                    "Example: =gnoblin.windows.list{focused = true}\n"
-                    "Calls use the running compositor's API validation. :quit exits.\n");
+            g_print("Enter Lua expressions or statements. The names and call shapes are those of "
+                    "a Lua configuration: gnoblin.<area>.<function>(arguments).\n"
+                    "Example: =gnoblin.find(\"Window\", {focused = true})\n"
+                    "Calls use the running compositor's API validation. Names that need a "
+                    "runtime, such as timers and processes, are not available here. :quit "
+                    "exits.\n");
             continue;
         }
         if (!evaluate_lua_line(state, line))

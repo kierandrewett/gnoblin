@@ -145,6 +145,19 @@ and gap 7 are done (see the end of this list).
   `closed`). `Process` has `alive` and `on("closed")`; the end signal is `closed`, not `exited`,
   so every object ends the same way, and `gnoblin.process.exited` stays the wire event. No wire
   change.
+- Console parity (audit items 4 and 5, console part), done. `gnoblinctl lua` reads `lua_api[]` for its names, so
+  the console has the Lua names and positional call shapes of a configuration: `gnoblin.find`,
+  `window:inspect_animation` and `preview_animation` (also on `LayerSurface`), positional
+  `SnapContext:commit`, `Window:move_to_workspace` and `move_to_monitor` with handles, a read-only
+  `gnoblin.config` and `ease` and `lerp`. `windows.list` and `layers.list` take no filter. A name that needs a
+  runtime (timers, processes, tweens, listeners, grabs, idle watches, overrides, `configure`) raises one
+  "not available in gnoblinctl lua because the console has no runtime" error. The generic one-table call, the
+  `removed[][]` tombstones and `location.authorize_app {...}` are gone; a location request carries
+  `event.request`, a `Request` with `answer` and `cancel`. `scripts/audit-lua-annotations.py` checks the console
+  table against `lua_api[]`. The socket dispatch (audit item 4) is not generated yet.
+  Three defects fixed with it: a reload no longer waits for a playing tween (the tween closes with
+  `config_reloaded`), `workspaces.create` resolves to the live `Workspace`, and a rejected `configure` in an
+  Operation callback fails only its Operation.
 - Gap 5, done. A throwing handler is logged with its event and stack and stays registered; the
   other handlers of the event still run. Before, `gnoblin.on` listeners and input handlers were
   disabled after one error (a listener by an `_active` flag, an input handler by removing it), and

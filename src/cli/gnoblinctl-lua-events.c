@@ -11,8 +11,6 @@ gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode*
     subscription->dispatching = TRUE;
     if (subscription->once)
         subscription->once_fired = TRUE;
-    if (JSON_NODE_HOLDS_OBJECT(event))
-        cli_lua_location_request_track(subscription, json_node_get_object(event));
     lua_rawgeti(state, LUA_REGISTRYINDEX, subscription->callback_ref);
     json_to_lua(state, event);
     if (JSON_NODE_HOLDS_OBJECT(event)) {
@@ -33,6 +31,9 @@ gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode*
         lua_setfield(state, -2, "focus_context");
         lua_pushnil(state);
         lua_setfield(state, -2, "menu_context");
+        /* A location authorization request is a Request that the script answers. */
+        if (lua_cli_push_request(state, subscription, object))
+            lua_setfield(state, -2, "request");
         if (token && *token) {
             lua_cli_push_grant(state, subscription, token, FALSE, NULL);
             lua_setfield(state, -2, "grant");
@@ -340,7 +341,7 @@ static gboolean cli_lua_is_owned_shortcut_event(const char* event_name) {
 
 int lua_cli_events_subscribe(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    gboolean once = lua_toboolean(state, lua_upvalueindex(2));
+    gboolean once = g_str_equal(lua_tostring(state, lua_upvalueindex(2)), "once");
     if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING ||
         lua_type(state, 2) != LUA_TFUNCTION)
         return luaL_error(state, "gnoblin.%s requires an event name and callback",
@@ -355,8 +356,6 @@ int lua_cli_events_subscribe(lua_State* state) {
     subscription->cli = cli;
     subscription->event_name = g_strndup(event_name, event_length);
     subscription->pending = g_string_new(NULL);
-    subscription->location_requests =
-        g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_free);
     subscription->callback_ref = LUA_NOREF;
     subscription->once = once;
     lua_pushvalue(state, 2);

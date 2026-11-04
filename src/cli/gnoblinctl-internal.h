@@ -6,6 +6,7 @@
 #include <gio/gunixsocketaddress.h>
 #include <glib-unix.h>
 #include "gnoblin-config.h"
+#include "gnoblin-lua-api.h"
 #include <json-glib/json-glib.h>
 #include <glib/gstdio.h>
 #include <lauxlib.h>
@@ -43,7 +44,6 @@ struct _CliLuaEventSubscription {
     Cli* cli;
     GSocketConnection* connection;
     GString* pending;
-    GHashTable* location_requests;
     char* event_name;
     int callback_ref;
     guint source_id;
@@ -55,10 +55,16 @@ struct _CliLuaEventSubscription {
     gboolean shortcut_owner;
     gboolean shortcut_owner_transport;
 };
+/* A location authorization request that a subscription received (Request in the Lua API). */
 typedef struct {
+    guint64 magic;
+    CliLuaEventSubscription* subscription;
+    gint64 request_id;
     gint64 expires_at_us;
     guint requested_accuracy;
-} CliLuaLocationRequest;
+    gboolean answered;
+} LuaCliRequest;
+#define LUA_CLI_REQUEST_MAGIC G_GUINT64_CONSTANT(0x474e4f4252455130)
 typedef struct {
     CliLuaEventSubscription* subscription;
 } LuaCliEventSubscriptionHandle;
@@ -131,6 +137,7 @@ typedef struct {
 #define GNOBLINCTL_GRANT_METATABLE "gnoblinctl.Grant"
 #define GNOBLINCTL_SNAP_CONTEXT_METATABLE "gnoblinctl.SnapContext"
 #define GNOBLINCTL_TEXT_TARGET_METATABLE "gnoblinctl.TextTarget"
+#define GNOBLINCTL_REQUEST_METATABLE "gnoblinctl.Request"
 
 /* Declarations shared between the split files. */
 extern const CommandSpec commands[];
@@ -198,12 +205,8 @@ void lua_cli_push_animation_preview_record(lua_State* state, Cli* cli, JsonObjec
                                            const char* session);
 JsonObject* lua_cli_table_object(lua_State* state, int index, const char* description);
 JsonObject* lua_cli_optional_options(lua_State* state, int index, const char* function);
-int lua_cli_animations_preview(lua_State* state);
-int lua_cli_animations_control(lua_State* state);
 int lua_cli_animations_list(lua_State* state);
 int lua_cli_animations_get(lua_State* state);
-int lua_cli_animations_inspect(lua_State* state);
-int lua_cli_animations_surfaces(lua_State* state);
 int lua_cli_launches_read(lua_State* state);
 int lua_cli_launches_begin(lua_State* state);
 LuaCliGrant* lua_cli_test_grant(lua_State* state, int index);
@@ -226,7 +229,7 @@ int lua_cli_workspace_tostring(lua_State* state);
 void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* object);
 int lua_cli_output_tostring(lua_State* state);
 int lua_cli_layer_surface_tostring(lua_State* state);
-void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object);
+void lua_cli_push_layer_surface_record(lua_State* state, Cli* cli, JsonObject* object);
 void lua_cli_push_input_record(lua_State* state, Cli* cli, JsonObject* object, gint64 revision,
                                gboolean is_device);
 int lua_cli_shortcuts_list(lua_State* state);
@@ -245,8 +248,9 @@ int lua_cli_layer_animation_policy(lua_State* state);
 void register_lua_cli_privacy_state_record(lua_State* state);
 int lua_cli_privacy_state(lua_State* state);
 int lua_cli_privacy_stop(lua_State* state);
-void cli_lua_location_request_track(CliLuaEventSubscription* subscription, JsonObject* event);
-int lua_cli_location_authorize_app(lua_State* state);
+gboolean lua_cli_push_request(lua_State* state, CliLuaEventSubscription* subscription,
+                              JsonObject* event);
+void register_lua_cli_request(lua_State* state);
 int lua_cli_runtime_reload_config(lua_State* state);
 int lua_cli_runtime_status(lua_State* state);
 int lua_cli_session_operation(lua_State* state);
@@ -311,9 +315,25 @@ gboolean render_settings(const char* command, const char* action, JsonNode* resu
 void print_help(const char* command, const char* action);
 void print_completion(const char* shell);
 
-#endif /* GNOBLINCTL_INTERNAL_H */
-
 int lua_cli_outputs_list(lua_State* state);
 int lua_cli_outputs_primary(lua_State* state);
 int lua_cli_outputs_by_id(lua_State* state);
 int lua_cli_outputs_renderer(lua_State* state);
+/* The console's call table (gnoblinctl-lua-api.c). */
+int lua_cli_not_available(lua_State* state);
+gboolean lua_cli_push_api_function(lua_State* state, Cli* cli, const char* path);
+void lua_cli_add_record_methods(lua_State* state, Cli* cli, const char* class_name);
+int lua_cli_wire_call(lua_State* state);
+int lua_cli_find(lua_State* state);
+int lua_cli_ease(lua_State* state);
+int lua_cli_lerp(lua_State* state);
+int lua_cli_window_method(lua_State* state);
+int lua_cli_window_visual(lua_State* state);
+int lua_cli_record_animation(lua_State* state);
+int lua_cli_workspace_method(lua_State* state);
+int lua_cli_animation_preview_method(lua_State* state);
+int lua_cli_input_source_select(lua_State* state);
+int lua_cli_shortcut_method(lua_State* state);
+int lua_cli_launch_finish(lua_State* state);
+
+#endif /* GNOBLINCTL_INTERNAL_H */

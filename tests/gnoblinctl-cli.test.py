@@ -122,11 +122,11 @@ def run_grant_cli_test(binary: str, build_directory: str) -> subprocess.Complete
             "    assert(snap.expires_at_us == nil)\n"
             '    assert(tostring(snap) == "SnapContext<window-1>")\n'
             '    assert(not pcall(function() snap.window_id = "forged" end))\n'
-            "    local target = {monitor_id = snap.monitor_id, frame = {x = 0, y = 0, width = 960, height = 1040}}\n"
             "    assert(not pcall(function() snap:commit({monitor_id = snap.monitor_id}) end))\n"
-            "    result = snap:commit(target)\n"
+            "    assert(not pcall(function() snap:commit(snap.monitor_id, 0, 0, 0, 1040) end))\n"
+            "    result = snap:commit(snap.monitor_id, 0, 0, 960, 1040)\n"
             "    assert(result.committed and result.window_id == window.id)\n"
-            "    assert(not pcall(function() snap:commit(target) end))\n"
+            "    assert(not pcall(function() snap:commit(snap.monitor_id, 0, 0, 960, 1040) end))\n"
             '    print("GRANT_SNAP_OK")\n'
             '  elseif event.action == "text" then\n'
             "    local original_metatable = debug.getmetatable(event.grant)\n"
@@ -782,21 +782,26 @@ def run_location_authorization_cli_test(binary: str, build_directory: str) -> su
             "local subscription\n"
             'subscription = gnoblin.on("gnoblin.location.authorization-requested", function(event)\n'
             '  assert(event.app_id == "org.example.App" and event.requested_accuracy == 6)\n'
-            "  local ok, err = pcall(function()\n"
-            "    gnoblin.location.authorize_app({request_id = event.request_id + 1, allow = false, accuracy = 0})\n"
-            "  end)\n"
-            '  assert(not ok and err:match("not received"), tostring(err))\n'
-            "  ok, err = pcall(function()\n"
-            "    gnoblin.location.authorize_app({request_id = event.request_id, allow = true, accuracy = 8})\n"
-            "  end)\n"
+            "  local request = event.request\n"
+            '  assert(request.id == event.request_id and request.kind == "location")\n'
+            '  assert(request.status == "pending" and request.requested_accuracy == 6)\n'
+            "  assert(not pcall(function() request.status = 'answered' end))\n"
+            "  local ok, err = pcall(function() return request.claim end)\n"
+            '  assert(not ok and err:match("has no claim method"), tostring(err))\n'
+            "  ok, err = pcall(request.finished, request)\n"
+            '  assert(not ok and err:match("not available in gnoblinctl lua"), tostring(err))\n'
+            "  ok, err = pcall(function() gnoblin.location.authorize_app({request_id = 1}) end)\n"
+            '  assert(not ok and err:match("not part of the Lua API"), tostring(err))\n'
+            "  ok, err = pcall(request.answer, request, true, 8)\n"
             '  assert(not ok and err:match("must not exceed"), tostring(err))\n'
-            "  local result = gnoblin.location.authorize_app({request_id = event.request_id, allow = true, accuracy = 5})\n"
+            "  ok, err = pcall(request.answer, request, false, 5)\n"
+            '  assert(not ok and err:match("0 when denied"), tostring(err))\n'
+            "  local result = request:answer(true, 5)\n"
             "  assert(result.request_id == event.request_id and result.submitted)\n"
             "  assert(not pcall(function() result.submitted = false end))\n"
-            "  ok, err = pcall(function()\n"
-            "    gnoblin.location.authorize_app({request_id = event.request_id, allow = false, accuracy = 0})\n"
-            "  end)\n"
-            '  assert(not ok and err:match("not received"), tostring(err))\n'
+            '  assert(request.status == "answered")\n'
+            "  ok, err = pcall(request.cancel, request)\n"
+            '  assert(not ok and err:match("already answered"), tostring(err))\n'
             '  print("LOCATION_AUTHORIZATION_OK")\n'
             "  subscription:unsubscribe()\n"
             "end)\n",
@@ -1277,9 +1282,9 @@ def main() -> int:
         'assert(type(gnoblin.shortcuts.bind) == "function")\n'
         'assert(type(gnoblin.shortcuts.list) == "function" and #gnoblin.shortcuts.list() == 0)\n'
         "local ok, err = pcall(function() return gnoblin.shortcuts.unbind end)\n"
-        'assert(not ok and err:match("use shortcut:unbind"), tostring(err))\n'
+        'assert(not ok and err:match("gnoblin.shortcuts.unbind is not part of the Lua API"), tostring(err))\n'
         "ok, err = pcall(function() return gnoblin.shortcuts.end_session end)\n"
-        'assert(not ok and err:match("use shortcut:end_session"), tostring(err))\n'
+        'assert(not ok and err:match("gnoblin.shortcuts.end_session is not part of the Lua API"), tostring(err))\n'
     )
     runtime_scope_result = run(
         binary,
@@ -1354,7 +1359,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(97):
+                    for _ in range(98):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1467,16 +1472,6 @@ def main() -> int:
                                         "revision": 5,
                                     }
                                 ]
-                            elif request["method"] == "animation.surfaces":
-                                result = {
-                                    "surfaces": [
-                                        {
-                                            "id": "42",
-                                            "namespace": "bingux-panel",
-                                            "title": "Panel",
-                                        }
-                                    ]
-                                }
                             elif request["method"] == "animation.list":
                                 result = {
                                     "animations": [
@@ -2367,7 +2362,7 @@ def main() -> int:
         }
         lua_file = Path(temporary) / "inspect.lua"
         lua_file.write_text(
-            "local windows = gnoblin.windows.list { focused = true }\n"
+            'local windows = gnoblin.find("Window", {focused = true})\n'
             'assert(#windows == 1 and windows[1].id == "42")\n'
             "local window = windows[1]\n"
             'assert(window.title == "Notes")\n'
@@ -2415,7 +2410,7 @@ def main() -> int:
             'assert(gnoblin.outputs.primary().id == "HDMI-1")\n'
             'assert(gnoblin.outputs.by_id("missing") == nil)\n'
             "local removed_ok, removed_error = pcall(function() return gnoblin.monitors.list end)\n"
-            'assert(not removed_ok and removed_error:match("use gnoblin.outputs.list"))\n'
+            'assert(not removed_ok and removed_error:match("gnoblin.monitors is not part of the Lua API"))\n'
             "local layers = gnoblin.layers.list()\n"
             'assert(#layers == 1 and layers[1].id == "surface-1")\n'
             "local layer = layers[1]\n"
@@ -2438,11 +2433,24 @@ def main() -> int:
             'assert(not pcall(function() layer.title = "changed" end))\n'
             "assert(not pcall(function() layer.missing = true end))\n"
             'assert(tostring(layer) == "LayerSurface<surface-1>")\n'
-            'local filtered_layers = gnoblin.layers.list { monitor_id = "HDMI-1", namespace = "panel:top", layer = "top" }\n'
+            'local filtered_layers = gnoblin.find("LayerSurface", {monitor_id = "HDMI-1", namespace = "panel:top", layer = "top"})\n'
             'assert(#filtered_layers == 1 and filtered_layers[1].id == "surface-1")\n'
-            'assert(not pcall(function() gnoblin.layers.list { app_id = "org.example.Panel" } end))\n'
-            "assert(not pcall(function() gnoblin.layers.list { layer = 2 } end))\n"
-            'assert(not pcall(function() gnoblin.layers.list { [1] = "top" } end))\n'
+            'assert(not pcall(function() gnoblin.layers.list { layer = "top" } end))\n'
+            "assert(not pcall(function() gnoblin.windows.list { focused = true } end))\n"
+            'assert(not pcall(function() gnoblin.find("LayerSurface", {app_id = "org.example.Panel"}) end))\n'
+            'assert(not pcall(function() gnoblin.find("LayerSurface", { [1] = "top" }) end))\n'
+            "local not_available, not_available_error = pcall(function() return gnoblin.timers.after(1) end)\n"
+            'assert(not not_available and not_available_error:match("gnoblin.timers.after is not available in gnoblinctl lua because the console has no runtime"), tostring(not_available_error))\n'
+            'assert(not pcall(function() return gnoblin.process.spawn({"true"}) end))\n'
+            "assert(not pcall(function() return gnoblin.tween() end))\n"
+            'assert(not pcall(function() window:set_effect("blur", true) end))\n'
+            'assert(not pcall(function() window:on("closed", print) end))\n'
+            "assert(not pcall(function() gnoblin.configure { cursor = { size = 30 } } end))\n"
+            "assert(not pcall(function() gnoblin.config.compositor = {} end))\n"
+            "assert(not pcall(function() return gnoblin.config.compositor end))\n"
+            "assert(not pcall(function() return gnoblin.snapshot() end))\n"
+            'assert(gnoblin.ease("linear", 0.5) == 0.5 and gnoblin.lerp(0, 10, 0.5) == 5.0)\n'
+            "assert(not pcall(function() gnoblin.windows.nonexistent() end))\n"
         )
         lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
         assert lua_api.returncode == 0, lua_api.stderr
@@ -2460,8 +2468,8 @@ def main() -> int:
         assert json.loads(unminimize.stdout) == {"id": "42"}
         animation_lua_file = Path(temporary) / "animation-preview.lua"
         animation_lua_file.write_text(
-            'local preview = gnoblin.animations.preview("gnoblin-window-open", '
-            '{event = "open", target_type = "window", target = "42", autoplay = false})\n'
+            'local window = gnoblin.windows.by_id("42")\n'
+            'local preview = window:preview_animation("gnoblin-window-open", "open", false)\n'
             'assert(tostring(preview) == "AnimationPreview<preview-17>")\n'
             'assert(preview.id == "preview-17" and preview.name == "gnoblin-window-open")\n'
             'assert(preview.event == "open" and preview.target == "42" and preview.target_type == "window")\n'
@@ -2481,7 +2489,12 @@ def main() -> int:
             'assert(stopped.ok and stopped.session == "preview-17")\n'
             "assert(not pcall(function() preview:seek(1.1) end))\n"
             "assert(not pcall(function() preview:step(0) end))\n"
-            "assert(not pcall(function() preview:play(true) end))\n",
+            "assert(not pcall(function() preview:play(true) end))\n"
+            "assert(not pcall(function() window:preview_animation() end))\n"
+            "assert(not pcall(function() window:preview_animation('x', 5) end))\n"
+            "assert(not pcall(function() return gnoblin.animations.preview end))\n"
+            "local on_ok, on_error = pcall(function() preview:on('closed', print) end)\n"
+            'assert(not on_ok and on_error:match("AnimationPreview:on is not available in gnoblinctl lua"), tostring(on_error))\n',
             encoding="utf-8",
         )
         animation_lua = run(binary, "--socket", socket_path, "lua", str(animation_lua_file))
@@ -2745,13 +2758,9 @@ def main() -> int:
         assert shortcut_capture_result.returncode == 0, shortcut_capture_result.stderr
         animation_surfaces_file = Path(temporary) / "animation-surfaces.lua"
         animation_surfaces_file.write_text(
-            "local snapshot = gnoblin.animations.surfaces()\n"
-            "local surface = snapshot.surfaces[1]\n"
-            'assert(surface.id == "42" and surface.namespace == "bingux-panel" and surface.title == "Panel")\n'
-            'assert(not pcall(function() surface.namespace = "changed" end))\n'
-            'assert(not pcall(function() rawset(surface, "namespace", "changed") end))\n'
-            "assert(not pcall(function() rawset(snapshot.surfaces, 1, {}) end))\n"
-            "assert(not pcall(function() gnoblin.animations.surfaces(true) end))\n",
+            "assert(not pcall(function() return gnoblin.animations.surfaces end))\n"
+            "assert(not pcall(function() return gnoblin.animations.inspect end))\n"
+            "assert(not pcall(function() return gnoblin.animations.seek end))\n",
             encoding="utf-8",
         )
         animation_surfaces_result = run(binary, "--socket", socket_path, "lua", str(animation_surfaces_file))
@@ -2786,12 +2795,13 @@ def main() -> int:
         assert invalid_policy_result.returncode == 0, invalid_policy_result.stderr
         animation_inspect_file = Path(temporary) / "animation-inspect.lua"
         animation_inspect_file.write_text(
-            'local inspection = gnoblin.animations.inspect("fade", {target = "active", event = "open", target_type = "window"})\n'
+            "local window = gnoblin.windows.focused()\n"
+            'local inspection = window:inspect_animation("fade", "open")\n'
             'assert(inspection.name == "fade" and inspection.event == "open" and inspection.target == "42")\n'
             'assert(inspection.spec.name == "fade" and inspection.context.window.id == "42")\n'
             'assert(not pcall(function() inspection.spec.event = "close" end))\n'
-            'assert(not pcall(function() gnoblin.animations.inspect("fade", {target = 42}) end))\n'
-            'assert(not pcall(function() gnoblin.animations.inspect("fade", {extra = true}) end))\n',
+            'assert(not pcall(function() window:inspect_animation("fade", 42) end))\n'
+            'assert(not pcall(function() window:inspect_animation("fade", "open", true) end))\n',
             encoding="utf-8",
         )
         animation_inspect_result = run(binary, "--socket", socket_path, "lua", str(animation_inspect_file))
@@ -2871,10 +2881,10 @@ def main() -> int:
             "assert(not pcall(function() lock.locked = true end))\n"
             'assert(not pcall(function() rawset(lock, "locked", true) end))\n'
             "local removed_ok, removed_error = pcall(function() return gnoblin.input.set_orientation_lock end)\n"
-            'assert(not removed_ok and removed_error:match("gnoblin.settings.override"))\n'
+            'assert(not removed_ok and removed_error:match("is not part of the Lua API"))\n'
             "local settings = gnoblin.settings\n"
             "local override_ok, override_error = pcall(function() return settings.override('input.orientation_lock', true) end)\n"
-            'assert(not override_ok and override_error:match("needs a configuration"))\n',
+            'assert(not override_ok and override_error:match("gnoblin.settings.override is not available in gnoblinctl lua because the console has no runtime"), tostring(override_error))\n',
             encoding="utf-8",
         )
         orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
@@ -2891,11 +2901,11 @@ def main() -> int:
             'assert(not pcall(function() initial.source = "runtime" end))\n'
             'assert(not pcall(function() rawset(initial, "source", "runtime") end))\n'
             "local removed_ok, removed_error = pcall(function() return gnoblin.outputs.set_privacy_screen end)\n"
-            'assert(not removed_ok and removed_error:match("gnoblin.settings.override"))\n'
+            'assert(not removed_ok and removed_error:match("is not part of the Lua API"))\n'
             "assert(hdmi.set_privacy_screen == nil and dp.set_privacy_screen == nil)\n"
             "assert(not pcall(function() hdmi:set_privacy_screen(true) end))\n"
             "local removed_ok, removed_error = pcall(function() return gnoblin.monitors.set_privacy_screen end)\n"
-            'assert(not removed_ok and removed_error:match("gnoblin.settings.override"))\n',
+            'assert(not removed_ok and removed_error:match("is not part of the Lua API"))\n',
             encoding="utf-8",
         )
         privacy_screen_result = run(binary, "--socket", socket_path, "lua", str(privacy_screen_file))
@@ -2929,8 +2939,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 97
-        assert len(subscriptions) == 97
+        assert len(received) == 98
+        assert len(subscriptions) == 98
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -2971,7 +2981,7 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
-        animation_calls = received[41:47]
+        animation_calls = received[42:48]
         assert [call["method"] for call in animation_calls] == [
             "animation.preview",
             "animation.seek",
@@ -3010,61 +3020,61 @@ def main() -> int:
         version_request = [call for call in received if call["method"] == "version"][-1]
         assert version_request["api_version"] == {"major": 1, "minor": 19}
         assert version_request["arguments"] == {}
-        assert received[47]["method"] == "input.devices"
-        assert received[47]["api_version"] == {"major": 1, "minor": 46}
-        assert received[47]["arguments"] == {}
-        assert received[48]["method"] == "input.sources"
+        assert received[48]["method"] == "input.devices"
         assert received[48]["api_version"] == {"major": 1, "minor": 46}
         assert received[48]["arguments"] == {}
-        assert received[49]["method"] == "input.current_source"
+        assert received[49]["method"] == "input.sources"
         assert received[49]["api_version"] == {"major": 1, "minor": 46}
         assert received[49]["arguments"] == {}
-        assert received[50]["method"] == "input.select"
-        assert received[50]["api_version"] == {"major": 1, "minor": 6}
-        assert received[50]["arguments"] == {"type": "xkb", "id": "us"}
-        assert received[51]["method"] == "shortcuts.list"
-        assert received[51]["api_version"] == {"major": 1, "minor": 40}
-        assert received[51]["arguments"] == {}
-        assert received[52]["method"] == "shortcuts.actions"
-        assert received[52]["api_version"] == {"major": 1, "minor": 41}
-        assert received[52]["arguments"] == {"group": "wm"}
-        assert received[53]["method"] == "focus.policy"
-        assert received[53]["api_version"] == {"major": 1, "minor": 19}
-        assert received[53]["arguments"] == {}
-        assert received[54]["method"] == "settings"
+        assert received[50]["method"] == "input.current_source"
+        assert received[50]["api_version"] == {"major": 1, "minor": 46}
+        assert received[50]["arguments"] == {}
+        assert received[51]["method"] == "input.select"
+        assert received[51]["api_version"] == {"major": 1, "minor": 6}
+        assert received[51]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[52]["method"] == "shortcuts.list"
+        assert received[52]["api_version"] == {"major": 1, "minor": 40}
+        assert received[52]["arguments"] == {}
+        assert received[53]["method"] == "shortcuts.actions"
+        assert received[53]["api_version"] == {"major": 1, "minor": 41}
+        assert received[53]["arguments"] == {"group": "wm"}
+        assert received[54]["method"] == "focus.policy"
         assert received[54]["api_version"] == {"major": 1, "minor": 19}
         assert received[54]["arguments"] == {}
-        assert received[55]["method"] == "focus.history"
+        assert received[55]["method"] == "settings"
         assert received[55]["api_version"] == {"major": 1, "minor": 19}
-        assert received[55]["arguments"] == {"limit": 1}
-        assert received[56]["method"] == "layer.animation_policy"
-        assert received[56]["api_version"] == {"major": 1, "minor": 31}
-        assert received[56]["arguments"] == {"namespace": "bingux-panel"}
-        assert received[90]["method"] == "input.orientation_lock"
-        assert received[90]["api_version"] == {"major": 1, "minor": 66}
-        assert received[90]["arguments"] == {}
-        assert received[91]["method"] == "input.set_orientation_lock"
+        assert received[55]["arguments"] == {}
+        assert received[56]["method"] == "focus.history"
+        assert received[56]["api_version"] == {"major": 1, "minor": 19}
+        assert received[56]["arguments"] == {"limit": 1}
+        assert received[57]["method"] == "layer.animation_policy"
+        assert received[57]["api_version"] == {"major": 1, "minor": 31}
+        assert received[57]["arguments"] == {"namespace": "bingux-panel"}
+        assert received[91]["method"] == "input.orientation_lock"
         assert received[91]["api_version"] == {"major": 1, "minor": 66}
-        assert received[91]["arguments"] == {"value": True}
-        assert received[92]["method"] == "input.orientation_lock"
+        assert received[91]["arguments"] == {}
+        assert received[92]["method"] == "input.set_orientation_lock"
+        assert received[92]["api_version"] == {"major": 1, "minor": 66}
+        assert received[92]["arguments"] == {"value": True}
+        assert received[93]["method"] == "input.orientation_lock"
         assert not [
             request
             for request in received
             if request.get("method") in {"monitors.privacy_screen", "monitors.set_privacy_screen"}
         ]
         assert all(call["api_version"] == {"major": 1, "minor": 18} for call in animation_calls)
-        assert received[57]["method"] == "privacy.state"
-        assert received[57]["api_version"] == {"major": 1, "minor": 47}
-        assert received[57]["arguments"] == {}
-        assert received[58]["method"] == "capabilities.list"
-        assert received[58]["api_version"] == {"major": 1, "minor": 19}
+        assert received[58]["method"] == "privacy.state"
+        assert received[58]["api_version"] == {"major": 1, "minor": 47}
         assert received[58]["arguments"] == {}
-        assert received[59]["method"] == "session.status"
-        assert received[59]["api_version"] == {"major": 1, "minor": 76}
+        assert received[59]["method"] == "capabilities.list"
+        assert received[59]["api_version"] == {"major": 1, "minor": 19}
         assert received[59]["arguments"] == {}
         assert received[60]["method"] == "session.status"
         assert received[60]["api_version"] == {"major": 1, "minor": 76}
         assert received[60]["arguments"] == {}
+        assert received[61]["method"] == "session.status"
+        assert received[61]["api_version"] == {"major": 1, "minor": 76}
+        assert received[61]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
@@ -3126,7 +3136,7 @@ def main() -> int:
         lua_request = received[23]
         assert lua_request["op"] == "api"
         assert lua_request["method"] == "windows.list"
-        assert lua_request["arguments"] == {"focused": True}
+        assert lua_request["arguments"] == {}
         assert "source" not in lua_request and "code" not in lua_request
         assert received[24]["method"] == "windows.list"
         assert received[24]["arguments"] == {"focused": True}
@@ -3163,11 +3173,7 @@ def main() -> int:
         assert received[38]["api_version"] == {"major": 1, "minor": 37}
         assert received[38]["arguments"] == {}
         assert received[39]["method"] == "layers.list"
-        assert received[39]["arguments"] == {
-            "monitor_id": "HDMI-1",
-            "namespace": "panel:top",
-            "layer": "top",
-        }
+        assert received[39]["arguments"] == {}
         unminimize_request = received[40]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
@@ -3176,10 +3182,7 @@ def main() -> int:
         assert all(call["api_version"] == {"major": 1, "minor": 8} for call in capture_calls)
         assert capture_calls[0]["arguments"] == {}
         assert capture_calls[1]["arguments"] == {"timeout": 10}
-        surfaces_calls = [call for call in received if call["method"] == "animation.surfaces"]
-        assert len(surfaces_calls) == 1
-        assert surfaces_calls[0]["api_version"] == {"major": 1, "minor": 18}
-        assert surfaces_calls[0]["arguments"] == {}
+        assert not [call for call in received if call["method"] == "animation.surfaces"]
         workspace_calls = [call for call in received if call["method"].startswith("workspace.")]
         assert [call["method"] for call in workspace_calls[-6:]] == [
             "workspace.create",
@@ -3194,7 +3197,7 @@ def main() -> int:
         assert inspect_calls[0]["api_version"] == {"major": 1, "minor": 18}
         assert inspect_calls[0]["arguments"] == {
             "name": "fade",
-            "target": "active",
+            "target": "42",
             "event": "open",
             "target_type": "window",
         }

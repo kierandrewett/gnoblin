@@ -7,18 +7,25 @@
  * returns, in its order. */
 #include "gnoblin-lua-internal.h"
 
-/* Each kind that has a list, and the function behind that list. */
+/* Each kind that has a list, and the gnoblin path of the function behind that list. */
 static const struct {
     const char* kind;
-    lua_CFunction list;
+    const char* list;
 } listable[] = {
-    {"Window", lua_windows_list},       {"Workspace", lua_workspaces_list},
-    {"LayerSurface", lua_layers_list},  {"Output", lua_outputs_list},
-    {"Shortcut", lua_shortcuts_list},   {"Launch", lua_launches_list},
-    {"InputSource", lua_input_sources}, {"Process", lua_process_list},
+    {"Window", "windows.list"},       {"Workspace", "workspaces.list"},
+    {"LayerSurface", "layers.list"},  {"Output", "outputs.list"},
+    {"Shortcut", "shortcuts.list"},   {"Launch", "launches.list"},
+    {"InputSource", "input.sources"}, {"Process", "process.list"},
 };
 
-static char* listable_kind_names(void) {
+const char* lua_find_list_path(const char* kind) {
+    for (gsize i = 0; i < G_N_ELEMENTS(listable); i++)
+        if (g_str_equal(listable[i].kind, kind))
+            return listable[i].list;
+    return NULL;
+}
+
+char* lua_find_kind_names(void) {
     g_autoptr(GPtrArray) names = g_ptr_array_new();
     for (gsize i = 0; i < G_N_ELEMENTS(listable); i++)
         g_ptr_array_add(names, (gpointer)listable[i].kind);
@@ -53,6 +60,15 @@ static void check_find_filter(lua_State* state, const char* kind, int filter) {
     }
 }
 
+void lua_find_check(lua_State* state, const char* kind, int filter) {
+    gboolean by_function = lua_isfunction(state, filter);
+    gboolean by_table = lua_istable(state, filter);
+    if (!lua_isnoneornil(state, filter) && !by_function && !by_table)
+        luaL_error(state, "gnoblin.find filter must be a table of fields or a function");
+    if (by_table)
+        check_find_filter(state, kind, lua_absindex(state, filter));
+}
+
 /* Whether the handle at `handle` equals every field of the table filter at `filter`. */
 static gboolean handle_matches(lua_State* state, int handle, int filter) {
     gboolean matches = TRUE;
@@ -68,30 +84,11 @@ static gboolean handle_matches(lua_State* state, int handle, int filter) {
     return matches;
 }
 
-int lua_find(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    const char* kind = luaL_checkstring(state, 1);
-    if (lua_gettop(state) > 2)
-        return luaL_error(state, "gnoblin.find takes a kind and an optional filter");
-    lua_CFunction list = NULL;
-    for (gsize i = 0; i < G_N_ELEMENTS(listable) && !list; i++)
-        if (g_str_equal(listable[i].kind, kind))
-            list = listable[i].list;
-    if (!list) {
-        g_autofree char* names = listable_kind_names();
-        return luaL_error(state, "gnoblin.find cannot list %s; kinds: %s", kind, names);
-    }
-    gboolean by_function = lua_isfunction(state, 2);
-    gboolean by_table = lua_istable(state, 2);
-    if (!lua_isnoneornil(state, 2) && !by_function && !by_table)
-        return luaL_error(state, "gnoblin.find filter must be a table of fields or a function");
-    if (by_table)
-        check_find_filter(state, kind, 2);
-
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, list, 1);
-    lua_call(state, 0, 1);
-    int everything = lua_gettop(state);
+void lua_find_select(lua_State* state, int everything, int filter) {
+    everything = lua_absindex(state, everything);
+    filter = lua_absindex(state, filter);
+    gboolean by_function = lua_isfunction(state, filter);
+    gboolean by_table = lua_istable(state, filter);
     lua_createtable(state, 0, 0);
     mark_array_table(state, -1);
     int result = lua_gettop(state);
@@ -101,9 +98,9 @@ int lua_find(lua_State* state) {
         int handle = lua_gettop(state);
         gboolean keep = TRUE;
         if (by_table) {
-            keep = handle_matches(state, handle, 2);
+            keep = handle_matches(state, handle, filter);
         } else if (by_function) {
-            lua_pushvalue(state, 2);
+            lua_pushvalue(state, filter);
             lua_pushvalue(state, handle);
             lua_call(state, 1, 1);
             keep = lua_toboolean(state, -1);
@@ -113,5 +110,28 @@ int lua_find(lua_State* state) {
             lua_rawseti(state, result, ++found);
         lua_settop(state, result);
     }
+}
+
+int lua_find(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    const char* kind = luaL_checkstring(state, 1);
+    if (lua_gettop(state) > 2)
+        return luaL_error(state, "gnoblin.find takes a kind and an optional filter");
+    const char* path = lua_find_list_path(kind);
+    if (!path) {
+        g_autofree char* names = lua_find_kind_names();
+        return luaL_error(state, "gnoblin.find cannot list %s; kinds: %s", kind, names);
+    }
+    lua_settop(state, 2); /* the filter slot exists, nil when absent */
+    lua_find_check(state, kind, 2);
+
+    lua_CFunction list = NULL;
+    for (const LuaApiEntry* entry = lua_api; entry->path && !list; entry++)
+        if (g_str_equal(entry->path, path))
+            list = entry->function;
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, list, 1);
+    lua_call(state, 0, 1);
+    lua_find_select(state, -1, 2);
     return 1;
 }

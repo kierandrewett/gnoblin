@@ -709,6 +709,31 @@ int main(void) {
         "    kept_tween=g.tween()\n"
         "    kept_tween:on('closed', function(t, reason) error('TWEEN '..reason) end)\n"
         "  end\n"
+        "end)\n"
+        "g.on('test.tween', function(event)\n"
+        "  local playing=g.tween()\n"
+        "  playing:property(event.window, 'opacity', 0.5, 20)\n"
+        "  playing:on('closed', function(t, reason) error('PLAYING '..reason) end)\n"
+        "  playing:play()\n"
+        "end)\n"
+        "g.on('test.configure_deferred', function(event)\n"
+        "  local first=g.configure {cursor={size=29}}\n"
+        "  first:on_complete(function()\n"
+        "    local bad=g.configure {cursor={size='big'}}\n"
+        "    bad:on_complete(function(_, failure)\n"
+        "      error('REJECTED '..tostring(failure and failure.code))\n"
+        "    end)\n"
+        "  end)\n"
+        "end)\n"
+        "g.on('test.workspace_handle', function(event)\n"
+        "  local created=g.workspaces.create('Handle', {id='handle'})\n"
+        "  created:on_complete(function(workspace, err)\n"
+        "    local listed=g.workspaces.by_id('handle')\n"
+        "    assert(workspace==listed or (listed==nil and not event.listed), "
+        "tostring(workspace)..' '..tostring(listed)..' '..tostring(err))\n"
+        "    assert(workspace.alive and workspace.window_count==0 and workspace.windows==nil)\n"
+        "    error('HANDLE '..workspace.id..':'..workspace.name)\n"
+        "  end)\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
     g_autoptr(GVariant) menu_runtime = gnoblin_config_load_runtime(root, NULL, NULL, &error);
@@ -1448,6 +1473,115 @@ int main(void) {
     g_autofree char* tween_reload_error = gnoblin_config_take_runtime_callback_error();
     g_assert_nonnull(tween_reload_error);
     g_assert_nonnull(strstr(tween_reload_error, "TWEEN config_reloaded"));
+
+    /* A playing tween does not hold a reload back. The compositor cancels it when the new
+     * configuration takes effect, and its Tween closes with the reason "config_reloaded". */
+    for (guint round = 0; round < 3; round++) {
+        GVariantBuilder tween_window, tween_frame, tween_event;
+        g_variant_builder_init(&tween_frame, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_init(&tween_window, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&tween_window, "{sv}", "id", g_variant_new_string("42"));
+        g_variant_builder_add(&tween_window, "{sv}", "frame", g_variant_builder_end(&tween_frame));
+        g_variant_builder_init(&tween_event, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&tween_event, "{sv}", "window", g_variant_builder_end(&tween_window));
+        guint pending_before = gnoblin_config_runtime_pending_operations();
+        g_autoptr(GArray) play_ids =
+            dispatch_operation_ids("test.tween", g_variant_builder_end(&tween_event));
+        g_assert_cmpuint(play_ids->len, ==, 1);
+        gint64 play_id = g_array_index(play_ids, gint64, 0);
+        g_assert_cmpuint(gnoblin_config_runtime_pending_operations(), ==, pending_before);
+        g_assert_true(gnoblin_config_operation_survives_reload(play_id));
+        g_assert_false(gnoblin_config_operation_survives_reload(play_id + 1000));
+        if (round == 2)
+            break;
+        /* The compositor's cancel reaches the old runtime: the reason depends on the reload. */
+        gnoblin_config_reload_in_flight(round == 0);
+        GVariantBuilder cancelled_tween;
+        g_variant_builder_init(&cancelled_tween, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&cancelled_tween, "{sv}", "outcome",
+                              g_variant_new_string("cancelled"));
+        complete_operation(play_id, TRUE, g_variant_builder_end(&cancelled_tween), NULL);
+        gnoblin_config_reload_in_flight(FALSE);
+        g_autofree char* cancel_error = gnoblin_config_take_runtime_callback_error();
+        g_assert_nonnull(cancel_error);
+        g_assert_nonnull(
+            strstr(cancel_error, round == 0 ? "PLAYING config_reloaded" : "PLAYING cancelled"));
+    }
+    g_autoptr(GVariant) playing_reloaded = gnoblin_config_load_runtime(root, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(playing_reloaded);
+    gnoblin_config_finish_load(TRUE);
+    g_autofree char* playing_reload_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(playing_reload_error);
+    g_assert_nonnull(strstr(playing_reload_error, "PLAYING config_reloaded"));
+
+    /* A workspace operation answers with the live handle that gnoblin.workspaces.by_id returns,
+     * in the shape of the snapshot, whether or not the snapshot lists the workspace yet. */
+    g_autoptr(GArray) handle_ids =
+        dispatch_operation_ids("test.workspace_handle", step_payload("make"));
+    g_assert_cmpuint(handle_ids->len, ==, 1);
+    GVariantBuilder created_workspace, created_list, created_snapshot;
+    g_variant_builder_init(&created_workspace, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&created_workspace, "{sv}", "id", g_variant_new_string("handle"));
+    g_variant_builder_add(&created_workspace, "{sv}", "number", g_variant_new_int64(2));
+    g_variant_builder_add(&created_workspace, "{sv}", "name", g_variant_new_string("Handle"));
+    g_variant_builder_add(&created_workspace, "{sv}", "active", g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&created_workspace, "{sv}", "windows", g_variant_new_int64(0));
+    g_autoptr(GVariant) created_value =
+        g_variant_ref_sink(g_variant_builder_end(&created_workspace));
+    for (guint listed = 0; listed < 2; listed++) {
+        if (!listed) {
+            g_autoptr(GVariant) empty_snapshot =
+                g_variant_ref_sink(g_variant_new_parsed("{'workspaces': <@av []>}"));
+            gnoblin_config_update_workspace_snapshot(empty_snapshot, 8);
+        } else {
+            /* The snapshot lists it: the handle is the snapshot's. */
+            GVariantBuilder record;
+            g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string("handle"));
+            g_variant_builder_add(&record, "{sv}", "number", g_variant_new_int64(2));
+            g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string("Handle"));
+            g_variant_builder_add(&record, "{sv}", "active", g_variant_new_boolean(FALSE));
+            g_variant_builder_add(&record, "{sv}", "window_count", g_variant_new_int64(0));
+            g_variant_builder_add(&record, "{sv}", "revision", g_variant_new_int64(9));
+            g_variant_builder_init(&created_list, G_VARIANT_TYPE("av"));
+            g_variant_builder_add_value(&created_list,
+                                        g_variant_new_variant(g_variant_builder_end(&record)));
+            g_variant_builder_init(&created_snapshot, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&created_snapshot, "{sv}", "workspaces",
+                                  g_variant_builder_end(&created_list));
+            g_autoptr(GVariant) snapshot =
+                g_variant_ref_sink(g_variant_builder_end(&created_snapshot));
+            gnoblin_config_update_workspace_snapshot(snapshot, 9);
+            GVariantBuilder listed_payload;
+            g_variant_builder_init(&listed_payload, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&listed_payload, "{sv}", "listed", g_variant_new_boolean(TRUE));
+            handle_ids = dispatch_operation_ids("test.workspace_handle",
+                                                g_variant_builder_end(&listed_payload));
+            g_assert_cmpuint(handle_ids->len, ==, 1);
+        }
+        complete_operation(g_array_index(handle_ids, gint64, 0), TRUE, g_variant_ref(created_value),
+                           NULL);
+        g_autofree char* handle_error = gnoblin_config_take_runtime_callback_error();
+        g_assert_nonnull(handle_error);
+        g_assert_nonnull(strstr(handle_error, "HANDLE handle:Handle"));
+    }
+
+    /* A configure call in an Operation callback that the validator rejects fails its Operation
+     * and nothing else: the callback did not fail. */
+    g_autoptr(GArray) deferred_ids =
+        dispatch_operation_ids("test.configure_deferred", step_payload("make"));
+    g_assert_cmpuint(deferred_ids->len, ==, 0);
+    for (guint pass = 0; pass < 2; pass++) {
+        g_autoptr(GError) deferred_error = NULL;
+        g_autoptr(GVariant) deferred_document =
+            gnoblin_config_dispatch_deferred_callbacks(&deferred_error);
+        g_assert_no_error(deferred_error);
+        g_assert_null(deferred_document);
+    }
+    g_autofree char* deferred_callback_error = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(deferred_callback_error);
+    g_assert_nonnull(strstr(deferred_callback_error, "REJECTED invalid_argument"));
 
     /* A worker that shuts down in order tells the grab that is left; so does a reload. */
     g_autoptr(GArray) stop_ids = dispatch_operation_ids("test.grab", step_payload("doomed"));

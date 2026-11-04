@@ -252,6 +252,10 @@ static int lua_tween_ended(lua_State* state) {
     lua_pop(state, 1);
     if (g_str_equal(outcome, "finished"))
         lua_object_raise(state, "Tween", tween, "finished");
+    /* The compositor cancels every tween when it takes a new configuration: say so. */
+    LuaConfig* config = tween_config();
+    if (g_str_equal(outcome, "cancelled") && config && config->reload_in_flight)
+        outcome = "config_reloaded";
     lua_object_end(state, "Tween", tween, outcome);
     return 0;
 }

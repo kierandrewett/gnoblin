@@ -4,6 +4,26 @@
 
 ### Changed
 
+- `gnoblinctl lua` has the names and call shapes of a Lua configuration (round 2; no wire change).
+    - The console reads `lua_api[]`, the table the runtime installs, instead of a prefix chain of its own. A name
+      that the table does not hold fails with `gnoblin.NAME is not part of the Lua API`; the table of removed
+      names (`removed[][]`) is gone. A name that needs a runtime (`gnoblin.timers`, `gnoblin.process`,
+      `gnoblin.tween`, `gnoblin.idle.watch`, `gnoblin.input.grab`, `gnoblin.input.on`,
+      `gnoblin.settings.override`, `gnoblin.load`, `gnoblin.array`, `gnoblin.snapshot`, `gnoblin.configure`,
+      `gnoblin.window_rule`, `gnoblin.animation`, `Window:set_effect`, `Window:present` and the `on` and
+      `watch` methods of records) raises one error: `NAME is not available in gnoblinctl lua because the
+console has no runtime`. The generic call that accepted one table for any unknown name is gone, so a call
+      is always positional. `scripts/audit-lua-annotations.py` checks that every console name is in
+      `lua_api[]` and that every wire operation of a console record has a console method.
+    - `gnoblin.find`, `gnoblin.ease` and `gnoblin.lerp` work in the console. `gnoblin.windows.list` and
+      `gnoblin.layers.list` take no filter, as in a configuration; `gnoblin.config` holds only `path()`,
+      `default()` and `restore_default()` and cannot be assigned to.
+    - `gnoblin.animations.preview`, `inspect` and `surfaces` are gone from the console. `window:inspect_animation`
+      and `window:preview_animation` (and the same on a `LayerSurface`) replace them. `SnapContext:commit`
+      takes `(monitor, x, y, width, height)`, `Window:move_to_workspace` takes a `Workspace` and
+      `Window:move_to_monitor` takes an `Output`, as in a configuration.
+    - `gnoblin.location.authorize_app {request_id, allow, accuracy}` is gone. The `gnoblin.location.authorization-requested`
+      event carries `event.request`, a `Request` of kind `location` with `answer(allow, accuracy?)` and `cancel()`.
 - `gnoblin.find`, a read-only `gnoblin.config` and handle arguments (round 2; no wire change).
     - `gnoblin.find(kind, filter?)` lists the live objects of `Window`, `Workspace`, `LayerSurface`, `Output`,
       `Shortcut`, `Launch`, `InputSource` or `Process`. A table filter matches declared scalar fields
@@ -296,6 +316,15 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
 
 ### Fixed
 
+- A playing tween held a configuration reload back for 15 seconds, and the reload then failed. A reload now waits
+  for every other pending operation but not for a tween. The compositor stops the tween when the new configuration
+  takes effect, the `Operation` of `play()` succeeds with the outcome `"cancelled"`, and the `"closed"` signal of
+  the `Tween` runs with the reason `"config_reloaded"`. A reload that fails leaves the tween playing.
+- `gnoblin.workspaces.create`, `next`, `previous` and `Workspace:activate` and `rename` resolved to a plain record
+  with a `windows` key. They resolve to the live `Workspace` that `gnoblin.workspaces.by_id` returns, with
+  `window_count`.
+- A `gnoblin.configure` call that the validator rejected inside an `Operation` callback failed its `Operation` and
+  also logged `deferred Lua operation callback failed`. It fails the `Operation` only.
 - `gnoblinctl config reload` accepted `input.keyboard.xkb_options = {"caps:escape"}` in the first
   load but refused it on reload with `input.keyboard.xkb-options: invalid value`, because the
   second normalisation of the input document read only the unnormalised string list. The same code

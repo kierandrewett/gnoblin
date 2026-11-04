@@ -65,6 +65,31 @@ static gboolean lua_cli_resize_edge_valid(const char* edge) {
                     g_str_equal(edge, "south_east") || g_str_equal(edge, "south_west"));
 }
 
+/* The string field `field` of the record at `index` when it is a record of `metatable`; NULL for
+ * any other value. */
+static const char* lua_cli_record_string(lua_State* state, int index, const char* metatable,
+                                         const char* field) {
+    if (!luaL_testudata(state, index, metatable))
+        return NULL;
+    lua_getiuservalue(state, index, 1);
+    lua_getfield(state, -1, field);
+    const char* value = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+    lua_pop(state, 2); /* the string stays alive in the record */
+    return value;
+}
+
+/* The monitor ID that the value at `index` names: an Output (the monitor that shows it) or a
+ * monitor ID string. NULL for any other value. */
+static const char* lua_cli_monitor_argument(lua_State* state, int index) {
+    if (lua_type(state, index) == LUA_TSTRING)
+        return *lua_tostring(state, index) ? lua_tostring(state, index) : NULL;
+    const char* monitor =
+        lua_cli_record_string(state, index, GNOBLINCTL_OUTPUT_RECORD_METATABLE, "monitor_id");
+    if (!monitor && luaL_testudata(state, index, GNOBLINCTL_OUTPUT_RECORD_METATABLE))
+        luaL_error(state, "this Output is not enabled, so it shows no monitor");
+    return monitor && *monitor ? monitor : NULL;
+}
+
 /* Take `scope` for `method` from the Grant at `index`. */
 static LuaCliGrant* lua_cli_grant_take(lua_State* state, Cli* cli, int index,
                                        LuaCliGrantScope scope, const char* method,
@@ -294,7 +319,7 @@ void register_lua_cli_grant(lua_State* state) {
     lua_pop(state, 1);
 }
 
-static int lua_cli_window_method(lua_State* state) {
+int lua_cli_window_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     int supplied = lua_gettop(state) - 1;
@@ -362,17 +387,22 @@ static int lua_cli_window_method(lua_State* state) {
         json_object_set_int_member(arguments, g_str_equal(method, "window.move") ? "y" : "height",
                                    lua_tointeger(state, 3));
     } else if (g_str_equal(method, "window.move_to_workspace")) {
-        gboolean id_selector = lua_type(state, 2) == LUA_TSTRING && *lua_tostring(state, 2);
+        /* A Workspace names itself; a string or a number names a workspace by ID or position. */
+        const char* workspace_id =
+            lua_cli_record_string(state, 2, GNOBLINCTL_WORKSPACE_RECORD_METATABLE, "id");
+        if (!workspace_id && lua_type(state, 2) == LUA_TSTRING)
+            workspace_id = lua_tostring(state, 2);
+        gboolean id_selector = workspace_id && *workspace_id;
         gboolean number_selector = lua_isinteger(state, 2) && lua_tointeger(state, 2) > 0;
         if (supplied < 1 || supplied > 2 || (!id_selector && !number_selector) ||
             (supplied == 2 && !lua_isnil(state, 3) && !lua_istable(state, 3))) {
             json_object_unref(arguments);
-            return luaL_error(state, "window:move_to_workspace requires workspace (id string or "
-                                     "positive integer number) and optional options");
+            return luaL_error(state, "window:move_to_workspace takes a Workspace, a workspace ID "
+                                     "string or a number, and optional options");
         }
         g_autoptr(JsonObject) selector = json_object_new();
         if (id_selector)
-            json_object_set_string_member(selector, "id", lua_tostring(state, 2));
+            json_object_set_string_member(selector, "id", workspace_id);
         else
             json_object_set_int_member(selector, "number", lua_tointeger(state, 2));
         JsonNode* workspace = json_node_new(JSON_NODE_OBJECT);
@@ -384,16 +414,16 @@ static int lua_cli_window_method(lua_State* state) {
             if (json_object_get_size(options) != 1 || !follow || !JSON_NODE_HOLDS_VALUE(follow) ||
                 json_node_get_value_type(follow) != G_TYPE_BOOLEAN) {
                 json_object_unref(arguments);
-                return luaL_error(state, "workspace options accept only boolean follow");
+                return luaL_error(state, "window:move_to_workspace options accept only follow");
             }
             json_object_set_boolean_member(arguments, "follow", json_node_get_boolean(follow));
         }
     } else if (g_str_equal(method, "window.move_to_monitor")) {
-        if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING || !*lua_tostring(state, 2)) {
+        const char* monitor = lua_cli_monitor_argument(state, 2);
+        if (supplied != 1 || !monitor) {
             json_object_unref(arguments);
-            return luaL_error(state, "window:move_to_monitor requires monitor_id (string)");
+            return luaL_error(state, "window:move_to_monitor takes an Output or a monitor ID");
         }
-        g_autofree char* monitor = g_strdup(lua_tostring(state, 2));
         json_object_set_string_member(arguments, "monitor", monitor);
     } else {
         json_object_unref(arguments);
@@ -411,11 +441,11 @@ static int lua_cli_window_method(lua_State* state) {
 }
 
 /* window:set_opacity(v), set_scale(s), set_rotation(degrees), set_offset(x, y) and
- * reset_visuals(): one window.set_visual call each, as in the runtime. Upvalue 2 names the
+ * reset_visuals(): one window.set_visual call each, as in the runtime. Upvalue 3 names the
  * method; the compositor checks the ranges. */
-static int lua_cli_window_visual(lua_State* state) {
+int lua_cli_window_visual(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    const char* name = lua_tostring(state, lua_upvalueindex(2));
+    const char* name = lua_tostring(state, lua_upvalueindex(3));
     int supplied = lua_gettop(state) - 1;
     g_autofree char* id = g_strdup(lua_cli_window_id(state));
     static const struct {
@@ -452,15 +482,21 @@ static int lua_cli_window_visual(lua_State* state) {
         if (!result)
             return luaL_error(state, "window:%s failed: %s", name, call_error->message);
         json_to_lua(state, result);
+        /* The compositor answers with offset_x and offset_y. A Window reads its offset as {x, y},
+         * so the result says it the same way, as in the runtime. */
+        lua_createtable(state, 0, 2);
+        lua_getfield(state, -2, "offset_x");
+        lua_setfield(state, -2, "x");
+        lua_getfield(state, -2, "offset_y");
+        lua_setfield(state, -2, "y");
+        lua_setfield(state, -2, "offset");
+        lua_pushnil(state);
+        lua_setfield(state, -2, "offset_x");
+        lua_pushnil(state);
+        lua_setfield(state, -2, "offset_y");
         return 1;
     }
     return luaL_error(state, "unknown window visual method %s", name);
-}
-
-/* An effect override lasts only while a runtime holds it, and a gnoblinctl script ends first. */
-static int lua_cli_window_set_effect(lua_State* state) {
-    return luaL_error(state, "window:set_effect needs a configuration to hold the override; a "
-                             "gnoblinctl script ends before anything could revoke it");
 }
 
 void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) {
@@ -473,43 +509,7 @@ void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) 
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    static const char* const methods[][2] = {
-        {"close", "window.close"},
-        {"kill", "window.kill"},
-        {"raise", "window.raise"},
-        {"lower", "window.lower"},
-        {"set_minimized", "window.set_minimized"},
-        {"restore_or_minimize", "window.restore_or_minimize"},
-        {"set_maximized", "window.set_maximized"},
-        {"set_fullscreen", "window.set_fullscreen"},
-        {"set_above", "window.set_above"},
-        {"set_sticky", "window.set_sticky"},
-        {"move", "window.move"},
-        {"resize", "window.resize"},
-        {"move_to_workspace", "window.move_to_workspace"},
-        {"move_to_monitor", "window.move_to_monitor"},
-        {"focus", "window.focus"},
-        {"begin_move", "window.begin_move"},
-        {"begin_resize", "window.begin_resize"},
-        {"thumbnail", "window.thumbnail"},
-        {NULL, NULL},
-    };
-    for (guint i = 0; methods[i][0]; i++) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushstring(state, methods[i][1]);
-        lua_pushcclosure(state, lua_cli_window_method, 2);
-        lua_setfield(state, -2, methods[i][0]);
-    }
-    static const char* const visual_methods[] = {"set_opacity", "set_scale",     "set_rotation",
-                                                 "set_offset",  "reset_visuals", NULL};
-    for (guint i = 0; visual_methods[i]; i++) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushstring(state, visual_methods[i]);
-        lua_pushcclosure(state, lua_cli_window_visual, 2);
-        lua_setfield(state, -2, visual_methods[i]);
-    }
-    lua_pushcfunction(state, lua_cli_window_set_effect);
-    lua_setfield(state, -2, "set_effect");
+    lua_cli_add_record_methods(state, cli, "Window");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_WINDOW_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -528,37 +528,30 @@ static int lua_cli_snap_context_commit(lua_State* state) {
     LuaCliSnapContext* context = lua_cli_test_snap_context(state, 1);
     if (!context)
         return luaL_error(state, "SnapContext:commit requires a Gnoblin SnapContext");
-    if (lua_gettop(state) != 2 || !lua_istable(state, 2))
-        return luaL_error(state, "SnapContext:commit requires {monitor_id, frame}");
+    if (lua_gettop(state) != 6)
+        return luaL_error(state, "SnapContext:commit takes a monitor (an Output or its ID), x, y, "
+                                 "width and height");
     if (context->consumed)
         return luaL_error(state, "SnapContext:commit cannot reuse a consumed context");
     if (!context->subscription || !context->subscription->active ||
         !context->subscription->connection)
         return luaL_error(state, "SnapContext:commit requires its active event connection");
 
-    g_autoptr(JsonObject) target = lua_cli_table_object(state, 2, "SnapContext target");
-    static const char* const target_fields[] = {"monitor_id", "frame", NULL};
-    static const char* const frame_fields[] = {"x", "y", "width", "height", NULL};
-    if (!lua_cli_workspace_object_has_only_keys(target, target_fields))
-        return luaL_error(state, "SnapContext:commit accepts only monitor_id and frame");
-    const char* monitor_id = member_string(target, "monitor_id", NULL);
-    if (!monitor_id || !*monitor_id || strlen(monitor_id) > 128 ||
-        !g_utf8_validate(monitor_id, -1, NULL))
-        return luaL_error(state, "SnapContext:commit requires a valid monitor_id");
-    JsonObject* frame = member_object(target, "frame");
-    if (!frame || !lua_cli_workspace_object_has_only_keys(frame, frame_fields))
-        return luaL_error(state, "SnapContext:commit frame requires x, y, width and height");
+    const char* monitor_id = lua_cli_monitor_argument(state, 2);
+    if (!monitor_id || strlen(monitor_id) > 128 || !g_utf8_validate(monitor_id, -1, NULL))
+        return luaL_error(state, "SnapContext:commit takes an Output or a monitor ID");
 
-    const char* rect_keys[] = {"x", "y", "width", "height"};
-    const gint64 lows[] = {-100000, -100000, 1, 1};
-    const gint64 highs[] = {100000, 100000, 32768, 32768};
+    static const char* const rect_keys[] = {"x", "y", "width", "height"};
+    static const gint64 lows[] = {-100000, -100000, 1, 1};
+    static const gint64 highs[] = {100000, 100000, 32768, 32768};
+    g_autoptr(JsonObject) frame = json_object_new();
     for (guint i = 0; i < G_N_ELEMENTS(rect_keys); i++) {
-        JsonNode* value = json_object_get_member(frame, rect_keys[i]);
-        if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
-            (json_node_get_value_type(value) != G_TYPE_INT &&
-             json_node_get_value_type(value) != G_TYPE_INT64) ||
-            json_node_get_int(value) < lows[i] || json_node_get_int(value) > highs[i])
-            return luaL_error(state, "SnapContext:commit frame %s is out of range", rect_keys[i]);
+        int argument = 3 + (int)i;
+        if (!lua_isinteger(state, argument) || lua_tointeger(state, argument) < lows[i] ||
+            lua_tointeger(state, argument) > highs[i])
+            return luaL_error(state, "SnapContext:commit %s must be an integer from %d to %d",
+                              rect_keys[i], (int)lows[i], (int)highs[i]);
+        json_object_set_int_member(frame, rect_keys[i], lua_tointeger(state, argument));
     }
 
     JsonObject* arguments = json_object_new();

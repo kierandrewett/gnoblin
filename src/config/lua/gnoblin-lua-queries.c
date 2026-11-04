@@ -448,32 +448,35 @@ int lua_workspaces_active(lua_State* state) {
     return 1;
 }
 
+/* Push the Workspace handle for `id` from the current workspace snapshot; FALSE and nothing when
+ * the snapshot has no such workspace. */
+gboolean lua_push_workspace_by_id(lua_State* state, LuaConfig* config, const char* id) {
+    g_autoptr(GVariant) workspaces = lua_workspace_array(config);
+    for (gsize i = 0; workspaces && i < g_variant_n_children(workspaces); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(workspaces, i);
+        g_autoptr(GVariant) workspace = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
+                                            ? g_variant_get_variant(wrapped)
+                                            : g_variant_ref(wrapped);
+        const char* workspace_id = NULL;
+        if (g_variant_lookup(workspace, "id", "&s", &workspace_id) &&
+            g_str_equal(id, workspace_id)) {
+            push_variant(state, workspace);
+            push_readonly_copy(state, -1);
+            lua_remove(state, -2);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 int lua_workspaces_by_id(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
         return luaL_error(state, "gnoblin.workspaces.by_id requires one string ID");
-    const char* id = lua_tostring(state, 1);
     if (!config || !config->workspace_snapshot)
         return luaL_error(state, "native workspace snapshot is unavailable");
-
-    g_autoptr(GVariant) workspaces = lua_workspace_array(config);
-    if (workspaces) {
-        for (gsize i = 0; i < g_variant_n_children(workspaces); i++) {
-            g_autoptr(GVariant) wrapped = g_variant_get_child_value(workspaces, i);
-            g_autoptr(GVariant) workspace = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
-                                                ? g_variant_get_variant(wrapped)
-                                                : g_variant_ref(wrapped);
-            const char* workspace_id = NULL;
-            if (g_variant_lookup(workspace, "id", "&s", &workspace_id) &&
-                g_str_equal(id, workspace_id)) {
-                push_variant(state, workspace);
-                push_readonly_copy(state, -1);
-                lua_remove(state, -2);
-                return 1;
-            }
-        }
-    }
-    lua_pushnil(state);
+    if (!lua_push_workspace_by_id(state, config, lua_tostring(state, 1)))
+        lua_pushnil(state);
     return 1;
 }
 

@@ -797,7 +797,50 @@ static void push_snap_context(lua_State* state, GVariant* value) {
     lua_setmetatable(state, -2);
 }
 
+/* The workspace operations that answer with the workspace they made, renamed or activated. */
+static gboolean workspace_operation(const char* method) {
+    return g_str_equal(method, "workspace.create") || g_str_equal(method, "workspace.next") ||
+           g_str_equal(method, "workspace.previous") || g_str_equal(method, "workspace.switch") ||
+           g_str_equal(method, "workspace.rename");
+}
+
+/* Push the Workspace handle that a workspace operation answered with: the one the workspace
+ * snapshot holds, which gnoblin.workspaces.by_id returns. The completion can arrive before the
+ * snapshot that lists a new workspace; the handle then takes the state of the answer, written in
+ * the shape of the snapshot (`window_count`, not the wire name `windows`). */
+static void push_workspace_result(lua_State* state, GVariant* value) {
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    const char* id = NULL;
+    if (config && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT) &&
+        g_variant_lookup(value, "id", "&s", &id) && lua_push_workspace_by_id(state, config, id))
+        return;
+    GVariantBuilder record;
+    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+    GVariantIter iter;
+    const char* key;
+    GVariant* field;
+    g_variant_iter_init(&iter, value);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &field)) {
+        g_autoptr(GVariant) owned = field;
+        if (g_str_equal(key, "revision"))
+            continue;
+        g_variant_builder_add(&record, "{sv}", g_str_equal(key, "windows") ? "window_count" : key,
+                              owned);
+    }
+    g_variant_builder_add(&record, "{sv}", "revision",
+                          g_variant_new_int64(config ? (gint64)config->workspace_revision : 0));
+    g_autoptr(GVariant) converted = g_variant_ref_sink(g_variant_builder_end(&record));
+    push_variant(state, converted);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+}
+
 void push_operation_result(lua_State* state, const char* method, GVariant* value) {
+    if (workspace_operation(method) && value &&
+        g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
+        push_workspace_result(state, value);
+        return;
+    }
     if (g_str_equal(method, "input.text_target")) {
         push_text_target(state, value);
         return;

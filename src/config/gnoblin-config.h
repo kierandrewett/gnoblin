@@ -172,8 +172,16 @@ GVariant* gnoblin_config_dispatch_deferred_callbacks(GError** error);
 /* Deferred runtime operations use a shared method registry. Event callbacks
  * enqueue operations; the host drains them only after dispatch returns. */
 GVariant* gnoblin_config_drain_runtime_operations(void); /* aa{sv} */
-/* Operations and deferred completions that still belong to the active runtime. */
+/* Operations and deferred completions of the active runtime that a reload must wait for. A
+ * playing tween is not one of them: the compositor stops it when the reload commits, and its
+ * Tween closes with the reason "config_reloaded". */
 guint gnoblin_config_runtime_pending_operations(void);
+/* Whether operation `operation_id` is one that a reload does not wait for. */
+gboolean gnoblin_config_operation_survives_reload(guint64 operation_id);
+/* The supervisor has sent the candidate configuration to the compositor (TRUE), or the reload
+ * ended without replacing the runtime (FALSE). While it is TRUE, a tween that the compositor
+ * cancels closes with the reason "config_reloaded" instead of "cancelled". */
+void gnoblin_config_reload_in_flight(gboolean in_flight);
 GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error);
 /* Run one bounded Lua console chunk against the active configuration runtime.
  * The result is a vardict containing a display-safe value, its Lua type, and

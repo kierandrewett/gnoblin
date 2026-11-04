@@ -247,27 +247,11 @@ int lua_cli_appearance_color_scheme(lua_State* state) {
 }
 
 int lua_cli_layers_list(lua_State* state) {
-    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
-        return luaL_error(state, "gnoblin.layers.list accepts one optional filter table");
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.layers.list takes no arguments; select layer surfaces "
+                                 "with gnoblin.find(\"LayerSurface\", filter)");
 
-    JsonObject* arguments = NULL;
-    if (lua_gettop(state) == 1) {
-        static const char* fields[] = {"monitor_id", "namespace", "layer"};
-        lua_pushnil(state);
-        while (lua_next(state, 1)) {
-            const char* key = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
-            gboolean known = FALSE;
-            for (guint i = 0; key && i < G_N_ELEMENTS(fields); i++)
-                known |= g_str_equal(key, fields[i]);
-            if (!known || lua_type(state, -1) != LUA_TSTRING)
-                return luaL_error(state, "gnoblin.layers.list filter fields must be monitor_id, "
-                                         "namespace, or layer strings");
-            lua_pop(state, 1);
-        }
-        arguments = lua_cli_table_object(state, 1, "layer filter");
-    } else {
-        arguments = json_object_new();
-    }
+    JsonObject* arguments = json_object_new();
 
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     g_autoptr(GError) call_error = NULL;
@@ -285,7 +269,7 @@ int lua_cli_layers_list(lua_State* state) {
         if (!layer)
             return luaL_error(state,
                               "gnoblin.layers.list returned an invalid layer surface record");
-        lua_cli_push_layer_surface_record(state, layer);
+        lua_cli_push_layer_surface_record(state, cli, layer);
         lua_rawseti(state, -2, i + 1);
     }
     return 1;

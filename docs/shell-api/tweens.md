@@ -59,7 +59,7 @@ outcome. The outcome is one of these values:
 
 - `"finished"`: the timeline reached its end, or every target window closed.
 - `"killed"`: `kill()` stopped it.
-- `"cancelled"`: a config reload, a stopped Lua worker or a session lock
+- `"cancelled"`: a stopped Lua worker, a session lock or a config reload
   stopped it.
 
 You cannot add steps after `play()`. A tween cannot start while the session is
@@ -93,9 +93,12 @@ fade:on("finished", function() window:close() end)
 fade:play()
 ```
 
-A config reload commits only when every pending operation has finished, so it waits for the
-`Operation` of a playing tween, up to 15 seconds, and then fails. A tween that has not played
-when a reload commits ends with `"config_reloaded"`.
+A config reload waits for the other pending operations, but not for a playing tween. The tween keeps
+playing until the new configuration takes effect.
+
+Then the compositor stops it. The `Operation` of `play()` succeeds with the outcome `"cancelled"`, and the
+`"closed"` signal of the tween runs with the reason `"config_reloaded"`. A tween that has not played when a
+reload commits ends with `"config_reloaded"` too. A reload that fails leaves a playing tween as it is.
 
 ## Easing
 

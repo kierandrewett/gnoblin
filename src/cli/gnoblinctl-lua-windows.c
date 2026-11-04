@@ -8,7 +8,7 @@ int lua_cli_output_tostring(lua_State* state) {
     return 1;
 }
 
-static void lua_cli_push_output_record(lua_State* state, JsonNode* node) {
+static void lua_cli_push_output_record(lua_State* state, Cli* cli, JsonNode* node) {
     if (!JSON_NODE_HOLDS_OBJECT(node) || !member_string(json_node_get_object(node), "id", NULL))
         luaL_error(state, "gnoblin.outputs returned an output without a stable id");
     json_to_lua(state, node);
@@ -17,7 +17,8 @@ static void lua_cli_push_output_record(lua_State* state, JsonNode* node) {
     int record = lua_absindex(state, -1);
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
-    lua_newtable(state); /* An Output has no methods in gnoblinctl lua. */
+    lua_newtable(state);
+    lua_cli_add_record_methods(state, cli, "Output");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_OUTPUT_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -219,10 +220,10 @@ int lua_cli_workspaces_operation(lua_State* state) {
 
 int lua_cli_windows_list(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
-        return luaL_error(state, "gnoblin.windows.list accepts one optional filter table");
-    JsonObject* arguments =
-        lua_gettop(state) ? lua_cli_table_object(state, 1, "window filter") : json_object_new();
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.windows.list takes no arguments; select windows with "
+                                 "gnoblin.find(\"Window\", filter)");
+    JsonObject* arguments = json_object_new();
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result =
         call_compositor(cli, "api", "windows.list", arguments, &call_error);
@@ -343,8 +344,6 @@ void cli_lua_event_subscription_detach(CliLuaEventSubscription* subscription) {
     if (!subscription || !subscription->active)
         return;
     subscription->active = FALSE;
-    if (subscription->location_requests)
-        g_hash_table_remove_all(subscription->location_requests);
     if (subscription->source_id) {
         g_source_remove(subscription->source_id);
         subscription->source_id = 0;
@@ -402,7 +401,6 @@ void cli_lua_event_subscription_free(gpointer data) {
         subscription->callback_ref = LUA_NOREF;
     }
     g_clear_object(&subscription->connection);
-    g_clear_pointer(&subscription->location_requests, g_hash_table_unref);
     if (subscription->pending)
         g_string_free(subscription->pending, TRUE);
     g_free(subscription->event_name);
@@ -432,7 +430,7 @@ int lua_cli_outputs_list(lua_State* state) {
     JsonArray* outputs = json_node_get_array(result);
     lua_createtable(state, (int)json_array_get_length(outputs), 0);
     for (guint i = 0; i < json_array_get_length(outputs); i++) {
-        lua_cli_push_output_record(state, json_array_get_element(outputs, i));
+        lua_cli_push_output_record(state, cli, json_array_get_element(outputs, i));
         lua_rawseti(state, -2, i + 1);
     }
     return 1;
@@ -453,7 +451,7 @@ int lua_cli_outputs_find(lua_State* state, gboolean by_id) {
         if (output &&
             ((by_id && g_str_equal(member_string(output, "id", ""), id)) ||
              (!by_id && json_object_get_boolean_member_with_default(output, "primary", FALSE)))) {
-            lua_cli_push_output_record(state, json_array_get_element(outputs, i));
+            lua_cli_push_output_record(state, cli, json_array_get_element(outputs, i));
             return 1;
         }
     }

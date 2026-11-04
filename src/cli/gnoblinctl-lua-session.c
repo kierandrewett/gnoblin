@@ -257,157 +257,97 @@ static gboolean lua_cli_location_accuracy_valid(gint64 accuracy) {
            accuracy == 8;
 }
 
-static void cli_lua_location_requests_prune(CliLuaEventSubscription* subscription, gint64 now) {
-    if (!subscription || !subscription->location_requests)
-        return;
-    GHashTableIter iter;
-    gpointer value;
-    g_hash_table_iter_init(&iter, subscription->location_requests);
-    while (g_hash_table_iter_next(&iter, NULL, &value)) {
-        CliLuaLocationRequest* request = value;
-        if (!request || request->expires_at_us <= now)
-            g_hash_table_iter_remove(&iter);
-    }
+/* A Request: what a shell answers. The console makes one for each location authorization
+ * request that an event subscription receives, as event.request. The request belongs to the
+ * connection that received it; the compositor accepts an answer only from that connection. Only
+ * the location kind exists here: the console answers no prompt or authentication request. */
+static LuaCliRequest* lua_cli_test_request(lua_State* state, int index) {
+    if (!luaL_testudata(state, index, GNOBLINCTL_REQUEST_METATABLE) ||
+        lua_rawlen(state, index) != sizeof(LuaCliRequest))
+        return NULL;
+    LuaCliRequest* request = lua_touserdata(state, index);
+    return request->magic == LUA_CLI_REQUEST_MAGIC ? request : NULL;
 }
 
-void cli_lua_location_request_track(CliLuaEventSubscription* subscription, JsonObject* event) {
+gboolean lua_cli_push_request(lua_State* state, CliLuaEventSubscription* subscription,
+                              JsonObject* event) {
     if (!subscription || !subscription->active ||
         !g_str_equal(subscription->event_name, "gnoblin.location.authorization-requested"))
-        return;
-
+        return FALSE;
     JsonNode* request_id_node = json_object_get_member(event, "request_id");
     JsonNode* expires_node = json_object_get_member(event, "expires_at_us");
     JsonNode* accuracy_node = json_object_get_member(event, "requested_accuracy");
-    if (!request_id_node || !expires_node || !accuracy_node ||
-        !JSON_NODE_HOLDS_VALUE(request_id_node) || !JSON_NODE_HOLDS_VALUE(expires_node) ||
-        !JSON_NODE_HOLDS_VALUE(accuracy_node))
-        return;
-    GType request_id_type = json_node_get_value_type(request_id_node);
-    GType expires_type = json_node_get_value_type(expires_node);
-    GType accuracy_type = json_node_get_value_type(accuracy_node);
-    if ((request_id_type != G_TYPE_INT && request_id_type != G_TYPE_INT64) ||
-        (expires_type != G_TYPE_INT && expires_type != G_TYPE_INT64) ||
-        (accuracy_type != G_TYPE_INT && accuracy_type != G_TYPE_INT64))
-        return;
-
+    JsonNode* nodes[] = {request_id_node, expires_node, accuracy_node};
+    for (guint i = 0; i < G_N_ELEMENTS(nodes); i++)
+        if (!nodes[i] || !JSON_NODE_HOLDS_VALUE(nodes[i]) ||
+            (json_node_get_value_type(nodes[i]) != G_TYPE_INT &&
+             json_node_get_value_type(nodes[i]) != G_TYPE_INT64))
+            return FALSE;
     gint64 request_id = json_node_get_int(request_id_node);
-    gint64 expires_at_us = json_node_get_int(expires_node);
     gint64 accuracy = json_node_get_int(accuracy_node);
-    gint64 now = g_get_monotonic_time();
-    if (request_id <= 0 || expires_at_us <= now || !lua_cli_location_accuracy_valid(accuracy))
-        return;
+    if (request_id <= 0 || !lua_cli_location_accuracy_valid(accuracy))
+        return FALSE;
 
-    cli_lua_location_requests_prune(subscription, now);
-    if (g_hash_table_size(subscription->location_requests) >= 256) {
-        GHashTableIter iter;
-        gpointer key;
-        gpointer value;
-        gint64 earliest_id = 0;
-        gint64 earliest_expiry = G_MAXINT64;
-        g_hash_table_iter_init(&iter, subscription->location_requests);
-        while (g_hash_table_iter_next(&iter, &key, &value)) {
-            CliLuaLocationRequest* pending = value;
-            if (pending && pending->expires_at_us < earliest_expiry) {
-                earliest_id = *(gint64*)key;
-                earliest_expiry = pending->expires_at_us;
-            }
-        }
-        if (earliest_id)
-            g_hash_table_remove(subscription->location_requests, &earliest_id);
-    }
-
-    gint64* key = g_new(gint64, 1);
-    *key = request_id;
-    CliLuaLocationRequest* request = g_new(CliLuaLocationRequest, 1);
-    request->expires_at_us = expires_at_us;
+    LuaCliRequest* request = lua_newuserdatauv(state, sizeof *request, 1);
+    request->magic = LUA_CLI_REQUEST_MAGIC;
+    request->subscription = subscription;
+    request->request_id = request_id;
+    request->expires_at_us = json_node_get_int(expires_node);
     request->requested_accuracy = (guint)accuracy;
-    g_hash_table_replace(subscription->location_requests, key, request);
-}
+    request->answered = FALSE;
 
-static CliLuaEventSubscription* cli_lua_location_request_lookup(Cli* cli, gint64 request_id,
-                                                                guint* requested_accuracy) {
-    if (!cli || !cli->lua_event_subscriptions || request_id <= 0)
-        return NULL;
-    gint64 now = g_get_monotonic_time();
-    for (guint i = 0; i < cli->lua_event_subscriptions->len; i++) {
-        CliLuaEventSubscription* subscription = g_ptr_array_index(cli->lua_event_subscriptions, i);
-        if (!subscription->active ||
-            !g_str_equal(subscription->event_name, "gnoblin.location.authorization-requested"))
-            continue;
-        cli_lua_location_requests_prune(subscription, now);
-        CliLuaLocationRequest* request =
-            g_hash_table_lookup(subscription->location_requests, &request_id);
-        if (request) {
-            if (requested_accuracy)
-                *requested_accuracy = request->requested_accuracy;
-            return subscription;
-        }
+    /* The fields a script reads: the event's own, with the ones every Request has. */
+    g_autoptr(JsonObject) fields = json_object_new();
+    g_autoptr(GList) members = json_object_get_members(event);
+    for (GList* item = members; item; item = item->next) {
+        const char* key = item->data;
+        if (!g_str_equal(key, "request_id") && !g_str_equal(key, "event") &&
+            !g_str_equal(key, "name") && !g_str_equal(key, "sequence") &&
+            !g_str_equal(key, "time") && !g_str_equal(key, "kind"))
+            json_object_set_member(fields, key, json_node_copy(json_object_get_member(event, key)));
     }
-    return NULL;
+    json_object_set_int_member(fields, "id", request_id);
+    json_object_set_string_member(fields, "kind", "location");
+    json_object_set_string_member(fields, "status", "pending");
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, fields);
+    json_to_lua(state, node);
+    lua_setiuservalue(state, -2, 1);
+    luaL_getmetatable(state, GNOBLINCTL_REQUEST_METATABLE);
+    lua_setmetatable(state, -2);
+    return TRUE;
 }
 
-static void cli_lua_location_request_consume(Cli* cli, gint64 request_id) {
-    if (!cli || !cli->lua_event_subscriptions)
-        return;
-    for (guint i = 0; i < cli->lua_event_subscriptions->len; i++) {
-        CliLuaEventSubscription* subscription = g_ptr_array_index(cli->lua_event_subscriptions, i);
-        if (subscription->location_requests)
-            g_hash_table_remove(subscription->location_requests, &request_id);
-    }
-}
-
-int lua_cli_location_authorize_app(lua_State* state) {
-    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
-        return luaL_error(state, "gnoblin.location.authorize_app requires one options table");
-    g_autoptr(JsonObject) arguments =
-        lua_cli_table_object(state, 1, "location authorization options");
-    if (json_object_get_size(arguments) != 3 || !json_object_has_member(arguments, "request_id") ||
-        !json_object_has_member(arguments, "allow") ||
-        !json_object_has_member(arguments, "accuracy"))
-        return luaL_error(state,
-                          "gnoblin.location.authorize_app accepts request_id, allow, and accuracy");
-
-    JsonNode* request_id_node = json_object_get_member(arguments, "request_id");
-    JsonNode* allow_node = json_object_get_member(arguments, "allow");
-    JsonNode* accuracy_node = json_object_get_member(arguments, "accuracy");
-    if (!request_id_node || !allow_node || !accuracy_node ||
-        !JSON_NODE_HOLDS_VALUE(request_id_node) || !JSON_NODE_HOLDS_VALUE(allow_node) ||
-        !JSON_NODE_HOLDS_VALUE(accuracy_node))
-        return luaL_error(state, "location authorization fields have invalid types");
-    GType request_id_type = json_node_get_value_type(request_id_node);
-    GType allow_type = json_node_get_value_type(allow_node);
-    GType accuracy_type = json_node_get_value_type(accuracy_node);
-    if ((request_id_type != G_TYPE_INT && request_id_type != G_TYPE_INT64) ||
-        allow_type != G_TYPE_BOOLEAN ||
-        (accuracy_type != G_TYPE_INT && accuracy_type != G_TYPE_INT64))
-        return luaL_error(state, "location authorization fields have invalid types");
-
-    gint64 request_id = json_node_get_int(request_id_node);
-    gboolean allowed = json_node_get_boolean(allow_node);
-    gint64 accuracy = json_node_get_int(accuracy_node);
-    if (request_id <= 0 || !lua_cli_location_accuracy_valid(accuracy) ||
-        (allowed && accuracy == 0) || (!allowed && accuracy != 0))
-        return luaL_error(state,
-                          "location authorization needs a positive request_id, boolean allow, "
-                          "and accuracy 0, 1, 4, 5, 6, or 8 (0 when denied)");
-
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    guint requested_accuracy = 0;
-    CliLuaEventSubscription* subscription =
-        cli_lua_location_request_lookup(cli, request_id, &requested_accuracy);
-    if (!subscription)
-        return luaL_error(state, "location request_id was not received by an active "
-                                 "gnoblin.location.authorization-requested subscription");
-    if (allowed && (guint)accuracy > requested_accuracy)
+/* Answer the location request: `allow`, and the accuracy level when allowed. */
+static int lua_cli_request_answer_location(lua_State* state, LuaCliRequest* request, gboolean allow,
+                                           gboolean accuracy_given, gint64 accuracy) {
+    if (!accuracy_given)
+        accuracy = allow ? request->requested_accuracy : 0;
+    if (!lua_cli_location_accuracy_valid(accuracy) || (allow && accuracy == 0) ||
+        (!allow && accuracy != 0))
+        return luaL_error(state, "location authorization needs allow and an accuracy of 1, 4, 5, "
+                                 "6 or 8 (0 when denied)");
+    if (allow && (guint)accuracy > request->requested_accuracy)
         return luaL_error(state,
                           "location accuracy must not exceed the level requested by the app");
+    if (request->answered)
+        return luaL_error(state, "this Request was already answered");
+    if (request->expires_at_us <= g_get_monotonic_time())
+        return luaL_error(state, "this location request has expired");
+    if (!request->subscription || !request->subscription->active ||
+        !request->subscription->connection)
+        return luaL_error(state, "this Request belongs to an event subscription that has ended");
 
-    cli_lua_location_request_consume(cli, request_id);
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_int_member(arguments, "request_id", request->request_id);
+    json_object_set_boolean_member(arguments, "allow", allow);
+    json_object_set_int_member(arguments, "accuracy", accuracy);
+    request->answered = TRUE;
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
-        subscription, "location.authorize_app", arguments, &call_error);
+        request->subscription, "location.authorize_app", arguments, &call_error);
     if (!result)
-        return luaL_error(state, "gnoblin.location.authorize_app failed: %s",
+        return luaL_error(state, "location.authorize_app failed: %s",
                           call_error ? call_error->message : "compositor request failed");
     JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
     JsonNode* response_id = response ? json_object_get_member(response, "request_id") : NULL;
@@ -416,13 +356,94 @@ int lua_cli_location_authorize_app(lua_State* state) {
         !JSON_NODE_HOLDS_VALUE(submitted) ||
         (json_node_get_value_type(response_id) != G_TYPE_INT &&
          json_node_get_value_type(response_id) != G_TYPE_INT64) ||
-        json_node_get_int(response_id) != request_id ||
+        json_node_get_int(response_id) != request->request_id ||
         json_node_get_value_type(submitted) != G_TYPE_BOOLEAN || !json_node_get_boolean(submitted))
-        return luaL_error(state, "gnoblin.location.authorize_app returned an invalid result");
+        return luaL_error(state, "location.authorize_app returned an invalid result");
+    lua_getiuservalue(state, 1, 1);
+    lua_pushliteral(state, "answered");
+    lua_setfield(state, -2, "status");
+    lua_pop(state, 1);
     json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
     return 1;
+}
+
+/* Request:answer(allow, accuracy?) */
+static int lua_cli_request_answer(lua_State* state) {
+    LuaCliRequest* request = lua_cli_test_request(state, 1);
+    if (!request)
+        return luaL_error(state, "Request:answer requires a Gnoblin Request");
+    int arguments = lua_gettop(state) - 1;
+    if (arguments < 1 || arguments > 2 || !lua_isboolean(state, 2) ||
+        (arguments == 2 && !lua_isinteger(state, 3)))
+        return luaL_error(state, "Request:answer takes an allow boolean and an optional accuracy "
+                                 "integer");
+    return lua_cli_request_answer_location(state, request, lua_toboolean(state, 2), arguments == 2,
+                                           arguments == 2 ? lua_tointeger(state, 3) : 0);
+}
+
+/* Request:cancel(): deny the location request. */
+static int lua_cli_request_cancel(lua_State* state) {
+    LuaCliRequest* request = lua_cli_test_request(state, 1);
+    if (!request)
+        return luaL_error(state, "Request:cancel requires a Gnoblin Request");
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "Request:cancel takes no arguments");
+    return lua_cli_request_answer_location(state, request, FALSE, FALSE, 0);
+}
+
+static int lua_cli_request_index(lua_State* state) {
+    if (!lua_cli_test_request(state, 1) || lua_type(state, 2) != LUA_TSTRING) {
+        lua_pushnil(state);
+        return 1;
+    }
+    const char* key = lua_tostring(state, 2);
+    if (g_str_equal(key, "answer")) {
+        lua_pushcfunction(state, lua_cli_request_answer);
+        return 1;
+    }
+    if (g_str_equal(key, "cancel")) {
+        lua_pushcfunction(state, lua_cli_request_cancel);
+        return 1;
+    }
+    if (g_str_equal(key, "claim"))
+        return luaL_error(state, "a location request has no claim method");
+    if (g_str_equal(key, "finished") || g_str_equal(key, "on")) {
+        g_autofree char* label = g_strdup_printf("Request:%s", key);
+        lua_pushstring(state, label);
+        lua_pushcclosure(state, lua_cli_not_available, 1);
+        return 1;
+    }
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, key);
+    return 1;
+}
+
+static int lua_cli_request_newindex(lua_State* state) {
+    return luaL_error(state, "Request fields are read-only");
+}
+
+static int lua_cli_request_tostring(lua_State* state) {
+    LuaCliRequest* request = lua_cli_test_request(state, 1);
+    lua_pushfstring(state, "Request location %I", (LUAI_UACINT)(request ? request->request_id : 0));
+    return 1;
+}
+
+void register_lua_cli_request(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_REQUEST_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_request_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_request_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_request_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pushliteral(state, "Request");
+    lua_setfield(state, -2, "__metatable");
+    lua_pop(state, 1);
 }
 
 int lua_cli_runtime_reload_config(lua_State* state) {

@@ -16,6 +16,7 @@
 #include <string.h>
 #include "gnoblin-keybinding-catalog.h"
 #include "../../control/gnoblin-chord.h"
+#include "gnoblin-lua-api.h"
 #include "gnoblin-lua-pattern.h"
 #include "gnoblin-lua-extension.h"
 #if __has_include("../core/gnoblin-native-control.h")
@@ -158,6 +159,9 @@ typedef struct {
     gboolean embedded_defaults;
     gboolean rejecting_operations;
     gboolean deferred_callbacks_scheduled;
+    /* The candidate configuration is with the compositor: a playing tween that ends now was
+     * ended by the reload (gnoblin_config_reload_in_flight). */
+    gboolean reload_in_flight;
 } LuaConfig;
 typedef struct {
     LuaConfig config;
@@ -221,20 +225,9 @@ extern gpointer settings_changed_data;
 void push_grant(lua_State* state, guint64 handle, guint64 generation, guint64 native_generation,
                 gint64 expires_at_us, gboolean menu, const char* window_id);
 gboolean lua_push_window_by_id(lua_State* state, LuaConfig* config, const char* id);
+gboolean lua_push_workspace_by_id(lua_State* state, LuaConfig* config, const char* id);
 int lua_window_grant_operation(lua_State* state, LuaConfig* config, const char* method,
                                const char* window_id, int grant_index, const char* edge);
-typedef struct {
-    const char* path;
-    const char* operation;
-    lua_CFunction function;
-    /* The implementation takes one table of named fields, the form socket clients send. Lua
-     * callers pass the annotated parameters positionally (lua_positional_call). */
-    gboolean named_arguments;
-} LuaApiEntry;
-
-extern const LuaApiEntry lua_api[];
-const LuaApiEntry* lua_api_find_call(const char* method);
-gsize lua_api_parameter_names(const char* path, const char** names, gsize capacity);
 gboolean lua_push_workspace_selector(lua_State* state, int index);
 gboolean lua_push_monitor_id(lua_State* state, int index);
 void push_document(lua_State* state);
@@ -319,8 +312,6 @@ void lua_object_update(lua_State* state, const char* kind, int handle, int chang
 void push_readonly_record(lua_State* state, int index, const char* forced_kind);
 gboolean lua_api_class_field_observable(const char* class_name, const char* field);
 char* lua_api_class_observable_names(const char* class_name);
-gboolean lua_api_class_field_scalar(const char* class_name, const char* field);
-char* lua_api_class_scalar_names(const char* class_name);
 int lua_find(lua_State* state);
 int lua_read_windows(lua_State* state);
 int lua_read_layers(lua_State* state);
@@ -350,7 +341,6 @@ void lua_object_add_methods(lua_State* state, int method_table, const char* kind
 int lua_object_on(lua_State* state);
 int lua_object_watch(lua_State* state);
 gboolean lua_object_dispatch_event(lua_State* state, const char* event, GVariant* payload);
-gboolean lua_api_class_has_field(const char* class_name, const char* field);
 gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed);
 int lua_workspace_action(lua_State* state);
 int lua_generic_api_action(lua_State* state);

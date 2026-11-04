@@ -11,6 +11,30 @@ compositor with the Lua API. Enter one Lua statement or expression per line.
 Expressions print their result; tables print as JSON. Type `:help` for the
 console commands and `:quit` to exit.
 
+The console runs the same API as a Lua configuration. Each name, argument order
+and object is the same, so a line that works here works in a configuration.
+Calls are positional, and optional arguments come last. A name that the API
+does not have fails with `gnoblin.NAME is not part of the Lua API`.
+
+Three things differ, because the console is one process that ends with your
+script and holds no runtime:
+
+- A write waits for the compositor and returns the completed value, not an
+  `Operation`.
+- A record is a copy of one moment. It has no `on` or `watch`; follow a change
+  with `gnoblin.on(name, fn)`.
+- A name that needs a runtime raises `NAME is not available in gnoblinctl lua
+because the console has no runtime`. These are `gnoblin.timers`,
+  `gnoblin.process`, `gnoblin.tween`, `gnoblin.idle.watch`,
+  `gnoblin.input.grab`, `gnoblin.input.on`, `gnoblin.settings.override`,
+  `gnoblin.load`, `gnoblin.array`, `gnoblin.snapshot`, `gnoblin.configure`,
+  `gnoblin.window_rule`, `gnoblin.animation`, `Window:set_effect`,
+  `Window:present` and the `on` and `watch` methods of every record.
+
+`gnoblin.ease` and `gnoblin.lerp` work here. `gnoblin.config` holds only
+`path()`, `default()` and `restore_default()`, as in a configuration, and
+cannot be assigned to. Read settings with `gnoblin.settings`.
+
 Read build and source identity with `gnoblin.version()`:
 
 ```lua
@@ -19,7 +43,7 @@ print(version.gnoblin, version.gnome, version.git_sha)
 ```
 
 ```lua
-=gnoblin.windows.list { focused = true }
+=gnoblin.find("Window", {focused = true})
 =gnoblin.workspaces.list()
 :quit
 ```
@@ -40,6 +64,22 @@ end
 Window actions wait for compositor completion and return the completed value.
 They do not return an asynchronous `Operation` handle.
 
+Select objects with `gnoblin.find(kind, filter?)`:
+
+- The kinds are `Window`, `Workspace`, `LayerSurface`, `Output`, `Shortcut`,
+  `Launch` and `InputSource`. `Process` raises the no-runtime error.
+- A table filter names scalar fields of the kind and keeps the records that
+  equal every value.
+- A function filter keeps the records for which it returns true.
+- `gnoblin.windows.list()` and `gnoblin.layers.list()` take no filter.
+
+```lua
+local notes = gnoblin.find("Window", {app_id = "notes"})[1]
+local wide = gnoblin.find("Window", function(window)
+    return window.frame.width > 1000
+end)
+```
+
 `window:set_effect` raises an error here, because an
 [override](/shell-api/overrides) needs a configuration to hold it.
 
@@ -57,7 +97,8 @@ an event callback. The ordinary REPL cannot create one or call these methods.
 
 The same grant authorizes keyboard snapping. Inside the event callback, call
 `gnoblin.windows.snap_context(event.grant)`, then
-`context:commit({monitor_id, frame})` to apply its frame.
+`context:commit(monitor, x, y, width, height)` to apply its frame. `monitor` is an
+`Output` or a monitor ID.
 
 In `gnoblinctl lua`, both calls wait for their results on the event connection.
 
@@ -251,17 +292,13 @@ A console script cannot hold an [override](/shell-api/overrides), because the
 script ends before anything could revoke it. `gnoblin.settings.override` and
 `window:set_effect` raise an error here. Make an override in a configuration.
 
-Use `gnoblin.layers.list(filter?)` to read layer surfaces. Each result is a
-read-only `LayerSurface` record.
-
-The optional filter matches these fields exactly:
-
-- `monitor_id`: the monitor's stable connector ID.
-- `namespace`: the layer surface namespace.
-- `layer`: `background`, `bottom`, `top`, or `overlay`.
+Use `gnoblin.layers.list()` to read layer surfaces. Each result is a
+read-only `LayerSurface` record. Select some of them with `gnoblin.find`, which
+matches any scalar field exactly, such as `monitor_id`, `namespace` or `layer`
+(`background`, `bottom`, `top` or `overlay`):
 
 ```lua
-for _, surface in ipairs(gnoblin.layers.list { layer = "top" }) do
+for _, surface in ipairs(gnoblin.find("LayerSurface", {layer = "top"})) do
     print(surface.namespace, surface.geometry.width)
 end
 ```
@@ -277,19 +314,23 @@ print(policy.enter.animation, policy.exit.animation, policy.window_shadow)
 
 ## Animations
 
-Animation previews return a read-only `AnimationPreview` record. Its
-`seek`, `step`, `play`, and `pause` methods return the completed updated record;
-`stop` returns its completion result:
+A `Window` or `LayerSurface` previews and inspects its own animations:
+
+- `target:preview_animation(name, event?, autoplay?)` returns a read-only
+  `AnimationPreview` record.
+- The `seek`, `step`, `play` and `pause` methods of a preview return the
+  completed updated record. `stop` returns its completion result.
+- `target:inspect_animation(name, event?)` returns a read-only inspection
+  record.
 
 ```lua
-local preview = gnoblin.animations.preview("gnoblin-window-open", {
-    event = "open",
-    target_type = "window",
-    target = "active",
-})
+local window = gnoblin.windows.focused()
+local preview = window:preview_animation("gnoblin-window-open", "open", false)
 preview = preview:seek(0.5)
 print(preview.progress)
 preview:stop()
+
+print(window:inspect_animation("gnoblin-window-open", "open").duration)
 ```
 
 `gnoblin.shortcuts.configured()` and `gnoblin.shortcuts.actions(group?)` return
@@ -336,27 +377,33 @@ the [runtime API guide](/shell-api/) for its fields and reconnect
 behavior.
 
 To handle a location request, subscribe to
-`gnoblin.location.authorization-requested`. The CLI can answer only a request
-received by an active subscription, and sends the reply over that same event
-connection. Requests expire after 25 seconds. This example denies the request;
-replace the decision with a consent prompt before approving access:
+`gnoblin.location.authorization-requested`. The event carries `event.request`,
+a `Request` of kind `location`, as it does in a configuration.
+
+Answer it with `request:answer(allow, accuracy?)`, or deny it with
+`request:cancel()`. The CLI can answer only a request received by an active
+subscription, and sends the reply over that same event connection. Requests
+expire after 25 seconds. This example denies the request; replace the decision
+with a consent prompt before approving access:
 
 ```lua
 local subscription
 subscription = gnoblin.on("gnoblin.location.authorization-requested", function(event)
-    local result = gnoblin.location.authorize_app {
-        request_id = event.request_id,
-        allow = false,
-        accuracy = 0,
-    }
+    local result = event.request:cancel()
     print(result.submitted)
     subscription:unsubscribe()
 end)
 ```
 
-Approval must choose an accuracy level no greater than the one requested by the
-app. The call returns a read-only result; `submitted` confirms Gnoblin accepted
-and queued the answer. System settings can still limit approved accuracy.
+`answer` takes `allow`, and an `accuracy` level that is no greater than the one
+the app requested (it defaults to that level):
+
+- The call returns a read-only result. `submitted` confirms Gnoblin accepted
+  and queued the answer.
+- `request.status` becomes `"answered"`. A second answer raises an error.
+- System settings can still limit approved accuracy.
+- The console makes a `Request` for location requests only.
+  `request:finished()` and `request:on` raise the no-runtime error.
 
 `gnoblinctl lua` can register, remove, and manage shortcut sessions:
 

@@ -1,107 +1,5 @@
 #include "gnoblinctl-internal.h"
 
-int lua_cli_animations_preview(lua_State* state) {
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) < 1 || lua_gettop(state) > 2 || lua_type(state, 1) != LUA_TSTRING ||
-        !*lua_tostring(state, 1))
-        return luaL_error(state,
-                          "gnoblin.animations.preview requires name (string) and optional options");
-    g_autoptr(JsonObject) arguments =
-        lua_cli_optional_options(state, 2, "gnoblin.animations.preview");
-    if (json_object_has_member(arguments, "name"))
-        return luaL_error(state,
-                          "gnoblin.animations.preview takes name as argument 1, not in options");
-    json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "animation.preview", arguments, &call_error);
-    if (!result)
-        return luaL_error(state, "gnoblin.animations.preview failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return luaL_error(state, "gnoblin.animations.preview returned an invalid preview");
-    JsonObject* preview = json_node_get_object(result);
-    const char* session = member_string(preview, "session", NULL);
-    if (!session)
-        session = member_string(preview, "id", NULL);
-    lua_cli_push_animation_preview_record(state, cli, preview, session);
-    return 1;
-}
-
-int lua_cli_animations_control(lua_State* state) {
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    const char* method = lua_tostring(state, lua_upvalueindex(2));
-    gboolean takes_progress = g_str_equal(method, "animation.seek");
-    gboolean takes_milliseconds = g_str_equal(method, "animation.step");
-    int expected = takes_progress || takes_milliseconds ? 2 : 1;
-    if (lua_gettop(state) != expected)
-        return luaL_error(state, "gnoblin.animations.%s requires %s", method + strlen("animation."),
-                          takes_progress       ? "session (string) and progress (number)"
-                          : takes_milliseconds ? "session (string) and milliseconds (integer)"
-                                               : "session (string)");
-    if (lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1))
-        return luaL_error(state, "gnoblin.animations.%s requires session to be a nonempty string",
-                          method + strlen("animation."));
-
-    g_autoptr(JsonObject) arguments = json_object_new();
-    json_object_set_string_member(arguments, "session", lua_tostring(state, 1));
-    JsonNode* session_node = json_object_get_member(arguments, "session");
-    if (takes_progress) {
-        if (lua_type(state, 2) != LUA_TNUMBER)
-            return luaL_error(state, "gnoblin.animations.seek requires progress from 0 to 1");
-        json_object_set_double_member(arguments, "progress", lua_tonumber(state, 2));
-    } else if (takes_milliseconds) {
-        if (!lua_isinteger(state, 2))
-            return luaL_error(state,
-                              "gnoblin.animations.step requires milliseconds from 1 to 60000");
-        json_object_set_int_member(arguments, "milliseconds", lua_tointeger(state, 2));
-    }
-    if (takes_progress) {
-        JsonNode* progress_node = json_object_get_member(arguments, "progress");
-        if (!progress_node || !JSON_NODE_HOLDS_VALUE(progress_node) ||
-            (json_node_get_value_type(progress_node) != G_TYPE_DOUBLE &&
-             json_node_get_value_type(progress_node) != G_TYPE_INT &&
-             json_node_get_value_type(progress_node) != G_TYPE_INT64))
-            return luaL_error(state, "gnoblin.animations.seek requires progress from 0 to 1");
-        double progress = json_node_get_double(progress_node);
-        if (!isfinite(progress) || progress < 0.0 || progress > 1.0)
-            return luaL_error(state, "gnoblin.animations.seek requires progress from 0 to 1");
-    } else if (takes_milliseconds) {
-        JsonNode* milliseconds_node = json_object_get_member(arguments, "milliseconds");
-        if (!milliseconds_node || !JSON_NODE_HOLDS_VALUE(milliseconds_node) ||
-            (json_node_get_value_type(milliseconds_node) != G_TYPE_INT &&
-             json_node_get_value_type(milliseconds_node) != G_TYPE_INT64) ||
-            json_node_get_int(milliseconds_node) < 1 ||
-            json_node_get_int(milliseconds_node) > 60000)
-            return luaL_error(state,
-                              "gnoblin.animations.step requires milliseconds from 1 to 60000");
-    }
-
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
-    if (!result)
-        return luaL_error(state, "gnoblin.animations.%s failed: %s", method + strlen("animation."),
-                          call_error->message);
-    if (g_str_equal(method, "animation.stop")) {
-        JsonObject* stopped = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
-        if (!stopped || !json_object_get_boolean_member_with_default(stopped, "ok", FALSE) ||
-            !g_str_equal(member_string(stopped, "session", ""), json_node_get_string(session_node)))
-            return luaL_error(state, "gnoblin.animations.stop returned an invalid result");
-        json_to_lua(state, result);
-        lua_cli_push_readonly_value(state, -1);
-        lua_remove(state, -2);
-        return 1;
-    }
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return luaL_error(state, "gnoblin.animations.%s returned an invalid AnimationPreview",
-                          method + strlen("animation."));
-    JsonObject* preview = json_node_get_object(result);
-    const char* session = member_string(preview, "session", NULL);
-    if (!session)
-        session = member_string(preview, "id", NULL);
-    lua_cli_push_animation_preview_record(state, cli, preview, session);
-    return 1;
-}
-
 int lua_cli_animations_list(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.animations.list takes no arguments");
@@ -162,35 +60,6 @@ int lua_cli_animations_get(lua_State* state) {
     return 1;
 }
 
-static gboolean lua_cli_animation_inspect_arguments_valid(JsonObject* arguments) {
-    static const char* const fields[] = {"name", "target", "event", "target_type", NULL};
-    GList* members = json_object_get_members(arguments);
-    gboolean valid = TRUE;
-    for (GList* item = members; item && valid; item = item->next) {
-        gboolean found = FALSE;
-        for (guint i = 0; fields[i]; i++)
-            found |= g_str_equal(item->data, fields[i]);
-        valid = found;
-    }
-    g_list_free(members);
-    const char* name = member_string(arguments, "name", NULL);
-    const char* target = member_string(arguments, "target", "active");
-    const char* event = member_string(arguments, "event", NULL);
-    const char* target_type = member_string(arguments, "target_type", "window");
-    const char* optional_fields[] = {"target", "event", "target_type", NULL};
-    for (guint i = 0; optional_fields[i]; i++) {
-        JsonNode* field = json_object_get_member(arguments, optional_fields[i]);
-        if (field &&
-            (!JSON_NODE_HOLDS_VALUE(field) || json_node_get_value_type(field) != G_TYPE_STRING))
-            return FALSE;
-    }
-    return valid && name && g_regex_match_simple("^[A-Za-z0-9_-]{1,80}$", name, 0, 0) && target &&
-           *target && g_utf8_validate(target, -1, NULL) && strlen(target) <= 128 &&
-           (!json_object_has_member(arguments, "event") || (event && *event)) &&
-           (g_str_equal(target_type, "window") || g_str_equal(target_type, "layer") ||
-            g_str_equal(target_type, "namespace"));
-}
-
 static gboolean lua_cli_animation_inspection_valid(JsonObject* result, JsonObject* arguments) {
     const char* name = member_string(arguments, "name", NULL);
     const char* requested_event = member_string(arguments, "event", NULL);
@@ -237,57 +106,59 @@ static gboolean lua_cli_animation_inspection_valid(JsonObject* result, JsonObjec
     return !keyframes || JSON_NODE_HOLDS_ARRAY(keyframes);
 }
 
-int lua_cli_animations_inspect(lua_State* state) {
-    if (lua_gettop(state) < 1 || lua_gettop(state) > 2 || lua_type(state, 1) != LUA_TSTRING)
-        return luaL_error(state,
-                          "gnoblin.animations.inspect requires name (string) and optional options");
-    g_autoptr(JsonObject) arguments =
-        lua_cli_optional_options(state, 2, "gnoblin.animations.inspect");
-    if (json_object_has_member(arguments, "name"))
-        return luaL_error(state,
-                          "gnoblin.animations.inspect takes name as argument 1, not in options");
-    json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
-    if (!lua_cli_animation_inspect_arguments_valid(arguments))
-        return luaL_error(state, "gnoblin.animations.inspect received invalid arguments");
+/* window:inspect_animation(name, event?) and window:preview_animation(name, event?, autoplay?),
+ * and the same on a LayerSurface: the record is the target. Upvalues: the Cli, the wire operation
+ * and the method name. */
+int lua_cli_record_animation(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "animation.inspect", arguments, &call_error);
-    if (!result)
-        return luaL_error(state, "gnoblin.animations.inspect failed: %s", call_error->message);
-    if (!JSON_NODE_HOLDS_OBJECT(result) ||
-        !lua_cli_animation_inspection_valid(json_node_get_object(result), arguments))
-        return luaL_error(state, "gnoblin.animations.inspect returned an invalid inspection");
-    json_to_lua(state, result);
-    lua_cli_push_readonly_value(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    const char* name = lua_tostring(state, lua_upvalueindex(3));
+    gboolean preview = g_str_equal(method, "animation.preview");
+    gboolean layer = luaL_testudata(state, 1, GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE) != NULL;
+    if (!layer)
+        luaL_checkudata(state, 1, GNOBLINCTL_WINDOW_RECORD_METATABLE);
+    int supplied = lua_gettop(state) - 1;
+    if (supplied < 1 || supplied > (preview ? 3 : 2) || lua_type(state, 2) != LUA_TSTRING)
+        return luaL_error(state,
+                          preview ? "%s takes an animation name, an optional event and an "
+                                    "optional autoplay flag"
+                                  : "%s takes an animation name and an optional event",
+                          name);
+    if (supplied >= 2 && !lua_isnil(state, 3) && lua_type(state, 3) != LUA_TSTRING)
+        return luaL_error(state, "the animation event must be a string");
+    if (supplied == 3 && !lua_isnil(state, 4) && !lua_isboolean(state, 4))
+        return luaL_error(state, "autoplay must be a boolean");
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    g_autofree char* target = g_strdup(lua_tostring(state, -1));
+    if (!target || !*target)
+        return luaL_error(state, "this record has no stable id");
 
-int lua_cli_animations_surfaces(lua_State* state) {
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.animations.surfaces takes no arguments");
-    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
-    JsonObject* arguments = json_object_new();
+    g_autoptr(JsonObject) arguments = json_object_new();
+    json_object_set_string_member(arguments, "name", lua_tostring(state, 2));
+    json_object_set_string_member(arguments, "target", target);
+    json_object_set_string_member(arguments, "target_type", layer ? "layer" : "window");
+    if (supplied >= 2 && !lua_isnil(state, 3))
+        json_object_set_string_member(arguments, "event", lua_tostring(state, 3));
+    if (supplied == 3 && !lua_isnil(state, 4))
+        json_object_set_boolean_member(arguments, "autoplay", lua_toboolean(state, 4));
     g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "animation.surfaces", arguments, &call_error);
-    json_object_unref(arguments);
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
     if (!result)
-        return luaL_error(state, "gnoblin.animations.surfaces failed: %s", call_error->message);
-    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
-    JsonArray* surfaces = response ? json_object_get_array_member(response, "surfaces") : NULL;
-    if (!surfaces)
-        return luaL_error(state, "gnoblin.animations.surfaces returned an invalid snapshot");
-    for (guint i = 0; i < json_array_get_length(surfaces); i++) {
-        JsonObject* surface = json_array_get_object_element(surfaces, i);
-        if (!member_string(surface, "id", NULL) || !*member_string(surface, "id", "") ||
-            !member_string(surface, "namespace", NULL) ||
-            !*member_string(surface, "namespace", "") || !member_string(surface, "title", NULL))
-            return luaL_error(state,
-                              "gnoblin.animations.surfaces returned an invalid Surface record");
+        return luaL_error(state, "%s failed: %s", name, call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "%s returned an invalid %s", name,
+                          preview ? "preview" : "inspection");
+    JsonObject* object = json_node_get_object(result);
+    if (preview) {
+        const char* session = member_string(object, "session", NULL);
+        if (!session)
+            session = member_string(object, "id", NULL);
+        lua_cli_push_animation_preview_record(state, cli, object, session);
+        return 1;
     }
-
+    if (!lua_cli_animation_inspection_valid(object, arguments))
+        return luaL_error(state, "%s returned an invalid inspection", name);
     json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
@@ -349,7 +220,7 @@ int lua_cli_launches_read(lua_State* state) {
 }
 
 /* Launch:finish(): stop waiting for this launch. A launch that was pending is ended. */
-static int lua_cli_launch_finish(lua_State* state) {
+int lua_cli_launch_finish(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     luaL_checkudata(state, 1, GNOBLINCTL_LAUNCH_RECORD_METATABLE);
     if (lua_gettop(state) != 1)
@@ -396,9 +267,7 @@ static void lua_cli_push_launch_record(lua_State* state, Cli* cli, JsonNode* val
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    lua_pushlightuserdata(state, cli);
-    lua_pushcclosure(state, lua_cli_launch_finish, 1);
-    lua_setfield(state, -2, "finish");
+    lua_cli_add_record_methods(state, cli, "Launch");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_LAUNCH_RECORD_METATABLE);
     lua_setmetatable(state, record);

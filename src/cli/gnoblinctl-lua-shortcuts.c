@@ -8,7 +8,7 @@ int lua_cli_workspace_tostring(lua_State* state) {
     return 1;
 }
 
-static int lua_cli_workspace_method(lua_State* state) {
+int lua_cli_workspace_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     int supplied = lua_gettop(state) - 1;
@@ -55,18 +55,7 @@ void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject* objec
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    static const char* const methods[][2] = {
-        {"activate", "workspace.switch"},
-        {"rename", "workspace.rename"},
-        {"remove", "workspace.remove"},
-        {NULL, NULL},
-    };
-    for (guint i = 0; methods[i][0]; i++) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushstring(state, methods[i][1]);
-        lua_pushcclosure(state, lua_cli_workspace_method, 2);
-        lua_setfield(state, -2, methods[i][0]);
-    }
+    lua_cli_add_record_methods(state, cli, "Workspace");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_WORKSPACE_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -81,7 +70,7 @@ int lua_cli_layer_surface_tostring(lua_State* state) {
     return 1;
 }
 
-void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object) {
+void lua_cli_push_layer_surface_record(lua_State* state, Cli* cli, JsonObject* object) {
     const char* id = member_string(object, "id", NULL);
     if (!id || !*id)
         luaL_error(state, "gnoblin.layers.list returned a layer surface without a stable id");
@@ -95,6 +84,7 @@ void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object) {
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
+    lua_cli_add_record_methods(state, cli, "LayerSurface");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -139,7 +129,7 @@ static gboolean lua_cli_input_device_valid(JsonObject* object) {
 }
 
 /* InputSource:select(): switch to this source and return the confirmed source. */
-static int lua_cli_input_source_select(lua_State* state) {
+int lua_cli_input_source_select(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     luaL_checkudata(state, 1, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
     if (lua_gettop(state) != 1)
@@ -192,11 +182,7 @@ void lua_cli_push_input_record(lua_State* state, Cli* cli, JsonObject* object, g
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    if (!is_device) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushcclosure(state, lua_cli_input_source_select, 1);
-        lua_setfield(state, -2, "select");
-    }
+    lua_cli_add_record_methods(state, cli, is_device ? "InputDevice" : "InputSource");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, is_device ? GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE
                                        : GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
@@ -354,7 +340,7 @@ static void lua_cli_push_readonly_json_object(lua_State* state, JsonObject* obje
 
 /* Unbind or end a session of the shortcut at index 1, through the connection that owns it. The
  * methods are Shortcut:unbind() and Shortcut:end_session(session_id). */
-static int lua_cli_shortcut_method(lua_State* state) {
+int lua_cli_shortcut_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     gboolean unbinding = g_str_equal(method, "shortcut.unbind");
@@ -415,17 +401,7 @@ static void lua_cli_push_shortcut_object(lua_State* state, Cli* cli, JsonObject*
     lua_pushvalue(state, backing);
     lua_setiuservalue(state, record, 1);
     lua_newtable(state);
-    static const char* const methods[][2] = {
-        {"unbind", "shortcut.unbind"},
-        {"end_session", "shortcut.session.end"},
-        {NULL, NULL},
-    };
-    for (guint i = 0; methods[i][0]; i++) {
-        lua_pushlightuserdata(state, cli);
-        lua_pushstring(state, methods[i][1]);
-        lua_pushcclosure(state, lua_cli_shortcut_method, 2);
-        lua_setfield(state, -2, methods[i][0]);
-    }
+    lua_cli_add_record_methods(state, cli, "Shortcut");
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_SHORTCUT_RECORD_METATABLE);
     lua_setmetatable(state, record);
@@ -585,17 +561,11 @@ void register_lua_cli_focus_policy_record(lua_State* state) {
     lua_pop(state, 1);
 }
 
-/* An override lasts only while a runtime holds it, and a gnoblinctl script ends first. */
-static int lua_cli_settings_override(lua_State* state) {
-    return luaL_error(state,
-                      "gnoblin.settings.override needs a configuration to hold the override; a "
-                      "gnoblinctl script ends before anything could revoke it. Use "
-                      "`gnoblinctl input orientation-lock` for the orientation lock");
-}
-
 static int lua_cli_settings_index(lua_State* state) {
     if (lua_type(state, 2) == LUA_TSTRING && g_str_equal(lua_tostring(state, 2), "override")) {
-        lua_pushcfunction(state, lua_cli_settings_override);
+        /* An override lasts only while a runtime holds it. */
+        lua_pushliteral(state, "gnoblin.settings.override");
+        lua_pushcclosure(state, lua_cli_not_available, 1);
         return 1;
     }
     return lua_cli_readonly_index(state);
