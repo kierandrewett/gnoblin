@@ -3,62 +3,121 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 6 Oct 2026 00:40:00 +0100
 Subject: [PATCH] clutter: make private enum declarations usable from C++
 
-The compositor-owned ImGui renderer is C++, while Clutter and Cogl headers
-forward-declare two enums using C-only syntax. Give those forward declarations
-and definitions matching fixed underlying types in C++ builds.
-
+Make the Clutter and Cogl headers usable from C++: private enum declarations, the C linkage of the color transform
+and paint context headers, and the cast of the trace callback data.
 ---
- cogl/cogl/cogl-types.h                      | 5 +++++
- cogl/cogl/cogl-framebuffer-private.h        | 4 ++++
- clutter/clutter/clutter-types.h             | 4 ++++
- clutter/clutter/clutter-paint-context.h     | 4 ++++
- 4 files changed, 17 insertions(+)
+ clutter/clutter/clutter-color-transform.h | 1 +
+ clutter/clutter/clutter-paint-context.h   | 8 ++++++++
+ clutter/clutter/clutter-types.h           | 3 +++
+ cogl/cogl/cogl-framebuffer-private.h      | 4 ++++
+ cogl/cogl/cogl-trace.h                    | 4 ++--
+ cogl/cogl/cogl-types.h                    | 3 +++
+ 6 files changed, 21 insertions(+), 2 deletions(-)
 
-diff --git a/cogl/cogl/cogl-types.h b/cogl/cogl/cogl-types.h
---- a/cogl/cogl/cogl-types.h
-+++ b/cogl/cogl/cogl-types.h
-@@ -274,3 +274,6 @@
--typedef enum _CoglFramebufferState CoglFramebufferState;
-+#ifdef __cplusplus
-+enum _CoglFramebufferState : unsigned int;
-+#endif
-+typedef enum _CoglFramebufferState CoglFramebufferState;
+diff --git a/clutter/clutter/clutter-color-transform.h b/clutter/clutter/clutter-color-transform.h
+index 7b93fffb..f2be9a45 100644
+--- a/clutter/clutter/clutter-color-transform.h
++++ b/clutter/clutter/clutter-color-transform.h
+@@ -29,6 +29,7 @@
+ #include "clutter/clutter-types.h"
+ #include "clutter/clutter-macros.h"
  
- typedef struct _CoglAttribute CoglAttribute;
-diff --git a/cogl/cogl/cogl-framebuffer-private.h b/cogl/cogl/cogl-framebuffer-private.h
---- a/cogl/cogl/cogl-framebuffer-private.h
-+++ b/cogl/cogl/cogl-framebuffer-private.h
-@@ -70,2 +70,6 @@
--enum _CoglFramebufferState
-+#ifdef __cplusplus
-+enum _CoglFramebufferState : unsigned int
-+#else
-+enum _CoglFramebufferState
-+#endif
- {
-diff --git a/clutter/clutter/clutter-types.h b/clutter/clutter/clutter-types.h
---- a/clutter/clutter/clutter-types.h
-+++ b/clutter/clutter/clutter-types.h
-@@ -88,5 +88,8 @@
- typedef union _ClutterEvent                     ClutterEvent;
- 
--typedef enum _ClutterPaintFlag                  ClutterPaintFlag;
-+#ifdef __cplusplus
-+enum _ClutterPaintFlag : int;
-+#endif
-+typedef enum _ClutterPaintFlag                  ClutterPaintFlag;
- 
- typedef struct _ClutterColorState               ClutterColorState;
++G_BEGIN_DECLS
+ #define CLUTTER_TYPE_COLOR_TRANSFORM (clutter_color_transform_get_type ())
+ CLUTTER_EXPORT
+ G_DECLARE_FINAL_TYPE (ClutterColorTransform, clutter_color_transform,
 diff --git a/clutter/clutter/clutter-paint-context.h b/clutter/clutter/clutter-paint-context.h
+index 321c86ee..20d9e773 100644
 --- a/clutter/clutter/clutter-paint-context.h
 +++ b/clutter/clutter/clutter-paint-context.h
-@@ -31,2 +31,6 @@
--typedef enum _ClutterPaintFlag
+@@ -26,9 +26,15 @@
+ #include "clutter/clutter-macros.h"
+ #include "clutter/clutter-stage-view.h"
+ 
++G_BEGIN_DECLS
++
+ typedef struct _ClutterPaintContext ClutterPaintContext;
+ 
 +#ifdef __cplusplus
 +typedef enum _ClutterPaintFlag : int
 +#else
-+typedef enum _ClutterPaintFlag
+ typedef enum _ClutterPaintFlag
 +#endif
  {
+   CLUTTER_PAINT_FLAG_NONE = 0,
+   CLUTTER_PAINT_FLAG_NO_CURSORS = 1 << 0,
+@@ -92,3 +98,5 @@ CLUTTER_EXPORT
+ ClutterColorState * clutter_paint_context_get_color_state (ClutterPaintContext *paint_context);
+ 
+ G_DEFINE_AUTOPTR_CLEANUP_FUNC (ClutterPaintContext, clutter_paint_context_unref)
++
++G_END_DECLS
+diff --git a/clutter/clutter/clutter-types.h b/clutter/clutter/clutter-types.h
+index 00db1140..410b3375 100644
+--- a/clutter/clutter/clutter-types.h
++++ b/clutter/clutter/clutter-types.h
+@@ -87,6 +87,9 @@ typedef struct _ClutterSprite                   ClutterSprite;
+ 
+ typedef union _ClutterEvent                     ClutterEvent;
+ 
++#ifdef __cplusplus
++enum _ClutterPaintFlag : int;
++#endif
+ typedef enum _ClutterPaintFlag                  ClutterPaintFlag;
+ 
+ typedef struct _ClutterColorState               ClutterColorState;
+diff --git a/cogl/cogl/cogl-framebuffer-private.h b/cogl/cogl/cogl-framebuffer-private.h
+index db39ec5f..24447bc7 100644
+--- a/cogl/cogl/cogl-framebuffer-private.h
++++ b/cogl/cogl/cogl-framebuffer-private.h
+@@ -70,7 +70,11 @@ typedef enum _CoglFramebufferStateIndex
+   COGL_FRAMEBUFFER_STATE_INDEX_MAX                = 8
+ } CoglFramebufferStateIndex;
+ 
++#ifdef __cplusplus
++enum _CoglFramebufferState : unsigned int
++#else
+ enum _CoglFramebufferState
++#endif
+ {
+   COGL_FRAMEBUFFER_STATE_BIND               = 1<<0,
+   COGL_FRAMEBUFFER_STATE_VIEWPORT           = 1<<1,
+diff --git a/cogl/cogl/cogl-trace.h b/cogl/cogl/cogl-trace.h
+index bfc992ef..5aea7549 100644
+--- a/cogl/cogl/cogl-trace.h
++++ b/cogl/cogl/cogl-trace.h
+@@ -127,7 +127,7 @@ unsigned int cogl_trace_define_counter_double (const char *name,
+ static inline gpointer
+ cogl_trace_counter_data_int (gpointer user_data)
+ {
+-  CoglTraceCounterData *counter_data = user_data;
++  CoglTraceCounterData *counter_data = (CoglTraceCounterData *) user_data;
+   int counter;
+ 
+   counter = cogl_trace_define_counter_int (counter_data->name,
+@@ -139,7 +139,7 @@ cogl_trace_counter_data_int (gpointer user_data)
+ static inline gpointer
+ cogl_trace_counter_data_double (gpointer user_data)
+ {
+-  CoglTraceCounterData *counter_data = user_data;
++  CoglTraceCounterData *counter_data = (CoglTraceCounterData *) user_data;
+   int counter;
+ 
+   counter = cogl_trace_define_counter_double (counter_data->name,
+diff --git a/cogl/cogl/cogl-types.h b/cogl/cogl/cogl-types.h
+index cfc0de62..8ad76157 100644
+--- a/cogl/cogl/cogl-types.h
++++ b/cogl/cogl/cogl-types.h
+@@ -274,6 +274,9 @@ typedef enum /*< prefix=COGL_READ_PIXELS >*/
+   COGL_READ_PIXELS_COLOR_BUFFER = 1L << 0
+ } CoglReadPixelsFlags;
+ 
++#ifdef __cplusplus
++enum _CoglFramebufferState : unsigned int;
++#endif
+ typedef enum _CoglFramebufferState CoglFramebufferState;
+ 
+ typedef struct _CoglAttribute CoglAttribute;
 -- 
-2.51.0
+2.55.0
+

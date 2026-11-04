@@ -129,9 +129,6 @@
 22-supervisor-runtime/0002-build-monolithic-gnoblin.patch
 30-diagnostic-console/0002-build-compositor-diagnostic-ui.patch
 31-cxx-compat/0001-cpp-compatible-clutter-cogl-enums.patch
-31-cxx-compat/0002-clutter-color-transform-cpp.patch
-31-cxx-compat/0003-clutter-paint-context-c-linkage.patch
-31-cxx-compat/0004-cogl-cast-callback-data-for-cpp.patch
 28-xwayland/0003-restart-xwayland-for-live-config.patch
 30-diagnostic-console/0003-link-diagnostics-into-gnoblin.patch
 28-xwayland/0004-keep-session-when-restarting-xwayland-for-config.patch
