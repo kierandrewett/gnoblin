@@ -1,0 +1,5 @@
+# `cargo xtask <subcommand>` runs the workspace automation crate in xtask/.
+# CI and the justfile use this rather than `cargo run --package xtask --`, so the
+# dependency-rule check has one spelling everywhere.
+[alias]
+xtask = "run --quiet --package xtask --"

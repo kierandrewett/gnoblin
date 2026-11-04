@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-services"
+description = "D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit and idle."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-testkit"
+description = "In-process fixture, test clients, input injection and the observation recorder."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

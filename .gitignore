@@ -41,3 +41,6 @@ infra/site/.svelte-kit/
 # Tool caches and local agent state
 .ruff_cache/
 .omp/
+
+# Cargo build output
+/target/

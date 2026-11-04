@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-client"
+description = "Rust client library for the IPC, used by gnoblinctl, the runtime, services, the portal, tests and shells."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

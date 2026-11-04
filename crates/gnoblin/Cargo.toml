@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin"
+description = "Session entry point: role dispatch for guardian, compositor, runtime, services and greeter."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

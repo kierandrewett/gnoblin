@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-parity"
+description = "Parity scenario runner, targets (Mutter reference and Rust candidate), normaliser and reports."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

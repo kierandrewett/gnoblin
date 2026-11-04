@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-lock"
+description = "Pure session lock and protection cover state machine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+# rustfmt configuration shared by every crate in the workspace.
+#
+# 120 columns and 4 spaces match AGENTS.md and .editorconfig, so Rust reads like
+# the rest of the tree and diffs stay narrow. Only stable options belong here:
+# an unstable option makes `cargo fmt` warn on the pinned stable toolchain.
+max_width = 120
+tab_spaces = 4

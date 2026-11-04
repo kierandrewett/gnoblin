@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-input"
+description = "libinput settings, xkb, chords, gestures, input policy routing, IME and the EIS server."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

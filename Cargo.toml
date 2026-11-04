@@ -1,0 +1,96 @@
+# The Gnoblin Cargo workspace.
+#
+# Layout, crate ownership and the dependency rules enforced by `cargo xtask
+# deps` come from design/rust-compositor.md ("Project structure" and
+# "Dependency rules"). This manifest holds no code: it lists members, the shared
+# package fields, the shared lint levels and the pinned versions that members
+# inherit from `[workspace.dependencies]`.
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/compat/gnoblin-compat-clipboard",
+    "crates/compat/gnoblin-compat-core",
+    "crates/compat/gnoblin-compat-displayconfig",
+    "crates/compat/gnoblin-compat-gcr-prompter",
+    "crates/compat/gnoblin-compat-gtk-settings",
+    "crates/compat/gnoblin-compat-gtk-shell",
+    "crates/compat/gnoblin-compat-idlemonitor",
+    "crates/compat/gnoblin-compat-inputcapture",
+    "crates/compat/gnoblin-compat-inputmapping",
+    "crates/compat/gnoblin-compat-qt-settings",
+    "crates/compat/gnoblin-compat-remotedesktop",
+    "crates/compat/gnoblin-compat-screencast",
+    "crates/compat/gnoblin-compat-servicechannel",
+    "crates/compat/gnoblin-compat-sessionmanager",
+    "crates/compat/gnoblin-compat-shell-introspect",
+    "crates/compat/gnoblin-compat-shell-screenshot",
+    "crates/compat/gnoblin-compat-x11-interop",
+    "crates/compat/gnoblin-compat-xsettings",
+    "crates/gnoblin",
+    "crates/gnoblin-a11y",
+    "crates/gnoblin-authority",
+    "crates/gnoblin-backend",
+    "crates/gnoblin-capture",
+    "crates/gnoblin-client",
+    "crates/gnoblin-compositor",
+    "crates/gnoblin-config",
+    "crates/gnoblin-diag",
+    "crates/gnoblin-input",
+    "crates/gnoblin-lock",
+    "crates/gnoblin-lua",
+    "crates/gnoblin-model",
+    "crates/gnoblin-output",
+    "crates/gnoblin-parity",
+    "crates/gnoblin-proto",
+    "crates/gnoblin-render",
+    "crates/gnoblin-schema",
+    "crates/gnoblin-services",
+    "crates/gnoblin-session",
+    "crates/gnoblin-testkit",
+    "crates/gnoblin-wasm",
+    "crates/gnoblin-wayland",
+    "crates/gnoblin-wm",
+    "crates/gnoblin-xwayland",
+    "crates/gnoblinctl",
+    "crates/xdg-desktop-portal-gnoblin",
+    "xtask",
+]
+
+[workspace.package]
+# The rewrite ships as 0.2.0 and the IPC version is exactly the Gnoblin version,
+# so candidate builds are `0.2.0-alpha.N` (design/rust-compositor.md,
+# "Versioning"). xtask copies the released version from
+# versions/gnoblin-version.json at release time; do not edit this by hand.
+version = "0.2.0-alpha.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+repository = "https://github.com/kierandrewett/gnoblin"
+# Workspace crates are built from the tree and packaged by the distribution
+# packaging, never uploaded to crates.io.
+publish = false
+# `rust-version` is deliberately unset. The MSRV is the highest floor of the
+# exact pinned dependencies, not a release number (design/rust-compositor.md,
+# "Distribution and toolchain"), and no crate depends on anything yet. The
+# rust-toolchain.toml pin covers development until that job exists.
+
+# Lints every crate inherits with `[lints] workspace = true`.
+#
+# `unsafe_code = "forbid"` cannot be lifted anywhere inside a crate that inherits
+# this table, which is the point: pure policy crates and the skeleton stay free
+# of unsafe. A crate that must call C (libinput, libdrm, libseat, GBM) opts out by
+# dropping `[lints] workspace = true` and declaring its own table that restates
+# the clippy levels below with `unsafe_code = "deny"`; it then confines unsafe to
+# named FFI shim modules that each open with `#[allow(unsafe_code)]` and a
+# `// SAFETY:` comment. Adding such a crate is a reviewable change to this file
+# and to the dependency rules in `xtask/src/deps.rs`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+# Versions every member shares, so a bump is one line per dependency instead of
+# one line per crate. Members inherit these with `serde_json.workspace = true`.
+[workspace.dependencies]
+serde_json = "1.0.140"
