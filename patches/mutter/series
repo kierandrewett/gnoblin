@@ -87,7 +87,6 @@
 13-screen-capture/0003-window-actor-png-preview.patch
 26-text-target/0001-native-text-target.patch
 05-window-drag/0005-pointer-drag-snap.patch
-26-text-target/0002-native-text-target-focus-vfunc.patch
 09-focus-activation/0002-focus-with-xdg-activation-token.patch
 27-window-clipping/0001-native-rounded-window-clipping.patch
 27-window-clipping/0002-native-x11-window-clipping.patch

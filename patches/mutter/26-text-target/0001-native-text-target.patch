@@ -3,9 +3,18 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 29 Sep 2026 09:09:03 +0100
 Subject: [PATCH] add secure native text insertion targets
 
+Add secure native text insertion targets; text target commits dispatch through the focus vfunc.
 ---
+ src/wayland/meta-wayland-client-private.h |  1 +
+ src/wayland/meta-wayland-client.c         | 20 ++++++
+ src/wayland/meta-wayland-seat.c           | 29 +++++++++
+ src/wayland/meta-wayland-seat.h           |  6 ++
+ src/wayland/meta-wayland-text-input.c     | 77 +++++++++++++++++++++++
+ src/wayland/meta-wayland-text-input.h     | 12 ++++
+ 6 files changed, 145 insertions(+)
+
 diff --git a/src/wayland/meta-wayland-client-private.h b/src/wayland/meta-wayland-client-private.h
-index a07152e..01d5cfa 100644
+index a07152e6..01d5cfae 100644
 --- a/src/wayland/meta-wayland-client-private.h
 +++ b/src/wayland/meta-wayland-client-private.h
 @@ -76,3 +76,4 @@ void meta_wayland_client_set_window_tag (MetaWaylandClient *client,
@@ -14,7 +23,7 @@ index a07152e..01d5cfa 100644
  const char * meta_wayland_client_get_window_tag (MetaWaylandClient *client);
 +guint64 meta_wayland_client_get_gnoblin_id (MetaWaylandClient *client);
 diff --git a/src/wayland/meta-wayland-client.c b/src/wayland/meta-wayland-client.c
-index 3c36928..efc51ed 100644
+index 3c36928c..efc51ed6 100644
 --- a/src/wayland/meta-wayland-client.c
 +++ b/src/wayland/meta-wayland-client.c
 @@ -75,8 +75,20 @@ struct _MetaWaylandClient
@@ -68,7 +77,7 @@ index 3c36928..efc51ed 100644
  meta_wayland_client_get_pid (MetaWaylandClient *client)
  {
 diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
-index 0d5770c..19cb7e0 100644
+index 0d5770ca..19cb7e09 100644
 --- a/src/wayland/meta-wayland-seat.c
 +++ b/src/wayland/meta-wayland-seat.c
 @@ -23,6 +23,8 @@
@@ -122,7 +131,7 @@ index 0d5770c..19cb7e0 100644
  meta_wayland_seat_get_grab_info (MetaWaylandSeat       *seat,
                                   MetaWaylandSurface    *surface,
 diff --git a/src/wayland/meta-wayland-seat.h b/src/wayland/meta-wayland-seat.h
-index d9dd2ac..1024519 100644
+index d9dd2ace..10245191 100644
 --- a/src/wayland/meta-wayland-seat.h
 +++ b/src/wayland/meta-wayland-seat.h
 @@ -59,6 +59,7 @@ struct _MetaWaylandSeat
@@ -146,7 +155,7 @@ index d9dd2ac..1024519 100644
  gboolean meta_wayland_seat_get_grab_info (MetaWaylandSeat     *seat,
                                            MetaWaylandSurface  *surface,
 diff --git a/src/wayland/meta-wayland-text-input.c b/src/wayland/meta-wayland-text-input.c
-index ef1866a..05e45a4 100644
+index ef1866ae..c940dd9f 100644
 --- a/src/wayland/meta-wayland-text-input.c
 +++ b/src/wayland/meta-wayland-text-input.c
 @@ -22,10 +22,12 @@
@@ -162,7 +171,7 @@ index ef1866a..05e45a4 100644
  #include "wayland/meta-wayland-seat.h"
  #include "wayland/meta-wayland-versions.h"
  
-@@ -1240,3 +1242,77 @@ meta_wayland_text_input_handle_event (MetaWaylandTextInput *text_input,
+@@ -1240,3 +1242,78 @@ meta_wayland_text_input_handle_event (MetaWaylandTextInput *text_input,
  
    return retval;
  }
@@ -237,11 +246,12 @@ index ef1866a..05e45a4 100644
 +                                                   client_id, focus_epoch))
 +    return FALSE;
 +
-+  clutter_input_focus_commit (text_input->input_focus, text);
++  CLUTTER_INPUT_FOCUS_GET_CLASS (text_input->input_focus)->commit_text (
++    text_input->input_focus, text);
 +  return TRUE;
 +}
 diff --git a/src/wayland/meta-wayland-text-input.h b/src/wayland/meta-wayland-text-input.h
-index 458614c..17945ac 100644
+index 458614c9..17945ace 100644
 --- a/src/wayland/meta-wayland-text-input.h
 +++ b/src/wayland/meta-wayland-text-input.h
 @@ -20,6 +20,7 @@
@@ -267,3 +277,6 @@ index 458614c..17945ac 100644
 +                                                       guint64 client_id,
 +                                                       guint64 focus_epoch,
 +                                                       const char *text);
+-- 
+2.55.0
+
