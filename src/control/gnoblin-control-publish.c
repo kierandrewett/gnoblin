@@ -89,6 +89,7 @@ const WindowPropertyName window_property_names[] = {
     {"gtkAppId", "gtk_app_id"},
     {"wmClass", "wm_class"},
     {"ruleAppId", "rule_app_id"},
+    {"clientType", "client_type"},
     {"workspaceId", "workspace_id"},
     {"workspaceNumber", "workspace_number"},
     {"monitorIndex", "monitor_index"},

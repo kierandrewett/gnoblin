@@ -467,6 +467,7 @@ Every property below is present on a `Window` snapshot; a value may be
 | `gtk_app_id`        | string?  | GTK application ID, when supplied.                                                                                |
 | `rule_app_id`       | string?  | Normalized identity used for Gnoblin window rules.                                                                |
 | `wm_class`          | string?  | X11 compatibility class, when supplied.                                                                           |
+| `client_type`       | string   | `"wayland"`, or `"x11"` for a client that runs through Xwayland.                                                  |
 | `role`              | string?  | Window role, when supplied.                                                                                       |
 | `type`              | integer  | Mutter `MetaWindowType`; see its value mapping below.                                                             |
 | `workspace_id`      | string?  | Stable ID of the current workspace.                                                                               |
@@ -1724,6 +1725,7 @@ new clients should use the canonical snake_case fields.
 | `gtk_app_id`                                                     | string                  | GTK app ID, or an empty string.                                  |
 | `wm_class`                                                       | string                  | WM class, or an empty string.                                    |
 | `rule_app_id`                                                    | string                  | GTK app ID, falling back to WM class.                            |
+| `client_type`                                                    | string                  | `"wayland"`, or `"x11"` for an Xwayland client.                  |
 | `focused`                                                        | boolean                 | Keyboard focus state.                                            |
 | `minimized`                                                      | boolean                 | Minimized state.                                                 |
 | `workspace`                                                      | integer or `nil`        | Current one-based workspace position.                            |

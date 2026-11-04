@@ -562,6 +562,8 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
     const char* wm_class = meta_window_get_wm_class(window);
     const char* layer_namespace = g_object_get_data(G_OBJECT(window), "gnoblin-layer-namespace");
     const char* rule_app_id = gtk_app_id && *gtk_app_id ? gtk_app_id : (wm_class ? wm_class : "");
+    const char* client_type =
+        meta_window_get_client_type(window) == META_WINDOW_CLIENT_TYPE_X11 ? "x11" : "wayland";
     MetaWorkspace* workspace = meta_window_get_workspace(window);
     const char* workspace_id =
         workspace ? g_object_get_data(G_OBJECT(workspace), "gnoblin-native-id") : NULL;
@@ -597,6 +599,9 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
         } else if (g_str_equal(key, "focused")) {
             matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
                       g_variant_get_boolean(value) == focused;
+        } else if (g_str_equal(key, "client_type") || g_str_equal(key, "client-type")) {
+            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+                      g_str_equal(g_variant_get_string(value, NULL), client_type);
         } else if (g_str_equal(key, "workspace_id") || g_str_equal(key, "workspace-id")) {
             const char* expected = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
                                        ? g_variant_get_string(value, NULL)

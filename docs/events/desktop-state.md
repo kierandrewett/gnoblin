@@ -39,7 +39,7 @@ documented in the [compositor bridge](/bridge/).
 
 Window records contain the fields available from the compositor:
 
-- Identity: `id`, `title`, `app_id`, `gtk_app_id`, `wm_class`, `rule_app_id`, and optional `role`.
+- Identity: `id`, `title`, `app_id`, `gtk_app_id`, `wm_class`, `rule_app_id`, `client_type` (`"wayland"` or `"x11"`), and optional `role`.
 - Location: `workspace_id`, `workspace_number`, `monitor_id`, `monitor_index`, `parent`.
 - State: `maximized`, `fullscreen`, `minimized`, `focused`, `above`, `sticky`, `modal`, and `demands_attention`.
 - Capabilities: `closable`, `minimizable`, `maximizable`, `movable`, and `resizable`.

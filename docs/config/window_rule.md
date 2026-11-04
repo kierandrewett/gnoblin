@@ -23,6 +23,7 @@ gnoblin.window_rule {
 | `layer`            | Lua pattern against the layer-shell namespace                  |
 | `workspace_id`     | Exact workspace ID; declared or explicitly assigned at runtime |
 | `workspace_number` | Current one-based workspace position, 1–1024                   |
+| `client_type`      | `"wayland"` or `"x11"`; `"x11"` is an Xwayland client          |
 
 All supplied match fields must match. Text patterns use Lua 5.4
 `string.find` syntax. They are case-sensitive and search anywhere by default.
@@ -214,6 +215,7 @@ gnoblin.window_rule {
         app_id = string?, -- Lua 5.4 pattern
         title = string?, -- Lua 5.4 pattern
         layer = string?, -- Lua 5.4 pattern
+        client_type = "wayland" | "x11"?,
         workspace_id = string?,
         workspace_number = integer?, -- 1–1024
     },

@@ -14,7 +14,7 @@ The native Mutter runtime exposes the window state directly:
 `gnoblin.windows.list()` takes no filter. To select windows, call `gnoblin.find("Window", filter)`.
 
 - A table filter keeps the windows whose fields equal every value you give. It accepts any scalar field of
-  `Window`, such as `app_id`, `title`, `focused`, `workspace_id` or `monitor_id`.
+  `Window`, such as `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` or `client_type`.
 - A predicate filter is a function that receives each window and returns `true` to keep it.
 
 See [find](/shell-api/find).
@@ -68,7 +68,13 @@ end)
   changes. The field must be one that `Window` declares as observable, which
   means it changes while the window is alive. `watch` refuses a field that never
   moves and names the fields that work.
-- The fields that never move are `id`, `alive`, `revision`, `pid` and `process`.
+- The fields that never move are `id`, `alive`, `revision`, `pid`, `process` and `client_type`.
+
+`window.client_type` is `"wayland"` for a Wayland client and `"x11"` for a client that runs through Xwayland:
+
+```lua
+local x11_windows = gnoblin.find("Window", {client_type = "x11"})
+```
 
 Both return a subscription, and `subscription:unsubscribe()` stops the callback. Every `on` and `watch` in the API returns this same shape. The global
 events `gnoblin.window.created`, `closed`, `changed`, `attention-changed`,

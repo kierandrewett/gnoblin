@@ -861,6 +861,11 @@ static GVariant* gnoblin_native_window_list(MetaDisplay* display, GVariant* argu
                               g_variant_new_string(wm_class ? wm_class : ""));
         g_variant_builder_add(&entry, "{sv}", "ruleAppId",
                               g_variant_new_string(app_id ? app_id : ""));
+        g_variant_builder_add(
+            &entry, "{sv}", "clientType",
+            g_variant_new_string(meta_window_get_client_type(window) == META_WINDOW_CLIENT_TYPE_X11
+                                     ? "x11"
+                                     : "wayland"));
         g_variant_builder_add(&entry, "{sv}", "focused", g_variant_new_boolean(window == focused));
         g_variant_builder_add(&entry, "{sv}", "minimized", g_variant_new_boolean(minimized));
         g_variant_builder_add(&entry, "{sv}", "above",
