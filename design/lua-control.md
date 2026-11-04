@@ -24,7 +24,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 ### Window resize
 
-- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation code in `src/control/gnoblin-native-dispatch.c`: `meta_window_move_resize_frame`; the animated resize hook is `patches/mutter/25-animation/0004-animate-typed-window-resizes.patch`
+- **Mutter or Gnoblin mechanism (file and function):** Same typed-operation code in `src/control/gnoblin-native-dispatch.c`: `meta_window_move_resize_frame`; the animated resize hook is `patches/mutter/25-animation/0003-native-window-resize-animation.patch`
 - **Current Lua access:** Full for 2D frame size; interactive resize requires a live shortcut context
 - **What is needed:** Nothing beyond the existing 2D behavior.
 

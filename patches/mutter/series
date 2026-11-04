@@ -95,7 +95,6 @@
 14-input-settings/0006-wayland-keyboard-repeat-uses-effective-input-settings.patch
 14-input-settings/0007-gnoblin-config-controls-stylus-eraser-button.patch
 25-animation/0003-native-window-resize-animation.patch
-25-animation/0004-animate-typed-window-resizes.patch
 09-focus-activation/0003-report-xdg-activation-denied.patch
 15-preferences/0010-gnoblin-disable-workarounds-config.patch
 14-input-settings/0008-gnoblin-keyboard-accessibility-settings.patch
@@ -112,7 +111,7 @@
 15-preferences/0013-gnoblin-new-window-placement.patch
 24-shortcuts/0004-validate-handler-backed-actions.patch
 24-shortcuts/0005-flush-keybindings-before-shortcuts.patch
-25-animation/0005-explicit-animation-policy.patch
+25-animation/0004-explicit-animation-policy.patch
 24-shortcuts/0006-configured-pointer-bindings.patch
 05-window-drag/0006-pointer-binding-drag-button.patch
 21-input-routing/0002-lua-input-policy-event-routing.patch

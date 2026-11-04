@@ -3,7 +3,14 @@ From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 2 Oct 2026 04:59:28 +0100
 Subject: [PATCH] mutter: animate configured window size changes
 
+Animate configured window size changes, including the typed window resize operations.
 ---
+ src/compositor/compositor.c                | 3 ++-
+ src/compositor/meta-window-actor-private.h | 2 ++
+ src/compositor/meta-window-actor.c         | 9 +++++++++
+ src/meta/compositor.h                      | 1 +
+ 4 files changed, 14 insertions(+), 1 deletion(-)
+
 diff --git a/src/compositor/compositor.c b/src/compositor/compositor.c
 index 4c7cc173..71ece744 100644
 --- a/src/compositor/compositor.c
@@ -32,7 +39,7 @@ index 1b937190..a8283a62 100644
                                                                gboolean         did_placement);
  
 diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
-index 169b659f..ddc9791c 100644
+index 6ba370dc..9eae07f8 100644
 --- a/src/compositor/meta-window-actor.c
 +++ b/src/compositor/meta-window-actor.c
 @@ -849,6 +849,15 @@ meta_window_actor_effect_in_progress (MetaWindowActor *self)
@@ -51,3 +58,18 @@ index 169b659f..ddc9791c 100644
  static gboolean
  is_freeze_thaw_effect (MetaPluginEffect event)
  {
+diff --git a/src/meta/compositor.h b/src/meta/compositor.h
+index 98be9e15..68596167 100644
+--- a/src/meta/compositor.h
++++ b/src/meta/compositor.h
+@@ -64,6 +64,7 @@ typedef enum
+   META_SIZE_CHANGE_FULLSCREEN,
+   META_SIZE_CHANGE_UNFULLSCREEN,
+   META_SIZE_CHANGE_MONITOR_MOVE,
++  META_SIZE_CHANGE_RESIZE,
+ } MetaSizeChange;
+ 
+ META_EXPORT
+-- 
+2.55.0
+
