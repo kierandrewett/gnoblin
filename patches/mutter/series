@@ -37,8 +37,7 @@
 08-background-blur/0002-standard-background-effects.patch
 08-background-blur/0003-respect-gnoblin-background-effect-protocol-gate.patch
 12-csd-sampling/0001-isolate-client-sampling.patch
-12-csd-sampling/0002-render-client-pixels-for-csd-detection.patch
-12-csd-sampling/0003-bound-and-retain-host-pixels.patch
+12-csd-sampling/0002-bound-and-retain-host-pixels.patch
 10-compositor-paint/0003-include-decoration-children-in-x11-paint-volume.patch
 13-screen-capture/0001-screen-cast-window-capture-includes-paint-bounds.patch
 13-screen-capture/0002-refresh-cursors-on-stream-inhibition.patch
