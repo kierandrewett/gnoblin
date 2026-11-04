@@ -122,6 +122,25 @@ def find_firmware(guest):
     raise CheckFailed(f"no UEFI firmware for {guest['cpu']}: none of {tried} exists")
 
 
+def usable_tcg_cpu(guest):
+    """The guest's tcg_cpu when this QEMU accepts it, else "max". A QEMU that does not know a property of the CPU
+    model stops at once; one that knows it keeps running, stopped (-S), until it is killed. The fallback is printed."""
+    wanted = guest.get("tcg_cpu", "max")
+    if wanted == "max":
+        return wanted
+    machine = guest["machine"].split(",")[0]
+    probe = [guest["qemu"], "-machine", f"{machine},accel=tcg", "-cpu", wanted, "-nodefaults", "-display", "none", "-S"]
+    try:
+        result = subprocess.run(probe, capture_output=True, text=True, timeout=3)
+    except subprocess.TimeoutExpired:
+        return wanted
+    except OSError as error:
+        print(f"[graphical] cannot check the CPU model {wanted}: {error}; using max", flush=True)
+        return "max"
+    print(f"[graphical] QEMU refuses the CPU model {wanted} ({tail(result.stderr, 2)}); using max", flush=True)
+    return "max"
+
+
 def qemu_command(guest, accel, memory, cpus, disk, seed, port, qmp_path, serial, firmware=None):
     """The QEMU command line of one guest. guest is the guest data of the architecture (scripts/targets.json):
     the emulator, the machine, the GPU device and, for a UEFI guest, firmware as (code, writable vars copy)."""
@@ -129,7 +148,11 @@ def qemu_command(guest, accel, memory, cpus, disk, seed, port, qmp_path, serial,
         guest["qemu"],
         "-name", "gnoblin-graphical",
         "-machine", f"{guest['machine']},accel={accel}",
-        "-cpu", "host" if accel == "kvm" else "max",
+        # Without KVM the CPU model comes from the guest data. On aarch64 it is max with pauth-impdef=on: TCG emulates
+        # the architected pointer authentication (QARMA) very slowly, and every function return of the guest pays for
+        # it. The implementation-defined algorithm is what QEMU documents for a fast TCG guest. (Run 41707260240:
+        # Fedora 41, 42, 43 and 45 aarch64 missed systemd's 90 s wait for their disks, and Fedora 44 passed at 627 s.)
+        "-cpu", "host" if accel == "kvm" else guest.get("tcg_cpu", "max"),
         "-smp", str(cpus),
         "-m", str(memory),
     ]  # fmt: skip
@@ -523,7 +546,10 @@ class Guest:
             variables = self.work / "efi-vars.fd"
             shutil.copyfile(firmware[1], variables)
             firmware = (firmware[0], variables)
-        command = qemu_command(self.guest, self.accel, self.memory, self.cpus, disk, seed, self.port, self.qmp_path,
+        guest = self.guest
+        if self.accel != "kvm":
+            guest = {**guest, "tcg_cpu": usable_tcg_cpu(guest)}
+        command = qemu_command(guest, self.accel, self.memory, self.cpus, disk, seed, self.port, self.qmp_path,
                                self.out / "serial.log", firmware)  # fmt: skip
         (self.out / "command.txt").write_text(" ".join(shlex.quote(part) for part in command) + "\n")
         self.process = subprocess.Popen(command, stdout=(self.out / "qemu.log").open("w"), stderr=subprocess.STDOUT)

@@ -12,9 +12,10 @@ release, an image or a family. It reads two inputs:
                           architectures  the architectures of every job: {"arch": "amd64", "runner": "ubuntu-latest",
                                          "guest": {...}}. "guest" is the QEMU guest of the graphical VM test on that
                                          architecture: cpu and boot (the names in the cloud image files, x86_64 and
-                                         bios, aarch64 and uefi), qemu (the emulator), machine, gpu, firmware (UEFI
-                                         code and vars files to try in order, empty for the default BIOS),
-                                         host_packages (the apt packages of the runner) and timeout_minutes (the job)
+                                         bios, aarch64 and uefi), qemu (the emulator), machine, tcg_cpu (the CPU
+                                         model without KVM), gpu, firmware (UEFI code and vars files to try in order,
+                                         empty for the default BIOS), host_packages (the apt packages of the runner)
+                                         and timeout_minutes (the job)
                           graphical_newest         optional. The graphical VM test covers this many of the newest
                                                    releases of each family, with or without packages (below)
                           graphical_architectures  the architectures of the graphical VM test, ["amd64", "arm64"].

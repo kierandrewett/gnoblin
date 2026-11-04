@@ -12,6 +12,7 @@
         "boot": "bios",
         "qemu": "qemu-system-x86_64",
         "machine": "q35,i8042=off,vmport=off",
+        "tcg_cpu": "max",
         "gpu": "virtio-vga",
         "firmware": [],
         "host_packages": "qemu-system-x86 qemu-utils genisoimage openssh-client",
@@ -26,6 +27,7 @@
         "boot": "uefi",
         "qemu": "qemu-system-aarch64",
         "machine": "virt,gic-version=max",
+        "tcg_cpu": "max,pauth-impdef=on",
         "gpu": "virtio-gpu-pci",
         "firmware": [
           { "code": "/usr/share/AAVMF/AAVMF_CODE.fd", "vars": "/usr/share/AAVMF/AAVMF_VARS.fd" },

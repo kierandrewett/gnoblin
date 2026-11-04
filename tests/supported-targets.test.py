@@ -606,7 +606,17 @@ class ShippedPolicy(unittest.TestCase):
         self.assertEqual(["source_release" in family for family in self.policy["families"]].count(True), 1)
 
     def test_every_architecture_has_a_runner_and_a_graphical_guest(self):
-        guest_keys = {"cpu", "boot", "qemu", "machine", "gpu", "firmware", "host_packages", "timeout_minutes"}
+        guest_keys = {
+            "cpu",
+            "boot",
+            "qemu",
+            "machine",
+            "tcg_cpu",
+            "gpu",
+            "firmware",
+            "host_packages",
+            "timeout_minutes",
+        }
         for architecture in self.policy["architectures"]:
             self.assertEqual(set(architecture), {"arch", "runner", "guest"})
             self.assertEqual(set(architecture["guest"]), guest_keys)

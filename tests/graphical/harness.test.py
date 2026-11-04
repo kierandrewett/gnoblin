@@ -211,7 +211,7 @@ class Guests(unittest.TestCase):
         self.assertIn("virtio-tablet-pci,id=tablet", command)
         self.assertNotIn("-boot", command)
         self.assertFalse([part for part in command if "i8042" in part or "virtio-vga" in part])
-        self.assertEqual(command[command.index("-cpu") + 1], "max")
+        self.assertEqual(command[command.index("-cpu") + 1], "max,pauth-impdef=on")
 
     def test_a_uefi_guest_without_firmware_fails_with_the_paths_it_tried(self):
         guest = {**shipped_guest("arm64"), "firmware": [{"code": "/nonexistent/code.fd", "vars": "/nonexistent/v"}]}
@@ -259,6 +259,25 @@ class GuestStart(unittest.TestCase):
             self.start(bad_rom)
         self.assertEqual(caught.exception.detail, "QEMU exited at start")
         self.assertIn("efi-virtio.rom", caught.exception.excerpt)
+
+
+@unittest.skipUnless(shutil.which("qemu-system-x86_64"), "needs qemu-system-x86_64")
+class TcgCpu(unittest.TestCase):
+    """The CPU model without KVM comes from the guest data (aarch64: max,pauth-impdef=on). A QEMU that does not know a
+    property of it falls back to max, with the reason printed, so a guest never fails to start over a speed option."""
+
+    guest = {"qemu": "qemu-system-x86_64", "machine": "q35,i8042=off"}
+
+    def test_a_model_that_qemu_knows_is_kept(self):
+        self.assertEqual(harness.usable_tcg_cpu({**self.guest, "tcg_cpu": "max,pmu=off"}), "max,pmu=off")
+
+    def test_an_unknown_property_falls_back_to_max(self):
+        self.assertEqual(harness.usable_tcg_cpu({**self.guest, "tcg_cpu": "max,no-such-property=on"}), "max")
+
+    def test_a_missing_emulator_falls_back_to_max(self):
+        self.assertEqual(
+            harness.usable_tcg_cpu({**self.guest, "qemu": "qemu-system-none", "tcg_cpu": "max,x=y"}), "max"
+        )
 
 
 class PollEvents(unittest.TestCase):
