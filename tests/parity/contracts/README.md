@@ -5,8 +5,9 @@ Mutter, and the Rust candidate. This directory is that list, read out of the C s
 Nothing here is hand-written: every entry records the file and line it was read from, so a
 disagreement can be settled by opening the source at that line.
 
-The inventory covers API 1.93, the native control socket of `src/control`, the `gnoblinctl`
-command surface and the top-level keys of `gnoblin.configure`.
+The inventory covers API 1.93: every wire operation of the native control socket, every event
+name the compositor emits, the `gnoblinctl` command surface and the top-level keys of
+`gnoblin.configure`.
 
 ## Files
 
@@ -42,10 +43,10 @@ $ python3 scripts/contract-inventory.py --check   # exit 1 when a file is stale
 
 The script needs Python 3.11 or later and nothing else. It does not build, run or connect to a
 compositor, so it works on a machine with no session and in any checkout. `--check` compares the
-checked-in files, including the counts table below, with what the sources say and exits non-zero
-with the stale paths, which is what `tests/contract-inventory.test.py` runs. Run the write form
-after changing the C tables; a review then sees the contract change as a diff instead of reading
-prose.
+checked-in files, including the counts list below, with what the sources say and exits non-zero
+with the stale paths, which is what `tests/contract-inventory.test.py` runs, the same way the other
+contract tests run: `python3 tests/contract-inventory.test.py`. Run the write form after changing
+the C tables; a review then sees the contract change as a diff instead of reading prose.
 
 The script reads only these sources:
 
@@ -135,15 +136,16 @@ no text extraction can read reliably.
   `config-keys.json`; which keys are legal inside each section is checked by hand-written
   validators (`src/config/gnoblin-config-validate.c`, `gnoblin-config-windows.c` and others). Only
   the sections that may change at runtime name their keys in a table, and those are recorded.
-- **The `runtime` channel of events named by a variable.** Some events reach a dispatcher as a
-  local variable or a ternary rather than a literal: `gnoblin.session.lock-requested` through
-  `event_name`, `gnoblin.animation.started` and `-finished` through a conditional, and the
-  `gnoblin.monitor.*`, `gnoblin.config.*`, `gnoblin.window.activation-denied` and
-  `gnoblin.input.gesture` families, which are emitted from Mutter-side code through a signal. Those
-  names are inventoried from the subscription table with their socket channel, and no `runtime`
-  channel is claimed for them, because the sources do not prove it from a literal.
+- **The `runtime` channel of events named by a variable.** A name reaches the publisher as a
+  local, a ternary or the payload of an event that arrived from Mutter: `gnoblin.session.lock-requested`
+  through `event_name`, `gnoblin.animation.started` and `-finished` and `gnoblin.window.activation-denied`
+  through the conditional in `native_native_event`, `gnoblin.input.gesture`, which is assembled into
+  its JSON payload by hand, and `gnoblin.monitor.*` and `gnoblin.config.*`. Those names are
+  inventoried from the subscription table with their socket channel, and no `runtime` channel is
+  claimed for them, because no literal reaches a dispatcher.
 - **`mutter.*` passthrough events.** The compositor also forwards Mutter's own signals under the
-  `mutter.` prefix (`mutter.touchpad.gesture` and nine others). They are the reference
+  `mutter.` prefix: `mutter.touchpad.gesture`, `mutter.display.restacked`,
+  `mutter.monitor-manager.monitors-changed` and five others. They are the reference
   implementation's names rather than Gnoblin's, so they are out of scope here and belong in the
   divergence ledger when the candidate stops forwarding them.
 - **The Lua API surface itself.** `gnoblin.d.lua` and the annotations under `src/config/lua/api`
@@ -156,5 +158,5 @@ no text extraction can read reliably.
 ## Relationship to the rest of the harness
 
 Scenarios, fixtures and the runner live beside this directory. A scenario names a method, an event
-or a command from these files, and the harness fails the scenario when a name in it is missing from
-the inventory, so a rename in the C sources cannot silently drop coverage.
+or a command, and that name is checked against these files, so a rename in the C sources shows up as
+a diff here rather than as coverage that quietly stops matching anything.
