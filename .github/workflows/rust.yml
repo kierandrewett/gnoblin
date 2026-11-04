@@ -12,6 +12,7 @@ on:
       - "justfile"
       - "deny.toml"
       - ".cargo/**"
+      - "tests/parity/**"
       - ".github/workflows/rust.yml"
   pull_request:
     paths:
@@ -24,6 +25,7 @@ on:
       - "justfile"
       - "deny.toml"
       - ".cargo/**"
+      - "tests/parity/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
 
