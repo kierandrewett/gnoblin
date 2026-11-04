@@ -25,8 +25,14 @@ end
 See the [compositor bridge](/bridge/) for socket request details.
 
 `gnoblin.shortcuts.bind(id, accelerator, options?)` registers a binding and
-returns a `Shortcut`. The optional `options` table takes `hold`, `trigger`,
-`mode` and `capture_input`:
+returns a `Shortcut`.
+
+`accelerator` is a chord in the [chord syntax](/guides/shortcuts#chord-syntax),
+such as `<Super><Alt>F9`. A chord in another form, such as `Super+Alt+F9`, is
+an error that names the form to write. The `Shortcut` reports the chord in its
+written form.
+
+The optional `options` table takes these fields:
 
 - `hold` accepts `none`, `super`, `control`, or `alt`. It defaults to `none`.
 - `trigger` accepts `press` or `release`. It defaults to `press`.

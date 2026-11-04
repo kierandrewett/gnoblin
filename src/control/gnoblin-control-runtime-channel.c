@@ -125,17 +125,24 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
         return g_variant_ref_sink(g_variant_builder_end(&result));
     }
 
-    const char* accelerator = NULL;
+    const char* requested = NULL;
+    g_autofree char* accelerator = NULL;
     const char* hold = "none";
     const char* trigger = "press";
     const char* mode = "passive";
     gboolean capture_input = FALSE;
     if (!g_variant_lookup(arguments, "id", "&s", &id) ||
         !gnoblin_control_dynamic_shortcut_id_valid(id) ||
-        !g_variant_lookup(arguments, "accelerator", "&s", &accelerator) ||
-        !gnoblin_control_dynamic_shortcut_accelerator_valid(accelerator)) {
+        !g_variant_lookup(arguments, "accelerator", "&s", &requested)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "shortcut.bind requires a valid id and accelerator");
+        return NULL;
+    }
+    g_autofree char* chord_error = NULL;
+    accelerator = gnoblin_control_dynamic_shortcut_chord(requested, &chord_error);
+    if (!accelerator) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "shortcut.bind accelerator %s",
+                    chord_error);
         return NULL;
     }
     g_variant_lookup(arguments, "hold", "&s", &hold);

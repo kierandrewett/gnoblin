@@ -255,6 +255,25 @@ int lua_shortcuts_bind(lua_State* state) {
         lua_object_forget(state, "Shortcut", lua_tostring(state, 2));
     }
     lua_settop(state, 1);
+    lua_getfield(state, 1, "accelerator");
+    if (lua_type(state, -1) == LUA_TSTRING) {
+        /* One grammar for every shortcut mechanism: the chord is checked here, so a mistake is an
+         * error at the call with the form to write, and the compositor gets the one written form.
+         */
+        GnoblinChord chord;
+        char* chord_error = NULL;
+        if (!gnoblin_chord_parse(lua_tostring(state, -1), GNOBLIN_CHORD_KEY, &chord,
+                                 &chord_error)) {
+            lua_pushfstring(state, "gnoblin.shortcuts.bind accelerator: %s", chord_error);
+            g_free(chord_error);
+            return lua_error(state);
+        }
+        char* canonical = gnoblin_chord_format(&chord);
+        lua_pushstring(state, canonical);
+        g_free(canonical);
+        lua_setfield(state, 1, "accelerator");
+    }
+    lua_settop(state, 1);
     lua_pushlightuserdata(state, config);
     lua_pushstring(state, "shortcut.bind");
     lua_pushcclosure(state, lua_generic_api_action, 2);

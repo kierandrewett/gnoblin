@@ -275,6 +275,15 @@ static void register_keyboard_binding_callbacks(lua_State* state, int config_ind
             lua_getfield(state, declaration, "binding");
             if (lua_type(state, -1) != LUA_TSTRING || !lua_rawlen(state, -1))
                 luaL_error(state, "keyboard binding '%s' requires a binding string", name);
+            {
+                char* chord_error = NULL;
+                if (!gnoblin_chord_parse(lua_tostring(state, -1), GNOBLIN_CHORD_KEY, NULL,
+                                         &chord_error)) {
+                    lua_pushfstring(state, "keyboard binding '%s': %s", name, chord_error);
+                    g_free(chord_error);
+                    lua_error(state);
+                }
+            }
             int binding = lua_absindex(state, -1);
             lua_getfield(state, declaration, "callback");
             if (!lua_isfunction(state, -1))
@@ -358,6 +367,15 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
         lua_getfield(state, declaration, "binding");
         if (lua_type(state, -1) != LUA_TSTRING || !lua_rawlen(state, -1))
             luaL_error(state, "pointer binding '%s' requires a nonempty binding string", name);
+        {
+            char* chord_error = NULL;
+            if (!gnoblin_chord_parse(lua_tostring(state, -1), GNOBLIN_CHORD_POINTER, NULL,
+                                     &chord_error)) {
+                lua_pushfstring(state, "pointer binding '%s': %s", name, chord_error);
+                g_free(chord_error);
+                lua_error(state);
+            }
+        }
         lua_pop(state, 1);
         lua_getfield(state, declaration, "callback");
         if (lua_type(state, -1) != LUA_TFUNCTION)
@@ -548,6 +566,22 @@ int lua_input_on(lua_State* state) {
         return luaL_error(
             state,
             "input handler type must be key, button, motion, scroll, touch, tablet, or gesture");
+    lua_getfield(state, 1, "accelerator");
+    if (!lua_isnil(state, -1)) {
+        char* chord_error = NULL;
+        if (lua_type(state, -1) != LUA_TSTRING ||
+            ((g_str_equal(type, "key") || g_str_equal(type, "button")) &&
+             !gnoblin_chord_parse(lua_tostring(state, -1),
+                                  g_str_equal(type, "key") ? GNOBLIN_CHORD_KEY
+                                                           : GNOBLIN_CHORD_POINTER,
+                                  NULL, &chord_error))) {
+            lua_pushfstring(state, "gnoblin.input.on match.accelerator: %s",
+                            chord_error ? chord_error : "it must be a string");
+            g_free(chord_error);
+            return lua_error(state);
+        }
+    }
+    lua_pop(state, 1);
     if (config->next_input_handler_id == G_MAXUINT)
         return luaL_error(state, "input handler ID space is exhausted");
     g_autofree char* id = g_strdup_printf("input-%u", ++config->next_input_handler_id);

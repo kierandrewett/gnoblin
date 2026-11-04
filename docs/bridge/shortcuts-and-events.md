@@ -96,9 +96,11 @@ Use `shortcut.bind` to register a connection-owned global accelerator. The
 `arguments` object accepts only `id` and `accelerator`.
 
 - IDs contain 1 to 64 letters, digits, underscores, or hyphens.
-- Accelerators use Mutter's GTK accelerator syntax and are limited to 128 bytes.
-- Mutter rejects invalid accelerators and bindings already claimed by another
-  owner.
+- The accelerator is a chord in the [chord syntax](/guides/shortcuts#chord-syntax),
+  of at most 128 bytes. The response and the events give it in the written
+  form: modifiers in the order `<Shift><Control><Alt><Meta><Super><Hyper>`.
+  The compositor refuses any other form and the error names the form to write.
+- Mutter rejects bindings already claimed by another owner.
 - Bare `Super` is the overlay key and is not accepted by this method.
 - Bindings activate on key press and ignore autorepeat.
 - Each connection can register up to 32 bindings. The compositor accepts 128

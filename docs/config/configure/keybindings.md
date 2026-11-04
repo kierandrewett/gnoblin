@@ -32,6 +32,11 @@ Install `ptyxis`, save the file, and run `gnoblinctl reload`. Super+Enter then
 starts a terminal. Commands are argument arrays; shell expansion happens
 only if you explicitly run a shell.
 
+Every `binding`, and every accelerator in the action lists below, is a chord in
+the [chord syntax](/guides/shortcuts#chord-syntax). Gnoblin refuses another
+form, such as `Super+Return`, when it loads the config, and the message names
+the form to write.
+
 Use snake_case names. A later declaration with the same name replaces its
 callback. Set `enable = false` to disable a binding.
 
@@ -133,9 +138,8 @@ callback to select another edge or perform another supported window operation.
 `Button1` is left, `Button2` middle and `Button3` right. Prefix the button with
 one or more modifier tokens. Ordinary clicks continue to reach apps.
 
-Modifier tokens are case-insensitive: `<Super>`, `<Alt>`, `<Meta>`, `<Hyper>`,
-`<Mod1>` through `<Mod5>`, `<Control>` (also `<Ctrl>`, `<Ctl>` or `<Primary>`),
-and `<Shift>` (also `<Shft>`). Combine tokens without spaces. Conflicting
+Write the binding in the [chord syntax](/guides/shortcuts#chord-syntax), such
+as `<Super>Button1`. A pointer chord needs at least one modifier. Conflicting
 button and modifier combinations are rejected.
 
 Names identify callbacks, not built-in actions. Without a binding, the

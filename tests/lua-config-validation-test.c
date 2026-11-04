@@ -18,6 +18,36 @@ static const InvalidConfig invalid_configs[] = {
      "\"debug\" has an unsupported name or value"},
     {"touchpad-enum", "gnoblin.configure {input = {touchpad = {tap_button_map = 'xyz'}}}",
      "tap-button-map"},
+    /* One chord grammar: every mechanism refuses the old forms and names the one to write. */
+    {"chord-shortcut-plus",
+     "gnoblin.configure {shortcuts = {term = {binding = 'Super+Return', command = {'true'}}}}",
+     "shortcuts.term.binding: \"Super+Return\" is not a chord"},
+    {"chord-shortcut-action",
+     "gnoblin.configure {shortcuts = {close = {action = 'wm.close', binding = {'Ctrl+Alt+Q'}}}}",
+     "Write <Control><Alt>Q"},
+    {"chord-shortcut-unknown-modifier",
+     "gnoblin.configure {shortcuts = {term = {binding = '<Windows>t', command = {'true'}}}}",
+     "<Windows> is not a modifier"},
+    {"chord-keyboard",
+     "gnoblin.configure {keybindings = {keyboard = {t = {binding = 'Alt-F4',"
+     " callback = function() end}}}}",
+     "keyboard binding 't': \"Alt-F4\" is not a chord"},
+    {"chord-pointer",
+     "gnoblin.configure {keybindings = {pointer = {m = {binding = 'Super+Button1',"
+     " callback = function() end}}}}",
+     "Write <Super>Button1"},
+    {"chord-pointer-no-modifier",
+     "gnoblin.configure {keybindings = {pointer = {m = {binding = 'Button1',"
+     " callback = function() end}}}}",
+     "has no modifier"},
+    {"chord-action-override", "gnoblin.configure {keybindings = {wm = {close = {'Super+q'}}}}",
+     "keybindings.wm.close: \"Super+q\" is not a chord"},
+    {"chord-input-on", "gnoblin.input.on({type = 'key', accelerator = 'Super+x'}, function() end)",
+     "gnoblin.input.on match.accelerator: \"Super+x\" is not a chord"},
+    {"chord-stylus",
+     "gnoblin.configure {input = {styluses = {['default-1234:5678'] = "
+     "{button_action = 'keybinding', button_keybinding = 'Ctrl+z'}}}}",
+     "Write <Control>z"},
     {"removed-shell", "gnoblin.configure {shell = {}}", "shell settings are no longer supported"},
 };
 
@@ -177,6 +207,24 @@ static void test_transaction_and_recovery(void) {
     g_assert_cmpint(size, ==, 32);
 }
 
+/* Every mechanism accepts the same chords: Mutter's spellings, a media key, bare Super where the
+ * mechanism allows it, and an empty stylus keybinding (none). */
+static void test_chord_forms(void) {
+    g_autoptr(GVariant) document =
+        load_valid("gnoblin.configure {"
+                   " shortcuts = {term = {binding = '<Ctrl>t', command = {'true'}},"
+                   "  launcher = {binding = 'Super', trigger = 'release', command = {'true'}},"
+                   "  media = {binding = 'XF86AudioMute', command = {'true'}}},"
+                   " keybindings = {keyboard = {k = {binding = '<super><Alt>Down',"
+                   "  callback = function() end}},"
+                   "  pointer = {m = {binding = '<Primary>Button1', callback = function() end}}},"
+                   " input = {styluses = {['default-1234:5678'] = {button_keybinding = ''}}}"
+                   "}\n"
+                   "gnoblin.input.on({type = 'key', accelerator = '<Shift><Super>Page_Up'}, "
+                   "function() end)\n");
+    g_assert_nonnull(document);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     /* A baseline warning must not substitute for the rejection under test. */
@@ -191,6 +239,7 @@ int main(int argc, char** argv) {
     }
     g_test_add_func("/config/known-protocols", test_known_protocols);
     g_test_add_func("/config/aliases-and-extensions", test_aliases_and_extensions);
+    g_test_add_func("/config/chord-forms", test_chord_forms);
     g_test_add_func("/config/transaction-and-recovery", test_transaction_and_recovery);
     int result = g_test_run();
     g_unlink(path);

@@ -494,7 +494,7 @@ function IdleWatch:watch(property, fn) end
 ---@field modifiers? integer Match the event modifier mask.
 ---@field keycode? integer Match this hardware key code.
 ---@field button? integer Match this pointer button.
----@field accelerator? string Match this accelerator.
+---@field accelerator? string Match this chord, such as "<Super>q", or for type "button" a pointer chord such as "<Super>Button1". Any other form is an error that names the form to write.
 
 ---@class InputEvent
 ---@field type string Input event type.
@@ -1013,7 +1013,7 @@ function Override:on(signal, fn) end
 ---@class Shortcut
 ---@field id string Caller-supplied binding ID.
 ---@field alive boolean False once the binding has ended.
----@field accelerator string Accelerator accepted by Mutter.
+---@field accelerator string The chord in its written form, such as "<Alt><Super>F9".
 ---@field hold "none"|"super"|"control"|"alt" Modifier family held for the binding. Default "none".
 ---@field trigger "press"|"release" Event edge that activates the binding. Default "press".
 ---@field mode "passive"|"modal" Whether other input continues while held. Default "passive".
@@ -1056,11 +1056,11 @@ function gnoblin.shortcuts.configured() end
 function gnoblin.shortcuts.list() end
 
 ---Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once
----with the values asked for; if the compositor refuses the binding (the accelerator is taken, for
----example) it ends and its "closed" listeners get the reason. An ID that is already bound is an
----error, so unbind it first.
+---with the values asked for, and its accelerator is the chord in its written form; if the
+---compositor refuses the binding (the chord is taken, for example) it ends and its "closed"
+---listeners get the reason. An ID that is already bound is an error, so unbind it first.
 ---@param id string Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens.
----@param accelerator string Valid accelerator. Bare "Super" requires capture_input=true, trigger="release", and hold="none".
+---@param accelerator string A chord such as "<Super><Alt>F9" (see the chord syntax). Any other form is an error that names the form to write. Bare "Super" requires capture_input=true, trigger="release", and hold="none".
 ---@param options? ShortcutBindOptions
 ---@return Shortcut
 function gnoblin.shortcuts.bind(id, accelerator, options) end

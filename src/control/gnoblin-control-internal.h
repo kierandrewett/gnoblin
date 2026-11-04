@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/gnoblin-native-control.h"
+#include "core/gnoblin-chord.h"
 #include "core/gnoblin-auth-agent.h"
 #include "core/gnoblin-location-agent.h"
 #ifdef HAVE_REMOTE_DESKTOP
@@ -669,8 +670,7 @@ G_GNUC_INTERNAL void
 gnoblin_control_clear_configured_capture_shortcut(GnoblinNativeControl* control,
                                                   const char* reason);
 G_GNUC_INTERNAL gboolean gnoblin_control_dynamic_shortcut_id_valid(const char* id);
-G_GNUC_INTERNAL gboolean
-gnoblin_control_dynamic_shortcut_accelerator_valid(const char* accelerator);
+G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_chord(const char* accelerator, char** error);
 G_GNUC_INTERNAL NativeDynamicShortcut*
 gnoblin_control_arm_bare_super_shortcut(GnoblinNativeControl* control, const char* id,
                                         const char* owner_id, Client* client, guint64 session_id,

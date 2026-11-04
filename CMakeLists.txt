@@ -63,6 +63,10 @@ add_executable(autostart-protocol-test
   src/control/gnoblin-runtime-protocol.c)
 target_link_libraries(autostart-protocol-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME autostart-protocol COMMAND autostart-protocol-test)
+add_executable(chord-test tests/chord-test.c)
+target_include_directories(chord-test PRIVATE src/control)
+target_link_libraries(chord-test PRIVATE PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_XKBCOMMON)
+add_test(NAME chord COMMAND chord-test)
 add_executable(runtime-cache-test
   tests/runtime-cache-test.c
   src/control/gnoblin-runtime-cache.c)

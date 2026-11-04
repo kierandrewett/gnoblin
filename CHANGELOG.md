@@ -4,6 +4,25 @@
 
 ### Changed
 
+- One chord grammar for every shortcut mechanism (no wire change). A key combination is zero or
+  more modifiers in angle brackets, then one key, such as `<Super><Alt>F9` or `XF86AudioMute`.
+  One parser (`src/control/gnoblin-chord.h`) reads it in the configuration validators, in the
+  Lua runtime (`gnoblin.shortcuts.bind`, `gnoblin.input.on`, `keybindings.keyboard`,
+  `keybindings.pointer`, `keybindings.wm`, `mutter` and `wayland`), in `configure.shortcuts`, in
+  the stylus keybindings and in the compositor. Before, each place checked a chord on its own:
+  dynamic binds only checked the length, the compositor said "already claimed" for a mistake, and
+  Mutter skipped an unknown `<Foo>` and bound the bare key.
+    - A chord in another form, such as `Super+Alt+F9` or `ctrl-q`, is an error that names the
+      form to write, for example `Write <Alt><Super>F9`. So are `<Windows>q`, a second key, a
+      repeated modifier and `<Mod2>` to `<Mod5>`. Mutter's spellings `<Primary>`, `<Ctrl>`,
+      `<Ctl>`, `<Shft>` and `<Mod1>` still work and read as `<Control>`, `<Shift>` and `<Alt>`.
+    - Gnoblin gives a chord back with the modifiers in the order
+      `<Shift><Control><Alt><Meta><Super><Hyper>`: `Shortcut.accelerator`, the `shortcut.bind`
+      reply and the events use that form.
+    - A pointer chord needs at least one modifier and ends with `Button1` to `Button3`.
+    - An empty stylus keybinding still means none.
+    - The four mechanisms stay, because they do different jobs. See
+      [Which mechanism to use](docs/guides/shortcuts.md#which-mechanism-to-use).
 - A Lua handler that throws now keeps running on later events. Before, Gnoblin disabled a `gnoblin.on`
   listener or an input handler after its first error, and an input handler that threw stopped the
   handlers after it. Now Gnoblin logs the error with the event name and the Lua stack, and every

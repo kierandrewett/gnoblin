@@ -78,7 +78,7 @@ gnoblinctl window workspace 42 --number 2
 ## Capture a shortcut
 
 Run `gnoblinctl shortcut capture`, then press the key combination. The command
-prints its GTK accelerator. Press Escape to cancel. Bare Super prints the
+prints it as a chord. Press Escape to cancel. Bare Super prints the
 special `Super` binding.
 
 The default timeout is 30 seconds. Set `--timeout` to an integer from 1 to 60

@@ -2,6 +2,7 @@
 #define GNOBLIN_CONFIG_INTERNAL_H
 
 /* Lua configuration evaluation and supervisor runtime state. */
+#include "../control/gnoblin-chord.h"
 #include "gnoblin-config.h"
 #include "gnoblin-input-config.h"
 #include "gnoblin-keybinding-catalog.h"
@@ -56,5 +57,6 @@ gboolean titlebar_button_layout_valid(GVariant* layout);
 gboolean validate_monitors(GVariant* monitors, GError** error);
 gboolean validate_input_handlers(GVariant* document, GError** error);
 gboolean validate_keybindings(GVariant* document, GError** error);
+gboolean validate_shortcuts(GVariant* document, GError** error);
 
 #endif /* GNOBLIN_CONFIG_INTERNAL_H */

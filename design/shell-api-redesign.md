@@ -200,6 +200,29 @@ and gap 7 stay open.
     - Not done: overriding input device settings (mouse, touchpad, keyboard layout), which have
       their own apply paths, and animations and workspace placement rules, which are not effects.
 
+- Gap 9, one chord grammar. Every mechanism already used the GTK and Mutter accelerator syntax
+  (`<Super>q`), but each checked it on its own and none checked it strictly.
+    - Before: `configure.shortcuts` and `shortcuts.bind` checked the length and passed the string to
+      `meta_display_grab_accelerator`, so a mistake reported "already claimed". `keybindings.keyboard`
+      and `input.on` called `meta_parse_accelerator`, which skips an unknown `<Foo>` and binds the bare
+      key. Pointer chords had a fourth token list (`<Mod1>` to `<Mod5>`), and the stylus keybindings
+      checked nothing.
+    - One parser, `src/control/gnoblin-chord.h`, shared like `gnoblin-easing.h` (the Lua runtime and
+      the config validators include it; the control manifest copies it into Mutter). It reads
+      modifiers in angle brackets and one key, refuses everything else, and answers with the form to
+      write. It reads `<Primary>`, `<Ctrl>`, `<Ctl>`, `<Shft>` and `<Mod1>` as the canonical
+      modifiers, because the pinned keybinding catalogue itself uses `<Primary>`; `<Mod2>` to
+      `<Mod5>` depend on the keymap and are refused. The written form puts the modifiers in the
+      order of `meta_accelerator_name`.
+    - It is called by the config validators (`shortcuts`, `keybindings.*`, input handlers, stylus
+      keybindings), by the Lua runtime at the call (`shortcuts.bind`, `input.on`, keyboard and
+      pointer bindings) and by the compositor (`shortcut.bind`, configured shortcuts, built-in action
+      bindings, handler accelerators). The compositor passes Mutter the written form.
+    - The four mechanisms stay: `configure.shortcuts` runs in the compositor and survives a stopped
+      Lua runtime; `keybindings` is a named declaration that later files can override; `input.on`
+      handles any input event; `shortcuts.bind` is a run-time object with held-modifier sessions.
+      `keybindings.keyboard` and `.pointer` are sugar over `input.on`, kept for their names.
+
 ## Decisions
 
 - Hard cutover, no compatibility wrappers (`design/lua-api-goal.md`).

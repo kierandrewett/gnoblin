@@ -161,7 +161,7 @@ static const ApiMember api_fields_InputHandlerMatch[] = {
     {"modifiers", "integer", TRUE, "Match the event modifier mask."},
     {"keycode", "integer", TRUE, "Match this hardware key code."},
     {"button", "integer", TRUE, "Match this pointer button."},
-    {"accelerator", "string", TRUE, "Match this accelerator."},
+    {"accelerator", "string", TRUE, "Match this chord, such as \"<Super>q\", or for type \"button\" a pointer chord such as \"<Super>Button1\". Any other form is an error that names the form to write."},
 };
 static const ApiMember api_fields_InputHandlerResult[] = {
     {"action", "\"forward\"|\"consume\"", FALSE, "Whether to pass the event onward or consume it."},
@@ -363,7 +363,7 @@ static const ApiMember api_fields_SessionStatus[] = {
 static const ApiMember api_fields_Shortcut[] = {
     {"id", "string", FALSE, "Caller-supplied binding ID."},
     {"alive", "boolean", FALSE, "False once the binding has ended."},
-    {"accelerator", "string", FALSE, "Accelerator accepted by Mutter."},
+    {"accelerator", "string", FALSE, "The chord in its written form, such as \"<Alt><Super>F9\"."},
     {"hold", "\"none\"|\"super\"|\"control\"|\"alt\"", FALSE, "Modifier family held for the binding. Default \"none\"."},
     {"trigger", "\"press\"|\"release\"", FALSE, "Event edge that activates the binding. Default \"press\"."},
     {"mode", "\"passive\"|\"modal\"", FALSE, "Whether other input continues while held. Default \"passive\"."},
@@ -841,7 +841,7 @@ static const ApiMember api_params_77[] = {
 };
 static const ApiMember api_params_78[] = {
     {"id", "string", FALSE, "Unique ID, 1 to 64 ASCII letters, digits, underscores, or hyphens."},
-    {"accelerator", "string", FALSE, "Valid accelerator. Bare \"Super\" requires capture_input=true, trigger=\"release\", and hold=\"none\"."},
+    {"accelerator", "string", FALSE, "A chord such as \"<Super><Alt>F9\" (see the chord syntax). Any other form is an error that names the form to write. Bare \"Super\" requires capture_input=true, trigger=\"release\", and hold=\"none\"."},
     {"options", "ShortcutBindOptions", TRUE, ""},
 };
 static const ApiMember api_params_79[] = {
@@ -949,7 +949,7 @@ static const ApiFunction api_functions[] = {
     {"session.suspend", "Ask logind to suspend the machine. The Operation finishes with logind's answer: it succeeds when logind accepts, and fails with `denied` (policy or polkit), `unsupported`, `busy` or `internal` (the D-Bus error is in the message).", NULL, 0, "Operation<AcceptedResult>"},
     {"settings.override", "Layer a value over one committed setting, for this runtime, and return the Override. The path is \"section.key\" with the names of the configuration, such as `window_management.focus_mode`. Only a setting that can change while the session runs is accepted: `window_management.*`, `compositor.*`, `cursor.theme`, `cursor.size`, `layer_shell.preserve_active_window`, `monitors.privacy_screen` and `input.orientation_lock`. Any other path raises an error that says why it cannot change at runtime. The value is checked the way the configuration checks it, so a value the configuration would refuse raises an error too. The orientation lock and the privacy screen take `true` or `false`; a privacy screen needs an output that has one. If the compositor refuses the override, it ends and its \"closed\" listeners get the reason. Call this while handling an event, as with every operation.", api_params_76, 2, "Override"},
     {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_77, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for; if the compositor refuses the binding (the accelerator is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_78, 3, "Shortcut"},
+    {"shortcuts.bind", "Bind a global shortcut for the current Lua runtime and return it. The Shortcut exists at once with the values asked for, and its accelerator is the chord in its written form; if the compositor refuses the binding (the chord is taken, for example) it ends and its \"closed\" listeners get the reason. An ID that is already bound is an error, so unbind it first.", api_params_78, 3, "Shortcut"},
     {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_79, 1, "Operation<ShortcutCaptureResult>"},
     {"shortcuts.configured", "List the shortcuts that the configuration declares. They are read-only records, not objects: gnoblin.configure.shortcuts changes them.", NULL, 0, "ShortcutState[]"},
     {"shortcuts.list", "List the shortcuts this runtime has bound and not unbound, in ID order. Each is the object that bind returned.", NULL, 0, "Shortcut[]"},

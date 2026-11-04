@@ -59,13 +59,13 @@ Accepted groups are `wm`, `mutter`, and `wayland`.
 List actions with `gnoblinctl shortcut actions` while a Gnoblin session is
 running, or read them from Lua with `gnoblin.shortcuts.actions(group?)`.
 
-| Field           | Accepted values                                           | Meaning                                                                                                 |
-| --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `action`        | `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"`            | Selects a built-in action from that schema. Use underscores in Lua key names.                           |
-| `binding`       | GTK accelerator string for a command; array for an action | Required. An empty action list disables its current binding.                                            |
-| `command`       | Nonempty array of strings                                 | Alternative to `action`; runs the program directly without shell expansion.                             |
-| `trigger`       | `"press"` or `"release"`                                  | `"press"` by default; selects which key edge launches a command.                                        |
-| `capture_input` | `true`                                                    | Reserves bare `Super` for shell input capture. Requires a release trigger and no `command` or `action`. |
+| Field           | Accepted values                                        | Meaning                                                                                                 |
+| --------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `action`        | `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"`         | Selects a built-in action from that schema. Use underscores in Lua key names.                           |
+| `binding`       | One chord for a command; array of chords for an action | Required. An empty action list disables its current binding.                                            |
+| `command`       | Nonempty array of strings                              | Alternative to `action`; runs the program directly without shell expansion.                             |
+| `trigger`       | `"press"` or `"release"`                               | `"press"` by default; selects which key edge launches a command.                                        |
+| `capture_input` | `true`                                                 | Reserves bare `Super` for shell input capture. Requires a release trigger and no `command` or `action`. |
 
 The named `capture_input` form above is for a shell binding that belongs in
 your config. It emits shortcut-session events instead of launching a command.

@@ -15,6 +15,7 @@ mutter gnoblin-control-power.c src/core/gnoblin-control-power.c
 mutter gnoblin-control-overrides.c src/core/gnoblin-control-overrides.c
 mutter gnoblin-overrides.h src/core/gnoblin-overrides.h
 mutter gnoblin-easing.h src/core/gnoblin-easing.h
+mutter gnoblin-chord.h src/core/gnoblin-chord.h
 mutter gnoblin-control-command.c src/core/gnoblin-control-command.c
 mutter gnoblin-control-runtime.c src/core/gnoblin-control-runtime.c
 mutter gnoblin-control-focus.c src/core/gnoblin-control-focus.c

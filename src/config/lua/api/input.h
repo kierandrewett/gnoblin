@@ -38,7 +38,8 @@
 ---@field modifiers? integer Match the event modifier mask.
 ---@field keycode? integer Match this hardware key code.
 ---@field button? integer Match this pointer button.
----@field accelerator? string Match this accelerator.
+---@field accelerator? string Match this chord, such as "<Super>q", or for type "button" a pointer
+chord such as "<Super>Button1". Any other form is an error that names the form to write.
 
 ---@class InputEvent
 ---@field type string Input event type.
