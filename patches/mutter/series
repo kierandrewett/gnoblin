@@ -19,7 +19,6 @@
 02-wayland-fixes/0002-wayland-reset-client-cursor-when-pointer-has-no-surface.patch
 04-wayland-protocols/0002-gnoblin-protocols-wire-gnoblin-s-extra-Wayland-proto.patch
 07-cursor/0001-cursor-themes-and-launch-feedback.patch
-07-cursor/0002-use-supervisor-session-predicate.patch
 06-core-fixes/0002-core-guard-zero-area-window-in-coverage-check.patch
 08-background-blur/0001-blur-cache.patch
 09-focus-activation/0001-honour-app-activation.patch
@@ -51,7 +50,7 @@
 14-input-settings/0006-input-read-tablet-area-from-lua.patch
 14-input-settings/0007-orientation-keep-gnoblin-lock-in-memory.patch
 15-preferences/0001-native-gnoblin-preferences.patch
-07-cursor/0003-live-gnoblin-cursor-preferences.patch
+07-cursor/0002-live-gnoblin-cursor-preferences.patch
 15-preferences/0002-gnoblin-global-monitor-scale.patch
 15-preferences/0003-use-supervisor-session-predicate.patch
 15-preferences/0004-configure-mouse-button-modifier.patch
@@ -59,7 +58,7 @@
 15-preferences/0006-configure-mouse-drag-threshold.patch
 15-preferences/0007-configure-check-alive-timeout.patch
 15-preferences/0008-configure-locate-pointer-key.patch
-07-cursor/0004-configure-cursor-theme-and-size-from-lua.patch
+07-cursor/0003-configure-cursor-theme-and-size-from-lua.patch
 15-preferences/0009-place-new-window-placement.patch
 16-session-lock/0001-backend-expose-Gnoblin-lock-capability.patch
 16-session-lock/0002-session-lock-embargo-capture-and-remote-input.patch
