@@ -722,15 +722,25 @@ static GVariant* start_grab(GnoblinNativeControl* control, GError** error) {
     return gnoblin_control_input_grab(control, 1, arguments, 7, error);
 }
 
-/* The grab is refused with the message of 1b5934d9, which names the held key. */
-static void assert_grab_refused_naming(GnoblinNativeControl* control, const char* key) {
+/* The grab is refused with the message of 1b5934d9, which names a held key. With several keys
+ * down the hash table picks which one, so `alternative` (when given) is an accepted name too. */
+static void assert_grab_refused_naming_one_of(GnoblinNativeControl* control, const char* key,
+                                              const char* alternative) {
     g_autoptr(GError) error = NULL;
     g_autoptr(GVariant) result = start_grab(control, &error);
     g_assert_null(result);
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_BUSY);
     g_autofree char* named = g_strdup_printf("while a key is held (%s); its release would", key);
-    g_assert_nonnull(strstr(error->message, named));
+    g_autofree char* named_alternative =
+        alternative ? g_strdup_printf("while a key is held (%s); its release would", alternative)
+                    : NULL;
+    g_assert_true(strstr(error->message, named) ||
+                  (named_alternative && strstr(error->message, named_alternative)));
     g_assert_null(control->input_grab);
+}
+
+static void assert_grab_refused_naming(GnoblinNativeControl* control, const char* key) {
+    assert_grab_refused_naming_one_of(control, key, NULL);
 }
 
 static void assert_grab_granted(GnoblinNativeControl* control) {
@@ -769,7 +779,7 @@ static void test_a_removed_keyboard_drops_the_keys_it_held(void) {
     GnoblinNativeControl* control = new_grab_control();
     press_key(control, KEYBOARD_A, EVDEV_A, XKB_KEY_a);
     press_key(control, KEYBOARD_A, EVDEV_B, XKB_KEY_b);
-    assert_grab_refused_naming(control, "a");
+    assert_grab_refused_naming_one_of(control, "a", "b");
 
     gnoblin_control_forget_pressed_keys(control, KEYBOARD_A);
     assert_grab_granted(control);

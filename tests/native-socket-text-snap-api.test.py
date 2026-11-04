@@ -214,7 +214,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         stop = function_body(
             source,
             "void gnoblin_native_control_stop(",
-            "control->teardown_complete = TRUE;",
+            "native_control_finish_teardown(control);",
         )
 
         self.assertIn(
