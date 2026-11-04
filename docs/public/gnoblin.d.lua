@@ -1354,7 +1354,7 @@ function Tween:watch(property, fn) end
 ---@field parent? string ID of the parent window, when present.
 ---@field pid? integer Process ID of the client, from the display server, not the client.
 ---@field process? integer Process.id when gnoblin.process.spawn started this window's program; gnoblin.process.by_id(window.process) gives that Process while the runtime knows it.
----@field monitor? integer Zero-based monitor index.
+---@field monitor_origin? {x: integer, y: integer} Top-left corner of the monitor that holds the window, in compositor coordinates. It equals the x and y of the Output with this monitor_id.
 ---@field frame WindowFrame Window frame rectangle.
 ---@field opacity number Drawn opacity from 0 to 1 that the runtime set; 1 by default.
 ---@field scale number Drawn scale about the window's centre that the runtime set; 1 by default.

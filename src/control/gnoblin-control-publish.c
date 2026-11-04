@@ -109,7 +109,7 @@ const WindowPropertyName window_property_names[] = {
     {"minimized", "minimized"},
     {"lastUserTime", "last_user_time"},
     {"parent", "parent"},
-    {"monitor", "monitor"},
+    {"monitor", "monitor_origin"},
     {"pid", "pid"},
     {"process", "process"},
     {"geometry", "frame"},
