@@ -64,7 +64,9 @@ support_packages() {
         rpm) echo mesa-dri-drivers mesa-libEGL python3 ;;
         suse) echo Mesa-dri Mesa-libEGL1 python3 ;;
         arch) echo mesa python ;;
-        apk) echo mesa-dri-gallium mesa-egl python3 curl elogind polkit-elogind dbus ;;
+        # util-linux-login: a login with PAM, so pam_elogind opens the logind session (busybox login has no PAM).
+        # eudev: the udev database, in which mutter finds the GPU.
+        apk) echo mesa-dri-gallium mesa-egl python3 curl elogind polkit-elogind dbus linux-pam util-linux-login eudev ;;
         deb) echo libgl1-mesa-dri libegl-mesa0 python3 dbus-user-session ;;
     esac
 }
@@ -190,17 +192,51 @@ ExecStart=/bin/sh -c 'exec $command'
 EOF
         systemctl daemon-reload
     else
+        # The profile snippet records what the session sees (the logind session, the runtime folder, the seat), so a
+        # session that stops at once says why in session.log.
         cat >/etc/profile.d/zz-gnoblin-graphical.sh <<EOF
 if [ "\$(id -un)" = "$user" ] && [ "\$(tty)" = /dev/tty1 ] && [ -e $HERE/session/start ]; then
     rm -f $HERE/session/start
-    XDG_SESSION_TYPE=wayland $command > $HERE/session/session.log 2>&1
+    {
+        echo "[guest] XDG_SESSION_ID=\${XDG_SESSION_ID:-} XDG_SESSION_TYPE=\${XDG_SESSION_TYPE:-} XDG_SEAT=\${XDG_SEAT:-}"
+        echo "[guest] XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-} \$(ls -ld "\${XDG_RUNTIME_DIR:-/nonexistent}" 2>&1)"
+        loginctl show-session "\${XDG_SESSION_ID:-}" -p Type -p Seat -p Active -p VTNr 2>&1
+    } > $HERE/session/session.log
+    # The user's D-Bus session bus, where a systemd user instance would put it, so gnoblinctl over SSH finds it too.
+    if [ -z "\${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -n "\${XDG_RUNTIME_DIR:-}" ]; then
+        dbus-daemon --session --address="unix:path=\$XDG_RUNTIME_DIR/bus" --fork --nopidfile >> $HERE/session/session.log 2>&1
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=\$XDG_RUNTIME_DIR/bus"
+    fi
+    XDG_SESSION_TYPE=wayland $command >> $HERE/session/session.log 2>&1
     echo \$? > $HERE/session/exit-status
     exit 0
 fi
 EOF
+        # Busybox login has no PAM, so no logind session is opened and XDG_SESSION_ID stays empty; Gnoblin then
+        # refuses to start ("start it from a fresh Wayland login session"). util-linux login runs the login PAM
+        # stack, and pam_elogind in it opens a session of type wayland on seat0 (XDG_SESSION_TYPE kept by -p).
+        if [[ ! -f /etc/pam.d/login ]]; then
+            printf '%s\n' 'auth include base-auth' 'account include base-account' 'password include base-password' \
+                'session include base-session' >/etc/pam.d/login
+        fi
+        grep -q pam_elogind /etc/pam.d/login || echo '-session optional pam_elogind.so' >>/etc/pam.d/login
         rc-update add dbus default >/dev/null && rc-service dbus start >/dev/null
+        # Mutter finds GPUs through the udev database, and elogind's seat rules tag them. The cloud image runs mdev,
+        # which fills no udev database ("Failed to setup: No GPUs found"), so udev takes over as setup-devd does.
+        for service in mdev hwdrivers; do
+            rc-service "$service" stop >/dev/null 2>&1 || true
+            rc-update del "$service" sysinit >/dev/null 2>&1 || true
+        done
+        for service in udev udev-trigger udev-settle; do
+            rc-update add "$service" sysinit >/dev/null && rc-service "$service" start >/dev/null
+        done
         rc-update add elogind default >/dev/null && rc-service elogind start >/dev/null
-        sed -i "s|^tty1::.*|tty1::respawn:/bin/login -f $user|" /etc/inittab
+        local login=/bin/login
+        [[ -x /usr/bin/login.util-linux ]] && login=/usr/bin/login.util-linux
+        # env -i: login -p keeps the environment, and init's (HOME=/) would make the session write to /.cache and
+        # /.config. With a clean one, login sets HOME, SHELL, USER and PATH for the user, and keeps only the type.
+        sed -i "s|^tty1::.*|tty1::respawn:/usr/bin/env -i TERM=linux XDG_SESSION_TYPE=wayland $login -p -f $user|" \
+            /etc/inittab
     fi
 }
 
