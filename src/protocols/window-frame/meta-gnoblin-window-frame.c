@@ -394,8 +394,8 @@ void meta_gnoblin_window_frame_sync_renderer(MetaWindow* window) {
  * frame sticks out of the buffer) is what maps between the frame rect and the client rect. */
 
 #ifdef HAVE_XWAYLAND
-/* The border an Xwayland window with no frame yet is told about (_NET_REQUEST_FRAME_EXTENTS is
- * asked before the window exists, so no rule has run). It follows the last border given out. */
+/* The border an Xwayland window is told about before it exists (_NET_REQUEST_FRAME_EXTENTS comes
+ * before any rule can match a window): what the rules give a plain normal X11 window. */
 static MetaFrameBorder x11_default_border = {.left = 1, .right = 1, .top = 32, .bottom = 1};
 
 /* The client-declared visible bounds inside the buffer: the whole buffer, or what is left of it
@@ -477,12 +477,6 @@ void meta_gnoblin_window_frame_x11_update(MetaWindow* window) {
         memset(layout.crop, 0, sizeof layout.crop);
     state->changed |= memcmp(&layout, &state->committed, sizeof layout) != 0;
     state->committed = layout;
-    if (layout.border[0] || layout.border[1] || layout.border[2] || layout.border[3])
-        x11_default_border = (MetaFrameBorder){.left = layout.border[3],
-                                               .right = layout.border[1],
-                                               .top = layout.border[0],
-                                               .bottom = layout.border[2]};
-
     /* The same arithmetic as a Wayland commit: the frame sticks out of the buffer by the border
      * and is cut back by the crop, on top of what the client declared. */
     for (int i = 0; i < 4; i++)
@@ -549,6 +543,18 @@ void meta_gnoblin_window_frame_x11_set_declared_extents(MetaWindow* window,
     state->has_declared = extents != NULL;
     state->declared = extents ? *extents : (MetaFrameBorder){0};
     meta_gnoblin_window_frame_x11_update(window);
+}
+
+/**
+ * meta_gnoblin_window_frame_x11_set_default_border:
+ * @border: border of a normal X11 window that only the broadest rules match
+ *
+ * Set by the rule engine whenever the rules are applied.
+ */
+void meta_gnoblin_window_frame_x11_set_default_border(const MetaFrameBorder* border) {
+#ifdef HAVE_XWAYLAND
+    x11_default_border = *border;
+#endif
 }
 
 /**

@@ -1059,6 +1059,47 @@ void gnoblin_control_refresh_window_rule_blur(MetaWindow* window) {
         native_window_rule_blur_update(window, surface);
 }
 
+/* An Xwayland window is laid out before it has an actor, so the rules that decide its frame have
+ * to be read earlier than the effect rules: only the frame policy, extents and crop are applied
+ * here, in the same order and with the same defaults as native_apply_window_rules. */
+static void native_apply_early_frame_rules(GnoblinNativeControl* control, MetaWindow* window) {
+    g_autoptr(GVariant) document = gnoblin_control_native_config_document(control);
+    g_autoptr(GVariant) rules =
+        document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
+    int policy = 1;
+    int extents[4] = {32, 1, 1, 1};
+    int crop[4] = {0, 0, 0, 0};
+
+    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
+        g_autoptr(GVariant) boxed_rule = g_variant_get_child_value(rules, i);
+        g_autoptr(GVariant) rule = g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
+                                       ? g_variant_get_variant(boxed_rule)
+                                       : g_variant_ref(boxed_rule);
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        if (!match || !native_window_rule_matches(match, window, control))
+            continue;
+        g_autoptr(GVariant) frame = g_variant_lookup_value(rule, "frame", NULL);
+        g_autoptr(GVariant) unboxed = NULL;
+        GVariant* frame_options = frame;
+        if (frame_options && g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARIANT)) {
+            unboxed = g_variant_get_variant(frame_options);
+            frame_options = unboxed;
+        }
+        if (!frame_options || !g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARDICT))
+            continue;
+        g_autoptr(GVariant) frame_mode = native_rule_lookup_alias(frame_options, "mode", NULL);
+        if (frame_mode && g_variant_is_of_type(frame_mode, G_VARIANT_TYPE_STRING))
+            policy = native_frame_policy_from_name(g_variant_get_string(frame_mode, NULL));
+        native_frame_read_extents(frame_options, "extents", extents);
+        native_frame_read_extents(frame_options, "crop", crop);
+    }
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) policy_value =
+        g_variant_ref_sink(g_variant_new("(iiiiiiiii)", policy, crop[0], crop[1], crop[2], crop[3],
+                                         extents[0], extents[1], extents[2], extents[3]));
+    meta_gnoblin_window_frame_set(window, policy_value, &error);
+}
+
 static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow* window) {
     if (!control || !window)
         return;
@@ -1067,8 +1108,11 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     MetaSurfaceActor* surface = actor ? meta_window_actor_get_surface(actor) : NULL;
     if (!surface)
         surface = meta_wayland_layer_shell_get_actor(window);
-    if (!surface)
+    if (!surface) {
+        if (meta_window_get_client_type(window) == META_WINDOW_CLIENT_TYPE_X11)
+            native_apply_early_frame_rules(control, window);
         return;
+    }
 
     double radius = 0;
     double smoothing = 0;
@@ -1476,9 +1520,69 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                                                      clip_enabled && csd_detected, csd_insets);
 }
 
+/* _NET_REQUEST_FRAME_EXTENTS arrives before the window exists, so no rule can match its title or
+ * application. Answer with what the rules give a plain normal X11 window: the rules whose match
+ * holds only the window type and client type, merged in order like native_apply_window_rules. */
+static void native_update_default_x11_border(GnoblinNativeControl* control) {
+    g_autoptr(GVariant) document = gnoblin_control_native_config_document(control);
+    g_autoptr(GVariant) rules =
+        document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
+    int policy = 1;
+    int extents[4] = {32, 1, 1, 1};
+
+    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
+        g_autoptr(GVariant) boxed_rule = g_variant_get_child_value(rules, i);
+        g_autoptr(GVariant) rule = g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
+                                       ? g_variant_get_variant(boxed_rule)
+                                       : g_variant_ref(boxed_rule);
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        gboolean applies = match && g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* key;
+        GVariant* value;
+        if (applies) {
+            g_variant_iter_init(&iter, match);
+            while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+                g_autoptr(GVariant) owned = value;
+                const char* text = g_variant_is_of_type(owned, G_VARIANT_TYPE_STRING)
+                                       ? g_variant_get_string(owned, NULL)
+                                       : NULL;
+                if (g_str_equal(key, "type"))
+                    applies &= text && g_str_equal(text, "window");
+                else if (g_str_equal(key, "client_type") || g_str_equal(key, "client-type"))
+                    applies &= text && g_str_equal(text, "x11");
+                else
+                    applies = FALSE;
+            }
+        }
+        if (!applies)
+            continue;
+        g_autoptr(GVariant) frame = g_variant_lookup_value(rule, "frame", NULL);
+        g_autoptr(GVariant) unboxed = NULL;
+        GVariant* frame_options = frame;
+        if (frame_options && g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARIANT)) {
+            unboxed = g_variant_get_variant(frame_options);
+            frame_options = unboxed;
+        }
+        if (!frame_options || !g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARDICT))
+            continue;
+        g_autoptr(GVariant) frame_mode = native_rule_lookup_alias(frame_options, "mode", NULL);
+        if (frame_mode && g_variant_is_of_type(frame_mode, G_VARIANT_TYPE_STRING))
+            policy = native_frame_policy_from_name(g_variant_get_string(frame_mode, NULL));
+        native_frame_read_extents(frame_options, "extents", extents);
+    }
+
+    MetaFrameBorder border = {0};
+    if (policy != 0)
+        border = (MetaFrameBorder){
+            .left = extents[3], .right = extents[1], .top = extents[0], .bottom = extents[2]};
+    meta_gnoblin_window_frame_x11_set_default_border(&border);
+}
+
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
     if (!control || !control->display || !control->windows)
         return;
+    native_update_default_x11_border(control);
     GHashTableIter iter;
     gpointer window;
     g_hash_table_iter_init(&iter, control->windows);

@@ -14,6 +14,8 @@
   framed under `frame.mode = "auto"` (the default for X11 when no rule sets a mode), `_GTK_FRAME_EXTENTS` feeds the
   visible bounds, `_NET_FRAME_EXTENTS` and `_NET_REQUEST_FRAME_EXTENTS` report Gnoblin's border, and Mutter's stock
   shadow no longer draws for managed X11 windows. A border change keeps the client where it is.
+  `mutter-x11-frames` is no longer built or installed. A request for frame extents before the window exists is answered
+  from the rules that match only the window type and `client_type`.
 
 ### Changed
 

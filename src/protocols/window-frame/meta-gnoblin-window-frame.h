@@ -39,4 +39,5 @@ void meta_gnoblin_window_frame_x11_set_declared_extents(MetaWindow* window,
                                                         const MetaFrameBorder* extents);
 gboolean meta_gnoblin_window_frame_x11_get_declared_extents(MetaWindow* window,
                                                             MetaFrameBorder* extents);
+void meta_gnoblin_window_frame_x11_set_default_border(const MetaFrameBorder* border);
 gboolean meta_gnoblin_window_frame_x11_get_border(MetaWindow* window, MetaFrameBorder* border);

@@ -162,6 +162,11 @@ X11 apps running through Xwayland, which have the same frame, rules, effects
 and input as Wayland windows. They do not apply to popups, menus, bars or
 launchers.
 
+An X11 app can ask for its frame size (`_NET_REQUEST_FRAME_EXTENTS`) before
+the window exists, when no rule can match its title or application. Gnoblin
+answers with the rules that match only `type = "window"` and `client_type`;
+the real size is set when the window is managed.
+
 Text input, client-driven background blur and activation tokens come from
 Wayland protocols, so X11 apps do not use them.
 Moving framed windows between displays with different scales and cropping apps
