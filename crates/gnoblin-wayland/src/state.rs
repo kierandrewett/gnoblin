@@ -487,6 +487,9 @@ pub struct State {
 /// How long one loop turn may wait for a layout run that is still in flight.
 const LAYOUT_FRAME_BUDGET: Duration = Duration::from_millis(4);
 
+/// How long a layout command waits for its engine's answer before the workspace floats.
+const LAYOUT_COMMAND_WAIT: Duration = Duration::from_secs(2);
+
 impl State {
     /// Builds the state, its globals and its outputs.
     ///
@@ -1606,6 +1609,32 @@ impl State {
         self.apply(effects);
         self.publish();
         Ok(())
+    }
+
+    /// Sends `command` to `workspace`'s layout and applies the placements it answers
+    /// with. The answer is the refusal: `unknown layout` when the workspace has no
+    /// layout to ask, `refused` when the layout does not know the command. A layout
+    /// that fails while answering reports `layout_failed` and the workspace floats.
+    ///
+    /// # Errors
+    /// The refusal message, and nothing changes.
+    pub(crate) fn layout_command(
+        &mut self,
+        workspace: WorkspaceId,
+        command: gnoblin_wm::layout::Command,
+    ) -> Result<(), String> {
+        let deadline = std::time::Instant::now() + LAYOUT_COMMAND_WAIT;
+        match self.wm.layout_command(workspace, command, deadline) {
+            Ok(effects) => {
+                self.apply(effects);
+                self.publish();
+                Ok(())
+            }
+            Err(gnoblin_wm::CommandError::UnknownLayout) => {
+                Err(format!("unknown layout: workspace {} has no layout", workspace.get()))
+            }
+            Err(gnoblin_wm::CommandError::Refused) => Err("refused: the layout does not know that command".to_owned()),
+        }
     }
 
     /// Every workspace the window manager arranges, with the layout it runs.

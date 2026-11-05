@@ -841,6 +841,7 @@ impl LayoutEngine for ScriptedEngine {
             Job::Arrange(params) | Job::Request(gnoblin_wm::layout::Request { params, .. }) => {
                 Self::arrange(shape, &params)
             }
+            Job::Command(..) => Ok(Reply::Declined),
         };
         self.ready = Some((generation, result));
         gnoblin_wm::layout::Ticket::new(generation)

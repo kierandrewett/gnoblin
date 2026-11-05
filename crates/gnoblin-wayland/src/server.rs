@@ -332,6 +332,13 @@ impl Server {
                             } => {
                                 let _ = reply.send(state.set_floating(window, floating));
                             }
+                            Command::LayoutCommand {
+                                workspace,
+                                command,
+                                reply,
+                            } => {
+                                let _ = reply.send(state.layout_command(workspace, command));
+                            }
                             Command::Advance(milliseconds) => state.advance_clock(milliseconds),
                             Command::SelectSource(index) => {
                                 if !state.select_input_source(index) {
@@ -582,6 +589,22 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Sends a command to a workspace's layout. `None` when the loop did not answer in
+    /// time; otherwise `Err` carries the refusal (`unknown layout:` or `refused:`).
+    pub fn layout_command(
+        &self,
+        workspace: WorkspaceId,
+        command: gnoblin_wm::layout::Command,
+    ) -> Option<Result<(), String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::LayoutCommand {
+            workspace,
+            command,
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Promises a role to a process the compositor is about to start.
     ///
     /// A frame renderer and a hosted session are ordinary clients of the session
@@ -802,6 +825,12 @@ enum Command {
         window: WindowId,
         floating: bool,
         reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// A command for a workspace's layout; the answer is the refusal, if any.
+    LayoutCommand {
+        workspace: WorkspaceId,
+        command: gnoblin_wm::layout::Command,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Promise a role to a process the compositor is about to start.
     GrantRole { pid: u32, role: ClientRole },
