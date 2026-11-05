@@ -9,25 +9,24 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/compat/gnoblin-compat-clipboard",
     "crates/compat/gnoblin-compat-core",
-    "crates/compat/gnoblin-compat-gnome-keyring-prompter",
-    "crates/compat/gnoblin-compat-gnome-session-manager",
-    "crates/compat/gnoblin-compat-gnome-shell-introspect",
-    "crates/compat/gnoblin-compat-gnome-shell-screenshot",
-    "crates/compat/gnoblin-compat-gtk-dconf-settings",
-    "crates/compat/gnoblin-compat-gtk-shell1",
-    "crates/compat/gnoblin-compat-mutter-clipboard",
-    "crates/compat/gnoblin-compat-mutter-displayconfig",
-    "crates/compat/gnoblin-compat-mutter-idlemonitor",
-    "crates/compat/gnoblin-compat-mutter-inputcapture",
-    "crates/compat/gnoblin-compat-mutter-inputmapping",
-    "crates/compat/gnoblin-compat-mutter-remotedesktop",
-    "crates/compat/gnoblin-compat-mutter-screencast",
-    "crates/compat/gnoblin-compat-mutter-servicechannel",
-    "crates/compat/gnoblin-compat-mutter-x11-interop",
-    "crates/compat/gnoblin-compat-qt-portal-settings",
-    "crates/compat/gnoblin-compat-x11-xsettings",
-members = [
+    "crates/compat/gnoblin-compat-displayconfig",
+    "crates/compat/gnoblin-compat-gcr-prompter",
+    "crates/compat/gnoblin-compat-gtk-settings",
+    "crates/compat/gnoblin-compat-gtk-shell",
+    "crates/compat/gnoblin-compat-idlemonitor",
+    "crates/compat/gnoblin-compat-inputcapture",
+    "crates/compat/gnoblin-compat-inputmapping",
+    "crates/compat/gnoblin-compat-qt-settings",
+    "crates/compat/gnoblin-compat-remotedesktop",
+    "crates/compat/gnoblin-compat-screencast",
+    "crates/compat/gnoblin-compat-servicechannel",
+    "crates/compat/gnoblin-compat-sessionmanager",
+    "crates/compat/gnoblin-compat-shell-introspect",
+    "crates/compat/gnoblin-compat-shell-screenshot",
+    "crates/compat/gnoblin-compat-x11-interop",
+    "crates/compat/gnoblin-compat-xsettings",
     "crates/gnoblin",
     "crates/gnoblin-a11y",
     "crates/gnoblin-authority",
@@ -49,14 +48,14 @@ members = [
     "crates/gnoblin-services",
     "crates/gnoblin-session",
     "crates/gnoblin-testkit",
-    "crates/gnoblin-types",
     "crates/gnoblin-wasm",
     "crates/gnoblin-wayland",
     "crates/gnoblin-wm",
     "crates/gnoblin-xwayland",
     "crates/gnoblinctl",
     "crates/xdg-desktop-portal-gnoblin",
-    "xtask",]
+    "xtask",
+]
 
 [workspace.package]
 # The rewrite ships as 0.2.0 and the IPC version is exactly the Gnoblin version,
@@ -110,8 +109,3 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.140"
 # The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).
 toml = "1.2.0"
-
-# The shared primitives: geometry, transform, scale, identities, ticks and
-# error codes. Every crate that names a rectangle or an output uses this crate
-# instead of declaring its own (design/rust-compositor.md, "Dependency rules").
-gnoblin-types = { path = "crates/gnoblin-types" }

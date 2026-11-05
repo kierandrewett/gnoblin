@@ -1,19 +1,20 @@
 //! The envelope's Rust helpers, on top of the generated types.
 //!
-//! The message itself is `proto/envelope.proto`, compiled by `build.rs` like every
-//! other `.proto` file, so the struct and its tags come from the text rather than
-//! from hand-written Rust that could drift. This module adds the behaviour the
+//! The message itself is `proto/envelope.proto`, compiled by `build.rs` with the
+//! documents it generates from the schema, so the struct and its tags come from the
+//! text rather than from hand-written Rust that could drift. This module adds the behaviour the
 //! wire type cannot express: constructors that pair a frame with its request id,
 //! redaction, and the rule that sets [`FLAG_SENSITIVE`] from the schema.
 //!
-//! Sensitivity is not the caller's decision. `sensitive.rs` lists the members the
-//! schema marks secret; every constructor flags a frame for one of them, and the
-//! frame decoder re-applies the flag, so a peer that sends zero cannot clear it.
-//! There is no public way to set or clear the flag by hand.
+//! Sensitivity is not the caller's decision. The table `build.rs` generates from the
+//! schema (`generated::sensitive`) lists the members marked secret; every
+//! constructor flags a frame for one of them, and the frame decoder re-applies the
+//! flag, so a peer that sends zero cannot clear it. There is no public way to set or
+//! clear the flag by hand.
 
 use crate::generated::ipc::envelope::Kind;
 use crate::generated::ipc::{Envelope, Error, Event, Reply, Request};
-use crate::sensitive;
+use crate::generated::sensitive;
 
 /// The envelope flag that marks a frame as carrying secret material.
 ///

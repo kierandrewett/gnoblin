@@ -1,13 +1,14 @@
-//! The compiled types and the checked-in `.proto` text must agree on every tag.
+//! The generated `.proto` text and the compiled types must agree on every tag.
 //!
-//! The Rust types are generated from the descriptor set that `build.rs` writes to
-//! `OUT_DIR`, so a stale build directory, a hand edit of a checked-in file, or a
-//! generator that forgot to change a number would leave the two disagreeing with
-//! nothing failing. This test reads both sides and compares every message field and
-//! every enum value by its wire number.
+//! The Rust types are generated from a descriptor set, and the text is the document
+//! `build.rs` compiled to get it. This test parses the text on its own and compares
+//! every message field and every enum value by its wire number with what the
+//! descriptor says, so a renderer that produced something other than the tags the
+//! types carry fails here rather than on a peer's socket.
 //!
-//! The text side is parsed from the files on disk, not regenerated: regenerating
-//! would compare the generator with itself.
+//! The text side is read from `OUT_DIR`, because that is what was compiled; the
+//! envelope, the one hand-written document, is read from the crate's `proto/`
+//! directory.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -16,9 +17,16 @@ use std::path::{Path, PathBuf};
 use prost::Message as _;
 use prost_types::{DescriptorProto, EnumDescriptorProto, FieldDescriptorProto, FileDescriptorSet};
 
-/// Where the `.proto` files live, relative to the crate.
-fn proto_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("proto")
+/// The documents `build.rs` generated from the schema and compiled.
+fn generated_dir() -> PathBuf {
+    Path::new(env!("OUT_DIR")).join("proto")
+}
+
+/// The one hand-written document, which is not generated from the schema.
+fn hand_written_proto() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("proto")
+        .join("envelope.proto")
 }
 
 /// `package.Message.field` and `package.Enum.VALUE` to the wire number a compiled
@@ -71,14 +79,15 @@ fn join(prefix: &str, name: &str) -> String {
     }
 }
 
-/// The same map, read out of the checked-in text.
+/// The same map, read out of the text that was compiled.
 fn from_text() -> BTreeMap<String, i32> {
-    let mut paths: Vec<PathBuf> = fs::read_dir(proto_dir())
-        .expect("the proto directory")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("proto"))
-        .collect();
+    let mut paths = proto_paths(&generated_dir());
+    assert!(
+        !paths.is_empty(),
+        "{} holds no generated .proto file: build.rs did not run",
+        generated_dir().display()
+    );
+    paths.push(hand_written_proto());
     paths.sort();
 
     let mut numbers = BTreeMap::new();
@@ -87,6 +96,16 @@ fn from_text() -> BTreeMap<String, i32> {
         parse_proto(&text, &mut numbers);
     }
     numbers
+}
+
+/// Every `.proto` file directly in `dir`.
+fn proto_paths(dir: &Path) -> Vec<PathBuf> {
+    fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", dir.display()))
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("proto"))
+        .collect()
 }
 
 /// One block stack level: the message or enum name, or nothing for a `oneof` or a
@@ -153,13 +172,13 @@ fn path_of(package: &str, stack: &[Option<String>]) -> String {
 }
 
 #[test]
-fn compiled_tags_match_the_checked_in_proto() {
+fn compiled_tags_match_the_generated_proto() {
     let compiled = from_descriptor();
     let text = from_text();
     assert!(!compiled.is_empty(), "the descriptor set names no members");
     assert_eq!(
         compiled, text,
-        "the compiled descriptor and the checked-in .proto files disagree about a tag"
+        "the compiled descriptor and the generated .proto text disagree about a tag"
     );
 }
 

@@ -25,10 +25,15 @@
 //! format, in its own namespace; Gnoblin's schema never contains extension
 //! members. The same generator runs over both, which is why the format carries a
 //! namespace rather than assuming one.
+//!
+//! [`proto`] renders the format as Protocol Buffers text, so the wire layer's
+//! build script and `cargo xtask gen-proto` produce the same bytes from one
+//! implementation.
 
 mod error;
 mod model;
 mod parse;
+pub mod proto;
 mod version;
 
 pub use error::SchemaError;

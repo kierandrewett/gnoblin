@@ -351,7 +351,8 @@ impl Catalog {
     /// Read every `.toml` file in `dir`, in file-name order.
     ///
     /// File-name order is part of the contract: generated output must not depend
-    /// on directory iteration order, or `gen-proto --check` would flip.
+    /// on directory iteration order, or it would change between two builds of the
+    /// same schema.
     pub fn load_dir(dir: &Path) -> Result<Catalog, SchemaError> {
         let entries = std::fs::read_dir(dir).map_err(|source| SchemaError::Read {
             path: dir.to_path_buf(),

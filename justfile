@@ -34,14 +34,11 @@ test:
 deps:
     cargo xtask deps
 
-# Write the .proto files and the sensitive-member table from the object schema.
-# Commit the result; `cargo xtask gen-proto --check` fails while they are stale.
+# Write the generated .proto text and sensitive table to target/gen-proto, for
+# reading. The build generates them itself, in OUT_DIR, so this is a convenience:
+# nothing it writes is checked in.
 gen-proto:
     cargo xtask gen-proto
-
-# Fail when a checked-in .proto file is stale, missing or not generated at all.
-gen-proto-check:
-    cargo xtask gen-proto --check
 
 # Print every compat adapter's declared support matrix. Adapters declare theirs in
 # `crates/compat/<crate>/support-matrix.json`; with none declared this prints the
@@ -49,19 +46,9 @@ gen-proto-check:
 compat-report:
     cargo xtask compat-report
 
-# Report structs and enums two crates declare twice. Report-only: migration lanes
-# still produce duplicates, so this prints and exits zero. `just dupes-deny` is
-# the failing form.
-dupes:
-    cargo xtask dupes
-
-# The same report, failing on any hit that `xtask/dupes-allow.toml` does not waive.
-dupes-deny:
-    cargo xtask dupes --deny
-
 # Check advisories, licences, duplicate versions and git sources.
 deny:
     cargo deny check
 
 # The whole gate, in the order that fails fastest.
-ci: fmt-check gen-proto-check build clippy test deps deny
+ci: fmt-check build clippy test deps deny

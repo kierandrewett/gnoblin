@@ -1,10 +1,11 @@
-//! The wire types, compiled from the checked-in `.proto` files by `build.rs`.
+//! The wire types, generated from the object schema by `build.rs`.
 //!
-//! Nothing here is written by hand: `cargo xtask gen-proto` writes the namespace
-//! files from the object schema, `proto/envelope.proto` is the one hand-written
-//! file, and both are compiled together. The modules are named after the Protocol
-//! Buffers package, so `gnoblin` is the compositor's own namespace, `bsm_greeter`
-//! is the greeter extension, and `ipc` is the envelope.
+//! Nothing here is written by hand: `build.rs` renders one `.proto` document per
+//! schema namespace into `OUT_DIR`, compiles them with `proto/envelope.proto` (the
+//! one hand-written file), and generates the Rust modules from the descriptor set.
+//! The modules are named after the Protocol Buffers package, so `gnoblin` is the
+//! compositor's own namespace, `bsm_greeter` is the greeter extension, and `ipc` is
+//! the envelope.
 //!
 //! The generated code is allowed to be less tidy than the hand-written code: it is
 //! not reviewed as Rust, and a future protobuf release may emit shapes clippy would
@@ -26,4 +27,13 @@ pub mod gnoblin {
 #[allow(clippy::all, dead_code)]
 pub mod bsm_greeter {
     include!(concat!(env!("OUT_DIR"), "/bsm.greeter.rs"));
+}
+
+/// The members the schema marks secret, rendered by `build.rs` from the object
+/// schema into `OUT_DIR`.
+///
+/// Included rather than checked in, so the schema's `secret` flag is the only
+/// place sensitivity is decided and no build can disagree with a committed table.
+pub(crate) mod sensitive {
+    include!(concat!(env!("OUT_DIR"), "/sensitive.rs"));
 }

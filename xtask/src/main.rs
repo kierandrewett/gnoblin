@@ -1,10 +1,8 @@
-//! Workspace automation: dependency-rule checks over `cargo metadata`, the
-//! duplicate-type report over every crate's sources, and the code generation the
-//! schema drives.
+//! Workspace automation: dependency-rule checks over `cargo metadata`, and the
+//! code generation the schema drives.
 
 mod compat_report;
 mod deps;
-mod dupes;
 mod gen_proto;
 mod metadata;
 
@@ -16,11 +14,8 @@ usage: cargo xtask <subcommand>
 
 subcommands:
   deps               check the workspace dependency rules from design/rust-compositor.md
-  gen-proto          write crates/gnoblin-proto/proto from the object schema
-  gen-proto --check  fail when a checked-in .proto file is stale or orphaned
-  compat-report      print the declared support matrix of every compat adapter
-  dupes              list the structs and enums two crates declare twice
-  dupes --deny       the same report, failing on a hit not in xtask/dupes-allow.toml
+  gen-proto          write the generated .proto text to target/gen-proto, to read
+  compat-report      print every compat adapter's declared support matrix
   compat-report --json  the same report as JSON";
 
 fn main() -> ExitCode {
@@ -32,13 +27,10 @@ fn main() -> ExitCode {
     let rest: Vec<String> = args.collect();
     match (subcommand.as_str(), rest.as_slice()) {
         ("deps", []) => deps_command(),
-        ("gen-proto", []) => gen_proto::run(false),
-        ("gen-proto", [flag]) if flag == "--check" => gen_proto::run(true),
+        ("gen-proto", []) => gen_proto::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
-        ("dupes", []) => dupes::run(false),
-        ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
-        ("deps" | "gen-proto" | "dupes" | "compat-report", _) => usage_error("unexpected argument"),
+        ("deps" | "gen-proto" | "compat-report", _) => usage_error("unexpected argument"),
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
 }

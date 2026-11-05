@@ -14,9 +14,12 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 prost.workspace = true
 
 [build-dependencies]
+# build.rs renders the .proto documents and the sensitive table from the schema,
+# so the wire types are generated during a plain `cargo build`.
+gnoblin-schema = { path = "../gnoblin-schema" }
 # The pure-Rust protobuf front end, so a build needs no protoc binary.
 protox.workspace = true
-# The code generator: `proto/` becomes this crate's wire types.
+# The code generator: the descriptor set becomes this crate's wire types.
 prost-build.workspace = true
 # build.rs encodes the descriptor set it writes for the tag test.
 prost.workspace = true
