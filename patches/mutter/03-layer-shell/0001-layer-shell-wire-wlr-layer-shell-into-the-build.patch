@@ -11,33 +11,9 @@ The implementation, header and protocol XML are gnoblin overlay files
 (src/protocols/layer-shell/, copied into src/wayland/ at build time), not
 part of this patch.
 ---
- src/meson.build                    | 5 +++++
  src/wayland/meta-wayland-surface.c | 2 ++
- 2 files changed, 7 insertions(+)
+ 1 file changed, 2 insertions(+)
 
-diff --git a/src/meson.build b/src/meson.build
-index cc6de4e9a..4b67772fe 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -535,6 +535,9 @@ mutter_sources += [
-   'wayland/meta-wayland-fractional-scale.h',
-   'wayland/meta-wayland-gtk-shell.c',
-   'wayland/meta-wayland-gtk-shell.h',
-+  # gnoblin: wlr-layer-shell implementation from the source overlay
-+  'wayland/meta-wayland-layer-shell.c',
-+  'wayland/meta-wayland-layer-shell.h',
-   'wayland/meta-wayland.h',
-   'wayland/meta-wayland-idle-inhibit.c',
-   'wayland/meta-wayland-idle-inhibit.h',
-@@ -1015,6 +1018,8 @@ wayland_protocols = [
-   ['fractional-scale', 'staging', 1, ],
-   ['fifo', 'staging', 1, ],
-   ['gtk-shell', 'private', ],
-+  # gnoblin: vendored wlr-layer-shell protocol
-+  ['wlr-layer-shell-unstable-v1', 'private', ],
-   ['idle-inhibit', 'unstable', 1, ],
-   ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
-   ['linux-dmabuf', 'stable', 1, ],
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
 index ea7020687..380904921 100644
 --- a/src/wayland/meta-wayland-surface.c

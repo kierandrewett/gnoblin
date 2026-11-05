@@ -5,10 +5,9 @@ Subject: [PATCH] focus: make activation policy configurable in Gnoblin
 
 ---
  src/core/util-private.h               |  3 +++
- src/core/util.c                       |  9 ++++++++-
  src/core/window.c                     | 13 ++++++++++++-
  src/wayland/meta-wayland-activation.c | 17 ++++++++++++-----
- 4 files changed, 35 insertions(+), 7 deletions(-)
+ 3 files changed, 27 insertions(+), 6 deletions(-)
 
 diff --git a/src/core/util-private.h b/src/core/util-private.h
 index 7c176884c..c32af71e3 100644
@@ -23,33 +22,6 @@ index 7c176884c..c32af71e3 100644
 +
  char * meta_encode_hex (gpointer data,
                          size_t   size);
-diff --git a/src/core/util.c b/src/core/util.c
-index 12a90879e..226e7e94a 100644
---- a/src/core/util.c
-+++ b/src/core/util.c
-@@ -139,6 +139,8 @@ ensure_logfile (void)
-     }
- }
- 
-+#endif
-+
- /**
-  * meta_gnoblin_layer_anchor:
-  * @window: window to inspect
-@@ -163,7 +165,12 @@ meta_gnoblin_layer_namespace (MetaWindow *window)
- {
-   return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
- }
--#endif
-+
-+gboolean
-+meta_is_gnoblin_session (void)
-+{
-+  return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
-+}
- 
- gboolean
- meta_is_verbose (void)
 diff --git a/src/core/window.c b/src/core/window.c
 index 4c45cb73a..bb1ac07f1 100644
 --- a/src/core/window.c

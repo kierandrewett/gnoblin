@@ -334,7 +334,7 @@ The list says what the workflows build and check. It does not make a support cla
 
 ### Source guards for Fedora 41 and Alpine 3.21
 
-The source builds on Fedora 41 and Alpine 3.21 with guards in `patches/mutter/33-older-systems` (`0005` to `0009`), in
+The source builds on Fedora 41 and Alpine 3.21 with guards in `patches/mutter/32-older-systems` (`0005` to `0009`), in
 `patches/xdg-desktop-portal-gnome/06-older-systems` (`0002` and `0003`) and in the libgxdp patch. Each guard keeps the
 newer code when the newer library is installed. libei 1.3.0 has no `EIS_EVENT_SYNC`, so the sync case is compiled out.
 wayland-protocols 1.38 lacks five protocol files or versions, so below 1.44 the build uses private copies of the 1.48
@@ -347,7 +347,7 @@ own prefix.
 
 Ubuntu 24.04 LTS is the oldest release that builds, and it loses the most. It stays `experimental` until a full run on
 GitHub proves it, and nobody has started a session on it. The guards are `0010` to `0017` in
-`patches/mutter/33-older-systems`, `0004` in `patches/xdg-desktop-portal-gnome/06-older-systems`, the GTK 4.14 floor of
+`patches/mutter/32-older-systems`, `0004` in `patches/xdg-desktop-portal-gnome/06-older-systems`, the GTK 4.14 floor of
 the libgxdp patch and the IBus guards in `src/input/method/gnoblin-ibus-input-method.c`. Each keeps the newer code when
 the newer library is installed. Each new `HAVE_*` define is in Meson and in `config.h.meson`, except
 `HAVE_LIBDISPLAY_INFO_0_2`: `edid.h` tests it and some Gnoblin units include `edid.h` before `config.h`, so it is a

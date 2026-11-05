@@ -494,6 +494,23 @@ gboolean validate_window_rule_patterns(GVariant* document, GError** error) {
         if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT))
             continue;
 
+        static const char* const client_type_keys[] = {"client_type", "client-type", NULL};
+        for (guint key_index = 0; client_type_keys[key_index]; key_index++) {
+            g_autoptr(GVariant) client_type =
+                g_variant_lookup_value(match, client_type_keys[key_index], NULL);
+            if (!client_type)
+                continue;
+            const char* name = g_variant_is_of_type(client_type, G_VARIANT_TYPE_STRING)
+                                   ? g_variant_get_string(client_type, NULL)
+                                   : NULL;
+            if (!name || (!g_str_equal(name, "wayland") && !g_str_equal(name, "x11"))) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "window-rules[%zu].match.%s must be \"wayland\" or \"x11\"", i + 1,
+                            client_type_keys[key_index]);
+                return FALSE;
+            }
+        }
+
         for (guint field_index = 0; fields[field_index]; field_index++) {
             g_autoptr(GVariant) pattern_value =
                 g_variant_lookup_value(match, fields[field_index], NULL);

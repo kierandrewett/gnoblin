@@ -4,29 +4,6 @@ Date: Sat, 19 Sep 2026 22:02:02 +0100
 Subject: [PATCH] mutter: commit blur fade metadata with surface state
 
 ---
-diff --git a/src/meson.build b/src/meson.build
-index 026b2290b..d1985c218 100644
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -597,8 +597,10 @@ mutter_sources += [
-   # at build time; registered via meta_gnoblin_init_protocols)
-   'wayland/meta-gnoblin-protocols.c',
-   'wayland/meta-gnoblin-protocols.h',
-   'wayland/meta-gnoblin-live-protocols.c',
-   'wayland/meta-gnoblin-live-protocols.h',
-+  'wayland/meta-wayland-blur-fade.c',
-+  'wayland/meta-wayland-blur-fade.h',
-   'wayland/meta-wayland-idle-notify.c',
-   'wayland/meta-wayland-idle-notify.h',
-   'wayland/meta-wayland-foreign-toplevel-common.c',
-@@ -1085,6 +1087,7 @@ wayland_protocols = [
-   ['wlr-gamma-control-unstable-v1', 'private', ],
-   ['wlr-output-power-management-unstable-v1', 'private', ],
-   ['ext-data-control-v1', 'private', ],
-+  ['gnoblin-blur-fade-v1', 'private', ],
-   ['ext-session-lock-v1', 'private', ],
- ]
- 
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
 index a0bfdcaf4..47a3de39c 100644
 --- a/src/wayland/meta-wayland-surface.c

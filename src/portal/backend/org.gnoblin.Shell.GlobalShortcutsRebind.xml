@@ -1,0 +1,14 @@
+<!DOCTYPE node PUBLIC
+'-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
+'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
+<node>
+  <!-- Portal interface used by the shell to apply user-approved changes. -->
+  <interface name="org.gnoblin.Shell.GlobalShortcutsRebind">
+    <!-- Each entry is (id, {description?: s, shortcuts: as}). -->
+    <method name="RebindShortcuts">
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="a(sa{sv})" name="shortcuts" direction="in"/>
+      <arg type="o" name="handle" direction="in"/>
+    </method>
+  </interface>
+</node>

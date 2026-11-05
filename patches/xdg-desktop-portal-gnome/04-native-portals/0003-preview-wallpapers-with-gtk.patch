@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] portal: preview wallpapers without GNOME Desktop libraries
+
+The GTK wallpaper preview is the overlay src/portal/backend/gnoblin-wallpaperpreview.c, installed as
+src/gnoblin-wallpaperpreview.c. An overlay may not replace a tracked file, so the preview gets its own name and
+Mutter's wallpaperpreview.c stays in the tree unbuilt. This patch is the build side: glycin instead of the GNOME
+Desktop libraries, and the source name.
+---
+ src/meson.build | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 1774f79..9420bda 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -81,13 +81,12 @@ deps = [
+   meson.get_compiler('c').find_library('m'),
+   dependency('fontconfig'),
+   dependency('glib-2.0', version: '>= 2.76'),
++  dependency('glycin-2'),
+   dependency('gio-unix-2.0'),
+   dependency('json-glib-1.0'),
+   dependency('gtk4', version: '>= 4.0'),
+   dependency('gtk4-unix-print', version: '>= 4.0'),
+   dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),
+-  dependency('gnome-desktop-4'),
+-  dependency('gnome-bg-4'),
+   dependency('libgxdp'),
+   libadwaita_dep,
+   xdg_desktop_portal_dep,
+@@ -132,7 +131,7 @@ sources = built_sources + files(
+   'usb.c',
+   'utils.c',
+   'wallpaperdialog.c',
+-  'wallpaperpreview.c',
++  'gnoblin-wallpaperpreview.c',
+   'wallpaper.c',
+   'xdg-desktop-portal-gnome.c',
+ )
+-- 
+2.55.0
+

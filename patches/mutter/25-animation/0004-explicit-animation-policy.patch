@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] explicit animation policy
+
+---
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1281,7 +1281,6 @@
+   if (target != integer_value) { target = integer_value; queue_changed (pref); } \
+ } G_STMT_END
+ 
+-  APPLY_BOOL ("enable-animations", gnome_animations, TRUE, META_PREF_GNOME_ANIMATIONS);
+   APPLY_BOOL ("locate-pointer", locate_pointer_is_enabled, FALSE, META_PREF_LOCATE_POINTER);
+   APPLY_BOOL ("visual-bell", bell_is_visible, FALSE, META_PREF_VISUAL_BELL);
+   APPLY_BOOL ("audible-bell", bell_is_audible, TRUE, META_PREF_AUDIBLE_BELL);
+@@ -1377,7 +1376,7 @@
+ gnoblin_owns_compositor_preference (const char *key)
+ {
+   static const char *const keys[] = {
+-    "enable-animations", "locate-pointer", "visual-bell", "audible-bell",
++    "locate-pointer", "visual-bell", "audible-bell",
+     "visual-bell-type", "locate-pointer-key", "check-alive-timeout", NULL
+   };
+   for (int i = 0; keys[i]; i++)

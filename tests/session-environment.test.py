@@ -11,7 +11,6 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import patch_series  # noqa: E402
 from _sources import RUNTIME_SOURCES  # noqa: E402
 
 
@@ -107,11 +106,11 @@ class SessionEnvironmentTests(unittest.TestCase):
         desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
         runtime = RUNTIME_SOURCES.read_text()
         # Meson builds the compositor and the guardian as one executable through the
-        # monolithic patch, so CMake defines no gnoblin target and the installer
+        # executable fragment, so CMake defines no gnoblin target and the installer
         # only removes the old separate runtime helper.
         self.assertNotIn("add_executable(gnoblin\n", cmake)
         self.assertNotIn("add_custom_target(gnoblin-runtime ", cmake)
-        monolithic = patch_series.find("mutter", "build-monolithic-gnoblin").read_text()
+        monolithic = (ROOT / "src/mutter-build/executable.meson").read_text()
         self.assertIn("gnoblin_root / 'src/session/gnoblin-runtime.c'", monolithic)
         self.assertIn("gnoblin = executable('gnoblin',", monolithic)
         self.assertIn("libexec/gnoblin-runtime", installer)

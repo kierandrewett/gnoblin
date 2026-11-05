@@ -7,6 +7,7 @@
 ---@field focused? boolean Match windows according to their current focused state.
 ---@field app_id? string Lua pattern matched against the window application ID.
 ---@field title? string Lua pattern matched against the window title.
+---@field client_type? "wayland"|"x11" Exact client protocol: "wayland" or "x11" (Xwayland).
 ---@field layer? string Lua pattern matched against the window layer.
 ---@field workspace_id? string Exact current workspace ID.
 ---@field workspace_number? integer Current one-based workspace number.

@@ -20,6 +20,10 @@ and newer and as a GtkSpinner with 1.5, and set description-centered in
 code with libadwaita 1.6 and newer. With libadwaita 1.5 the app chooser
 description is not centred.
 
+The spinner is created in the overlay file
+src/portal/backend/gnoblin-wallpaperpreview.c. This patch changes the
+wallpaper preview template, the app chooser and the Settings portal.
+
 ---
 diff --git a/src/appchooserdialog.c b/src/appchooserdialog.c
 index bb6a744..15ede32 100644
@@ -49,7 +53,7 @@ index b5577d8..6c410b2 100644
                        <object class="AdwPreferencesGroup">
                          <child>
 diff --git a/src/meson.build b/src/meson.build
-index 6992bd0..715c465 100644
+index db7151e..c926f78 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -64,10 +64,16 @@ config_h.set_quoted('PACKAGE_STRING', '@0@ @1@'.format(meson.project_name(), mes
@@ -152,57 +156,6 @@ index 178e734..e2db683 100644
  
    if (strcmp (user_data->namespace, "org.gnome.desktop.a11y.interface") == 0 &&
        strcmp (key, "high-contrast") == 0)
-diff --git a/src/wallpaperpreview.c b/src/wallpaperpreview.c
-index 77d7ac2..5e9d636 100644
---- a/src/wallpaperpreview.c
-+++ b/src/wallpaperpreview.c
-@@ -24,6 +24,7 @@
- 
- #include <string.h>
- 
-+#include <adwaita.h>
- #include <gdk-pixbuf/gdk-pixbuf.h>
- #ifdef HAVE_GLYCIN
- #include <glycin.h>
-@@ -38,6 +39,7 @@ struct _WallpaperPreview {
-   GtkBox parent;
- 
-   GtkStack *stack;
-+  GtkWidget *loading;
-   GtkWidget *desktop_preview;
-   GtkWidget *animated_background_icon;
-   GtkLabel *desktop_clock_label;
-@@ -334,8 +336,22 @@ wallpaper_preview_finalize (GObject *object)
- static void
- wallpaper_preview_init (WallpaperPreview *self)
- {
-+  GtkWidget *spinner;
-+
-   gtk_widget_init_template (GTK_WIDGET (self));
- 
-+#if ADW_CHECK_VERSION (1, 6, 0)
-+  spinner = adw_spinner_new ();
-+#else
-+  /* libadwaita 1.5 has no AdwSpinner. */
-+  spinner = gtk_spinner_new ();
-+  gtk_spinner_set_spinning (GTK_SPINNER (spinner), TRUE);
-+  gtk_widget_set_size_request (spinner, 32, 32);
-+  gtk_widget_set_halign (spinner, GTK_ALIGN_CENTER);
-+  gtk_widget_set_valign (spinner, GTK_ALIGN_CENTER);
-+#endif
-+  adw_bin_set_child (ADW_BIN (self->loading), spinner);
-+
-   self->desktop_settings = g_settings_new ("org.gnome.desktop.interface");
- 
-   g_signal_connect_object (self->desktop_settings,
-@@ -378,6 +394,7 @@ wallpaper_preview_class_init (WallpaperPreviewClass *klass)
-   gtk_widget_class_set_template_from_resource (widget_class, "/org/freedesktop/portal/desktop/gnome/wallpaperpreview.ui");
- 
-   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, stack);
-+  gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, loading);
-   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, desktop_preview);
-   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, animated_background_icon);
-   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, drawing_area);
 diff --git a/src/wallpaperpreview.ui b/src/wallpaperpreview.ui
 index bdd7403..fa6657b 100644
 --- a/src/wallpaperpreview.ui

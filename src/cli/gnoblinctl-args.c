@@ -57,7 +57,8 @@ JsonNode* window_match_from_snapshot(JsonArray* windows, const char* selector, G
     }
 
     JsonObject* result = json_object_new();
-    const char* identity_fields[] = {"id", "app_id", "gtk_app_id", "wm_class", "rule_app_id"};
+    const char* identity_fields[] = {"id",       "app_id",      "gtk_app_id",
+                                     "wm_class", "rule_app_id", "client_type"};
     for (guint i = 0; i < G_N_ELEMENTS(identity_fields); i++) {
         JsonNode* value = json_object_get_member(selected, identity_fields[i]);
         if (value)

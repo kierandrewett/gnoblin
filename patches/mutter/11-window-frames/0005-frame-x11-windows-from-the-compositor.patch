@@ -1,0 +1,851 @@
+From 96fda857a0c2f3e8e6abb08868011a5ff7a4dd6b Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 18:25:44 +0000
+Subject: [PATCH] x11: frame managed windows from the compositor
+
+Do not launch mutter-x11-frames and never reparent a client into a frame
+window. An X11 window is framed like an xdg toplevel: the compositor's frame
+actor is drawn around the client, and the layout comes from
+meta_gnoblin_window_frame_x11_update. That runs when the window is created,
+when its decorations hint, type or fullscreen state changes, and when it
+declares _GTK_FRAME_EXTENTS, which now feed the overlay instead of
+window->custom_frame_extents directly.
+
+The initial state of a managed window is set after window-created, once the
+frame layout is known. The decorated-and-not-framed gates that kept a window
+unmapped until its frame existed are gone, and the input region and
+configure-request width no longer depend on a frame window.
+---
+ src/core/window.c                  |  33 ++--
+ src/x11/events.c                   |  57 +-----
+ src/x11/meta-x11-display-private.h |   3 -
+ src/x11/meta-x11-display.c         |  64 -------
+ src/x11/meta-x11-frame.c           | 292 -----------------------------
+ src/x11/meta-x11-frame.h           |   6 -
+ src/x11/window-props.c             |  20 +-
+ src/x11/window-x11-private.h       |   3 -
+ src/x11/window-x11.c               |  77 +++-----
+ 9 files changed, 49 insertions(+), 506 deletions(-)
+
+diff --git a/src/core/window.c b/src/core/window.c
+index b8f59d597c..9205f7b8f8 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -73,6 +73,7 @@
+ #include "core/constraints.h"
+ #include "core/keybindings-private.h"
+ #include "core/gnoblin-native-control.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ #include "core/meta-window-config-private.h"
+ #include "core/meta-workspace-manager-private.h"
+ #include "core/place.h"
+@@ -950,12 +951,6 @@ client_window_should_be_mapped (MetaWindow *window)
+         return FALSE;
+     }
+ 
+-#ifdef HAVE_XWAYLAND
+-  if (window->client_type == META_WINDOW_CLIENT_TYPE_X11 &&
+-      window->decorated && !meta_window_x11_is_ssd (window))
+-    return FALSE;
+-#endif
+-
+   return TRUE;
+ }
+ 
+@@ -1872,12 +1867,6 @@ meta_window_is_showable (MetaWindow *window)
+       !window_has_buffer (window))
+     return FALSE;
+ 
+-#ifdef HAVE_XWAYLAND
+-  if (window->client_type == META_WINDOW_CLIENT_TYPE_X11 &&
+-      window->decorated && !meta_window_x11_is_ssd (window))
+-    return FALSE;
+-#endif
+-
+   return TRUE;
+ }
+ 
+@@ -3805,6 +3794,11 @@ fullscreen_window (MetaWindow       *window,
+                                           &old_frame_rect, &old_buffer_rect);
+ 
+       set_fullscreen_state (window);
++#ifdef HAVE_XWAYLAND
++      /* A fullscreen window has no server frame. */
++      if (window->client_type == META_WINDOW_CLIENT_TYPE_X11)
++        meta_gnoblin_window_frame_x11_update (window);
++#endif
+ 
+       flags = (META_MOVE_RESIZE_MOVE_ACTION |
+                META_MOVE_RESIZE_RESIZE_ACTION |
+@@ -3836,7 +3830,11 @@ unfullscreen_window (MetaWindow       *window,
+                   "Unfullscreening %s", window->desc);
+ 
+       meta_window_config_set_is_fullscreen (window->config, FALSE);
+-
++#ifdef HAVE_XWAYLAND
++      /* The server frame comes back before the window returns to its size. */
++      if (window->client_type == META_WINDOW_CLIENT_TYPE_X11)
++        meta_gnoblin_window_frame_x11_update (window);
++#endif
+ 
+       if (!window->placed &&
+           !mtk_rectangle_is_empty (&window->unconstrained_rect))
+@@ -5945,14 +5943,9 @@ meta_window_type_changed (MetaWindow *window)
+     set_net_wm_state (window);
+ 
+ #ifdef HAVE_XWAYLAND
++  /* The decorations a type has changed the frame layout of an X11 window. */
+   if (window->client_type == META_WINDOW_CLIENT_TYPE_X11)
+-    {
+-      /* Update frame */
+-      if (window->decorated)
+-        meta_window_ensure_frame (window);
+-      else
+-        meta_window_destroy_frame (window);
+-    }
++    meta_gnoblin_window_frame_x11_update (window);
+ #endif
+ 
+   /* update stacking constraints */
+diff --git a/src/x11/events.c b/src/x11/events.c
+index 4777e8ba77..64f7b75001 100644
+--- a/src/x11/events.c
++++ b/src/x11/events.c
+@@ -1359,18 +1359,9 @@ handle_other_xevent (MetaX11Display *x11_display,
+           guint32 timestamp;
+           timestamp = meta_display_get_current_time_roundtrip (display);
+ 
+-          if (frame_was_receiver)
+-            {
+-              mtk_x11_error_trap_push (x11_display->xdisplay);
+-              meta_window_destroy_frame (frame->window);
+-              mtk_x11_error_trap_pop (x11_display->xdisplay);
+-            }
+-          else
+-            {
+-              /* Unmanage destroyed window */
+-              meta_window_unmanage (window, timestamp);
+-              window = NULL;
+-            }
++          /* Unmanage destroyed window */
++          meta_window_unmanage (window, timestamp);
++          window = NULL;
+         }
+       break;
+     case UnmapNotify:
+@@ -1428,48 +1419,6 @@ handle_other_xevent (MetaX11Display *x11_display,
+     case MapRequest:
+       if (window == NULL)
+         {
+-          Atom type;
+-          int format;
+-          unsigned long nitems, bytes_after, *data;
+-
+-          /* Check whether the new window is a frame for another window */
+-          mtk_x11_error_trap_push (x11_display->xdisplay);
+-
+-          if (XGetWindowProperty (x11_display->xdisplay,
+-                                  event->xmaprequest.window,
+-                                  x11_display->atom__MUTTER_FRAME_FOR,
+-                                  0, 32, False, XA_WINDOW,
+-                                  &type, &format, &nitems, &bytes_after,
+-                                  (guchar **) &data) != Success)
+-            {
+-              mtk_x11_error_trap_pop (x11_display->xdisplay);
+-              break;
+-            }
+-
+-          if (mtk_x11_error_trap_pop_with_return (x11_display->xdisplay) != Success)
+-            break;
+-
+-          if (nitems == 1)
+-            {
+-              Window client_window;
+-
+-              client_window = data[0];
+-              XFree (data);
+-
+-              window = meta_x11_display_lookup_x_window (x11_display,
+-                                                         client_window);
+-
+-              if (window != NULL && window->decorated && !meta_window_x11_is_ssd (window))
+-                {
+-                  meta_window_x11_set_frame_xwindow (window,
+-                                                     event->xmaprequest.window);
+-                  meta_window_x11_initialize_state (window);
+-                  meta_window_update_visibility (window);
+-                }
+-
+-              break;
+-            }
+-
+           window = meta_window_x11_new (display, event->xmaprequest.window,
+                                         FALSE, META_COMP_EFFECT_CREATE);
+           if (window)
+diff --git a/src/x11/meta-x11-display-private.h b/src/x11/meta-x11-display-private.h
+index 79ae99740c..8972c65bfb 100644
+--- a/src/x11/meta-x11-display-private.h
++++ b/src/x11/meta-x11-display-private.h
+@@ -139,9 +139,6 @@ struct _MetaX11Display
+ 
+   GPtrArray *alarm_filters;
+ 
+-  GSubprocess *frames_client;
+-  GCancellable *frames_client_cancellable;
+-
+   GSource *event_source;
+ 
+   struct {
+diff --git a/src/x11/meta-x11-display.c b/src/x11/meta-x11-display.c
+index e99d6498fe..f1ad12ec34 100644
+--- a/src/x11/meta-x11-display.c
++++ b/src/x11/meta-x11-display.c
+@@ -107,8 +107,6 @@ static void unset_wm_check_hint (MetaX11Display *x11_display);
+ static void prefs_changed_callback (MetaPreference pref,
+                                     void          *data);
+ 
+-static void meta_x11_display_init_frames_client (MetaX11Display *x11_display);
+-
+ static void meta_x11_display_remove_cursor_later (MetaX11Display *x11_display);
+ 
+ static void meta_x11_display_set_input_focus (MetaX11Display *x11_display,
+@@ -704,20 +702,6 @@ meta_x11_display_dispose (GObject *object)
+   g_clear_list (&x11_display->event_funcs,
+                 (GDestroyNotify) meta_x11_event_filter_free);
+ 
+-  if (x11_display->frames_client_cancellable)
+-    {
+-      g_cancellable_cancel (x11_display->frames_client_cancellable);
+-      g_clear_object (&x11_display->frames_client_cancellable);
+-    }
+-
+-  if (x11_display->frames_client)
+-    {
+-      g_subprocess_send_signal (x11_display->frames_client, SIGTERM);
+-      if (x11_display->display->closing)
+-        g_subprocess_wait (x11_display->frames_client, NULL, NULL);
+-      g_clear_object (&x11_display->frames_client);
+-    }
+-
+   if (x11_display->stage_input_region != None)
+     {
+       XFixesDestroyRegion (x11_display->xdisplay,
+@@ -1569,38 +1553,6 @@ open_x_display (MetaDisplay  *display,
+   return xdisplay;
+ }
+ 
+-static void
+-on_frames_client_died (GObject      *source,
+-                       GAsyncResult *result,
+-                       gpointer      user_data)
+-{
+-  MetaX11Display *x11_display = user_data;
+-  GSubprocess *proc = G_SUBPROCESS (source);
+-  g_autoptr (GError) error = NULL;
+-
+-  if (!g_subprocess_wait_finish (proc, result, &error))
+-    {
+-      if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-        return;
+-
+-      g_warning ("Error obtaining frames client exit status: %s\n", error->message);
+-    }
+-
+-  g_clear_object (&x11_display->frames_client_cancellable);
+-  g_clear_object (&x11_display->frames_client);
+-
+-  if (g_subprocess_get_if_signaled (proc))
+-    {
+-      int signum;
+-
+-      signum = g_subprocess_get_term_sig (proc);
+-
+-      /* Bring it up again, unless it was forcibly closed */
+-      if (signum != SIGTERM && signum != SIGKILL)
+-        meta_x11_display_init_frames_client (x11_display);
+-    }
+-}
+-
+ static void
+ focus_window_cb (MetaX11Display *x11_display,
+                  MetaWindow     *window,
+@@ -1610,20 +1562,6 @@ focus_window_cb (MetaX11Display *x11_display,
+                                     us2ms (timestamp_us));
+ }
+ 
+-static void
+-meta_x11_display_init_frames_client (MetaX11Display *x11_display)
+-{
+-  const char *display_name;
+-
+-  display_name = get_display_name (x11_display->display);
+-  x11_display->frames_client_cancellable = g_cancellable_new ();
+-  x11_display->frames_client = meta_frame_launch_client (x11_display,
+-                                                         display_name);
+-  g_subprocess_wait_async (x11_display->frames_client,
+-                           x11_display->frames_client_cancellable,
+-                           on_frames_client_died, x11_display);
+-}
+-
+ static void
+ initialize_dbus_interface (MetaX11Display *x11_display)
+ {
+@@ -1927,8 +1865,6 @@ meta_x11_display_new (MetaDisplay  *display,
+ 
+   init_event_masks (x11_display);
+ 
+-  meta_x11_display_init_frames_client (x11_display);
+-
+   return g_steal_pointer (&x11_display);
+ }
+ 
+diff --git a/src/x11/meta-x11-frame.c b/src/x11/meta-x11-frame.c
+index 9e538a8a38..6e8854f23c 100644
+--- a/src/x11/meta-x11-frame.c
++++ b/src/x11/meta-x11-frame.c
+@@ -39,260 +39,6 @@
+                     StructureNotifyMask | SubstructureNotifyMask | \
+                     PropertyChangeMask | FocusChangeMask)
+ 
+-static void
+-meta_frame_free (MetaFrame *frame)
+-{
+-  g_clear_pointer (&frame->opaque_region, mtk_region_unref);
+-  meta_sync_counter_clear (&frame->sync_counter);
+-  g_free (frame);
+-}
+-
+-G_DEFINE_AUTOPTR_CLEANUP_FUNC (MetaFrame, meta_frame_free);
+-
+-void
+-meta_window_ensure_frame (MetaWindow *window)
+-{
+-  MetaX11Display *x11_display = window->display->x11_display;
+-  unsigned long data[1] = { 1 };
+-
+-  mtk_x11_error_trap_push (x11_display->xdisplay);
+-
+-  XChangeProperty (x11_display->xdisplay,
+-                   meta_window_x11_get_xwindow (window),
+-                   x11_display->atom__MUTTER_NEEDS_FRAME,
+-                   XA_CARDINAL,
+-                   32, PropModeReplace, (guchar*) data, 1);
+-
+-  mtk_x11_error_trap_pop (x11_display->xdisplay);
+-}
+-
+-void
+-meta_window_x11_set_frame_xwindow (MetaWindow *window,
+-                                   Window      xframe)
+-{
+-  MetaX11Display *x11_display = window->display->x11_display;
+-  XSetWindowAttributes attrs;
+-  gulong create_serial = 0;
+-  g_autoptr (MetaFrame) frame = NULL;
+-  MetaWindowX11 *window_x11 = META_WINDOW_X11 (window);
+-  MetaWindowX11Private *priv = meta_window_x11_get_private (window_x11);
+-  int child_x, child_y;
+-
+-  if (priv->frame)
+-    return;
+-
+-  frame = g_new0 (MetaFrame, 1);
+-
+-  frame->window = window;
+-  frame->xwindow = xframe;
+-
+-  frame->rect = meta_window_config_get_rect (window->config);
+-  frame->child_x = 0;
+-  frame->child_y = 0;
+-  frame->bottom_height = 0;
+-  frame->right_width = 0;
+-
+-  frame->borders_cached = FALSE;
+-
+-  meta_sync_counter_init (&frame->sync_counter, window, frame->xwindow);
+-
+-  meta_topic (META_DEBUG_X11, "Frame geometry %d,%d  %dx%d",
+-              frame->rect.x, frame->rect.y,
+-              frame->rect.width, frame->rect.height);
+-
+-  meta_topic (META_DEBUG_X11,
+-              "Setting frame 0x%lx for window %s, "
+-              "frame geometry %d,%d  %dx%d",
+-              xframe, window->desc,
+-              frame->rect.x, frame->rect.y,
+-              frame->rect.width, frame->rect.height);
+-
+-  meta_stack_tracker_record_add (window->display->stack_tracker,
+-                                 frame->xwindow,
+-                                 create_serial);
+-
+-  meta_topic (META_DEBUG_X11,
+-              "Frame for %s is 0x%lx", frame->window->desc, frame->xwindow);
+-
+-  mtk_x11_error_trap_push (x11_display->xdisplay);
+-
+-  attrs.event_mask = EVENT_MASK;
+-  XChangeWindowAttributes (x11_display->xdisplay,
+-			   frame->xwindow, CWEventMask, &attrs);
+-
+-  if (META_X11_DISPLAY_HAS_SHAPE (x11_display))
+-    XShapeSelectInput (x11_display->xdisplay, frame->xwindow, ShapeNotifyMask);
+-
+-  if (mtk_x11_error_trap_pop_with_return (x11_display->xdisplay))
+-    {
+-      meta_topic (META_DEBUG_WINDOW_STATE,
+-                  "Setting up frame for window %s failed", window->desc);
+-      return;
+-    }
+-
+-  mtk_x11_error_trap_push (x11_display->xdisplay);
+-
+-  meta_x11_display_register_x_window (x11_display, &frame->xwindow, window);
+-
+-  meta_stack_tracker_record_remove (window->display->stack_tracker,
+-                                    meta_window_x11_get_xwindow (window),
+-                                    XNextRequest (x11_display->xdisplay));
+-  meta_window_stage_to_protocol_point (window,
+-                                       frame->child_x,
+-                                       frame->child_y,
+-                                       &child_x,
+-                                       &child_y);
+-
+-  XReparentWindow (x11_display->xdisplay,
+-                   meta_window_x11_get_xwindow (window),
+-                   frame->xwindow,
+-                   child_x,
+-                   child_y);
+-
+-  if (mtk_x11_error_trap_pop_with_return (x11_display->xdisplay))
+-    {
+-      /* Reparent failed, so we need to restore the window state and
+-       * remove the association of the frame xwindow with the window
+-       * otherwise the we'll associate the events for this frame to the
+-       * logical window and we may end up duplicating it when the stack
+-       * will be synchronized with the compositor leading to the same logical
+-       * window appearing multiple times in the stack, which is not expected.
+-       */
+-      meta_topic (META_DEBUG_WINDOW_STATE, "Failed to set %lu as %s frame",
+-                  frame->xwindow, window->desc);
+-
+-      meta_x11_display_unregister_x_window (x11_display, frame->xwindow);
+-      return;
+-    }
+-
+-  if (window->mapped)
+-    {
+-      window->mapped = FALSE; /* the reparent will unmap the window,
+-                               * we don't want to take that as a withdraw
+-                               */
+-      meta_topic (META_DEBUG_WINDOW_STATE,
+-                  "Incrementing unmaps_pending on %s for reparent", window->desc);
+-      window->unmaps_pending += 1;
+-    }
+-
+-  /* stick frame to the window */
+-  priv->frame = g_steal_pointer (&frame);
+-
+-  window->reparents_pending += 1;
+-
+-  /* Ensure focus is restored after the unmap/map events triggered
+-   * by XReparentWindow().
+-   */
+-  if (meta_window_has_focus (window))
+-    window->restore_focus_on_map = TRUE;
+-
+-  meta_window_reload_property_from_xwindow (window, priv->frame->xwindow,
+-                                            x11_display->atom__NET_WM_SYNC_REQUEST_COUNTER,
+-                                            TRUE);
+-  meta_window_reload_property_from_xwindow (window, priv->frame->xwindow,
+-                                            x11_display->atom__NET_WM_OPAQUE_REGION,
+-                                            TRUE);
+-
+-  mtk_x11_error_trap_push (x11_display->xdisplay);
+-  XMapWindow (x11_display->xdisplay, priv->frame->xwindow);
+-  mtk_x11_error_trap_pop (x11_display->xdisplay);
+-
+-  /* Even though the property was already set, notify
+-   * on it so other bits of the machinery catch up
+-   * on the new frame.
+-   */
+-  g_object_notify (G_OBJECT (window), "decorated");
+-}
+-
+-void
+-meta_window_destroy_frame (MetaWindow *window)
+-{
+-  g_autoptr (MetaFrame) frame = NULL;
+-  MetaFrameBorders borders;
+-  MetaX11Display *x11_display;
+-
+-  MetaWindowX11 *window_x11 = META_WINDOW_X11 (window);
+-  MetaWindowX11Private *priv = meta_window_x11_get_private (window_x11);
+-
+-  if (priv->frame == NULL)
+-    return;
+-
+-  x11_display = window->display->x11_display;
+-
+-  meta_topic (META_DEBUG_X11, "Unframing window %s", window->desc);
+-
+-  frame = g_steal_pointer (&priv->frame);
+-
+-  meta_frame_calc_borders (frame, &borders);
+-
+-  /* Unparent the client window; it may be destroyed,
+-   * thus the error trap.
+-   */
+-  mtk_x11_error_trap_push (x11_display->xdisplay);
+-  if (window->mapped)
+-    {
+-      window->mapped = FALSE; /* Keep track of unmapping it, so we
+-                               * can identify a withdraw initiated
+-                               * by the client.
+-                               */
+-      meta_topic (META_DEBUG_WINDOW_STATE,
+-                  "Incrementing unmaps_pending on %s for reparent back to root", window->desc);
+-      window->unmaps_pending += 1;
+-    }
+-
+-  if (!x11_display->closing)
+-    {
+-      int child_x, child_y;
+-
+-      if (!window->unmanaging)
+-        {
+-          meta_stack_tracker_record_add (window->display->stack_tracker,
+-                                         meta_window_x11_get_xwindow (window),
+-                                         XNextRequest (x11_display->xdisplay));
+-        }
+-
+-      meta_window_stage_to_protocol_point (window,
+-                                           frame->rect.x + borders.invisible.left,
+-                                           frame->rect.y + borders.invisible.top,
+-                                           &child_x,
+-                                           &child_y);
+-
+-      XReparentWindow (x11_display->xdisplay,
+-                       meta_window_x11_get_xwindow (window),
+-                       x11_display->xroot,
+-                       /* Using anything other than client root window coordinates
+-                        * coordinates here means we'll need to ensure a configure
+-                        * notify event is sent; see bug 399552.
+-                        */
+-                       child_x, child_y);
+-      window->reparents_pending += 1;
+-    }
+-
+-  if (META_X11_DISPLAY_HAS_SHAPE (x11_display))
+-    XShapeSelectInput (x11_display->xdisplay, frame->xwindow, NoEventMask);
+-
+-  XDeleteProperty (x11_display->xdisplay,
+-                   meta_window_x11_get_xwindow (window),
+-                   x11_display->atom__MUTTER_NEEDS_FRAME);
+-
+-  mtk_x11_error_trap_pop (x11_display->xdisplay);
+-
+-  /* Ensure focus is restored after the unmap/map events triggered
+-   * by XReparentWindow().
+-   */
+-  if (meta_window_has_focus (window))
+-    window->restore_focus_on_map = TRUE;
+-
+-  meta_x11_display_unregister_x_window (x11_display, frame->xwindow);
+-
+-  /* Put our state back where it should be */
+-  if (!window->unmanaging)
+-    meta_compositor_sync_updates_frozen (window->display->compositor, window);
+-
+-  meta_window_queue (window, META_QUEUE_CALC_SHOWING);
+-  meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
+-}
+-
+ void
+ meta_frame_borders_clear (MetaFrameBorders *self)
+ {
+@@ -553,44 +299,6 @@ meta_frame_handle_xevent (MetaFrame *frame,
+   return FALSE;
+ }
+ 
+-GSubprocess *
+-meta_frame_launch_client (MetaX11Display *x11_display,
+-                          const char     *display_name)
+-{
+-  g_autoptr(GSubprocessLauncher) launcher = NULL;
+-  g_autoptr (GError) error = NULL;
+-  GSubprocess *proc;
+-  const char *args[2];
+-
+-  args[0] = MUTTER_LIBEXECDIR "/mutter-x11-frames";
+-  args[1] = NULL;
+-
+-  launcher = g_subprocess_launcher_new (G_SUBPROCESS_FLAGS_NONE);
+-  g_subprocess_launcher_setenv (launcher, "DISPLAY", display_name, TRUE);
+-
+-  proc = g_subprocess_launcher_spawnv (launcher, args, &error);
+-  if (error)
+-    {
+-      if (g_error_matches (error, G_SPAWN_ERROR, G_SPAWN_ERROR_NOENT))
+-        {
+-          /* Fallback case for uninstalled tests, relies on CWD being
+-           * the builddir, as it is the case during "ninja test".
+-           */
+-          g_clear_error (&error);
+-          args[0] = "./src/frames/mutter-x11-frames";
+-          proc = g_subprocess_launcher_spawnv (launcher, args, &error);
+-        }
+-
+-      if (error)
+-        {
+-          g_warning ("Could not launch X11 frames client: %s", error->message);
+-          return NULL;
+-        }
+-    }
+-
+-  return proc;
+-}
+-
+ /**
+  * meta_frame_type_to_string:
+  * @type: a #MetaFrameType
+diff --git a/src/x11/meta-x11-frame.h b/src/x11/meta-x11-frame.h
+index e25c86032c..f2e56433c8 100644
+--- a/src/x11/meta-x11-frame.h
++++ b/src/x11/meta-x11-frame.h
+@@ -53,9 +53,6 @@ typedef struct _MetaFrame
+   guint borders_cached : 1;
+ } MetaFrame;
+ 
+-void     meta_window_ensure_frame           (MetaWindow *window);
+-void     meta_window_destroy_frame          (MetaWindow *window);
+-
+ Window         meta_frame_get_xwindow (MetaFrame *frame);
+ 
+ /* These should ONLY be called from meta_window_move_resize_internal */
+@@ -72,9 +69,6 @@ MtkRegion *meta_frame_get_frame_bounds (MetaFrame *frame);
+ gboolean meta_frame_handle_xevent (MetaFrame *frame,
+                                    XEvent    *event);
+ 
+-GSubprocess * meta_frame_launch_client (MetaX11Display *x11_display,
+-                                        const char     *display_name);
+-
+ MetaSyncCounter * meta_frame_get_sync_counter (MetaFrame *frame);
+ 
+ void meta_frame_set_opaque_region (MetaFrame *frame,
+diff --git a/src/x11/window-props.c b/src/x11/window-props.c
+index 5cefc0dd17..b255a157b9 100644
+--- a/src/x11/window-props.c
++++ b/src/x11/window-props.c
+@@ -48,6 +48,7 @@
+ #include "core/meta-workspace-manager-private.h"
+ #include "core/util-private.h"
+ #include "meta/meta-x11-group.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ #include "mtk/mtk-x11.h"
+ #include "x11/meta-x11-display-private.h"
+ #include "x11/meta-x11-frame.h"
+@@ -331,14 +332,20 @@ meta_window_set_custom_frame_extents (MetaWindow      *window,
+   MetaWindowX11 *window_x11 = META_WINDOW_X11 (window);
+   MetaWindowX11Private *priv =
+     meta_window_x11_get_private (window_x11);
++  MetaFrameBorder declared = { 0 };
++
+   if (extents)
+     {
++      meta_gnoblin_window_frame_x11_get_declared_extents (window, &declared);
+       if (priv->has_custom_frame_extents &&
+-          memcmp (&window->custom_frame_extents, extents, sizeof (MetaFrameBorder)) == 0)
++          memcmp (&declared, extents, sizeof (MetaFrameBorder)) == 0)
+         return;
+ 
+       priv->has_custom_frame_extents = TRUE;
+-      window->custom_frame_extents = *extents;
++
++      /* The compositor owns window->custom_frame_extents: the declared
++       * margins plus whatever its own frame adds around them. */
++      meta_gnoblin_window_frame_x11_set_declared_extents (window, extents);
+ 
+       /* If we're setting the frame extents on map, then this is telling
+        * us to adjust our understanding of the frame rect to match what
+@@ -364,7 +371,7 @@ meta_window_set_custom_frame_extents (MetaWindow      *window,
+         return;
+ 
+       priv->has_custom_frame_extents = FALSE;
+-      memset (&window->custom_frame_extents, 0, sizeof (window->custom_frame_extents));
++      meta_gnoblin_window_frame_x11_set_declared_extents (window, NULL);
+     }
+ 
+   meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
+@@ -973,14 +980,11 @@ reload_mwm_hints (MetaWindow    *window,
+   /* We do all this anyhow at the end of meta_window_x11_new() */
+   if (!window->constructing)
+     {
+-      if (window->decorated)
+-        meta_window_ensure_frame (window);
+-      else
+-        meta_window_destroy_frame (window);
++      /* Whether the window asks for decorations decides its server frame. */
++      meta_gnoblin_window_frame_x11_update (window);
+ 
+       meta_window_queue (window,
+                          META_QUEUE_MOVE_RESIZE |
+-                         /* because ensure/destroy frame may unmap: */
+                          META_QUEUE_CALC_SHOWING);
+ 
+       if (old_decorated != window->decorated)
+diff --git a/src/x11/window-x11-private.h b/src/x11/window-x11-private.h
+index 8f470edd39..cc246f42b9 100644
+--- a/src/x11/window-x11-private.h
++++ b/src/x11/window-x11-private.h
+@@ -131,9 +131,6 @@ void meta_window_x11_shutdown_group (MetaWindow *window);
+ META_EXPORT
+ void meta_window_x11_group_leader_changed (MetaWindow *window);
+ 
+-void meta_window_x11_set_frame_xwindow (MetaWindow *window,
+-                                        Window      xframe);
+-
+ gboolean meta_window_x11_is_ssd (MetaWindow *window);
+ 
+ META_EXPORT_TEST
+diff --git a/src/x11/window-x11.c b/src/x11/window-x11.c
+index d63336960d..15a60e49b1 100644
+--- a/src/x11/window-x11.c
++++ b/src/x11/window-x11.c
+@@ -54,6 +54,7 @@
+ #include "x11/meta-x11-group-private.h"
+ #include "x11/window-props.h"
+ #include "x11/xprops.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ #include "wayland/meta-window-xwayland.h"
+ 
+ #define TAKE_FOCUS_FALLBACK_DELAY_MS 150
+@@ -537,9 +538,9 @@ meta_window_x11_manage (MetaWindow *window)
+   if (!window->override_redirect)
+     update_sm_hints (window); /* must come after transient_for */
+ 
+-  if (window->decorated)
+-    meta_window_ensure_frame (window);
+-  else
++  /* A managed window gets its initial state in meta_window_x11_new(), once window-created has
++   * let the compositor decide the frame layout the size and position depend on. */
++  if (window->override_redirect)
+     meta_window_x11_initialize_state (window);
+ }
+ 
+@@ -688,17 +689,6 @@ meta_window_x11_unmanage (MetaWindow *window)
+ 
+   mtk_x11_error_trap_pop (x11_display->xdisplay);
+ 
+-  if (priv->frame)
+-    {
+-      /* The XReparentWindow call in meta_window_destroy_frame() moves the
+-       * window so we need to send a configure notify; see bug 399552.  (We
+-       * also do this just in case a window got unmaximized.)
+-       */
+-      send_configure_notify (window);
+-
+-      meta_window_destroy_frame (window);
+-    }
+-
+   meta_sync_counter_clear (&priv->sync_counter);
+ }
+ 
+@@ -2094,11 +2084,7 @@ meta_window_x11_save_rect (MetaWindow *window)
+ gboolean
+ meta_window_x11_is_ssd (MetaWindow *window)
+ {
+-  MetaWindowX11 *window_x11 = META_WINDOW_X11 (window);
+-  MetaWindowX11Private *priv =
+-    meta_window_x11_get_instance_private (window_x11);
+-
+-  return priv->frame != NULL;
++  return meta_gnoblin_window_frame_is_active (window);
+ }
+ 
+ static void
+@@ -2441,24 +2427,9 @@ meta_window_x11_update_input_region (MetaWindow *window)
+   MtkRectangle bounding_rect = { 0 };
+   Window xwindow;
+ 
+-  if (window->decorated)
+-    {
+-      if (!meta_window_x11_is_ssd (window))
+-        {
+-          if (priv->input_region)
+-            meta_window_set_input_region (window, NULL);
+-          return;
+-        }
+-      xwindow = priv->frame->xwindow;
+-      bounding_rect.width = window->buffer_rect.width;
+-      bounding_rect.height = window->buffer_rect.height;
+-    }
+-  else
+-    {
+-      xwindow = priv->xwindow;
+-      bounding_rect.width = priv->client_rect.width;
+-      bounding_rect.height = priv->client_rect.height;
+-    }
++  xwindow = priv->xwindow;
++  bounding_rect.width = priv->client_rect.width;
++  bounding_rect.height = priv->client_rect.height;
+ 
+   if (META_X11_DISPLAY_HAS_SHAPE (x11_display))
+     {
+@@ -2827,10 +2798,12 @@ meta_window_move_resize_request (MetaWindow  *window,
+ 		  window->type);
+     }
+ 
+-  width = window->size_hints.width;
+-  height = window->size_hints.height;
++  meta_window_get_buffer_rect (window, &buffer_rect);
++  width = buffer_rect.width;
++  height = buffer_rect.height;
+ 
+-  if (window->decorated && !meta_window_x11_is_ssd (window))
++  if (!in_grab_op || !window_drag ||
++      !meta_grab_op_is_resizing (meta_window_drag_get_grab_op (window_drag)))
+     {
+       if (value_mask & CWWidth)
+         width = new_width;
+@@ -2838,22 +2811,6 @@ meta_window_move_resize_request (MetaWindow  *window,
+       if (value_mask & CWHeight)
+         height = new_height;
+     }
+-  else
+-    {
+-      meta_window_get_buffer_rect (window, &buffer_rect);
+-      width = buffer_rect.width;
+-      height = buffer_rect.height;
+-
+-      if (!in_grab_op || !window_drag ||
+-          !meta_grab_op_is_resizing (meta_window_drag_get_grab_op (window_drag)))
+-        {
+-          if (value_mask & CWWidth)
+-            width = new_width;
+-
+-          if (value_mask & CWHeight)
+-            height = new_height;
+-        }
+-    }
+ 
+   /* ICCCM 4.1.5 */
+ 
+@@ -4004,6 +3961,14 @@ meta_window_x11_new (MetaDisplay       *display,
+ 
+   meta_display_notify_window_created (display, window);
+ 
++  if (!window->unmanaging && !window->override_redirect)
++    {
++      /* The compositor frames the window itself: lay it out now, so the first size and
++       * position already account for the frame. */
++      meta_gnoblin_window_frame_x11_update (window);
++      meta_window_x11_initialize_state (window);
++    }
++
+   return window;
+ 
+ error:
+-- 
+2.55.0
+

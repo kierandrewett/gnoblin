@@ -17,6 +17,8 @@ same object, updated with each change.
 ---@field gtk_app_id? string GTK application ID, when present.
 ---@field wm_class? string Window manager class, when present.
 ---@field rule_app_id? string Application ID used by window rules, when present.
+---@field client_type? "wayland"|"x11" Protocol the client speaks: "wayland" for a Wayland client,
+"x11" for a client that runs through Xwayland. It never changes for a window.
 ---@field workspace_id? string ID of the workspace containing the window.
 ---@field workspace_number? integer One-based workspace number.
 ---@field monitor_index? integer Zero-based monitor index.

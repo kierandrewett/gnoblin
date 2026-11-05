@@ -384,6 +384,9 @@ int main(void) {
         "  assert(g.find('Window', {id='42'})[1]==window and #g.find('Window', {id='42'})==1)\n"
         "  assert(#g.find('Window', {id='42', alive=true})==1)\n"
         "  assert(#g.find('Window', {id='none'})==0 and #g.find('Window', {title='x'})==0)\n"
+        "  assert(window.client_type=='x11' and #g.find('Window', {client_type='x11'})==1)\n"
+        "  assert(#g.find('Window', {client_type='wayland'})==0)\n"
+        "  refused('compares Window.client_type', 'Window', {client_type={}})\n"
         "  assert(#g.find('Window', function(w) return w.frame.width==800 end)==1)\n"
         "  assert(#g.find('Window', function(w) return false end)==0)\n"
         "  assert(g.find('Output', {primary=true})[1]==g.outputs.primary())\n"
@@ -1014,6 +1017,7 @@ int main(void) {
     GVariantBuilder menu_window;
     g_variant_builder_init(&menu_window, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&menu_window, "{sv}", "id", g_variant_new_string("42"));
+    g_variant_builder_add(&menu_window, "{sv}", "client_type", g_variant_new_string("x11"));
     GVariantBuilder menu_frame;
     g_variant_builder_init(&menu_frame, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&menu_frame, "{sv}", "x", g_variant_new_int64(0));

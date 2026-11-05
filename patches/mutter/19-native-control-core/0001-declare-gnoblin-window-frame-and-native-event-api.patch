@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 17:06:26 +0000
+Subject: [PATCH] mutter: declare the Gnoblin window frame and native event API
+
+The window frame and native event entry points are Gnoblin APIs that other
+patched upstream files call. The remaining Gnoblin declarations (layer,
+workspace, pattern and native API dispatch) live in the
+gnoblin-native-dispatch.h overlay header.
+---
+ src/meta/util.h | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 3ba17129..adc84e13 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -106,3 +106,19 @@ MetaDebugPaintFlag meta_get_debug_paint_flags (void);
+ META_EXPORT
+ char * meta_accelerator_name (ClutterModifierType accelerator_mods,
+                               unsigned int        accelerator_key);
++
++#include "meta/types.h"
++
++META_EXPORT
++gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
++META_EXPORT
++GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
++META_EXPORT
++void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
++META_EXPORT
++gboolean meta_gnoblin_frame_renderers_configure (GVariant *services, gboolean restart, GError **error);
++
++META_EXPORT
++void meta_display_dispatch_gnoblin_native_event (MetaDisplay *display,
++                                                 const char  *event,
++                                                 GVariant    *payload);
+-- 
+2.55.0
+

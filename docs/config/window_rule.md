@@ -23,6 +23,7 @@ gnoblin.window_rule {
 | `layer`            | Lua pattern against the layer-shell namespace                  |
 | `workspace_id`     | Exact workspace ID; declared or explicitly assigned at runtime |
 | `workspace_number` | Current one-based workspace position, 1–1024                   |
+| `client_type`      | `"wayland"` or `"x11"`; `"x11"` is an Xwayland client          |
 
 All supplied match fields must match. Text patterns use Lua 5.4
 `string.find` syntax. They are case-sensitive and search anywhere by default.
@@ -147,7 +148,17 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 
 The generic default mode is `off`. GTK Wayland windows that create a KDE
 server-decoration object use `auto` behavior by default and receive Gnoblin's
-native frame. A matching rule's `frame.mode` overrides that behavior.
+native frame. X11 apps running through Xwayland use `auto` when no rule sets
+`frame.mode`, because an X11 app has always left decorations to the window
+manager. A matching rule's `frame.mode` overrides that behavior.
+
+An X11 app asks for a server frame when it is a normal, dialog or utility
+window and does not turn decorations off. An app that sets its Motif
+decorations hint to 0 draws its own frame and gets none under `auto`.
+
+- `_GTK_FRAME_EXTENTS` declares the visible bounds, like
+  `xdg_surface.set_window_geometry`.
+- `client_type = "x11"` in `match` gives X11 apps their own frame rule.
 
 `auto` supplies SSD only for explicit client requests. `replace` crops client
 pixels and adds a frame.
@@ -214,6 +225,7 @@ gnoblin.window_rule {
         app_id = string?, -- Lua 5.4 pattern
         title = string?, -- Lua 5.4 pattern
         layer = string?, -- Lua 5.4 pattern
+        client_type = "wayland" | "x11"?,
         workspace_id = string?,
         workspace_number = integer?, -- 1–1024
     },

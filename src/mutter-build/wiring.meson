@@ -1,0 +1,132 @@
+# Gnoblin: what Gnoblin adds to libmutter. src/meson.build includes this directory before it generates the Wayland
+# protocol code. The sources of these files live in the Gnoblin overlays (src/**/manifest) and are copied here before
+# the patches apply, so a new Gnoblin source is listed here and in no patch.
+
+# Sources that join Mutter's own list. Mutter's introspection reads the .c files of this list.
+mutter_sources += [
+  'core/gnoblin-animation.c',
+  'compositor/meta-gnoblin-window-effects.c',
+  'compositor/meta-gnoblin-window-effects.h',
+  'wayland/meta-wayland-layer-shell.c',
+  'wayland/meta-wayland-layer-shell.h',
+  'wayland/meta-wayland-screencopy.c',
+  'wayland/meta-wayland-screencopy.h',
+  'wayland/meta-gnoblin-protocols.c',
+  'wayland/meta-gnoblin-protocols.h',
+  'wayland/meta-gnoblin-live-protocols.c',
+  'wayland/meta-gnoblin-live-protocols.h',
+  'wayland/meta-gnoblin-window-frame.c',
+  'wayland/meta-gnoblin-window-frame.h',
+  'wayland/meta-gnoblin-frame-renderer.c',
+  'wayland/meta-gnoblin-frame-renderer.h',
+  'wayland/meta-wayland-blur-fade.c',
+  'wayland/meta-wayland-blur-fade.h',
+  'wayland/meta-wayland-idle-notify.c',
+  'wayland/meta-wayland-idle-notify.h',
+  'wayland/meta-wayland-foreign-toplevel-common.c',
+  'wayland/meta-wayland-foreign-toplevel-common.h',
+  'wayland/meta-wayland-foreign-toplevel-list.c',
+  'wayland/meta-wayland-foreign-toplevel-list.h',
+  'wayland/meta-wayland-foreign-toplevel-management.c',
+  'wayland/meta-wayland-foreign-toplevel-management.h',
+  'wayland/meta-wayland-gamma-control.c',
+  'wayland/meta-wayland-gamma-control.h',
+  'wayland/meta-wayland-output-power-management.c',
+  'wayland/meta-wayland-output-power-management.h',
+  'wayland/meta-wayland-data-control.c',
+  'wayland/meta-wayland-data-control.h',
+  'wayland/meta-wayland-session-lock.c',
+  'wayland/meta-wayland-session-lock.h',
+  'wayland/meta-wayland-session-lock-surface.c',
+  'wayland/meta-wayland-session-lock-surface.h',
+  'wayland/gnoblin-lua-pattern.c',
+  'core/gnoblin-runtime-protocol.c',
+  'core/gnoblin-runtime-cache.c',
+  'wayland/gnoblin-lua-pattern.c',
+  'core/gnoblin-input-disposition.c',
+  'core/gnoblin-priority.c',
+]
+
+if have_hyprcursor
+  mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
+endif
+
+if have_ibus
+  mutter_sources += [
+    'backends/gnoblin-ibus-input-method.c',
+    'backends/gnoblin-ibus-input-method.h',
+  ]
+endif
+
+if have_remote_desktop
+  mutter_sources += 'core/gnoblin-pipewire-monitor.c'
+endif
+
+# Wayland protocols whose XML ships in the overlays (src/protocols/).
+wayland_protocols += [
+  ['wlr-layer-shell-unstable-v1', 'private', ],
+  ['gnoblin-window-frame-v1', 'private', ],
+  ['kde-server-decoration', 'private', ],
+  ['xdg-decoration', 'unstable', 1, ],
+  ['wlr-screencopy-unstable-v1', 'private', ],
+  ['ext-idle-notify-v1', 'private', ],
+  ['ext-foreign-toplevel-list-v1', 'private', ],
+  ['wlr-foreign-toplevel-management-unstable-v1', 'private', ],
+  ['wlr-gamma-control-unstable-v1', 'private', ],
+  ['wlr-output-power-management-unstable-v1', 'private', ],
+  ['ext-data-control-v1', 'private', ],
+  ['gnoblin-blur-fade-v1', 'private', ],
+  ['ext-session-lock-v1', 'private', ],
+]
+
+# libmutter sources that are not introspected, and the libraries they need. files() reads from this directory.
+gnoblin_libmutter_sources = files(
+  '../core/gnoblin-native-control.c',
+  '../core/gnoblin-location-agent.c',
+  '../core/gnoblin-auth-agent.c',
+  '../core/gnoblin-control-auth.c',
+  '../core/gnoblin-control-process.c',
+  '../core/gnoblin-control-present.c',
+  '../core/gnoblin-control-window-visuals.c',
+  '../core/gnoblin-control-tweens.c',
+  '../core/gnoblin-control-power.c',
+  '../core/gnoblin-control-overrides.c',
+  '../core/gnoblin-control-grabs.c',
+  '../core/gnoblin-control-privacy.c',
+  '../core/gnoblin-control-session-activity.c',
+  '../core/gnoblin-control-prompts.c',
+  '../core/gnoblin-control-input-sources.c',
+  '../core/gnoblin-control-command.c',
+  '../core/gnoblin-control-workspaces.c',
+  '../core/gnoblin-control-layers.c',
+  '../core/gnoblin-control-shortcuts.c',
+  '../core/gnoblin-control-window-rules.c',
+  '../core/gnoblin-control-window-drag.c',
+  '../core/gnoblin-control-runtime.c',
+  '../core/gnoblin-control-focus.c',
+  '../core/gnoblin-control-input-config.c',
+  '../core/gnoblin-control-wire.c',
+  '../core/gnoblin-control-input-routing.c',
+  '../core/gnoblin-control-dispatch.c',
+  '../core/gnoblin-control-publish.c',
+  '../core/gnoblin-control-events.c',
+  '../core/gnoblin-control-text-snap.c',
+  '../core/gnoblin-control-launches.c',
+  '../core/gnoblin-control-monitors.c',
+  '../core/gnoblin-control-queue.c',
+  '../core/gnoblin-control-requests.c',
+  '../core/gnoblin-control-signals.c',
+  '../core/gnoblin-control-connection.c',
+  '../core/gnoblin-control-runtime-channel.c',
+  '../core/gnoblin-control-api.c',
+  '../core/gnoblin-native-dispatch.c',
+  '../core/gnoblin-touchpad-router.c',
+  '../core/gnoblin-keybinding-catalog.c',
+)
+
+gnoblin_libmutter_deps = [
+  dependency('json-glib-1.0'),
+  dependency('gcr-4'),
+  dependency('polkit-agent-1'),
+  dependency('polkit-gobject-1'),
+]

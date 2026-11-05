@@ -59,7 +59,7 @@ staying clear of the recovery notice.
 
 ## Candidate
 
-`patches/mutter/31-diagnostic-console/0001-route-diagnostic-input-before-wayland.patch` adds a private callback to
+`patches/mutter/30-diagnostic-console/0001-route-diagnostic-input-before-wayland.patch` adds a private callback to
 Mutter's existing event filter. The callback runs after the existing session
 lock, input capture, consumed-replay, keybinding, and stage-grab checks and
 after the Wayland seat update. It precedes window click handling and Wayland

@@ -104,8 +104,14 @@ static JsonArray* spatial_table(JsonArray* source, const char* const* fields, gu
 }
 
 static void render_windows(JsonArray* windows) {
-    const char* fields[] = {"id", "focused", "workspace", "monitor_id", "app", "title", "geometry"};
-    g_autoptr(JsonArray) rows = spatial_table(windows, fields, G_N_ELEMENTS(fields));
+    const char* fields[] = {"id",  "focused", "workspace", "monitor_id",
+                            "app", "title",   "geometry",  "client_type"};
+    /* A compositor from before API 1.93 sends no client_type; omit the column then. */
+    JsonObject* first = windows ? json_array_get_object_element(windows, 0) : NULL;
+    const guint count = first && json_object_has_member(first, "client_type")
+                            ? G_N_ELEMENTS(fields)
+                            : G_N_ELEMENTS(fields) - 1;
+    g_autoptr(JsonArray) rows = spatial_table(windows, fields, count);
     print_table(rows);
 }
 

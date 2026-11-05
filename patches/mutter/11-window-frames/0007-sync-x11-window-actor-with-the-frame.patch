@@ -1,0 +1,58 @@
+From fbd66fb84c1e405b3efd88a851caffabfc894bc1 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 4 Nov 2026 18:30:59 +0000
+Subject: [PATCH] compositor: sync the X11 window actor with the frame
+
+An X11 window actor syncs the frame renderer, the clip and the effect
+geometry on every geometry update, as the Wayland actor does, and the stock
+shadow no longer draws for managed windows: only a shadow rule does.
+---
+ src/compositor/meta-window-actor-x11.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/src/compositor/meta-window-actor-x11.c b/src/compositor/meta-window-actor-x11.c
+index 5f207ce4c0..1bc3c52e6e 100644
+--- a/src/compositor/meta-window-actor-x11.c
++++ b/src/compositor/meta-window-actor-x11.c
+@@ -30,6 +30,7 @@
+ #include "compositor/meta-shaped-texture-private.h"
+ #include "compositor/meta-surface-actor.h"
+ #include "core/window-private.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ #include "meta/compositor.h"
+ #include "meta/meta-enum-types.h"
+ #include "meta/meta-window-actor.h"
+@@ -406,10 +407,11 @@ has_shadow (MetaWindowActorX11 *actor_x11)
+     return FALSE;
+ 
+   /*
+-   * Let the frames client put a shadow around frames - This should override
+-   * the restriction about not putting a shadow around ARGB windows.
++   * The compositor owns the shadow of a window it manages, as it does for a
++   * Wayland window: only a shadow rule draws one. The stock shadow stays for
++   * override-redirect windows, such as menus, that no rule frames.
+    */
+-  if (meta_window_x11_get_frame (window))
++  if (!window->override_redirect)
+     return FALSE;
+ 
+   /*
+@@ -1402,6 +1404,15 @@ meta_window_actor_x11_is_single_surface_actor (MetaWindowActor *actor)
+ static void
+ meta_window_actor_x11_sync_geometry (MetaWindowActor *actor)
+ {
++  MetaWindow *window = meta_window_actor_get_meta_window (actor);
++  MetaSurfaceActor *surface = meta_window_actor_get_surface (actor);
++
++  if (window->unmanaging || !surface)
++    return;
++
++  /* The frame around the client, and the clip and the geometry the effects
++   * use, follow the window exactly as for a Wayland window. */
++  meta_gnoblin_window_frame_sync_actor (window, CLUTTER_ACTOR (surface));
+ }
+ 
+ static void
+-- 
+2.55.0
+

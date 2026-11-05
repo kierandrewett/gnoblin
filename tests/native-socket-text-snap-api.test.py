@@ -7,16 +7,20 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import patch_series  # noqa: E402
-from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES, RUNTIME_SOURCES  # noqa: E402
+from _sources import (  # noqa: E402
+    control_header,
+    control_source,
+    native_dispatch_source,
+    overlay_manifests,
+    LUA_SOURCES,
+    RUNTIME_SOURCES,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
 SESSION = RUNTIME_SOURCES
 CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
-PAD_HELP_PATCH = patch_series.find("mutter", "emit-tablet-pad-help-without-layout")
 EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 
@@ -583,7 +587,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         overlay_manifest = overlay_manifests()
         lua = LUA.read_text()
-        mutter_patch = patch_series.find("mutter", "native-window-unminimize").read_text()
+        mutter_patch = native_dispatch_source()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -646,7 +650,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        resize_patch = patch_series.find("mutter", "native-window-resize-user-operation").read_text()
+        resize_patch = native_dispatch_source()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -664,7 +668,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("window.action resize requires integer width and height", handler)
         self.assertIn('"call", action, target)', handler)
         self.assertIn(
-            "meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,",
+            "meta_window_move_resize_frame(window, TRUE, frame.x, frame.y,",
             resize_patch,
         )
 
@@ -672,7 +676,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        move_patch = patch_series.find("mutter", "native-window-move-user-operation").read_text()
+        move_patch = native_dispatch_source()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -687,9 +691,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_variant_new_int64(json_node_get_int(x_node))", handler)
         self.assertIn("g_variant_new_int64(json_node_get_int(y_node))", handler)
         self.assertIn('"window.action move requires integer x and y"', handler)
-        self.assertIn("meta_window_is_fullscreen (window)", move_patch)
-        self.assertIn("meta_window_get_maximize_flags (window) != META_MAXIMIZE_NONE", move_patch)
-        self.assertIn("meta_window_move_frame (window, TRUE, (int) x, (int) y)", move_patch)
+        self.assertIn("meta_window_is_fullscreen(window)", move_patch)
+        self.assertIn("meta_window_get_maximize_flags(window) != META_MAXIMIZE_NONE", move_patch)
+        self.assertIn("meta_window_move_frame(window, TRUE, (int)x, (int)y)", move_patch)
 
     def test_legacy_workspace_and_monitor_actions_use_typed_lua_operations(self):
         source = control_source()

@@ -11,8 +11,12 @@ Without Glycin the preview is decoded in the portal process, not in the
 Glycin sandbox, and only the formats of the installed gdk-pixbuf loaders
 are shown.
 
+This patch makes the dependency optional and sets HAVE_GLYCIN. The
+decoder choice is in the overlay file
+src/portal/backend/gnoblin-wallpaperpreview.c.
+
 diff --git a/src/meson.build b/src/meson.build
-index 02c51df..5987425 100644
+index 117823d..9d52b96 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -61,6 +61,9 @@ config_h.set_quoted('GETTEXT_PACKAGE', meson.project_name())
@@ -34,89 +38,3 @@ index 02c51df..5987425 100644
    dependency('gio-unix-2.0'),
    dependency('gdk-pixbuf-2.0'),
    dependency('libpipewire-0.3'),
-diff --git a/src/wallpaperpreview.c b/src/wallpaperpreview.c
-index b4e7bdc..77d7ac2 100644
---- a/src/wallpaperpreview.c
-+++ b/src/wallpaperpreview.c
-@@ -25,7 +25,9 @@
- #include <string.h>
- 
- #include <gdk-pixbuf/gdk-pixbuf.h>
-+#ifdef HAVE_GLYCIN
- #include <glycin.h>
-+#endif
- #include <gio/gio.h>
- #include <glib/gi18n.h>
- #include <gtk/gtk.h>
-@@ -196,6 +198,23 @@ out:
-   return image;
- }
- 
-+static GdkPixbuf *
-+fit_preview_size (GdkPixbuf *decoded)
-+{
-+  int width = gdk_pixbuf_get_width (decoded);
-+  int height = gdk_pixbuf_get_height (decoded);
-+
-+  if (width <= 1024 && height <= 1024)
-+    return g_object_ref (decoded);
-+
-+  double scale = MIN (1024.0 / width, 1024.0 / height);
-+  return gdk_pixbuf_scale_simple (decoded,
-+                                  MAX (1, (int) (width * scale)),
-+                                  MAX (1, (int) (height * scale)),
-+                                  GDK_INTERP_BILINEAR);
-+}
-+
-+#ifdef HAVE_GLYCIN
- static GdkPixbuf *
- load_preview_image (const gchar *path,
-                     gboolean    *animated,
-@@ -208,7 +227,6 @@ load_preview_image (const gchar *path,
-   g_autoptr (GdkPixbuf) decoded = NULL;
-   g_autoptr (GError) glycin_error = NULL;
-   gboolean has_alpha;
--  int width, height;
- 
-   gly_loader_set_accepted_memory_formats (loader,
-       GLY_MEMORY_SELECTION_R8G8B8A8 | GLY_MEMORY_SELECTION_R8G8B8);
-@@ -221,21 +239,29 @@ load_preview_image (const gchar *path,
- 
-   *animated |= gly_frame_get_delay (frame) > 0;
-   has_alpha = gly_frame_get_memory_format (frame) == GLY_MEMORY_R8G8B8A8;
--  width = gly_frame_get_width (frame);
--  height = gly_frame_get_height (frame);
-   decoded = gdk_pixbuf_new_from_bytes (gly_frame_get_buf_bytes (frame),
-                                        GDK_COLORSPACE_RGB, has_alpha, 8,
--                                       width, height,
-+                                       gly_frame_get_width (frame),
-+                                       gly_frame_get_height (frame),
-                                        gly_frame_get_stride (frame));
--  if (width <= 1024 && height <= 1024)
--    return g_steal_pointer (&decoded);
-+  return fit_preview_size (decoded);
-+}
-+#else
-+static GdkPixbuf *
-+load_preview_image (const gchar *path,
-+                    gboolean    *animated,
-+                    GError     **error)
-+{
-+  g_autoptr (GdkPixbufAnimation) animation = NULL;
- 
--  double scale = MIN (1024.0 / width, 1024.0 / height);
--  return gdk_pixbuf_scale_simple (decoded,
--                                  MAX (1, (int) (width * scale)),
--                                  MAX (1, (int) (height * scale)),
--                                  GDK_INTERP_BILINEAR);
-+  animation = gdk_pixbuf_animation_new_from_file (path, error);
-+  if (!animation)
-+    return NULL;
-+
-+  *animated |= !gdk_pixbuf_animation_is_static_image (animation);
-+  return fit_preview_size (gdk_pixbuf_animation_get_static_image (animation));
- }
-+#endif
- 
- static void
- update_clock_label (WallpaperPreview *self,

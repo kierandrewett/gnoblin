@@ -9,12 +9,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import patch_series  # noqa: E402
-from _sources import control_header, control_source, LUA_SOURCES  # noqa: E402
+from _sources import control_header, control_source, native_dispatch_source, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
-DISPATCH_PATCH = patch_series.find("mutter", "dispatch-shell-session-lock-request")
 BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 
@@ -79,11 +77,10 @@ class SessionLockApiTests(unittest.TestCase):
         self.assertNotIn("session.unlock", LUA.read_text())
         self.assertLess(body.index("publish_native_socket_event"), body.index("native_runtime_dispatch_event"))
 
-    def test_mutter_dispatch_patch_uses_managed_export_identity(self):
-        patch = DISPATCH_PATCH.read_text()
-        self.assertIn("From: kierandrewett <kieran@drewett.dev>", patch)
-        self.assertIn('method, "session.lock"', patch)
-        self.assertIn("gnoblin_native_control_request_session_lock", patch)
+    def test_native_dispatch_routes_the_session_lock_request(self):
+        dispatch = native_dispatch_source()
+        self.assertIn('method, "session.lock"', dispatch)
+        self.assertIn("gnoblin_native_control_request_session_lock", dispatch)
 
     def test_docs_separate_delivery_from_compositor_confirmation(self):
         bridge = BRIDGE_DOCS

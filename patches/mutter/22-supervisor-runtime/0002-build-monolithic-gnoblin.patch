@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 5 Oct 2026 23:35:00 +0100
+Subject: [PATCH] Build the Gnoblin supervisor and Mutter entry point together
+
+---
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index 0d081560b..38fb3e5bc 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -159,7 +159,7 @@ maybe_spawn_child_command (MetaMonitorManager *monitor_manager,
+ }
+ 
+ int
+-main (int argc, char **argv)
++gnoblin_compositor_main (int argc, char **argv)
+ {
+   g_autoptr (MetaContext) context = NULL;
+   g_autoptr (GError) error = NULL;
+-- 
+2.51.0
