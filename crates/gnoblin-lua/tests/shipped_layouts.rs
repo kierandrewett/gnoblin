@@ -29,10 +29,8 @@ use std::process::Command;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, LayoutSnapshot, LuaEngine, default_prefix, installed_module_dir,
-};
-use gnoblin_types::{OutputId, RectF, Scale, Vec3, WindowId, WorkspaceId};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, default_prefix, installed_module_dir};
+use gnoblin_types::{OutputId, Scale, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Camera, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
     Placement, Reply, Transform3, settle,
@@ -116,27 +114,12 @@ fn shipped(layout: &str) -> Rc<RefCell<Host>> {
     hosted(vec![PathBuf::from(SHIPPED)], &[(layout, module.as_str())])
 }
 
-fn snapshot(focus: Option<u64>) -> LayoutSnapshot {
-    LayoutSnapshot {
-        workspace: WorkspaceId::new(1),
-        output: LayoutOutput {
-            id: OutputId::new(1),
-            name: "test-output".into(),
-            scale: Scale::integral(1),
-        },
-        area: RectF {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-        },
-        windows: Vec::new(),
-        focus: focus.map(WindowId::new),
-        gaps: Gaps::default(),
-    }
-}
-
 fn params(ids: &[u64], width: f64, height: f64) -> Params {
+    let output = LayoutOutput {
+        id: OutputId::new(1),
+        name: "test-output".into(),
+        scale: Scale::integral(1),
+    };
     let windows = ids
         .iter()
         .map(|id| LayoutWindow {
@@ -145,12 +128,13 @@ fn params(ids: &[u64], width: f64, height: f64) -> Params {
             height: 100.0,
         })
         .collect();
-    Params::new(width, height, windows).expect("valid params")
+    Params::new(output, width, height, windows).expect("valid params")
 }
 
 /// Arranges `ids` in a `width` by `height` output through `layout` on `host`.
 fn arrange(host: &Rc<RefCell<Host>>, layout: &str, focus: Option<u64>, ids: &[u64], width: f64, height: f64) -> Layout {
-    let mut engine = LuaEngine::new(Rc::clone(host), layout, snapshot(focus));
+    let mut engine = LuaEngine::new(Rc::clone(host), layout, WorkspaceId::new(1), Gaps::default())
+        .with_focus(focus.map(WindowId::new));
     let _ = engine.submit(Job::Arrange(params(ids, width, height)), Generation::FIRST);
     let reply = match engine.collect(Generation::FIRST, Instant::now() + Duration::from_secs(5)) {
         LayoutOutcome::Ready { generation, result } => {

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
-use gnoblin_types::{RectF, WorkspaceId};
+use gnoblin_types::{RectF, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{Generation, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Reply, Ticket};
 
 use super::LayoutReason;
@@ -24,24 +24,35 @@ use super::worker::LayoutFinished;
 pub struct LuaEngine {
     host: Rc<RefCell<Host>>,
     layout: String,
-    /// The workspace and gaps every run is made with. The output, area and windows
-    /// come from each run's [`Params`].
+    /// The workspace, focus and gaps every run is made with. The output, area and
+    /// windows come from each run's [`Params`].
     workspace: WorkspaceId,
+    focus: Option<WindowId>,
     gaps: Gaps,
     /// Each submitted run: its host generation, or the fault that stopped it at submit.
     runs: BTreeMap<Generation, Result<u64, LayoutFault>>,
 }
 
 impl LuaEngine {
-    /// Drives layout `layout` on `host` for `workspace`, with the gaps `gaps`.
+    /// Drives layout `layout` on `host` for `workspace`, with the gaps `gaps`. No window
+    /// is focused until [`LuaEngine::with_focus`] names one.
     pub fn new(host: Rc<RefCell<Host>>, layout: impl Into<String>, workspace: WorkspaceId, gaps: Gaps) -> Self {
         Self {
             host,
             layout: layout.into(),
             workspace,
+            focus: None,
             gaps,
             runs: BTreeMap::new(),
         }
+    }
+
+    /// Sets the focused window every run is made with. A focus that names no window in a
+    /// run's [`Params`] is dropped from that run.
+    #[must_use]
+    pub fn with_focus(mut self, focus: Option<WindowId>) -> Self {
+        self.focus = focus;
+        self
     }
 
     fn snapshot(&self, params: &Params) -> LayoutSnapshot {
@@ -57,6 +68,9 @@ impl LuaEngine {
                 size_hints: SizeHints::default(),
             })
             .collect();
+        let focus = self
+            .focus
+            .filter(|focus| windows.iter().any(|window| window.id == *focus));
         LayoutSnapshot {
             workspace: self.workspace,
             output: params.output().clone(),
@@ -67,7 +81,7 @@ impl LuaEngine {
                 height: params.output_height(),
             },
             windows,
-            focus: None,
+            focus,
             gaps: self.gaps,
         }
     }
