@@ -75,6 +75,15 @@ pub enum GammaError {
     },
     /// The CRTC has no gamma table, so there is nothing to upload to.
     Degenerate,
+    /// The red, green and blue tables do not have the same length.
+    Channels {
+        /// The length of the red table.
+        red: usize,
+        /// The length of the green table.
+        green: usize,
+        /// The length of the blue table.
+        blue: usize,
+    },
 }
 
 impl std::fmt::Display for GammaError {
@@ -85,6 +94,10 @@ impl std::fmt::Display for GammaError {
                 "a gamma table of {table} entries does not fit a CRTC with {hardware}"
             ),
             Self::Degenerate => write!(formatter, "the CRTC has no gamma table"),
+            Self::Channels { red, green, blue } => write!(
+                formatter,
+                "the gamma channels have {red}, {green} and {blue} entries; they must match"
+            ),
         }
     }
 }
@@ -92,6 +105,27 @@ impl std::fmt::Display for GammaError {
 impl std::error::Error for GammaError {}
 
 impl GammaRamp {
+    /// Builds a ramp from three channel tables, which must all have the same length.
+    ///
+    /// # Errors
+    ///
+    /// [`GammaError::Channels`] when the tables differ in length.
+    pub fn from_channels(red: &[u16], green: &[u16], blue: &[u16]) -> Result<Self, GammaError> {
+        if red.len() != green.len() || red.len() != blue.len() {
+            return Err(GammaError::Channels {
+                red: red.len(),
+                green: green.len(),
+                blue: blue.len(),
+            });
+        }
+        Ok(Self {
+            length: red.len(),
+            red: red.to_vec(),
+            green: green.to_vec(),
+            blue: blue.to_vec(),
+        })
+    }
+
     /// The linear ramp: every channel passes its value through unchanged.
     ///
     /// It is what a display with no night light and no calibration curve is given, and it is
@@ -257,6 +291,27 @@ mod tests {
         assert_eq!(red[255], u16::MAX);
         assert_eq!(red[128], 32896);
         assert!(red.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn channels_of_different_lengths_are_refused_with_all_three_lengths() {
+        assert_eq!(
+            GammaRamp::from_channels(&[0, 1], &[0], &[0, 1]),
+            Err(GammaError::Channels {
+                red: 2,
+                green: 1,
+                blue: 2
+            })
+        );
+    }
+
+    #[test]
+    fn equal_channels_are_kept_as_given() {
+        let ramp = GammaRamp::from_channels(&[0, 9], &[1, 9], &[2, 9]).expect("equal channels");
+        let (red, green, blue) = ramp.channels();
+        assert_eq!(red.to_vec(), vec![0, 9]);
+        assert_eq!(green.to_vec(), vec![1, 9]);
+        assert_eq!(blue.to_vec(), vec![2, 9]);
     }
 
     #[test]

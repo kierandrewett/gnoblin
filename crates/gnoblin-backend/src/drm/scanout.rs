@@ -106,6 +106,12 @@ impl Buffers {
         })
     }
 
+    /// Whether these buffers were allocated for an output of `size` physical pixels.
+    #[must_use]
+    pub(crate) fn fits(&self, size: Size) -> bool {
+        u32::try_from(self.size.w) == Ok(size.width) && u32::try_from(self.size.h) == Ok(size.height)
+    }
+
     /// Allocates slot `index` if it does not exist yet.
     fn ensure(&mut self, index: usize) -> Result<(), String> {
         let Some(entry) = self.slots.get(index) else {

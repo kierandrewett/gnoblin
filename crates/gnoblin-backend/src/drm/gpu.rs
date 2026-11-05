@@ -30,7 +30,7 @@ use smithay::reexports::drm::control::{
 use smithay::utils::{Buffer, DeviceFd, Physical, Rectangle, Size, Transform};
 
 use crate::drm::DrmError;
-use crate::drm::gamma::crtc_length;
+use crate::drm::gamma::{GammaError, GammaRamp, crtc_length};
 use crate::drm::plan::{Applied, Change, Connector, LayoutPlan, Op, OutputState, PhysicalExtent, Power};
 use crate::session::Seat;
 use crate::udev::{DeviceOverrideSource, Devices, Discovery};
@@ -134,6 +134,87 @@ fn restore<K: Kms>(kms: &mut K, applied: &Applied, name: &str, attempted: &Outpu
         }
         Err(error) => failures.push(format!("{name}: {error}")),
     }
+}
+
+/// Why a gamma or power request could not be applied to an output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlError {
+    /// The GPU has no connector with that name.
+    NoConnector(String),
+    /// The table does not fit the CRTC, or the CRTC has no table.
+    Gamma(GammaError),
+    /// The kernel refused the operation.
+    Refused(String),
+}
+
+impl fmt::Display for ControlError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoConnector(name) => write!(formatter, "the GPU has no connector named {name}"),
+            Self::Gamma(error) => write!(formatter, "{error}"),
+            Self::Refused(reason) => write!(formatter, "the kernel refused the change: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for ControlError {}
+
+/// Loads `ramp` onto the CRTC of connector `name`.
+///
+/// The table is checked against the CRTC's length before the kernel is asked, so a table of the
+/// wrong length is a [`ControlError::Gamma`] and never reaches the device.
+///
+/// # Errors
+///
+/// [`ControlError`] naming the connector, the length, or the refusal.
+pub fn set_gamma<K: Kms>(kms: &mut K, name: &str, ramp: &GammaRamp) -> Result<(), ControlError> {
+    let connector = kms
+        .connector(name)
+        .ok_or_else(|| ControlError::NoConnector(name.to_owned()))?;
+    ramp.matches(connector.gamma_length).map_err(ControlError::Gamma)?;
+    kms.apply(name, &Op::Gamma(ramp.clone())).map_err(ControlError::Refused)
+}
+
+/// Puts the identity ramp back on the CRTC of connector `name`, at the CRTC's own length.
+///
+/// # Errors
+///
+/// [`ControlError`]: no such connector, a CRTC with no table, or a refusal.
+pub fn restore_gamma<K: Kms>(kms: &mut K, name: &str) -> Result<(), ControlError> {
+    let length = kms
+        .connector(name)
+        .ok_or_else(|| ControlError::NoConnector(name.to_owned()))?
+        .gamma_length;
+    if length == 0 {
+        return Err(ControlError::Gamma(GammaError::Degenerate));
+    }
+    kms.apply(name, &Op::Gamma(GammaRamp::identity(length)))
+        .map_err(ControlError::Refused)
+}
+
+/// Switches connector `name` on or off, recording the new power state when the plan that lit it
+/// is known.
+///
+/// This is one operation, so a refusal leaves the connector as the kernel left it and the record
+/// untouched.
+///
+/// # Errors
+///
+/// [`ControlError`]: no such connector or a refusal.
+pub fn set_power<K: Kms>(kms: &mut K, applied: &mut Applied, name: &str, on: bool) -> Result<(), ControlError> {
+    kms.connector(name)
+        .ok_or_else(|| ControlError::NoConnector(name.to_owned()))?;
+    let power = if on { Power::On } else { Power::Off };
+    kms.apply(name, &Op::Power(power)).map_err(ControlError::Refused)?;
+    if let Some(current) = applied.state(name).copied() {
+        let state = OutputState { power, ..current };
+        applied.record(&Change {
+            connector: name.to_owned(),
+            state,
+            ops: vec![Op::Power(power)],
+        });
+    }
+    Ok(())
 }
 
 /// The refresh rate of a timing in millihertz, from its pixel clock and totals.
@@ -420,6 +501,55 @@ impl Gpu {
         apply_plan(&mut self.hardware, &mut self.applied, plan)
     }
 
+    /// The number of entries in `output`'s gamma table, if the GPU has the output.
+    #[must_use]
+    pub fn gamma_length(&self, output: OutputId) -> Option<usize> {
+        self.hardware
+            .ports
+            .iter()
+            .find(|port| port.connector.id == output)
+            .map(|port| port.connector.gamma_length)
+    }
+
+    fn name_of(&self, output: OutputId) -> Result<String, ControlError> {
+        self.hardware
+            .ports
+            .iter()
+            .find(|port| port.connector.id == output)
+            .map(|port| port.connector.name.clone())
+            .ok_or_else(|| ControlError::NoConnector(output.to_string()))
+    }
+
+    /// Loads `ramp` onto the CRTC that scans out `output`.
+    ///
+    /// # Errors
+    ///
+    /// [`ControlError`] from [`set_gamma`], or [`ControlError::NoConnector`] for an unknown output.
+    pub fn set_gamma(&mut self, output: OutputId, ramp: &GammaRamp) -> Result<(), ControlError> {
+        let name = self.name_of(output)?;
+        set_gamma(&mut self.hardware, &name, ramp)
+    }
+
+    /// Puts the identity ramp back on the CRTC that scans out `output`.
+    ///
+    /// # Errors
+    ///
+    /// [`ControlError`] from [`restore_gamma`], or [`ControlError::NoConnector`] for an unknown output.
+    pub fn restore_gamma(&mut self, output: OutputId) -> Result<(), ControlError> {
+        let name = self.name_of(output)?;
+        restore_gamma(&mut self.hardware, &name)
+    }
+
+    /// Switches `output` on or off.
+    ///
+    /// # Errors
+    ///
+    /// [`ControlError`] from [`set_power`], or [`ControlError::NoConnector`] for an unknown output.
+    pub fn set_power(&mut self, output: OutputId, on: bool) -> Result<(), ControlError> {
+        let name = self.name_of(output)?;
+        set_power(&mut self.hardware, &mut self.applied, &name, on)
+    }
+
     /// What each connector was last confirmed to be doing.
     #[must_use]
     pub fn applied(&self) -> &Applied {
@@ -670,6 +800,72 @@ mod tests {
             kms.log
                 .iter()
                 .any(|(name, op)| name == "DP-2" && *op == Op::Mode(FOUR_K))
+        );
+    }
+
+    #[test]
+    fn a_gamma_table_of_another_length_is_refused_before_the_kernel_sees_it() {
+        let mut kms = Recorder::new(vec![connector("DP-1", 1)], Vec::new());
+        assert_eq!(
+            set_gamma(&mut kms, "DP-1", &GammaRamp::identity(2)),
+            Err(ControlError::Gamma(GammaError::Length { table: 2, hardware: 4 }))
+        );
+        assert!(kms.log.is_empty());
+    }
+
+    #[test]
+    fn a_table_of_the_crtc_length_reaches_the_kernel_once() {
+        let mut kms = Recorder::new(vec![connector("DP-1", 1)], Vec::new());
+        set_gamma(&mut kms, "DP-1", &GammaRamp::identity(4)).expect("the CRTC's own length");
+        assert!(matches!(&kms.log[..], [(name, Op::Gamma(_))] if name.as_str() == "DP-1"));
+    }
+
+    #[test]
+    fn a_refused_gamma_is_named_not_swallowed() {
+        let mut kms = Recorder::new(vec![connector("DP-1", 1)], vec![0]);
+        assert_eq!(
+            set_gamma(&mut kms, "DP-1", &GammaRamp::identity(4)),
+            Err(ControlError::Refused("refused".to_owned()))
+        );
+    }
+
+    #[test]
+    fn restoring_gamma_writes_the_identity_at_the_crtc_length() {
+        let mut kms = Recorder::new(vec![connector("DP-1", 1)], Vec::new());
+        restore_gamma(&mut kms, "DP-1").expect("restore");
+        assert!(matches!(&kms.log[..], [(_, Op::Gamma(ramp))] if ramp.length() == 4));
+    }
+
+    #[test]
+    fn a_power_change_is_recorded_only_when_the_kernel_takes_it() {
+        let a = connector("DP-1", 1);
+        let mut applied = Applied::new();
+        applied.record_plan(&plan_of(vec![change_from(&a, None, state(FULL_HD, false))]));
+
+        let mut refusing = Recorder::new(vec![a.clone()], vec![0]);
+        assert_eq!(
+            set_power(&mut refusing, &mut applied, "DP-1", false),
+            Err(ControlError::Refused("refused".to_owned()))
+        );
+        assert_eq!(applied.state("DP-1").map(|state| state.power), Some(Power::On));
+
+        let mut kms = Recorder::new(vec![a], Vec::new());
+        set_power(&mut kms, &mut applied, "DP-1", false).expect("power off");
+        assert_eq!(applied.state("DP-1").map(|state| state.power), Some(Power::Off));
+        assert!(matches!(&kms.log[..], [(_, Op::Power(Power::Off))]));
+    }
+
+    #[test]
+    fn an_unknown_connector_is_named_for_gamma_and_power() {
+        let mut kms = Recorder::new(vec![connector("DP-1", 1)], Vec::new());
+        let mut applied = Applied::new();
+        assert_eq!(
+            set_power(&mut kms, &mut applied, "HDMI-9", true),
+            Err(ControlError::NoConnector("HDMI-9".to_owned()))
+        );
+        assert_eq!(
+            restore_gamma(&mut kms, "HDMI-9"),
+            Err(ControlError::NoConnector("HDMI-9".to_owned()))
         );
     }
 

@@ -336,6 +336,10 @@ impl<S: Host + 'static> Backend<S> for Drm {
         if host.frame(output, &mut frame) {
             self.channels[index].presenter.mark_dirty();
         }
+        let physical = gnoblin_types::Size::new(size.width, size.height);
+        if self.buffers.get(&output).is_some_and(|buffers| !buffers.fits(physical)) {
+            self.buffers.remove(&output);
+        }
         let buffers = match self.buffers.entry(output) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
@@ -343,7 +347,6 @@ impl<S: Host + 'static> Backend<S> for Drm {
                     .gpu
                     .plane_formats(crtc)
                     .ok_or(BackendError::Unpresentable(output))?;
-                let physical = gnoblin_types::Size::new(size.width, size.height);
                 let buffers = Buffers::new(&self.scanout, physical, &formats).map_err(BackendError::Render)?;
                 entry.insert(buffers)
             }
@@ -370,6 +373,39 @@ impl<S: Host + 'static> Backend<S> for Drm {
         None
     }
 
+    fn output_controls(&self) -> crate::OutputControls {
+        crate::OutputControls {
+            gamma: true,
+            power: true,
+        }
+    }
+
+    fn gamma_size(&self, output: OutputId) -> Option<u32> {
+        self.gpu
+            .gamma_length(output)
+            .and_then(|length| u32::try_from(length).ok())
+    }
+
+    fn set_gamma(&mut self, output: OutputId, ramp: crate::GammaRamp<'_>) -> Result<(), BackendError> {
+        let ramp = gamma::GammaRamp::from_channels(ramp.red, ramp.green, ramp.blue)
+            .map_err(|_| BackendError::InvalidGamma(output))?;
+        self.gpu
+            .set_gamma(output, &ramp)
+            .map_err(|error| control_error(output, error))
+    }
+
+    fn restore_gamma(&mut self, output: OutputId) -> Result<(), BackendError> {
+        self.gpu
+            .restore_gamma(output)
+            .map_err(|error| control_error(output, error))
+    }
+
+    fn set_power(&mut self, output: OutputId, on: bool) -> Result<(), BackendError> {
+        self.gpu
+            .set_power(output, on)
+            .map_err(|error| control_error(output, error))
+    }
+
     fn dispatch(&mut self, _host: &mut S) -> Vec<BackendEvent> {
         for event in self.gpu.seat().take_events() {
             match event {
@@ -383,6 +419,23 @@ impl<S: Host + 'static> Backend<S> for Drm {
             libinput.pump();
         }
         Vec::new()
+    }
+}
+
+/// The backend error a gamma or power change is reported as.
+///
+/// A table the CRTC cannot take is [`BackendError::InvalidGamma`]; a CRTC with no table at all is
+/// [`BackendError::Unsupported`]; a kernel refusal is logged with its reason and reported as
+/// [`BackendError::Unpresentable`], because the output stays in its previous state.
+fn control_error(output: OutputId, error: gpu::ControlError) -> BackendError {
+    match error {
+        gpu::ControlError::NoConnector(_) => BackendError::UnknownOutput(output),
+        gpu::ControlError::Gamma(gamma::GammaError::Degenerate) => BackendError::Unsupported(output),
+        gpu::ControlError::Gamma(_) => BackendError::InvalidGamma(output),
+        gpu::ControlError::Refused(reason) => {
+            warn!(output = %output, %reason, "[drm] the kernel refused a gamma or power change");
+            BackendError::Unpresentable(output)
+        }
     }
 }
 
