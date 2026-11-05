@@ -93,20 +93,20 @@ impl Default for ModuleLimits {
 /// Ordered sets and not vectors, so a denied capability is found by lookup rather
 /// than by scanning, and so two manifests that grant the same things compare equal.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Capabilities {
+pub struct Grants {
     read: BTreeSet<String>,
     call: BTreeSet<(String, String)>,
     subscribe: bool,
 }
 
-impl Capabilities {
+impl Grants {
     /// Nothing at all: a module with this set can start and stop and no more.
-    pub fn none() -> Capabilities {
-        Capabilities::default()
+    pub fn none() -> Grants {
+        Grants::default()
     }
 
     /// Read `object`'s properties and open a handle for it.
-    pub fn read(mut self, object: &str) -> Capabilities {
+    pub fn read(mut self, object: &str) -> Grants {
         self.read.insert(object.to_owned());
         self
     }
@@ -115,13 +115,13 @@ impl Capabilities {
     ///
     /// Calling a method does not imply reading the object: a module that only
     /// focuses windows learns nothing about them.
-    pub fn call(mut self, object: &str, method: &str) -> Capabilities {
+    pub fn call(mut self, object: &str, method: &str) -> Grants {
         self.call.insert((object.to_owned(), method.to_owned()));
         self
     }
 
     /// Receive events for objects the module watches.
-    pub fn subscribe(mut self) -> Capabilities {
+    pub fn subscribe(mut self) -> Grants {
         self.subscribe = true;
         self
     }
@@ -191,7 +191,7 @@ fn list<'a>(items: impl Iterator<Item = &'a str>) -> String {
 #[derive(Clone, Debug)]
 pub struct Manifest {
     name: String,
-    capabilities: Capabilities,
+    capabilities: Grants,
     limits: ModuleLimits,
 }
 
@@ -200,13 +200,13 @@ impl Manifest {
     pub fn new(name: impl Into<String>) -> Manifest {
         Manifest {
             name: name.into(),
-            capabilities: Capabilities::none(),
+            capabilities: Grants::none(),
             limits: ModuleLimits::default(),
         }
     }
 
     /// Declare the module's capabilities.
-    pub fn capabilities(mut self, capabilities: Capabilities) -> Manifest {
+    pub fn capabilities(mut self, capabilities: Grants) -> Manifest {
         self.capabilities = capabilities;
         self
     }
@@ -224,7 +224,7 @@ impl Manifest {
     }
 
     /// What it may do.
-    pub fn granted(&self) -> &Capabilities {
+    pub fn granted(&self) -> &Grants {
         &self.capabilities
     }
 
@@ -236,23 +236,23 @@ impl Manifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{Budget, Capabilities, Manifest};
+    use super::{Budget, Grants, Manifest};
 
     #[test]
     fn checks_names_against_the_package() {
-        let good = Capabilities::none().read("window").call("window", "focus");
+        let good = Grants::none().read("window").call("window", "focus");
         assert_eq!(good.check(), Ok(()));
 
-        let bad_object = Capabilities::none().read("widow");
+        let bad_object = Grants::none().read("widow");
         assert!(bad_object.check().is_err(), "a misspelt object is refused");
 
-        let bad_method = Capabilities::none().call("window", "focused");
+        let bad_method = Grants::none().call("window", "focused");
         assert!(bad_method.check().is_err(), "a property is not a method");
     }
 
     #[test]
     fn grants_nothing_by_default() {
-        let capabilities = Capabilities::none();
+        let capabilities = Grants::none();
         assert!(!capabilities.may_read("window"));
         assert!(!capabilities.may_call("window", "focus"));
         assert!(!capabilities.may_subscribe());

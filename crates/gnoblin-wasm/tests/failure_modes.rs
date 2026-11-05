@@ -20,7 +20,7 @@ use gnoblin_types::Version;
 
 use gnoblin_wasm::abi::kind;
 use gnoblin_wasm::{
-    Budget, CallError, Capabilities, Line, Manifest, ModuleError, ModuleHost, ModuleLimits, ModuleState, Sink,
+    Budget, CallError, Grants, LogLine, Manifest, ModuleError, ModuleHost, ModuleLimits, ModuleState, Sink,
 };
 
 /// The IPC version the tests connect at.
@@ -49,7 +49,7 @@ impl Capture {
 }
 
 impl Sink for Capture {
-    fn write(&mut self, record: &Line<'_>) {
+    fn write(&mut self, record: &LogLine<'_>) {
         self.lines
             .lock()
             .expect("the lock is not poisoned")
@@ -180,12 +180,12 @@ fn compile(text: &str) -> Vec<u8> {
 
 /// A manifest that may read windows.
 fn reader(name: &str) -> Manifest {
-    Manifest::new(name).capabilities(Capabilities::none().read("window"))
+    Manifest::new(name).capabilities(Grants::none().read("window"))
 }
 
 /// A manifest that may read windows, watch them and focus them.
 fn watcher(name: &str) -> Manifest {
-    Manifest::new(name).capabilities(Capabilities::none().read("window").subscribe().call("window", "focus"))
+    Manifest::new(name).capabilities(Grants::none().read("window").subscribe().call("window", "focus"))
 }
 
 /// A host with a capture sink.

@@ -55,7 +55,7 @@ use crate::abi;
 use crate::bindings::{Module, StoreData};
 use crate::error::{CallError, ModuleError};
 use crate::log::{self, Level, Sink};
-use crate::manifest::{Budget, Capabilities, Manifest, ModuleLimits};
+use crate::manifest::{Budget, Grants, Manifest, ModuleLimits};
 use crate::mirror::Mirror;
 
 /// Where a module is in its life.
@@ -103,7 +103,7 @@ struct Runtime {
 
 /// A module's slot: what it was allowed, where it is, and the runtime if any.
 struct ModuleSlot {
-    capabilities: Capabilities,
+    capabilities: Grants,
     limits: ModuleLimits,
     state: ModuleState,
     runtime: Option<Runtime>,
@@ -422,7 +422,7 @@ impl ModuleHost {
     fn build(
         &self,
         name: &str,
-        capabilities: Capabilities,
+        capabilities: Grants,
         limits: ModuleLimits,
         bytes: &[u8],
         budget: Budget,
@@ -520,7 +520,7 @@ fn kill(modules: &mut BTreeMap<String, ModuleSlot>, sink: &log::Shared, name: &s
     }
     log::write(
         sink,
-        &log::Line {
+        &log::LogLine {
             module: name,
             level: Level::Error,
             message: &reason,
@@ -534,7 +534,7 @@ fn kill(modules: &mut BTreeMap<String, ModuleSlot>, sink: &log::Shared, name: &s
 /// A module that is connected after the graph already has objects still has to see
 /// them, and delivering them as the same `opened` event a later object produces
 /// keeps one rule in the ABI instead of a special "initial state" call.
-fn opening(snapshot: &Snapshot, capabilities: &Capabilities) -> VecDeque<Observation> {
+fn opening(snapshot: &Snapshot, capabilities: &Grants) -> VecDeque<Observation> {
     let mut opening = VecDeque::new();
     if !capabilities.may_subscribe() {
         return opening;
@@ -596,12 +596,19 @@ impl StoreData {
 }
 
 /// The observation a client event is, or `None` for the request layer.
+///
+/// The request layer is not part of the module ABI: a module reaches a request
+/// through the `request` object's methods (`claim`, `answer`, `decline`), and an
+/// offer or a finish reaches it as the object's `offered` and `finished` signals.
+/// The three variants are listed rather than caught by a wildcard so a new event
+/// has to be decided about here instead of being dropped silently — and none of
+/// them is ever *handled* here: an answer may be a passphrase, and nothing in this
+/// host reads one.
 fn observation(event: gnoblin_client::Event) -> Option<Observation> {
     match event {
         gnoblin_client::Event::Model(observation) => Some(observation),
-        // A request offer or finish. The request layer is not part of the module
-        // ABI yet: a module reaches a request through the `request` object's
-        // methods, so these two carry nothing it has not already been told.
-        gnoblin_client::Event::RequestOffered { .. } | gnoblin_client::Event::RequestFinished { .. } => None,
+        gnoblin_client::Event::RequestOffered { .. }
+        | gnoblin_client::Event::RequestAnswered { .. }
+        | gnoblin_client::Event::RequestFinished { .. } => None,
     }
 }

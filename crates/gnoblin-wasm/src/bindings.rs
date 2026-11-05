@@ -35,8 +35,8 @@ use gnoblin_model::{Fields, ObjectId, Observation, OperationId, OperationOutcome
 use wasmtime::StoreLimits;
 use wasmtime::component::{Resource, ResourceTable, ResourceTableError};
 
-use crate::log::{self, Level, Line};
-use crate::manifest::Capabilities;
+use crate::log::{self, Level, LogLine};
+use crate::manifest::Grants;
 use crate::mirror::Mirror;
 
 wasmtime::component::bindgen!({
@@ -94,7 +94,7 @@ pub(crate) struct StoreData {
     /// The module's name, for its log lines.
     pub(crate) module: String,
     /// What the manifest granted.
-    pub(crate) capabilities: Capabilities,
+    pub(crate) capabilities: Grants,
     /// The limits the store's resource limiter enforces.
     pub(crate) limits: StoreLimits,
     /// The handles this module holds.
@@ -118,7 +118,7 @@ pub(crate) struct StoreData {
 
 impl StoreData {
     /// A store for a module that is being loaded and has not connected yet.
-    pub(crate) fn new(module: String, capabilities: Capabilities, limits: StoreLimits, sink: log::Shared) -> StoreData {
+    pub(crate) fn new(module: String, capabilities: Grants, limits: StoreLimits, sink: log::Shared) -> StoreData {
         StoreData {
             module,
             capabilities,
@@ -138,7 +138,7 @@ impl StoreData {
     pub(crate) fn write(&self, level: Level, message: &str) {
         log::write(
             &self.sink,
-            &Line {
+            &LogLine {
                 module: &self.module,
                 level,
                 message,

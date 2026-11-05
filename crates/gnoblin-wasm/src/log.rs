@@ -56,7 +56,7 @@ impl Level {
 
 /// One line: who wrote it, how important it is, and what it says.
 #[derive(Clone, Copy, Debug)]
-pub struct Line<'a> {
+pub struct LogLine<'a> {
     /// The module the line is about.
     pub module: &'a str,
     /// How important it is.
@@ -65,7 +65,7 @@ pub struct Line<'a> {
     pub message: &'a str,
 }
 
-impl fmt::Display for Line<'_> {
+impl fmt::Display for LogLine<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
@@ -83,7 +83,7 @@ impl fmt::Display for Line<'_> {
 /// follow would make the host single-threaded for a reason nothing else shares.
 pub trait Sink: Send {
     /// Accept one line.
-    fn write(&mut self, record: &Line<'_>);
+    fn write(&mut self, record: &LogLine<'_>);
 }
 
 /// The default: one line to standard error.
@@ -91,7 +91,7 @@ pub trait Sink: Send {
 pub struct StderrSink;
 
 impl Sink for StderrSink {
-    fn write(&mut self, record: &Line<'_>) {
+    fn write(&mut self, record: &LogLine<'_>) {
         eprintln!("{record}");
     }
 }
@@ -105,7 +105,7 @@ pub(crate) type Shared = Arc<Mutex<Box<dyn Sink>>>;
 /// here would turn a module's log line into a panic in the compositor, which is
 /// the opposite of what a sandbox is for, so the line is written through the
 /// poisoned guard and the panic is reported by whoever caused it.
-pub(crate) fn write(sink: &Shared, record: &Line<'_>) {
+pub(crate) fn write(sink: &Shared, record: &LogLine<'_>) {
     match sink.lock() {
         Ok(mut sink) => sink.write(record),
         Err(poisoned) => poisoned.into_inner().write(record),
@@ -114,11 +114,11 @@ pub(crate) fn write(sink: &Shared, record: &Line<'_>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Level, Line};
+    use super::{Level, LogLine};
 
     #[test]
     fn prints_a_line() {
-        let record = Line {
+        let record = LogLine {
             module: "placement",
             level: Level::Warn,
             message: "refused",
