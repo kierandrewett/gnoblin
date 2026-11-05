@@ -247,3 +247,29 @@ fn an_orientation_names_itself_and_swaps_only_on_quarter_turns() {
     }
     assert_eq!(Orientation::ALL.iter().filter(|o| o.is_flipped()).count(), 4);
 }
+
+#[test]
+fn a_well_known_error_code_is_a_checked_constant() {
+    use gnoblin_types::{ErrorCode, is_error_code};
+
+    // A code a crate builds itself is a literal: checked where it is written,
+    // borrowed where it is used, and never unwrapped at run time.
+    const OBJECT_GONE: ErrorCode = ErrorCode::from_static("object-gone");
+    assert_eq!(OBJECT_GONE.as_str(), "object-gone");
+    assert_eq!(OBJECT_GONE.to_string(), "object-gone");
+
+    assert_eq!(
+        ErrorCode::parse("object-gone").as_ref().map(ErrorCode::as_str),
+        Some("object-gone")
+    );
+    assert_eq!(ErrorCode::parse("Object-Gone"), None);
+    assert!("provider_gone".parse::<ErrorCode>().is_err());
+    assert_eq!(
+        "provider-gone".parse::<ErrorCode>().expect("valid").as_str(),
+        "provider-gone"
+    );
+
+    assert!(is_error_code("provider-gone"));
+    assert!(!is_error_code(""));
+    assert!(!is_error_code("9lives"));
+}
