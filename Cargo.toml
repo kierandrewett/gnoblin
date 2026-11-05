@@ -132,6 +132,21 @@ smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e4177
 # because the configuration and model layers must work with no Lua at all.
 mlua = { version = "0.12.2", features = ["lua55", "vendored"] }
 
+# Command line parsing for `gnoblinctl`. Its command tree is generated from the
+# object schema at build time, so it uses the builder API rather than derive: a
+# generated tree cannot be a derive struct. Colour is off because `gnoblinctl`
+# output is read by scripts as often as by people.
+clap = { version = "4.6.7", default-features = false, features = [
+    "std",
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+] }
+# Shell completion scripts, rendered from the same clap tree so a completion can
+# never offer a member the schema does not declare.
+clap_complete = "4.6.9"
+
 # The shared primitives: geometry, transform, scale, identities, ticks and error
 # codes. Every crate that names a rectangle or an output uses this crate instead
 # of declaring its own.

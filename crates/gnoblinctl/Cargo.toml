@@ -6,5 +6,28 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+clap.workspace = true
+clap_complete.workspace = true
+# The client half of the IPC: handshake, subscribe, call, await. gnoblinctl adds
+# only the socket under it and the presentation above it.
+gnoblin-client = { path = "../gnoblin-client" }
+# The vocabulary a caller sees: identities, values, observations, operations.
+gnoblin-model = { path = "../gnoblin-model" }
+# The wire, for the handshake version and for `ipc dump`'s frame decoding.
+gnoblin-proto = { path = "../gnoblin-proto" }
+# `ipc dump` decodes an envelope body, and the envelope is a generated protobuf
+# message: decoding it is this trait's job.
+prost.workspace = true
+# The schema types, so a generated `string`/`uint`/`object:window` argument is
+# parsed and checked by the same code that validates the graph.
+gnoblin-schema = { path = "../gnoblin-schema" }
+serde_json.workspace = true
+
+[build-dependencies]
+# The command tree is generated from the schema, so the schema is a build input
+# and nothing generated is committed.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
 [lints]
 workspace = true
