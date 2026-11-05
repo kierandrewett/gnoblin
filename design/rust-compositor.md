@@ -230,54 +230,62 @@ value.
 
 `answer`'s value field is marked `secret`. A frame's member is the schema's
 qualified member path, `<object>.<member>` — `request.answer`, or
-`greeter.auth_response` for an extension — so the generated sensitive table
+`example.login.answer` for an extension — so the generated sensitive table
 names it, and the envelope constructors flag and redact the frame without
 knowing which members are secret.
 
 ### IPC extensions
 
-A privileged client can provide an extra namespace on the IPC. The compositor
-routes that namespace between the client that provides it and the clients
-allowed to use it. bsm's greeter is the first and only planned user; the
-mechanism is kept small until a second one exists.
+Gnoblin has one generic extension mechanism. An extension is a namespace of
+members that a privileged connection provides on the IPC. Extensions are out of
+tree: each ships its own schema file and provider, and the host configuration
+loads it into Gnoblin. The stock tree contains no extension, and no extension
+is built into the compositor. Gnoblin's docs use `example.login` as the neutral
+name. For example, bsm's greeter control is an extension that bsm ships; this
+plan has no other coupling to it.
 
-- **Schema:** an extension ships its own schema in the `gnoblin-schema` format,
-  under its own namespace (for example `bsm.greeter`). The same generator
-  produces its `.proto` files, client code and docs. Gnoblin's schema never
-  contains extension members.
-- **Allow-list:** the host configuration declares each extension: namespace,
-  schema file, and which privileged connection may provide it. There is no
-  registration of arbitrary names at run time. For the greeter, the provider is
-  bsm's manager on the host Gnoblin. When the provider disconnects, calls fail
-  with `provider-gone` until it connects again.
-- **Access:** a client sees an extension only if its connection grants it. The
-  greeter's connection comes from `bsm-helper` as a restricted socket, like
-  `wp_security_context_v1` for Wayland. It grants `bsm.greeter` and read-only
-  appearance, and nothing else on the IPC: no window, input or session methods.
-- **Authority:** the extension carries requests, not powers. PAM, logind and
-  session launch stay in bsm's manager and `bsm-helper`, which decide each
-  greeter request and send the result back as an event.
+**Loading.** The host configuration lists each extension in
+`gnoblin.configure.extensions`. Each entry has:
+
+- `namespace`: the namespace, such as `example.login`. It must be unique and
+  must not be a core namespace.
+- `schema`: the path to the schema file, shipped by the extension's package.
+- `provider`: the privileged connection role allowed to provide the namespace.
+- `grants`: the restricted socket identities granted the namespace.
+
+There is no run-time registration of arbitrary names. A provider can only
+provide namespaces listed in the host configuration. At load, the compositor
+parses the schema, checks that its namespace matches the entry, that its
+members do not collide with core members, and that its version is a full
+`MAJOR.MINOR.PATCH`. A failing load refuses that extension only. The compositor
+starts without it, logs the error, and calls to its namespace fail with
+`not-supported`.
+
+- **Access:** a connection sees an extension only if its handshake's Grants
+  frame lists it (see Versioning). Grants are per connection.
+- **Authority:** an extension carries requests, not powers. A provider gets the
+  capabilities of its connection, and no more. Extension providers hold no PAM,
+  logind or session privileges. Those stay with the host's own manager.
+- **Provider disconnect:** calls fail with `provider-gone` until it connects
+  again.
 - **Payloads:** the compositor reads the envelope (namespace, member, request
   ID, flags) and forwards the payload bytes without decoding them. The generated
-  code sets a `sensitive` flag in the envelope on any message with a field
-  marked `secret`, such as `auth_response`. Logs, the parity recorder and
-  `gnoblinctl ipc dump` drop the payload of every `sensitive` frame, so none of
-  them needs the extension schema to keep a secret out.
+  code sets a `sensitive` flag on any message with a field marked `secret`.
+  Logs, the parity recorder and `gnoblinctl ipc dump` drop the payload of every
+  `sensitive` frame, so none of them needs the extension schema to keep a
+  secret out. Gnoblin handles no other secret of an extension.
+- **Lua:** `require("<namespace>")` resolves an extension namespace that is
+  loaded and granted to the host's connection. `require` loads only these and
+  host-registered loaders such as layouts.
 - **Versioning:** an extension carries the full version of the project that
-  ships it (bsm's `x.y.z`), with the same `since` and handshake rules as
-  Gnoblin. The handshake lists each granted extension and its version.
+  ships it, with the same `since` and handshake rules as Gnoblin.
 
-For the greeter, `hello`, `select_user`, `begin_auth`, `cancel_auth`,
-`auth_response`, `power` and `cancel_operation` become `bsm.greeter` methods.
-Snapshots and prompts become its events. bsm's manager stops running its own
-JSON control socket, and `BSM_CONTROL_SOCKET` goes away.
+Clients need generated code to speak the binary IPC (D16). A client of an
+extension uses that extension's generated code. Which code a Bingux client uses
+depends on when Bingux moves to bingux-ui:
 
-Clients need generated code to speak the binary IPC (D16). Which code depends on
-when Bingux moves to bingux-ui:
-
-- **Bingux on bingux-ui (Rust) by cutover:** the shell and greeter use
-  `gnoblin-client` and the generated `bsm.greeter` Rust crate directly. No QML
-  client is built.
+- **Bingux on bingux-ui (Rust) by cutover:** clients use `gnoblin-client` and
+  the generated Rust code of each extension they use. No QML client is built.
 - **Bingux still on Quickshell at cutover:** Bingux needs a generated
   `Gnoblin.Ipc` QML module, because its shell writes JSON lines to the socket
   from QML today (`shell/bingux/WorkspaceState.qml` in Bingux). The module is
@@ -306,8 +314,11 @@ surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
 - **Handshake:** both sides send their full versions. The compositor accepts a
   client built against version A when its own version B is at least A and
   SemVer-compatible with it, using Cargo's caret rule: the leftmost non-zero
-  part matches. Otherwise it refuses with an error that names both versions. The
-  socket name carries no version.
+  part matches. Otherwise it refuses with an error that names both versions.
+  After the fixed accept frame, the compositor sends a mandatory Grants frame.
+  It lists the connection's capability set and each extension the connection is
+  granted, with that extension's version (Option B). The socket name carries no
+  version.
 - **Breaking changes:** a release that removes or reshapes a released member
   bumps the leftmost non-zero part (0.2.4 to 0.3.0, or 1.4.2 to 2.0.0). The
   compatibility report in CI enforces this.
@@ -329,10 +340,13 @@ Two kinds of interface keep their own versions, because outside tools read them:
 Decided in D4: bsm becomes a Gnoblin. One compositor binary serves both levels:
 
 - **Host:** Gnoblin on the real screen and seat, with a kiosk configuration
-  (full-screen or tiled sessions, the greeter as a client). bsm's manager
-  (session state machine, PAM through `bsm-helper`, logind, greeter control)
-  runs as a privileged client over the IPC, like the script runtime. bsm stays a
-  Bingux project that ships this configuration and manager.
+  written in Lua like any other config: its layout, lock and session objects,
+  and the greeter UI as an ordinary Wayland client. bsm's manager (session state
+  machine, PAM through `bsm-helper`, logind, session launch) is a privileged
+  client of the host, like the script runtime. Its greeter control reaches the
+  host only as an out-of-tree extension that host configuration loads (D21).
+  bsm stays a Bingux project that ships this configuration, the manager and the
+  extension.
 - **Session:** each signed-in user's Gnoblin runs on the nested backend as a
   Wayland client of the host. That user's apps and Bingux are its clients.
 
@@ -402,7 +416,7 @@ gnoblin/
   rust-toolchain.toml         pinned development toolchain
   justfile                    canonical task runner (build, check, parity, docs, package)
   crates/
-    gnoblin/                  the executable: role dispatch (guardian, compositor, runtime, services, greeter)
+    gnoblin/                  the executable: role dispatch (guardian, compositor, runtime, services)
     gnoblin-schema/           object types, properties, methods, signals, errors, `since` versions
     gnoblin-types/            shared primitives: geometry, scale, transform, identity, tick, version, error code
     gnoblin-proto/            wire codec, handshake, capabilities, versioning; client and server traits
@@ -1021,7 +1035,7 @@ failure-mode list that must be complete before isolated tests or code.
 - **Owns:** the typed configuration document, validation, merge, salvage,
   last-good store; the Lua host with instruction and memory limits (the VM
   construction comes from `gnoblin-lua-sandbox`), the
-  `require` loader, generated bindings, `Operation`, timers, `Request`, process
+  `require` loader (host-registered loaders and granted extension namespaces),
   spawn, tweens compiled to native descriptions, input policy handlers with
   deadlines.
 - **Replaces:** `src/config`, `src/config/lua`,
@@ -1545,7 +1559,7 @@ Each section below records the choice, its consequences, and the options conside
 | D1  | Where scripts run            | **Decided:** separate process                                                                                                                                    |
 | D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                                                                 |
 | D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                                                            |
-| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                                                                               |
+| D4  | How bsm hosts sessions       | **Decided** (amended by D21): bsm becomes a Gnoblin; greeter control is an out-of-tree extension                                                                 |
 | D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                                                      |
 | D6  | Native plugins               | **Decided:** WASM modules                                                                                                                                        |
 | D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                 |
@@ -1563,6 +1577,7 @@ Each section below records the choice, its consequences, and the options conside
 | D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                     |
 | D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                  |
 | D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104 |
+| D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                    |
 
 ### D1: where scripts run
 
@@ -1614,6 +1629,8 @@ Consequences:
 ### D4: how bsm hosts sessions
 
 **Decided 2026-11-04: bsm becomes a Gnoblin.** See "Hosting sessions".
+
+**Amended 2026-11-05 by D21:** the host runs a Lua kiosk configuration and the greeter UI as an ordinary client. bsm's manager keeps PAM, logind and session launch. bsm's greeter control is an out-of-tree extension loaded by host configuration, not a Gnoblin feature.
 
 - **bsm becomes a Gnoblin (chosen):** one compositor to maintain; Gnoblin gains
   a nested backend, a session-host protocol and protection covers.
@@ -2551,6 +2568,29 @@ Reported by theme authors, unverified against Mutter's cursor-loader source: the
 - **Implementation-time check (blocking for the svg provider):** read Mutter's cursor loader source (`src/backends/meta-cursor-*.c` and the theme loading code) and record the theme lookup paths and file formats it actually loads. Update this section to match before the `kde-gnome-svg` provider is written.
 - **Docs:** `docs/guides/cursors.md` and `docs/config/configure/cursor.md` describe the shipped behaviour (Xcursor by default, Hyprcursor behind a build flag). D20 changes the default chain, so those pages change when D20 is built. Not edited by this decision.
 - **Verification plan (not run):** a provider test for each of `Miss`, `Failed` and `Found`; a chain test for order and fallback to the arrow; an Xcursor inheritance-cycle test; HiDPI size tests at scale 1, 2 and 3; a corrupt-SVG test; a theme-swap test under load; a panic-injection test for `catch_unwind`.
+
+### D21: bsm greeter is an out-of-tree extension
+
+**Decided 2026-11-05: the stock Gnoblin tree has no bsm or greeter code. bsm's greeter control is an out-of-tree extension, loaded into Gnoblin by host configuration. The extension mechanism stays generic.**
+
+- **Stock tree:** no bsm or greeter schema, role, Lua name or crate. The `greeter` role and `crates/gnoblin-schema/schema/bsm-greeter.toml` are not part of Gnoblin. Docs and test fixtures use neutral names such as `example.login`.
+- **Generic mechanism:** the IPC extensions section above. Host configuration lists each extension (namespace, schema path, provider role, granted restricted sockets). Nothing registers names at run time. The schema is validated at load. A failing load refuses that extension only, and the compositor starts without it.
+- **bsm ships:** the `bsm.greeter` schema, its provider, and the host kiosk configuration. Gnoblin's docs mention bsm's greeter only in this informational note, with no coupling.
+- **Host boundary (D4, unchanged):** the kiosk configuration is Lua. The greeter UI is an ordinary client. bsm's manager owns PAM and logind through `bsm-helper`, and session launch. Lua config code never becomes an auth broker. Gnoblin handles no auth secret beyond the generic `sensitive`-frame redaction.
+- **Grants:** extensions are granted per connection. The handshake's mandatory Grants frame lists them (Option B).
+- **Lua:** `require("<namespace>")` resolves only extension namespaces that are loaded and granted to the host's connection, and host-registered loaders such as layouts.
+
+Failure modes:
+
+| Failure                                              | Outcome                                                                                                   |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Extension schema fails validation at load            | That extension is refused; the compositor starts without it; calls to its namespace fail `not-supported`. |
+| Extension provider disconnects                       | Calls fail `provider-gone` until it reconnects.                                                           |
+| Provider asks for a namespace not in host config     | Refused; no run-time registration.                                                                        |
+| Restricted socket calls a member not in its grants   | Refused by capability.                                                                                    |
+| Provider or Lua asks for PAM, logind or auth secrets | No such member; no secret reaches Lua or Gnoblin's IPC.                                                   |
+| Extension's bsm manager disconnects                  | Greeter cannot authenticate; no session starts; the protection cover stays.                               |
+| A frame carries a `secret` field                     | Flagged `sensitive`; logs and the parity recorder drop the payload without the extension schema.          |
 
 ## Phase 0 checklist
 
