@@ -10,7 +10,7 @@
 //! 2. Claim the slots the plan gives the services role a default for, so the `session`
 //!    object publishes who provides them.
 //! 3. Serve the agents whose bus and bus name are available — the polkit agent on the
-//!    system bus, the gcr prompter on the session bus — reporting a missing or refused
+//!    system bus, and each agent the caller links in — reporting a missing or refused
 //!    one and carrying on. A session with no polkitd still has a compositor.
 //! 4. Pump the privileged connection: offers that arrive for a slot this role provides,
 //!    the answers to its own offers, and the ends of both.
@@ -38,7 +38,7 @@
 //! 2. **An offer arrives for a slot this role provides and cannot draw.** It is claimed and
 //!    declined immediately, so the host is not left waiting:
 //!    `tests::an_offer_the_role_cannot_draw_is_declined_at_once`.
-//! 3. **The polkit bus or the prompter's name is unavailable.** The role logs it and serves
+//! 3. **A linked agent's name or the polkit bus is unavailable.** The role logs it and serves
 //!    what is left, because an agent a session can live without must not end it:
 //!    `tests::a_missing_bus_does_not_end_the_role`.
 
@@ -48,8 +48,6 @@ use std::time::Duration;
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
-use gnoblin_compat_core::Gate;
-use gnoblin_compat_gnome_keyring_prompter::{Names, Offerer as PromptOfferer, PromptService, export, run};
 use gnoblin_model::{RequestCompletion, RequestId, RequestOutcome, Slot, Tick};
 use gnoblin_types::Version;
 use tracing::{info, warn};
@@ -137,7 +135,7 @@ impl Role {
     /// # Errors
     ///
     /// [`RoleError`] for each documented failure mode.
-    pub fn run(self, stop: impl Fn() -> bool) -> Result<(), RoleError> {
+    pub fn run(self, stop: impl Fn() -> bool, linked: Vec<Box<dyn LinkedAgent>>) -> Result<(), RoleError> {
         let mut reporter = Reporter::new(&self.env);
         let stream = inherited_stream(privilege::FD_VARIABLE, &self.env)
             .map_err(RoleError::Connection)?
@@ -167,12 +165,12 @@ impl Role {
         // check its own signals in the same loop.
         host.set_read_timeout(Some(PUMP_TIMEOUT));
 
-        let agents = Agents::start(&host, self.deadline, self.buses);
+        let agents = Agents::start(&host, self.deadline, self.buses, linked);
         reporter.ready(&[]);
         info!(
             slots = ?holding.iter().map(|slot| slot.name()).collect::<Vec<_>>(),
             polkit = agents.polkit.is_some(),
-            prompts = agents.prompter.is_some(),
+            linked = agents.linked.len(),
             "[services] serving"
         );
 
@@ -242,7 +240,7 @@ impl Host {
     }
 
     /// Offer one request on `slot` to whoever provides it.
-    fn offer(&self, slot: &str, title: &str, message: &str, deadline: Tick) -> Result<RequestId, OfferFailure> {
+    pub fn offer(&self, slot: &str, title: &str, message: &str, deadline: Tick) -> Result<RequestId, OfferFailure> {
         // The agent's deadline is what it told the compositor to enforce; the role's own
         // default is the floor, because an agent with no deadline of its own must still
         // get one.
@@ -261,7 +259,7 @@ impl Host {
 
 /// Why an offer could not be made.
 #[derive(Debug)]
-enum OfferFailure {
+pub enum OfferFailure {
     /// Nothing provides the slot.
     NoProvider {
         /// What the compositor said, which names the slot.
@@ -296,46 +294,37 @@ impl crate::Offerer for Host {
     }
 }
 
-impl PromptOfferer for Host {
-    fn offer(
-        &mut self,
-        prompt: &gnoblin_compat_gnome_keyring_prompter::Prompt,
-        deadline: Tick,
-    ) -> Result<RequestId, gnoblin_compat_gnome_keyring_prompter::Unavailable> {
-        match Host::offer(self, PROMPT_SLOT, &prompt.title, &prompt.message, deadline) {
-            Ok(request) => Ok(request),
-            // The adapter's own refusals name the slot, because `prompt.secret` has no
-            // default provider and a prompt nobody draws must fail closed.
-            Err(OfferFailure::NoProvider { .. }) => {
-                Err(gnoblin_compat_gnome_keyring_prompter::Unavailable::NoProvider { slot: PROMPT_SLOT })
-            }
-            Err(OfferFailure::Refused { reason }) => {
-                Err(gnoblin_compat_gnome_keyring_prompter::Unavailable::Bus { reason })
-            }
-        }
-    }
-}
+/// An agent the caller links into the services role.
+///
+/// The role owns the privileged connection and the loop that pumps it. An agent owns one
+/// bus registration and the work that serves it, and offers through the [`Host`] it is
+/// started with. The caller decides which agents a build links, so this crate names none.
+pub trait LinkedAgent {
+    /// Start serving on `host`. Returns `false` when the agent's bus or name is
+    /// unavailable, after logging why: the role serves what is left.
+    fn start(&mut self, host: &Host, deadline: Tick) -> bool;
 
-/// The slot the prompter adapter exists for, as the plan's table names it.
-pub const PROMPT_SLOT: &str = "prompt.secret";
+    /// Report how a request this agent offered ended. Other requests are not its own.
+    fn answer(&self, request: RequestId, outcome: &RequestOutcome);
+}
 
 /// The agents this process is serving, when their buses were available.
 #[derive(Default)]
 struct Agents {
     polkit: Option<(Polkit, Connection)>,
-    prompter: Option<(PromptService, std::thread::JoinHandle<()>)>,
+    linked: Vec<Box<dyn LinkedAgent>>,
 }
 
 impl Agents {
     /// Start each agent whose bus and name are available, reporting the ones that are not.
-    fn start(host: &Host, deadline: Duration, buses: Buses) -> Agents {
+    fn start(host: &Host, deadline: Duration, buses: Buses, linked: Vec<Box<dyn LinkedAgent>>) -> Agents {
         if buses == Buses::None {
             return Agents::default();
         }
         let tick = Tick::new(u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX));
         Agents {
             polkit: start_polkit(host, tick),
-            prompter: start_prompter(host, tick),
+            linked: start_linked(host, tick, linked),
         }
     }
 
@@ -379,10 +368,8 @@ impl Agents {
         {
             tracing::debug!(%error, request = request.get(), "[services] polkit did not own the answer");
         }
-        if let Some((prompter, _)) = &self.prompter
-            && let Err(error) = prompter.answer(request, outcome)
-        {
-            tracing::debug!(%error, request = request.get(), "[services] the prompter did not own the answer");
+        for agent in &self.linked {
+            agent.answer(request, outcome);
         }
     }
 
@@ -416,33 +403,12 @@ fn start_polkit(host: &Host, deadline: Tick) -> Option<(Polkit, Connection)> {
     Some((polkit, connection))
 }
 
-/// The gcr prompter, when the session bus is reachable and both names are free.
-fn start_prompter(host: &Host, deadline: Tick) -> Option<(PromptService, std::thread::JoinHandle<()>)> {
-    let connection = match block_on(Connection::session()) {
-        Ok(connection) => connection,
-        Err(error) => {
-            info!(%error, "[services] no session bus, so no prompt adapter");
-            return None;
-        }
-    };
-    let service = match PromptService::new(host.clone(), Gate::default(), deadline) {
-        Ok(service) => service,
-        Err(error) => {
-            warn!(%error, "[services] the prompt adapter refused its support matrix");
-            return None;
-        }
-    };
-    if let Err(error) = block_on(export(&connection, &service, Names::Both)) {
-        warn!(%error, "[services] the prompt names are unavailable");
-        return None;
-    }
-    let serving = service.clone();
-    let handle = std::thread::Builder::new()
-        .name("gnoblin-prompter".to_owned())
-        .spawn(move || block_on(run(connection, serving)))
-        .map_err(|error| warn!(%error, "[services] the prompt loop could not be started"))
-        .ok()?;
-    Some((service, handle))
+/// Start each linked agent, keeping the ones whose bus and name were available.
+fn start_linked(host: &Host, deadline: Tick, linked: Vec<Box<dyn LinkedAgent>>) -> Vec<Box<dyn LinkedAgent>> {
+    linked
+        .into_iter()
+        .filter_map(|mut agent| agent.start(host, deadline).then_some(agent))
+        .collect()
 }
 
 /// The IPC version this build advertises, from the schema both sides are built from.

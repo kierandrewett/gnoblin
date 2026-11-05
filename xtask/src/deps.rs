@@ -115,10 +115,11 @@ const SESSION_BINARY: &str = "gnoblin";
 
 /// The processes that link the compat adapters.
 ///
-/// The session binary serves them, and so does the services role: design/rust-compositor.md's
-/// process table puts "passphrase prompts (`prompt.secret`)" in `gnoblin --role services`, so
-/// the prompter adapter is that role's to serve. Nothing else may name one.
-const COMPAT_HOSTS: &[&str] = &["gnoblin", "gnoblin-services"];
+/// Only the session binary links them: it is the composition root that hands the services
+/// role its linked agents, such as the gcr prompter. The services role itself names no
+/// adapter, so a library or role crate that did would leak one into a process that does not
+/// serve it. Nothing else may name one.
+const COMPAT_HOSTS: &[&str] = &["gnoblin"];
 
 /// What the session binary itself may depend on.
 ///

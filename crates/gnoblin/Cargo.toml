@@ -25,6 +25,13 @@ gnoblin-session = { path = "../gnoblin-session" }
 gnoblin-lua = { path = "../gnoblin-lua" }
 # The services role: the D-Bus agents as their own process.
 gnoblin-services = { path = "../gnoblin-services" }
+# The gcr passphrase prompter is the one compat adapter the services role serves. Only
+# this binary links compat crates; see `xtask/src/deps.rs`.
+gnoblin-compat-gnome-keyring-prompter = { path = "../compat/gnoblin-compat-gnome-keyring-prompter" }
+gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
+zbus.workspace = true
+futures-lite.workspace = true
+tracing.workspace = true
 # The role flag. One flag with a documented default, and `--version`.
 clap.workspace = true
 

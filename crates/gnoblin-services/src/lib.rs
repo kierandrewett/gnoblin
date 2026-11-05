@@ -72,6 +72,7 @@ pub mod slot;
 pub mod subject;
 
 pub use agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Proposition, Refusal};
+pub use gnoblin_model::{RequestId, RequestOutcome, Tick};
 pub use polkit::Polkit;
-pub use role::{Buses, Host, Role, RoleError};
+pub use role::{Buses, Host, LinkedAgent, OfferFailure, Role, RoleError};
 pub use slot::{ClaimError, Provider, Slot, Slots, UnknownSlot};

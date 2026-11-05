@@ -51,6 +51,7 @@
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
+mod gcr;
 mod role;
 
 use std::process::ExitCode;
@@ -170,7 +171,8 @@ fn runtime() -> Result<(), Exit> {
 
 /// Runs the services role: the D-Bus agents, until the session ends.
 fn services() -> Result<(), Exit> {
-    match gnoblin_services::Role::from_environment().run(never_stopped) {
+    let linked: Vec<Box<dyn gnoblin_services::LinkedAgent>> = vec![Box::new(gcr::Prompter::new())];
+    match gnoblin_services::Role::from_environment().run(never_stopped, linked) {
         Ok(()) => Ok(()),
         Err(error) => {
             eprintln!("gnoblin: services: {error}");

@@ -107,7 +107,7 @@ impl Running {
         };
         let thread = std::thread::Builder::new()
             .name("services-role".to_owned())
-            .spawn(move || role.run(move || flag.load(Ordering::SeqCst)))
+            .spawn(move || role.run(move || flag.load(Ordering::SeqCst), Vec::new()))
             .expect("the role thread");
         Running {
             stop,
@@ -157,7 +157,7 @@ fn the_role_refuses_without_a_privileged_connection() {
         deadline: std::time::Duration::from_secs(1),
         buses: Buses::None,
     };
-    let error = role.run(|| true).expect_err("no connection");
+    let error = role.run(|| true, Vec::new()).expect_err("no connection");
     let message = error.to_string();
     assert!(message.contains("GNOBLIN_IPC_FD"), "{message}");
 }
