@@ -917,7 +917,7 @@ flowchart TB
 | P    | `gnoblin-testkit`, `gnoblin-parity`, `tests/parity`                           | F workspace                                | 0         |
 | OBJ  | `gnoblin-model`, `gnoblin-client`, `gnoblinctl`                               | F schema and proto                         | 1         |
 | CFG  | `gnoblin-config`, `gnoblin-lua`                                               | F schema                                   | 1         |
-| SVC  | `gnoblin-session`, `gnoblin-services`, portal                                 | OBJ client                                 | 1         |
+| SVC  | `gnoblin-session`, `gnoblin-services`, portal relay                           | OBJ client                                 | 1         |
 | WM   | `gnoblin-wm`                                                                  | F schema                                   | 1         |
 | SEC  | `gnoblin-lock`, `gnoblin-authority`                                           | failure-mode lists                         | 1         |
 | ENG  | `gnoblin-wayland`, `gnoblin-xwayland`                                         | F workspace                                | 2         |
@@ -1121,16 +1121,16 @@ failure-mode list that must be complete before isolated tests or code.
 
 - **Owns:** the guardian, autostart, logind and systemd integration, the
   built-in providers (see "Optional components and compatibility"), ScreenSaver
-  and idle names, inhibit, portal negotiation and process providers (D19).
+  and idle names, inhibit. Portal negotiation is in the compositor, not here (D19).
 - **Extension providers (D22):** supervises out-of-process extension providers:
   start, restart policy, restricted socket and process-group kill on overrun.
   The failure modes are in D22. Tests use a fake provider binary.
 - **Portal relay:** `xdg-desktop-portal-gnoblin` is an optional package that
   serves the `org.freedesktop.impl.portal.*` names and speaks `portal-call` to
-  services. Nothing depends on it. Removing it makes `xdg-desktop-portal` fall
+  the compositor. Nothing depends on it. Removing it makes `xdg-desktop-portal` fall
   through to `gtk`, then `kde`, with no config change (D19, "Removability").
 - **UI:** the relay has no UI dependency. The built-in egui UI is in the
-  compositor (the `portal` module of `gnoblin-diag` holds the models, D19).
+  compositor: `gnoblin-diag::portal` holds the dialog models and `gnoblin-compositor::portal` the negotiation (D19).
 - **Replaces:** `src/session`, `src/agents`, `src/idle.c`, `src/portal`,
   `subprojects/xdg-desktop-portal-gnome` and its patches.
 - **Keeps:** `org.freedesktop.ScreenSaver`, `org.gnome.ScreenSaver` forwarding,
@@ -1159,7 +1159,7 @@ failure-mode list that must be complete before isolated tests or code.
 - **Replaces:** the negotiation half of the original portal UI crate (D19).
 - **Depends on:** `gnoblin-diag::portal` (payload and result types), `gnoblin-types`
   and `gnoblin-schema`.
-- **Used by:** the compositor's `portal-ui` IPC path. Nothing depends on
+- **Used by:** the compositor's `portal-call` handler. Nothing depends on
   `xdg-desktop-portal-gnoblin`.
 - **Why core and not the portal process:** D19 keeps the relay thin and
   removable (see "Removability"). Negotiation needs the config, the built-in UI
@@ -2335,9 +2335,9 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 
 #### Layers
 
-- **`xdg-desktop-portal-gnoblin` (relay, optional):** owns the D-Bus names and the per-request `Request` and `Session` object paths, validates the call shape, forwards each call as one typed IPC message (`portal-call`) to the services role, and returns the reply. It has no policy and no UI, and holds no state beyond open calls.
-- **Negotiation (`gnoblin-services`, role services):** resolves the provider for the interface, runs it under a deadline, validates its reply, applies the fallback, and returns one outcome to the relay. The services role already owns prompts and is restartable, so it is the place for process supervision.
-- **Built-in UI (compositor):** the `portal` module of `gnoblin-diag` holds the per-interface payload and result types and the dialog state. The `portal` module of `gnoblin-compositor` holds the negotiation, queue, reply validation and outcome rules. `gnoblin-diag` draws the dialogs with egui in the compositor process. The services role reaches the built-in UI through the `portal-ui` IPC request.
+- **`xdg-desktop-portal-gnoblin` (relay, optional):** owns the D-Bus names and the per-request `Request` and `Session` object paths, validates the call shape, forwards each call as one typed IPC message (`portal-call`) to the compositor's `portal` module, and returns the reply. It has no policy and no UI, and holds no state beyond open calls.
+- **Negotiation (`gnoblin-compositor::portal`):** resolves the provider for the interface, runs it under a deadline, validates its reply, applies the fallback, and returns one outcome to the relay. It starts process providers itself (rules below) and calls the built-in UI in-process. It depends on `gnoblin-diag::portal` for types only.
+- **Built-in UI (compositor):** the `portal` module of `gnoblin-diag` holds the per-interface payload and result types and the dialog state. The `portal` module of `gnoblin-compositor` holds the queue, reply validation and outcome rules. `gnoblin-diag` draws the dialogs with egui in the compositor process. A `portal.ui` claimant is reached over its IPC claim.
 - **Core without the relay:** negotiation, the built-in UI and the config live in core and keep working when the relay is absent. They have no portal caller then, and nothing else changes (see "Removability").
 
 #### Handler rule
@@ -2352,7 +2352,7 @@ Unset means the provider is chosen per request: a `portal.ui` claimant if one ex
 
 #### Negotiation per request
 
-1. Assign a gnoblin `request_id` (unique per boot, from services). It is carried to the provider in every message and to the built-in UI. Late replies are matched on it.
+1. Assign a gnoblin `request_id` (unique per boot, from `gnoblin-compositor::portal`). It is carried to the provider in every message and to the built-in UI. Late replies are matched on it.
 2. Resolve the provider for `(interface, request)`: the configured one, or the default when unset.
 3. Call it with the typed request and the deadline. A provider returns exactly one terminal outcome, `handled(result)`, `cancelled`, `declined` or `error`, and its reply is validated against the safety rules.
 4. Fall back to `"builtin"` only in these cases:
@@ -2438,7 +2438,7 @@ These apply to the built-in UI and to any provider reply that grants capture, in
 
 #### Provider process protocol
 
-A process provider (`command = {...}`) is started by the services role for one request:
+A process provider (`command = {...}`) is started by `gnoblin-compositor::portal` for one request:
 
 - **argv:** exactly the configured `command` list. No shell. Fixed working directory (`$HOME`). Fixed environment (`PATH`, `HOME`, the session's `XDG_*`, and `GNOBLIN_PORTAL_INTERFACE` set to the interface name). No request data goes in argv or environment.
 - **stdin:** one length-prefixed Protocol Buffers `portal-ui` request (`gnoblin-schema`, D16), carrying `request_id`, then EOF.
@@ -2464,12 +2464,12 @@ Recommendation (not decided): B if Kieran accepts owning the crypto, otherwise A
 
 All messages are Protocol Buffers (D16), versioned with the IPC schema (D3).
 
-- **`portal-call`** (relay to services): `request_id` (opaque, chosen by the relay), `interface`, `method`, `options` (typed per interface; the relay validates the D-Bus shape), `caller_pid` (from the bus credentials, never from the body). Reply: `portal-call-reply`.
-- **`portal-cancel`** (relay to services): `request_id`. Sent when the D-Bus caller disconnects or closes the `Request` object.
+- **`portal-call`** (relay to compositor): `request_id` (opaque, chosen by the relay), `interface`, `method`, `options` (typed per interface; the relay validates the D-Bus shape), `caller_pid` (from the bus credentials, never from the body). Reply: `portal-call-reply`.
+- **`portal-cancel`** (relay to compositor): `request_id`. Sent when the D-Bus caller disconnects or closes the `Request` object.
 - **`portal-call-reply`**: `request_id` and one outcome: `handled { result }`; `cancelled { reason }`, `reason` one of `user`, `timeout`, `ui-failed`, `requester-gone`; or `error { code, message }`, `code` one of `no-ui`, `locked`, `busy`, `provider-failed`, `not-supported`, `unknown-app`. A `declined` provider outcome is never sent to the caller; it triggers the built-in fallback.
-- **`portal-ui`** (services to compositor, built-in UI): `request_id`, `interface`, `method`, `app_id` (set by services from attribution), `deadline_ms`, and `payload`, a typed union with one variant per interface: FileChooser `{mode, title, multiple, directories, filters, current_filter, current_folder, current_name, choices}`; AppChooser `{content_type, last_choice, filter_text}`; Print `{title, printers, copies, pages}`; Account `{reason, name, avatar_uri}`; Wallpaper `{uri, options}`; Background `{reason, autostart_requested}`; DynamicLauncher `{name, icon, desktop_file_id}`; ScreenCast `{source_types, cursor_mode, multiple}`; RemoteDesktop `{device_types}`; InputCapture `{capabilities}`; Screenshot `{interactive}`; PickColor `{}`; Secret `{app_id, purpose}`. Reply: `portal-ui-response`, the same outcome shape as `portal-call-reply`, with `result` typed per interface.
+- **`portal-ui`** (negotiation to the built-in UI or a `portal.ui` claimant): `request_id`, `interface`, `method`, `app_id` (set by the compositor from attribution), `deadline_ms`, and `payload`, a typed union with one variant per interface: FileChooser `{mode, title, multiple, directories, filters, current_filter, current_folder, current_name, choices}`; AppChooser `{content_type, last_choice, filter_text}`; Print `{title, printers, copies, pages}`; Account `{reason, name, avatar_uri}`; Wallpaper `{uri, options}`; Background `{reason, autostart_requested}`; DynamicLauncher `{name, icon, desktop_file_id}`; ScreenCast `{source_types, cursor_mode, multiple}`; RemoteDesktop `{device_types}`; InputCapture `{capabilities}`; Screenshot `{interactive}`; PickColor `{}`; Secret `{app_id, purpose}`. Reply: `portal-ui-response`, the same outcome shape as `portal-call-reply`, with `result` typed per interface.
 - **`portal-provider-reply`** (process stdout, and the shell claim): the `portal-ui-response` shape, validated by the safety rules above.
-- **Reply validator:** `gnoblin-schema` provides `validate_reply(request, reply)`. It is pure and used by both services and the compositor, so the rules are checked in one place.
+- **Reply validator:** `gnoblin-schema` provides `validate_reply(request, reply)`. It is pure and used by `gnoblin-compositor::portal`, so the rules are checked in one place.
 - **Extensions:** `gnoblin-schema` holds the core schema and the generic extension loader only: namespace, member table, and the load-time validation rules. It has no per-extension types. An extension's schema file is read at load (D21).
 
 #### Failure modes
@@ -2490,7 +2490,7 @@ All messages are Protocol Buffers (D16), versioned with the IPC schema (D3).
 | Second request while one is open                                                              | Queued (first in first out, eight total, two per app id); shown when the first closes. Queue full: `error { busy }`                                                            |
 | Headless or no GPU renderer                                                                   | Built-in unavailable: `error { no-ui }`, unless a provider handles the request. Consent is refused, with the missing renderer named                                            |
 | Named shell provider not connected                                                            | Absent provider: fall back to built-in                                                                                                                                         |
-| Services role down                                                                            | Portal calls fail with `error { not-supported }` until services returns (services is restartable, D4)                                                                          |
+| Services role down                                                                            | Requests for services-hosted providers fail with `error { not-supported }` until services returns (services is restartable, D4); compositor-hosted requests are unaffected     |
 | Secret store undecided                                                                        | Secret falls through to the next backend (option C)                                                                                                                            |
 | Unknown `app_id` (no compositor attribution)                                                  | `error { unknown-app }`; no dialog                                                                                                                                             |
 | Relay binary removed                                                                          | `xdg-desktop-portal` uses the next backend in `portals.conf` (`gtk`, then `kde`). Verified as in "Removability"                                                                |
