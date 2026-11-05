@@ -1,3 +1,5 @@
+//! XML protocol `single_pixel_buffer_v1` (`<protocol name="single_pixel_buffer_v1">`); interfaces served: `wp_single_pixel_buffer_manager_v1`.
+//!
 //! `wp_single_pixel_buffer_manager_v1`: a buffer that costs one pixel.
 //!
 //! A client that wants a solid-colour surface — a background, a cover, a cursor-sized

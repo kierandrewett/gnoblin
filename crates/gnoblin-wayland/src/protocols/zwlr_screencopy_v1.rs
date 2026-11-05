@@ -1,3 +1,5 @@
+//! XML protocol `wlr_screencopy_unstable_v1` (`<protocol name="wlr_screencopy_unstable_v1">`); interfaces served: `zwlr_screencopy_manager_v1`.
+//!
 //! `zwlr_screencopy_manager_v1` and the `zwlr_screencopy_frame_v1` objects it creates.
 //!
 //! The older wlroots screencopy protocol: a frame is created for an output or a region,
@@ -31,18 +33,18 @@ use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
 
 /// The `zwlr_screencopy_manager_v1` global's data.
-pub(super) struct ScreencopyGlobal {
+pub(super) struct ZwlrScreencopyV1Global {
     /// The session's roster, which answers whether a connection may bind it.
     pub(super) access: Arc<Access>,
 }
 
-impl std::fmt::Debug for ScreencopyGlobal {
+impl std::fmt::Debug for ZwlrScreencopyV1Global {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("ScreencopyGlobal").finish_non_exhaustive()
+        formatter.debug_struct("ZwlrScreencopyV1Global").finish_non_exhaustive()
     }
 }
 
-impl GlobalDispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyGlobal {
+impl GlobalDispatch2<ZwlrScreencopyManagerV1, State> for ZwlrScreencopyV1Global {
     fn bind(
         &self,
         _state: &mut State,
@@ -51,7 +53,7 @@ impl GlobalDispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyGlobal {
         resource: New<ZwlrScreencopyManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        data_init.init(resource, ScreencopyManager);
+        data_init.init(resource, ZwlrScreencopyV1ScreencopyManager);
     }
 
     fn can_view(&self, client: &Client) -> bool {
@@ -61,9 +63,9 @@ impl GlobalDispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyGlobal {
 
 /// The manager carries no state of its own: every frame it creates does.
 #[derive(Debug)]
-struct ScreencopyManager;
+struct ZwlrScreencopyV1ScreencopyManager;
 
-impl Dispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyManager {
+impl Dispatch2<ZwlrScreencopyManagerV1, State> for ZwlrScreencopyV1ScreencopyManager {
     fn request(
         &self,
         state: &mut State,
@@ -110,7 +112,7 @@ impl Dispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyManager {
 
 /// One `zwlr_screencopy_frame_v1` object.
 #[derive(Debug)]
-struct ScreencopyFrame {
+struct ZwlrScreencopyV1ScreencopyFrame {
     /// The connection that created it, so its session has an owner.
     owner: ClientId,
     /// The output it captures.
@@ -123,7 +125,7 @@ struct ScreencopyFrame {
     used: AtomicBool,
 }
 
-impl Dispatch2<ZwlrScreencopyFrameV1, State> for ScreencopyFrame {
+impl Dispatch2<ZwlrScreencopyFrameV1, State> for ZwlrScreencopyV1ScreencopyFrame {
     fn request(
         &self,
         state: &mut State,
@@ -146,7 +148,7 @@ impl Dispatch2<ZwlrScreencopyFrameV1, State> for ScreencopyFrame {
     }
 }
 
-impl ScreencopyFrame {
+impl ZwlrScreencopyV1ScreencopyFrame {
     /// Answers a copy request.
     ///
     /// One object is one copy: a second request is the protocol's `already_used` error,
@@ -248,7 +250,7 @@ fn create_screencopy_frame(
     if refused || region.is_none() {
         let resource = data_init.init(
             frame,
-            ScreencopyFrame {
+            ZwlrScreencopyV1ScreencopyFrame {
                 owner,
                 output: output.unwrap_or_default(),
                 region: Rect::EMPTY,
@@ -266,7 +268,7 @@ fn create_screencopy_frame(
     let Some(format) = Format::new(region.size(), region.width.saturating_mul(4), PixelFormat::Argb8888) else {
         let resource = data_init.init(
             frame,
-            ScreencopyFrame {
+            ZwlrScreencopyV1ScreencopyFrame {
                 owner,
                 output,
                 region,
@@ -280,7 +282,7 @@ fn create_screencopy_frame(
     };
     let resource = data_init.init(
         frame,
-        ScreencopyFrame {
+        ZwlrScreencopyV1ScreencopyFrame {
             owner,
             output,
             region,

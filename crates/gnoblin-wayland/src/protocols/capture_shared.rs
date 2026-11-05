@@ -82,7 +82,7 @@ use gnoblin_capture::{
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
 
-use super::zwlr_screencopy_manager_v1::ScreencopyGlobal;
+use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
 
@@ -213,7 +213,7 @@ impl CaptureTables {
         let image_copy_global = image_copy.global();
         let screencopy_global = display.create_global::<State, ZwlrScreencopyManagerV1, _>(
             3,
-            ScreencopyGlobal {
+            ZwlrScreencopyV1Global {
                 access: Arc::clone(access),
             },
         );

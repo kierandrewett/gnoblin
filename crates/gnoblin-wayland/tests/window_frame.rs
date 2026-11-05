@@ -13,7 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_types::{Rect, WindowId};
-use gnoblin_wayland::{ClientRole, FrameAction};
+use gnoblin_wayland::{ClientRole, GnoblinWindowFrameV1Action};
 use owned::protocols::gnoblin_window_frame_v1::gnoblin_window_frame_manager_v1;
 use owned::protocols::gnoblin_window_frame_v1::gnoblin_window_frame_v1;
 use owned::{Connected, Handle, Session, TIMEOUT};
@@ -318,7 +318,7 @@ fn a_mapped_window_is_offered_a_frame_and_presents_it() {
                 .expect("the window has a frame");
             if frame.presented {
                 assert_eq!(frame.regions.len(), 1);
-                assert_eq!(frame.regions[0].action, FrameAction::Close);
+                assert_eq!(frame.regions[0].action, GnoblinWindowFrameV1Action::Close);
                 assert_eq!(frame.serial, configure.serial);
                 break;
             }

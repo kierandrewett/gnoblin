@@ -1,3 +1,5 @@
+//! XML protocol `idle_inhibit_unstable_v1` (`<protocol name="idle_inhibit_unstable_v1">`); interfaces served: `zwp_idle_inhibit_manager_v1`.
+//!
 //! `zwp_idle_inhibit_manager_v1`: a client asks that the session never idle.
 //!
 //! A video player and a presentation tool both need it: the screen must not blank while

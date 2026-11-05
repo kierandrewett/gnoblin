@@ -1,3 +1,5 @@
+//! XML protocol `wlr_data_control_unstable_v1` (`<protocol name="wlr_data_control_unstable_v1">`); interfaces served: `zwlr_data_control_manager_v1`.
+//!
 //! `zwlr_data_control_manager_v1` and `zwlr_data_control_device_v1` (XML
 //! `wlr-data-control-unstable-v1`).
 //!

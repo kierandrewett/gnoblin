@@ -1,3 +1,5 @@
+//! XML protocol `wlr_gamma_control_unstable_v1` (`<protocol name="wlr_gamma_control_unstable_v1">`); interfaces served: `zwlr_gamma_control_manager_v1`.
+//!
 //! `zwlr_gamma_control_manager_v1` (version 1): a client loads colour ramps onto an output.
 //!
 //! Night-light and colour-calibration tools use the wlroots protocol. A client asks for
@@ -67,30 +69,30 @@ pub const MANAGER_VERSION: u32 = 1;
 /// The access roster is captured in the global's data, so the answer to "may this
 /// connection bind it" is the same answer the other privileged globals give.
 pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ZwlrGammaControlManagerV1, ManagerGlobalData>(
+    display_handle.create_global::<State, ZwlrGammaControlManagerV1, ZwlrGammaControlV1ManagerGlobalData>(
         MANAGER_VERSION,
-        ManagerGlobalData {
+        ZwlrGammaControlV1ManagerGlobalData {
             access: Arc::clone(access),
         },
     )
 }
 
 /// The global data of the manager: who may bind it.
-pub(crate) struct ManagerGlobalData {
+pub(crate) struct ZwlrGammaControlV1ManagerGlobalData {
     /// The roster that answers which connection may.
     access: Arc<Access>,
 }
 
 /// The user data of a bound manager object.
-pub(crate) struct ManagerUserData;
+pub(crate) struct ZwlrGammaControlV1ManagerUserData;
 
 /// The user data of one gamma control object.
-pub(crate) struct ControlUserData {
+pub(crate) struct ZwlrGammaControlV1ControlUserData {
     /// The output the object holds, or [`None`] when the object was answered `failed`.
     output: Option<OutputId>,
 }
 
-impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ManagerGlobalData {
+impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1ManagerGlobalData {
     fn bind(
         &self,
         _state: &mut State,
@@ -99,7 +101,7 @@ impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ManagerGlobalData {
         resource: New<ZwlrGammaControlManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        data_init.init(resource, ManagerUserData);
+        data_init.init(resource, ZwlrGammaControlV1ManagerUserData);
         debug!(client = ?client.id(), "[gamma] a client bound the gamma control manager");
     }
 
@@ -108,7 +110,7 @@ impl GlobalDispatch2<ZwlrGammaControlManagerV1, State> for ManagerGlobalData {
     }
 }
 
-impl Dispatch2<ZwlrGammaControlManagerV1, State> for ManagerUserData {
+impl Dispatch2<ZwlrGammaControlManagerV1, State> for ZwlrGammaControlV1ManagerUserData {
     fn request(
         &self,
         state: &mut State,
@@ -125,13 +127,13 @@ impl Dispatch2<ZwlrGammaControlManagerV1, State> for ManagerUserData {
                     output.and_then(|output| state.output_controls.gamma_size(output).map(|size| (output, size)));
                 match size {
                     Some((output, size)) if state.output_controls.gamma_free(output) => {
-                        let object = data_init.init(id, ControlUserData { output: Some(output) });
+                        let object = data_init.init(id, ZwlrGammaControlV1ControlUserData { output: Some(output) });
                         state.output_controls.hold_gamma(output, object.clone());
                         object.gamma_size(size);
                         debug!(output = %output, size, "[gamma] a client took gamma control");
                     }
                     _ => {
-                        let object = data_init.init(id, ControlUserData { output: None });
+                        let object = data_init.init(id, ZwlrGammaControlV1ControlUserData { output: None });
                         object.failed();
                         debug!("[gamma] gamma control was refused: no such output, no support, or already held");
                     }
@@ -143,7 +145,7 @@ impl Dispatch2<ZwlrGammaControlManagerV1, State> for ManagerUserData {
     }
 }
 
-impl Dispatch2<ZwlrGammaControlV1, State> for ControlUserData {
+impl Dispatch2<ZwlrGammaControlV1, State> for ZwlrGammaControlV1ControlUserData {
     fn request(
         &self,
         state: &mut State,
@@ -167,15 +169,15 @@ impl Dispatch2<ZwlrGammaControlV1, State> for ControlUserData {
                 };
                 match read_ramp(File::from(fd), size) {
                     Ok(tables) => state.output_controls.queue_gamma(output, tables),
-                    Err(RampError::Read(error)) => {
+                    Err(ZwlrGammaControlV1RampError::Read(error)) => {
                         warn!(%error, "[gamma] the ramp descriptor could not be read");
                         object.failed();
                     }
-                    Err(RampError::Short) => {
+                    Err(ZwlrGammaControlV1RampError::Short) => {
                         warn!("[gamma] the ramp descriptor was shorter than the table");
                         object.failed();
                     }
-                    Err(RampError::Long) => {
+                    Err(ZwlrGammaControlV1RampError::Long) => {
                         object.post_error(
                             control::Error::InvalidGamma,
                             "the gamma ramp is longer than three tables of the output's gamma size",
@@ -194,7 +196,7 @@ impl Dispatch2<ZwlrGammaControlV1, State> for ControlUserData {
 }
 
 /// Why a ramp could not be read from its descriptor.
-enum RampError {
+enum ZwlrGammaControlV1RampError {
     /// The descriptor could not be read.
     Read(std::io::Error),
     /// The descriptor held fewer bytes than three tables.
@@ -207,16 +209,16 @@ enum RampError {
 ///
 /// Reads one byte past the expected length, so an oversized ramp is told apart from a
 /// correct one without reading the whole of an unbounded descriptor.
-fn read_ramp(file: File, size: u32) -> Result<[Vec<u16>; 3], RampError> {
+fn read_ramp(file: File, size: u32) -> Result<[Vec<u16>; 3], ZwlrGammaControlV1RampError> {
     let table = usize::try_from(size).unwrap_or(usize::MAX);
     let expected = table.saturating_mul(3).saturating_mul(2);
     let mut bytes = Vec::with_capacity(expected.saturating_add(1));
     file.take(u64::try_from(expected).unwrap_or(u64::MAX).saturating_add(1))
         .read_to_end(&mut bytes)
-        .map_err(RampError::Read)?;
+        .map_err(ZwlrGammaControlV1RampError::Read)?;
     match bytes.len().cmp(&expected) {
-        std::cmp::Ordering::Less => Err(RampError::Short),
-        std::cmp::Ordering::Greater => Err(RampError::Long),
+        std::cmp::Ordering::Less => Err(ZwlrGammaControlV1RampError::Short),
+        std::cmp::Ordering::Greater => Err(ZwlrGammaControlV1RampError::Long),
         std::cmp::Ordering::Equal => {
             let values: Vec<u16> = bytes
                 .as_chunks::<2>()

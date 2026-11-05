@@ -1,3 +1,5 @@
+//! XML protocol `wayland` (`<protocol name="wayland">`); interfaces served: `wl_output`.
+//!
 //! `wl_output`.
 //!
 //! The globals are created by [`crate::State`] when the output layout places an

@@ -1,7 +1,7 @@
 //! `zwlr_gamma_control_manager_v1` and `zwlr_output_power_manager_v1` against a real client.
 //!
 //! The scenarios are the failure modes listed at the top of
-//! `src/protocols/zwlr_gamma_control_v1.rs` and `src/protocols/zwlr_output_power_v1.rs`.
+//! `src/protocols/zwlr_gamma_control_v1.rs` and `src/protocols/zwlr_output_power_management_v1.rs`.
 //! The headless backend records what the host applied, so each test checks the
 //! output's state through [`HeadlessHandle`](gnoblin_backend::headless::HeadlessHandle)
 //! rather than trusting what the client was told.

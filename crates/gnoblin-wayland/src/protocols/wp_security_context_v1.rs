@@ -1,3 +1,5 @@
+//! XML protocol `security_context_v1` (`<protocol name="security_context_v1">`); interfaces served: `wp_security_context_v1`.
+//!
 //! `wp_security_context_v1`: application sandboxes.
 //!
 //! A sandboxed application does not get a separate socket with a policy in it: it asks

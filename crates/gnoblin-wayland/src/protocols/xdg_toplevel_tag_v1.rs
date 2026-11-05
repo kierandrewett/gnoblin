@@ -1,3 +1,5 @@
+//! XML protocol `xdg_toplevel_tag_v1` (`<protocol name="xdg_toplevel_tag_v1">`); interfaces served: `xdg_toplevel_tag_manager_v1`.
+//!
 //! `xdg_toplevel_tag_manager_v1`: a client names a toplevel with a tag and a description.
 //!
 //! A tag identifies what kind of window a toplevel is ("main", "settings"), so a shell can

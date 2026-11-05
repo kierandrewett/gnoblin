@@ -1,3 +1,5 @@
+//! XML protocol `gnoblin_blur_fade_v1` (`<protocol name="gnoblin_blur_fade_v1">`); interfaces served: `gnoblin_blur_fade_v1`.
+//!
 //! `gnoblin_blur_fade_v1`: animation opacity kept apart from glass alpha.
 //!
 //! A client that fades items inside its own surface (a list scrolling away, a
@@ -73,7 +75,7 @@ const MAX_OPACITY: i32 = 256;
 
 /// One faded item of a surface, in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Fade {
+pub struct GnoblinBlurFadeV1Fade {
     /// The item's left edge.
     pub x: f32,
     /// The item's top edge.
@@ -92,15 +94,15 @@ pub struct Fade {
 /// surface is: a client that disconnects leaves no entry behind and no lookup
 /// can return another surface's records.
 #[derive(Default)]
-struct FadeState {
+struct GnoblinBlurFadeV1FadeState {
     /// What the next commit applies, if the client sent anything since the last
     /// one.
-    pending: Mutex<Option<Vec<Fade>>>,
+    pending: Mutex<Option<Vec<GnoblinBlurFadeV1Fade>>>,
     /// What the surface committed, in the order it committed it.
-    committed: Mutex<Option<Vec<Fade>>>,
+    committed: Mutex<Option<Vec<GnoblinBlurFadeV1Fade>>>,
 }
 
-impl FadeState {
+impl GnoblinBlurFadeV1FadeState {
     /// The lock, or the value behind a poisoned one.
     ///
     /// A poisoned lock means this module panicked while holding it, which can
@@ -117,16 +119,16 @@ impl FadeState {
 /// Every client of the session socket may bind it: the metadata describes the
 /// client's own surface, so it grants nothing over another client.
 pub(crate) fn global(display_handle: &DisplayHandle) -> GlobalId {
-    display_handle.create_global::<State, GnoblinBlurFadeManagerV1, FadeGlobal>(
+    display_handle.create_global::<State, GnoblinBlurFadeManagerV1, GnoblinBlurFadeV1FadeGlobal>(
         manager::GnoblinBlurFadeManagerV1::interface().version,
-        FadeGlobal,
+        GnoblinBlurFadeV1FadeGlobal,
     )
 }
 
 /// The manager global's data, which decides nothing: the roster is not asked.
-struct FadeGlobal;
+struct GnoblinBlurFadeV1FadeGlobal;
 
-impl GlobalDispatch2<GnoblinBlurFadeManagerV1, State> for FadeGlobal {
+impl GlobalDispatch2<GnoblinBlurFadeManagerV1, State> for GnoblinBlurFadeV1FadeGlobal {
     fn bind(
         &self,
         _state: &mut State,
@@ -135,14 +137,14 @@ impl GlobalDispatch2<GnoblinBlurFadeManagerV1, State> for FadeGlobal {
         resource: New<GnoblinBlurFadeManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        data_init.init(resource, ManagerObject);
+        data_init.init(resource, GnoblinBlurFadeV1ManagerObject);
     }
 }
 
 /// The user data of a bound manager.
-struct ManagerObject;
+struct GnoblinBlurFadeV1ManagerObject;
 
-impl Dispatch2<GnoblinBlurFadeManagerV1, State> for ManagerObject {
+impl Dispatch2<GnoblinBlurFadeManagerV1, State> for GnoblinBlurFadeV1ManagerObject {
     fn request(
         &self,
         _state: &mut State,
@@ -157,8 +159,8 @@ impl Dispatch2<GnoblinBlurFadeManagerV1, State> for ManagerObject {
             manager::Request::SetFades { surface, fades } => match parse(&fades) {
                 Some(fades) => {
                     with_states(&surface, |states| {
-                        let state = states.data_map.get_or_insert(FadeState::default);
-                        *FadeState::lock(&state.pending) = Some(fades);
+                        let state = states.data_map.get_or_insert(GnoblinBlurFadeV1FadeState::default);
+                        *GnoblinBlurFadeV1FadeState::lock(&state.pending) = Some(fades);
                     });
                 }
                 None => resource.post_error(
@@ -175,7 +177,7 @@ impl Dispatch2<GnoblinBlurFadeManagerV1, State> for ManagerObject {
 /// The rules are the C compositor's, value for value: a whole number of records,
 /// at most 32 of them, every coordinate and size inside the 24.8 range, a
 /// non-negative width and height and an opacity from zero to one.
-fn parse(array: &[u8]) -> Option<Vec<Fade>> {
+fn parse(array: &[u8]) -> Option<Vec<GnoblinBlurFadeV1Fade>> {
     let record = RECORD_VALUES * std::mem::size_of::<i32>();
     if !array.len().is_multiple_of(record) || array.len() > MAX_FADES * record {
         return None;
@@ -196,7 +198,7 @@ fn parse(array: &[u8]) -> Option<Vec<Fade>> {
         if width < 0 || height < 0 || !(0..=MAX_OPACITY).contains(&opacity) {
             return None;
         }
-        fades.push(Fade {
+        fades.push(GnoblinBlurFadeV1Fade {
             x: x as f32 / FIXED_SCALE,
             y: y as f32 / FIXED_SCALE,
             width: width as f32 / FIXED_SCALE,
@@ -213,10 +215,10 @@ impl State {
     /// A visitor rather than a slice, because the records live in the surface's
     /// own data map behind a lock: the caller reads them under it and copies
     /// nothing, which is what a per-frame renderer needs.
-    pub fn with_blur_fades<T>(&self, surface: &WlSurface, f: impl FnOnce(&[Fade]) -> T) -> Option<T> {
+    pub fn with_blur_fades<T>(&self, surface: &WlSurface, f: impl FnOnce(&[GnoblinBlurFadeV1Fade]) -> T) -> Option<T> {
         with_states(surface, |states| {
-            let state = states.data_map.get::<FadeState>()?;
-            let committed = FadeState::lock(&state.committed);
+            let state = states.data_map.get::<GnoblinBlurFadeV1FadeState>()?;
+            let committed = GnoblinBlurFadeV1FadeState::lock(&state.committed);
             let fades = committed.as_deref()?;
             Some(f(fades))
         })
@@ -225,7 +227,7 @@ impl State {
     /// The committed fade metadata of a window's surface, for a reader outside the
     /// protocol (a renderer, the object graph, a test).
     #[must_use]
-    pub fn window_blur_fades(&self, window: gnoblin_types::WindowId) -> Option<Vec<Fade>> {
+    pub fn window_blur_fades(&self, window: gnoblin_types::WindowId) -> Option<Vec<GnoblinBlurFadeV1Fade>> {
         let surface = self.windows.get(&window)?.surface.wl_surface()?;
         let mut fades = None;
         self.with_blur_fades(&surface, |records| fades = Some(records.to_vec()));
@@ -239,15 +241,15 @@ impl State {
     /// the frame it was sent with.
     pub(crate) fn blur_fades_committed(&mut self, surface: &WlSurface) {
         with_states(surface, |states| {
-            let Some(state) = states.data_map.get::<FadeState>() else {
+            let Some(state) = states.data_map.get::<GnoblinBlurFadeV1FadeState>() else {
                 return;
             };
-            let staged = FadeState::lock(&state.pending).take();
+            let staged = GnoblinBlurFadeV1FadeState::lock(&state.pending).take();
             let Some(staged) = staged else {
                 return;
             };
             debug!(records = staged.len(), "[blur] fade metadata committed");
-            *FadeState::lock(&state.committed) = Some(staged);
+            *GnoblinBlurFadeV1FadeState::lock(&state.committed) = Some(staged);
         });
     }
 }

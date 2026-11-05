@@ -1,3 +1,5 @@
+//! XML protocol `ext_background_effect_v1` (`<protocol name="ext_background_effect_v1">`); interfaces served: `ext_background_effect_manager_v1`, `ext_background_effect_surface_v1`.
+//!
 //! `ext_background_effect_manager_v1` (staging): a blur behind a client's own surface.
 //!
 //! Smithay implements the requests. A bind of the manager reports the capability, and
@@ -35,7 +37,7 @@ const MANAGER_VERSION: u32 = 1;
 
 /// One piece of a committed blur region.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ObservedBlurRect {
+pub enum ExtBackgroundEffectV1ObservedBlurRect {
     /// A rectangle the region covers.
     Add(Rect),
     /// A rectangle the region removes from what it covers so far.
@@ -48,18 +50,18 @@ impl ExtBackgroundEffectHandler for State {}
 pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
     display_handle.create_global::<State, ExtBackgroundEffectManagerV1, _>(
         MANAGER_VERSION,
-        ManagerGlobalData {
+        ExtBackgroundEffectV1ManagerGlobalData {
             access: Arc::clone(access),
         },
     )
 }
 
 /// The global's data: the roster, consulted at every bind.
-struct ManagerGlobalData {
+struct ExtBackgroundEffectV1ManagerGlobalData {
     access: Arc<Access>,
 }
 
-impl GlobalDispatch2<ExtBackgroundEffectManagerV1, State> for ManagerGlobalData {
+impl GlobalDispatch2<ExtBackgroundEffectManagerV1, State> for ExtBackgroundEffectV1ManagerGlobalData {
     fn bind(
         &self,
         state: &mut State,
@@ -94,14 +96,14 @@ impl State {
     /// The committed blur region of a window's surface, as the control seam reads it.
     ///
     /// [`None`] means the window has no surface or its surface committed no region.
-    pub(crate) fn window_blur_region(&self, window: WindowId) -> Option<Vec<ObservedBlurRect>> {
+    pub(crate) fn window_blur_region(&self, window: WindowId) -> Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>> {
         let surface = self.windows.get(&window)?.surface.wl_surface()?;
         self.with_blur_region(&surface, observed)
     }
 }
 
 /// The pieces of a committed region, in the order the client sent them.
-fn observed(region: &RegionAttributes) -> Vec<ObservedBlurRect> {
+fn observed(region: &RegionAttributes) -> Vec<ExtBackgroundEffectV1ObservedBlurRect> {
     region
         .rects
         .iter()
@@ -113,8 +115,8 @@ fn observed(region: &RegionAttributes) -> Vec<ObservedBlurRect> {
                 height: u32::try_from(rect.size.h).unwrap_or(0),
             };
             match kind {
-                RectangleKind::Add => ObservedBlurRect::Add(rect),
-                RectangleKind::Subtract => ObservedBlurRect::Subtract(rect),
+                RectangleKind::Add => ExtBackgroundEffectV1ObservedBlurRect::Add(rect),
+                RectangleKind::Subtract => ExtBackgroundEffectV1ObservedBlurRect::Subtract(rect),
             }
         })
         .collect()

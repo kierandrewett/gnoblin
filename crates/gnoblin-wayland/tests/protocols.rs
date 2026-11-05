@@ -11,7 +11,7 @@
 //!   `a_session_lock_releases_a_pointer_lock` — `protocols::zwp_pointer_constraints_v1`
 //! - `idle_notify_fires_after_its_timeout`, `input_resumes_an_idled_notification`,
 //!   `an_idle_inhibitor_suppresses_idle_and_never_leaks` — `protocols::ext_idle_notify_v1`
-//! - `presentation_feedback_reports_a_present_timestamp` — `protocols::wp_presentation`
+//! - `presentation_feedback_reports_a_present_timestamp` — `protocols::wp_presentation_time`
 //! - `a_shortcuts_inhibitor_is_refused_while_locked` — `protocols::zwp_keyboard_shortcuts_inhibit_v1`
 //! - `text_input_enter_and_commit_round_trip` — `protocols::zwp_text_input_v3`
 //! - `a_sandboxed_client_does_not_see_the_privileged_globals` — `protocols::wp_security_context_v1`

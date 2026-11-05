@@ -1,3 +1,5 @@
+//! XML protocol `keyboard_shortcuts_inhibit_unstable_v1` (`<protocol name="keyboard_shortcuts_inhibit_unstable_v1">`); interfaces served: `zwp_keyboard_shortcuts_inhibit_manager_v1`.
+//!
 //! `zwp_keyboard_shortcuts_inhibit_manager_v1`: a client asks to see the keys the
 //! compositor would otherwise take.
 //!

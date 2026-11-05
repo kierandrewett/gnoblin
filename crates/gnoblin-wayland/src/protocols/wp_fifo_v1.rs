@@ -1,3 +1,5 @@
+//! XML protocol `fifo_v1` (`<protocol name="fifo_v1">`); interfaces served: `wp_fifo_manager_v1`.
+//!
 //! `wp_fifo_v1`: a client orders its commits, so each one is shown before the next.
 //!
 //! A client that sets a barrier and then waits on it does not commit the next frame

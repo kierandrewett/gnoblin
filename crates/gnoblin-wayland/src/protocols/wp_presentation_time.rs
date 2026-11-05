@@ -1,3 +1,5 @@
+//! XML protocol `presentation_time` (`<protocol name="presentation_time">`); interfaces served: `wp_presentation`.
+//!
 //! `wp_presentation`: a client is told when its frame actually reached the screen.
 //!
 //! The protocol is a measurement, not a request: a client that wants to pace itself asks
@@ -56,12 +58,12 @@ const CLOCK_MONOTONIC: u32 = 1;
 
 /// The feedback bookkeeping the session carries between frames.
 #[derive(Debug, Default)]
-pub(crate) struct PresentationTables {
+pub(crate) struct WpPresentationTimeTables {
     /// The sequence number of the last frame presented, which feedback reports.
     sequence: u64,
 }
 
-impl PresentationTables {
+impl WpPresentationTimeTables {
     /// The sequence number the next frame will carry.
     pub(crate) fn next_sequence(&mut self) -> u64 {
         self.sequence = self.sequence.saturating_add(1);

@@ -1,3 +1,5 @@
+//! XML protocol `wlr_foreign_toplevel_management_unstable_v1` (`<protocol name="wlr_foreign_toplevel_management_unstable_v1">`); interfaces served: `zwlr_foreign_toplevel_manager_v1`.
+//!
 //! `zwlr_foreign_toplevel_manager_v1` (version 3): the toplevel list a shell's taskbar reads.
 //!
 //! Shells use the wlroots protocol today: a taskbar lists windows, activates one, closes
@@ -91,7 +93,7 @@ impl States {
 }
 
 /// One handle object and the manager it belongs to.
-pub(super) struct HandleObject {
+pub(super) struct ZwlrForeignToplevelManagementV1HandleObject {
     /// The manager that created it, so `stop` can retire exactly its handles.
     manager: ZwlrForeignToplevelManagerV1,
     /// The handle object itself.
@@ -103,30 +105,31 @@ pub(super) struct HandleObject {
 /// The access roster is captured in the global's data, so the answer to "may this
 /// connection bind it" is the same answer the other privileged globals give.
 pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ZwlrForeignToplevelManagerV1, ManagerGlobalData>(
-        MANAGER_VERSION,
-        ManagerGlobalData {
-            access: Arc::clone(access),
-        },
-    )
+    display_handle
+        .create_global::<State, ZwlrForeignToplevelManagerV1, ZwlrForeignToplevelManagementV1ManagerGlobalData>(
+            MANAGER_VERSION,
+            ZwlrForeignToplevelManagementV1ManagerGlobalData {
+                access: Arc::clone(access),
+            },
+        )
 }
 
 /// The global data of the wlr manager: who may bind it.
-struct ManagerGlobalData {
+struct ZwlrForeignToplevelManagementV1ManagerGlobalData {
     /// The roster that answers which connection may.
     access: Arc<Access>,
 }
 
 /// The user data of a bound manager object.
-struct ManagerUserData;
+struct ZwlrForeignToplevelManagementV1ManagerUserData;
 
 /// The user data of one handle object.
-struct HandleUserData {
+struct ZwlrForeignToplevelManagementV1HandleUserData {
     /// The window it names.
     window: WindowId,
 }
 
-impl GlobalDispatch2<ZwlrForeignToplevelManagerV1, State> for ManagerGlobalData {
+impl GlobalDispatch2<ZwlrForeignToplevelManagerV1, State> for ZwlrForeignToplevelManagementV1ManagerGlobalData {
     fn bind(
         &self,
         state: &mut State,
@@ -135,7 +138,7 @@ impl GlobalDispatch2<ZwlrForeignToplevelManagerV1, State> for ManagerGlobalData 
         resource: New<ZwlrForeignToplevelManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        let registered = data_init.init(resource, ManagerUserData);
+        let registered = data_init.init(resource, ZwlrForeignToplevelManagementV1ManagerUserData);
         state.foreign_toplevels.managers.push(registered);
         debug!(client = ?client.id(), "[toplevel] a taskbar bound the manager");
         state.introduce_foreign_toplevels(client);
@@ -146,7 +149,7 @@ impl GlobalDispatch2<ZwlrForeignToplevelManagerV1, State> for ManagerGlobalData 
     }
 }
 
-impl Dispatch2<ZwlrForeignToplevelManagerV1, State> for ManagerUserData {
+impl Dispatch2<ZwlrForeignToplevelManagerV1, State> for ZwlrForeignToplevelManagementV1ManagerUserData {
     fn request(
         &self,
         state: &mut State,
@@ -179,7 +182,7 @@ impl Dispatch2<ZwlrForeignToplevelManagerV1, State> for ManagerUserData {
     }
 }
 
-impl Dispatch2<ZwlrForeignToplevelHandleV1, State> for HandleUserData {
+impl Dispatch2<ZwlrForeignToplevelHandleV1, State> for ZwlrForeignToplevelManagementV1HandleUserData {
     fn request(
         &self,
         state: &mut State,
@@ -263,15 +266,15 @@ impl State {
         manager: &ZwlrForeignToplevelManagerV1,
         client: &Client,
         window: WindowId,
-    ) -> Option<HandleObject> {
+    ) -> Option<ZwlrForeignToplevelManagementV1HandleObject> {
         match client.create_resource::<ZwlrForeignToplevelHandleV1, _, State>(
             &self.display_handle,
             MANAGER_VERSION.min(manager.version()),
-            HandleUserData { window },
+            ZwlrForeignToplevelManagementV1HandleUserData { window },
         ) {
             Ok(object) => {
                 manager.toplevel(&object);
-                Some(HandleObject {
+                Some(ZwlrForeignToplevelManagementV1HandleObject {
                     manager: manager.clone(),
                     object,
                 })
@@ -372,7 +375,7 @@ impl State {
 }
 
 /// Creates one handle object for each manager binding, for a window that is new.
-pub(super) fn create_handles(state: &mut State, window: WindowId) -> Vec<HandleObject> {
+pub(super) fn create_handles(state: &mut State, window: WindowId) -> Vec<ZwlrForeignToplevelManagementV1HandleObject> {
     let mut handles = Vec::new();
     for management in state.foreign_toplevels.managers.clone() {
         let Some(client) = management.client() else {

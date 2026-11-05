@@ -1,3 +1,5 @@
+//! XML protocol `ext_image_copy_capture_v1` (`<protocol name="ext_image_copy_capture_v1">`); interfaces served: `ext_image_copy_capture_v1`.
+//!
 //! `ext_image_copy_capture_v1`: sessions that copy a source's pixels into client buffers.
 //!
 //! A session is opened for an [`ImageCaptureSource`](smithay::wayland::image_capture_source)

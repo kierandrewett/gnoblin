@@ -1,3 +1,5 @@
+//! XML protocol `xdg_foreign_unstable_v2` (`<protocol name="xdg_foreign_unstable_v2">`); interfaces served: `zxdg_exporter_v2`, `zxdg_importer_v2`.
+//!
 //! `zxdg_exporter_v2` and `zxdg_importer_v2` (xdg-foreign, unstable v2): one client
 //! names a toplevel by a handle, and another client makes that toplevel its parent.
 //!

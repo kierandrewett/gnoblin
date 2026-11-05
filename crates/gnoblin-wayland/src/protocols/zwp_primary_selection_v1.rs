@@ -1,3 +1,5 @@
+//! XML protocol `wp_primary_selection_unstable_v1` (`<protocol name="wp_primary_selection_unstable_v1">`); interfaces served: `zwp_primary_selection_device_manager_v1`.
+//!
 //! `zwp_primary_selection_device_manager_v1` (XML `primary-selection-unstable-v1`).
 //!
 //! The primary selection is what a middle click pastes. Its state lives on `State`

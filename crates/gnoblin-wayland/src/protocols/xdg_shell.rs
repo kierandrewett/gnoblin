@@ -1,3 +1,5 @@
+//! XML protocol `xdg_shell` (`<protocol name="xdg_shell">`); interfaces served: `xdg_shell`.
+//!
 //! `xdg_shell`: toplevels, popups, configure and acknowledge.
 //!
 //! A toplevel is taken into management when the client creates it, and it takes

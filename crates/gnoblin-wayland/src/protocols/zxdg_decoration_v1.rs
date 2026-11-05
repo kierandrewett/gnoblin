@@ -1,3 +1,5 @@
+//! XML protocol `xdg_decoration_unstable_v1` (`<protocol name="xdg_decoration_unstable_v1">`); interfaces served: `zxdg_decoration_manager_v1`.
+//!
 //! `zxdg_decoration_manager_v1`.
 //!
 //! The session draws no frames in this slice, so it cannot promise server-side

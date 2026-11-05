@@ -1,3 +1,5 @@
+//! XML protocol `cursor_shape_v1` (`<protocol name="cursor_shape_v1">`); interfaces served: `wp_cursor_shape_manager_v1`.
+//!
 //! `wp_cursor_shape_manager_v1`: a client asks for a named cursor.
 //!
 //! Two protocols let a client set the cursor: `wl_pointer.set_cursor`, which ships a

@@ -1,3 +1,5 @@
+//! XML protocol `ext_data_control_v1` (`<protocol name="ext_data_control_v1">`); interfaces served: `ext_data_control_manager_v1`.
+//!
 //! `ext_data_control_manager_v1` and `ext_data_control_device_v1` (XML
 //! `ext-data-control-v1`).
 //!

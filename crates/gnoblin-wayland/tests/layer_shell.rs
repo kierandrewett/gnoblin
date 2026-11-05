@@ -3,7 +3,7 @@
 //! Each test connects a real `wayland-client` — a bar on the privileged socket — and
 //! asserts on what the client was configured with and on what the session published,
 //! because a bar's contract is its configure size and the work area it leaves behind.
-//! The failure modes are the ones at the top of `protocols::wlr_layer_shell_unstable_v1`.
+//! The failure modes are the ones at the top of `protocols::zwlr_layer_shell_v1`.
 
 mod session;
 

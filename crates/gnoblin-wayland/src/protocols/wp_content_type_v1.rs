@@ -1,3 +1,5 @@
+//! XML protocol `content_type_v1` (`<protocol name="content_type_v1">`); interfaces served: `wp_content_type_v1`.
+//!
 //! `wp_content_type_v1`: a client says whether its surface is video or game content.
 //!
 //! The protocol carries one bit of intent and no mechanism: a video player says its
@@ -35,7 +37,7 @@ pub(crate) fn global(display: &DisplayHandle) -> ContentTypeState {
 
 /// What a client says its surface shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ContentKind {
+pub enum WpContentTypeV1Kind {
     /// The client said nothing.
     #[default]
     None,
@@ -48,16 +50,16 @@ pub enum ContentKind {
 impl State {
     /// What a surface's client last committed as its content type.
     #[must_use]
-    pub fn content_type(&self, surface: &WlSurface) -> ContentKind {
+    pub fn content_type(&self, surface: &WlSurface) -> WpContentTypeV1Kind {
         with_states(surface, |states| {
             let mut cached = states.cached_state.get::<ContentTypeSurfaceCachedState>();
             let state = cached.current();
             // The generated enum is `Type::None` by default, so the match is total over
             // what this protocol version can say.
             match state.content_type() {
-                wp_content_type_v1::Type::Video => ContentKind::Video,
-                wp_content_type_v1::Type::Game => ContentKind::Game,
-                _ => ContentKind::None,
+                wp_content_type_v1::Type::Video => WpContentTypeV1Kind::Video,
+                wp_content_type_v1::Type::Game => WpContentTypeV1Kind::Game,
+                _ => WpContentTypeV1Kind::None,
             }
         })
     }

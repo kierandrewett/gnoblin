@@ -1,3 +1,5 @@
+//! XML protocol `ext_idle_notify_v1` (`<protocol name="ext_idle_notify_v1">`); interfaces served: `ext_idle_notifier_v1`.
+//!
 //! `ext_idle_notifier_v1`: a client is told when the session goes idle and when it
 //! comes back.
 //!
@@ -55,7 +57,7 @@ use crate::access::{Access, ClientRole};
 
 /// One `ext_idle_notification_v1` a client created.
 #[derive(Debug)]
-struct Notification {
+struct ExtIdleNotifyV1Notification {
     /// The protocol object.
     resource: ExtIdleNotificationV1,
     /// How long the session must be idle before `idled`, in milliseconds.
@@ -66,14 +68,14 @@ struct Notification {
 
 /// The idle notifications and inhibitors the session holds.
 #[derive(Default, Debug)]
-pub(crate) struct IdleTables {
+pub(crate) struct ExtIdleNotifyV1Tables {
     /// The notifications, in creation order.
-    notifications: Vec<Notification>,
+    notifications: Vec<ExtIdleNotifyV1Notification>,
     /// The surfaces whose clients asked that the session never idle.
     inhibits: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
 }
 
-impl IdleTables {
+impl ExtIdleNotifyV1Tables {
     /// How many notifications are held, for a test or a diagnostics reader.
     pub(crate) fn notifications(&self) -> usize {
         self.notifications.len()
@@ -86,7 +88,7 @@ impl IdleTables {
 /// connection from an ordinary one: the roster's entry is written when the connection is
 /// accepted, so the filter never has to ask the backend about the client it is filtering.
 #[derive(Debug)]
-pub struct NotifierUserData {
+pub struct ExtIdleNotifyV1NotifierUserData {
     /// The session's roster of connections.
     access: Arc<Access>,
 }
@@ -96,9 +98,9 @@ pub struct NotifierUserData {
 /// The record itself lives in [`State`]'s tables, keyed by the object: the user data only
 /// has to exist so the object has an owner and the `destroyed` hook can find it.
 #[derive(Debug)]
-pub struct NotificationUserData;
+pub struct ExtIdleNotifyV1NotificationUserData;
 
-impl GlobalDispatch2<ExtIdleNotifierV1, State> for NotifierUserData {
+impl GlobalDispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserData {
     fn bind(
         &self,
         _state: &mut State,
@@ -109,7 +111,7 @@ impl GlobalDispatch2<ExtIdleNotifierV1, State> for NotifierUserData {
     ) {
         data_init.init(
             resource,
-            NotifierUserData {
+            ExtIdleNotifyV1NotifierUserData {
                 access: Arc::clone(&self.access),
             },
         );
@@ -124,7 +126,7 @@ impl GlobalDispatch2<ExtIdleNotifierV1, State> for NotifierUserData {
     }
 }
 
-impl Dispatch2<ExtIdleNotifierV1, State> for NotifierUserData {
+impl Dispatch2<ExtIdleNotifierV1, State> for ExtIdleNotifyV1NotifierUserData {
     fn request(
         &self,
         state: &mut State,
@@ -140,7 +142,7 @@ impl Dispatch2<ExtIdleNotifierV1, State> for NotifierUserData {
                 seat: _seat,
                 timeout,
             } => {
-                let notification: ExtIdleNotificationV1 = data_init.init(id, NotificationUserData);
+                let notification: ExtIdleNotificationV1 = data_init.init(id, ExtIdleNotifyV1NotificationUserData);
                 state.add_idle_notification(notification, u64::from(timeout));
             }
             ext_idle_notifier_v1::Request::Destroy => {}
@@ -149,7 +151,7 @@ impl Dispatch2<ExtIdleNotifierV1, State> for NotifierUserData {
     }
 }
 
-impl Dispatch2<ExtIdleNotificationV1, State> for NotificationUserData {
+impl Dispatch2<ExtIdleNotificationV1, State> for ExtIdleNotifyV1NotificationUserData {
     fn request(
         &self,
         _state: &mut State,
@@ -180,7 +182,7 @@ impl Dispatch2<ExtIdleNotificationV1, State> for NotificationUserData {
 pub(crate) fn global(display: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
     display.create_global::<State, ExtIdleNotifierV1, _>(
         2,
-        NotifierUserData {
+        ExtIdleNotifyV1NotifierUserData {
             access: Arc::clone(access),
         },
     )
@@ -191,7 +193,7 @@ impl State {
     /// already idle.
     pub(crate) fn add_idle_notification(&mut self, resource: ExtIdleNotificationV1, timeout: u64) {
         debug!(instance = ?resource.id(), timeout, "[idle] a client asked to be told");
-        self.idle_tables.notifications.push(Notification {
+        self.idle_tables.notifications.push(ExtIdleNotifyV1Notification {
             resource,
             timeout,
             idled: false,

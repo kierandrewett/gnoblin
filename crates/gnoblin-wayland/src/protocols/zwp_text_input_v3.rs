@@ -1,3 +1,5 @@
+//! XML protocol `text_input_unstable_v3` (`<protocol name="text_input_unstable_v3">`); interfaces served: `zwp_text_input_manager_v3`.
+//!
 //! `zwp_text_input_manager_v3` and `zwp_text_input_v3` (XML `text-input-unstable-v3`).
 //!
 //! A client that wants to type in a language an input method serves creates a

@@ -52,12 +52,12 @@ use gnoblin_wm::WmOptions;
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
-use crate::protocols::ext_background_effect_v1::ObservedBlurRect;
+use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
-use crate::protocols::gnoblin_blur_fade_v1::Fade;
-use crate::protocols::gnoblin_session_host_v1::{HostRequest, HostedSession};
-use crate::protocols::gnoblin_window_frame_v1::WindowFrame;
-use crate::protocols::wl_compositor::ClientState;
+use crate::protocols::gnoblin_blur_fade_v1::GnoblinBlurFadeV1Fade;
+use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
+use crate::protocols::gnoblin_window_frame_v1::GnoblinWindowFrameV1Frame;
+use crate::protocols::wl_compositor::WlCompositorClientState;
 use crate::state::State;
 
 /// The file a session binds when no socket path is configured.
@@ -291,7 +291,7 @@ impl Server {
                             Command::ReleaseSession { pid, reply } => {
                                 let _ = reply.send(state.release_hosted_session(pid));
                             }
-                            Command::HostedSession { pid, reply } => {
+                            Command::GnoblinSessionHostV1HostedSession { pid, reply } => {
                                 let _ = reply.send(state.hosted_session(pid));
                             }
                             Command::HostRequests { reply } => {
@@ -303,7 +303,7 @@ impl Server {
                             Command::BlurRegion { window, reply } => {
                                 let _ = reply.send(state.window_blur_region(window));
                             }
-                            Command::WindowFrame { window, reply } => {
+                            Command::GnoblinWindowFrameV1Frame { window, reply } => {
                                 let _ = reply.send(state.window_frame(window));
                             }
                             Command::DrawnNode { window, reply } => {
@@ -617,9 +617,10 @@ impl ControlHandle {
 
     /// What the compositor knows about the hosted session a process runs.
     #[must_use]
-    pub fn hosted_session(&self, pid: u32) -> Option<Option<HostedSession>> {
+    pub fn hosted_session(&self, pid: u32) -> Option<Option<GnoblinSessionHostV1HostedSession>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::HostedSession { pid, reply });
+        self.control
+            .push(Command::GnoblinSessionHostV1HostedSession { pid, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -628,9 +629,9 @@ impl ControlHandle {
     /// [`None`] means the window has no frame (no renderer, or an unmapped window);
     /// the inner [`None`] means the loop did not answer in time.
     #[must_use]
-    pub fn window_frame(&self, window: WindowId) -> Option<Option<WindowFrame>> {
+    pub fn window_frame(&self, window: WindowId) -> Option<Option<GnoblinWindowFrameV1Frame>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::WindowFrame { window, reply });
+        self.control.push(Command::GnoblinWindowFrameV1Frame { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -661,7 +662,7 @@ impl ControlHandle {
     /// [`None`] means the window has no surface or has committed no metadata; an
     /// empty vector is metadata that was explicitly cleared.
     #[must_use]
-    pub fn blur_fades(&self, window: WindowId) -> Option<Option<Vec<Fade>>> {
+    pub fn blur_fades(&self, window: WindowId) -> Option<Option<Vec<GnoblinBlurFadeV1Fade>>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::BlurFades { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -673,7 +674,7 @@ impl ControlHandle {
     /// [`None`] means the window has no surface or its surface committed no region;
     /// the inner [`None`] means the loop did not answer in time.
     #[must_use]
-    pub fn blur_region(&self, window: WindowId) -> Option<Option<Vec<ObservedBlurRect>>> {
+    pub fn blur_region(&self, window: WindowId) -> Option<Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::BlurRegion { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -681,7 +682,7 @@ impl ControlHandle {
 
     /// Every hosted session request waiting for the manager.
     #[must_use]
-    pub fn host_requests(&self) -> Vec<HostRequest> {
+    pub fn host_requests(&self) -> Vec<GnoblinSessionHostV1Request> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::HostRequests { reply });
         answer.recv_timeout(FOCUS_TIMEOUT).unwrap_or_default()
@@ -815,18 +816,18 @@ enum Command {
         reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// What is known about a hosted session.
-    HostedSession {
+    GnoblinSessionHostV1HostedSession {
         pid: u32,
-        reply: std::sync::mpsc::SyncSender<Option<HostedSession>>,
+        reply: std::sync::mpsc::SyncSender<Option<GnoblinSessionHostV1HostedSession>>,
     },
     /// Every session request waiting for the manager.
     HostRequests {
-        reply: std::sync::mpsc::SyncSender<Vec<HostRequest>>,
+        reply: std::sync::mpsc::SyncSender<Vec<GnoblinSessionHostV1Request>>,
     },
     /// What a window's frame is doing.
-    WindowFrame {
+    GnoblinWindowFrameV1Frame {
         window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<WindowFrame>>,
+        reply: std::sync::mpsc::SyncSender<Option<GnoblinWindowFrameV1Frame>>,
     },
     /// The matrix and projected bounds a window's node is drawn with, read from the scene.
     DrawnNode {
@@ -849,12 +850,12 @@ enum Command {
     /// The fade metadata a window's surface committed.
     BlurFades {
         window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<Vec<Fade>>>,
+        reply: std::sync::mpsc::SyncSender<Option<Vec<GnoblinBlurFadeV1Fade>>>,
     },
     /// The committed blur region a window's surface has.
     BlurRegion {
         window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<Vec<ObservedBlurRect>>>,
+        reply: std::sync::mpsc::SyncSender<Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>>>,
     },
 }
 
@@ -922,7 +923,9 @@ fn accept_clients(listener: &UnixListener, state: &mut State, role: ClientRole) 
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
-                if let Err(error) = state.insert_client(stream, Arc::new(ClientState::new(&state.access())), role) {
+                if let Err(error) =
+                    state.insert_client(stream, Arc::new(WlCompositorClientState::new(&state.access())), role)
+                {
                     warn!(%error, "[wayland] a client could not be inserted");
                 }
             }

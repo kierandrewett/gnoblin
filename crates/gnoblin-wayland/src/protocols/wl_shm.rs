@@ -1,3 +1,5 @@
+//! XML protocol `wayland` (`<protocol name="wayland">`); interfaces served: `wl_shm`, `wl_shm_pool`.
+//!
 //! `wl_shm` and `wl_shm_pool` (XML `wayland.xml`), plus the `wl_buffer` release hook.
 //!
 //! Smithay owns the pools and buffers; this module answers its handler traits.

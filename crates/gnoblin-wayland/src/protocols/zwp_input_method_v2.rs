@@ -1,3 +1,5 @@
+//! XML protocol `input_method_unstable_v2` (`<protocol name="input_method_unstable_v2">`); interfaces served: `zwp_input_method_manager_v2`.
+//!
 //! `zwp_input_method_manager_v2` and `zwp_input_method_v2` (XML `input-method-unstable-v2`).
 //!
 //! An input method (IBus, fcitx, an on-screen keyboard) holds a `zwp_input_method_v2` on the

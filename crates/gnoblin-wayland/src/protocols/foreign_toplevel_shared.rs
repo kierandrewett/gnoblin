@@ -53,7 +53,7 @@ pub(super) struct ToplevelEntry {
     /// The standardised list's handle for the window, shared by every list instance.
     pub(super) ext: ForeignToplevelHandle,
     /// One handle object per binding of the wlr manager.
-    pub(super) handles: Vec<wlr::HandleObject>,
+    pub(super) handles: Vec<wlr::ZwlrForeignToplevelManagementV1HandleObject>,
     /// What those handles have been told.
     pub(super) sent: Sent,
 }

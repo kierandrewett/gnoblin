@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_lock::ProtectionState;
-use gnoblin_wayland::{ClientRole, HostRequestKind, PowerAction};
+use gnoblin_wayland::{ClientRole, GnoblinSessionHostV1PowerAction, GnoblinSessionHostV1RequestKind};
 use owned::protocols::gnoblin_session_host_v1::gnoblin_session_host_v1;
 use owned::{Connected, Handle, Session, TIMEOUT};
 use wayland_client::protocol::{wl_keyboard, wl_seat, wl_surface};
@@ -197,7 +197,10 @@ impl SessionClient {
 }
 
 /// Waits until the hosted session's protection is in `state`.
-fn wait_for_protection(handle: &Handle, state: ProtectionState) -> Option<gnoblin_wayland::HostedSession> {
+fn wait_for_protection(
+    handle: &Handle,
+    state: ProtectionState,
+) -> Option<gnoblin_wayland::GnoblinSessionHostV1HostedSession> {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         let session = handle
@@ -467,7 +470,7 @@ fn a_lock_request_reaches_the_ipc_as_a_request() {
         loop {
             let requests = handle.control.host_requests();
             if let Some(request) = requests.first() {
-                assert_eq!(request.kind, HostRequestKind::Lock);
+                assert_eq!(request.kind, GnoblinSessionHostV1RequestKind::Lock);
                 break;
             }
             assert!(Instant::now() < deadline, "the lock request never reached the manager");
@@ -494,7 +497,7 @@ fn a_logout_request_reaches_the_ipc_as_a_request() {
                 .control
                 .host_requests()
                 .first()
-                .is_some_and(|request| request.kind == HostRequestKind::Logout)
+                .is_some_and(|request| request.kind == GnoblinSessionHostV1RequestKind::Logout)
             {
                 break;
             }
@@ -522,12 +525,9 @@ fn a_power_request_carries_its_action() {
         client.roundtrip();
         let deadline = Instant::now() + TIMEOUT;
         loop {
-            if handle
-                .control
-                .host_requests()
-                .first()
-                .is_some_and(|request| request.kind == HostRequestKind::Power(PowerAction::Suspend))
-            {
+            if handle.control.host_requests().first().is_some_and(|request| {
+                request.kind == GnoblinSessionHostV1RequestKind::Power(GnoblinSessionHostV1PowerAction::Suspend)
+            }) {
                 break;
             }
             assert!(

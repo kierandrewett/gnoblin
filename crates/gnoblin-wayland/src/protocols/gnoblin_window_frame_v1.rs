@@ -1,3 +1,5 @@
+//! XML protocol `gnoblin_window_frame_v1` (`<protocol name="gnoblin_window_frame_v1">`); interfaces served: `gnoblin_window_frame_manager_v1`.
+//!
 //! `gnoblin_window_frame_v1`: server-side decorations drawn by a renderer client.
 //!
 //! A frame renderer is one client the compositor started for the session. It is
@@ -118,7 +120,7 @@ const MAX_COORDINATE: i32 = 32768;
 /// The numbers are the protocol's, so a region is the value the wire carries and
 /// a consumer never renumbers it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum FrameAction {
+pub enum GnoblinWindowFrameV1Action {
     /// Start an interactive move from this region.
     Drag,
     /// Ask the window to close.
@@ -145,7 +147,7 @@ pub enum FrameAction {
     NorthWest,
 }
 
-impl FrameAction {
+impl GnoblinWindowFrameV1Action {
     /// The action a wire value names, or [`None`] for a value the protocol does
     /// not define.
     #[must_use]
@@ -189,9 +191,9 @@ impl FrameAction {
 
 /// One region a renderer declared, in the frame's logical coordinates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FrameRegion {
+pub struct GnoblinWindowFrameV1Region {
     /// What the region means.
-    pub action: FrameAction,
+    pub action: GnoblinWindowFrameV1Action,
     /// Its left edge.
     pub x: i32,
     /// Its top edge.
@@ -202,7 +204,7 @@ pub struct FrameRegion {
     pub height: i32,
 }
 
-impl FrameRegion {
+impl GnoblinWindowFrameV1Region {
     /// Whether a frame-local point is inside the region, edges included.
     #[must_use]
     pub const fn contains(self, x: i32, y: i32) -> bool {
@@ -212,7 +214,7 @@ impl FrameRegion {
 
 /// What a window's frame is doing, as the compositor and a test read it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WindowFrame {
+pub struct GnoblinWindowFrameV1Frame {
     /// The serial of the configure the frame is presenting, if it presented one.
     pub serial: u32,
     /// The logical width the frame surface is configured to.
@@ -224,11 +226,11 @@ pub struct WindowFrame {
     /// Whether a buffer that matched the current configure was presented.
     pub presented: bool,
     /// The regions that commit declared.
-    pub regions: Vec<FrameRegion>,
+    pub regions: Vec<GnoblinWindowFrameV1Region>,
 }
 
 /// One window's frame.
-struct FrameRecord {
+struct GnoblinWindowFrameV1FrameRecord {
     /// The protocol object, which is also how a configure is sent.
     object: GnoblinWindowFrameV1,
     /// The surface the renderer attached, once it has.
@@ -242,23 +244,23 @@ struct FrameRecord {
     /// The serial the renderer acknowledged for the pending commit.
     ack: Option<u32>,
     /// The regions staged for the next commit.
-    pending: Vec<FrameRegion>,
+    pending: Vec<GnoblinWindowFrameV1Region>,
     /// The regions of the presented frame.
-    committed: Vec<FrameRegion>,
+    committed: Vec<GnoblinWindowFrameV1Region>,
     /// Whether the presented frame matches the current configure.
     presented: bool,
     /// Whether `closed` was sent, after which only `destroy` means anything.
     closed: bool,
     /// The region the pointer was last over, so an unchanged hover sends nothing.
-    hover: Option<FrameAction>,
+    hover: Option<GnoblinWindowFrameV1Action>,
     /// Whether the last reported press was taken.
     pressed: bool,
 }
 
-impl FrameRecord {
+impl GnoblinWindowFrameV1FrameRecord {
     /// The body of what the compositor can ask about a frame.
-    fn report(&self) -> WindowFrame {
-        WindowFrame {
+    fn report(&self) -> GnoblinWindowFrameV1Frame {
+        GnoblinWindowFrameV1Frame {
             serial: self.serial,
             width: self.size.0,
             height: self.size.1,
@@ -270,28 +272,29 @@ impl FrameRecord {
 }
 
 /// The frame protocol's objects and the windows they decorate.
-pub(crate) struct FrameTables {
+pub(crate) struct GnoblinWindowFrameV1Tables {
     /// The `gnoblin_window_frame_manager_v1` global.
     global: Option<GlobalId>,
     /// Every bound manager, by connection.
     managers: HashMap<WaylandClientId, GnoblinWindowFrameManagerV1>,
     /// Every frame, by window.
-    frames: BTreeMap<WindowId, FrameRecord>,
+    frames: BTreeMap<WindowId, GnoblinWindowFrameV1FrameRecord>,
 }
 
-impl FrameTables {
+impl GnoblinWindowFrameV1Tables {
     /// Registers the global on the session's display.
     ///
     /// The global exists even when no renderer is configured, because the roster
     /// is the whole answer to who may see it and a state that does not exist
     /// cannot be handed a renderer later.
     pub(crate) fn new(display_handle: &DisplayHandle, access: &std::sync::Arc<Access>) -> Self {
-        let global = display_handle.create_global::<State, GnoblinWindowFrameManagerV1, ManagerGlobal>(
-            manager::GnoblinWindowFrameManagerV1::interface().version,
-            ManagerGlobal {
-                access: std::sync::Arc::clone(access),
-            },
-        );
+        let global = display_handle
+            .create_global::<State, GnoblinWindowFrameManagerV1, GnoblinWindowFrameV1ManagerGlobal>(
+                manager::GnoblinWindowFrameManagerV1::interface().version,
+                GnoblinWindowFrameV1ManagerGlobal {
+                    access: std::sync::Arc::clone(access),
+                },
+            );
         Self {
             global: Some(global),
             managers: HashMap::new(),
@@ -307,12 +310,12 @@ impl FrameTables {
 }
 
 /// The manager global's data: who may bind it.
-struct ManagerGlobal {
+struct GnoblinWindowFrameV1ManagerGlobal {
     /// The roster that answers which connection was started as a renderer.
     access: std::sync::Arc<Access>,
 }
 
-impl GlobalDispatch2<GnoblinWindowFrameManagerV1, State> for ManagerGlobal {
+impl GlobalDispatch2<GnoblinWindowFrameManagerV1, State> for GnoblinWindowFrameV1ManagerGlobal {
     fn bind(
         &self,
         state: &mut State,
@@ -321,7 +324,7 @@ impl GlobalDispatch2<GnoblinWindowFrameManagerV1, State> for ManagerGlobal {
         resource: New<GnoblinWindowFrameManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        let manager = data_init.init(resource, ManagerObject);
+        let manager = data_init.init(resource, GnoblinWindowFrameV1ManagerObject);
         debug!(client = ?client.id(), "[frame] a renderer bound its manager");
         if let Err(duplicate) = state.frame_tables.check_manager_in(&client.id(), &manager) {
             // The manager interface has no error enum of its own, so the code is
@@ -331,14 +334,14 @@ impl GlobalDispatch2<GnoblinWindowFrameManagerV1, State> for ManagerGlobal {
     }
 
     fn can_view(&self, client: &Client) -> bool {
-        AccessPolicy::allows(&*self.access, &client.id(), Global::WindowFrame)
+        AccessPolicy::allows(&*self.access, &client.id(), Global::GnoblinWindowFrameV1Frame)
     }
 }
 
 /// The user data of a bound manager: it carries no state of its own.
-struct ManagerObject;
+struct GnoblinWindowFrameV1ManagerObject;
 
-impl Dispatch2<GnoblinWindowFrameManagerV1, State> for ManagerObject {
+impl Dispatch2<GnoblinWindowFrameManagerV1, State> for GnoblinWindowFrameV1ManagerObject {
     fn request(
         &self,
         state: &mut State,
@@ -361,12 +364,12 @@ impl Dispatch2<GnoblinWindowFrameManagerV1, State> for ManagerObject {
 }
 
 /// The user data of one frame object.
-struct FrameObject {
+struct GnoblinWindowFrameV1FrameObject {
     /// The window it decorates.
     window: WindowId,
 }
 
-impl FrameTables {
+impl GnoblinWindowFrameV1Tables {
     /// Records a manager, refusing a second one on the same connection.
     fn check_manager_in(
         &mut self,
@@ -402,7 +405,7 @@ impl FrameTables {
     }
 }
 
-impl Dispatch2<GnoblinWindowFrameV1, State> for FrameObject {
+impl Dispatch2<GnoblinWindowFrameV1, State> for GnoblinWindowFrameV1FrameObject {
     fn request(
         &self,
         state: &mut State,
@@ -460,7 +463,7 @@ impl Dispatch2<GnoblinWindowFrameV1, State> for FrameObject {
                     return;
                 }
                 let action = match action {
-                    WEnum::Value(action) => FrameAction::from_wire(action as u32),
+                    WEnum::Value(action) => GnoblinWindowFrameV1Action::from_wire(action as u32),
                     WEnum::Unknown(_) => None,
                 };
                 let Some(action) = action else {
@@ -480,7 +483,7 @@ impl Dispatch2<GnoblinWindowFrameV1, State> for FrameObject {
                     resource.post_error(frame::Error::InvalidState as u32, "invalid frame region");
                     return;
                 }
-                entry.pending.push(FrameRegion {
+                entry.pending.push(GnoblinWindowFrameV1Region {
                     action,
                     x,
                     y,
@@ -497,7 +500,7 @@ impl Dispatch2<GnoblinWindowFrameV1, State> for FrameObject {
 }
 
 /// Tells a renderer its frame is over, once.
-fn close(frame: &FrameRecord) {
+fn close(frame: &GnoblinWindowFrameV1FrameRecord) {
     if frame.closed {
         return;
     }
@@ -509,8 +512,11 @@ fn close(frame: &FrameRecord) {
 impl State {
     /// What a window's frame is doing, for the compositor and for a test.
     #[must_use]
-    pub fn window_frame(&self, window: WindowId) -> Option<WindowFrame> {
-        self.frame_tables.frames.get(&window).map(FrameRecord::report)
+    pub fn window_frame(&self, window: WindowId) -> Option<GnoblinWindowFrameV1Frame> {
+        self.frame_tables
+            .frames
+            .get(&window)
+            .map(GnoblinWindowFrameV1FrameRecord::report)
     }
 
     /// Tells a renderer which of its regions the pointer is over.
@@ -575,9 +581,10 @@ impl State {
         frame.hover = action;
         frame.pressed = pressed;
         if frame.object.is_alive() {
-            frame
-                .object
-                .interaction(action.map_or(0, FrameAction::to_wire), u32::from(pressed));
+            frame.object.interaction(
+                action.map_or(0, GnoblinWindowFrameV1Action::to_wire),
+                u32::from(pressed),
+            );
         }
         if pressed && let Some(action) = action {
             self.apply_frame_action(window, action);
@@ -591,9 +598,9 @@ impl State {
     /// interactive grab, which the input slice owns, so those nine actions are
     /// reported to the renderer and recorded here and nothing else happens until that
     /// grab exists. Nothing here can end the session: an unknown window is ignored.
-    fn apply_frame_action(&mut self, window: WindowId, action: FrameAction) {
+    fn apply_frame_action(&mut self, window: WindowId, action: GnoblinWindowFrameV1Action) {
         match action {
-            FrameAction::Close => {
+            GnoblinWindowFrameV1Action::Close => {
                 let toplevel = self
                     .windows
                     .get(&window)
@@ -603,23 +610,23 @@ impl State {
                     debug!(%window, "[frame] the window was asked to close");
                 }
             }
-            FrameAction::Maximize => {
+            GnoblinWindowFrameV1Action::Maximize => {
                 let effects = self.wm.apply(gnoblin_wm::Event::ToggleMaximise { window });
                 self.apply(effects);
             }
-            FrameAction::Minimize => {
+            GnoblinWindowFrameV1Action::Minimize => {
                 let effects = self.wm.apply(gnoblin_wm::Event::Minimise { window });
                 self.apply(effects);
             }
-            FrameAction::Drag
-            | FrameAction::North
-            | FrameAction::NorthEast
-            | FrameAction::East
-            | FrameAction::SouthEast
-            | FrameAction::South
-            | FrameAction::SouthWest
-            | FrameAction::West
-            | FrameAction::NorthWest => {
+            GnoblinWindowFrameV1Action::Drag
+            | GnoblinWindowFrameV1Action::North
+            | GnoblinWindowFrameV1Action::NorthEast
+            | GnoblinWindowFrameV1Action::East
+            | GnoblinWindowFrameV1Action::SouthEast
+            | GnoblinWindowFrameV1Action::South
+            | GnoblinWindowFrameV1Action::SouthWest
+            | GnoblinWindowFrameV1Action::West
+            | GnoblinWindowFrameV1Action::NorthWest => {
                 debug!(
                     %window,
                     action = action.to_wire(),
@@ -733,10 +740,10 @@ impl State {
         let serial = u32::from(serial);
         // The frame object is created for the renderer's connection, so its
         // requests arrive there and nowhere else.
-        let object = match client.create_resource::<GnoblinWindowFrameV1, FrameObject, State>(
+        let object = match client.create_resource::<GnoblinWindowFrameV1, GnoblinWindowFrameV1FrameObject, State>(
             &self.display_handle,
             frame::GnoblinWindowFrameV1::interface().version,
-            FrameObject { window },
+            GnoblinWindowFrameV1FrameObject { window },
         ) {
             Ok(object) => object,
             Err(error) => {
@@ -746,7 +753,7 @@ impl State {
         };
         manager.frame(&object);
         debug!(%window, serial, ?size, "[frame] a frame was offered");
-        let entry = FrameRecord {
+        let entry = GnoblinWindowFrameV1FrameRecord {
             object,
             surface: None,
             serial,

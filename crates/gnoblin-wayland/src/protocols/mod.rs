@@ -5,41 +5,41 @@
 //! split is what lets a protocol be added without touching another, and it is the
 //! layout `design/rust-compositor.md` ("Project structure") asks for.
 //!
-//! | Module | Protocol | What it does here |
+//! | Module | Interfaces | What it does here |
 //! |---|---|---|
 //! | [`xdg_activation_v1`] | `xdg_activation_v1` | mints and redeems one-shot activation tokens |
 //! | [`gnoblin_blur_fade_v1`] | `gnoblin_blur_fade_v1` | fade metadata for a surface's own items, applied with its commit |
 //! | [`gnoblin_session_host_v1`] | `gnoblin_session_host_v1` | the host's channel to one hosted session: readiness, protection, logout and power requests |
 //! | [`ext_image_copy_capture_v1`] | `ext_image_copy_capture_v1` | frames of an output or a window, streamed under the lock embargo and the access roster |
 //! | [`ext_image_capture_source_v1`] | `ext_image_capture_source_v1` | names what an image-copy session captures: an output or a toplevel |
-//! | [`zwlr_screencopy_manager_v1`] | `zwlr_screencopy_manager_v1` | one-shot screencopy of an output or a region, under the same embargo and roster |
+//! | [`zwlr_screencopy_v1`] | `zwlr_screencopy_manager_v1` | one-shot screencopy of an output or a region, under the same embargo and roster |
 //! | [`capture_shared`] | none of its own | the pixel path, lock embargo and session table the three capture protocols share |
 //! | [`wl_compositor`] | `wl_compositor`, `wl_subcompositor` | surfaces, subsurfaces and buffer commits |
 //! | [`wl_shm`] | `wl_shm`, `wl_shm_pool` | shared-memory buffer pools |
 //! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
 //! | [`wp_cursor_shape_v1`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
-//! | [`xdg_decoration_unstable_v1`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
+//! | [`zxdg_decoration_v1`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
 //! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
 //! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
 //! | [`zwlr_gamma_control_v1`] | `zwlr_gamma_control_manager_v1` | per-output gamma ramps; a second client asking for an output another holds is refused |
-//! | [`zwlr_output_power_v1`] | `zwlr_output_power_manager_v1` | per-output power, on or off; reports each change to its holder |
+//! | [`zwlr_output_power_management_v1`] | `zwlr_output_power_manager_v1` | per-output power, on or off; reports each change to its holder |
 //! | [`ext_foreign_toplevel_list_v1`] | `ext_foreign_toplevel_list_v1` | the read-only, standardised form of the same list, keyed by a stable identifier |
 //! | [`foreign_toplevel_shared`] | none of its own | the window record both toplevel lists are fed from, and what changed since it was last sent |
 //! | [`wp_fractional_scale_v1`] | `wp_fractional_scale_manager_v1` | tells a surface the scale its output draws it at |
 //! | [`zwp_idle_inhibit_v1`] | `zwp_idle_inhibit_manager_v1` | records the surfaces that keep the session awake |
 //! | [`ext_idle_notify_v1`] | `ext_idle_notifier_v1` | answers `idled`/`resumed` from the session's tick counter |
-//! | [`wlr_layer_shell_unstable_v1`] | `zwlr_layer_shell_v1` | bars and docks: anchors, sizes, exclusive zones and keyboard interactivity |
+//! | [`zwlr_layer_shell_v1`] | `zwlr_layer_shell_v1` | bars and docks: anchors, sizes, exclusive zones and keyboard interactivity |
 //! | [`wl_output`] | `wl_output` | the output globals the layout created |
 //! | [`zwp_pointer_constraints_v1`] | `zwp_pointer_constraints_v1` | activates, confines and releases a client's lock |
 //! | [`zwp_pointer_gestures_v1`] | `zwp_pointer_gestures_v1` | creates the gesture objects |
-//! | [`wp_presentation`] | `wp_presentation` | answers feedback with the frame's present time |
+//! | [`wp_presentation_time`] | `wp_presentation` | answers feedback with the frame's present time |
 //! | [`zwp_relative_pointer_v1`] | `zwp_relative_pointer_manager_v1` | the vector motion a locked pointer reports |
 //! | [`wl_seat`] | `wl_seat` | keyboard and pointer focus over surfaces |
 //! | [`wp_security_context_v1`] | `wp_security_context_v1` | application sandboxes, marked before their first request |
 //! | [`wl_data_device_manager`] | `wl_data_device_manager` | the clipboard and what follows focus |
 //! | [`zwp_primary_selection_v1`] | `zwp_primary_selection_device_manager_v1` | the primary selection |
 //! | [`ext_data_control_v1`] | `ext_data_control_manager_v1` | clipboard access for privileged clients |
-//! | [`wlr_data_control_unstable_v1`] | `zwlr_data_control_manager_v1` | clipboard access for privileged clients (wlroots) |
+//! | [`zwlr_data_control_v1`] | `zwlr_data_control_manager_v1` | clipboard access for privileged clients (wlroots) |
 //! | [`ext_session_lock_v1`] | `ext_session_lock_v1` | the lock request, its cover, its surfaces and the input gate |
 //! | [`zwp_keyboard_shortcuts_inhibit_v1`] | `zwp_keyboard_shortcuts_inhibit_manager_v1` | grants, refuses and revokes shortcut inhibitors |
 //! | [`wp_single_pixel_buffer_v1`] | `wp_single_pixel_buffer_manager_v1` | creates the global; the buffer carries its own colour |
@@ -53,7 +53,7 @@
 //! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | implemented, not advertised: the composer has one opacity per window, so a factor would be accepted and not drawn |
 //! | [`wp_fifo_v1`] | `wp_fifo_manager_v1` | a client's commits are shown in order; barriers are released on each frame tick |
 //! | [`xdg_dialog_v1`] | `xdg_wm_dialog_v1` | a modal child takes focus from its parent and the parent's focus is redirected to it until unset; the window manager floats the dialog above its parent |
-//! | [`xdg_foreign_v2`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
+//! | [`zxdg_foreign_v2`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
 //! | [`xdg_toplevel_icon_v1`] | `xdg_toplevel_icon_manager_v1` | the icon's name and buffer count are stored per window and exposed in the session snapshot; not drawn |
 //! | [`xdg_toplevel_tag_v1`] | `xdg_toplevel_tag_manager_v1` | the tag is stored per window and exposed in the session snapshot; placement does not read it |
 
@@ -78,29 +78,27 @@ pub mod wl_data_device_manager;
 pub mod wl_output;
 pub mod wl_seat;
 pub mod wl_shm;
-pub mod wlr_data_control_unstable_v1;
-pub mod wlr_layer_shell_unstable_v1;
 pub mod wp_alpha_modifier_v1;
 pub mod wp_content_type_v1;
 pub mod wp_cursor_shape_v1;
 pub mod wp_fifo_v1;
 pub mod wp_fractional_scale_v1;
-pub mod wp_presentation;
+pub mod wp_presentation_time;
 pub mod wp_security_context_v1;
 pub mod wp_single_pixel_buffer_v1;
 pub mod wp_tearing_control_v1;
 pub mod wp_viewporter;
 pub mod xdg_activation_v1;
-pub mod xdg_decoration_unstable_v1;
 pub mod xdg_dialog_v1;
-pub mod xdg_foreign_v2;
 pub mod xdg_shell;
 pub mod xdg_toplevel_icon_v1;
 pub mod xdg_toplevel_tag_v1;
+pub mod zwlr_data_control_v1;
 pub mod zwlr_foreign_toplevel_management_v1;
 pub mod zwlr_gamma_control_v1;
-pub mod zwlr_output_power_v1;
-pub mod zwlr_screencopy_manager_v1;
+pub mod zwlr_layer_shell_v1;
+pub mod zwlr_output_power_management_v1;
+pub mod zwlr_screencopy_v1;
 pub mod zwp_idle_inhibit_v1;
 pub mod zwp_input_method_v2;
 pub mod zwp_keyboard_shortcuts_inhibit_v1;
@@ -110,3 +108,5 @@ pub mod zwp_primary_selection_v1;
 pub mod zwp_relative_pointer_v1;
 pub mod zwp_text_input_v3;
 pub mod zwp_virtual_keyboard_v1;
+pub mod zxdg_decoration_v1;
+pub mod zxdg_foreign_v2;

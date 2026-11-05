@@ -1,3 +1,5 @@
+//! XML protocol `wlr_layer_shell_unstable_v1` (`<protocol name="wlr_layer_shell_unstable_v1">`); interfaces served: `zwlr_layer_shell_v1`.
+//!
 //! `zwlr_layer_shell_v1`: bars, docks, overlays and what they reserve.
 //!
 //! A layer surface is placed against an output's edges rather than by the window
@@ -99,7 +101,7 @@ impl WlrLayerShellHandler for State {
 }
 
 /// One layer surface the session is showing.
-struct LayerEntry {
+struct ZwlrLayerShellV1LayerEntry {
     /// The protocol object, which is also what a configure is sent through.
     surface: LayerSurface,
     /// The namespace the client named, which is how a shell recognises its own bars.
@@ -120,7 +122,7 @@ struct LayerEntry {
     mapped: bool,
 }
 
-impl LayerEntry {
+impl ZwlrLayerShellV1LayerEntry {
     /// The reserved insets this surface contributes to its output.
     ///
     /// Only a strip along one edge reserves anything: the protocol makes an
@@ -144,19 +146,19 @@ impl LayerEntry {
 
 /// The layer surfaces, in creation order, and what they have reserved.
 #[derive(Default)]
-pub(crate) struct Layers {
-    entries: Vec<LayerEntry>,
+pub(crate) struct ZwlrLayerShellV1Layers {
+    entries: Vec<ZwlrLayerShellV1LayerEntry>,
     /// The insets each output last reported to the window manager.
     reserved: std::collections::BTreeMap<OutputId, Insets>,
 }
 
-impl Layers {
+impl ZwlrLayerShellV1Layers {
     /// The surface that holds the keyboard, if any.
     ///
     /// Only the top and overlay layers take exclusive focus: a background or bottom
     /// surface asking for it may still be focused by the user, which is the
     /// protocol's own distinction between the two.
-    fn keyboard_grab(&self) -> Option<&LayerEntry> {
+    fn keyboard_grab(&self) -> Option<&ZwlrLayerShellV1LayerEntry> {
         self.entries
             .iter()
             .rev()
@@ -207,7 +209,7 @@ impl State {
             surface = ?surface.wl_surface().id(),
             "[layer] created"
         );
-        self.layers.entries.push(LayerEntry {
+        self.layers.entries.push(ZwlrLayerShellV1LayerEntry {
             surface,
             namespace,
             layer,

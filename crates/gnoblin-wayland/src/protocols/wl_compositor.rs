@@ -1,3 +1,5 @@
+//! XML protocol `wayland` (`<protocol name="wayland">`); interfaces served: `wl_compositor`, `wl_subcompositor`.
+//!
 //! `wl_compositor` and `wl_subcompositor` (XML `wayland.xml`), with the sync-subsurface rules
 //! applied in its commit handler. `wl_shm` lives in `wl_shm.rs`.
 //!
@@ -44,14 +46,14 @@ use crate::access::{Access, Registration};
 /// learns that a connection is gone: dropping this data is the one thing a disconnect
 /// reliably does.
 #[derive(Debug)]
-pub struct ClientState {
+pub struct WlCompositorClientState {
     /// Smithay's per-client compositor state.
     pub compositor_state: CompositorClientState,
     /// The connection's claim on its access-roster entry.
     pub registration: Registration,
 }
 
-impl ClientState {
+impl WlCompositorClientState {
     /// The data a connection is inserted with.
     #[must_use]
     pub fn new(access: &Arc<Access>) -> Self {
@@ -62,7 +64,7 @@ impl ClientState {
     }
 }
 
-impl ClientData for ClientState {}
+impl ClientData for WlCompositorClientState {}
 
 impl CompositorHandler for State {
     fn compositor_state(&mut self) -> &mut CompositorState {
@@ -72,8 +74,8 @@ impl CompositorHandler for State {
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
         // Xwayland is inserted with Smithay's own client data, because its compositor
         // state is where the client scale and the X11 surface association live; every
-        // other client carries this server's [`ClientState`].
-        if let Some(state) = client.get_data::<ClientState>() {
+        // other client carries this server's [`WlCompositorClientState`].
+        if let Some(state) = client.get_data::<WlCompositorClientState>() {
             return &state.compositor_state;
         }
         &client

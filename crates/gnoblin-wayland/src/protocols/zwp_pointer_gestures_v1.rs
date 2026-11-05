@@ -1,3 +1,5 @@
+//! XML protocol `pointer_gestures_unstable_v1` (`<protocol name="pointer_gestures_unstable_v1">`); interfaces served: `zwp_pointer_gestures_v1`.
+//!
 //! `zwp_pointer_gestures_v1`: swipe, pinch and hold gestures reported to a client.
 //!
 //! The global is all this module creates, and that is the whole of the compositor's part

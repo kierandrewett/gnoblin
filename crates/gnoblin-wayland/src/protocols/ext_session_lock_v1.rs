@@ -1,3 +1,5 @@
+//! XML protocol `ext_session_lock_v1` (`<protocol name="ext_session_lock_v1">`); interfaces served: `ext_session_lock_v1`.
+//!
 //! `ext_session_lock_v1`: the lock request, the cover and the embargo.
 //!
 //! The protocol is translated here and decided in `gnoblin-lock`: a request becomes
@@ -100,7 +102,7 @@ const COVER: Color = Color::BLACK;
 /// The confirmation is what Smithay holds the request open with: dropping it sends
 /// `finished`, and [`SessionLocker::lock`] sends `locked`. Holding it here is what
 /// keeps the two events in the order the protocol requires.
-struct PendingLock {
+struct ExtSessionLockV1PendingLock {
     /// The requesting connection, as the lock state machine names it.
     locker: ClientId,
     /// The lock object, kept to notice the connection going away.
@@ -110,7 +112,7 @@ struct PendingLock {
 }
 
 /// One lock surface the owner created for an output.
-struct LockSurfaceEntry {
+struct ExtSessionLockV1LockSurfaceEntry {
     /// The connection that owns the lock.
     locker: ClientId,
     /// The output it covers.
@@ -124,7 +126,7 @@ struct LockSurfaceEntry {
 
 /// The presentation barrier: the generation a covering frame must carry, and the
 /// outputs that have not presented it yet.
-struct Barrier {
+struct ExtSessionLockV1Barrier {
     /// The generation [`LockEvent::CoverPresented`] must echo.
     generation: u64,
     /// Outputs still owing a frame for it.
@@ -137,15 +139,15 @@ struct Barrier {
 /// It is one value so the compositor's own fields stay a short list, and so a
 /// reader can see the whole of the protocol's state in one place.
 #[derive(Default)]
-pub(crate) struct LockTables {
+pub(crate) struct ExtSessionLockV1Tables {
     /// Requests waiting for the barrier, in arrival order.
-    pending: Vec<PendingLock>,
+    pending: Vec<ExtSessionLockV1PendingLock>,
     /// The lock object of the owner, kept to notice its connection going away.
     owner: Option<ExtSessionLockV1>,
     /// Every lock surface, one entry per owner and output.
-    surfaces: Vec<LockSurfaceEntry>,
+    surfaces: Vec<ExtSessionLockV1LockSurfaceEntry>,
     /// The armed barrier, while some output still owes a covering frame.
-    barrier: Option<Barrier>,
+    barrier: Option<ExtSessionLockV1Barrier>,
     /// The generation of the cover the scene is showing.
     cover_generation: u64,
     /// The last cover generation each output was painted for, so an idle covered
@@ -175,7 +177,7 @@ impl SessionLockHandler for State {
             return;
         };
         let object = confirmation.ext_session_lock().clone();
-        self.lock_tables.pending.push(PendingLock {
+        self.lock_tables.pending.push(ExtSessionLockV1PendingLock {
             locker,
             object,
             confirmation,
@@ -215,7 +217,7 @@ impl SessionLockHandler for State {
         surface.with_pending_state(|state| state.size = Some(size));
         surface.send_configure();
         debug!(?locker, %target, "[lock] lock surface created");
-        self.lock_tables.surfaces.push(LockSurfaceEntry {
+        self.lock_tables.surfaces.push(ExtSessionLockV1LockSurfaceEntry {
             locker,
             output: target,
             surface,
@@ -288,7 +290,7 @@ impl State {
                 }
                 LockEffect::AwaitPresentation { generation, outputs } => {
                     debug!(generation, ?outputs, "[lock] waiting for a covering frame");
-                    self.lock_tables.barrier = Some(Barrier {
+                    self.lock_tables.barrier = Some(ExtSessionLockV1Barrier {
                         generation,
                         pending: outputs,
                     });

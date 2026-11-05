@@ -1,3 +1,5 @@
+//! XML protocol `wayland` (`<protocol name="wayland">`); interfaces served: `wl_seat`.
+//!
 //! `wl_seat`: keyboard and pointer focus over surfaces.
 //!
 //! The seat owns focus; this module only states what a focus target is. A focus

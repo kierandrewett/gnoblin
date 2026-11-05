@@ -145,7 +145,7 @@ impl Fader {
 }
 
 /// The records a window's surface committed.
-fn committed(handle: &Handle, window: WindowId) -> Option<Vec<gnoblin_wayland::Fade>> {
+fn committed(handle: &Handle, window: WindowId) -> Option<Vec<gnoblin_wayland::GnoblinBlurFadeV1Fade>> {
     handle.control.blur_fades(window).flatten()
 }
 
@@ -154,8 +154,8 @@ fn wait_fades(
     handle: &Handle,
     window: WindowId,
     what: &str,
-    predicate: impl Fn(&[gnoblin_wayland::Fade]) -> bool,
-) -> Vec<gnoblin_wayland::Fade> {
+    predicate: impl Fn(&[gnoblin_wayland::GnoblinBlurFadeV1Fade]) -> bool,
+) -> Vec<gnoblin_wayland::GnoblinBlurFadeV1Fade> {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         if let Some(fades) = committed(handle, window)

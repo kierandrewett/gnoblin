@@ -1,3 +1,5 @@
+//! XML protocol `pointer_constraints_unstable_v1` (`<protocol name="pointer_constraints_unstable_v1">`); interfaces served: `zwp_pointer_constraints_v1`.
+//!
 //! `zwp_pointer_constraints_v1`: pointer lock and pointer confinement.
 //!
 //! The protocol lets a client ask for one of two things from the pointer while its
@@ -60,7 +62,7 @@ pub(crate) fn global(display: &DisplayHandle) -> PointerConstraintsState {
 
 /// What a client asked the pointer to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConstraintKind {
+pub(crate) enum ZwpPointerConstraintsV1Kind {
     /// The pointer stays where it is and reports relative motion.
     Locked,
     /// The pointer stays inside a region of the surface.
@@ -69,7 +71,7 @@ pub(crate) enum ConstraintKind {
 
 /// One constraint the compositor holds for a surface.
 #[derive(Clone, Debug)]
-pub(crate) struct HeldConstraint {
+pub(crate) struct ZwpPointerConstraintsV1HeldConstraint {
     /// The surface the client asked for.
     pub(crate) surface: WlSurface,
     /// The pointer the constraint applies to.
@@ -83,9 +85,9 @@ pub(crate) struct HeldConstraint {
 /// hash, and the order is the order the clients asked, which is what the release order
 /// reports.
 #[derive(Default, Debug)]
-pub(crate) struct ConstraintTables {
+pub(crate) struct ZwpPointerConstraintsV1Tables {
     /// Every constraint that is currently held.
-    pub(crate) held: Vec<HeldConstraint>,
+    pub(crate) held: Vec<ZwpPointerConstraintsV1HeldConstraint>,
     /// Where the client says it draws the cursor while locked, per pointer.
     pub(crate) hints: Vec<(WlSurface, Point<f64, Logical>)>,
 }
@@ -98,7 +100,7 @@ impl State {
     #[must_use]
     pub(crate) fn locked_surface(&self) -> Option<WlSurface> {
         let focus = self.pointer.current_focus()?;
-        (self.constraint_of(&focus) == Some(ConstraintKind::Locked)).then_some(focus)
+        (self.constraint_of(&focus) == Some(ZwpPointerConstraintsV1Kind::Locked)).then_some(focus)
     }
 
     /// Holds a position inside the region of the surface under it, if that surface's client
@@ -112,7 +114,7 @@ impl State {
         let Some((surface, origin)) = self.surface_under(position) else {
             return position;
         };
-        if self.constraint_of(&surface) != Some(ConstraintKind::Confined) {
+        if self.constraint_of(&surface) != Some(ZwpPointerConstraintsV1Kind::Confined) {
             return position;
         }
         let Some(region) = self.constraint_region(&surface) else {
@@ -133,7 +135,7 @@ impl State {
     ///
     /// The kind comes from Smithay's own record of the constraint, so a constraint the
     /// client destroyed cannot be seen as held here: the two cannot disagree.
-    pub(crate) fn constraint_of(&self, surface: &WlSurface) -> Option<ConstraintKind> {
+    pub(crate) fn constraint_of(&self, surface: &WlSurface) -> Option<ZwpPointerConstraintsV1Kind> {
         let pointer = self.pointer.clone();
         with_pointer_constraint(surface, &pointer, |constraint| {
             constraint.map(|constraint: PointerConstraintRef<'_, State>| {
@@ -141,9 +143,9 @@ impl State {
                     &*constraint,
                     smithay::wayland::pointer_constraints::PointerConstraint::Locked(_)
                 ) {
-                    ConstraintKind::Locked
+                    ZwpPointerConstraintsV1Kind::Locked
                 } else {
-                    ConstraintKind::Confined
+                    ZwpPointerConstraintsV1Kind::Confined
                 }
             })
         })
@@ -212,7 +214,7 @@ impl PointerConstraintsHandler for State {
                 constraint.activate();
             }
         });
-        self.constraint_tables.held.push(HeldConstraint {
+        self.constraint_tables.held.push(ZwpPointerConstraintsV1HeldConstraint {
             surface: surface.clone(),
             pointer: pointer.clone(),
         });

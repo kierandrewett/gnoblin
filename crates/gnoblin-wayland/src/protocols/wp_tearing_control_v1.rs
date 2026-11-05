@@ -1,3 +1,5 @@
+//! XML protocol `tearing_control_v1` (`<protocol name="tearing_control_v1">`); interfaces served: `wp_tearing_control_v1`.
+//!
 //! `wp_tearing_control_v1`: a client says it would accept a torn frame.
 //!
 //! A game with an uncapped frame rate prefers a frame shown the instant it is ready to
@@ -35,7 +37,7 @@ use crate::State;
 
 /// What a client asked for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum TearingHint {
+pub enum WpTearingControlV1Hint {
     /// No hint was given, so the compositor presents tear-free.
     #[default]
     Unset,
@@ -47,20 +49,20 @@ pub enum TearingHint {
 
 /// User data of a `wp_tearing_control_manager_v1`.
 #[derive(Debug)]
-pub struct TearingManagerUserData;
+pub struct WpTearingControlV1TearingManagerUserData;
 
 /// User data of a `wp_tearing_control_v1`.
 #[derive(Debug)]
-pub struct TearingControlUserData {
+pub struct WpTearingControlV1TearingControlUserData {
     surface: WlSurface,
 }
 
 /// Creates the `wp_tearing_control_manager_v1` global.
 pub(crate) fn global(display: &DisplayHandle) -> smithay::reexports::wayland_server::backend::GlobalId {
-    display.create_global::<State, WpTearingControlManagerV1, _>(1, TearingManagerUserData)
+    display.create_global::<State, WpTearingControlManagerV1, _>(1, WpTearingControlV1TearingManagerUserData)
 }
 
-impl GlobalDispatch2<WpTearingControlManagerV1, State> for TearingManagerUserData {
+impl GlobalDispatch2<WpTearingControlManagerV1, State> for WpTearingControlV1TearingManagerUserData {
     fn bind(
         &self,
         _state: &mut State,
@@ -69,11 +71,11 @@ impl GlobalDispatch2<WpTearingControlManagerV1, State> for TearingManagerUserDat
         resource: New<WpTearingControlManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        data_init.init(resource, TearingManagerUserData);
+        data_init.init(resource, WpTearingControlV1TearingManagerUserData);
     }
 }
 
-impl Dispatch2<WpTearingControlManagerV1, State> for TearingManagerUserData {
+impl Dispatch2<WpTearingControlManagerV1, State> for WpTearingControlV1TearingManagerUserData {
     fn request(
         &self,
         state: &mut State,
@@ -90,13 +92,13 @@ impl Dispatch2<WpTearingControlManagerV1, State> for TearingManagerUserData {
                 }
                 data_init.init(
                     id,
-                    TearingControlUserData {
+                    WpTearingControlV1TearingControlUserData {
                         surface: surface.clone(),
                     },
                 );
                 // A new control object starts with no hint, which is the protocol's
                 // starting state: the surface asks nothing until it says so.
-                state.set_tearing_hint(&surface, TearingHint::Unset);
+                state.set_tearing_hint(&surface, WpTearingControlV1Hint::Unset);
             }
             wp_tearing_control_manager_v1::Request::Destroy => {}
             _ => unreachable!("wp_tearing_control_manager_v1 has two requests"),
@@ -104,7 +106,7 @@ impl Dispatch2<WpTearingControlManagerV1, State> for TearingManagerUserData {
     }
 }
 
-impl Dispatch2<WpTearingControlV1, State> for TearingControlUserData {
+impl Dispatch2<WpTearingControlV1, State> for WpTearingControlV1TearingControlUserData {
     fn request(
         &self,
         state: &mut State,
@@ -119,10 +121,10 @@ impl Dispatch2<WpTearingControlV1, State> for TearingControlUserData {
                 let hint = match hint {
                     smithay::reexports::wayland_server::WEnum::Value(
                         wp_tearing_control_v1::PresentationHint::Async,
-                    ) => TearingHint::Async,
+                    ) => WpTearingControlV1Hint::Async,
                     smithay::reexports::wayland_server::WEnum::Value(
                         wp_tearing_control_v1::PresentationHint::Vsync,
-                    ) => TearingHint::Sync,
+                    ) => WpTearingControlV1Hint::Sync,
                     // A value from a newer revision is answered the way the protocol
                     // asks: ignore it rather than guess what it means.
                     _ => return,
@@ -131,7 +133,7 @@ impl Dispatch2<WpTearingControlV1, State> for TearingControlUserData {
                 state.set_tearing_hint(&self.surface, hint);
             }
             wp_tearing_control_v1::Request::Destroy => {
-                state.set_tearing_hint(&self.surface, TearingHint::Unset);
+                state.set_tearing_hint(&self.surface, WpTearingControlV1Hint::Unset);
             }
             _ => unreachable!("wp_tearing_control_v1 has two requests"),
         }
@@ -143,25 +145,25 @@ impl Dispatch2<WpTearingControlV1, State> for TearingControlUserData {
         _client: smithay::reexports::wayland_server::backend::ClientId,
         _resource: &WpTearingControlV1,
     ) {
-        state.set_tearing_hint(&self.surface, TearingHint::Unset);
+        state.set_tearing_hint(&self.surface, WpTearingControlV1Hint::Unset);
     }
 }
 
 impl State {
     /// Records a surface's tearing hint.
-    pub(crate) fn set_tearing_hint(&mut self, surface: &WlSurface, hint: TearingHint) {
+    pub(crate) fn set_tearing_hint(&mut self, surface: &WlSurface, hint: WpTearingControlV1Hint) {
         self.tearing.retain(|(held, _)| held != surface);
-        if hint != TearingHint::Unset {
+        if hint != WpTearingControlV1Hint::Unset {
             self.tearing.push((surface.clone(), hint));
         }
     }
 
     /// The tearing hint a surface's client last set.
     #[must_use]
-    pub fn tearing_hint(&self, surface: &WlSurface) -> TearingHint {
+    pub fn tearing_hint(&self, surface: &WlSurface) -> WpTearingControlV1Hint {
         self.tearing
             .iter()
             .find(|(held, _)| held == surface && held.is_alive())
-            .map_or(TearingHint::Unset, |(_, hint)| *hint)
+            .map_or(WpTearingControlV1Hint::Unset, |(_, hint)| *hint)
     }
 }

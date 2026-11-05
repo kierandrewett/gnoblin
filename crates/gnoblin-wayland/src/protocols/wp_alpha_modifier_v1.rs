@@ -1,3 +1,5 @@
+//! XML protocol `alpha_modifier_v1` (`<protocol name="alpha_modifier_v1">`); interfaces served: `wp_alpha_modifier_v1`.
+//!
 //! `wp_alpha_modifier_v1`: a client multiplies its surface's opacity by a factor.
 //!
 //! Implemented but NOT advertised. The global is not created in

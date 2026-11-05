@@ -1,6 +1,8 @@
+//! XML protocol `wayland` (`<protocol name="wayland">`); interfaces served: `wl_data_device_manager`.
+//!
 //! The clipboard: `wl_data_device_manager` (XML `wayland.xml`) and the selection state every
 //! selection protocol shares. The primary selection, `ext_data_control_v1` and
-//! `wlr_data_control_unstable_v1` are in their own modules.
+//! `zwlr_data_control_v1` are in their own modules.
 //!
 //! ## What the compositor's part is
 //!
@@ -55,7 +57,7 @@ use crate::State;
 
 /// The selection targets the session holds a source for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SelectionKind {
+pub(crate) enum WlDataDeviceManagerSelectionKind {
     /// The clipboard: what `Ctrl+V` pastes.
     Clipboard,
     /// The primary selection: what a middle click pastes.
@@ -70,25 +72,25 @@ pub(crate) enum SelectionKind {
 /// also why a source whose owner has gone cannot serve stale bytes: the offer itself is
 /// withdrawn when the source resource is destroyed.
 #[derive(Default)]
-pub(crate) struct Selections {
+pub(crate) struct WlDataDeviceManagerSelections {
     clipboard: Option<Vec<String>>,
     primary: Option<Vec<String>>,
 }
 
-impl Selections {
+impl WlDataDeviceManagerSelections {
     /// The mime types of a target, for the observation.
-    fn mime_types(&self, target: SelectionKind) -> Option<Vec<String>> {
+    fn mime_types(&self, target: WlDataDeviceManagerSelectionKind) -> Option<Vec<String>> {
         match target {
-            SelectionKind::Clipboard => self.clipboard.clone(),
-            SelectionKind::Primary => self.primary.clone(),
+            WlDataDeviceManagerSelectionKind::Clipboard => self.clipboard.clone(),
+            WlDataDeviceManagerSelectionKind::Primary => self.primary.clone(),
         }
     }
 
     /// Replaces a target's selection.
-    fn set(&mut self, target: SelectionKind, mime_types: Option<Vec<String>>) {
+    fn set(&mut self, target: WlDataDeviceManagerSelectionKind, mime_types: Option<Vec<String>>) {
         let slot = match target {
-            SelectionKind::Clipboard => &mut self.clipboard,
-            SelectionKind::Primary => &mut self.primary,
+            WlDataDeviceManagerSelectionKind::Clipboard => &mut self.clipboard,
+            WlDataDeviceManagerSelectionKind::Primary => &mut self.primary,
         };
         *slot = mime_types;
     }
@@ -102,8 +104,8 @@ impl SelectionHandler for State {
     fn new_selection(&mut self, ty: SelectionTarget, source: Option<SelectionSource>, seat: Seat<Self>) {
         let _ = &seat;
         let target = match ty {
-            SelectionTarget::Clipboard => SelectionKind::Clipboard,
-            SelectionTarget::Primary => SelectionKind::Primary,
+            SelectionTarget::Clipboard => WlDataDeviceManagerSelectionKind::Clipboard,
+            SelectionTarget::Primary => WlDataDeviceManagerSelectionKind::Primary,
         };
         // Captured now, while the source's client is certainly there: asking later
         // would be asking a resource that may be gone.
@@ -127,8 +129,8 @@ impl SelectionHandler for State {
         let _ = user_data;
         let _ = &seat;
         let target = match ty {
-            SelectionTarget::Clipboard => SelectionKind::Clipboard,
-            SelectionTarget::Primary => SelectionKind::Primary,
+            SelectionTarget::Clipboard => WlDataDeviceManagerSelectionKind::Clipboard,
+            SelectionTarget::Primary => WlDataDeviceManagerSelectionKind::Primary,
         };
         // A client-set selection never reaches here: Smithay forwards that `receive` to
         // the source's own client, which is what keeps the bytes out of the compositor.
@@ -155,7 +157,7 @@ impl WaylandDndGrabHandler for State {}
 impl State {
     /// The mime types of the current clipboard selection, for a diagnostics reader.
     pub(crate) fn clipboard_mime_types(&self) -> Option<Vec<String>> {
-        self.selections.mime_types(SelectionKind::Clipboard)
+        self.selections.mime_types(WlDataDeviceManagerSelectionKind::Clipboard)
     }
 
     /// Tells the clipboard which connection has focus.

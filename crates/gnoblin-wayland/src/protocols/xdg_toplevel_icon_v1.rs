@@ -1,3 +1,5 @@
+//! XML protocol `xdg_toplevel_icon_v1` (`<protocol name="xdg_toplevel_icon_v1">`); interfaces served: `xdg_toplevel_icon_manager_v1`.
+//!
 //! `xdg_toplevel_icon_manager_v1`: a client gives a toplevel an icon, by name or by pixels.
 //!
 //! An icon is a client's own picture of what its window is. The protocol is advisory.

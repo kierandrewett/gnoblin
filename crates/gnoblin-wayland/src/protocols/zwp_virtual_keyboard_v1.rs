@@ -1,3 +1,5 @@
+//! XML protocol `virtual_keyboard_unstable_v1` (`<protocol name="virtual_keyboard_unstable_v1">`); interfaces served: `zwp_virtual_keyboard_manager_v1`.
+//!
 //! `zwp_virtual_keyboard_manager_v1` and `zwp_virtual_keyboard_v1` (XML
 //! `virtual-keyboard-unstable-v1`).
 //!

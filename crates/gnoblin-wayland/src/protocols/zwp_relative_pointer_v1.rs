@@ -1,3 +1,5 @@
+//! XML protocol `relative_pointer_unstable_v1` (`<protocol name="relative_pointer_unstable_v1">`); interfaces served: `zwp_relative_pointer_manager_v1`.
+//!
 //! `zwp_relative_pointer_manager_v1`: the motion a pointer-locked client is given.
 //!
 //! A relative pointer reports the motion vector instead of a position, which is the only

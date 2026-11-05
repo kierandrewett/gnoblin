@@ -77,18 +77,18 @@ use crate::keyboard::KeyboardTables;
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
-use crate::protocols::ext_idle_notify_v1::IdleTables;
-use crate::protocols::ext_session_lock_v1::LockTables;
+use crate::protocols::ext_idle_notify_v1::ExtIdleNotifyV1Tables;
+use crate::protocols::ext_session_lock_v1::ExtSessionLockV1Tables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
-use crate::protocols::gnoblin_session_host_v1::SessionHostTables;
-use crate::protocols::gnoblin_window_frame_v1::FrameTables;
-use crate::protocols::wl_data_device_manager::Selections;
-use crate::protocols::wlr_layer_shell_unstable_v1::Layers;
-use crate::protocols::wp_presentation::PresentationTables;
-use crate::protocols::wp_tearing_control_v1::TearingHint;
-use crate::protocols::xdg_activation_v1::Activation;
-use crate::protocols::zwp_pointer_constraints_v1::ConstraintTables;
+use crate::protocols::gnoblin_session_host_v1::GnoblinSessionHostV1Tables;
+use crate::protocols::gnoblin_window_frame_v1::GnoblinWindowFrameV1Tables;
+use crate::protocols::wl_data_device_manager::WlDataDeviceManagerSelections;
+use crate::protocols::wp_presentation_time::WpPresentationTimeTables;
+use crate::protocols::wp_tearing_control_v1::WpTearingControlV1Hint;
+use crate::protocols::xdg_activation_v1::XdgActivationV1;
+use crate::protocols::zwlr_layer_shell_v1::ZwlrLayerShellV1Layers;
+use crate::protocols::zwp_pointer_constraints_v1::ZwpPointerConstraintsV1Tables;
 use crate::server::StartupError;
 
 /// How many workspaces a session declares when its configuration names none.
@@ -243,7 +243,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) viewporter_state: ViewporterState,
     /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
-    /// handler in [`crate::protocols::xdg_decoration_unstable_v1`] answers its requests.
+    /// handler in [`crate::protocols::zxdg_decoration_v1`] answers its requests.
     #[allow(dead_code)]
     pub(crate) decoration_state: XdgDecorationState,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
@@ -319,7 +319,7 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) tearing_control_global: GlobalId,
     /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the handler is in
-    /// [`crate::protocols::xdg_foreign_v2`].
+    /// [`crate::protocols::zxdg_foreign_v2`].
     pub(crate) xdg_foreign_state: XdgForeignState,
     /// Kept alive so `xdg_wm_dialog_v1` stays registered; the handler is in
     /// [`crate::protocols::xdg_dialog_v1`].
@@ -365,11 +365,11 @@ pub struct State {
     /// What each connection is allowed to be, shared with the globals' filters.
     pub(crate) access: Arc<Access>,
     /// The layer surfaces and what they reserve.
-    pub(crate) layers: Layers,
+    pub(crate) layers: ZwlrLayerShellV1Layers,
     /// The published toplevel list.
     pub(crate) foreign_toplevels: ForeignToplevels,
     /// The activation tokens.
-    pub(crate) activation: Activation,
+    pub(crate) activation: XdgActivationV1,
     /// The titlebar actions the configuration declares, for the redirects that map a
     /// gesture to one. It is a copy of three configured values rather than a handle on
     /// the configuration, because a protocol handler must not re-read a document on
@@ -380,7 +380,7 @@ pub struct State {
     /// is the shell's.
     bells: u64,
     /// The current clipboard and primary selections.
-    pub(crate) selections: Selections,
+    pub(crate) selections: WlDataDeviceManagerSelections,
     /// Sandbox listeners waiting for the event loop to watch them.
     ///
     /// `wp_security_context_v1` hands the compositor a listening socket during a
@@ -394,11 +394,11 @@ pub struct State {
     /// The seat's keyboard features: sources, layout memory and delivery order.
     pub(crate) keyboard_tables: KeyboardTables,
     /// The pointer constraints a client holds.
-    pub(crate) constraint_tables: ConstraintTables,
+    pub(crate) constraint_tables: ZwpPointerConstraintsV1Tables,
     /// The idle notifications and inhibitors.
-    pub(crate) idle_tables: IdleTables,
+    pub(crate) idle_tables: ExtIdleNotifyV1Tables,
     /// The presentation feedback bookkeeping.
-    pub(crate) presentation_tables: PresentationTables,
+    pub(crate) presentation_tables: WpPresentationTimeTables,
     /// The shortcut inhibitors the compositor granted, so it can revoke them.
     pub(crate) shortcuts_held: Vec<KeyboardShortcutsInhibitor>,
     /// The input method popups, so a renderer can draw one.
@@ -413,7 +413,7 @@ pub struct State {
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
     /// The tearing hints clients set, keyed by surface.
-    pub(crate) tearing: Vec<(WlSurface, TearingHint)>,
+    pub(crate) tearing: Vec<(WlSurface, WpTearingControlV1Hint)>,
     /// The session clock, in milliseconds, which idle and the router read.
     pub(crate) clock: Tick,
     /// The input activity the idle state is derived from.
@@ -461,7 +461,7 @@ pub struct State {
     pub(crate) lock_embargo: Embargo,
     /// The protocol bookkeeping the lock needs: held confirmations, lock surfaces, the
     /// cover generation and the presentation barrier.
-    pub(crate) lock_tables: LockTables,
+    pub(crate) lock_tables: ExtSessionLockV1Tables,
 
     /// The capture sessions, the pixels a capture copies from and the capture globals.
     /// It is one value so the compositor's own fields stay a short list, and so the whole
@@ -470,10 +470,10 @@ pub struct State {
 
     /// The frame renderers' managers and the frames they were offered, which is
     /// `gnoblin_window_frame_v1` (`protocols::gnoblin_window_frame_v1`).
-    pub(crate) frame_tables: FrameTables,
+    pub(crate) frame_tables: GnoblinWindowFrameV1Tables,
     /// The hosted sessions, their protection covers and their requests, which is
     /// `gnoblin_session_host_v1` (`protocols::gnoblin_session_host_v1`).
-    pub(crate) session_host: SessionHostTables,
+    pub(crate) session_host: GnoblinSessionHostV1Tables,
 
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
@@ -580,13 +580,13 @@ impl State {
             .then(|| crate::protocols::zwlr_gamma_control_v1::global(&display_handle, &access));
         let power_global = Global::OutputPower
             .is_advertised(protocols)
-            .then(|| crate::protocols::zwlr_output_power_v1::global(&display_handle, &access));
+            .then(|| crate::protocols::zwlr_output_power_management_v1::global(&display_handle, &access));
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
         let capture = CaptureTables::new(&display_handle, &access);
-        let frame_tables = FrameTables::new(&display_handle, &access);
-        let session_host = SessionHostTables::new(&display_handle, &access);
+        let frame_tables = GnoblinWindowFrameV1Tables::new(&display_handle, &access);
+        let session_host = GnoblinSessionHostV1Tables::new(&display_handle, &access);
         // Nothing decides who may see the fade metadata: it describes the client's
         // own surface, so the handle is only kept alive by the global itself.
         let _blur_fade_global = crate::protocols::gnoblin_blur_fade_v1::global(&display_handle);
@@ -616,12 +616,12 @@ impl State {
         let pointer_gestures_state = crate::protocols::zwp_pointer_gestures_v1::global(&display_handle);
         let idle_inhibit_state = crate::protocols::zwp_idle_inhibit_v1::global(&display_handle);
         let shortcuts_inhibit_state = crate::protocols::zwp_keyboard_shortcuts_inhibit_v1::global(&display_handle);
-        let presentation_state = crate::protocols::wp_presentation::global(&display_handle);
+        let presentation_state = crate::protocols::wp_presentation_time::global(&display_handle);
         let content_type_state = crate::protocols::wp_content_type_v1::global(&display_handle);
         let single_pixel_buffer_state = crate::protocols::wp_single_pixel_buffer_v1::global(&display_handle);
         let tearing_control_global = crate::protocols::wp_tearing_control_v1::global(&display_handle);
         let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
-        let xdg_foreign_state = crate::protocols::xdg_foreign_v2::global(&display_handle);
+        let xdg_foreign_state = crate::protocols::zxdg_foreign_v2::global(&display_handle);
         let xdg_dialog_state = crate::protocols::xdg_dialog_v1::global(&display_handle);
         let xdg_toplevel_icon_manager = crate::protocols::xdg_toplevel_icon_v1::global(&display_handle);
         let xdg_toplevel_tag_manager = crate::protocols::xdg_toplevel_tag_v1::global(&display_handle);
@@ -687,18 +687,18 @@ impl State {
             pointer,
             seat,
             access,
-            layers: Layers::default(),
+            layers: ZwlrLayerShellV1Layers::default(),
             foreign_toplevels: ForeignToplevels::default(),
-            activation: Activation::default(),
+            activation: XdgActivationV1::default(),
             titlebar_actions,
             bells: 0,
-            selections: Selections::default(),
+            selections: WlDataDeviceManagerSelections::default(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
             keyboard_tables: KeyboardTables::default(),
-            constraint_tables: ConstraintTables::default(),
-            idle_tables: IdleTables::default(),
-            presentation_tables: PresentationTables::default(),
+            constraint_tables: ZwpPointerConstraintsV1Tables::default(),
+            idle_tables: ExtIdleNotifyV1Tables::default(),
+            presentation_tables: WpPresentationTimeTables::default(),
             shortcuts_held: Vec::new(),
             input_method_popups: Vec::new(),
             announced_text_inputs: HashSet::new(),
@@ -718,7 +718,7 @@ impl State {
             last_frame: None,
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
-            lock_tables: LockTables::default(),
+            lock_tables: ExtSessionLockV1Tables::default(),
             capture,
             frame_tables,
             session_host,
@@ -793,7 +793,7 @@ impl State {
     pub(crate) fn insert_client(
         &mut self,
         stream: std::os::unix::net::UnixStream,
-        data: Arc<crate::protocols::wl_compositor::ClientState>,
+        data: Arc<crate::protocols::wl_compositor::WlCompositorClientState>,
         role: ClientRole,
     ) -> std::io::Result<Client> {
         let client = self.display_handle.insert_client(
@@ -836,7 +836,9 @@ impl State {
     pub(crate) fn accept_sandbox(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<Client> {
         let client = self.insert_client(
             stream,
-            Arc::new(crate::protocols::wl_compositor::ClientState::new(&self.access)),
+            Arc::new(crate::protocols::wl_compositor::WlCompositorClientState::new(
+                &self.access,
+            )),
             ClientRole::Sandboxed,
         )?;
         debug!(client = ?client.id(), "[access] a sandboxed connection joined");

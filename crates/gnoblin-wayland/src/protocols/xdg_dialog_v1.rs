@@ -1,3 +1,5 @@
+//! XML protocol `xdg_dialog_v1` (`<protocol name="xdg_dialog_v1">`); interfaces served: `xdg_wm_dialog_v1`.
+//!
 //! `xdg_wm_dialog_v1`: a client says a toplevel is a dialog, and whether it is modal.
 //!
 //! Smithay keeps the hint on the toplevel's role. Each change is forwarded to the window

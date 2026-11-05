@@ -1,3 +1,5 @@
+//! XML protocol `ext_foreign_toplevel_list_v1` (`<protocol name="ext_foreign_toplevel_list_v1">`); interfaces served: `ext_foreign_toplevel_list_v1`.
+//!
 //! `ext_foreign_toplevel_list_v1`: the standardised, read-only toplevel list.
 //!
 //! The standardised list is the read-only half of the wlroots protocol with an

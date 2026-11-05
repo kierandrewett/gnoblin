@@ -1,3 +1,5 @@
+//! XML protocol `xdg_activation_v1` (`<protocol name="xdg_activation_v1">`); interfaces served: `xdg_activation_v1`.
+//!
 //! `xdg_activation_v1`: who may raise a window.
 //!
 //! The plan's rule is "Activation needs a valid token or a trusted context. A process
@@ -100,7 +102,7 @@ const ISSUED_SERIALS: usize = 64;
 
 /// One minted token and how it was earned.
 #[derive(Clone, Debug)]
-struct Minted {
+struct XdgActivationV1Minted {
     /// The authority's identity for it.
     token: TokenId,
     /// The session leader it was minted for; zero until launch attribution lands.
@@ -108,11 +110,11 @@ struct Minted {
 }
 
 /// The activation tokens and the authority that decides about them.
-pub(crate) struct Activation {
+pub(crate) struct XdgActivationV1 {
     /// The pure token machine.
     authority: Authority,
     /// The protocol's token string to the authority's identity.
-    tokens: BTreeMap<String, Minted>,
+    tokens: BTreeMap<String, XdgActivationV1Minted>,
     /// The next authority token to mint.
     next_token: u128,
     /// The serials this session handed to clients on input events.
@@ -123,7 +125,7 @@ pub(crate) struct Activation {
     locked: bool,
 }
 
-impl Default for Activation {
+impl Default for XdgActivationV1 {
     fn default() -> Self {
         Self {
             authority: Authority::new(),
@@ -138,7 +140,7 @@ impl Default for Activation {
     }
 }
 
-impl Activation {
+impl XdgActivationV1 {
     /// The last refusal.
     pub(crate) fn denied(&self) -> Option<&ActivationDenial> {
         self.denied.as_ref()
@@ -233,7 +235,7 @@ impl XdgActivationHandler for State {
         }
         self.activation.tokens.insert(
             token.as_str().to_owned(),
-            Minted {
+            XdgActivationV1Minted {
                 token: token_id,
                 leader,
             },

@@ -1,3 +1,5 @@
+//! XML protocol `viewporter` (`<protocol name="viewporter">`); interfaces served: `wp_viewporter`.
+//!
 //! `wp_viewporter`.
 //!
 //! Smithay needs no handler trait for this protocol: the global is created once and

@@ -78,7 +78,7 @@ pub enum Global {
     /// `gnoblin_window_frame_manager_v1`: a frame renderer draws another client's
     /// decorations and receives that window's metadata. Only the connections the
     /// compositor started a renderer on see it.
-    WindowFrame,
+    GnoblinWindowFrameV1Frame,
     /// `gnoblin_session_host_v1`: the host compositor's channel to one hosted session.
     /// Only the connection the compositor brokered for that session sees it, so a
     /// manager's own request to lock, log out or power off cannot be forged by an
@@ -117,7 +117,7 @@ impl Global {
             | Self::WlrDataControl
             | Self::Screencopy
             | Self::ImageCopyCapture
-            | Self::WindowFrame
+            | Self::GnoblinWindowFrameV1Frame
             | Self::GammaControl
             | Self::OutputPower
             | Self::SessionHost => true,
@@ -142,7 +142,7 @@ impl Global {
             Self::WlrDataControl => "zwlr_data_control_manager_v1",
             Self::Screencopy => "zwlr_screencopy_manager_v1",
             Self::ImageCopyCapture => "ext_image_copy_capture_manager_v1",
-            Self::WindowFrame => "gnoblin_window_frame_manager_v1",
+            Self::GnoblinWindowFrameV1Frame => "gnoblin_window_frame_manager_v1",
             Self::SessionHost => "gnoblin_session_host_v1",
             Self::InputMethod => "zwp_input_method_manager_v2",
             Self::VirtualKeyboard => "zwp_virtual_keyboard_manager_v1",
@@ -174,7 +174,7 @@ impl Global {
             Self::BackgroundEffect => gnoblin_config::Protocol::ExtBackgroundEffectV1,
             Self::GammaControl => gnoblin_config::Protocol::WlrGammaControl,
             Self::OutputPower => gnoblin_config::Protocol::WlrOutputPowerManagement,
-            Self::WindowFrame | Self::SessionHost => return true,
+            Self::GnoblinWindowFrameV1Frame | Self::SessionHost => return true,
             // The schema has no switch for the seat's privileged halves: an input method
             // and a virtual keyboard are always on offer to a connection that earned
             // them, which is the roster's decision and not the document's.
@@ -238,7 +238,7 @@ pub const fn decide(role: ClientRole, global: Global) -> bool {
         // Narrow on purpose: the process behind these roles is a renderer or a session,
         // never the session's own management, so one global is the whole of what it may
         // reach.
-        ClientRole::FrameRenderer => matches!(global, Global::WindowFrame),
+        ClientRole::FrameRenderer => matches!(global, Global::GnoblinWindowFrameV1Frame),
         ClientRole::SessionHost => matches!(global, Global::SessionHost),
         ClientRole::Unprivileged => !global.is_privileged(),
     }
@@ -455,7 +455,7 @@ mod tests {
         Global::WlrDataControl,
         Global::Screencopy,
         Global::ImageCopyCapture,
-        Global::WindowFrame,
+        Global::GnoblinWindowFrameV1Frame,
         Global::SessionHost,
         Global::InputMethod,
         Global::VirtualKeyboard,
@@ -550,9 +550,13 @@ mod tests {
             let allowed = decide(ClientRole::FrameRenderer, *global);
             assert_eq!(
                 allowed,
-                *global == Global::WindowFrame,
+                *global == Global::GnoblinWindowFrameV1Frame,
                 "a frame renderer must {} see {}",
-                if *global == Global::WindowFrame { "" } else { "not" },
+                if *global == Global::GnoblinWindowFrameV1Frame {
+                    ""
+                } else {
+                    "not"
+                },
                 global.as_str()
             );
         }

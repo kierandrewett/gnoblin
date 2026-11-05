@@ -1,3 +1,5 @@
+//! XML protocol `wlr_output_power_management_unstable_v1` (`<protocol name="wlr_output_power_management_unstable_v1">`); interfaces served: `zwlr_output_power_manager_v1`.
+//!
 //! `zwlr_output_power_manager_v1` (version 1): a client switches an output off and on.
 //!
 //! Idle and lock tools use the wlroots protocol to blank a screen. A client asks for a
@@ -47,30 +49,30 @@ pub const MANAGER_VERSION: u32 = 1;
 
 /// Creates the `zwlr_output_power_manager_v1` global.
 pub(crate) fn global(display_handle: &DisplayHandle, access: &Arc<Access>) -> GlobalId {
-    display_handle.create_global::<State, ZwlrOutputPowerManagerV1, ManagerGlobalData>(
+    display_handle.create_global::<State, ZwlrOutputPowerManagerV1, ZwlrOutputPowerManagementV1ManagerGlobalData>(
         MANAGER_VERSION,
-        ManagerGlobalData {
+        ZwlrOutputPowerManagementV1ManagerGlobalData {
             access: Arc::clone(access),
         },
     )
 }
 
 /// The global data of the manager: who may bind it.
-pub(crate) struct ManagerGlobalData {
+pub(crate) struct ZwlrOutputPowerManagementV1ManagerGlobalData {
     /// The roster that answers which connection may.
     access: Arc<Access>,
 }
 
 /// The user data of a bound manager object.
-pub(crate) struct ManagerUserData;
+pub(crate) struct ZwlrOutputPowerManagementV1ManagerUserData;
 
 /// The user data of one output power object.
-pub(crate) struct PowerUserData {
+pub(crate) struct ZwlrOutputPowerManagementV1PowerUserData {
     /// The output the object holds, or [`None`] when the object was answered `failed`.
     output: Option<gnoblin_types::OutputId>,
 }
 
-impl GlobalDispatch2<ZwlrOutputPowerManagerV1, State> for ManagerGlobalData {
+impl GlobalDispatch2<ZwlrOutputPowerManagerV1, State> for ZwlrOutputPowerManagementV1ManagerGlobalData {
     fn bind(
         &self,
         _state: &mut State,
@@ -79,7 +81,7 @@ impl GlobalDispatch2<ZwlrOutputPowerManagerV1, State> for ManagerGlobalData {
         resource: New<ZwlrOutputPowerManagerV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        data_init.init(resource, ManagerUserData);
+        data_init.init(resource, ZwlrOutputPowerManagementV1ManagerUserData);
         debug!(client = ?client.id(), "[power] a client bound the output power manager");
     }
 
@@ -88,7 +90,7 @@ impl GlobalDispatch2<ZwlrOutputPowerManagerV1, State> for ManagerGlobalData {
     }
 }
 
-impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ManagerUserData {
+impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ZwlrOutputPowerManagementV1ManagerUserData {
     fn request(
         &self,
         state: &mut State,
@@ -105,7 +107,8 @@ impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ManagerUserData {
                     Some(output)
                         if state.output_controls.power_supported() && state.output_controls.power_free(output) =>
                     {
-                        let object = data_init.init(id, PowerUserData { output: Some(output) });
+                        let object =
+                            data_init.init(id, ZwlrOutputPowerManagementV1PowerUserData { output: Some(output) });
                         state.output_controls.hold_power(output, object.clone());
                         let mode = if state.output_controls.power(output) {
                             Mode::On
@@ -116,7 +119,7 @@ impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ManagerUserData {
                         debug!(%output, "[power] a client took output power control");
                     }
                     _ => {
-                        let object = data_init.init(id, PowerUserData { output: None });
+                        let object = data_init.init(id, ZwlrOutputPowerManagementV1PowerUserData { output: None });
                         object.failed();
                         debug!("[power] power control was refused: no such output, no support, or already held");
                     }
@@ -128,7 +131,7 @@ impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ManagerUserData {
     }
 }
 
-impl Dispatch2<ZwlrOutputPowerV1, State> for PowerUserData {
+impl Dispatch2<ZwlrOutputPowerV1, State> for ZwlrOutputPowerManagementV1PowerUserData {
     fn request(
         &self,
         state: &mut State,

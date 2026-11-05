@@ -1,3 +1,5 @@
+//! XML protocol `gnoblin_session_host_v1` (`<protocol name="gnoblin_session_host_v1">`); interfaces served: `gnoblin_session_host_v1`.
+//!
 //! `gnoblin_session_host_v1`: the host compositor's channel to one hosted session.
 //!
 //! Design/rust-compositor.md, "Hosting sessions" primitive 2 and D4. A host
@@ -105,7 +107,7 @@ const MAX_HINT_NAME: usize = 128;
 
 /// What a session asked the machine to do.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum PowerAction {
+pub enum GnoblinSessionHostV1PowerAction {
     /// Restart the machine.
     Reboot,
     /// Power it off.
@@ -116,7 +118,7 @@ pub enum PowerAction {
     Hibernate,
 }
 
-impl PowerAction {
+impl GnoblinSessionHostV1PowerAction {
     /// The action a wire value names, or [`None`] for one the protocol does not.
     #[must_use]
     pub const fn from_wire(value: u32) -> Option<Self> {
@@ -154,16 +156,16 @@ impl PowerAction {
 
 /// What a session asked the manager to decide.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HostRequestKind {
+pub enum GnoblinSessionHostV1RequestKind {
     /// Lock the seat, because a lock source inside the session fired.
     Lock,
     /// End this session.
     Logout,
     /// Do something to the machine.
-    Power(PowerAction),
+    Power(GnoblinSessionHostV1PowerAction),
 }
 
-impl HostRequestKind {
+impl GnoblinSessionHostV1RequestKind {
     /// A stable lower-case name for logs, requests and tests.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -177,13 +179,13 @@ impl HostRequestKind {
 
 /// One request a hosted session made, as the manager sees it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HostRequest {
+pub struct GnoblinSessionHostV1Request {
     /// The broker's identity for it, which is what a claim and an answer name.
     pub request: RequestId,
     /// The session that asked.
     pub session: ClientId,
     /// What it asked for.
-    pub kind: HostRequestKind,
+    pub kind: GnoblinSessionHostV1RequestKind,
     /// When an unanswered request fails.
     pub deadline: Tick,
 }
@@ -193,7 +195,7 @@ pub struct HostRequest {
 /// Advisory by design: the host places the session's surfaces itself, and this
 /// only says what the session would like.
 #[derive(Clone, Debug, PartialEq)]
-pub struct OutputHint {
+pub struct GnoblinSessionHostV1OutputHint {
     /// The session's own name for the output.
     pub name: String,
     /// Its width in logical pixels.
@@ -206,7 +208,7 @@ pub struct OutputHint {
 
 /// A hosted session, as the manager and a test read it.
 #[derive(Clone, Debug, PartialEq)]
-pub struct HostedSession {
+pub struct GnoblinSessionHostV1HostedSession {
     /// The identity this session gave the connection, which is also the subject
     /// of a protection cover.
     pub client: ClientId,
@@ -217,11 +219,11 @@ pub struct HostedSession {
     /// Where the protection cover is.
     pub protection: ProtectionState,
     /// The last complete set of hints, in name order.
-    pub hints: Vec<OutputHint>,
+    pub hints: Vec<GnoblinSessionHostV1OutputHint>,
 }
 
 /// One hosted session's connection and what it has said.
-struct Hosted {
+struct GnoblinSessionHostV1Hosted {
     /// The protocol object, which is how an event reaches the session.
     object: GnoblinSessionHostV1,
     /// The identity the protection cover names.
@@ -231,17 +233,17 @@ struct Hosted {
     /// Whether `ready` arrived.
     ready: bool,
     /// The hints of the set being sent.
-    staged: BTreeMap<String, OutputHint>,
+    staged: BTreeMap<String, GnoblinSessionHostV1OutputHint>,
     /// The last complete set.
-    hints: BTreeMap<String, OutputHint>,
+    hints: BTreeMap<String, GnoblinSessionHostV1OutputHint>,
     /// The windows that were hidden for this session's cover.
     hidden: Vec<WindowId>,
 }
 
-impl Hosted {
+impl GnoblinSessionHostV1Hosted {
     /// The body of what a reader sees.
-    fn report(&self, protection: ProtectionState) -> HostedSession {
-        HostedSession {
+    fn report(&self, protection: ProtectionState) -> GnoblinSessionHostV1HostedSession {
+        GnoblinSessionHostV1HostedSession {
             client: self.client,
             pid: self.pid,
             ready: self.ready,
@@ -252,18 +254,18 @@ impl Hosted {
 }
 
 /// The session-host protocol's objects, its protection covers and its requests.
-pub(crate) struct SessionHostTables {
+pub(crate) struct GnoblinSessionHostV1Tables {
     /// Every hosted connection, by its Wayland identity.
-    hosts: HashMap<WaylandClientId, Hosted>,
+    hosts: HashMap<WaylandClientId, GnoblinSessionHostV1Hosted>,
     /// The protection covers, which is the policy this module performs.
     pub(crate) protection: Protection,
     /// The requests a session asked for, which the manager claims and answers.
     requests: RequestBroker,
     /// What each live request asked for.
-    kinds: BTreeMap<RequestId, (ClientId, HostRequestKind, Tick)>,
+    kinds: BTreeMap<RequestId, (ClientId, GnoblinSessionHostV1RequestKind, Tick)>,
 }
 
-impl Default for SessionHostTables {
+impl Default for GnoblinSessionHostV1Tables {
     fn default() -> Self {
         Self {
             hosts: HashMap::new(),
@@ -275,21 +277,21 @@ impl Default for SessionHostTables {
 }
 
 /// The global's data: who may bind it.
-pub(crate) struct HostGlobal {
+pub(crate) struct GnoblinSessionHostV1Global {
     /// The roster that answers which connection is a hosted session.
     access: std::sync::Arc<Access>,
 }
 
-impl SessionHostTables {
+impl GnoblinSessionHostV1Tables {
     /// Registers the global.
     ///
     /// The global exists even with no session connected, because the roster is the
     /// whole answer to who may see it and a session is brokered after the session
     /// is running.
     pub(crate) fn new(display_handle: &DisplayHandle, access: &std::sync::Arc<Access>) -> Self {
-        let _ = display_handle.create_global::<State, GnoblinSessionHostV1, HostGlobal>(
+        let _ = display_handle.create_global::<State, GnoblinSessionHostV1, GnoblinSessionHostV1Global>(
             host::GnoblinSessionHostV1::interface().version,
-            HostGlobal {
+            GnoblinSessionHostV1Global {
                 access: std::sync::Arc::clone(access),
             },
         );
@@ -297,7 +299,7 @@ impl SessionHostTables {
     }
 
     /// The hosted session the process behind a connection runs.
-    fn by_pid(&self, pid: u32) -> Option<(ClientId, &Hosted)> {
+    fn by_pid(&self, pid: u32) -> Option<(ClientId, &GnoblinSessionHostV1Hosted)> {
         self.hosts
             .values()
             .find(|host| host.pid == pid)
@@ -318,7 +320,7 @@ impl SessionHostTables {
     }
 
     /// Offers a request to the manager.
-    fn offer(&mut self, session: ClientId, kind: HostRequestKind, deadline: Tick) -> RequestId {
+    fn offer(&mut self, session: ClientId, kind: GnoblinSessionHostV1RequestKind, deadline: Tick) -> RequestId {
         let request = self.requests.offer(deadline);
         self.kinds.insert(request, (session, kind, deadline));
         info!(
@@ -331,11 +333,11 @@ impl SessionHostTables {
     }
 
     /// Every request still waiting for the manager.
-    fn live(&self) -> Vec<HostRequest> {
+    fn live(&self) -> Vec<GnoblinSessionHostV1Request> {
         self.kinds
             .iter()
             .filter(|(request, _)| matches!(self.requests.state(**request), Some(RequestState::Offered { .. })))
-            .map(|(request, (session, kind, deadline))| HostRequest {
+            .map(|(request, (session, kind, deadline))| GnoblinSessionHostV1Request {
                 request: *request,
                 session: *session,
                 kind: *kind,
@@ -345,7 +347,7 @@ impl SessionHostTables {
     }
 }
 
-impl GlobalDispatch2<GnoblinSessionHostV1, State> for HostGlobal {
+impl GlobalDispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1Global {
     fn bind(
         &self,
         state: &mut State,
@@ -354,7 +356,7 @@ impl GlobalDispatch2<GnoblinSessionHostV1, State> for HostGlobal {
         resource: New<GnoblinSessionHostV1>,
         data_init: &mut DataInit<'_, State>,
     ) {
-        let object = data_init.init(resource, HostObject);
+        let object = data_init.init(resource, GnoblinSessionHostV1HostObject);
         let key = client.id();
         // The lock hands out the identity a connection is known by, so the protection
         // cover and a session lock name the same client the same way.
@@ -376,7 +378,7 @@ impl GlobalDispatch2<GnoblinSessionHostV1, State> for HostGlobal {
         }
         state.session_host.hosts.insert(
             key,
-            Hosted {
+            GnoblinSessionHostV1Hosted {
                 object,
                 client: identity,
                 pid,
@@ -394,9 +396,9 @@ impl GlobalDispatch2<GnoblinSessionHostV1, State> for HostGlobal {
 }
 
 /// The user data of a bound session host object.
-struct HostObject;
+struct GnoblinSessionHostV1HostObject;
 
-impl Dispatch2<GnoblinSessionHostV1, State> for HostObject {
+impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
     fn request(
         &self,
         state: &mut State,
@@ -442,19 +444,23 @@ impl Dispatch2<GnoblinSessionHostV1, State> for HostObject {
             }
             host::Request::Lock => {
                 let deadline = state.turn.saturating_add(REQUEST_DEADLINE_TURNS);
-                state.session_host.offer(identity, HostRequestKind::Lock, deadline);
+                state
+                    .session_host
+                    .offer(identity, GnoblinSessionHostV1RequestKind::Lock, deadline);
             }
             host::Request::Logout => {
                 let deadline = state.turn.saturating_add(REQUEST_DEADLINE_TURNS);
-                state.session_host.offer(identity, HostRequestKind::Logout, deadline);
+                state
+                    .session_host
+                    .offer(identity, GnoblinSessionHostV1RequestKind::Logout, deadline);
             }
             host::Request::Power { action } => {
                 let action = match action {
-                    WEnum::Value(WirePowerAction::Reboot) => Some(PowerAction::Reboot),
-                    WEnum::Value(WirePowerAction::PowerOff) => Some(PowerAction::PowerOff),
-                    WEnum::Value(WirePowerAction::Suspend) => Some(PowerAction::Suspend),
-                    WEnum::Value(WirePowerAction::Hibernate) => Some(PowerAction::Hibernate),
-                    WEnum::Unknown(value) => PowerAction::from_wire(value),
+                    WEnum::Value(WirePowerAction::Reboot) => Some(GnoblinSessionHostV1PowerAction::Reboot),
+                    WEnum::Value(WirePowerAction::PowerOff) => Some(GnoblinSessionHostV1PowerAction::PowerOff),
+                    WEnum::Value(WirePowerAction::Suspend) => Some(GnoblinSessionHostV1PowerAction::Suspend),
+                    WEnum::Value(WirePowerAction::Hibernate) => Some(GnoblinSessionHostV1PowerAction::Hibernate),
+                    WEnum::Unknown(value) => GnoblinSessionHostV1PowerAction::from_wire(value),
                 };
                 let Some(action) = action else {
                     resource.post_error(host::Error::InvalidPowerAction as u32, "unknown power action");
@@ -463,7 +469,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for HostObject {
                 let deadline = state.turn.saturating_add(REQUEST_DEADLINE_TURNS);
                 state
                     .session_host
-                    .offer(identity, HostRequestKind::Power(action), deadline);
+                    .offer(identity, GnoblinSessionHostV1RequestKind::Power(action), deadline);
             }
             host::Request::OutputHint {
                 name,
@@ -484,7 +490,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for HostObject {
                 if let Some(session) = state.session_host.hosts.get_mut(&key) {
                     session.staged.insert(
                         name.clone(),
-                        OutputHint {
+                        GnoblinSessionHostV1OutputHint {
                             name,
                             width,
                             height,
@@ -522,7 +528,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for HostObject {
 impl State {
     /// Every session request still waiting for the manager.
     #[must_use]
-    pub fn host_requests(&self) -> Vec<HostRequest> {
+    pub fn host_requests(&self) -> Vec<GnoblinSessionHostV1Request> {
         self.session_host.live()
     }
 
@@ -561,7 +567,7 @@ impl State {
 
     /// What the manager can see about the session process `pid` runs.
     #[must_use]
-    pub fn hosted_session(&self, pid: u32) -> Option<HostedSession> {
+    pub fn hosted_session(&self, pid: u32) -> Option<GnoblinSessionHostV1HostedSession> {
         self.session_host
             .by_pid(pid)
             .map(|(client, host)| host.report(self.session_host.protection.state(client)))

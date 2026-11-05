@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_types::{Rect, WindowId};
-use gnoblin_wayland::ObservedBlurRect;
+use gnoblin_wayland::ExtBackgroundEffectV1ObservedBlurRect;
 use owned::{Connected, Handle, Session, TIMEOUT};
 use wayland_client::protocol::{wl_buffer, wl_region, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle, WEnum};
@@ -161,7 +161,7 @@ fn rect(x: i32, y: i32, width: u32, height: u32) -> Rect {
 }
 
 /// The committed region of a window, read through the control seam.
-fn committed(handle: &Handle, window: WindowId) -> Option<Option<Vec<ObservedBlurRect>>> {
+fn committed(handle: &Handle, window: WindowId) -> Option<Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>>> {
     handle.control.blur_region(window)
 }
 
@@ -170,8 +170,8 @@ fn wait_region(
     handle: &Handle,
     window: WindowId,
     what: &str,
-    predicate: impl Fn(&Option<Vec<ObservedBlurRect>>) -> bool,
-) -> Option<Vec<ObservedBlurRect>> {
+    predicate: impl Fn(&Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>>) -> bool,
+) -> Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>> {
     let deadline = Instant::now() + TIMEOUT;
     loop {
         if let Some(region) = committed(handle, window)
@@ -226,7 +226,7 @@ fn a_region_applies_on_commit_and_reaches_the_renderer_in_order() {
         let applied = wait_region(handle, first(), "the committed region", |region| region.is_some());
         assert_eq!(
             applied,
-            Some(vec![ObservedBlurRect::Add(rect(10, 10, 50, 40))]),
+            Some(vec![ExtBackgroundEffectV1ObservedBlurRect::Add(rect(10, 10, 50, 40))]),
             "the renderer reads the rectangle the client sent"
         );
     });
@@ -266,8 +266,8 @@ fn subtracted_rectangles_keep_their_kind() {
         assert_eq!(
             applied,
             Some(vec![
-                ObservedBlurRect::Add(rect(0, 0, 100, 100)),
-                ObservedBlurRect::Subtract(rect(20, 20, 5, 5)),
+                ExtBackgroundEffectV1ObservedBlurRect::Add(rect(0, 0, 100, 100)),
+                ExtBackgroundEffectV1ObservedBlurRect::Subtract(rect(20, 20, 5, 5)),
             ]),
         );
     });
@@ -298,12 +298,17 @@ fn a_region_never_reaches_another_surface() {
         let second_applied = wait_region(handle, second(), "the second client's region", |region| {
             region.is_some()
         });
-        assert_eq!(second_applied, Some(vec![ObservedBlurRect::Add(rect(2, 2, 30, 30))]));
+        assert_eq!(
+            second_applied,
+            Some(vec![ExtBackgroundEffectV1ObservedBlurRect::Add(rect(2, 2, 30, 30))])
+        );
 
         // Each window keeps its own rectangle once both are set.
         assert_eq!(
             committed(handle, first()),
-            Some(Some(vec![ObservedBlurRect::Add(rect(1, 1, 10, 10))])),
+            Some(Some(vec![ExtBackgroundEffectV1ObservedBlurRect::Add(rect(
+                1, 1, 10, 10
+            ))])),
             "the first window still reads its own region"
         );
     });

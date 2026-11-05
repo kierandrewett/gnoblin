@@ -1,3 +1,5 @@
+//! XML protocol `ext_image_capture_source_v1` (`<protocol name="ext_image_capture_source_v1">`); interfaces served: `ext_image_capture_source_v1`.
+//!
 //! `ext_image_capture_source_v1`: the source objects a client names a capture by.
 //!
 //! An output source names an output and a toplevel source names a window; the source is

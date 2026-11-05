@@ -1,3 +1,5 @@
+//! XML protocol `fractional_scale_v1` (`<protocol name="fractional_scale_v1">`); interfaces served: `wp_fractional_scale_manager_v1`.
+//!
 //! `wp_fractional_scale_manager_v1`: the scale the compositor draws a surface at.
 //!
 //! The global has no requests worth answering: a client asks for a
