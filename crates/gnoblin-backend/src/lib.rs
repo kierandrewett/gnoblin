@@ -459,6 +459,9 @@ pub enum BackendError {
     },
     /// The output's renderer refused to draw.
     Render(render::RenderError),
+    /// The output exists but this backend has no scan-out path for it yet, so no frame can be
+    /// presented to it. Distinct from [`BackendError::UnknownOutput`]: the output is real.
+    Unpresentable(OutputId),
 }
 
 impl fmt::Display for BackendError {
@@ -469,6 +472,12 @@ impl fmt::Display for BackendError {
                 write!(formatter, "a {width}x{height} mode covers no pixels")
             }
             Self::Render(error) => write!(formatter, "the output's renderer refused a frame: {error}"),
+            Self::Unpresentable(output) => {
+                write!(
+                    formatter,
+                    "the backend cannot present output {output}: its scan-out path is not built"
+                )
+            }
         }
     }
 }

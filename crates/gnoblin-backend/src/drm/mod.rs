@@ -46,11 +46,11 @@ pub mod plan;
 use std::fmt;
 use std::io;
 
-use gnoblin_types::OutputId;
+use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
 
 use crate::render::Image;
-use crate::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
+use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 
 /// Why the hardware backend could not start.
 ///
@@ -97,6 +97,50 @@ impl std::error::Error for DrmError {}
 /// composition root chooses the headless backend for that case.
 pub struct Drm {
     gpu: gpu::Gpu,
+    /// The connected connectors, one output each, in the order the kernel lists them.
+    outputs: Vec<Output>,
+    input: Refused,
+}
+
+/// Why the hardware backend offers no input events.
+///
+/// Each variant is a state the input source is in, so a caller that asks for events can tell an
+/// empty queue from a source that is not delivering at all.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InputRefusal {
+    /// No libinput context is open on the seat yet, so no device can be read.
+    NotOpened,
+}
+
+impl fmt::Display for InputRefusal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotOpened => write!(formatter, "no libinput context is open on the seat"),
+        }
+    }
+}
+
+/// The input source a hardware backend hands out while it has no devices to read.
+///
+/// It never yields an event; [`Refused::refusal`] says why, and it is the same answer for every
+/// call, so a dispatch loop that polls it does nothing rather than panicking.
+#[derive(Debug)]
+pub struct Refused {
+    refusal: InputRefusal,
+}
+
+impl Refused {
+    /// Why no event is delivered.
+    #[must_use]
+    pub fn refusal(&self) -> InputRefusal {
+        self.refusal
+    }
+}
+
+impl InputSource for Refused {
+    fn next_event(&mut self) -> Option<InputEvent> {
+        None
+    }
 }
 
 impl fmt::Debug for Drm {
@@ -113,8 +157,23 @@ impl Drm {
     /// [`DrmError`] naming what could not be opened. A session that gets this error runs the
     /// headless backend instead; it is not a frame error.
     pub fn open(seat_name: &str) -> Result<Self, DrmError> {
+        let gpu = gpu::Gpu::open(seat_name)?;
+        let outputs = gpu
+            .outputs()
+            .filter(|connector| connector.connected)
+            .filter_map(|connector| {
+                let descriptor = connector.descriptor();
+                let mode = *descriptor.modes.first()?;
+                let scale = descriptor.scales.first().copied().unwrap_or(Scale::integral(1));
+                Some(Output::new(connector.id, connector.name.clone(), mode, scale))
+            })
+            .collect();
         Ok(Self {
-            gpu: gpu::Gpu::open(seat_name)?,
+            gpu,
+            outputs,
+            input: Refused {
+                refusal: InputRefusal::NotOpened,
+            },
         })
     }
 }
@@ -125,11 +184,11 @@ impl<S: Host + 'static> Backend<S> for Drm {
     }
 
     fn outputs(&self) -> &[Output] {
-        &[]
+        &self.outputs
     }
 
-    fn output(&self, _id: OutputId) -> Option<&Output> {
-        None
+    fn output(&self, id: OutputId) -> Option<&Output> {
+        self.outputs.iter().find(|output| output.id == id)
     }
 
     fn target(&mut self, _id: OutputId) -> Option<&mut dyn Target> {
@@ -137,7 +196,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
     }
 
     fn input(&mut self) -> &mut dyn InputSource {
-        unreachable!("the DRM backend's input is not built yet: it lands with the input slice")
+        &mut self.input
     }
 
     fn register(&mut self, _loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
@@ -145,7 +204,10 @@ impl<S: Host + 'static> Backend<S> for Drm {
     }
 
     fn render(&mut self, _host: &mut S, output: OutputId) -> Result<Present, BackendError> {
-        Err(BackendError::UnknownOutput(output))
+        if !self.outputs.iter().any(|known| known.id == output) {
+            return Err(BackendError::UnknownOutput(output));
+        }
+        Err(BackendError::Unpresentable(output))
     }
 
     fn screenshot(&mut self, _output: OutputId) -> Option<Image> {
@@ -189,4 +251,26 @@ pub enum RawGestureKind {
     Pinch,
     /// Fingers held still.
     Hold,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{InputRefusal, Refused};
+    use crate::InputSource;
+
+    #[test]
+    fn a_refused_input_source_never_yields_an_event() {
+        let mut input = Refused {
+            refusal: InputRefusal::NotOpened,
+        };
+        assert_eq!(input.refusal(), InputRefusal::NotOpened);
+        assert!(input.next_event().is_none());
+        assert!(input.next_event().is_none());
+    }
+
+    #[test]
+    fn a_refusal_names_what_is_missing() {
+        let text = InputRefusal::NotOpened.to_string();
+        assert!(text.contains("libinput"), "{text}");
+    }
 }
