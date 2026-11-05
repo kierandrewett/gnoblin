@@ -333,6 +333,54 @@ fn an_unanswered_request_times_out_and_the_client_learns_it() {
 }
 
 #[test]
+fn an_empty_answer_is_not_an_ended_request() {
+    // The two must never share a wire value: an empty answer is a provider choosing
+    // "yes" with no content, while an ended request is one nobody chose to answer.
+    // The first is consent the caller acts on, the second a refusal, so this pins the
+    // encoding and the outcome apart for the whole round trip.
+    let (mut server, mut client) = pair();
+    let answered = server.offer(Tick::new(500));
+    let ended = server.offer(Tick::new(500));
+    for _ in 0..2 {
+        assert!(matches!(
+            client.next_event().expect("every offer reaches the client"),
+            Event::RequestOffered { .. }
+        ));
+    }
+
+    client.claim(answered).expect("the first claim wins");
+    client
+        .answer(answered, &Answer::Answered(Vec::new()))
+        .expect("an empty answer is still an answer");
+    client.claim(ended).expect("the first claim wins");
+    client.answer(ended, &Answer::Ended).expect("ending is not answering");
+
+    assert_eq!(
+        server.finished(answered),
+        Some(RequestOutcome::Answered(Vec::new())),
+        "an empty answer arrives as an answer, never as a refusal"
+    );
+    assert_eq!(
+        server.finished(ended),
+        Some(RequestOutcome::Ended),
+        "and an ended request never arrives as an empty answer"
+    );
+
+    let mut completions = Vec::new();
+    for _ in 0..2 {
+        match client.next_event().expect("both finishes reach the client") {
+            Event::RequestFinished { completion, .. } => completions.push(completion),
+            other => panic!("expected a finish, got {other:?}"),
+        }
+    }
+    assert_eq!(
+        completions,
+        vec![RequestCompletion::Answered, RequestCompletion::Ended],
+        "the broadcast keeps the two apart as well"
+    );
+}
+
+#[test]
 fn calls_and_changes_interleave_without_losing_events() {
     let (mut server, mut client) = pair();
     let window = open_window(&mut server, "Interleaved");
