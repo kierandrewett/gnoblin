@@ -49,8 +49,9 @@
 //!   the configuration directory.
 //! - `gnoblin.configure`: the neutral [`gnoblin_config::Value`] tree, validated by
 //!   the configuration layer, so a problem arrives with its path.
-//! - `gnoblin.objects` and `gnoblin.extensions`: the generated bindings, one name
-//!   per schema member, with `gnoblin.d.lua` from the same schema.
+//! - the core object types on `gnoblin` (`gnoblin.window`), and `require` for extension
+//!   namespaces (`require("bsm.greeter")`): the generated bindings, one name per schema
+//!   member, with `gnoblin.d.lua` from the same schema.
 //! - [`Host::pump`]: the only thing that runs a handler, on the caller's ticks.
 //! - [`RoleRunner`]: the runtime role as a process — adopt the privileged connection, load and
 //!   commit the configuration, then serve the handlers until the guardian stops it. It is
@@ -62,8 +63,9 @@
 //! says otherwise.
 //!
 //! 1. **A script escapes the sandbox.** No `io`, `os`, `debug`, `package`,
-//!    `dofile`, `loadfile`, `require` or `coroutine` exists, and a binary chunk is
-//!    refused rather than run:
+//!    `dofile`, `loadfile` or `coroutine` exists; `require` answers only for the
+//!    extension namespaces in the generated catalog, and a binary chunk is refused
+//!    rather than run:
 //!    `a_script_cannot_reach_the_filesystem_or_a_library_the_sandbox_withholds`.
 //! 2. **An infinite loop hangs the host.** The instruction budget, and the
 //!    wall-clock deadline a tick budget names, abort the entry; the host keeps its
@@ -97,9 +99,9 @@
 //! - `gnoblin.configure` is available while the configuration loads. IPC 0.2.0
 //!   declares no runtime configuration method yet, so a call at run time is
 //!   refused with that reason rather than mutating a document nothing applies.
-//! - `require` is not installed. `gnoblin.load` is the one loader, which is the
-//!   decision the plan records ("one `locate()`, one precedence order, `init.lua`
-//!   only"); a module that returns a table is a later lane.
+//! - `require` answers only for extension namespaces in the generated catalog. It reads
+//!   no file, so `gnoblin.load` stays the one loader of configuration; a host that
+//!   registers further module loaders (layouts) is a later lane.
 //! - Requests (`RequestOffered` and `RequestFinished`) are dropped: prompts and
 //!   input policy are later lanes, and an unanswered request already fails closed
 //!   in the broker.
@@ -115,6 +117,9 @@ mod error;
 mod glob;
 mod host;
 mod loader;
+#[cfg(test)]
+#[path = "../lua_names.rs"]
+mod lua_names;
 pub mod role;
 
 pub use bindings::{stub, write_stub};

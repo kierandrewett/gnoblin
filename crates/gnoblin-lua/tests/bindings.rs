@@ -59,12 +59,13 @@ impl Drop for Config {
     }
 }
 
-/// The Lua expression that reaches one object type's class table.
+/// The Lua expression that reaches one object type's class table: core types sit on
+/// `gnoblin`, extension types on the table `require` returns for their namespace.
 fn class_path(namespace: &str, object: &str) -> String {
     if namespace == "gnoblin" {
-        format!("gnoblin.objects.{object}")
+        format!("gnoblin.{object}")
     } else {
-        format!("gnoblin.extensions[\"{namespace}\"].objects.{object}")
+        format!("require(\"{namespace}\").{object}")
     }
 }
 
@@ -123,9 +124,16 @@ fn the_stub_matches_the_schema() {
                     signal.name
                 );
             }
+            // Each namespace is a module class: `require` answers with it, and it
+            // carries one collection field per object type.
             assert!(
-                stub.contains(&class_path(namespace.as_str(), &object.name)),
-                "the stub has no collection for {class}"
+                stub.contains(&format!(
+                    "---@field {} {}.{}Collection",
+                    object.name,
+                    namespace.as_str(),
+                    object.name
+                )),
+                "the stub has no collection field for {class}"
             );
         }
     }
@@ -224,7 +232,7 @@ fn the_installed_tables_match_the_schema() {
         }
     }
     script.push_str(
-        "local ok, message = pcall(function() return gnoblin.no_such_member end)\nassert(not ok)\nassert(string.match(tostring(message), \"configure, extensions, load, objects, timers\") ~= nil, \"gnoblin members: \" .. tostring(message))\n",
+    "local ok, message = pcall(function() return gnoblin.no_such_member end)\nassert(not ok)\nassert(string.match(tostring(message), \"members: capture, configure, eis, idle, load, lock, output, portal_outcome, portal_ui, request, session, settings, timers, window\") ~= nil, \"gnoblin members: \" .. tostring(message))\nassert(string.match(tostring(message), \"extensions\") == nil, \"gnoblin still lists extensions\")\n",
     );
 
     let config = Config::new("installed");
@@ -238,21 +246,32 @@ fn the_installed_tables_match_the_schema() {
 }
 
 #[test]
-fn an_extension_namespace_keeps_its_own_name() {
+fn an_extension_namespace_is_a_required_module() {
     let catalog = catalog();
     let stub = gnoblin_lua::stub();
     for namespace in catalog.namespaces() {
         if namespace.as_str() == "gnoblin" {
             continue;
         }
+        assert!(
+            stub.contains(&format!(
+                "---@overload fun(name: \"{}\"): {}Module",
+                namespace.as_str(),
+                namespace.as_str()
+            )),
+            "the stub has no require overload for {}",
+            namespace.as_str()
+        );
         for object in catalog.objects(&namespace) {
             assert!(
                 stub.contains(&format!(
-                    "---@class gnoblin.extensions[\"{}\"].objects.{}",
+                    "---@field {} {}.{}Collection",
+                    object.name,
                     namespace.as_str(),
                     object.name
                 )),
-                "the stub does not place {} under its own namespace",
+                "the module {} does not expose {}",
+                namespace.as_str(),
                 object.name
             );
         }
@@ -293,7 +312,7 @@ fn a_property_read_is_a_read_of_the_mirror() {
     let config = Config::new("read");
     let paths = config.script(&format!(
         r#"
-local window = gnoblin.objects.window.by_id({id})
+local window = gnoblin.window.by_id({id})
 assert(window ~= nil, "the window is in the snapshot")
 assert(window.title == "changed", "the mirror has the current title, was " .. tostring(window.title))
 assert(window.app_id == "org.example.App", "the app id, was " .. tostring(window.app_id))

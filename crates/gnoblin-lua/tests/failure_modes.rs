@@ -139,8 +139,31 @@ assert(package == nil, "package is available")
 assert(coroutine == nil, "coroutine is available")
 assert(dofile == nil, "dofile is available")
 assert(loadfile == nil, "loadfile is available")
-assert(require == nil, "require is available")
+assert(type(require) == "function", "require is missing")
+assert(not pcall(require, "not.a.namespace"), "require loaded an undeclared namespace")
 assert(type(gnoblin.load) == "function", "the loader is the one way to a file")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    assert_eq!(report.loaded, vec![config.root.join("init.lua")]);
+}
+
+#[test]
+fn require_answers_only_declared_extension_namespaces() {
+    let config = Config::new("require");
+    config.write(
+        "init.lua",
+        r#"
+local first = require("bsm.greeter")
+assert(first == require("bsm.greeter"), "require returns the same table twice")
+assert(first.greeter ~= nil, "the module exposes its object type")
+assert(not pcall(function() return gnoblin.extensions end), "gnoblin.extensions must not exist")
+assert(not pcall(function() return gnoblin.objects end), "gnoblin.objects must not exist")
+local ok, message = pcall(require, "bsm.nothing")
+assert(not ok, "require loaded an undeclared namespace")
+assert(string.match(tostring(message), "unknown module `bsm.nothing`") ~= nil, "message was " .. tostring(message))
 "#,
     );
     let (_server, mut host) = pair();
@@ -175,7 +198,7 @@ fn an_infinite_loop_is_stopped_by_the_instruction_budget() {
         "init.lua",
         r#"
 gnoblin.timers.after(1, function() while true do end end)
-gnoblin.timers.after(1, function() gnoblin.objects.session.by_id(1) end)
+gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
 "#,
     );
     let (mut server, mut host) = pair_with(limits);
@@ -207,10 +230,10 @@ fn an_erroring_handler_does_not_stop_the_other_handlers() {
         "init.lua",
         &format!(
             r#"
-local session = gnoblin.objects.session.by_id({session})
+local session = gnoblin.session.by_id({session})
 assert(session ~= nil, "the session is in the snapshot")
 session:on("ready", function() error("boom") end)
-session:on("ready", function() gnoblin.objects.window.by_id({window}):focus() end)
+session:on("ready", function() gnoblin.window.by_id({window}):focus() end)
 "#,
             session = session.get(),
             window = window.get()
@@ -312,7 +335,7 @@ fn an_operation_completes_its_callback_once() {
         "init.lua",
         r#"
 gnoblin.timers.after(1, function()
-    local window = gnoblin.objects.window.by_id(1)
+    local window = gnoblin.window.by_id(1)
     local operation = window:focus()
     assert(operation.status == "pending", "a fresh operation is pending, was " .. operation.status)
     assert(operation.method == "focus", "the handle names its method, was " .. operation.method)
@@ -465,12 +488,12 @@ fn reads_come_from_the_mirror_and_calls_become_operations() {
     config.write(
         "init.lua",
         r#"
-local window = gnoblin.objects.window.by_id(1)
+local window = gnoblin.window.by_id(1)
 assert(window ~= nil, "the window is in the snapshot")
 assert(window.title == "Second", "the snapshot title, was " .. tostring(window.title))
 assert(window.app_id == "org.example.App", "the app id, was " .. tostring(window.app_id))
 assert(window.focused == false, "not focused")
-assert(gnoblin.objects.window.all()[1] == window, "two reads are the same record")
+assert(gnoblin.window.all()[1] == window, "two reads are the same record")
 "#,
     );
     let (mut server, mut host) = pair();
@@ -486,7 +509,7 @@ assert(gnoblin.objects.window.all()[1] == window, "two reads are the same record
         "init.lua",
         r#"
 gnoblin.timers.after(1, function()
-    local window = gnoblin.objects.window.by_id(1)
+    local window = gnoblin.window.by_id(1)
     assert(window.title == "Third", "the diff was applied, was " .. tostring(window.title))
 end)
 "#,
@@ -509,7 +532,7 @@ fn a_refused_call_reaches_the_handler_as_an_error() {
         "init.lua",
         r#"
 gnoblin.timers.after(1, function()
-    local greeter = gnoblin.extensions["bsm.greeter"].objects.greeter.by_id(1)
+    local greeter = require("bsm.greeter").greeter.by_id(1)
     assert(greeter ~= nil, "the greeter is in the snapshot")
     local ok, message = pcall(function() greeter:begin_auth("kieran") end)
     assert(ok, "a declared method is callable: " .. tostring(message))
@@ -540,7 +563,7 @@ fn a_signal_handler_receives_the_fields_the_schema_declares() {
         "init.lua",
         &format!(
             r#"
-local greeter = gnoblin.extensions["bsm.greeter"].objects.greeter.by_id({id})
+local greeter = require("bsm.greeter").greeter.by_id({id})
 assert(greeter ~= nil, "the greeter is in the snapshot")
 local seen = 0
 greeter:on("prompt", function(fields)
@@ -572,7 +595,7 @@ fn a_closed_object_delivers_closed_once_and_then_reads_nothing() {
         "init.lua",
         &format!(
             r#"
-local window = gnoblin.objects.window.by_id({id})
+local window = gnoblin.window.by_id({id})
 assert(window ~= nil, "the window is in the snapshot")
 window:on("closed", function()
     -- The mirror still holds the object while the handler runs, so the last
@@ -580,7 +603,7 @@ window:on("closed", function()
     assert(window.title == "First", "the last title, was " .. tostring(window.title))
 end)
 gnoblin.timers.after(2, function()
-    assert(gnoblin.objects.window.by_id({id}) == nil, "a closed object is not reachable")
+    assert(gnoblin.window.by_id({id}) == nil, "a closed object is not reachable")
 end)
 "#,
             id = window.get()
@@ -639,7 +662,7 @@ fn a_handler_that_outlives_its_deadline_is_stopped() {
         "init.lua",
         r#"
 gnoblin.timers.after(1, function() while true do end end)
-gnoblin.timers.after(1, function() gnoblin.objects.session.by_id(1) end)
+gnoblin.timers.after(1, function() gnoblin.session.by_id(1) end)
 "#,
     );
     let (mut server, mut host) = pair_with(limits);

@@ -11,17 +11,19 @@
 //! # The surface
 //!
 //! ```lua
-//! local window = gnoblin.objects.window.by_id(3)
+//! local window = gnoblin.window.by_id(3)
 //! print(window.title)               -- a read from the host's mirror
 //! local operation = window:focus()  -- one handle, one completion
 //! operation:on_complete(function() print(operation.status) end)
 //! window:on("closed", function() print("gone") end)
 //! ```
 //!
-//! The compositor's own namespace reaches its classes through
-//! `gnoblin.objects.<type>`. An extension namespace keeps its own name, so its
-//! classes are `gnoblin.extensions["bsm.greeter"].objects.<type>`: the namespace is
-//! a wire identity and is quoted whole rather than split into nested tables.
+//! The compositor's own object types sit directly on `gnoblin`, as `gnoblin.<type>`.
+//! An extension namespace is loaded with `require`, which returns a module table with
+//! one entry per object type: `local bsm = require("bsm.greeter")`, then
+//! `bsm.greeter.by_id(1)`. The namespace is quoted whole, so it is a wire identity and
+//! never split into nested tables. `require` answers only for extension namespaces in
+//! the generated catalog; any other name is an error.
 //!
 //! # Instances
 //!
@@ -50,6 +52,10 @@ use gnoblin_lua_sandbox::{Guard, Limits};
 /// host hold no Lua handle at all, so the VM and the host cannot keep each other
 /// alive through a reference cycle.
 pub(super) const CALLBACKS: &str = "gnoblin.callbacks";
+
+/// The registry table of extension module tables, keyed by namespace name. The global
+/// `require` reads only this table, so a script reaches nothing the catalog did not declare.
+pub(super) const MODULES: &str = "gnoblin.modules";
 
 /// The registry table of instances, keyed by object identity.
 pub(super) const INSTANCES: &str = "gnoblin.instances";
@@ -163,6 +169,7 @@ pub(super) struct NamespaceSpec {
     pub(super) objects: &'static [ObjectSpec],
 }
 
+include!("../reserved_members.rs");
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 /// Install the `gnoblin` global into a fresh Lua state.
@@ -173,6 +180,7 @@ pub(super) fn install<T: Transport + 'static>(
     limits: Limits,
 ) -> mlua::Result<()> {
     lua.set_named_registry_value(CALLBACKS, lua.create_table()?)?;
+    lua.set_named_registry_value(MODULES, lua.create_table()?)?;
     lua.set_named_registry_value(INSTANCES, lua.create_table()?)?;
     lua.set_named_registry_value(IDENTITIES, lua.create_table()?)?;
 
@@ -222,40 +230,40 @@ pub(super) fn install<T: Transport + 'static>(
     }
     gnoblin.set("timers", timers)?;
 
-    let objects = lua.create_table()?;
-    let extensions = lua.create_table()?;
+    // Core object types sit directly on `gnoblin`; each extension namespace becomes a
+    // module table that `require` returns. The build refuses a core type named like a
+    // hand-written member, so the two never share a key.
+    let modules: Table = lua.named_registry_value(MODULES)?;
+    let mut accepted: Vec<&'static str> = HAND_WRITTEN.to_vec();
     for namespace in NAMESPACES {
-        let mut installed = Vec::with_capacity(namespace.objects.len());
+        let is_core = namespace.name == "gnoblin";
+        let table = if is_core { gnoblin.clone() } else { lua.create_table()? };
         for spec in namespace.objects {
             install_instance_meta(lua, &shared, namespace.name, spec)?;
-            installed.push((*spec, install_class(lua, &shared, namespace.name, spec)?));
+            table.set(spec.name, install_class(lua, &shared, namespace.name, spec)?)?;
+            if is_core {
+                accepted.push(spec.name);
+            }
         }
-        if namespace.name == "gnoblin" {
-            for (spec, class) in installed {
-                objects.set(spec.name, class)?;
-            }
-        } else {
-            let inner = lua.create_table()?;
-            for (spec, class) in installed {
-                inner.set(spec.name, class)?;
-            }
-            let entry = lua.create_table()?;
-            entry.set("objects", inner)?;
-            extensions.set(namespace.name, entry)?;
+        if !is_core {
+            modules.set(namespace.name, table)?;
         }
     }
-    gnoblin.set("objects", objects)?;
-    gnoblin.set("extensions", extensions)?;
+    lua.globals().set(
+        "require",
+        lua.create_function(|lua, name: String| {
+            let modules: Table = lua.named_registry_value(MODULES)?;
+            modules
+                .raw_get::<Option<Table>>(name.as_str())?
+                .ok_or_else(|| Error::runtime(format!("unknown module `{name}`: no extension namespace has that name")))
+        })?,
+    )?;
 
     let meta = lua.create_table()?;
     meta.set(
         "__index",
-        lua.create_function(|_, (_, key): (Table, String)| -> mlua::Result<()> {
-            Err(unknown(
-                "gnoblin",
-                &key,
-                &["configure", "extensions", "load", "objects", "timers"],
-            ))
+        lua.create_function(move |_, (_, key): (Table, String)| -> mlua::Result<()> {
+            Err(unknown("gnoblin", &key, &accepted))
         })?,
     )?;
     meta.set(

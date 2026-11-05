@@ -26,6 +26,9 @@ use std::process::ExitCode;
 
 use gnoblin_schema::{Catalog, Field, Namespace, ObjectType, Type};
 
+include!("reserved_members.rs");
+include!("lua_names.rs");
+
 /// The schema directory, relative to this crate.
 const SCHEMA_DIR: &str = "../gnoblin-schema/schema";
 
@@ -63,6 +66,7 @@ fn run() -> Result<(), String> {
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
 
     check_reserved(&catalog)?;
+    check_names(&catalog)?;
     // The version the runtime advertises in the IPC handshake is the schema's, which is
     // the version the compositor serves: the two sides are built from one tree, so a
     // literal here would be a second place to forget to bump.
@@ -98,6 +102,30 @@ fn check_reserved(catalog: &Catalog) -> Result<(), String> {
                     ));
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+/// Refuse a schema whose object types would take a name the Lua tables already have.
+///
+/// The core objects are keys of the `gnoblin` table, beside the hand-written members,
+/// so a type named `timers` would replace the timer API. An extension namespace is
+/// reached through its own module table, which has no hand-written members, so only
+/// duplicate keys can clash there.
+fn check_names(catalog: &Catalog) -> Result<(), String> {
+    for namespace in catalog.namespaces() {
+        let mut owners = Vec::new();
+        for object in catalog.objects(&namespace) {
+            owners.push((
+                format!("{}.{}", namespace.as_str(), object.name),
+                object.name.to_string(),
+            ));
+        }
+        if namespace.as_str() == OWN_NAMESPACE {
+            check_lua_names(OWN_NAMESPACE, &owners, HAND_WRITTEN)?;
+        } else {
+            check_lua_names(&format!("require(\"{}\")", namespace.as_str()), &owners, &[])?;
         }
     }
     Ok(())
@@ -265,7 +293,43 @@ fn lua_stub(catalog: &Catalog) -> String {
             stub_object(&mut text, &namespace, object);
         }
     }
+    stub_modules(&mut text, catalog);
     text
+}
+
+/// The names a script reaches objects through: core types on `gnoblin`, and one
+/// `require`d module per extension namespace, each with one collection per type.
+fn stub_modules(text: &mut String, catalog: &Catalog) {
+    let mut overloads = String::new();
+    for namespace in catalog.namespaces() {
+        let is_own = namespace.as_str() == OWN_NAMESPACE;
+        let holder = if is_own {
+            OWN_NAMESPACE.to_owned()
+        } else {
+            format!("{}Module", namespace.as_str())
+        };
+        let _ = writeln!(text, "\n---@class {holder}");
+        for object in catalog.objects(&namespace) {
+            let _ = writeln!(
+                text,
+                "---@field {} {}.{}Collection",
+                object.name,
+                namespace.as_str(),
+                object.name
+            );
+        }
+        if !is_own {
+            let _ = writeln!(
+                overloads,
+                "---@overload fun(name: \"{}\"): {holder}",
+                namespace.as_str()
+            );
+        }
+    }
+    text.push_str(&overloads);
+    text.push_str("---@param name string\n");
+    text.push_str("---@return any\n");
+    text.push_str("function require(name) end\n");
 }
 
 /// One object's class, properties, methods and signals.
@@ -299,12 +363,8 @@ fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType) {
         let _ = writeln!(text, "---@return gnoblin.Subscription");
         let _ = writeln!(text, "function {}:on(name, callback) end", object.name);
     }
-    // The collection a script reaches an instance through.
-    let collection = if namespace.as_str() == OWN_NAMESPACE {
-        format!("gnoblin.objects.{}", object.name)
-    } else {
-        format!("gnoblin.extensions[\"{}\"].objects.{}", namespace.as_str(), object.name)
-    };
+    // The collection a script reaches instances through: one per object type.
+    let collection = format!("{class}Collection");
     let _ = writeln!(text, "---@class {collection}");
     let _ = writeln!(text, "---@field by_id fun(id: integer): {class}|nil");
     let _ = writeln!(text, "---@field all fun(): {class}[]");
