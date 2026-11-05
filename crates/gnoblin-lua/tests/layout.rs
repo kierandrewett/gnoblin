@@ -1,18 +1,23 @@
-//! Integration tests for the Lua layout host: the end-to-end path from a Lua layout
-//! to settled placements, then each failure mode listed in `src/layout/mod.rs`.
+//! Integration tests for the Lua layout host: the end-to-end path from a Lua config
+//! chunk through `LuaEngine` and `Slot` to settled placements, then each failure mode
+//! listed in `src/layout/mod.rs`.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, HostOutcome, LayoutReason, LayoutRequest, LayoutSnapshot, OutputInfo, SnapshotWindow,
-    WedgeHook,
+    Data, Gaps, Host, HostConfig, LayoutSnapshot, LuaEngine, OutputInfo, WedgeHook, install, take_registrations,
 };
 use gnoblin_types::{OutputId, RectF, Scale, WindowId, WorkspaceId};
-use gnoblin_wm::layout::{Layout, Origin, Transform3};
+use gnoblin_wm::layout::{
+    Collected, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Params, Reply,
+    Request, Slot, Transform3, settle,
+};
 
 /// A fresh module directory holding the given `name -> source` modules.
 fn modules(test: &str, files: &[(&str, &str)]) -> PathBuf {
@@ -25,7 +30,12 @@ fn modules(test: &str, files: &[(&str, &str)]) -> PathBuf {
     dir
 }
 
-fn snapshot(ids: &[u64], width: f64, height: f64) -> LayoutSnapshot {
+fn host(dir: PathBuf) -> Rc<RefCell<Host>> {
+    Rc::new(RefCell::new(Host::new(HostConfig::new(vec![dir]))))
+}
+
+/// What the wm's [`Params`] do not carry: the output, workspace, focus and gaps.
+fn template() -> LayoutSnapshot {
     LayoutSnapshot {
         workspace: WorkspaceId::new(1),
         output: OutputInfo {
@@ -36,27 +46,54 @@ fn snapshot(ids: &[u64], width: f64, height: f64) -> LayoutSnapshot {
         area: RectF {
             x: 0.0,
             y: 0.0,
-            width,
-            height,
+            width: 0.0,
+            height: 0.0,
         },
-        windows: ids
-            .iter()
-            .map(|id| SnapshotWindow {
-                id: WindowId::new(*id),
-                app_id: "app".into(),
-                title: format!("window {id}"),
-                width: 100.0,
-                height: 100.0,
-                size_hints: Default::default(),
-            })
-            .collect(),
-        focus: ids.first().map(|id| WindowId::new(*id)),
+        windows: Vec::new(),
+        focus: None,
         gaps: Gaps::default(),
     }
 }
 
-fn host(dir: PathBuf) -> Host {
-    Host::new(HostConfig::new(vec![dir]))
+fn params(ids: &[u64], width: f64, height: f64) -> Params {
+    let windows = ids
+        .iter()
+        .map(|id| LayoutWindow {
+            id: WindowId::new(*id),
+            width: 100.0,
+            height: 100.0,
+        })
+        .collect();
+    Params::new(width, height, windows).expect("valid params")
+}
+
+fn engine(host: &Rc<RefCell<Host>>, layout: &str) -> LuaEngine {
+    LuaEngine::new(Rc::clone(host), layout, template())
+}
+
+/// Submits `job` as `generation` and collects it against a generous deadline.
+fn run(engine: &mut LuaEngine, job: Job, generation: Generation) -> Result<Reply, LayoutFailure> {
+    let _ = engine.submit(job, generation);
+    match engine.collect(generation, Instant::now() + Duration::from_secs(5)) {
+        LayoutOutcome::Ready {
+            generation: answered,
+            result,
+        } => {
+            assert_eq!(answered, generation, "the answer names its generation");
+            result
+        }
+        LayoutOutcome::Pending => panic!("no answer within 5s"),
+    }
+}
+
+fn arrange(engine: &mut LuaEngine, ids: &[u64], width: f64, height: f64) -> Result<Reply, LayoutFailure> {
+    run(engine, Job::Arrange(params(ids, width, height)), Generation::FIRST)
+}
+
+/// Settles a reply the way the slot does, so every placement passes the wm validator.
+fn settled(params: &Params, reply: Result<Reply, LayoutFailure>) -> Layout {
+    let reply = reply.expect("the layout answered");
+    settle(params, reply).expect("the reply passes the wm validator")
 }
 
 fn no_options() -> Data {
@@ -64,7 +101,7 @@ fn no_options() -> Data {
 }
 
 /// The master-stack layout: the first window takes the left half, the rest stack down
-/// the right half. A place request for window 99 is declined, so the fallback applies.
+/// the right half. A request that includes window 99 is declined.
 const MASTER_STACK: &str = r#"
 local M = {}
 function M.arrange(ctx)
@@ -88,8 +125,10 @@ function M.arrange(ctx)
   end
   return { placements = placements }
 end
-function M.on_added(ctx, event)
-  if event.window == 99 then return nil end
+function M.on_request(ctx)
+  for _, window in ipairs(ctx.windows) do
+    if window.id == 99 then return nil end
+  end
   return M.arrange(ctx)
 end
 return M
@@ -105,20 +144,6 @@ end
 return M
 "#;
 
-fn placed(outcome: HostOutcome) -> Layout {
-    match outcome {
-        HostOutcome::Placed(layout) => layout,
-        HostOutcome::Failed { reason, message, .. } => panic!("expected a placement, got {reason:?}: {message}"),
-    }
-}
-
-fn failed(outcome: HostOutcome) -> (LayoutReason, String) {
-    match outcome {
-        HostOutcome::Failed { reason, message, .. } => (reason, message),
-        HostOutcome::Placed(layout) => panic!("expected a failure, got {layout:?}"),
-    }
-}
-
 /// Checks placements against `(window, x, y, width, height)` rows, in window order.
 fn expect_geometry(layout: &Layout, expected: &[(u64, f64, f64, f64, f64)]) {
     assert_eq!(layout.placements.len(), expected.len(), "placement count");
@@ -132,13 +157,34 @@ fn expect_geometry(layout: &Layout, expected: &[(u64, f64, f64, f64, f64)]) {
 }
 
 #[test]
-fn e2e_master_stack_places_windows_and_falls_through_when_declined() {
-    let mut host = host(modules("master", &[("master", MASTER_STACK)]));
-    host.register("master", "master", no_options())
-        .expect("the layout registers");
+fn e2e_config_registers_a_lua_layout_driven_through_the_slot() {
+    // The configuration chunk registers the layout exactly as a user's config would.
+    let lua = mlua::Lua::new();
+    let gnoblin = lua.create_table().expect("a gnoblin table");
+    install(&lua, &gnoblin).expect("the layout API installs");
+    lua.globals().set("gnoblin", gnoblin).expect("the global");
+    lua.load(r#"gnoblin.layout.register("master", "master")"#)
+        .exec()
+        .expect("the config chunk runs");
+    let registrations = take_registrations(&lua).expect("registrations");
+    assert_eq!(registrations.len(), 1);
+
+    let dir = modules("e2e", &[("master", MASTER_STACK)]);
+    let host = host(dir);
+    for registration in &registrations {
+        host.borrow_mut()
+            .register(&registration.name, &registration.module, no_options())
+            .expect("the registered layout loads");
+    }
 
     // Three windows on a 1000x600 area: master left half, two stacked on the right.
-    let layout = placed(host.arrange("master", &snapshot(&[1, 2, 3], 1000.0, 600.0)));
+    let mut slot = Slot::new(Box::new(engine(&host, "master")));
+    let job_params = params(&[1, 2, 3], 1000.0, 600.0);
+    slot.submit(Job::Arrange(job_params.clone()));
+    let layout = match slot.collect(Instant::now() + Duration::from_secs(5)) {
+        Collected::Settled(layout) => layout,
+        other => panic!("expected a settled layout, got {other:?}"),
+    };
     expect_geometry(
         &layout,
         &[
@@ -147,72 +193,125 @@ fn e2e_master_stack_places_windows_and_falls_through_when_declined() {
             (3, 500.0, 300.0, 500.0, 300.0),
         ],
     );
-    assert_eq!(layout.origin, Origin::Reply);
 
-    // A declined place request yields the built-in fallback, not a failure.
-    let declined = placed(host.message(
-        "master",
-        LayoutRequest::Place {
-            window: WindowId::new(99),
-        },
-        &snapshot(&[99], 1000.0, 600.0),
-    ));
-    assert_eq!(declined.origin, Origin::Fallback);
+    // A declined request is observable from the engine as `Declined`, and the slot then
+    // uses the built-in fallback.
+    let mut engine = engine(&host, "master");
+    let declined = run(
+        &mut engine,
+        Job::Request(Request {
+            params: params(&[99], 1000.0, 600.0),
+        }),
+        Generation::FIRST,
+    );
+    assert!(matches!(declined, Ok(Reply::Declined)), "{declined:?}");
 
-    // A handled request yields the layout's placement.
-    let handled = placed(host.message(
-        "master",
-        LayoutRequest::Place {
-            window: WindowId::new(1),
-        },
-        &snapshot(&[1], 1000.0, 600.0),
-    ));
-    assert_eq!(handled.origin, Origin::Reply);
-    expect_geometry(&handled, &[(1, 0.0, 0.0, 1000.0, 600.0)]);
+    // A handled request yields the layout's own placement.
+    let handled_params = params(&[1], 1000.0, 600.0);
+    let handled = run(
+        &mut engine,
+        Job::Request(Request {
+            params: handled_params.clone(),
+        }),
+        Generation::FIRST.next(),
+    );
+    let layout = settled(&handled_params, handled);
+    expect_geometry(&layout, &[(1, 0.0, 0.0, 1000.0, 600.0)]);
 }
 
 #[test]
-fn state_persists_across_calls_and_is_fresh_per_host() {
-    let snap = snapshot(&[7], 100.0, 100.0);
-    let mut counter_host = host(modules("state", &[("counter", COUNTER)]));
+fn state_persists_across_runs_and_is_fresh_per_host() {
+    let counter_host = host(modules("state", &[("counter", COUNTER)]));
     counter_host
+        .borrow_mut()
         .register("counter", "counter", no_options())
         .expect("registers");
-    let first = placed(counter_host.arrange("counter", &snap));
-    let second = placed(counter_host.arrange("counter", &snap));
+    let mut counter = engine(&counter_host, "counter");
+    let p = params(&[7], 100.0, 100.0);
+    let first = settled(&p, run(&mut counter, Job::Arrange(p.clone()), Generation::FIRST));
+    let second = settled(&p, run(&mut counter, Job::Arrange(p.clone()), Generation::FIRST.next()));
     assert_eq!(first.placements[0].transform, Transform3::at(1.0, 0.0));
     assert_eq!(second.placements[0].transform, Transform3::at(2.0, 0.0));
 
-    let mut fresh = host(modules("state-fresh", &[("counter", COUNTER)]));
-    fresh.register("counter", "counter", no_options()).expect("registers");
-    let again = placed(fresh.arrange("counter", &snap));
+    let fresh = host(modules("state-fresh", &[("counter", COUNTER)]));
+    fresh
+        .borrow_mut()
+        .register("counter", "counter", no_options())
+        .expect("registers");
+    let again = settled(
+        &p,
+        run(
+            &mut engine(&fresh, "counter"),
+            Job::Arrange(p.clone()),
+            Generation::FIRST,
+        ),
+    );
     assert_eq!(again.placements[0].transform, Transform3::at(1.0, 0.0));
+}
+
+#[test]
+fn identical_input_gives_identical_placements_on_fresh_hosts() {
+    let p = params(&[1, 2, 3], 1000.0, 600.0);
+    let mut results = Vec::new();
+    for round in 0..2 {
+        let h = host(modules(&format!("determinism-{round}"), &[("master", MASTER_STACK)]));
+        h.borrow_mut()
+            .register("master", "master", no_options())
+            .expect("registers");
+        results.push(run(
+            &mut engine(&h, "master"),
+            Job::Arrange(p.clone()),
+            Generation::FIRST,
+        ));
+    }
+    assert_eq!(results[0], results[1]);
+}
+
+#[test]
+fn stale_generation_is_never_answered_with_a_placement() {
+    let h = host(modules("stale", &[("master", MASTER_STACK)]));
+    h.borrow_mut()
+        .register("master", "master", no_options())
+        .expect("registers");
+    let mut engine = engine(&h, "master");
+    let p = params(&[1, 2], 1000.0, 600.0);
+    let _ = engine.submit(Job::Arrange(p.clone()), Generation::FIRST);
+    let _ = engine.submit(Job::Arrange(p.clone()), Generation::FIRST.next());
+
+    let stale = engine.collect(Generation::FIRST, Instant::now() + Duration::from_secs(5));
+    assert!(
+        !matches!(stale, LayoutOutcome::Ready { result: Ok(_), .. }),
+        "a superseded run must not answer: {stale:?}"
+    );
+    let current = engine.collect(Generation::FIRST.next(), Instant::now() + Duration::from_secs(5));
+    assert!(
+        matches!(current, LayoutOutcome::Ready { result: Ok(_), .. }),
+        "{current:?}"
+    );
 }
 
 #[test]
 fn spinning_layout_is_aborted_by_the_instruction_budget() {
     let spin = "local M = {} function M.arrange() while true do end end return M";
-    let mut host = host(modules("spin", &[("spin", spin)]));
-    host.register("spin", "spin", no_options()).expect("registers");
-    let (reason, _) = failed(host.arrange("spin", &snapshot(&[1], 100.0, 100.0)));
-    assert!(
-        matches!(reason, LayoutReason::Stalled | LayoutReason::Deadline),
-        "{reason:?}"
-    );
+    let h = host(modules("spin", &[("spin", spin)]));
+    h.borrow_mut()
+        .register("spin", "spin", no_options())
+        .expect("registers");
+    let result = arrange(&mut engine(&h, "spin"), &[1], 100.0, 100.0);
+    assert!(matches!(result, Err(LayoutFailure::Timeout)), "{result:?}");
 }
 
 #[test]
 fn memory_bomb_is_refused() {
     let bomb = "local M = {} function M.arrange() local t = {} for i = 1, 1e12 do t[i] = { i, i, i, i } end return nil end return M";
-    let mut host = host(modules("bomb", &[("bomb", bomb)]));
-    host.register("bomb", "bomb", no_options()).expect("registers");
-    let (reason, message) = failed(host.arrange("bomb", &snapshot(&[1], 100.0, 100.0)));
+    let h = host(modules("bomb", &[("bomb", bomb)]));
+    h.borrow_mut()
+        .register("bomb", "bomb", no_options())
+        .expect("registers");
+    let result = arrange(&mut engine(&h, "bomb"), &[1], 100.0, 100.0);
     assert!(
-        matches!(
-            reason,
-            LayoutReason::Memory | LayoutReason::Error | LayoutReason::Stalled | LayoutReason::Deadline
-        ),
-        "{reason:?}: {message}"
+        matches!(result, Err(LayoutFailure::Error | LayoutFailure::Timeout)),
+        "{result:?}"
     );
 }
 
@@ -233,44 +332,52 @@ fn bad_returns_are_refused() {
         ),
     ];
     for (name, source) in cases {
-        let mut host = host(modules(name, &[(name, source)]));
-        host.register(name, name, no_options()).expect("registers");
-        let (reason, _) = failed(host.arrange(name, &snapshot(&[1], 100.0, 100.0)));
+        let h = host(modules(name, &[(name, source)]));
+        h.borrow_mut().register(name, name, no_options()).expect("registers");
+        let p = params(&[1], 100.0, 100.0);
+        let verdict = arrange(&mut engine(&h, name), &[1], 100.0, 100.0).and_then(|reply| settle(&p, reply));
         assert!(
-            matches!(
-                reason,
-                LayoutReason::RefusedReply | LayoutReason::InvalidLayout | LayoutReason::Error
-            ),
-            "{name}: {reason:?}"
+            matches!(verdict, Err(LayoutFailure::InvalidReply(_) | LayoutFailure::Error)),
+            "{name}: {verdict:?}"
         );
     }
 }
 
 #[test]
-fn thrown_error_is_reported_with_its_message() {
+fn thrown_error_is_reported_as_an_error() {
     let boom = r#"local M={} function M.arrange() error("boom") end return M"#;
-    let mut host = host(modules("boom", &[("boom", boom)]));
-    host.register("boom", "boom", no_options()).expect("registers");
-    let (reason, message) = failed(host.arrange("boom", &snapshot(&[1], 100.0, 100.0)));
-    assert_eq!(reason, LayoutReason::Error);
-    assert!(message.contains("boom"), "{message}");
+    let h = host(modules("boom", &[("boom", boom)]));
+    h.borrow_mut()
+        .register("boom", "boom", no_options())
+        .expect("registers");
+    let result = arrange(&mut engine(&h, "boom"), &[1], 100.0, 100.0);
+    assert!(matches!(result, Err(LayoutFailure::Error)), "{result:?}");
 }
 
 #[test]
 fn require_is_sandboxed_to_the_configured_directory() {
     let escape = r#"local M = require("../escape") return M"#;
-    let mut host = host(modules("sandbox", &[("escape", escape)]));
-    assert!(host.register("escape", "escape", no_options()).is_err());
-    assert!(host.register("traversal", "../../etc/passwd", no_options()).is_err());
+    let h = host(modules("sandbox", &[("escape", escape)]));
+    assert!(h.borrow_mut().register("escape", "escape", no_options()).is_err());
+    assert!(
+        h.borrow_mut()
+            .register("traversal", "../../etc/passwd", no_options())
+            .is_err()
+    );
 }
 
 #[test]
 fn duplicate_register_is_refused_and_previous_registration_survives() {
-    let mut host = host(modules("dup", &[("master", MASTER_STACK)]));
-    host.register("master", "master", no_options()).expect("registers");
-    let err = host.register("master", "missing", no_options());
-    assert!(err.is_err(), "a failed re-register must fail");
-    let layout = placed(host.arrange("master", &snapshot(&[1, 2], 1000.0, 600.0)));
+    let h = host(modules("dup", &[("master", MASTER_STACK)]));
+    h.borrow_mut()
+        .register("master", "master", no_options())
+        .expect("registers");
+    assert!(h.borrow_mut().register("master", "missing", no_options()).is_err());
+    let p = params(&[1, 2], 1000.0, 600.0);
+    let layout = settled(
+        &p,
+        run(&mut engine(&h, "master"), Job::Arrange(p.clone()), Generation::FIRST),
+    );
     expect_geometry(&layout, &[(1, 0.0, 0.0, 500.0, 600.0), (2, 500.0, 0.0, 500.0, 600.0)]);
 }
 
@@ -283,21 +390,24 @@ fn wedged_worker_is_abandoned_and_the_leak_cap_disables_layouts() {
     )]);
     config.wedge = Some(wedge);
     config.hard_limit = Duration::from_millis(50);
-    let mut host = Host::new(config);
-    host.register("wedged", "wedged", no_options()).expect("registers");
-    host.register("fine", "fine", no_options()).expect("registers");
-    let snap = snapshot(&[1], 100.0, 100.0);
-    // A wedge is abandoned by the first call that starts a hard limit after the stall.
+    let h = Rc::new(RefCell::new(Host::new(config)));
+    h.borrow_mut()
+        .register("wedged", "wedged", no_options())
+        .expect("registers");
+    h.borrow_mut()
+        .register("fine", "fine", no_options())
+        .expect("registers");
+    // A wedge is abandoned by the call that starts a hard limit after the stall.
     for _ in 0..4 {
         std::thread::sleep(Duration::from_millis(60));
-        let (reason, _) = failed(host.arrange("wedged", &snap));
+        let result = arrange(&mut engine(&h, "wedged"), &[1], 100.0, 100.0);
         assert!(
-            matches!(reason, LayoutReason::VmWedged | LayoutReason::Deadline),
-            "{reason:?}"
+            matches!(result, Err(LayoutFailure::VmWedged | LayoutFailure::Timeout)),
+            "{result:?}"
         );
     }
-    assert!(host.disabled(), "three abandoned workers disable layouts");
-    assert!(host.leaked() >= 3);
-    let (reason, _) = failed(host.arrange("fine", &snap));
-    assert_eq!(reason, LayoutReason::VmWedged);
+    assert!(h.borrow().disabled(), "three abandoned workers disable layouts");
+    assert!(h.borrow().leaked() >= 3);
+    let result = arrange(&mut engine(&h, "fine"), &[1], 100.0, 100.0);
+    assert!(matches!(result, Err(LayoutFailure::VmWedged)), "{result:?}");
 }

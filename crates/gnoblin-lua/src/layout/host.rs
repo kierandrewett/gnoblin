@@ -1,7 +1,8 @@
-//! The layout host: the caller's side of the worker. It never blocks on a layout for
-//! longer than the frame deadline, discards stale answers, and abandons a worker that
-//! stops answering. Rust cannot kill a thread, so an abandoned worker is leaked and a
-//! fresh one is built from the last good persisted state.
+//! The layout host: the caller's side of the worker. A run is started without waiting
+//! and polled against a caller's deadline. Every answer is filed under its generation,
+//! and an answer nobody is waiting for is dropped when its run is forgotten. A worker
+//! that stays silent for a whole hard limit is abandoned. Rust cannot kill a thread, so
+//! an abandoned worker is leaked and a fresh one is built from the registrations.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -10,13 +11,12 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
 use gnoblin_lua_sandbox::Limits;
-use gnoblin_wm::layout::{Layout, LayoutFailure, LayoutWindow, Params, fallback, settle};
 
 use super::LayoutReason;
 use super::data::Data;
 use super::lua::{LayoutCall, LayoutFault};
-use super::snapshot::{LayoutRequest, LayoutSnapshot};
-use super::worker::{LayoutFinished, Spawn, Worker, WorkerJob};
+use super::snapshot::LayoutSnapshot;
+use super::worker::{Done, LayoutFinished, Spawn, Worker, WorkerJob};
 
 /// Decides whether a layout's worker must stall, for tests of the wedge path. Returns
 /// true to make the worker stop answering the named layout's next call.
@@ -29,9 +29,8 @@ pub struct HostConfig {
     pub limits: Limits,
     /// The only directories layout modules are loaded from.
     pub module_dirs: Vec<PathBuf>,
-    /// The longest a caller waits for a layout's answer.
-    pub frame_deadline: Duration,
     /// How long a worker may stay silent with work outstanding before it is abandoned.
+    /// Registration waits at most this long for its load.
     pub hard_limit: Duration,
     /// How many abandoned workers are tolerated before layouts are disabled.
     pub leak_cap: usize,
@@ -45,7 +44,6 @@ impl HostConfig {
         Self {
             limits: Limits::default(),
             module_dirs,
-            frame_deadline: Duration::from_millis(16),
             hard_limit: Duration::from_millis(100),
             leak_cap: 3,
             wedge: None,
@@ -62,27 +60,7 @@ pub struct HostFailure {
     pub message: String,
 }
 
-/// What a layout call produced for the caller.
-#[derive(Clone, Debug)]
-pub enum HostOutcome {
-    /// The layout's placement. A declined request yields the built-in floating
-    /// placement here, with `origin` set to the fallback.
-    Placed(Layout),
-    /// The layout failed. The caller applies `fallback`, the built-in floating
-    /// placement, when present; it is absent only when the snapshot itself is invalid.
-    Failed {
-        /// The layout the call was for.
-        layout: String,
-        /// Why the layout produced no placement.
-        reason: LayoutReason,
-        /// The Lua message, or the host's description.
-        message: String,
-        /// The built-in floating placement for this snapshot.
-        fallback: Option<Layout>,
-    },
-}
-
-struct LayoutRegistered {
+struct RegisteredLayout {
     module: String,
     options: Data,
 }
@@ -91,13 +69,17 @@ struct LayoutRegistered {
 pub struct Host {
     config: HostConfig,
     worker: Option<Worker>,
-    registered: BTreeMap<String, LayoutRegistered>,
+    registered: BTreeMap<String, RegisteredLayout>,
     /// The last persisted `ctx.state` per layout, with the module hash it belongs to.
     states: BTreeMap<String, (u64, Data)>,
     generation: u64,
-    /// Jobs sent whose answer has not been received.
-    outstanding: usize,
-    /// When the oldest outstanding job was sent.
+    /// Runs sent whose answer has not been received, by generation, with their layout.
+    inflight: BTreeMap<u64, String>,
+    /// Answers received but not yet taken by their caller.
+    ready: BTreeMap<u64, Result<LayoutFinished, LayoutFault>>,
+    /// Runs whose worker was abandoned before they answered.
+    faulted: BTreeMap<u64, LayoutFault>,
+    /// When the oldest run still in flight was sent.
     busy_since: Option<Instant>,
     leaked: usize,
     disabled: bool,
@@ -113,7 +95,9 @@ impl Host {
             registered: BTreeMap::new(),
             states: BTreeMap::new(),
             generation: 0,
-            outstanding: 0,
+            inflight: BTreeMap::new(),
+            ready: BTreeMap::new(),
+            faulted: BTreeMap::new(),
             busy_since: None,
             leaked: 0,
             disabled: false,
@@ -131,20 +115,19 @@ impl Host {
     }
 
     /// Loads `module` and registers it as layout `name` with the user's `options`. The
-    /// module is loaded on the worker; the wait is one hard limit, not a frame.
+    /// load is waited for at most one hard limit. A failed load restores the previous
+    /// registration of `name`.
     pub fn register(&mut self, name: &str, module: &str, options: Data) -> Result<(), HostFailure> {
         if self.disabled {
             return Err(disabled_failure());
         }
-        self.reap();
-        self.abandon_if_wedged();
+        self.ensure_worker();
         if self.disabled {
             return Err(disabled_failure());
         }
-        self.ensure_worker();
         let previous = self.registered.insert(
             name.to_owned(),
-            LayoutRegistered {
+            RegisteredLayout {
                 module: module.to_owned(),
                 options: options.clone(),
             },
@@ -156,7 +139,12 @@ impl Host {
             module: module.to_owned(),
             options,
         };
-        let outcome = self.submit(job, generation, self.config.hard_limit);
+        let deadline = Instant::now() + self.config.hard_limit;
+        let outcome = if self.send(generation, name, job) {
+            self.poll(generation, deadline)
+        } else {
+            Some(Err(LayoutFault::new(LayoutReason::VmDown, "the layout worker exited")))
+        };
         let failure = match outcome {
             Some(Ok(LayoutFinished::Loaded)) => return Ok(()),
             Some(Ok(LayoutFinished::Ran(_))) => HostFailure {
@@ -167,10 +155,13 @@ impl Host {
                 reason: fault.reason,
                 message: fault.message,
             },
-            None => HostFailure {
-                reason: LayoutReason::Deadline,
-                message: format!("loading `{module}` did not finish in time"),
-            },
+            None => {
+                self.forget(generation);
+                HostFailure {
+                    reason: LayoutReason::Deadline,
+                    message: format!("loading `{module}` did not finish in time"),
+                }
+            }
         };
         match previous {
             Some(old) => self.registered.insert(name.to_owned(), old),
@@ -179,179 +170,153 @@ impl Host {
         Err(failure)
     }
 
-    /// The arrange pass for layout `name` over `snapshot`.
-    pub fn arrange(&mut self, name: &str, snapshot: &LayoutSnapshot) -> HostOutcome {
-        self.dispatch(name, LayoutCall::Arrange, snapshot)
-    }
-
-    /// A message to layout `name`: a window was added or removed, a request arrived, or
-    /// a command ran.
-    pub fn message(&mut self, name: &str, request: LayoutRequest, snapshot: &LayoutSnapshot) -> HostOutcome {
-        self.dispatch(name, LayoutCall::Message(request), snapshot)
-    }
-
-    fn dispatch(&mut self, name: &str, call: LayoutCall, snapshot: &LayoutSnapshot) -> HostOutcome {
-        let params = match params_of(snapshot) {
-            Ok(params) => params,
-            Err(message) => {
-                return HostOutcome::Failed {
-                    layout: name.to_owned(),
-                    reason: LayoutReason::Error,
-                    message,
-                    fallback: None,
-                };
-            }
-        };
-        let failed = |reason: LayoutReason, message: String| HostOutcome::Failed {
-            layout: name.to_owned(),
-            reason,
-            message,
-            fallback: Some(fallback(&params)),
-        };
+    /// Starts `call` on layout `name` over `snapshot` and returns its run generation
+    /// without waiting. The run is collected with [`Host::poll`] and dropped with
+    /// [`Host::forget`].
+    pub(crate) fn start(
+        &mut self,
+        name: &str,
+        call: LayoutCall,
+        snapshot: &LayoutSnapshot,
+    ) -> Result<u64, LayoutFault> {
         if self.disabled {
-            return failed(
-                LayoutReason::VmWedged,
-                "layouts are disabled after repeated wedged workers".into(),
-            );
-        }
-        self.reap();
-        self.abandon_if_wedged();
-        if self.disabled {
-            return failed(
-                LayoutReason::VmWedged,
-                "layouts are disabled after repeated wedged workers".into(),
-            );
+            return Err(disabled_fault());
         }
         if !self.registered.contains_key(name) {
-            return failed(
+            return Err(LayoutFault::new(
                 LayoutReason::MissingModule,
                 format!("layout `{name}` is not registered"),
-            );
+            ));
         }
         self.ensure_worker();
+        if self.disabled {
+            return Err(disabled_fault());
+        }
         let generation = self.next_generation();
-        let state = self.states.get(name).cloned();
         let job = WorkerJob::Run {
             generation,
             name: name.to_owned(),
             call,
             snapshot: snapshot.clone(),
-            state,
+            state: self.states.get(name).cloned(),
         };
-        match self.submit(job, generation, self.config.frame_deadline) {
-            None => failed(
-                LayoutReason::Deadline,
-                format!("layout `{name}` did not answer within the frame"),
-            ),
-            Some(Err(fault)) => failed(fault.reason, fault.message),
-            Some(Ok(LayoutFinished::Loaded)) => failed(
-                LayoutReason::Error,
-                "the worker answered a layout call with a load".into(),
-            ),
-            Some(Ok(LayoutFinished::Ran(ran))) => match settle(&params, ran.reply) {
-                Ok(layout) => {
-                    self.states.insert(name.to_owned(), (ran.hash, ran.state));
-                    HostOutcome::Placed(layout)
-                }
-                Err(failure) => failed(
-                    match failure {
-                        LayoutFailure::Error => LayoutReason::Error,
-                        LayoutFailure::Timeout => LayoutReason::Deadline,
-                        LayoutFailure::Disabled => LayoutReason::MissingModule,
-                        LayoutFailure::VmWedged => LayoutReason::VmWedged,
-                        LayoutFailure::InvalidReply(_) => LayoutReason::RefusedReply,
-                    },
-                    format!("layout `{name}` returned an invalid reply"),
-                ),
-            },
+        if self.send(generation, name, job) {
+            Ok(generation)
+        } else {
+            Err(LayoutFault::new(LayoutReason::VmDown, "the layout worker exited"))
         }
     }
 
-    /// Queues `job` and waits up to `timeout` for the answer with `generation`. Answers
-    /// with other generations are stale and are discarded. `None` means no answer.
-    fn submit(
-        &mut self,
-        job: WorkerJob,
-        generation: u64,
-        timeout: Duration,
-    ) -> Option<Result<LayoutFinished, LayoutFault>> {
-        let sent = match self.worker.as_ref() {
-            Some(worker) => worker.send(job),
-            None => false,
-        };
-        if !sent {
-            self.lost_worker();
-            return Some(Err(LayoutFault::new(
-                LayoutReason::VmDown,
-                "the layout worker is not running",
-            )));
-        }
-        self.note_sent();
-        let deadline = Instant::now() + timeout;
+    /// Waits until run `generation` answers or `deadline` passes. `None` means it has
+    /// not answered yet; the run stays in flight. A run whose worker was abandoned
+    /// answers `VmWedged`.
+    pub(crate) fn poll(&mut self, generation: u64, deadline: Instant) -> Option<Result<LayoutFinished, LayoutFault>> {
         loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
+            if let Some(result) = self.ready.remove(&generation) {
+                return Some(result);
+            }
+            if let Some(fault) = self.faulted.remove(&generation) {
+                return Some(Err(fault));
+            }
+            if !self.inflight.contains_key(&generation) {
+                return Some(Err(LayoutFault::new(
+                    LayoutReason::Error,
+                    "the layout run was not outstanding",
+                )));
+            }
+            if self.abandon_if_wedged() {
+                continue;
+            }
+            let slice = deadline
+                .saturating_duration_since(Instant::now())
+                .min(self.config.hard_limit);
             let received = match self.worker.as_ref() {
-                Some(worker) => worker.recv_timeout(remaining),
+                Some(worker) => worker.recv_timeout(slice),
                 None => {
-                    return Some(Err(LayoutFault::new(
-                        LayoutReason::VmDown,
-                        "the layout worker is not running",
-                    )));
+                    self.fail_inflight(LayoutReason::VmDown, "the layout worker exited");
+                    continue;
                 }
             };
             match received {
-                Ok(done) => {
-                    self.note_settled();
-                    if done.generation == generation {
-                        return Some(done.result);
+                Ok(done) => self.absorb(done),
+                Err(RecvTimeoutError::Timeout) => {
+                    if Instant::now() >= deadline {
+                        return None;
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => return None,
                 Err(RecvTimeoutError::Disconnected) => {
                     self.lost_worker();
-                    return Some(Err(LayoutFault::new(LayoutReason::VmDown, "the layout worker exited")));
+                    self.fail_inflight(LayoutReason::VmDown, "the layout worker exited");
                 }
             }
         }
     }
 
-    /// Consumes every answer that has already arrived. All of them are stale: a caller
-    /// only waits for the answer to its own job, inside `submit`.
-    fn reap(&mut self) {
-        loop {
-            let received = match self.worker.as_ref() {
-                Some(worker) => worker.try_recv(),
-                None => return,
-            };
-            match received {
-                Ok(_) => self.note_settled(),
-                Err(std::sync::mpsc::TryRecvError::Empty) => return,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.lost_worker();
-                    return;
-                }
-            }
-        }
+    /// Drops run `generation`: its answer, if it arrives, is discarded.
+    pub(crate) fn forget(&mut self, generation: u64) {
+        self.inflight.remove(&generation);
+        self.ready.remove(&generation);
+        self.faulted.remove(&generation);
+        self.settle_clock();
     }
 
-    /// Abandons the worker if work has been outstanding for a whole hard limit. After
-    /// `leak_cap` abandoned workers, layouts are disabled.
-    fn abandon_if_wedged(&mut self) {
+    /// Files an answer under its generation. Answers for runs nobody is waiting on are
+    /// dropped. A finished layout call's persisted state is kept for the next call.
+    fn absorb(&mut self, done: Done) {
+        let Some(name) = self.inflight.remove(&done.generation) else {
+            return;
+        };
+        if let Ok(LayoutFinished::Ran(ran)) = &done.result {
+            self.states.insert(name, (ran.hash, ran.state.clone()));
+        }
+        self.ready.insert(done.generation, done.result);
+        self.settle_clock();
+    }
+
+    /// Queues a job and records it as in flight. Returns false when the worker thread
+    /// has exited.
+    fn send(&mut self, generation: u64, name: &str, job: WorkerJob) -> bool {
+        let sent = self.worker.as_ref().is_some_and(|worker| worker.send(job));
+        if sent {
+            self.inflight.insert(generation, name.to_owned());
+            if self.busy_since.is_none() {
+                self.busy_since = Some(Instant::now());
+            }
+        } else {
+            self.lost_worker();
+        }
+        sent
+    }
+
+    /// Fails every run in flight with `reason`.
+    fn fail_inflight(&mut self, reason: LayoutReason, message: &str) {
+        for (generation, name) in std::mem::take(&mut self.inflight) {
+            self.faulted.insert(
+                generation,
+                LayoutFault::new(reason, format!("layout `{name}`: {message}")),
+            );
+        }
+        self.settle_clock();
+    }
+
+    /// Abandons the worker if runs have been in flight for a whole hard limit, and
+    /// returns true when it did. After `leak_cap` abandoned workers, layouts are disabled.
+    fn abandon_if_wedged(&mut self) -> bool {
         let wedged = match self.busy_since {
-            Some(since) => self.outstanding > 0 && since.elapsed() >= self.config.hard_limit,
+            Some(since) => !self.inflight.is_empty() && since.elapsed() >= self.config.hard_limit,
             None => false,
         };
         if !wedged {
-            return;
+            return false;
         }
         // Dropping the worker detaches its thread: the old thread is leaked, not joined.
         self.worker = None;
         self.leaked += 1;
-        self.outstanding = 0;
-        self.busy_since = None;
         if self.leaked >= self.config.leak_cap {
             self.disabled = true;
         }
+        self.fail_inflight(LayoutReason::VmWedged, "the worker stopped answering");
+        true
     }
 
     /// Starts a worker if there is none, and replays every registration onto it.
@@ -359,46 +324,36 @@ impl Host {
         if self.worker.is_some() {
             return;
         }
-        let worker = spawn_worker(&self.config);
-        self.worker = Some(worker);
-        self.outstanding = 0;
-        self.busy_since = None;
+        self.worker = Some(spawn_worker(&self.config));
         let replay: Vec<(String, String, Data)> = self
             .registered
             .iter()
             .map(|(name, layout)| (name.clone(), layout.module.clone(), layout.options.clone()))
             .collect();
         for (name, module, options) in replay {
+            // Generation 0 marks a replayed load: it is never in flight, so its answer is
+            // dropped on arrival.
             let job = WorkerJob::Load {
                 generation: 0,
                 name,
                 module,
                 options,
             };
-            if let Some(worker) = self.worker.as_ref() {
-                worker.send(job);
+            if !self.worker.as_ref().is_some_and(|worker| worker.send(job)) {
+                self.lost_worker();
+                return;
             }
-            self.note_sent();
         }
     }
 
     /// The worker thread is gone. The next call starts a fresh one.
     fn lost_worker(&mut self) {
         self.worker = None;
-        self.outstanding = 0;
-        self.busy_since = None;
     }
 
-    fn note_sent(&mut self) {
-        if self.outstanding == 0 {
-            self.busy_since = Some(Instant::now());
-        }
-        self.outstanding += 1;
-    }
-
-    fn note_settled(&mut self) {
-        self.outstanding = self.outstanding.saturating_sub(1);
-        if self.outstanding == 0 {
+    /// Clears the clock when nothing is in flight.
+    fn settle_clock(&mut self) {
+        if self.inflight.is_empty() {
             self.busy_since = None;
         }
     }
@@ -417,22 +372,17 @@ fn spawn_worker(config: &HostConfig) -> Worker {
     })
 }
 
-fn disabled_failure() -> HostFailure {
-    HostFailure {
-        reason: LayoutReason::VmWedged,
-        message: "layouts are disabled after repeated wedged workers".into(),
-    }
+fn disabled_fault() -> LayoutFault {
+    LayoutFault::new(
+        LayoutReason::VmWedged,
+        "layouts are disabled after repeated wedged workers",
+    )
 }
 
-fn params_of(snapshot: &LayoutSnapshot) -> Result<Params, String> {
-    let windows = snapshot
-        .windows
-        .iter()
-        .map(|window| LayoutWindow {
-            id: window.id,
-            width: window.width,
-            height: window.height,
-        })
-        .collect();
-    Params::new(snapshot.area.width, snapshot.area.height, windows).map_err(|error| format!("{error:?}"))
+fn disabled_failure() -> HostFailure {
+    let fault = disabled_fault();
+    HostFailure {
+        reason: fault.reason,
+        message: fault.message,
+    }
 }

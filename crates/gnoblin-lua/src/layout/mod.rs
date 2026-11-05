@@ -1,10 +1,11 @@
 //! The layout host: Lua layouts run on a worker thread that owns their VM.
 //!
 //! A layout is a Lua module that the configuration registers with
-//! `gnoblin.layout.register(name, module)`. The host runs it on the worker, waits at
-//! most one frame deadline for the answer, and turns the answer into a validated
-//! [`gnoblin_wm::layout::Layout`]. Every failure becomes an [`HostOutcome::Failed`] that
-//! carries the built-in floating fallback, so the caller always has a placement.
+//! `gnoblin.layout.register(name, module)`. The host runs it on the worker, and
+//! [`LuaEngine`] drives it through the wm's [`gnoblin_wm::layout::LayoutEngine`]
+//! contract: a run is submitted without waiting and collected against the frame deadline.
+//! Every failure becomes a [`gnoblin_wm::layout::LayoutFailure`], so the slot falls back
+//! to the built-in floating placement.
 //!
 //! # LayoutFailure modes
 //!
@@ -29,6 +30,7 @@
 //! - State persistence: `data` values persist across calls on one worker.
 
 mod data;
+mod engine;
 mod host;
 mod lua;
 mod reply;
@@ -39,7 +41,8 @@ mod worker;
 use mlua::{Lua, Table};
 
 pub use data::{Data, DataError, LayoutKey};
-pub use host::{Host, HostConfig, HostOutcome, WedgeHook};
+pub use engine::LuaEngine;
+pub use host::{Host, HostConfig, HostFailure, WedgeHook};
 pub use snapshot::{Gaps, LayoutRequest, LayoutSnapshot, OutputInfo, SizeHints, SnapshotWindow};
 
 /// Why a layout did not produce a placement.
@@ -94,7 +97,7 @@ pub struct LayoutRegistration {
 const REGISTRATIONS: &str = "gnoblin.layout.registrations";
 
 /// Installs `gnoblin.layout.register` on the configuration VM's `gnoblin` table.
-pub(crate) fn install(lua: &Lua, gnoblin: &Table) -> mlua::Result<()> {
+pub fn install(lua: &Lua, gnoblin: &Table) -> mlua::Result<()> {
     lua.set_named_registry_value(REGISTRATIONS, lua.create_table()?)?;
     let layout = lua.create_table()?;
     layout.set(

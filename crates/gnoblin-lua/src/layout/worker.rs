@@ -2,17 +2,18 @@
 //! built on the thread and never leaves it; only jobs and results cross the channels.
 
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use gnoblin_lua_sandbox::Limits;
 
+use super::LayoutReason;
 use super::data::Data;
+use super::host::WedgeHook;
 use super::lua::{LayoutCall, LayoutFault, Ran, Vm};
 use super::require::message;
 use super::snapshot::LayoutSnapshot;
-use super::{LayoutReason, WedgeHook};
 
 /// Work the host sends to a worker. Generation 0 marks a load the host replays after a
 /// respawn; its result is never reported to a caller.
@@ -91,10 +92,6 @@ impl Worker {
 
     pub(crate) fn recv_timeout(&self, timeout: Duration) -> Result<Done, RecvTimeoutError> {
         self.done.recv_timeout(timeout)
-    }
-
-    pub(crate) fn try_recv(&self) -> Result<Done, TryRecvError> {
-        self.done.try_recv()
     }
 }
 

@@ -14,7 +14,7 @@ use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
 use super::data::Data;
 use super::reply;
 use super::require::{self, Modules, message, runtime};
-use super::snapshot::{LayoutRequest, LayoutSnapshot, SnapshotWindow};
+use super::snapshot::{LayoutSnapshot, SnapshotWindow};
 
 /// Why a VM call failed: the reason the host reports, and the Lua message.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,8 +37,8 @@ impl LayoutFault {
 pub(crate) enum LayoutCall {
     /// The batch pass: `arrange(ctx)`.
     Arrange,
-    /// A message: `on_added`, `on_removed`, `on_request` or `command[name]`.
-    Message(LayoutRequest),
+    /// One geometry request: `on_request(ctx)`, which answers for the whole tiled set.
+    Request,
 }
 
 /// One layout as the VM holds it.
@@ -129,8 +129,7 @@ impl Vm {
             None => Reply::Declined,
             Some(handler) => {
                 self.guard.begin(&self.limits);
-                let value =
-                    invoke(&self.lua, &handler, call, &ctx).map_err(|error| self.fault(error, LayoutReason::Error))?;
+                let value = invoke(&handler, call, &ctx).map_err(|error| self.fault(error, LayoutReason::Error))?;
                 reply::read(&value).map_err(|error| self.fault(error, LayoutReason::Error))?
             }
         };
@@ -232,12 +231,7 @@ fn handler(layout: &LuaValue, call: &LayoutCall) -> mlua::Result<Option<Function
         LuaValue::Function(function) => Ok(matches!(call, LayoutCall::Arrange).then(|| function.clone())),
         LuaValue::Table(table) => match call {
             LayoutCall::Arrange => table.get::<Option<Function>>("arrange"),
-            LayoutCall::Message(LayoutRequest::Place { .. }) => first(table, &["on_added", "on_request"]),
-            LayoutCall::Message(LayoutRequest::Remove { .. }) => first(table, &["on_removed", "on_request"]),
-            LayoutCall::Message(LayoutRequest::Command { name, .. }) => match table.get::<Option<Table>>("command")? {
-                Some(commands) => commands.get::<Option<Function>>(name.as_str()),
-                None => Ok(None),
-            },
+            LayoutCall::Request => first(table, &["on_request"]),
         },
         other => Err(runtime(format!(
             "the layout is a {}, not a function or table",
@@ -255,27 +249,11 @@ fn first(table: &Table, keys: &[&str]) -> mlua::Result<Option<Function>> {
     Ok(None)
 }
 
-fn invoke(lua: &Lua, handler: &Function, call: &LayoutCall, ctx: &Table) -> mlua::Result<LuaValue> {
+fn invoke(handler: &Function, call: &LayoutCall, ctx: &Table) -> mlua::Result<LuaValue> {
     let ctx = ctx.clone();
     match call {
-        LayoutCall::Arrange => handler.call::<LuaValue>((ctx,)),
-        LayoutCall::Message(LayoutRequest::Place { window }) => {
-            handler.call::<LuaValue>((ctx, event(lua, "place", window.get())?))
-        }
-        LayoutCall::Message(LayoutRequest::Remove { window }) => {
-            handler.call::<LuaValue>((ctx, event(lua, "remove", window.get())?))
-        }
-        LayoutCall::Message(LayoutRequest::Command { params, .. }) => {
-            handler.call::<LuaValue>((ctx, params.to_lua(lua)?))
-        }
+        LayoutCall::Arrange | LayoutCall::Request => handler.call::<LuaValue>((ctx,)),
     }
-}
-
-fn event(lua: &Lua, kind: &str, window: u64) -> mlua::Result<Table> {
-    let table = lua.create_table()?;
-    table.set("kind", kind)?;
-    table.set("window", lua_int(window)?)?;
-    Ok(table)
 }
 
 /// The `ctx` a layout is called with. It is rebuilt for every call; only `ctx.state`
