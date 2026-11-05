@@ -1,0 +1,58 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.Clipboard",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "Enable",
+          "support": "unsupported",
+          "reason": "the compositor has no clipboard IPC object yet, so enabling the selection bridge has nothing to attach to"
+        },
+        {
+          "kind": "method",
+          "name": "Disable",
+          "support": "unsupported",
+          "reason": "the compositor has no clipboard IPC object yet, so there is no bridge to disable"
+        },
+        {
+          "kind": "method",
+          "name": "SetSelection",
+          "support": "unsupported",
+          "reason": "the compositor has no clipboard IPC object yet, so no selection can be offered"
+        },
+        {
+          "kind": "method",
+          "name": "SelectionWrite",
+          "support": "unsupported",
+          "reason": "the compositor has no clipboard IPC object yet, so no transfer fd can be served"
+        },
+        {
+          "kind": "method",
+          "name": "SelectionWriteDone",
+          "support": "unsupported",
+          "reason": "the compositor has no clipboard IPC object yet, so no transfer can complete"
+        },
+        {
+          "kind": "method",
+          "name": "SelectionRead",
+          "support": "unsupported",
+          "reason": "the compositor has no clipboard IPC object yet, so no selection can be read"
+        },
+        {
+          "kind": "signal",
+          "name": "SelectionOwnerChanged",
+          "support": "unsupported",
+          "reason": "no selection owner changes are published until the compositor has a clipboard IPC object"
+        },
+        {
+          "kind": "signal",
+          "name": "SelectionTransfer",
+          "support": "unsupported",
+          "reason": "no selection transfers are published until the compositor has a clipboard IPC object"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.InputCapture",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "CreateSession",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `CreateSession` has nothing to act on"
+        },
+        {
+          "kind": "property",
+          "name": "SupportedCapabilities",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `SupportedCapabilities` has nothing to act on"
+        }
+      ]
+    },
+    {
+      "name": "org.gnome.Mutter.InputCapture.Session",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "GetZones",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `GetZones` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "AddBarrier",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `AddBarrier` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "ClearBarriers",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `ClearBarriers` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "Enable",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `Enable` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "Disable",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `Disable` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "ConnectToEIS",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `ConnectToEIS` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "Release",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `Release` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "Close",
+          "support": "unsupported",
+          "reason": "the compositor has no input-capture IPC object yet (`capture.open` is missing from compositor IPC), so `Close` has nothing to act on"
+        },
+        {
+          "kind": "signal",
+          "name": "Activated",
+          "support": "unsupported",
+          "reason": "`Activated` is not published: the compositor has no input-capture IPC object (`capture.open` is missing from compositor IPC)"
+        },
+        {
+          "kind": "signal",
+          "name": "Deactivated",
+          "support": "unsupported",
+          "reason": "`Deactivated` is not published: the compositor has no input-capture IPC object (`capture.open` is missing from compositor IPC)"
+        },
+        {
+          "kind": "signal",
+          "name": "ZonesChanged",
+          "support": "unsupported",
+          "reason": "`ZonesChanged` is not published: the compositor has no input-capture IPC object (`capture.open` is missing from compositor IPC)"
+        },
+        {
+          "kind": "signal",
+          "name": "Disabled",
+          "support": "unsupported",
+          "reason": "`Disabled` is not published: the compositor has no input-capture IPC object (`capture.open` is missing from compositor IPC)"
+        },
+        {
+          "kind": "signal",
+          "name": "Closed",
+          "support": "unsupported",
+          "reason": "`Closed` is not published: the compositor has no input-capture IPC object (`capture.open` is missing from compositor IPC)"
+        }
+      ]
+    }
+  ]
+}

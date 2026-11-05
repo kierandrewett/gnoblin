@@ -1,0 +1,124 @@
+# The `settings` object: the appearance values the compositor publishes for toolkits.
+#
+# Design/rust-compositor.md's D15 makes the settings bridge a one-way publish from
+# Gnoblin configuration: the compositor owns the values, this object states them, and
+# `xdg-desktop-portal-gnoblin` reads them for `org.freedesktop.impl.portal.Settings`.
+# Nothing reads a write back, so there is no method here and no writable property: a
+# toolkit's request cannot become a configuration change.
+#
+# One object of this type exists for the session's lifetime and its identity is the
+# session's whole appearance state, so a subscriber that starts from the snapshot is
+# exactly current. A property is absent from the graph until the compositor has a value
+# for it, which is why the portal treats a missing property as "not published" rather
+# than as a default: a toolkit that reads no value keeps its own.
+#
+# The property names are the settings' own names with `-` turned into `_`, because a
+# schema property name cannot contain a dash. The portal's translation table in
+# `crates/xdg-desktop-portal-gnoblin/src/settings.rs` is the one place the two
+# vocabularies meet.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "settings"
+since = "0.2.0"
+
+# `org.freedesktop.appearance` `color-scheme`: 0 no preference, 1 prefer dark, 2 prefer
+# light. GTK, Qt 6.5 and later, Chromium and Firefox all read it from the portal.
+[[object.property]]
+name = "color_scheme"
+type = "uint"
+since = "0.2.0"
+
+# `org.freedesktop.appearance` `accent-color`, as its three sRGB components in the range
+# [0, 1]. Three double properties rather than one tuple because the schema declares no
+# record type yet, and a diff then says which component changed.
+[[object.property]]
+name = "accent_red"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "accent_green"
+type = "double"
+since = "0.2.0"
+
+[[object.property]]
+name = "accent_blue"
+type = "double"
+since = "0.2.0"
+
+# `org.freedesktop.appearance` `contrast`: 0 no preference, 1 higher contrast.
+[[object.property]]
+name = "contrast"
+type = "uint"
+since = "0.2.0"
+
+# `org.freedesktop.appearance` `reduced-motion`: 0 no preference, 1 reduced motion.
+[[object.property]]
+name = "reduced_motion"
+type = "uint"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `gtk-theme`, the theme name a GTK 3 application loads.
+[[object.property]]
+name = "gtk_theme"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `icon-theme`.
+[[object.property]]
+name = "icon_theme"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `cursor-theme`.
+[[object.property]]
+name = "cursor_theme"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `cursor-size`, in logical pixels.
+[[object.property]]
+name = "cursor_size"
+type = "uint"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `font-name`: a font description, such as
+# `Cantarell 11`.
+[[object.property]]
+name = "font_name"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `document-font-name`.
+[[object.property]]
+name = "document_font_name"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `monospace-font-name`.
+[[object.property]]
+name = "monospace_font_name"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `text-scaling-factor`: 1.0 is the system's own scale.
+[[object.property]]
+name = "text_scaling_factor"
+type = "double"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `button-layout`: the titlebar arrangement, such as
+# `appmenu:minimize,maximize,close`.
+[[object.property]]
+name = "button_layout"
+type = "string"
+since = "0.2.0"
+
+# `org.gnome.desktop.interface` `enable-animations`. A toolkit that reads it here stops
+# animating, which is the same answer `reduced_motion` gives GTK 4.
+[[object.property]]
+name = "enable_animations"
+type = "bool"
+since = "0.2.0"
