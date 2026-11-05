@@ -44,42 +44,42 @@
 //! region an action names is committed and readable through
 //! [`State::window_frame`], which is what that path will read.
 //!
-//! ## Failure modes this module defends against
+//! ## Failure modes first
 //!
-//! Each rule below is what the code does, not yet a test: the real-client frame
-//! tests are not part of this change (see "What is not proven yet").
+//! Each entry names a test in `tests/window_frame.rs`.
 //!
 //! 1. **The global is visible to a client that is not a renderer.** It is offered
-//!    only to a connection the compositor promised `ClientRole::FrameRenderer`, so
-//!    an application cannot draw another client's decorations.
+//!    only to a connection the compositor promised `ClientRole::FrameRenderer`:
+//!    `a_renderer_is_offered_only_its_own_protocol` and
+//!    `an_ordinary_client_sees_no_frame_protocol`.
 //! 2. **A renderer attaches a surface that already has a role, or attaches a second
-//!    surface to one frame.** The request is a `role` protocol error and the session
-//!    keeps running.
-//! 3. **A renderer acknowledges a configure that was never sent.** The request is an
-//!    `invalid_state` protocol error; an acknowledgement of an older configure is
+//!    surface to one frame.** A `role` protocol error ends that connection and the
+//!    session keeps running: `attaching_a_roled_surface_is_a_protocol_error` and
+//!    `a_second_surface_for_one_frame_is_a_protocol_error`.
+//! 3. **A renderer acknowledges a configure that was never sent.**
+//!    `acknowledging_an_unknown_serial_is_a_protocol_error`; an older serial is
 //!    recorded and never presented.
-//! 4. **A frame image is presented for the wrong size.** The commit is an
-//!    `invalid_state` protocol error and the previous frame stays.
-//! 5. **A region outside the protocol's limits is accepted.** More than 64 regions,
-//!    a negative or oversized rectangle, or an unknown action is refused.
-//! 6. **A renderer that crashes leaves a frame behind.** Its frames are closed and
-//!    forgotten once per turn, so the window keeps no decoration nothing owns.
-//! 7. **A window that closes leaves a frame that can still configure.** It is sent
-//!    `closed` once and answers no further request.
+//! 4. **A frame image is presented for the wrong size.**
+//!    `a_buffer_of_the_wrong_size_is_a_protocol_error`.
+//! 5. **A region outside the protocol's limits is accepted.**
+//!    `an_out_of_range_region_is_a_protocol_error` and
+//!    `more_than_sixty_four_regions_is_a_protocol_error`.
+//! 6. **A renderer that crashes leaves a frame behind.**
+//!    `a_renderer_crash_closes_its_frames`.
+//! 7. **A window that closes leaves a frame that can still configure.**
+//!    `a_closed_window_closes_its_frame`.
+//! 8. **A presented frame is not offered, or its regions are not the input table.**
+//!    `a_mapped_window_is_offered_a_frame_and_presents_it` and
+//!    `hovering_a_region_is_reported_to_the_renderer`.
 //!
-//! ## What is not proven yet
+//! ## What is not done here
 //!
-//! The wire is generated and served, the object types are the scanner's, and the
-//! client half is generated from the same XML into `tests/owned`, but the
-//! real-client frame tests that would drive it are not in this change. Composing a
-//! presented frame over its window is the renderer card's work and it needs a
-//! decoration policy the window manager does not have yet, so a frame is offered
-//! with the window's own geometry and zero extents.
-//!
-//! Hover and press are reported to the renderer from the real input path
-//! ([`State::frame_pointer`]) because a frame's regions are the input table. What
-//! the *action* then does — close, minimise, maximise, a move or a resize grab — is
-//! the window manager's, and this slice has no decoration-driven action path.
+//! The frame is configured to what the client committed and carries zero extents,
+//! and nothing composes the frame over its window yet: that needs a decoration
+//! policy and the renderer card's composition. `Close`, `Maximize` and `Minimize`
+//! are performed through the window manager; a move or a resize needs an
+//! interactive grab, which the input slice owns, so the nine edge and drag actions
+//! are reported to the renderer and handed on once that grab exists.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -579,6 +579,54 @@ impl State {
                 .object
                 .interaction(action.map_or(0, FrameAction::to_wire), u32::from(pressed));
         }
+        if pressed && let Some(action) = action {
+            self.apply_frame_action(window, action);
+        }
+    }
+
+    /// Performs the window action a frame's region names.
+    ///
+    /// The renderer draws the control and never acts: closing, minimising and
+    /// maximising go through the window manager. A move or a resize needs an
+    /// interactive grab, which the input slice owns, so those nine actions are
+    /// reported to the renderer and recorded here and nothing else happens until that
+    /// grab exists. Nothing here can end the session: an unknown window is ignored.
+    fn apply_frame_action(&mut self, window: WindowId, action: FrameAction) {
+        match action {
+            FrameAction::Close => {
+                let toplevel = self
+                    .windows
+                    .get(&window)
+                    .and_then(|entry| entry.surface.toplevel().cloned());
+                if let Some(toplevel) = toplevel {
+                    toplevel.send_close();
+                    debug!(%window, "[frame] the window was asked to close");
+                }
+            }
+            FrameAction::Maximize => {
+                let effects = self.wm.apply(gnoblin_wm::Event::ToggleMaximise { window });
+                self.apply(effects);
+            }
+            FrameAction::Minimize => {
+                let effects = self.wm.apply(gnoblin_wm::Event::Minimise { window });
+                self.apply(effects);
+            }
+            FrameAction::Drag
+            | FrameAction::North
+            | FrameAction::NorthEast
+            | FrameAction::East
+            | FrameAction::SouthEast
+            | FrameAction::South
+            | FrameAction::SouthWest
+            | FrameAction::West
+            | FrameAction::NorthWest => {
+                debug!(
+                    %window,
+                    action = action.to_wire(),
+                    "[frame] a move or resize was asked for; the interactive grab owns it"
+                );
+            }
+        }
     }
 
     /// The topmost window whose presented frame covers a global position.
@@ -629,10 +677,26 @@ impl State {
             return;
         };
         let extents = [0; 4];
-        let size = (
+        // The frame wraps what the client committed, not the window manager's
+        // placement rectangle: the two differ until the client answers its first
+        // configure, and a decoration drawn at the placement size would not fit the
+        // window it decorates.
+        let logical = self
+            .windows
+            .get(&window)
+            .and_then(|entry| entry.surface.wl_surface())
+            .and_then(|surface| {
+                with_renderer_surface_state(&surface, |state| {
+                    let size = state.buffer_size()?;
+                    let scale = state.buffer_scale().max(1);
+                    Some((size.w.div_euclid(scale), size.h.div_euclid(scale)))
+                })
+                .flatten()
+            });
+        let size = logical.unwrap_or((
             i32::try_from(managed.geometry.width).unwrap_or(i32::MAX),
             i32::try_from(managed.geometry.height).unwrap_or(i32::MAX),
-        );
+        ));
         let focused = self.wm.focused() == Some(window);
         let mut state = FrameState::empty();
         if focused {

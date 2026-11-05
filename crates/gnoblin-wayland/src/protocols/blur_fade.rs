@@ -22,29 +22,27 @@
 //! descriptive metadata about the client's own surface, not a capability over
 //! another client's.
 //!
-//! ## Failure modes this module defends against
+//! ## Failure modes first
 //!
-//! Each rule is what the code does, and the parser rules are the C compositor's
-//! value for value. The real-client blur-fade tests are not part of this change
-//! (see "What is not proven yet").
+//! Each entry is a test in `tests/blur_fade.rs`.
 //!
-//! 1. **A malformed array is stored and reaches the renderer.** A length that is
-//!    not a whole number of records, more than 32 records, a coordinate outside the
-//!    24.8 range, a negative width or height and an opacity above one are all
-//!    refused with `invalid_fades`, and the surface keeps its previous metadata.
-//! 2. **A client's metadata outlives the frame it described.** It is applied only on
-//!    commit, so metadata sent after the frame it belongs to changes the next frame.
-//! 3. **An empty array leaves the old metadata behind.** An empty array removes the
-//!    metadata on the next commit.
+//! 1. **A malformed array is stored and reaches the renderer.** Every malformed
+//!    shape is refused with `invalid_fades` and the surface keeps its previous
+//!    metadata: `a_short_record_is_refused`, `a_negative_size_is_refused`,
+//!    `an_out_of_range_coordinate_is_refused`, `an_opacity_above_one_is_refused`
+//!    and `more_than_thirty_two_records_is_refused`.
+//! 2. **A client's metadata outlives the frame it described.** It is applied only
+//!    on commit: `fades_apply_with_the_commit_that_carries_them`.
+//! 3. **An empty array leaves the old metadata behind.** It removes the metadata
+//!    on the next commit: `an_empty_array_removes_the_metadata`.
 //! 4. **One surface's metadata becomes another's.** It lives in the surface's own
-//!    data map, so it is dropped with the surface and no lookup can cross surfaces.
+//!    data map: `each_surface_has_its_own_fades`.
 //!
 //! ## What is not proven yet
 //!
-//! The global is served, the records are parsed and committed, and
-//! [`State::with_blur_fades`] hands them to a renderer; the real-client tests that
-//! would drive it are not in this change, and nothing in this slice consumes the
-//! records yet because the software frame path draws no blur.
+//! Nothing in this slice consumes the records: the software frame path draws no
+//! blur, so [`State::with_blur_fades`] is the seam a renderer will read them
+//! through and there is no pixel test that depends on them.
 
 use std::sync::Mutex;
 
@@ -67,8 +65,11 @@ const RECORD_VALUES: usize = 5;
 /// The fixed-point scale the protocol's values use: 24.8.
 const FIXED_SCALE: f32 = 256.0;
 
-/// The largest 24.8 magnitude a record's fields may carry, from the protocol.
+/// The largest 24.8 magnitude a record's coordinate or size may carry.
 const MAX_FIXED: i32 = 65536 * 256;
+
+/// One, in 24.8 fixed point: the largest opacity a record may carry.
+const MAX_OPACITY: i32 = 256;
 
 /// One faded item of a surface, in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -155,7 +156,6 @@ impl Dispatch2<GnoblinBlurFadeManagerV1, State> for ManagerObject {
             manager::Request::Destroy => {}
             manager::Request::SetFades { surface, fades } => match parse(&fades) {
                 Some(fades) => {
-                    let surface = surface;
                     with_states(&surface, |states| {
                         let state = states.data_map.get_or_insert(FadeState::default);
                         *FadeState::lock(&state.pending) = Some(fades);
@@ -173,8 +173,8 @@ impl Dispatch2<GnoblinBlurFadeManagerV1, State> for ManagerObject {
 /// Parses a `set_fades` array, or answers [`None`] for every malformed shape.
 ///
 /// The rules are the C compositor's, value for value: a whole number of records,
-/// at most 32 of them, every coordinate inside the 24.8 range, a non-negative
-/// width and height and an opacity from zero to one.
+/// at most 32 of them, every coordinate and size inside the 24.8 range, a
+/// non-negative width and height and an opacity from zero to one.
 fn parse(array: &[u8]) -> Option<Vec<Fade>> {
     let record = RECORD_VALUES * std::mem::size_of::<i32>();
     if !array.len().is_multiple_of(record) || array.len() > MAX_FADES * record {
@@ -182,8 +182,8 @@ fn parse(array: &[u8]) -> Option<Vec<Fade>> {
     }
     let mut fades = Vec::with_capacity(array.len() / record);
     for chunk in array.chunks_exact(record) {
-        let mut values = [0_i32; RECORD_VALUES];
         let (words, _) = chunk.as_chunks::<4>();
+        let mut values = [0_i32; RECORD_VALUES];
         for (value, bytes) in values.iter_mut().zip(words) {
             *value = i32::from_ne_bytes(*bytes);
         }
@@ -191,7 +191,9 @@ fn parse(array: &[u8]) -> Option<Vec<Fade>> {
         if [x, y, width, height].iter().any(|value| value.abs() > MAX_FIXED) {
             return None;
         }
-        if width < 0 || height < 0 || !(0..=MAX_FIXED).contains(&opacity) {
+        // Opacity is a fraction, not a coordinate: one in 24.8 fixed point is 256,
+        // and anything above it is not an opacity the compositor can honour.
+        if width < 0 || height < 0 || !(0..=MAX_OPACITY).contains(&opacity) {
             return None;
         }
         fades.push(Fade {
@@ -218,6 +220,16 @@ impl State {
             let fades = committed.as_deref()?;
             Some(f(fades))
         })
+    }
+
+    /// The committed fade metadata of a window's surface, for a reader outside the
+    /// protocol (a renderer, the object graph, a test).
+    #[must_use]
+    pub fn window_blur_fades(&self, window: gnoblin_types::WindowId) -> Option<Vec<Fade>> {
+        let surface = self.windows.get(&window)?.surface.wl_surface()?;
+        let mut fades = None;
+        self.with_blur_fades(&surface, |records| fades = Some(records.to_vec()));
+        fades
     }
 
     /// A surface committed: its staged metadata becomes the committed metadata.

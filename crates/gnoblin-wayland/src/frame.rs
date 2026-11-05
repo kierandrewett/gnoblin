@@ -400,6 +400,52 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_protection_draw_does_not_prove_the_cover() {
+        let (mut backend, mut state) = session();
+        let client = ClientId::new(7);
+        let effects = state
+            .session_host
+            .protection
+            .apply(gnoblin_lock::ProtectionEvent::Protect { client });
+        state.apply_protection(effects);
+        let effects = state
+            .session_host
+            .protection
+            .apply(gnoblin_lock::ProtectionEvent::Acknowledged {
+                client,
+                serial: state.session_host.protection.generation(),
+            });
+        state.apply_protection(effects);
+        assert_eq!(
+            state.session_host.protection.state(client),
+            gnoblin_lock::ProtectionState::Covering,
+            "the session's own acknowledgement is not the host's proof"
+        );
+
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+        let mut undrawable = Undrawable {
+            outputs: Backend::<State>::outputs(&backend).to_vec(),
+            frame: OutputFrame::new(),
+        };
+        render(&mut undrawable, &mut state, &stats, &screenshots);
+        assert_eq!(
+            state.session_host.protection.state(client),
+            gnoblin_lock::ProtectionState::Covering,
+            "a frame that was described but not drawn proves nothing"
+        );
+
+        // The cover is still owed, so the loop describes it again next turn and the
+        // next frame that draws proves it.
+        state.poll_hosted();
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(
+            state.session_host.protection.state(client),
+            gnoblin_lock::ProtectionState::Covered
+        );
+    }
+
+    #[test]
     fn an_idle_iteration_draws_no_frame() {
         let (mut backend, mut state) = session();
         let stats = Arc::new(Mutex::new(FrameStats::default()));

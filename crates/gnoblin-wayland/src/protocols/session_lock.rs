@@ -391,6 +391,11 @@ impl State {
     /// frame is presented, so a frame that was queued before the cover was raised
     /// carries an older generation and proves nothing.
     pub(crate) fn cover_presented(&mut self, output: OutputId) {
+        // The protection covers hear the same frame and answer their own barrier.
+        // This runs first because the lock's own barrier is absent while the session
+        // is unlocked, and returning early there would hide every presented frame
+        // from a protection cover.
+        self.protection_presented(output);
         if self.lock.state() != LockState::Unlocked {
             // The frame that just reached this output is the cover for the current
             // generation, so this output is painted until the generation changes.
@@ -411,10 +416,6 @@ impl State {
         }
         let effects = self.lock.apply(LockEvent::CoverPresented { generation, output });
         self.apply_lock(effects);
-        // The same frame proves a protection cover: it was described after the
-        // session's surfaces left the scene, so every output that presented it owes
-        // one fewer.
-        self.protection_presented(output);
     }
 
     /// Tells the lock that the layout is exactly this set.

@@ -220,11 +220,14 @@ fn wait_for_protection(handle: &Handle, state: ProtectionState) -> Option<gnobli
 fn wait_for_one_colour(handle: &Handle) {
     let deadline = Instant::now() + TIMEOUT;
     loop {
-        let image: gnoblin_backend::render::Image = handle
-            .control
-            .screenshot(gnoblin_types::OutputId::new(0))
-            .expect("the loop answers with a screenshot");
-        if owned::distinct_colours(&image) == 1 {
+        // Every output the session presents on, so a hotplug is covered too.
+        let uniform = (0..2).all(|raw| {
+            handle
+                .control
+                .screenshot(gnoblin_types::OutputId::new(raw))
+                .is_none_or(|image| owned::distinct_colours(&image) == 1)
+        });
+        if uniform {
             return;
         }
         assert!(Instant::now() < deadline, "the covered desktop never became one colour");
@@ -292,13 +295,10 @@ fn ready_is_recorded_and_ends_nothing() {
 }
 
 #[test]
-fn a_cover_the_host_cannot_prove_never_protects() {
+fn protection_waits_for_a_presented_cover_and_is_announced_once() {
     let session = Session::start(Some(ClientRole::SessionHost));
     session.run(|handle| {
         let mut hosted = SessionClient::start(handle);
-        // Nothing is presented until the test says so, so no frame can prove the
-        // cover while it is held.
-        handle.backend.hold_presents(true);
         assert_eq!(
             handle.control.protect_session(std::process::id()),
             Some(true),
@@ -308,18 +308,50 @@ fn a_cover_the_host_cannot_prove_never_protects() {
             .client
             .wait_until("the protect event", |state| !state.protects.is_empty());
         let serial = hosted.client.state.protects[0];
-        assert_eq!(
-            handle
-                .control
-                .hosted_session(std::process::id())
-                .flatten()
-                .map(|s| s.protection),
-            Some(ProtectionState::Covering),
-            "a hidden session is not yet a protected one"
-        );
+        let host = hosted.client.state.host.clone().expect("a bound host");
+        // Frames are flowing, so the host's half of the proof arrives on its own; the
+        // session's acknowledgement is the other half.
+        hosted.client.roundtrip();
+        thread::sleep(Duration::from_millis(20));
+        host.protected(serial);
+        hosted.client.roundtrip();
+        wait_for_protection(handle, ProtectionState::Covered);
+        // The covered screen is the cover and nothing else.
+        wait_for_one_colour(handle);
 
-        // The session covers itself and answers. The host still cannot prove its own
-        // half, and an acknowledgement is never taken for a proof it does not have.
+        // Announced once: further frames change nothing and no second protect is
+        // asked for.
+        for _ in 0..3 {
+            hosted.client.roundtrip();
+            thread::sleep(Duration::from_millis(10));
+        }
+        let session = handle
+            .control
+            .hosted_session(std::process::id())
+            .flatten()
+            .expect("the session is connected");
+        assert_eq!(session.protection, ProtectionState::Covered);
+        assert_eq!(
+            hosted.client.state.protects.len(),
+            1,
+            "a protection already in place is not asked for twice"
+        );
+    });
+}
+
+#[test]
+fn an_acknowledgement_without_a_cover_frame_announces_nothing() {
+    let session = Session::start(Some(ClientRole::SessionHost));
+    session.run(|handle| {
+        let mut hosted = SessionClient::start(handle);
+        // A held present is neither described nor drawn, so no frame can prove the
+        // cover while it is held.
+        handle.backend.hold_presents(true);
+        assert_eq!(handle.control.protect_session(std::process::id()), Some(true));
+        hosted
+            .client
+            .wait_until("the protect event", |state| !state.protects.is_empty());
+        let serial = hosted.client.state.protects[0];
         let host = hosted.client.state.host.clone().expect("a bound host");
         host.protected(serial);
         hosted.client.roundtrip();
@@ -331,16 +363,83 @@ fn a_cover_the_host_cannot_prove_never_protects() {
                 .flatten()
                 .map(|s| s.protection),
             Some(ProtectionState::Covering),
+            "an acknowledgement is never taken for a frame the host does not have"
         );
 
-        // Once frames are presented the session is still not composed, so the cover
-        // holds either way: protection fails closed, never open.
+        // Releasing the present re-damages the cover, so the next frame carries it
+        // and the protection lands.
         handle.backend.hold_presents(false);
+        wait_for_protection(handle, ProtectionState::Covered);
         wait_for_one_colour(handle);
-        assert!(
-            !hosted.client.state.closed,
-            "a session that is not proven covered is kept, not ended"
+    });
+}
+
+#[test]
+fn a_hotplugged_output_is_covered_before_it_shows_anything() {
+    let session = Session::start(Some(ClientRole::SessionHost));
+    session.run(|handle| {
+        let mut hosted = SessionClient::start(handle);
+        assert_eq!(handle.control.protect_session(std::process::id()), Some(true));
+        hosted
+            .client
+            .wait_until("the protect event", |state| !state.protects.is_empty());
+        let serial = hosted.client.state.protects[0];
+        let host = hosted.client.state.host.clone().expect("a bound host");
+        host.protected(serial);
+        hosted.client.roundtrip();
+        wait_for_protection(handle, ProtectionState::Covered);
+
+        // A second output appears: it never showed the session, and the protection
+        // stays announced rather than being retracted for a new screen.
+        handle
+            .backend
+            .connect_output(
+                "HEADLESS-2",
+                gnoblin_backend::headless::DEFAULT_MODE,
+                gnoblin_types::Scale::integral(1),
+            )
+            .expect("a mode with pixels");
+        wait_for_one_colour(handle);
+        assert_eq!(
+            handle
+                .control
+                .hosted_session(std::process::id())
+                .flatten()
+                .map(|s| s.protection),
+            Some(ProtectionState::Covered),
+            "an announcement is never taken back by a hotplug"
         );
+    });
+}
+
+#[test]
+fn a_session_that_crashes_while_protected_keeps_the_cover() {
+    let session = Session::start(Some(ClientRole::SessionHost));
+    session.run(|handle| {
+        let mut hosted = SessionClient::start(handle);
+        assert_eq!(handle.control.protect_session(std::process::id()), Some(true));
+        hosted
+            .client
+            .wait_until("the protect event", |state| !state.protects.is_empty());
+        let serial = hosted.client.state.protects[0];
+        let host = hosted.client.state.host.clone().expect("a bound host");
+        host.protected(serial);
+        hosted.client.roundtrip();
+        wait_for_protection(handle, ProtectionState::Covered);
+
+        // The session's connection goes away without any request: nothing unlocks and
+        // the screen keeps the cover.
+        drop(hosted);
+        let deadline = Instant::now() + TIMEOUT;
+        while handle.control.hosted_session(std::process::id()).flatten().is_some() {
+            assert!(Instant::now() < deadline, "the crashed session was never noticed");
+            thread::sleep(Duration::from_millis(5));
+        }
+        wait_for_one_colour(handle);
+        // A release for a session that no longer exists shows nothing and does not
+        // panic.
+        assert_eq!(handle.control.release_session(std::process::id()), Some(false));
+        wait_for_one_colour(handle);
     });
 }
 
@@ -501,7 +600,7 @@ fn a_protected_session_receives_no_input() {
             let host = hosted.client.state.host.clone().expect("a bound host");
             host.protected(hosted.client.state.protects[0]);
             hosted.client.roundtrip();
-            wait_for_protection(handle, ProtectionState::Covering);
+            wait_for_protection(handle, ProtectionState::Covered);
             hosted.client.state.protects[0]
         };
         let _ = serial;

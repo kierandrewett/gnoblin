@@ -69,58 +69,12 @@
 //! 7. **Readiness is taken for a request to be shown.** `ready` is published and
 //!    ends nothing: `ready_is_recorded_and_ends_nothing`.
 //!
-//! ## What is not proven yet
+//! ## What is not done here
 //!
-//! The host's half of the barrier is translated and armed, and
-//! [`gnoblin_lock::Protection`] requires it, but the frame path in this crate does
-//! not yet report a presented frame back for it: a protection therefore stays
-//! `covering` forever instead of becoming `covered`. That is the fail-closed
-//! direction — the session is hidden, receives no input and is never announced —
-//! and the tests above assert exactly that, never the opposite. Making the frame
-//! path report it is the next change here; nothing else in this module depends on
-//! the answer, because the answer is the session manager's to wait for.
-//! ## Nothing here is performed
-//!
-//! `lock`, `logout` and `power` are published as [`gnoblin_model`] `Request`
-//! objects, which is the IPC's one way to ask a provider to decide something.
-//! The compositor never locks the seat, ends a session or calls logind because a
-//! client asked: bsm's manager claims the request and answers it, and the
-//! session keeps running until it does.
-//!
-//! ## Failure modes first
-//!
-//! Each entry names a test in `tests/session_host.rs`.
-//!
-//! 1. **The global is visible to an ordinary client, or to a session on the
-//!    privileged socket.** It is offered only to a brokered session connection:
-//!    `an_ordinary_client_sees_no_session_host` and
-//!    `a_session_sees_only_the_session_host_protocol`.
-//! 2. **Protection is announced before a rendered cover frame.** The announcement
-//!    waits for a frame without the session on every output *and* the session's
-//!    acknowledgement: `protection_waits_for_a_presented_cover`.
-//! 3. **The session acknowledges before its own cover was presented.** The host
-//!    still holds the cover and announces nothing:
-//!    `an_acknowledgement_without_a_cover_frame_announces_nothing` (the client
-//!    part of the same test).
-//! 4. **A session that crashes while protected unlocks something.** The cover
-//!    stays and the session is never announced:
-//!    `a_session_that_crashes_while_protected_keeps_the_cover`.
-//! 5. **A stale acknowledgement is taken for the current protection.** It is
-//!    ignored; an acknowledgement of a serial never sent is a protocol error:
-//!    `a_stale_acknowledgement_changes_nothing` and
-//!    `an_unknown_acknowledgement_is_a_protocol_error`.
-//! 6. **A lock, logout or power request is performed by the compositor.** Each
-//!    becomes an offered `Request` and nothing else:
-//!    `a_logout_request_reaches_the_ipc_as_a_request`,
-//!    `a_lock_request_reaches_the_ipc_as_a_request` and
-//!    `a_power_request_carries_its_action`.
-//! 7. **An output hint with a size nothing can draw is accepted.**
-//!    `an_invalid_output_hint_is_a_protocol_error`, and a half-sent set reaches
-//!    the manager: `a_half_sent_hint_set_is_not_published`.
-//! 8. **A protected session keeps the keyboard.** Input reaches the windows that
-//!    are still on screen and nothing else:
-//!    `a_protected_session_receives_no_input`.
-
+//! The requests are offered in the model's broker and readable through
+//! [`State::host_requests`]; publishing them as objects to a privileged IPC client
+//! is the composition root's wiring, and it waits for the privileged-request offer
+//! path. Until then a manager reads them through the control handle.
 use std::collections::{BTreeMap, HashMap};
 
 use smithay::reexports::wayland_server::backend::ClientId as WaylandClientId;

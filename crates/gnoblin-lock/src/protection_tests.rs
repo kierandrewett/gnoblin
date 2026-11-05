@@ -90,12 +90,15 @@ fn nothing_is_protected_before_a_frame_covers_every_output() {
         "nothing is published before a frame proved it"
     );
     // A second output is added while the cover is being proven: the layout now
-    // owes a frame on both.
+    // owes a frame on both, and the output that already presented proves again.
     assert_eq!(
         protection.apply(ProtectionEvent::OutputsChanged {
             outputs: vec![OUTPUT, SECOND]
         }),
-        Vec::new()
+        vec![ProtectionEffect::AwaitPresentation {
+            generation: 1,
+            outputs: vec![OUTPUT, SECOND]
+        }]
     );
     assert_eq!(
         protection.apply(ProtectionEvent::Acknowledged {
@@ -109,6 +112,14 @@ fn nothing_is_protected_before_a_frame_covers_every_output() {
         protection.apply(ProtectionEvent::Presented {
             generation: 1,
             output: SECOND
+        }),
+        Vec::new(),
+        "the first output still owes its frame after the layout change"
+    );
+    assert_eq!(
+        protection.apply(ProtectionEvent::Presented {
+            generation: 1,
+            output: OUTPUT
         }),
         vec![ProtectionEffect::Protected {
             client: SESSION,
@@ -252,17 +263,60 @@ fn a_stale_acknowledgement_changes_nothing() {
 }
 
 #[test]
-fn a_new_output_does_not_owe_a_frame() {
+fn a_new_output_owes_a_frame() {
     let mut protection = protected();
+    // An output that appears while the client is hidden cannot show it, but a
+    // protection is a statement about the whole screen and the manager never assumes
+    // an output it has not seen proves it.
     assert_eq!(
         protection.apply(ProtectionEvent::OutputsChanged {
             outputs: vec![OUTPUT, SECOND]
         }),
         Vec::new(),
-        "the new output never showed the hidden session, so it owes nothing"
+        "an announcement is never retracted, so nothing is owed again"
     );
-    assert_eq!(protection.state(SESSION), ProtectionState::Covered);
-    assert!(protection.is_hidden(SESSION));
+    assert_eq!(
+        protection.state(SESSION),
+        ProtectionState::Covered,
+        "an already announced protection is not retracted by a hotplug"
+    );
+    // A protection still being proven has to prove the new output as well.
+    let mut covering = covering();
+    assert_eq!(
+        covering.apply(ProtectionEvent::OutputsChanged {
+            outputs: vec![OUTPUT, SECOND]
+        }),
+        vec![ProtectionEffect::AwaitPresentation {
+            generation: 1,
+            outputs: vec![OUTPUT, SECOND]
+        }],
+        "the output that already presented has to present again"
+    );
+    assert_eq!(
+        covering.apply(ProtectionEvent::Acknowledged {
+            client: SESSION,
+            serial: 1
+        }),
+        Vec::new()
+    );
+    assert_eq!(
+        covering.apply(ProtectionEvent::Presented {
+            generation: 1,
+            output: SECOND
+        }),
+        Vec::new(),
+        "one output of two is not a proof"
+    );
+    assert_eq!(
+        covering.apply(ProtectionEvent::Presented {
+            generation: 1,
+            output: OUTPUT
+        }),
+        vec![ProtectionEffect::Protected {
+            client: SESSION,
+            serial: 1
+        }]
+    );
 }
 
 #[test]
@@ -301,8 +355,18 @@ fn a_removed_output_stops_being_owed() {
     );
     assert_eq!(
         protection.apply(ProtectionEvent::OutputsChanged { outputs: vec![OUTPUT] }),
-        Vec::new(),
-        "the removed output stops being owed"
+        vec![ProtectionEffect::AwaitPresentation {
+            generation: 1,
+            outputs: vec![OUTPUT]
+        }],
+        "the removed output stops being owed, the survivor proves again"
+    );
+    assert_eq!(
+        protection.apply(ProtectionEvent::Presented {
+            generation: 1,
+            output: OUTPUT
+        }),
+        Vec::new()
     );
     assert_eq!(
         protection.apply(ProtectionEvent::Acknowledged {

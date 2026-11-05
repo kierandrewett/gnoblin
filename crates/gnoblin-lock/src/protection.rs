@@ -39,8 +39,8 @@
 //!    `an_acknowledgement_of_an_unknown_serial_is_reported`.
 //! 6. A stale acknowledgement releases the current protection:
 //!    `a_stale_acknowledgement_changes_nothing`.
-//! 7. An output appears while the client is hidden and the new output shows it:
-//!    `a_new_output_does_not_owe_a_frame`.
+//! 7. An output appears while the client is hidden and the protection is assumed
+//!    without it: `a_new_output_owes_a_frame`.
 //! 8. An output that disappears keeps owing a frame:
 //!    `a_removed_output_stops_being_owed`.
 //! 9. Covering one session hides another:
@@ -456,9 +456,13 @@ impl Protection {
         vec![ProtectionEffect::Protected { client, serial }]
     }
 
-    /// An output that appears while a client is hidden never showed that client,
-    /// because the hide happened first; one that disappears cannot present
-    /// anything again. Neither owes a frame.
+    /// A changed layout restarts the proof: every current output must present a
+    /// frame described after the change before anything is announced.
+    ///
+    /// The host has hidden the client already, so a new output cannot show it; but a
+    /// protection is a statement about the whole screen, and the manager's rule is
+    /// that no output is assumed covered just because it appeared late. Re-proving
+    /// costs one frame and never reveals anything.
     fn outputs_changed(&mut self, outputs: &[OutputId]) -> Vec<ProtectionEffect> {
         let next: BTreeSet<OutputId> = outputs.iter().copied().collect();
         if next == self.outputs {
@@ -471,12 +475,22 @@ impl Protection {
             .filter(|(_, entry)| entry.state == ProtectionState::Covering)
             .map(|(client, _)| *client)
             .collect();
-        let layout = self.outputs.clone();
         let mut effects = Vec::new();
         for client in covering {
             if let Some(entry) = self.clients.get_mut(&client) {
-                entry.presented.retain(|output| layout.contains(output));
+                entry.presented.clear();
             }
+            if self.outputs.is_empty() {
+                effects.push(ProtectionEffect::KeepCovered {
+                    client,
+                    reason: ProtectionFailure::NoOutputs,
+                });
+                continue;
+            }
+            effects.push(ProtectionEffect::AwaitPresentation {
+                generation: self.generation,
+                outputs: self.output_list(),
+            });
             effects.extend(self.complete(client));
         }
         effects

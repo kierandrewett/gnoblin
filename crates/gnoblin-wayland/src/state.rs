@@ -125,7 +125,7 @@ impl Managed {
     }
 
     /// The toplevel, for a window that is a Wayland one.
-    fn toplevel(&self) -> Option<&ToplevelSurface> {
+    pub(crate) fn toplevel(&self) -> Option<&ToplevelSurface> {
         match self {
             Self::Wayland(surface) => Some(surface),
             Self::X11(_) => None,
