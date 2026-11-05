@@ -124,6 +124,16 @@ variants = [
 ]
 
 [[enum]]
+name = "CursorProvider"
+setting = "providers"
+doc = "A cursor image source the compositor searches, in order."
+variants = [
+    { spelling = "hyprcursor", doc = "Compiled Hyprcursor themes." },
+    { spelling = "kde-gnome-svg", doc = "cursors_scalable SVG themes with metadata.json." },
+    { spelling = "xcursor", doc = "Xcursor themes with index.theme inheritance." },
+]
+
+[[enum]]
 name = "Handedness"
 setting = "left-handed"
 doc = "Which hand a touchpad is configured for."
@@ -1622,6 +1632,15 @@ max = 256
 accepted = "an integer from 1 to 256"
 default = { int = 24 }
 doc = "The size in logical pixels."
+since = "0.2.0"
+
+[[section.field]]
+key = "providers"
+kind = "enum-list"
+enum = "CursorProvider"
+accepted = "a list of cursor providers"
+default = { list = ["hyprcursor", "kde-gnome-svg", "xcursor"] }
+doc = "The cursor image providers, searched in order. The built-in arrow is always the last resort."
 since = "0.2.0"
 
 [[section]]
