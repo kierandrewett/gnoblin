@@ -16,7 +16,7 @@ use gnoblin_lua::layout::{
 use gnoblin_types::{OutputId, RectF, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Collected, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Params, Reply,
-    Request, Slot, Transform3, settle,
+    Request, RequestKind, Slot, Transform3, settle,
 };
 
 /// A fresh module directory holding the given `name -> source` modules.
@@ -201,6 +201,9 @@ fn e2e_config_registers_a_lua_layout_driven_through_the_slot() {
         &mut engine,
         Job::Request(Request {
             params: params(&[99], 1000.0, 600.0),
+            kind: RequestKind::Place {
+                window: WindowId::new(99),
+            },
         }),
         Generation::FIRST,
     );
@@ -212,6 +215,9 @@ fn e2e_config_registers_a_lua_layout_driven_through_the_slot() {
         &mut engine,
         Job::Request(Request {
             params: handled_params.clone(),
+            kind: RequestKind::Place {
+                window: WindowId::new(1),
+            },
         }),
         Generation::FIRST.next(),
     );
