@@ -1,12 +1,9 @@
-//! The toplevel list a shell's taskbar reads: `zwlr_foreign_toplevel_manager_v1`
-//! (version 3) and `ext_foreign_toplevel_list_v1`.
+//! `zwlr_foreign_toplevel_manager_v1` (version 3): the toplevel list a shell's taskbar reads.
 //!
-//! Shells use the wlroots protocol today (a taskbar lists windows, activates one,
-//! closes one, minimises it, maximises it and fullscreens it), and the standardised
-//! `ext_foreign_toplevel_list_v1` is the read-only half of the same idea with an
-//! identifier a shell can use as a stable key. Both are fed from the same record here,
-//! so a shell that reads one cannot see a different set of windows than a shell that
-//! reads the other.
+//! Shells use the wlroots protocol today: a taskbar lists windows, activates one, closes
+//! one, minimises it, maximises it and fullscreens it. The window record both protocols
+//! are fed from is [`foreign_toplevel_shared`](super::foreign_toplevel_shared); the
+//! standardised read-only list is [`ext_foreign_toplevel_list_v1`](super::ext_foreign_toplevel_list_v1).
 //!
 //! ## Where the requests go
 //!
@@ -56,9 +53,6 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
 use smithay::wayland::Dispatch2;
 use smithay::wayland::GlobalDispatch2;
-use smithay::wayland::foreign_toplevel_list::{
-    ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState,
-};
 use tracing::{debug, trace};
 use wayland_protocols_wlr::foreign_toplevel::v1::server::{
     zwlr_foreign_toplevel_handle_v1::{self as handle, ZwlrForeignToplevelHandleV1},
@@ -68,6 +62,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::server::{
 use gnoblin_types::{OutputId, WindowId};
 use gnoblin_wm::{ActivationDecision, Event};
 
+use super::foreign_toplevel_shared::{Sent, States, ToplevelChanges, ToplevelEntry, ToplevelState};
 use crate::State;
 use crate::access::{Access, Global};
 
@@ -77,16 +72,7 @@ use crate::access::{Access, Global};
 /// from two and the `parent` event from three.
 pub const MANAGER_VERSION: u32 = 3;
 
-/// The state flags of `zwlr_foreign_toplevel_handle_v1.state`, in one set.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-struct States(u32);
-
 impl States {
-    const MAXIMISED: u32 = 1 << 0;
-    const MINIMISED: u32 = 1 << 1;
-    const ACTIVATED: u32 = 1 << 2;
-    const FULLSCREEN: u32 = 1 << 3;
-
     /// The wire form: the enum values the protocol defines, as an array.
     fn to_wire(self) -> Vec<u8> {
         let mut wire = Vec::new();
@@ -104,62 +90,12 @@ impl States {
     }
 }
 
-/// What one window's handles have been told, so an event only goes out when a value
-/// actually changed.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct Sent {
-    /// The title last sent.
-    title: String,
-    /// The application id last sent.
-    app_id: String,
-    /// The state flags last sent.
-    states: States,
-    /// The outputs the shell has been told about.
-    outputs: Vec<OutputId>,
-    /// Whether the initial batch has been sent, so a shell gets a `done` even when
-    /// every value is the default one.
-    introduced: bool,
-}
-
 /// One handle object and the manager it belongs to.
-struct HandleObject {
+pub(super) struct HandleObject {
     /// The manager that created it, so `stop` can retire exactly its handles.
     manager: ZwlrForeignToplevelManagerV1,
     /// The handle object itself.
     object: ZwlrForeignToplevelHandleV1,
-}
-
-/// The published record of one window.
-struct ToplevelEntry {
-    /// The window manager's identity for the window.
-    window: WindowId,
-    /// The standardised list's handle for the window, shared by every list instance.
-    ext: ForeignToplevelHandle,
-    /// One handle object per binding of the wlr manager.
-    handles: Vec<HandleObject>,
-    /// What those handles have been told.
-    sent: Sent,
-}
-
-/// The published window list.
-#[derive(Default)]
-pub(crate) struct ForeignToplevels {
-    entries: Vec<ToplevelEntry>,
-    /// The manager bindings that asked for events.
-    ///
-    /// A manager leaves the list when its client sends `stop`, because the protocol
-    /// says no further toplevel is announced after `finished`.
-    managers: Vec<ZwlrForeignToplevelManagerV1>,
-}
-
-/// The identifier a window is published under.
-///
-/// Derived from the window identity rather than random: a shell that reconnects sees
-/// the same key for the same window, which is what makes it useful as a map key, and
-/// a test can predict it. Sixteen hex digits keep it inside the protocol's 32-character
-/// printable-ascii limit.
-fn identifier(window: WindowId) -> String {
-    format!("gnoblin-{:016x}", window.get())
 }
 
 /// Creates the `zwlr_foreign_toplevel_manager_v1` global.
@@ -282,12 +218,6 @@ impl Dispatch2<ZwlrForeignToplevelHandleV1, State> for HandleUserData {
     }
 }
 
-impl ForeignToplevelListHandler for State {
-    fn foreign_toplevel_list_state(&mut self) -> &mut ForeignToplevelListState {
-        &mut self.foreign_toplevel_list_state
-    }
-}
-
 impl State {
     /// Sends a newly bound manager every window that already exists.
     ///
@@ -351,173 +281,6 @@ impl State {
                 None
             }
         }
-    }
-
-    /// Brings both published lists in step with the window manager.
-    ///
-    /// Called from [`State::publish`] after every change, so a title, a state flag or a
-    /// visibility change is announced once and an idle iteration announces nothing.
-    pub(crate) fn sync_foreign_toplevels(&mut self) {
-        let active = self.wm.active_workspace();
-        let focused = self.wm.focused();
-        let windows: Vec<ToplevelState> = self
-            .wm
-            .windows()
-            .map(|window| {
-                let mut states = States::default();
-                if window.state.maximised {
-                    states.0 |= States::MAXIMISED;
-                }
-                if window.state.minimised {
-                    states.0 |= States::MINIMISED;
-                }
-                if window.state.fullscreen {
-                    states.0 |= States::FULLSCREEN;
-                }
-                if focused == Some(window.id) {
-                    states.0 |= States::ACTIVATED;
-                }
-                ToplevelState {
-                    window: window.id,
-                    title: window.title.clone(),
-                    app_id: window.app_id.clone(),
-                    states,
-                    outputs: if window.is_visible(active) {
-                        self.output_ids()
-                    } else {
-                        Vec::new()
-                    },
-                }
-            })
-            .collect();
-
-        // Windows that left the manager: tell every handle and drop the entry.
-        let gone: Vec<WindowId> = self
-            .foreign_toplevels
-            .entries
-            .iter()
-            .map(|entry| entry.window)
-            .filter(|window| !windows.iter().any(|published| published.window == *window))
-            .collect();
-        for window in gone {
-            if let Some(index) = self
-                .foreign_toplevels
-                .entries
-                .iter()
-                .position(|entry| entry.window == window)
-            {
-                let entry = self.foreign_toplevels.entries.remove(index);
-                for handle in &entry.handles {
-                    handle.object.closed();
-                }
-                self.foreign_toplevel_list_state.remove_toplevel(&entry.ext);
-                debug!(%window, "[toplevel] closed");
-            }
-        }
-
-        // The output objects each taskbar bound, taken before the entries are borrowed
-        // mutably: a taskbar hears only about outputs of the connection it is on.
-        let mut bound: Vec<(ClientKey, OutputId, WlOutput)> = Vec::new();
-        for entry in self.output_entries() {
-            for management in &self.foreign_toplevels.managers {
-                let Some(client) = management.client() else {
-                    continue;
-                };
-                for wl_output in entry.output.client_outputs(&client) {
-                    bound.push((client.id(), entry.backend, wl_output));
-                }
-            }
-        }
-
-        for published in windows {
-            let index = self
-                .foreign_toplevels
-                .entries
-                .iter()
-                .position(|entry| entry.window == published.window);
-            let Some(index) = index else {
-                self.publish_foreign_toplevel(&published);
-                continue;
-            };
-            let Some(entry) = self.foreign_toplevels.entries.get_mut(index) else {
-                continue;
-            };
-            let title_changed = entry.sent.title != published.title;
-            let app_id_changed = entry.sent.app_id != published.app_id;
-            let states_changed = entry.sent.states != published.states;
-            let outputs_changed = entry.sent.outputs != published.outputs;
-            let introduce = !entry.sent.introduced;
-
-            if title_changed {
-                entry.ext.send_title(&published.title);
-            }
-            if app_id_changed {
-                entry.ext.send_app_id(&published.app_id);
-            }
-            if title_changed || app_id_changed || states_changed || outputs_changed || introduce {
-                entry.ext.send_done();
-            }
-            for handle in &entry.handles {
-                if title_changed || introduce {
-                    handle.object.title(published.title.clone());
-                }
-                if app_id_changed || introduce {
-                    handle.object.app_id(published.app_id.clone());
-                }
-                if states_changed || introduce {
-                    handle.object.state(published.states.to_wire());
-                }
-                if outputs_changed || introduce {
-                    let client = handle.object.client().map(|client| client.id());
-                    for (owner, output, wl_output) in &bound {
-                        if Some(owner) != client.as_ref() {
-                            continue;
-                        }
-                        if published.outputs.contains(output) && !entry.sent.outputs.contains(output) {
-                            handle.object.output_enter(wl_output);
-                        }
-                        if !published.outputs.contains(output) && entry.sent.outputs.contains(output) {
-                            handle.object.output_leave(wl_output);
-                        }
-                    }
-                }
-                if title_changed || app_id_changed || states_changed || outputs_changed || introduce {
-                    handle.object.done();
-                }
-            }
-            entry.sent = Sent {
-                title: published.title,
-                app_id: published.app_id,
-                states: published.states,
-                outputs: published.outputs,
-                introduced: true,
-            };
-        }
-    }
-
-    /// Publishes a window that was not in the list yet.
-    fn publish_foreign_toplevel(&mut self, published: &ToplevelState) {
-        let identifier = identifier(published.window);
-        let ext = self.foreign_toplevel_list_state.new_toplevel_with_identifier::<State>(
-            published.title.clone(),
-            published.app_id.clone(),
-            identifier.clone(),
-        );
-        let mut handles = Vec::new();
-        for management in self.foreign_toplevels.managers.clone() {
-            let Some(client) = management.client() else {
-                continue;
-            };
-            if let Some(handle) = self.create_wlr_handle(&management, &client, published.window) {
-                handles.push(handle);
-            }
-        }
-        self.foreign_toplevels.entries.push(ToplevelEntry {
-            window: published.window,
-            ext,
-            handles,
-            sent: Sent::default(),
-        });
     }
 
     /// A taskbar asked for a window to be activated.
@@ -608,11 +371,63 @@ impl State {
     }
 }
 
-/// One window, as the window manager states it for publication.
-struct ToplevelState {
-    window: WindowId,
-    title: String,
-    app_id: String,
-    states: States,
-    outputs: Vec<OutputId>,
+/// Creates one handle object for each manager binding, for a window that is new.
+pub(super) fn create_handles(state: &mut State, window: WindowId) -> Vec<HandleObject> {
+    let mut handles = Vec::new();
+    for management in state.foreign_toplevels.managers.clone() {
+        let Some(client) = management.client() else {
+            continue;
+        };
+        if let Some(handle) = state.create_wlr_handle(&management, &client, window) {
+            handles.push(handle);
+        }
+    }
+    handles
+}
+
+/// Tells every handle of a window that it has closed.
+pub(super) fn send_closed(entry: &ToplevelEntry) {
+    for handle in &entry.handles {
+        handle.object.closed();
+    }
+}
+
+/// Sends the changed values of a window to its handles, then one `done` each.
+///
+/// Output enter and leave are sent only to handles on the connection that bound the
+/// output, and only for the outputs that the window moved on or off since `entry.sent`.
+pub(super) fn send_changes(
+    entry: &ToplevelEntry,
+    published: &ToplevelState,
+    changes: ToplevelChanges,
+    bound: &[(ClientKey, OutputId, WlOutput)],
+) {
+    for handle in &entry.handles {
+        if changes.title || changes.introduce {
+            handle.object.title(published.title.clone());
+        }
+        if changes.app_id || changes.introduce {
+            handle.object.app_id(published.app_id.clone());
+        }
+        if changes.states || changes.introduce {
+            handle.object.state(published.states.to_wire());
+        }
+        if changes.outputs || changes.introduce {
+            let client = handle.object.client().map(|client| client.id());
+            for (owner, output, wl_output) in bound {
+                if Some(owner) != client.as_ref() {
+                    continue;
+                }
+                if published.outputs.contains(output) && !entry.sent.outputs.contains(output) {
+                    handle.object.output_enter(wl_output);
+                }
+                if !published.outputs.contains(output) && entry.sent.outputs.contains(output) {
+                    handle.object.output_leave(wl_output);
+                }
+            }
+        }
+        if changes.any() {
+            handle.object.done();
+        }
+    }
 }

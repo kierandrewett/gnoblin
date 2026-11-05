@@ -91,7 +91,7 @@ wayland-client = "0.31.14"
 # the server side uses.
 wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
 # `zwlr_foreign_toplevel_manager_v1`'s client half, from the same wlroots XML the
-# server in `protocols::foreign_toplevel` is generated from.
+# server in `protocols::zwlr_foreign_toplevel_management_v1` is generated from.
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 # `zwp_input_method_v2` and `zwp_virtual_keyboard_v1` live outside wayland-protocols:
 # they are the two misc protocols the text-input round trip needs on the client side.

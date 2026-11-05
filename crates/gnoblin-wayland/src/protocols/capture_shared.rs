@@ -1,10 +1,11 @@
-//! `ext_image_copy_capture_v1`, its capture sources and `zwlr_screencopy_manager_v1`.
+//! The shared capture path behind `ext_image_copy_capture_v1`, `ext_image_capture_source_v1`
+//! and `zwlr_screencopy_manager_v1`.
 //!
 //! Three globals serve one path. `ext-image-copy-capture-v1` is the modern protocol,
 //! `ext-image-capture-source-v1` names what to capture, and
-//! `zwlr_screencopy_manager_v1` is what shells and tools use today. Both protocols hand
-//! their frames to the same rules in `gnoblin-capture` and to the same pixel copy; the
-//! middle of this module is that shared part. [`Pixels`] implements
+//! `zwlr_screencopy_manager_v1` is what shells and tools use today. All three hand their
+//! frames to the same rules in `gnoblin-capture` and to the same pixel copy; the
+//! rest of this module is that shared part. [`Pixels`] implements
 //! [`gnoblin_capture::CaptureSource`] over the last frame each output drew, so an
 //! output and a window are cropped out of the frame the compositor already presented
 //! rather than composed a second time.
@@ -20,7 +21,7 @@
 //!
 //! ## The embargo
 //!
-//! Both protocols ask `gnoblin-capture` at every frame, and that crate applies the
+//! Every capture protocol asks `gnoblin-capture` at every frame, and that crate applies the
 //! lock's answer. Three consequences, and each is a test in `tests/capture.rs`:
 //!
 //! - a capture requested while the session lock covers the desktop is refused, and the
@@ -59,48 +60,35 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
-use smithay::output::Output as SmithayOutput;
-use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
-    zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
-    zwlr_screencopy_manager_v1::{self, ZwlrScreencopyManagerV1},
-};
+use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
+use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::{ClientId as WaylandClientId, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
-use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
-use smithay::reexports::wayland_server::protocol::wl_shm;
-use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
-use smithay::utils::{Buffer as BufferSpace, Rectangle, Transform, user_data::UserDataMap};
-use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
+use smithay::reexports::wayland_server::{Client, DisplayHandle};
+use smithay::utils::user_data::UserDataMap;
 use smithay::wayland::image_capture_source::{
-    ImageCaptureSource, ImageCaptureSourceHandler, OutputCaptureSourceHandler, OutputCaptureSourceState,
-    ToplevelCaptureSourceHandler, ToplevelCaptureSourceState,
+    ImageCaptureSource, OutputCaptureSourceState, ToplevelCaptureSourceState,
 };
-use smithay::wayland::image_copy_capture::{
-    BufferConstraints, CaptureFailureReason, Frame as CaptureFrame, ImageCopyCaptureHandler, ImageCopyCaptureState,
-    Session as CaptureSession, SessionRef,
-};
-use smithay::wayland::shm;
-use smithay::wayland::{Dispatch2, GlobalDispatch2};
+use smithay::wayland::image_copy_capture::{ImageCopyCaptureState, Session as CaptureSession};
 use tracing::{debug, warn};
 
 use gnoblin_backend::render::Image;
 use gnoblin_backend::render::copy_into_shm;
 use gnoblin_capture::{
-    BufferId, CaptureSource as PixelSource, Copied, Format, Outcome, PixelFormat, Refusal, Session, SessionId, Stop,
-    Table, Target,
+    BufferId, CaptureSource as PixelSource, Copied, Format, Outcome, SessionId, Stop, Table, Target,
 };
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
 
+use super::zwlr_screencopy_manager_v1::ScreencopyGlobal;
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
 
 /// The last frame an output presented, which is what a capture copies out of.
 #[derive(Clone, Debug)]
-struct Cached {
+pub(super) struct Cached {
     /// The pixels, in physical output pixels.
     image: Image,
     /// The tick the frame was presented at.
@@ -113,7 +101,7 @@ struct Cached {
 /// the cached pixels at the same time as it needs the session table mutably, and a
 /// snapshot of a handful of rectangles is cheaper than the alternative borrow puzzle.
 #[derive(Clone, Debug, Default)]
-struct Targets {
+pub(super) struct Targets {
     /// Every output, in physical pixels.
     outputs: BTreeMap<OutputId, Size>,
     /// Every window: the output it is drawn on and its physical origin in that frame.
@@ -168,25 +156,25 @@ impl Targets {
 /// It is stored in the object's own user data, which is the only place Smithay hands
 /// back on every frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SessionKey(SessionId);
+pub(super) struct SessionKey(pub(super) SessionId);
 
 /// The session's capture state.
 pub(crate) struct CaptureTables {
     /// The session rules and every open session.
-    table: Table,
+    pub(super) table: Table,
     /// The last frame each output drew, replaced once per frame while a session is open.
-    pixels: BTreeMap<OutputId, Cached>,
+    pub(super) pixels: BTreeMap<OutputId, Cached>,
     /// The tick the loop is on, so a stream is paced by iterations rather than by a
     /// clock nothing else in this crate reads.
-    tick: Tick,
+    pub(super) tick: Tick,
     /// The `ext-image-capture-source-v1` objects, mapped to what they capture.
-    sources: BTreeMap<usize, Target>,
+    pub(super) sources: BTreeMap<usize, Target>,
     /// The sessions `ext-image-copy-capture` created, kept alive so their clients keep
     /// their constraints and hear `stopped` when they end.
-    sessions: Vec<CaptureSession>,
+    pub(super) sessions: Vec<CaptureSession>,
     /// The screencopy frame objects that have not been resolved, so the lock can fail
     /// them.
-    screencopy_frames: Vec<ZwlrScreencopyFrameV1>,
+    pub(super) screencopy_frames: Vec<ZwlrScreencopyFrameV1>,
     /// The identity this session gave each connection, so a session's owner is one value
     /// per connection rather than a token nothing else agrees on.
     owners: HashMap<WaylandClientId, ClientId>,
@@ -196,11 +184,11 @@ pub(crate) struct CaptureTables {
     #[allow(dead_code)]
     screencopy_global: GlobalId,
     /// The image-copy-capture globals and their sessions.
-    image_copy: ImageCopyCaptureState,
+    pub(super) image_copy: ImageCopyCaptureState,
     /// The output capture sources.
-    output_source: OutputCaptureSourceState,
+    pub(super) output_source: OutputCaptureSourceState,
     /// The toplevel capture sources.
-    toplevel_source: ToplevelCaptureSourceState,
+    pub(super) toplevel_source: ToplevelCaptureSourceState,
     /// The image-copy-capture manager's identity, so a disabled configuration can remove
     /// the global rather than skip it.
     image_copy_global: GlobalId,
@@ -257,7 +245,7 @@ impl CaptureTables {
     }
 
     /// The identity this session uses for a connection.
-    fn owner(&mut self, client: &WaylandClientId) -> ClientId {
+    pub(super) fn owner(&mut self, client: &WaylandClientId) -> ClientId {
         if let Some(token) = self.owners.get(client) {
             return *token;
         }
@@ -268,7 +256,7 @@ impl CaptureTables {
     }
 
     /// What a source object captures.
-    fn target_of(&self, source: &ImageCaptureSource) -> Option<Target> {
+    pub(super) fn target_of(&self, source: &ImageCaptureSource) -> Option<Target> {
         self.sources.get(&source.id()).copied()
     }
 
@@ -300,7 +288,7 @@ impl CaptureTables {
 
     /// Ends `session` for `reason` and tells its client, by dropping the object that
     /// owns it.
-    fn stop(&mut self, session: SessionId, reason: Stop) {
+    pub(super) fn stop(&mut self, session: SessionId, reason: Stop) {
         self.table.stop(session, reason);
         if let Some(index) = self
             .sessions
@@ -336,294 +324,13 @@ impl CaptureTables {
     }
 }
 
-/// The window a published toplevel identifier names.
-///
-/// The list's identifier is `gnoblin-` followed by the window's sixteen hex digits; a
-/// handle that does not parse is one this session did not publish, which is refused rather
-/// than guessed at.
-fn window_of_identifier(identifier: &str) -> Option<WindowId> {
-    let digits = identifier.strip_prefix("gnoblin-")?;
-    u64::from_str_radix(digits, 16).ok().map(WindowId::new)
-}
-
 /// The session number stored in a session object's user data.
-fn key_of(data: &UserDataMap) -> Option<SessionId> {
+pub(super) fn key_of(data: &UserDataMap) -> Option<SessionId> {
     data.get::<SessionKey>().map(|key| key.0)
 }
 
-/// The `zwlr_screencopy_manager_v1` global's data.
-struct ScreencopyGlobal {
-    /// The session's roster, which answers whether a connection may bind it.
-    access: Arc<Access>,
-}
-
-impl std::fmt::Debug for ScreencopyGlobal {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("ScreencopyGlobal").finish_non_exhaustive()
-    }
-}
-
-impl GlobalDispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyGlobal {
-    fn bind(
-        &self,
-        _state: &mut State,
-        _handle: &DisplayHandle,
-        _client: &Client,
-        resource: New<ZwlrScreencopyManagerV1>,
-        data_init: &mut DataInit<'_, State>,
-    ) {
-        data_init.init(resource, ScreencopyManager);
-    }
-
-    fn can_view(&self, client: &Client) -> bool {
-        AccessPolicy::allows(&*self.access, &client.id(), Global::Screencopy)
-    }
-}
-
-/// The manager carries no state of its own: every frame it creates does.
-#[derive(Debug)]
-struct ScreencopyManager;
-
-impl Dispatch2<ZwlrScreencopyManagerV1, State> for ScreencopyManager {
-    fn request(
-        &self,
-        state: &mut State,
-        client: &Client,
-        _manager: &ZwlrScreencopyManagerV1,
-        request: zwlr_screencopy_manager_v1::Request,
-        _display: &DisplayHandle,
-        data_init: &mut DataInit<'_, State>,
-    ) {
-        match request {
-            zwlr_screencopy_manager_v1::Request::CaptureOutput {
-                frame,
-                overlay_cursor,
-                output,
-            } => {
-                // No cursor is composed into a capture yet: the seat has no theme
-                // loader, so there is nothing to overlay and the flag changes nothing.
-                let _ = overlay_cursor;
-                create_screencopy_frame(state, client, frame, &output, None, data_init);
-            }
-            zwlr_screencopy_manager_v1::Request::CaptureOutputRegion {
-                frame,
-                overlay_cursor,
-                output,
-                x,
-                y,
-                width,
-                height,
-            } => {
-                let _ = overlay_cursor;
-                let region = Rect::new(
-                    x,
-                    y,
-                    u32::try_from(width).unwrap_or(0),
-                    u32::try_from(height).unwrap_or(0),
-                );
-                create_screencopy_frame(state, client, frame, &output, Some(region), data_init);
-            }
-            zwlr_screencopy_manager_v1::Request::Destroy => {}
-            _ => {}
-        }
-    }
-}
-
-/// One `zwlr_screencopy_frame_v1` object.
-#[derive(Debug)]
-struct ScreencopyFrame {
-    /// The connection that created it, so its session has an owner.
-    owner: ClientId,
-    /// The output it captures.
-    output: OutputId,
-    /// The region, in the output's physical pixels.
-    region: Rect,
-    /// The buffer geometry the client was told to allocate.
-    format: Format,
-    /// Whether the object has already copied, which the protocol forbids repeating.
-    used: AtomicBool,
-}
-
-impl Dispatch2<ZwlrScreencopyFrameV1, State> for ScreencopyFrame {
-    fn request(
-        &self,
-        state: &mut State,
-        _client: &Client,
-        frame: &ZwlrScreencopyFrameV1,
-        request: zwlr_screencopy_frame_v1::Request,
-        _display: &DisplayHandle,
-        _data_init: &mut DataInit<'_, State>,
-    ) {
-        match request {
-            zwlr_screencopy_frame_v1::Request::Copy { buffer } => self.copy(state, frame, &buffer, false),
-            zwlr_screencopy_frame_v1::Request::CopyWithDamage { buffer } => self.copy(state, frame, &buffer, true),
-            zwlr_screencopy_frame_v1::Request::Destroy => {}
-            _ => {}
-        }
-    }
-
-    fn destroyed(&self, state: &mut State, _client: WaylandClientId, resource: &ZwlrScreencopyFrameV1) {
-        state.capture.screencopy_frames.retain(|frame| frame != resource);
-    }
-}
-
-impl ScreencopyFrame {
-    /// Answers a copy request.
-    ///
-    /// One object is one copy: a second request is the protocol's `already_used` error,
-    /// so a client cannot make the compositor write into a buffer it has already read.
-    fn copy(&self, state: &mut State, resource: &ZwlrScreencopyFrameV1, buffer: &WlBuffer, with_damage: bool) {
-        if self.used.swap(true, Ordering::Relaxed) {
-            resource.post_error(
-                zwlr_screencopy_frame_v1::Error::AlreadyUsed,
-                "this frame has already been copied",
-            );
-            return;
-        }
-        state.capture.screencopy_frames.retain(|frame| frame != resource);
-        // Checked again at the copy boundary: a frame object created before the cover
-        // went up must never expose the desktop after it did.
-        if !state.capture_allowed() {
-            debug!(output = %self.output, "[capture] a screencopy frame is refused during the lock");
-            resource.failed();
-            state.flush();
-            return;
-        }
-        if !self.buffer_matches(buffer) {
-            resource.post_error(
-                zwlr_screencopy_frame_v1::Error::InvalidBuffer,
-                "the buffer does not match the advertised geometry",
-            );
-            return;
-        }
-        let capture = state.lock_capture(CaptureStream::Requested);
-        let tick = state.capture.tick;
-        let offset = Point::new(self.region.x, self.region.y);
-        match state.copy_into_buffer(self.owner, self.output, buffer, self.format, offset, capture, tick) {
-            Some((copied, presented)) => {
-                if with_damage {
-                    // One rectangle for the whole frame: the whole buffer was written,
-                    // so the copy that happened is the damage, not the scene's.
-                    resource.damage(0, 0, copied.width, copied.height);
-                }
-                resource.flags(zwlr_screencopy_frame_v1::Flags::empty());
-                let (high, low, nanos) = timestamp(presented);
-                resource.ready(high, low, nanos);
-            }
-            None => resource.failed(),
-        }
-        state.flush();
-    }
-
-    /// Whether the client's buffer is the geometry the frame advertised.
-    fn buffer_matches(&self, buffer: &WlBuffer) -> bool {
-        let expected = (
-            self.format.size().width,
-            self.format.size().height,
-            self.format.stride(),
-        );
-        shm::with_buffer_contents(buffer, |_pointer, _length, data| {
-            (
-                u32::try_from(data.width).unwrap_or(0),
-                u32::try_from(data.height).unwrap_or(0),
-                u32::try_from(data.stride).unwrap_or(0),
-                data.format,
-            ) == (expected.0, expected.1, expected.2, wl_shm::Format::Argb8888)
-        })
-        .unwrap_or(false)
-    }
-}
-
-/// The format a frame that cannot be captured is created with: one opaque pixel, so the
-/// object exists and every copy of it fails.
-fn placeholder() -> Format {
-    Format::new(Size::new(1, 1), 4, PixelFormat::Argb8888).expect("a one-pixel format is valid")
-}
-
-/// Creates a screencopy frame for `output`, or answers it `failed` when it cannot be
-/// captured.
-fn create_screencopy_frame(
-    state: &mut State,
-    client: &Client,
-    frame: New<ZwlrScreencopyFrameV1>,
-    output: &WlOutput,
-    region: Option<Rect>,
-    data_init: &mut DataInit<'_, State>,
-) {
-    let owner = state.capture.owner(&client.id());
-    // Creating the frame needs the manager's data, which is not the client's; the
-    // identity is resolved first so the borrow of the session's owner table ends here.
-    let output = SmithayOutput::from_resource(output)
-        .and_then(|output| state.output_id_of(&output))
-        .filter(|output| state.output_rect(*output).is_some());
-    // No usable buffer is advertised while the cover is up, and an output this session
-    // does not drive has no pixels to offer: both answer `failed` before the client
-    // allocates anything.
-    let refused = output.is_none() || !state.capture_allowed();
-    let bounds = output.and_then(|output| state.capture_bounds(Target::Output(output)));
-    let region = match (bounds, region) {
-        (Some(bounds), Some(region)) => region.intersection(bounds),
-        (Some(bounds), None) => Some(bounds),
-        (None, _) => None,
-    };
-    if refused || region.is_none() {
-        let resource = data_init.init(
-            frame,
-            ScreencopyFrame {
-                owner,
-                output: output.unwrap_or_default(),
-                region: Rect::EMPTY,
-                format: placeholder(),
-                used: AtomicBool::new(true),
-            },
-        );
-        resource.failed();
-        state.flush();
-        return;
-    }
-    let (Some(output), Some(region)) = (output, region) else {
-        return;
-    };
-    let Some(format) = Format::new(region.size(), region.width.saturating_mul(4), PixelFormat::Argb8888) else {
-        let resource = data_init.init(
-            frame,
-            ScreencopyFrame {
-                owner,
-                output,
-                region,
-                format: placeholder(),
-                used: AtomicBool::new(true),
-            },
-        );
-        resource.failed();
-        state.flush();
-        return;
-    };
-    let resource = data_init.init(
-        frame,
-        ScreencopyFrame {
-            owner,
-            output,
-            region,
-            format,
-            used: AtomicBool::new(false),
-        },
-    );
-    resource.buffer(
-        wl_shm::Format::Argb8888,
-        format.size().width,
-        format.size().height,
-        format.stride(),
-    );
-    if resource.version() >= 3 {
-        resource.buffer_done();
-    }
-    state.capture.screencopy_frames.push(resource);
-    state.flush();
-}
-
 /// A tick as the `ready` event's `tv_sec_hi`, `tv_sec_lo` and `tv_nsec`.
-fn timestamp(tick: Tick) -> (u32, u32, u32) {
+pub(super) fn timestamp(tick: Tick) -> (u32, u32, u32) {
     let seconds = tick.get() / 1000;
     let nanos = (tick.get() % 1000) * 1_000_000;
     (
@@ -639,18 +346,18 @@ fn timestamp(tick: Tick) -> (u32, u32, u32) {
 /// frame, a window is the part of its output's frame it occupies right now. That is
 /// what makes a window capture follow the window rather than a rectangle remembered
 /// when the session opened.
-struct Pixels<'a> {
+pub(super) struct Pixels<'a> {
     /// Where every target is.
-    targets: Targets,
+    pub(super) targets: Targets,
     /// The last frame of every output.
-    frames: &'a BTreeMap<OutputId, Cached>,
+    pub(super) frames: &'a BTreeMap<OutputId, Cached>,
     /// The buffer the copy writes into.
-    buffer: WlBuffer,
+    pub(super) buffer: WlBuffer,
     /// Where the copied region starts inside the target, in physical pixels.
     ///
     /// A whole-target capture starts at its origin. A screencopy of a region starts at
     /// the region's corner, which is why the same path can serve both.
-    offset: Point,
+    pub(super) offset: Point,
 }
 
 impl Pixels<'_> {
@@ -659,7 +366,7 @@ impl Pixels<'_> {
     /// It is the presentation time a protocol reports: a capture hands over the frame
     /// that reached the screen, so its tick is what a client uses to pace itself rather
     /// than the tick of its request.
-    fn presented(&self, target: Target) -> Option<Tick> {
+    pub(super) fn presented(&self, target: Target) -> Option<Tick> {
         self.frames.get(&self.targets.output(target)?).map(|cached| cached.tick)
     }
 }
@@ -735,12 +442,12 @@ impl State {
     }
 
     /// Where a target is now, in its own physical pixels.
-    fn capture_bounds(&self, target: Target) -> Option<Rect> {
+    pub(super) fn capture_bounds(&self, target: Target) -> Option<Rect> {
         self.capture_targets().bounds(target)
     }
 
     /// Where every target is now.
-    fn capture_targets(&self) -> Targets {
+    pub(super) fn capture_targets(&self) -> Targets {
         let mut targets = Targets::default();
         for output in self.output_ids() {
             let (Some(rect), Some(scale)) = (self.output_rect(output), self.output_scale(output)) else {
@@ -777,7 +484,7 @@ impl State {
     /// damage it reports is therefore the whole region, which is what this protocol's
     /// clients expect.
     #[allow(clippy::too_many_arguments)]
-    fn copy_into_buffer(
+    pub(super) fn copy_into_buffer(
         &mut self,
         owner: ClientId,
         output: OutputId,
@@ -842,173 +549,5 @@ fn scale_axis(value: i32, scale: f64) -> i32 {
         physical.round() as i32
     } else {
         0
-    }
-}
-
-impl ImageCopyCaptureHandler for State {
-    fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
-        &mut self.capture.image_copy
-    }
-
-    fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        // Refused during the lock before any geometry reaches the client: a session that
-        // cannot capture must not even learn how big its target is.
-        if !self.capture_allowed() {
-            return None;
-        }
-        let target = self.capture.target_of(source)?;
-        let bounds = self.capture_bounds(target)?;
-        Some(BufferConstraints {
-            size: (bounds.width as i32, bounds.height as i32).into(),
-            shm: vec![wl_shm::Format::Argb8888, wl_shm::Format::Xrgb8888],
-            // Capture advertises SHM only; DMA-BUF capture is not implemented yet.
-            dma: None,
-        })
-    }
-
-    fn new_session(&mut self, session: CaptureSession) {
-        let Some(target) = self.capture.target_of(&session.source()) else {
-            warn!("[capture] a session names a source this session does not know");
-            return;
-        };
-        let Some(bounds) = self.capture_bounds(target) else {
-            return;
-        };
-        let Some(format) = Format::new(bounds.size(), bounds.width.saturating_mul(4), PixelFormat::Argb8888) else {
-            return;
-        };
-        let owner = session
-            .client()
-            .map_or_else(ClientId::default, |client| self.capture.owner(&client.id()));
-        let id = self.capture.table.open(owner, target, CaptureStream::Requested, format);
-        session.user_data().insert_if_missing(|| SessionKey(id));
-        self.capture.sessions.push(session);
-        debug!(%target, session = %id, "[capture] session opened");
-        self.publish();
-    }
-
-    fn frame(&mut self, session: &SessionRef, frame: CaptureFrame) {
-        let Some(id) = key_of(session.user_data()) else {
-            frame.fail(CaptureFailureReason::Stopped);
-            return;
-        };
-        let buffer = frame.buffer();
-        let tick = self.capture.tick;
-        // The answer is the lock's, read now: the embargo is applied at the frame, not at
-        // the session.
-        let stream = self
-            .capture
-            .table
-            .get(id)
-            .map_or(CaptureStream::Requested, Session::stream);
-        let capture = self.lock_capture(stream);
-        let buffer_id = BufferId::new(u64::from(buffer.id().protocol_id()));
-        let mut claim = match self.capture.table.request(id, buffer_id, tick) {
-            Ok(claim) => claim,
-            Err(refusal) => {
-                debug!(reason = refusal.as_str(), "[capture] the frame could not be claimed");
-                frame.fail(failure_reason(refusal));
-                return;
-            }
-        };
-        let targets = self.capture_targets();
-        let mut source = Pixels {
-            targets,
-            frames: &self.capture.pixels,
-            buffer,
-            offset: Point::new(0, 0),
-        };
-        let outcome = self.capture.table.capture(&mut claim, tick, capture, &mut source);
-        match outcome {
-            Outcome::Copied(report) => {
-                let damage: Vec<Rectangle<i32, BufferSpace>> = report
-                    .damage
-                    .iter()
-                    .map(|rect| Rectangle::new((rect.x, rect.y).into(), (rect.width as i32, rect.height as i32).into()))
-                    .collect();
-                // The presentation time is the frame the pixels came out of, not the
-                // tick the client asked on: those are the same tick only by accident.
-                let presented = source
-                    .presented(
-                        self.capture
-                            .table
-                            .get(id)
-                            .map_or(Target::Output(OutputId::default()), Session::target),
-                    )
-                    .unwrap_or(tick);
-                frame.success(Transform::Normal, damage, Duration::from_millis(presented.get()));
-            }
-            Outcome::Refused(refusal) => {
-                frame.fail(failure_reason(refusal));
-                if matches!(refusal, Refusal::Locked | Refusal::Stopped(_) | Refusal::TargetGone) {
-                    // The session can never produce another frame, so the client is told
-                    // `stopped` in the same turn rather than waiting for the next one.
-                    let reason = match refusal {
-                        Refusal::TargetGone => Stop::TargetGone,
-                        _ => Stop::Embargoed,
-                    };
-                    self.capture.stop(id, reason);
-                }
-            }
-        }
-    }
-
-    fn session_destroyed(&mut self, session: SessionRef) {
-        if let Some(id) = key_of(session.user_data()) {
-            self.capture.table.close(id);
-            debug!(session = %id, "[capture] session closed");
-        }
-        self.capture.sessions.retain(|held| held.as_ref() != session);
-        self.publish();
-    }
-}
-
-/// The protocol's failure reason for a refusal.
-fn failure_reason(refusal: Refusal) -> CaptureFailureReason {
-    match refusal {
-        Refusal::Locked | Refusal::Stopped(_) | Refusal::Closed | Refusal::TargetGone => CaptureFailureReason::Stopped,
-        Refusal::Source | Refusal::Paced | Refusal::Busy | Refusal::Stale | Refusal::Used => {
-            CaptureFailureReason::Unknown
-        }
-    }
-}
-
-impl ImageCaptureSourceHandler for State {
-    fn source_destroyed(&mut self, source: ImageCaptureSource) {
-        self.capture.sources.remove(&source.id());
-    }
-}
-
-impl OutputCaptureSourceHandler for State {
-    fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
-        &mut self.capture.output_source
-    }
-
-    fn output_source_created(&mut self, source: ImageCaptureSource, output: &SmithayOutput) {
-        let Some(id) = self.output_id_of(output) else {
-            warn!("[capture] a capture source names an output this session does not drive");
-            return;
-        };
-        self.capture.sources.insert(source.id(), Target::Output(id));
-    }
-}
-
-impl ToplevelCaptureSourceHandler for State {
-    fn toplevel_capture_source_state(&mut self) -> &mut ToplevelCaptureSourceState {
-        &mut self.capture.toplevel_source
-    }
-
-    fn toplevel_source_created(&mut self, source: ImageCaptureSource, toplevel: ForeignToplevelHandle) {
-        // The foreign-toplevel list publishes each window under an identifier derived from
-        // its identity (`protocols::foreign_toplevel`), so a source names a window without
-        // capture keeping a second table that could disagree with the shell's.
-        let Some(window) = window_of_identifier(&toplevel.identifier()) else {
-            warn!(
-                identifier = %toplevel.identifier(),
-                "[capture] a capture source names a toplevel this session does not publish"
-            );
-            return;
-        };
-        self.capture.sources.insert(source.id(), Target::Window(window));
     }
 }

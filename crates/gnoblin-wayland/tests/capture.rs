@@ -6,7 +6,7 @@
 //! display, a device or a compositor from the environment.
 //!
 //! The tests are the failure-mode list at the top of
-//! `crates/gnoblin-wayland/src/protocols/capture.rs`, one to an item.
+//! `crates/gnoblin-wayland/src/protocols/capture_shared.rs`, one to an item.
 //!
 //! # Why the client reads its own buffer back
 //!

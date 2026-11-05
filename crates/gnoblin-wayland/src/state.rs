@@ -68,12 +68,11 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
-use crate::protocols::capture::CaptureTables;
+use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_idle_notify_v1::IdleTables;
 use crate::protocols::ext_session_lock_v1::LockTables;
 use crate::protocols::extension::{Extension, TitlebarActions};
-use crate::protocols::foreign_toplevel::ForeignToplevels;
-use crate::protocols::gnoblin_blur_fade_v1;
+use crate::protocols::foreign_toplevel_shared::ForeignToplevels;
 use crate::protocols::gnoblin_session_host_v1::SessionHostTables;
 use crate::protocols::gnoblin_window_frame_v1::FrameTables;
 use crate::protocols::wl_data_device_manager::Selections;
@@ -220,7 +219,7 @@ pub struct State {
     /// their exclusive zones to the window manager as reserved insets.
     pub(crate) layer_shell_state: WlrLayerShellState,
     /// The standardised toplevel list, which a shell reads through
-    /// [`crate::protocols::foreign_toplevel`].
+    /// [`crate::protocols::ext_foreign_toplevel_list_v1`].
     pub(crate) foreign_toplevel_list_state: ForeignToplevelListState,
     /// The activation tokens, decided by `gnoblin-authority`.
     pub(crate) activation_state: XdgActivationState,
@@ -393,7 +392,7 @@ pub struct State {
 
     /// The capture sessions, the pixels a capture copies from and the capture globals.
     /// It is one value so the compositor's own fields stay a short list, and so the whole
-    /// of the capture state reads in one place (`protocols::capture`).
+    /// of the capture state reads in one place (`protocols::capture_shared`).
     pub(crate) capture: CaptureTables,
 
     /// The frame renderers' managers and the frames they were offered, which is
@@ -495,7 +494,8 @@ impl State {
             move |client: &Client| access.role(&client.id()) != ClientRole::Sandboxed
         });
 
-        let foreign_toplevel_global = crate::protocols::foreign_toplevel::global(&display_handle, &access);
+        let foreign_toplevel_global =
+            crate::protocols::zwlr_foreign_toplevel_management_v1::global(&display_handle, &access);
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.

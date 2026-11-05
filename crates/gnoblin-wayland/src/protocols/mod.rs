@@ -10,14 +10,19 @@
 //! | [`xdg_activation_v1`] | `xdg_activation_v1` | mints and redeems one-shot activation tokens |
 //! | [`gnoblin_blur_fade_v1`] | `gnoblin_blur_fade_v1` | fade metadata for a surface's own items, applied with its commit |
 //! | [`gnoblin_session_host_v1`] | `gnoblin_session_host_v1` | the host's channel to one hosted session: readiness, protection, logout and power requests |
-//! | [`capture`] | `ext_image_copy_capture_v1`, `ext_image_capture_source_v1`, `zwlr_screencopy_manager_v1` | frames of an output or a window, under the lock embargo and the access roster |
+//! | [`ext_image_copy_capture_v1`] | `ext_image_copy_capture_v1` | frames of an output or a window, streamed under the lock embargo and the access roster |
+//! | [`ext_image_capture_source_v1`] | `ext_image_capture_source_v1` | names what an image-copy session captures: an output or a toplevel |
+//! | [`zwlr_screencopy_manager_v1`] | `zwlr_screencopy_manager_v1` | one-shot screencopy of an output or a region, under the same embargo and roster |
+//! | [`capture_shared`] | none of its own | the pixel path, lock embargo and session table the three capture protocols share |
 //! | [`wl_compositor`] | `wl_compositor`, `wl_subcompositor` | surfaces, subsurfaces and buffer commits |
 //! | [`wl_shm`] | `wl_shm`, `wl_shm_pool` | shared-memory buffer pools |
 //! | [`wp_content_type_v1`] | `wp_content_type_v1` | records whether a surface shows video or a game |
 //! | [`wp_cursor_shape_v1`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
 //! | [`xdg_decoration_unstable_v1`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
 //! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
-//! | [`foreign_toplevel`] | `zwlr_foreign_toplevel_manager_v1`, `ext_foreign_toplevel_list_v1` | the window list a taskbar reads and the requests it may make |
+//! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
+//! | [`ext_foreign_toplevel_list_v1`] | `ext_foreign_toplevel_list_v1` | the read-only, standardised form of the same list, keyed by a stable identifier |
+//! | [`foreign_toplevel_shared`] | none of its own | the window record both toplevel lists are fed from, and what changed since it was last sent |
 //! | [`wp_fractional_scale_v1`] | `wp_fractional_scale_manager_v1` | tells a surface the scale its output draws it at |
 //! | [`zwp_idle_inhibit_v1`] | `zwp_idle_inhibit_manager_v1` | records the surfaces that keep the session awake |
 //! | [`ext_idle_notify_v1`] | `ext_idle_notifier_v1` | answers `idled`/`resumed` from the session's tick counter |
@@ -44,12 +49,15 @@
 //! | [`gnoblin_window_frame_v1`] | `gnoblin_window_frame_manager_v1` | frames a decoration renderer draws, their configures, regions and errors |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
 
-pub mod capture;
+pub mod capture_shared;
 pub mod ext_data_control_v1;
+pub mod ext_foreign_toplevel_list_v1;
 pub mod ext_idle_notify_v1;
+pub mod ext_image_capture_source_v1;
+pub mod ext_image_copy_capture_v1;
 pub mod ext_session_lock_v1;
 pub mod extension;
-pub mod foreign_toplevel;
+pub mod foreign_toplevel_shared;
 pub mod gnoblin_blur_fade_v1;
 pub mod gnoblin_session_host_v1;
 pub mod gnoblin_window_frame_v1;
@@ -74,6 +82,8 @@ pub mod wp_viewporter;
 pub mod xdg_activation_v1;
 pub mod xdg_decoration_unstable_v1;
 pub mod xdg_shell;
+pub mod zwlr_foreign_toplevel_management_v1;
+pub mod zwlr_screencopy_manager_v1;
 pub mod zwp_idle_inhibit_v1;
 pub mod zwp_input_method_v2;
 pub mod zwp_keyboard_shortcuts_inhibit_v1;
