@@ -281,12 +281,14 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
             dep.name
         ));
     }
-    if package.name == HUB_INPUT && is_engine(&dep.name) {
+    if package.name == HUB_INPUT && is_engine(&dep.name) && dep.name != "gnoblin-backend" {
         // The same direction, for the same reason: `gnoblin-input` is the seat's rule book
         // and a leaf of the mechanism, so an edge from it into the mechanism would make
         // every crate that asks "where does this key go" pull a compositor in behind it.
+        // The backend is the one engine crate the plan lets every mechanism crate name, and
+        // the input policy needs it to translate an event's device name into a stage.
         return Some(format!(
-            "the input policy crate depends on no engine crate, not even the hub; `{}` is an engine crate",
+            "the input policy crate depends on no engine crate but gnoblin-backend; `{}` is an engine crate",
             dep.name
         ));
     }
@@ -622,16 +624,11 @@ mod tests {
     }
 
     #[test]
-    fn the_input_hub_may_not_name_another_mechanism_crate() {
+    fn the_input_hub_may_name_the_backend_but_no_other_mechanism_crate() {
         // The exception is one-directional: `gnoblin-input` is a leaf of the mechanism, so
         // an edge from it would pull a compositor in behind every crate that asks where a
         // key goes.
-        for forbidden in [
-            "gnoblin-wayland",
-            "gnoblin-backend",
-            "gnoblin-render",
-            "gnoblin-xwayland",
-        ] {
+        for forbidden in ["gnoblin-wayland", "gnoblin-render", "gnoblin-xwayland"] {
             let reported = violations(&[("gnoblin-input", &[forbidden]), ("gnoblin-wayland", &["gnoblin-input"])]);
             assert_eq!(
                 reported.len(),
@@ -644,6 +641,15 @@ mod tests {
                 reported[0]
             );
         }
+        // The one engine crate the plan lets every mechanism crate name stays open: the
+        // input policy translates an event's device name into a stage from the backend.
+        assert_eq!(
+            violations(&[
+                ("gnoblin-input", &["gnoblin-backend", "gnoblin-types"]),
+                ("gnoblin-wayland", &["gnoblin-input"]),
+            ]),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
