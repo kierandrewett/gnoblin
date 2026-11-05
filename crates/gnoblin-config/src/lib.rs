@@ -76,10 +76,11 @@ pub use generated::{
     ALIASES, AccelProfile, Accessibility, Auth, Blur, BounceKeys, ButtonLayout, ClickMethod, Compositor, Cursor,
     DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers, Gesture, GestureAction,
     GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource, InputSourceType,
-    InputSources, Keyboard, LayerShell, Location, LocationAccuracy, Monitors, Mouse, MouseKeys, NewWindowPlacement,
-    PadButton, PadButtonAction, PointingStick, Prompts, Protocol, Protocols, ScrollMethod, SlowKeys, StickyKeys,
-    Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton,
-    ToggleKeys, Touchpad, Trackball, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    InputSources, Keyboard, LayerShell, Layout, LayoutOutput, LayoutWorkspace, Location, LocationAccuracy, Monitors,
+    Mouse, MouseKeys, NewWindowPlacement, PadButton, PadButtonAction, PointingStick, Prompts, Protocol, Protocols,
+    ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap,
+    TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualBellType, WindowManagement, Workspace,
+    Xwayland, XwaylandExtension,
 };
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 pub use locate::{ConfigPath, LocateError, Origin, SearchPaths, locate};

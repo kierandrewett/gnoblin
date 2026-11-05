@@ -363,3 +363,58 @@ fn a_root_that_is_not_a_table_names_the_document() {
     assert_eq!(problems.len(), 1);
     assert_eq!(problems[0].0, "<document>");
 }
+
+#[test]
+fn a_layout_section_loads_with_defaults_and_overrides() {
+    let document = table([(
+        "layout",
+        table([
+            ("default", text("master_stack")),
+            (
+                "outputs",
+                list(vec![table([("output", text("DP-1")), ("layout", text("columns"))])]),
+            ),
+            (
+                "workspaces",
+                list(vec![table([("workspace", text("main")), ("layout", text("floating"))])]),
+            ),
+            ("module-dirs", list(vec![text("/opt/layouts")])),
+        ]),
+    )]);
+    let config = Config::from_value(document).expect("a layout section validates");
+    let layout = config.layout.as_ref().expect("layout");
+    assert_eq!(layout.default.as_deref(), Some("master_stack"));
+    let outputs = layout.outputs.as_ref().expect("outputs");
+    assert_eq!(outputs[0].output.as_deref(), Some("DP-1"));
+    assert_eq!(outputs[0].layout.as_deref(), Some("columns"));
+    let workspaces = layout.workspaces.as_ref().expect("workspaces");
+    assert_eq!(workspaces[0].workspace.as_deref(), Some("main"));
+    assert_eq!(layout.module_dirs.as_deref(), Some(&["/opt/layouts".to_string()][..]));
+}
+
+#[test]
+fn an_empty_layout_section_sets_nothing() {
+    let config = Config::from_value(table([("layout", table([]))])).expect("valid");
+    let layout = config.layout.as_ref().expect("layout");
+    assert!(
+        layout.default.is_none(),
+        "the floating default is applied by the layout host, not here"
+    );
+    assert!(layout.outputs.is_none() && layout.workspaces.is_none() && layout.module_dirs.is_none());
+}
+
+#[test]
+fn an_unknown_layout_key_is_refused() {
+    let found = problems(table([("layout", table([("defualt", text("tile"))]))]));
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].0, "layout.defualt");
+    assert!(matches!(found[0].1, Fault::UnknownKey { .. }));
+}
+
+#[test]
+fn a_layout_of_the_wrong_type_is_refused() {
+    let found = problems(table([("layout", table([("default", int(3))]))]));
+    assert_eq!(found[0].0, "layout.default");
+    let found = problems(table([("layout", table([("module-dirs", text("/opt"))]))]));
+    assert_eq!(found[0].0, "layout.module-dirs");
+}

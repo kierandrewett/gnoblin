@@ -30,10 +30,11 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Auth, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Location, Monitors, Prompts,
-    Protocols, WindowManagement, Workspace, Xwayland, parse_auth, parse_compositor, parse_cursor,
-    parse_frame_renderers, parse_input, parse_input_sources, parse_layer_shell, parse_location, parse_monitors,
-    parse_prompts, parse_protocols, parse_touchpad_gestures, parse_window_management, parse_workspaces, parse_xwayland,
+    Auth, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout, Location, Monitors,
+    Prompts, Protocols, WindowManagement, Workspace, Xwayland, parse_auth, parse_compositor, parse_cursor,
+    parse_frame_renderers, parse_input, parse_input_sources, parse_layer_shell, parse_layout, parse_location,
+    parse_monitors, parse_prompts, parse_protocols, parse_touchpad_gestures, parse_window_management, parse_workspaces,
+    parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -66,6 +67,8 @@ pub struct Config {
     pub input_sources: Option<InputSources>,
     /// `layer-shell`: how layer surfaces affect focus.
     pub layer_shell: Option<LayerShell>,
+    /// `layout`: which layout engine arranges each workspace's windows.
+    pub layout: Option<Layout>,
     /// `location`: the GeoClue policy.
     pub location: Option<Location>,
     /// `monitors`: preferences that apply to connected monitors.
@@ -130,6 +133,8 @@ impl Config {
                     .map(|table| parse_input_sources(table, &root.key("input-sources"), &mut out));
                 config.layer_shell = section_table(entries, "layer-shell", &root, &mut out)
                     .map(|table| parse_layer_shell(table, &root.key("layer-shell"), &mut out));
+                config.layout = section_table(entries, "layout", &root, &mut out)
+                    .map(|table| parse_layout(table, &root.key("layout"), &mut out));
                 config.location = section_table(entries, "location", &root, &mut out)
                     .map(|table| parse_location(table, &root.key("location"), &mut out));
                 config.monitors = section_table(entries, "monitors", &root, &mut out)
@@ -215,6 +220,7 @@ impl Config {
             input: None,
             input_sources: None,
             layer_shell: None,
+            layout: None,
             location: None,
             monitors: None,
             prompts: None,

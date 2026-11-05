@@ -51,11 +51,18 @@ fn the_document_accepts_exactly_the_recorded_top_level_keys() {
 /// `config-keys.json` records what the C build accepts. `extensions` is the host
 /// configuration of IPC extensions (rust-compositor.md, "IPC extensions"), which the
 /// C core never had, so it is listed here with the release that added it.
-const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[(
-    "extensions",
-    "0.2.0",
-    "the IPC extension section of host configuration, loaded by gnoblin_config::extensions",
-)];
+const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "extensions",
+        "0.2.0",
+        "the IPC extension section of host configuration, loaded by gnoblin_config::extensions",
+    ),
+    (
+        "layout",
+        "0.2.0",
+        "the layout section: which Lua layout engine arranges each workspace, loaded by gnoblin-compositor",
+    ),
+];
 
 /// Protocols the rewrite added, which the C reference cannot list.
 ///

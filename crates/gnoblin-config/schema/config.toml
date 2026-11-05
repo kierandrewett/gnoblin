@@ -408,6 +408,50 @@ doc = "The name shown to the user."
 since = "0.2.0"
 
 [[record]]
+name = "LayoutOutput"
+doc = "The layout of every workspace on one output."
+
+[[record.field]]
+key = "output"
+kind = "text"
+nonempty = true
+required = "an output connector id"
+accepted = "a nonempty connector id"
+doc = "The connector id, for example DP-1."
+since = "0.2.0"
+
+[[record.field]]
+key = "layout"
+kind = "text"
+nonempty = true
+required = "a layout name"
+accepted = "a nonempty layout name"
+doc = "The layout name the output's workspaces use."
+since = "0.2.0"
+
+[[record]]
+name = "LayoutWorkspace"
+doc = "The layout of one workspace."
+
+[[record.field]]
+key = "workspace"
+kind = "text"
+nonempty = true
+required = "a workspace id"
+accepted = "a nonempty workspace id"
+doc = "The workspace id, as declared in workspaces."
+since = "0.2.0"
+
+[[record.field]]
+key = "layout"
+kind = "text"
+nonempty = true
+required = "a layout name"
+accepted = "a nonempty layout name"
+doc = "The layout name this workspace uses."
+since = "0.2.0"
+
+[[record]]
 name = "ButtonLayout"
 doc = "The ordered titlebar buttons per side."
 hook = "button_layout"
@@ -1833,6 +1877,44 @@ max = 2147483520.0
 accepted = "0, or a finite number from 0.5 through 2147483520"
 default = { int = 0 }
 doc = "0 for automatic scaling, otherwise the scale Mutter is told."
+since = "0.2.0"
+
+[[section]]
+key = "layout"
+type = "Layout"
+doc = "Which layout engine arranges each workspace's windows."
+
+[[section.field]]
+key = "default"
+kind = "text"
+nonempty = true
+accepted = "a nonempty layout name"
+default = { text = "floating" }
+doc = "The layout of a workspace with no override. floating arranges nothing."
+since = "0.2.0"
+
+[[section.field]]
+key = "outputs"
+kind = "record-list"
+record = "LayoutOutput"
+accepted = "a list of output layout tables"
+doc = "Layout overrides by output connector id. A workspace override wins over these."
+since = "0.2.0"
+
+[[section.field]]
+key = "workspaces"
+kind = "record-list"
+record = "LayoutWorkspace"
+accepted = "a list of workspace layout tables"
+doc = "Layout overrides by workspace id. These win over the output and default layouts."
+since = "0.2.0"
+
+[[section.field]]
+key = "module-dirs"
+kind = "text-list"
+accepted = "a list of directory paths"
+default = { list = [] }
+doc = "Extra directories searched for layout modules, after the shipped ones."
 since = "0.2.0"
 
 [[section]]
