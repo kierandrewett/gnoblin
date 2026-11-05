@@ -41,6 +41,10 @@ const GENERATED_DIR: &str = "generated";
 /// The file name both copies are written under.
 const WIT_FILE: &str = "gnoblin-ipc.wit";
 
+/// Schema files that describe wire traffic between services and the compositor, not
+/// a module API. Matched on the file name the schema was loaded from.
+const WIRE_ONLY_SCHEMAS: &[&str] = &["portal_ui.toml"];
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -63,8 +67,18 @@ fn run() -> Result<(), String> {
     watch(&schema_dir)?;
     println!("cargo:rerun-if-changed=src/wit.rs");
 
-    let catalog = Catalog::load_dir(&schema_dir)
+    let loaded = Catalog::load_dir(&schema_dir)
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
+    // The portal schema is the services-to-compositor wire (D19, `portal-call`), not an
+    // API a module may call. Every object in the WIT is hand-implemented by the host, and
+    // the portal has no module-facing implementation, so it is left out of the module surface.
+    let schemas: Vec<_> = loaded
+        .schemas()
+        .iter()
+        .filter(|schema| !WIRE_ONLY_SCHEMAS.iter().any(|name| schema.origin.ends_with(name)))
+        .cloned()
+        .collect();
+    let catalog = Catalog::new(schemas).map_err(|error| error.to_string())?;
     // The WIT package carries the crate's version verbatim, prerelease and all: a
     // candidate build generates `gnoblin:ipc@0.2.0-alpha.N`, so a module built
     // against a release candidate cannot be linked into a release compositor by

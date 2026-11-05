@@ -478,11 +478,19 @@ fn the_generated_wit_matches_the_schema() {
         .push_str("gnoblin-ipc.wit", WIT)
         .expect("the generated WIT parses");
 
-    let catalog = Catalog::load_dir(Path::new(concat!(
+    // The module surface leaves out the wire-only portal schema, as `build.rs` does.
+    let loaded = Catalog::load_dir(Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../gnoblin-schema/schema"
     )))
     .expect("the checked-in schema loads");
+    let schemas: Vec<_> = loaded
+        .schemas()
+        .iter()
+        .filter(|schema| !schema.origin.ends_with("portal_ui.toml"))
+        .cloned()
+        .collect();
+    let catalog = Catalog::new(schemas).expect("the module surface catalog");
 
     // The package version is the crate's, prerelease and all: a module built against
     // a release candidate must not link into a release compositor by accident.

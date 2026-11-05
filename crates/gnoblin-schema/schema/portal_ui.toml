@@ -492,7 +492,7 @@ since = "0.2.0"
 # The request was handled. The result fields are the interface's, and any left
 # unused stay empty or zero: `uris` (FileChooser), `choice` (AppChooser desktop id,
 # Print printer, ScreenCast or RemoteDesktop source), `remember` (AppChooser only),
-# `copies` and `pages` (Print), `flags` (granted capability bits), `cursor_mode`.
+# `copies` and `pages` (Print), `grant_bits` (granted capability bits), `cursor_mode`.
 [[object.method]]
 name = "handled"
 since = "0.2.0"
@@ -528,7 +528,7 @@ type = "string"
 since = "0.2.0"
 
 [[object.method.param]]
-name = "flags"
+name = "grant_bits"
 type = "uint"
 since = "0.2.0"
 
