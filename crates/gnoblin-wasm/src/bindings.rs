@@ -53,6 +53,7 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.lock": ObjectRep,
         "gnoblin:ipc/gnoblin.output": ObjectRep,
         "gnoblin:ipc/gnoblin.settings": ObjectRep,
+        "gnoblin:ipc/gnoblin.workspace": ObjectRep,
     },
     imports: { default: trappable },
 });
@@ -383,6 +384,13 @@ mod gnoblin_objects {
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
         }
+
+        fn workspace_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "workspace") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
     }
 
     impl gnoblin::ipc::gnoblin::HostOperation for StoreData {
@@ -396,6 +404,58 @@ mod gnoblin_objects {
                 Ok(false) => Ok(gnoblin::ipc::gnoblin::OperationState::Pending),
                 Err(_) => Ok(gnoblin::ipc::gnoblin::OperationState::Failed),
             }
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostWorkspace for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "id"))
+        }
+
+        fn layout(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "layout"))
+        }
+
+        fn set_layout(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            name: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("name".to_owned(), Value::Text(name));
+            self.method(object, "workspace", "set_layout", arguments)
+        }
+
+        fn layout_command(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            name: String,
+            params: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("name".to_owned(), Value::Text(name));
+            arguments.insert("params".to_owned(), Value::Text(params));
+            self.method(object, "workspace", "layout_command", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
         }
 
         fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
@@ -427,6 +487,22 @@ mod gnoblin_objects {
         fn focused(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.boolean(object, "focused"))
+        }
+
+        fn floating(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "floating"))
+        }
+
+        fn set_floating(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            floating: bool,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("floating".to_owned(), Value::Bool(floating));
+            self.method(object, "window", "set_floating", arguments)
         }
         fn icon(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
@@ -751,6 +827,22 @@ mod gnoblin_objects {
         fn mode(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "mode"))
+        }
+
+        fn layout(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "layout"))
+        }
+
+        fn set_layout(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            name: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("name".to_owned(), Value::Text(name));
+            self.method(object, "output", "set_layout", arguments)
         }
 
         fn scale(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
