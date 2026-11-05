@@ -951,3 +951,39 @@ left = "gnoblin-capture::Refusal"
 right = "gnoblin-services::Refusal"
 kind = "same-name"
 reason = "a capture refusal says why no pixels were exposed; a services refusal says why an agent request was declined"
+
+[[allow]]
+left = "gnoblin-authority::Grant"
+right = "gnoblin-input::Grant"
+kind = "same-name"
+reason = "the authority's grant is a private record of a consent decision and its expiry; the input grant is that decision plus the capabilities an EI client's seat is built from"
+
+[[allow]]
+left = "gnoblin-backend::Command"
+right = "gnoblin-input::Command"
+kind = "same-name"
+reason = "the backend's command is an X11 request for the window manager; the input command is an EI request from a client"
+
+[[allow]]
+left = "gnoblin-config::Origin"
+right = "gnoblin-input::Origin"
+kind = "same-name"
+reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
+
+[[allow]]
+left = "gnoblin-input::Action"
+right = "gnoblinctl::Action"
+kind = "same-name"
+reason = "an action in gnoblinctl is a command-line verb; an action in gnoblin-input is what the EIS state machine asks the protocol layer to do"
+
+[[allow]]
+left = "gnoblin-input::Command"
+right = "gnoblin-wayland::Command"
+kind = "same-name"
+reason = "the Wayland engine's command is a queued instruction for its loop; the input command is an EI request from a client"
+
+[[allow]]
+left = "gnoblin-input::Violation"
+right = "xtask::Violation"
+kind = "same-name"
+reason = "a violation in xtask is a broken dependency rule; a violation in gnoblin-input is a rule an EI client broke"

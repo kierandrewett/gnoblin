@@ -1032,7 +1032,16 @@ version = "0.2.0-alpha.0"
 name = "gnoblin-input"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-authority",
+ "gnoblin-backend",
  "gnoblin-types",
+ "gnoblin-wayland",
+ "reis",
+ "rustix",
+ "tempfile",
+ "tracing",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]

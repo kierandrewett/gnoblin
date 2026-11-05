@@ -21,9 +21,14 @@
 //! layer over `xkb_keysym_from_name`. Everything else in the grammar, including the
 //! `XF86` prefix rule and the canonical written order, is decided here.
 //!
-//! Not in this increment: libinput device settings, keymaps and layouts, the IBus bridge,
-//! the EIS server and IME. They are the same crate's job in the plan and need the
-//! mechanism layer to exist first.
+//! [`eis`] is the EIS server: the pure session state machine and the socket that speaks
+//! EI to a remote desktop client or a test, so input injection has one path on every
+//! target. Its events are the seat's own [`gnoblin_backend::InputEvent`]s, which is what
+//! makes the lock gate, grabs and bindings apply to them exactly as they do to a device.
+//!
+//! Not in this increment: libinput device settings, keymaps and layouts, the IBus bridge
+//! and IME. They are the same crate's job in the plan and need the mechanism layer to
+//! exist first.
 //!
 //! # Failure modes
 //!
@@ -81,6 +86,7 @@
 
 pub mod binding;
 pub mod chord;
+pub mod eis;
 pub mod gesture;
 pub mod gesture_router;
 pub mod idle;
