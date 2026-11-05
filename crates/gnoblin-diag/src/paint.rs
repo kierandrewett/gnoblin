@@ -100,7 +100,7 @@ fn clamp_index(coordinate: f32, limit: usize) -> usize {
 }
 
 /// One texture the painter holds: premultiplied texels, as egui stores them.
-struct Image {
+struct PaintImage {
     width: usize,
     height: usize,
     pixels: Vec<Color32>,
@@ -109,7 +109,7 @@ struct Image {
 /// The textures egui has uploaded so far, keyed by id.
 #[derive(Default)]
 pub struct Textures {
-    images: HashMap<TextureId, Image>,
+    images: HashMap<TextureId, PaintImage>,
 }
 
 impl Textures {
@@ -139,7 +139,7 @@ impl Textures {
             None => {
                 self.images.insert(
                     id,
-                    Image {
+                    PaintImage {
                         width,
                         height,
                         pixels: color.pixels.clone(),
@@ -158,7 +158,7 @@ impl Textures {
         }
     }
 
-    fn get(&self, id: TextureId) -> Option<&Image> {
+    fn get(&self, id: TextureId) -> Option<&PaintImage> {
         self.images.get(&id)
     }
 }
@@ -225,7 +225,7 @@ fn edge(a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> f32 {
 
 fn fill_triangle(
     frame: &mut Frame,
-    texture: &Image,
+    texture: &PaintImage,
     clip: &Clip,
     points: [(f32, f32); 3],
     attributes: [(Pos2, Color32); 3],
@@ -294,7 +294,7 @@ fn interpolate_color(attributes: [(Pos2, Color32); 3], weights: [f32; 3]) -> [f3
 
 /// Bilinear sample of a premultiplied texture at `uv` (egui's texture space,
 /// `[0, 1]` across the image), clamped to the edge. Channels in `[0, 1]`.
-fn sample(texture: &Image, uv: (f32, f32)) -> [f32; 4] {
+fn sample(texture: &PaintImage, uv: (f32, f32)) -> [f32; 4] {
     let x = uv.0 * texture.width as f32 - 0.5;
     let y = uv.1 * texture.height as f32 - 0.5;
     let x0 = x.floor();

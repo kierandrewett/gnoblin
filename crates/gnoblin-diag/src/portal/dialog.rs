@@ -269,6 +269,48 @@ impl FileChooser {
         &self.folder
     }
 
+    /// The mode the dialog opened in.
+    #[must_use]
+    pub const fn mode(&self) -> FileChooserMode {
+        self.mode
+    }
+
+    /// Whether several entries may be selected.
+    #[must_use]
+    pub const fn multiple(&self) -> bool {
+        self.multiple
+    }
+
+    /// The filters offered, in order.
+    #[must_use]
+    pub fn filters(&self) -> &[FileFilter] {
+        &self.filters
+    }
+
+    /// The index of the filter in effect.
+    #[must_use]
+    pub const fn filter_index(&self) -> usize {
+        self.filter
+    }
+
+    /// The current listing, unfiltered.
+    #[must_use]
+    pub fn entries(&self) -> &[FileEntry] {
+        &self.entries
+    }
+
+    /// The save name as typed.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Whether a save asked for an overwrite confirmation that is still unanswered.
+    #[must_use]
+    pub const fn overwrite_pending(&self) -> bool {
+        self.overwrite_confirmed
+    }
+
     /// Replaces the listing (after a navigation or a refresh) and clears the selection.
     pub fn set_entries(&mut self, entries: Vec<FileEntry>) {
         self.entries = entries;
@@ -494,6 +536,23 @@ impl AppChooser {
     #[must_use]
     pub fn last_choice(&self) -> Option<&str> {
         self.last_choice.as_deref()
+    }
+
+    /// Replaces the filter text. The caller types; the model only narrows the list.
+    pub fn set_filter_text(&mut self, text: impl Into<String>) {
+        self.filter_text = text.into();
+    }
+
+    /// The filter text as last set.
+    #[must_use]
+    pub fn filter_text(&self) -> &str {
+        &self.filter_text
+    }
+
+    /// Every offered choice, unfiltered.
+    #[must_use]
+    pub fn choices(&self) -> &[AppChoice] {
+        &self.choices
     }
 
     /// The choices whose name contains the filter text, case-insensitively.

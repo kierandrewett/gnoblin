@@ -4,7 +4,7 @@
 //! of `gnoblin-compositor`. This module holds the interface names, the typed
 //! payload and result of each interface the dialogs render and fill, and the
 //! dialog models themselves. The models do not draw, read a clock, touch D-Bus or
-//! spawn a process. [`Screen`] draws one model with egui, headlessly; the overlay
+//! spawn a process. [`PortalScreen`] draws one model with egui, headlessly; the overlay
 //! feeds input back in.
 //!
 //! The models depend only on `gnoblin-types` and `gnoblin-schema` (D19); only
@@ -19,4 +19,4 @@ pub use dialog::{
     ConsentTarget, DialogError, FileChooser, FileChooserMode, FileEntry, FileFilter, Key,
 };
 pub use interface::{Grant, Interface, UnknownInterface};
-pub use screen::{Dialog, Label, Screen, ScreenKey, Settled, Setup, Theme};
+pub use screen::{Dialog, DirectoryListing, Label, PortalScreen, ScreenKey, Settled, Setup, Theme};
