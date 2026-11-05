@@ -426,8 +426,7 @@ gnoblin/
     gnoblin-model/            live object graph, revisions, property diffs, subscriptions
     gnoblin-config/           configuration document, validation, merge, salvage, last-good store (no Lua)
     gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
-    gnoblin-wm/               pure window management policy (no Smithay types)
-    gnoblin-layout/           pure layout value types, Layout trait, placement validator, floating fallback (no Smithay, no clock, no Lua)
+    gnoblin-wm/               pure window management policy and the layout module (no Smithay types)
     gnoblin-lock/             pure session lock and protection cover state machine
     gnoblin-authority/        pure attribution, activation and grant rules
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol
@@ -505,7 +504,7 @@ hand-written `.proto`, because the envelope is not a schema member.
 edge, so a violation names the edge and the rule:
 
 - **Foundation crates** are `gnoblin-types`, `gnoblin-schema`, `gnoblin-proto`,
-  `gnoblin-wm`, `gnoblin-layout`,
+  `gnoblin-wm`,
   `gnoblin-lock`, `gnoblin-authority` and `gnoblin-output`. None depends on
   Smithay, `wayland-*`, a GPU renderer, `zbus` or `mlua`.
 - `gnoblin-types` is the root of the graph, and the only home of a value two
@@ -550,7 +549,7 @@ edge, so a violation names the edge and the rule:
   does not depend on Smithay, so `gnoblin-input` and `gnoblin-render` call it
   and its tests run without a session.
 - `gnoblin-testkit` and `gnoblin-parity` are development dependencies only.
-- `gnoblin-layout` depends on `gnoblin-types` alone. `gnoblin-layout-lua` depends on `gnoblin-layout`, `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-lua-sandbox` depends on `mlua` alone. Only `gnoblin-wm` and `gnoblin-compositor` may name `gnoblin-layout`; only `gnoblin-compositor` may name `gnoblin-layout-lua`. `gnoblin-lua` may name `gnoblin-lua-sandbox`, never `gnoblin-layout-lua`.
+- `gnoblin-wm` depends on `gnoblin-types` alone, and holds the layout module (`gnoblin_wm::layout`). `gnoblin-layout-lua` depends on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-lua-sandbox` depends on `mlua` alone. Only `gnoblin-compositor` may name `gnoblin-layout-lua`; `gnoblin-lua` may name `gnoblin-lua-sandbox`, never `gnoblin-layout-lua`.
 
 These rules are what makes concurrent work safe: a lane can change a crate
 without breaking another lane, provided the shared types do not change.
@@ -987,11 +986,11 @@ failure-mode list that must be complete before isolated tests or code.
 - **Done when:** model tests cover the failure modes; parity scenarios for
   focus, stacking, workspaces, snapping and rules pass.
 
-### Layout engines: `gnoblin-layout`, `gnoblin-layout-lua`, `gnoblin-lua-sandbox`
+### Layout engines: `gnoblin-wm::layout`, `gnoblin-layout-lua`, `gnoblin-lua-sandbox`
 
-- **Owns:** `gnoblin-layout` holds the pure value types (`Placement`, `Transform3`, `Camera`, `LayoutRequest`, `Reply`, `LayoutEffect`, `Refused`, `LayoutFailure`), the `Layout` trait, the placement validator and the floating fallback. `gnoblin-layout-lua` holds the Lua host: the worker thread, generation bookkeeping, the abandon-and-replace backstop and module loader. `gnoblin-lua-sandbox` holds the mlua VM construction and limits, shared with `gnoblin-lua`. The standard layouts are Lua files under `gnoblin.layouts.*`, not Rust.
+- **Owns:** `gnoblin-wm::layout` holds the pure value types (`Placement`, `Transform3`, `Camera`, `Request`, `Reply`, `LayoutEffect`, `ReplyError`, `LayoutFailure`), the placement validator and the floating fallback. `gnoblin-layout-lua` holds the Lua host: the worker thread, generation bookkeeping, the abandon-and-replace backstop and module loader. `gnoblin-lua-sandbox` holds the mlua VM construction and limits, shared with `gnoblin-lua`. The standard layouts are Lua files under `gnoblin.layouts.*`, not Rust.
 - **Replaces:** nothing. Tiling, scrolling and 3D layouts are new features.
-- **Depends on:** `gnoblin-layout` on `gnoblin-types` alone; `gnoblin-layout-lua` on `gnoblin-layout`, `gnoblin-types` and `gnoblin-lua-sandbox`; `gnoblin-lua-sandbox` on `mlua` alone. `gnoblin-wm` hosts one `Box<dyn Layout>` per workspace.
+- **Depends on:** `gnoblin-wm` on `gnoblin-types` alone; `gnoblin-layout-lua` on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`; `gnoblin-lua-sandbox` on `mlua` alone. `gnoblin-wm` hosts one layout engine per workspace.
 - **Interface:** `arrange(ctx) -> Result<Reply, LayoutFailure>` and `on_request(ctx, req) -> Result<Reply, LayoutFailure>`, where a `Reply` is `Handled` or `Declined`. Full contract in D17.
 - **Failure modes first:** zero, one and oversized windows; area smaller than gaps; removal of the focused or only window; rapid add and remove; output resize mid-layout; non-deterministic output; a transient added to a full workspace; a spinning layout; a wedged worker (a native call that never returns); a late or stale reply; a reply with a bad count, id or transform. D17 lists the full set.
 - **Parity:** none. This is a new feature, not a divergence, so it has no ledger entry. Floating keeps its parity scenarios in `gnoblin-wm`.
@@ -2053,10 +2052,10 @@ Hit testing and input use the inverse of each placement's transform. A pointer
 ray is taken through the camera and intersected with each placed window in its
 local space, and the nearest hit wins. A 3D arrangement is therefore clickable.
 
-**The Rust side.** `gnoblin-layout` is a small pure crate with no Lua and no
+**The Rust side.** `gnoblin-wm::layout` is a pure module with no Lua and no
 clock. It holds the value types (`Placement`, `Transform3`, `Camera`,
-`LayoutRequest`, `Reply`, `Handled`, `LayoutEffect`, `Refused`, `LayoutFailure`),
-the `Layout` trait, the validator, and the floating fallback. The fallback
+`Request`, `Reply`, `Handled`, `LayoutEffect`, `ReplyError`, `LayoutFailure`),
+the validator (`settle`), and the floating fallback. The fallback
 declines every request and returns no placements, so each window keeps its own
 rectangle.
 
@@ -2070,7 +2069,7 @@ pub trait Layout {
 
 `gnoblin-layout-lua` implements the trait for a Lua layout. It owns the worker
 thread, the generation bookkeeping, and the abandon-and-replace backstop. It depends on
-`gnoblin-layout`, `gnoblin-types` and `gnoblin-lua-sandbox`. The sandbox crate
+`gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. The sandbox crate
 owns the mlua VM construction and limits, and `gnoblin-lua` moves its sandbox
 code into `gnoblin-lua-sandbox` so both share one set of limits. `gnoblin-wm`
 holds a `Box<dyn Layout>` per workspace and never names the Lua crates.

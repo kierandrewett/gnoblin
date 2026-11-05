@@ -1,7 +1,7 @@
 //! The built-in layout used when a Lua layout declines.
 
-use crate::placement::{Camera, LayoutEffect, Origin, Params, Placement};
-use crate::settle::Layout;
+use super::placement::{Camera, LayoutEffect, Origin, Params, Placement};
+use super::settle::Layout;
 
 /// Distance between successive cascaded windows, in logical units.
 const CASCADE_STEP: f64 = 32.0;

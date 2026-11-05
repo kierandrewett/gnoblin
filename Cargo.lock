@@ -1246,13 +1246,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-layout"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-types",
-]
-
-[[package]]
 name = "gnoblin-lock"
 version = "0.2.0-alpha.0"
 dependencies = [

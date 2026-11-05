@@ -1,7 +1,7 @@
 //! Layout value types, reply validation and the built-in floating fallback for
 //! Lua layouts (design/rust-compositor.md, D17).
 //!
-//! This crate is pure: it holds no compositor state, reads no clock and does
+//! This module is pure: it holds no compositor state, reads no clock and does
 //! no IO. The Lua host builds a [`Params`], asks the layout for a [`Reply`], and
 //! passes both to [`settle`], which either accepts the reply in canonical form
 //! or refuses it with a [`ReplyError`]. A declined reply falls back to

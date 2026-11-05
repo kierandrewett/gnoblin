@@ -1715,60 +1715,60 @@ kind = "same-shape"
 reason = "a portal-ui consent value and an authority value share a shape but answer different questions"
 [[allow]]
 left = "gnoblin-config::Origin"
-right = "gnoblin-layout::Origin"
+right = "gnoblin-wm::Origin"
 kind = "same-name"
 reason = "a config file's origin (which file it came from) is not a layout placement origin"
 
 [[allow]]
 left = "gnoblin-input::Origin"
-right = "gnoblin-layout::Origin"
+right = "gnoblin-wm::Origin"
 kind = "same-name"
 reason = "an input device origin is not a layout placement origin"
 
 [[allow]]
 left = "gnoblin-input::Reply"
-right = "gnoblin-layout::Reply"
+right = "gnoblin-wm::Reply"
 kind = "same-name"
 reason = "each subsystem answers its own request with its own reply; the name is shared, the messages are not"
 
 [[allow]]
 left = "gnoblin-input::Request"
-right = "gnoblin-layout::Request"
+right = "gnoblin-wm::Request"
 kind = "same-name"
 reason = "each subsystem asks its own question; the name is shared, the messages are not"
 
 [[allow]]
-left = "gnoblin-layout::Camera"
+left = "gnoblin-wm::Camera"
 right = "gnoblin-render::Camera"
 kind = "same-name"
 reason = "a layout's camera is a pose description the renderer consumes; the renderer owns the projection math"
 
 [[allow]]
-left = "gnoblin-layout::Camera"
+left = "gnoblin-wm::Camera"
 right = "gnoblin-render::Projection"
 kind = "same-shape"
 reason = "a layout's camera carries pose and lens intent; the renderer's projection carries the derived matrices"
 
 [[allow]]
-left = "gnoblin-layout::Layout"
+left = "gnoblin-wm::Layout"
 right = "gnoblin-output::Layout"
 kind = "same-name"
 reason = "a layout is a Lua-provided placement policy; an output layout is the monitor arrangement"
 
 [[allow]]
-left = "gnoblin-layout::Placement"
+left = "gnoblin-wm::Placement"
 right = "gnoblin-output::Placement"
 kind = "same-name"
 reason = "a window placement in a layout run is not an output placement on a monitor"
 
 [[allow]]
-left = "gnoblin-layout::Subject"
+left = "gnoblin-wm::Subject"
 right = "gnoblin-lock::Subject"
 kind = "same-name"
 reason = "a layout subject names a layout target; the lock subject names a lock-screen target"
 
 [[allow]]
-left = "gnoblin-layout::Request"
+left = "gnoblin-wm::Request"
 right = "gnoblin-portal-broker::Request"
 kind = "same-name"
 reason = "a layout request asks the Lua layout provider; a portal UI request is a portal prompt"

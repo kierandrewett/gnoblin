@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 
 use gnoblin_types::WindowId;
 
-use crate::error::{LayoutFailure, ReplyError, Subject};
-use crate::fallback::fallback;
-use crate::placement::{Camera, Handled, LayoutEffect, Origin, Params, Placement, Reply};
-use crate::transform::BOUND;
+use super::error::{LayoutFailure, ReplyError, Subject};
+use super::fallback::fallback;
+use super::placement::{Camera, Handled, LayoutEffect, Origin, Params, Placement, Reply};
+use super::transform::BOUND;
 
 /// A reply that passed every check, in canonical order.
 ///

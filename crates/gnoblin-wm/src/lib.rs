@@ -90,6 +90,8 @@
 //! environment. `tests/model.rs` replays each random sequence twice and requires
 //! identical effect streams.
 
+pub mod layout;
+
 mod activation;
 mod drag;
 mod effect;

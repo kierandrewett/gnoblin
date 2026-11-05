@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use gnoblin_types::WindowId;
 
-use crate::error::ParamsError;
-use crate::transform::{BOUND, Transform3};
+use super::error::ParamsError;
+use super::transform::{BOUND, Transform3};
 
 /// A window the layout must place or float.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -178,7 +178,7 @@ pub struct Request {
     pub params: Params,
 }
 
-/// Which source produced a [`crate::Layout`].
+/// Which source produced a [`super::Layout`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Origin {
     /// The layout returned a valid [`Handled`] reply.

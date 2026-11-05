@@ -2,7 +2,7 @@
 
 use gnoblin_types::Vec3;
 
-use crate::error::{ReplyError, Subject};
+use super::error::{ReplyError, Subject};
 
 /// Largest magnitude accepted for a translation or a size, in logical units.
 ///

@@ -1,10 +1,10 @@
 //! One test per validation failure mode, plus the accepted path and the fallback.
 
-use gnoblin_layout::{
+use gnoblin_types::{Vec3, WindowId};
+use gnoblin_wm::layout::{
     Camera, Handled, LayoutEffect, LayoutFailure, LayoutWindow, Origin, Params, ParamsError, Placement, REFUSED_CODE,
     Reply, ReplyError, Subject, Transform3, fallback, settle,
 };
-use gnoblin_types::{Vec3, WindowId};
 
 fn win(id: u64) -> WindowId {
     WindowId::new(id)
