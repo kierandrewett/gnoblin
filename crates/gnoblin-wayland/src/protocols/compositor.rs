@@ -91,6 +91,11 @@ impl CompositorHandler for State {
         // A lock surface with a buffer is the only surface input may reach while the
         // session is covered, so the lock hears about it before anything else runs.
         self.lock_surface_committed(surface);
+        // A renderer's frame surface is validated against the configure it answers, and
+        // a surface's fade metadata becomes its committed metadata: both are state the
+        // client just committed, so both are applied here.
+        self.frame_surface_committed(surface);
+        self.blur_fades_committed(surface);
         if is_sync_subsurface(surface) {
             // A synchronous subsurface's commit is applied with its parent's, so
             // attributing it here would report a window change twice.

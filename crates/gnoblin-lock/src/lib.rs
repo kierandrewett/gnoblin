@@ -93,6 +93,9 @@ mod ids;
 mod lock;
 #[cfg(test)]
 mod model;
+mod protection;
+#[cfg(test)]
+mod protection_tests;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -101,4 +104,5 @@ pub use effect::{Effect, Published, RejectReason};
 pub use event::{CoverFailure, Event};
 pub use ids::Subject;
 pub use lock::Lock;
+pub use protection::{Protection, ProtectionEffect, ProtectionEvent, ProtectionFailure, ProtectionState};
 pub use state::{Capture, CaptureStream, Delivery, Embargo, InputSource, State};

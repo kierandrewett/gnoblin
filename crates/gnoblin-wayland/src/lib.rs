@@ -118,6 +118,9 @@ pub use state::State;
 pub use xwayland::XwaylandSession;
 
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
+pub use protocols::blur_fade::Fade;
+pub use protocols::session_host::{HostRequest, HostRequestKind, HostedSession, OutputHint, PowerAction};
+pub use protocols::window_frame::{FrameAction, FrameRegion, WindowFrame};
 
 // The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
 // `Dispatch2` implementation below, which is why no protocol module carries its own

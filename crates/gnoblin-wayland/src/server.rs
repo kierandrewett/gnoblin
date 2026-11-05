@@ -53,6 +53,8 @@ use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
 use crate::protocols::compositor::ClientState;
+use crate::protocols::session_host::{HostRequest, HostedSession};
+use crate::protocols::window_frame::WindowFrame;
 use crate::state::State;
 
 /// How long [`ControlHandle::focus`] waits for the loop's answer.
@@ -235,6 +237,22 @@ impl Server {
                             Command::Input(event) => state.input(event),
                             Command::MoveWindow { window, geometry } => state.move_window(window, geometry),
                             Command::SetOpacity { window, opacity } => state.set_window_opacity(window, opacity),
+                            Command::GrantRole { pid, role } => state.grant_role(pid, role),
+                            Command::ProtectSession { pid, reply } => {
+                                let _ = reply.send(state.protect_hosted_session(pid));
+                            }
+                            Command::ReleaseSession { pid, reply } => {
+                                let _ = reply.send(state.release_hosted_session(pid));
+                            }
+                            Command::HostedSession { pid, reply } => {
+                                let _ = reply.send(state.hosted_session(pid));
+                            }
+                            Command::HostRequests { reply } => {
+                                let _ = reply.send(state.host_requests());
+                            }
+                            Command::WindowFrame { window, reply } => {
+                                let _ = reply.send(state.window_frame(window));
+                            }
                             Command::Focus { window, reply } => {
                                 // The answer is sent after the publish, so a caller that
                                 // reads the observation on the strength of it sees what
@@ -292,6 +310,14 @@ impl Server {
         }
     }
 
+    /// Promises a role to a process, before it connects.
+    ///
+    /// The server's own seam for the composition root, which records the promise and
+    /// only then starts the renderer or the session.
+    pub fn promise_role(&mut self, pid: u32, role: ClientRole) {
+        self.state.access().promise(pid, role);
+    }
+
     /// Runs until the loop is stopped.
     ///
     /// Each iteration flushes the clients, takes the backend's input and state
@@ -323,6 +349,10 @@ impl Server {
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.
                 state.poll_lock();
+                // A renderer or a hosted session that dies sends no request either, and
+                // a session request nobody claims fails at its own deadline.
+                state.poll_frames();
+                state.poll_hosted();
                 // The Xwayland session is ticked here: the loop's own timeout is the only
                 // clock its process needs, and a dead or hung instance is noticed within
                 // one turn.
@@ -408,6 +438,66 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Promises a role to a process the compositor is about to start.
+    ///
+    /// A frame renderer and a hosted session are ordinary clients of the session
+    /// socket, and their registry answer is decided when the backend accepts them. The
+    /// promise has to be recorded before the process connects, which is the order the
+    /// composition root uses: promise, then spawn. A process that connects before the
+    /// promise is recorded is served as an ordinary client.
+    pub fn grant_role(&self, pid: u32, role: ClientRole) {
+        self.control.push(Command::GrantRole { pid, role });
+    }
+
+    /// Asks for a hosted session to be protected, as the manager's `Protect` does.
+    ///
+    /// [`None`] means the loop did not answer in time; `false` means no session runs
+    /// with that process identity.
+    #[must_use]
+    pub fn protect_session(&self, pid: u32) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::ProtectSession { pid, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Shows a hosted session again.
+    ///
+    /// [`None`] means the loop did not answer in time; `false` means the session was
+    /// not protected.
+    #[must_use]
+    pub fn release_session(&self, pid: u32) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::ReleaseSession { pid, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// What the compositor knows about the hosted session a process runs.
+    #[must_use]
+    pub fn hosted_session(&self, pid: u32) -> Option<Option<HostedSession>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::HostedSession { pid, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// What a window's frame is doing, as the object graph and a test read it.
+    ///
+    /// [`None`] means the window has no frame (no renderer, or an unmapped window);
+    /// the inner [`None`] means the loop did not answer in time.
+    #[must_use]
+    pub fn window_frame(&self, window: WindowId) -> Option<Option<WindowFrame>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::WindowFrame { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Every hosted session request waiting for the manager.
+    #[must_use]
+    pub fn host_requests(&self) -> Vec<HostRequest> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::HostRequests { reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).unwrap_or_default()
+    }
+
     /// Takes a picture of what `output` currently shows.
     ///
     /// The request is answered by the frame hook at the end of the next iteration, so
@@ -442,6 +532,32 @@ enum Command {
     Focus {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// Promise a role to a process the compositor is about to start.
+    GrantRole { pid: u32, role: ClientRole },
+    /// Protect a hosted session, and answer whether the process was found.
+    ProtectSession {
+        pid: u32,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// Show a hosted session again.
+    ReleaseSession {
+        pid: u32,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// What is known about a hosted session.
+    HostedSession {
+        pid: u32,
+        reply: std::sync::mpsc::SyncSender<Option<HostedSession>>,
+    },
+    /// Every session request waiting for the manager.
+    HostRequests {
+        reply: std::sync::mpsc::SyncSender<Vec<HostRequest>>,
+    },
+    /// What a window's frame is doing.
+    WindowFrame {
+        window: WindowId,
+        reply: std::sync::mpsc::SyncSender<Option<WindowFrame>>,
     },
 }
 

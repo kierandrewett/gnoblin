@@ -407,11 +407,19 @@ impl State {
         }
         let effects = self.lock.apply(LockEvent::CoverPresented { generation, output });
         self.apply_lock(effects);
+        // The same frame proves a protection cover: it was described after the
+        // session's surfaces left the scene, so every output that presented it owes
+        // one fewer.
+        self.protection_presented(output);
     }
 
     /// Tells the lock that the layout is exactly this set.
     pub(crate) fn report_outputs(&mut self) {
         let outputs = self.output_ids();
+        // The protection covers hear the same layout for the same reason: a frame on
+        // every output is what proves a cover, so a layout change is a different set
+        // of frames to wait for.
+        self.report_hosted_outputs();
         let effects = self.lock.apply(LockEvent::OutputsChanged { outputs });
         self.apply_lock(effects);
     }
@@ -590,6 +598,14 @@ impl State {
     /// The identity this session uses for a lock object's connection.
     fn lock_client(&mut self, lock: &ExtSessionLockV1) -> Option<ClientId> {
         let client = lock.client()?;
+        self.client_identity(&client)
+    }
+
+    /// The identity this session uses for a connection, allocated once.
+    ///
+    /// The lock and the protection covers name a connection the same way, so a
+    /// consumer never has to know which of the two hid a client.
+    pub(crate) fn client_identity(&mut self, client: &smithay::reexports::wayland_server::Client) -> Option<ClientId> {
         let key = client.id();
         if let Some(token) = self.lock_tables.clients.get(&key) {
             return Some(*token);

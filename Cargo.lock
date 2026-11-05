@@ -1156,11 +1156,13 @@ dependencies = [
 name = "gnoblin-wayland"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "bitflags",
  "gnoblin-authority",
  "gnoblin-backend",
  "gnoblin-capture",
  "gnoblin-config",
  "gnoblin-lock",
+ "gnoblin-model",
  "gnoblin-output",
  "gnoblin-render",
  "gnoblin-types",
@@ -1171,6 +1173,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+ "wayland-scanner",
 ]
 
 [[package]]

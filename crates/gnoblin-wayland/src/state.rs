@@ -54,11 +54,14 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::protocols::activation::Activation;
+use crate::protocols::blur_fade;
 use crate::protocols::capture::CaptureTables;
 use crate::protocols::foreign_toplevel::ForeignToplevels;
 use crate::protocols::layer_shell::Layers;
 use crate::protocols::selection::Selections;
+use crate::protocols::session_host::SessionHostTables;
 use crate::protocols::session_lock::LockTables;
+use crate::protocols::window_frame::FrameTables;
 use crate::server::StartupError;
 
 /// How many workspaces a session declares when its configuration names none.
@@ -88,7 +91,7 @@ pub(crate) enum Managed {
 
 impl Managed {
     /// The Wayland surface behind the window, when one exists yet.
-    fn wl_surface(&self) -> Option<WlSurface> {
+    pub(crate) fn wl_surface(&self) -> Option<WlSurface> {
         match self {
             Self::Wayland(surface) => Some(surface.wl_surface().clone()),
             Self::X11(surface) => surface.wl_surface(),
@@ -252,6 +255,11 @@ pub struct State {
     pub(crate) outputs: Vec<OutputEntry>,
     /// The next window identity to hand out.
     next_window: u32,
+    /// The protection generation the frame being drawn was described under.
+    ///
+    /// Read when the scene is described and reported when the frame is presented, so
+    /// a frame described before a cover was raised cannot prove it.
+    pub(crate) protection_generation: Option<u64>,
     /// The last pointer position the backend reported, in global logical
     /// coordinates.
     pointer_position: SmithayPoint<f64, Logical>,
@@ -278,6 +286,13 @@ pub struct State {
     /// It is one value so the compositor's own fields stay a short list, and so the whole
     /// of the capture state reads in one place (`protocols::capture`).
     pub(crate) capture: CaptureTables,
+
+    /// The frame renderers' managers and the frames they were offered, which is
+    /// `gnoblin_window_frame_v1` (`protocols::window_frame`).
+    pub(crate) frame_tables: FrameTables,
+    /// The hosted sessions, their protection covers and their requests, which is
+    /// `gnoblin_session_host_v1` (`protocols::session_host`).
+    pub(crate) session_host: SessionHostTables,
 
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
@@ -374,6 +389,11 @@ impl State {
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
         let capture = CaptureTables::new(&display_handle, &access);
+        let frame_tables = FrameTables::new(&display_handle, &access);
+        let session_host = SessionHostTables::new(&display_handle, &access);
+        // Nothing decides who may see the fade metadata: it describes the client's
+        // own surface, so the handle is only kept alive by the global itself.
+        let _blur_fade_global = blur_fade::global(&display_handle);
         remove_disabled_globals(
             &display_handle,
             protocols,
@@ -433,6 +453,7 @@ impl State {
             windows: BTreeMap::new(),
             outputs: Vec::new(),
             next_window: 1,
+            protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             composer: Composer::new(),
             last_frame: None,
@@ -440,6 +461,8 @@ impl State {
             lock_embargo: Embargo::RELEASED,
             lock_tables: LockTables::default(),
             capture,
+            frame_tables,
+            session_host,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,
         };
@@ -513,11 +536,32 @@ impl State {
             stream,
             Arc::clone(&data) as Arc<dyn smithay::reexports::wayland_server::backend::ClientData>,
         )?;
+        // A role the compositor promised to the process takes the place of the socket's
+        // default. Only an unprivileged connection can be promoted: a sandboxed one
+        // stays sandboxed whatever a promise says, and the privileged socket already
+        // sees more than either single-purpose role.
+        let role = match role {
+            ClientRole::Unprivileged => client
+                .get_credentials(&self.display_handle)
+                .ok()
+                .and_then(|credentials| u32::try_from(credentials.pid).ok())
+                .and_then(|pid| self.access.promised(pid))
+                .unwrap_or(role),
+            _ => role,
+        };
         self.access.record(&client.id(), role);
         // From here the roster entry lives exactly as long as the connection: the
         // client's data owns the registration that removes it.
         data.registration.attach(&client.id());
         Ok(client)
+    }
+
+    /// Promises a role to a process, so its next connection is recorded with it.
+    ///
+    /// The composition root records the promise and then starts the renderer or the
+    /// hosted session; the accept path in [`State::insert_client`] picks it up.
+    pub fn grant_role(&self, pid: u32, role: ClientRole) {
+        self.access.promise(pid, role);
     }
 
     /// Accepts a connection that arrived through a `wp_security_context_v1` sandbox.
@@ -840,6 +884,12 @@ impl State {
     /// The surface of the window the window manager has focused.
     pub(crate) fn focused_window_surface(&self) -> Option<WlSurface> {
         let window = self.wm.focused()?;
+        if self.window_is_covered(window) {
+            // A hosted session under a protection cover keeps no input: its windows
+            // are not on screen, so focusing one would type into a screen nobody can
+            // see (design/rust-compositor.md, "Hosting sessions").
+            return None;
+        }
         self.windows.get(&window).and_then(|entry| entry.surface.wl_surface())
     }
 
@@ -935,6 +985,9 @@ impl State {
         // The sessions that captured the window go with it: nothing may serve the pixels
         // of a window that is no longer on screen, and each client hears `stopped`.
         self.capture.window_closed(window);
+        // A renderer hears `closed` once and its frame is forgotten, so the window is
+        // never left with a decoration nothing will update.
+        self.close_window_frame(window);
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
         self.publish();
@@ -1005,6 +1058,10 @@ impl State {
         }
         self.apply_events(effects);
         self.sync_content(window, surface);
+        // A mapped window is offered a frame, and a window whose geometry or metadata
+        // changed gets a fresh configure. A renderer that never answers changes nothing
+        // for the client: nothing here waits for it.
+        self.refresh_window_frame(window);
         self.publish();
     }
 
@@ -1332,7 +1389,7 @@ impl State {
             let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
                 continue;
             };
-            if !managed.is_visible(active) {
+            if !managed.is_visible(active) || self.window_is_covered(*window) {
                 continue;
             }
             let geometry = managed.geometry;
@@ -1415,6 +1472,7 @@ impl Host for State {
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame();
         self.last_frame = None;
+        self.protection_generation = None;
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
@@ -1425,6 +1483,10 @@ impl Host for State {
         };
         if changed {
             self.last_frame = Some((output, frame.damage().to_vec()));
+            // The frame was described after the hide, so it can prove a cover: the
+            // generation is read here rather than at present time, which is what makes
+            // a frame queued before the cover worthless.
+            self.protection_generation = Some(self.session_host.protection.generation());
         }
         changed
     }
@@ -1441,6 +1503,10 @@ impl Host for State {
                     f64::from(position.y + entry.rect.y),
                 ));
                 self.pointer_position = position;
+                // A frame renderer hears the hover before the pointer focus changes:
+                // the region under the pointer is the renderer's, the surface is the
+                // window's, and the two are decided independently.
+                self.frame_pointer(Some(position), None);
                 let focus = self.surface_under(position);
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
@@ -1456,6 +1522,7 @@ impl Host for State {
                 );
             }
             InputEvent::PointerLeave => {
+                self.frame_pointer(None, None);
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
                 pointer.motion(
@@ -1469,6 +1536,7 @@ impl Host for State {
                 );
             }
             InputEvent::PointerButton { button, pressed } => {
+                self.frame_pointer(Some(self.pointer_position), Some(pressed));
                 if pressed {
                     // A press on a window is the activation request the window
                     // manager expects from the caller: attribution decides whether

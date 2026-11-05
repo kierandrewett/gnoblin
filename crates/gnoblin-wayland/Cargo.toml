@@ -6,8 +6,17 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+# The workspace lints are restated here rather than inherited with `workspace = true`,
+# because one rule needs a narrower level in this crate: `wayland-scanner` generates
+# `unsafe { &C_INTERFACE }` for the C descriptor of every interface it is handed, and a
+# crate-wide `forbid` cannot be lifted in one module. Only `protocols::wire`, which is
+# entirely generated, carries the allow; every hand-written line of this crate is still
+# checked, and a second allow anywhere would be a review failure.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
 
 [dependencies]
 # The Wayland server itself, pinned to the revision in the root manifest (D7).
@@ -55,6 +64,16 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
 # `[tag]` log lines. Smithay already brings `tracing` in, so this adds no crate to
 # the graph.
 tracing = "0.1.37"
+# The Gnoblin-owned protocols' server halves, generated from `protocols/` at compile
+# time. Checking the generated code in would let the XML and the code drift, which is
+# exactly what a wire-compatible port cannot afford.
+wayland-scanner = "0.31.11"
+# The generated `state` bit field of `gnoblin_window_frame_v1` is a `bitflags` type.
+bitflags = "2"
+# The IPC request broker. A hosted session's `lock`, `logout` and `power` requests are
+# `Request` objects the session manager claims and answers, never actions this crate
+# performs (design/rust-compositor.md, "Main data paths").
+gnoblin-model = { path = "../gnoblin-model" }
 
 [dev-dependencies]
 # The real client the integration tests run against the server. A `wayland-client`
