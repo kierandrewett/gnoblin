@@ -68,6 +68,12 @@ pub const PUMP_TIMEOUT: Duration = Duration::from_millis(100);
 /// the deadline, so this is the number the offer asks for.
 pub const PROMPT_DEADLINE: Duration = Duration::from_secs(120);
 
+/// How a role reads its environment.
+///
+/// A boxed closure rather than a function pointer so a test can hand the role an environment
+/// of its own: a descriptor number belongs to one run and one socket pair.
+pub type Environment = Box<dyn Fn(&str) -> Option<String> + Send>;
+
 /// Why the services role could not run.
 #[derive(Debug)]
 pub enum RoleError {
@@ -115,10 +121,7 @@ pub enum Buses {
 /// How the role runs, for a caller that is not the process itself.
 pub struct Role {
     /// The environment to read the inherited descriptors from.
-    ///
-    /// A boxed closure rather than a function pointer so a test can hand the role an
-    /// environment of its own: a descriptor number belongs to one run and one socket pair.
-    pub env: Box<dyn Fn(&str) -> Option<String> + Send>,
+    pub env: Environment,
     /// How long an offer this role makes stands.
     pub deadline: Duration,
     /// Which agents to serve.

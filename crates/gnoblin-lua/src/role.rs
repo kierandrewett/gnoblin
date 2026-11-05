@@ -68,6 +68,12 @@ pub const TEST_CRASH_VARIABLE: &str = "GNOBLIN_TEST_RUNTIME_CRASH";
 /// pump returns and the loop is entered again, so the process still notices a shutdown.
 const PUMP_HANDLERS: usize = 256;
 
+/// How a role reads its environment.
+///
+/// A boxed closure rather than a function pointer so a test can hand the role an environment
+/// of its own: a descriptor number belongs to one run and one socket pair.
+pub type Environment = Box<dyn Fn(&str) -> Option<String> + Send>;
+
 /// Why the runtime role could not run.
 #[derive(Debug)]
 pub enum RoleError {
@@ -113,10 +119,7 @@ impl std::error::Error for RoleError {
 /// a configuration directory of its own, without a process-global environment.
 pub struct Role {
     /// The environment to read the inherited descriptors from.
-    ///
-    /// A boxed closure rather than a function pointer so a test can hand the role an
-    /// environment of its own: a descriptor number belongs to one run and one socket pair.
-    pub env: Box<dyn Fn(&str) -> Option<String> + Send>,
+    pub env: Environment,
     /// Where the configuration lives.
     pub paths: SearchPaths,
     /// The budgets the sandbox runs under.
@@ -152,7 +155,7 @@ impl Role {
         let mut reporter = Reporter::new(&self.env);
         let stream = inherited_stream(privilege::FD_VARIABLE, &self.env)
             .map_err(RoleError::Connection)?
-            .ok_or_else(|| RoleError::Connection(Inherited::Absent))?;
+            .ok_or(RoleError::Connection(Inherited::Absent))?;
         let transport = UnixTransport::from_stream(stream).map_err(|error| {
             RoleError::Connection(Inherited::NotASocket {
                 number: -1,

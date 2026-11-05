@@ -121,5 +121,5 @@ mod sandbox;
 pub use bindings::{stub, write_stub};
 pub use error::{HostError, ScriptError};
 pub use host::{Host, MAX_LOADS, PumpReport, RunReport};
-pub use role::{Role, RoleError};
+pub use role::{Environment, Role, RoleError};
 pub use sandbox::Limits;

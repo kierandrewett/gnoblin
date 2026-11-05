@@ -193,9 +193,7 @@ mod tests {
 
     #[test]
     fn a_value_that_is_not_a_number_is_refused() {
-        let error = stream("GNOBLIN_IPC_FD", environment(&[("GNOBLIN_IPC_FD", "/tmp/ipc.sock")]))
-            .err()
-            .expect("refused");
+        let error = stream("GNOBLIN_IPC_FD", environment(&[("GNOBLIN_IPC_FD", "/tmp/ipc.sock")])).expect_err("refused");
         assert!(
             matches!(&error, Inherited::NotANumber { value, .. } if value == "/tmp/ipc.sock"),
             "{error}"
@@ -216,8 +214,7 @@ mod tests {
             "GNOBLIN_IPC_FD",
             environment(&[("GNOBLIN_IPC_FD", &number.to_string())]),
         )
-        .err()
-        .expect("refused");
+        .expect_err("refused");
         assert!(
             matches!(&error, Inherited::NotASocket { number: named, .. } if *named == number),
             "{error}"

@@ -106,6 +106,13 @@ const CLIENT_SIDE: &[&str] = &[
     "xdg-desktop-portal-gnoblin",
 ];
 
+/// The binary whose own dependencies [`binary_roots`] constrains.
+///
+/// Exactly one crate, and deliberately not the whole [`COMPAT_HOSTS`] set: a role crate that
+/// serves an adapter is still a client, and the rules over a client are
+/// `client-side-isolation`'s, not this one's.
+const SESSION_BINARY: &str = "gnoblin";
+
 /// The processes that link the compat adapters.
 ///
 /// The session binary serves them, and so does the services role: design/rust-compositor.md's
@@ -409,14 +416,24 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The session binary reaches the session through the composition root and the
-/// guardian, and links the compat adapters it serves.
+/// What one process may name.
 ///
-/// A dev-dependency is exempt for the reason the plan gives: a test target may drive
-/// the engine directly to prove what the binary does with it, and that edge cannot
-/// ship.
+/// The rule is about a process's *own* dependencies, not about the dependencies of the
+/// crates it links. `gnoblin` may name the composition root, the guardian and the two role
+/// entry crates, and nothing else of the workspace: a binary that named an engine or a
+/// policy crate directly would be a second composition root — two places deciding which
+/// backend runs, which IPC server serves and how a snapshot becomes an object.
+///
+/// A role entry crate is a *client*, and this rule does not reach through it: `gnoblin-services`
+/// depends on `gnoblin-client`, the object model and the primitives because that is what a
+/// services role is, and `gnoblin-lua` on the client and the configuration layer for the same
+/// reason. Constraining those edges here would be a second copy of `client-side-isolation`,
+/// written from the other end, and it would forbid the one thing the role crates exist to do.
+///
+/// A dev-dependency is exempt for the reason the plan gives: a test target may drive the
+/// engine directly to prove what the binary does with it, and that edge cannot ship.
 fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
-    if !COMPAT_HOSTS.contains(&package.name.as_str()) || dep.kind == DepKind::Dev {
+    if package.name != SESSION_BINARY || dep.kind == DepKind::Dev {
         return None;
     }
     if BINARY_ROOTS.contains(&dep.name.as_str()) || is_compat(&dep.name) {
@@ -429,7 +446,7 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
         return None;
     }
     Some(format!(
-        "the session binary depends on the composition root and the guardian, not on `{}`; a second composition root decides the same things twice",
+        "the session binary depends on the composition root, the guardian and a role entry crate, not on `{}`; a second composition root decides the same things twice",
         dep.name
     ))
 }
@@ -504,6 +521,58 @@ mod tests {
         assert_eq!(
             violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-session", "clap"])]),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_session_binary_may_name_every_role_entry_crate() {
+        // The binary is what runs a role, so it names the four crates that own one.
+        assert_eq!(
+            violations(&[(
+                "gnoblin",
+                &[
+                    "gnoblin-compositor",
+                    "gnoblin-session",
+                    "gnoblin-lua",
+                    "gnoblin-services",
+                ],
+            )]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_role_entry_crate_may_depend_on_the_client_and_the_model() {
+        // The failure this prevents: `binary-roots` reaching through the binary into the
+        // crates it links, so a services role could not name the client it is built on.
+        // `gnoblin-services` is a client crate; its edges are `client-side-isolation`'s to
+        // judge and that rule allows every foundation crate.
+        assert_eq!(
+            violations(&[(
+                "gnoblin-services",
+                &["gnoblin-client", "gnoblin-model", "gnoblin-proto", "gnoblin-types"],
+            )]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            violations(&[(
+                "gnoblin-lua",
+                &["gnoblin-client", "gnoblin-config", "gnoblin-model", "gnoblin-proto"],
+            )]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_role_entry_crate_may_not_depend_on_the_engine() {
+        // The edge the plan forbids for a role, and the rule that forbids it is the client
+        // one: a role that linked the compositor would run inside the session it talks to.
+        let reported = violations(&[("gnoblin-services", &["gnoblin-wayland"])]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-services -> gnoblin-wayland [client-side-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
         );
     }
 
