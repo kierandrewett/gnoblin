@@ -19,7 +19,7 @@ use std::io;
 use gnoblin_types::{OutputId, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
 
-use gnoblin_output::Mode;
+use gnoblin_output::DisplayMode;
 
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 
@@ -28,7 +28,7 @@ use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, 
 /// Large enough that the window manager's default 800x600 window fits with room
 /// for placement, and small enough that a test's screenshots and damage lists stay
 /// readable.
-pub const DEFAULT_MODE: Mode = Mode::new(1024, 768, 60_000);
+pub const DEFAULT_MODE: DisplayMode = DisplayMode::new(1024, 768, 60_000);
 
 /// The connector name the first virtual output gets.
 ///
@@ -191,7 +191,7 @@ impl Headless {
     /// Panics if `mode` covers no pixels. The constructor is for callers that have a
     /// size to hand; a runtime request goes through [`Self::resize`], which reports
     /// the same problem as [`BackendError::DegenerateMode`].
-    pub fn push_output(&mut self, connector: &str, mode: Mode, scale: Scale) {
+    pub fn push_output(&mut self, connector: &str, mode: DisplayMode, scale: Scale) {
         assert!(
             mode.width > 0 && mode.height > 0,
             "a mode that covers no pixels cannot be an output: {mode:?}"
@@ -214,7 +214,7 @@ impl Headless {
     ///
     /// [`BackendError::UnknownOutput`] when the id is not this backend's, and
     /// [`BackendError::DegenerateMode`] when the mode covers no pixels.
-    pub fn resize(&mut self, output: OutputId, mode: Mode, scale: Scale) -> Result<(), BackendError> {
+    pub fn resize(&mut self, output: OutputId, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
         let Some(index) = self.outputs.iter().position(|entry| entry.id == output) else {
             return Err(BackendError::UnknownOutput(output));
         };
@@ -374,7 +374,7 @@ mod tests {
         let mut backend = Headless::new();
         let output = backend.outputs[0].id;
         for step in 1..=100 {
-            let mode = Mode::new(640 + step, 480 + step, 60_000);
+            let mode = DisplayMode::new(640 + step, 480 + step, 60_000);
             backend.resize(output, mode, Scale::integral(1)).expect("mode is valid");
         }
         let mut host = Recorder::default();
@@ -388,7 +388,7 @@ mod tests {
             *resizes[0],
             BackendEvent::OutputResized {
                 output,
-                mode: Mode::new(740, 580, 60_000),
+                mode: DisplayMode::new(740, 580, 60_000),
                 scale: Scale::integral(1),
             }
         );
@@ -400,7 +400,7 @@ mod tests {
         let mut backend = Headless::new();
         let output = backend.outputs[0].id;
         let error = backend
-            .resize(output, Mode::new(0, 480, 60_000), Scale::integral(1))
+            .resize(output, DisplayMode::new(0, 480, 60_000), Scale::integral(1))
             .expect_err("a mode with no pixels");
         assert_eq!(error, BackendError::DegenerateMode { width: 0, height: 480 });
         assert_eq!(

@@ -81,7 +81,7 @@ use std::io;
 use gnoblin_types::{OutputId, Point, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
 
-use gnoblin_output::{Mode, OutputDescriptor};
+use gnoblin_output::{DisplayMode, OutputDescriptor};
 
 /// One output a backend drives.
 ///
@@ -98,7 +98,7 @@ pub struct Output {
     /// The connector name a person and a saved configuration see, such as `"DP-1"`.
     pub connector: String,
     /// The mode being driven.
-    pub mode: Mode,
+    pub mode: DisplayMode,
     /// The scale the output composes at.
     pub scale: Scale,
 }
@@ -106,7 +106,7 @@ pub struct Output {
 impl Output {
     /// An output from its token, connector name, mode and scale.
     #[must_use]
-    pub fn new(id: OutputId, connector: impl Into<String>, mode: Mode, scale: Scale) -> Self {
+    pub fn new(id: OutputId, connector: impl Into<String>, mode: DisplayMode, scale: Scale) -> Self {
         Self {
             id,
             connector: connector.into(),
@@ -227,7 +227,7 @@ pub enum BackendEvent {
         /// The output that changed.
         output: OutputId,
         /// The mode it is in now.
-        mode: Mode,
+        mode: DisplayMode,
         /// The scale it composes at now.
         scale: Scale,
     },
