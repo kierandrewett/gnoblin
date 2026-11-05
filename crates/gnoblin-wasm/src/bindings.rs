@@ -47,6 +47,11 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.request": ObjectRep,
         "gnoblin:ipc/gnoblin.session": ObjectRep,
         "gnoblin:ipc/gnoblin.window": ObjectRep,
+        "gnoblin:ipc/gnoblin.capture": ObjectRep,
+        "gnoblin:ipc/gnoblin.eis": ObjectRep,
+        "gnoblin:ipc/gnoblin.idle": ObjectRep,
+        "gnoblin:ipc/gnoblin.lock": ObjectRep,
+        "gnoblin:ipc/gnoblin.output": ObjectRep,
         "gnoblin:ipc/bsm-greeter.operation": ObjectRep,
         "gnoblin:ipc/bsm-greeter.greeter": ObjectRep,
     },
@@ -220,6 +225,29 @@ impl StoreData {
         }
     }
 
+    /// A property as a float, reading `0.0` for anything else.
+    fn float(&self, object: ObjectId, property: &str) -> f64 {
+        match self.property(object, property) {
+            Some(Value::Double(value)) => *value,
+            _ => 0.0,
+        }
+    }
+
+    /// A property as a list of text. Entries of another shape are skipped, and a
+    /// property the mirror does not have reads empty, like the other getters.
+    fn texts(&self, object: ObjectId, property: &str) -> Vec<String> {
+        let Some(Value::List(items)) = self.property(object, property) else {
+            return Vec::new();
+        };
+        items
+            .iter()
+            .filter_map(|item| match item {
+                Value::Text(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Call a method, returning the operation the completion is matched on.
     fn invoke(
         &mut self,
@@ -319,6 +347,41 @@ mod gnoblin_objects {
 
         fn request_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             Ok(match self.open(id, "request") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn capture_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "capture") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn eis_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "eis") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn idle_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "idle") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn lock_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "lock") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn output_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "output") {
                 Ok(handle) => Ok(handle),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
@@ -498,6 +561,249 @@ mod gnoblin_objects {
             let mut arguments = gnoblin_model::Fields::new();
             arguments.insert("request".to_owned(), Value::Uint(request));
             self.method(object, "request", "decline", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostCapture for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn open(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            session: u64,
+            owner: String,
+            remote_session: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("session".to_owned(), Value::Uint(session));
+            arguments.insert("owner".to_owned(), Value::Text(owner));
+            arguments.insert("remote_session".to_owned(), Value::Text(remote_session));
+            self.method(object, "capture", "open", arguments)
+        }
+
+        fn close(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            session: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("session".to_owned(), Value::Uint(session));
+            self.method(object, "capture", "close", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostEis for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn open(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            session: u64,
+            owner: String,
+            capabilities: u64,
+            path: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("session".to_owned(), Value::Uint(session));
+            arguments.insert("owner".to_owned(), Value::Text(owner));
+            arguments.insert("capabilities".to_owned(), Value::Uint(capabilities));
+            arguments.insert("path".to_owned(), Value::Text(path));
+            self.method(object, "eis", "open", arguments)
+        }
+
+        fn close(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            session: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("session".to_owned(), Value::Uint(session));
+            self.method(object, "eis", "close", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostIdle for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn idle_ms(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "idle_ms"))
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostLock for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn locked(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "locked"))
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostOutput for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn name(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "name"))
+        }
+
+        fn make(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "make"))
+        }
+
+        fn model(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "model"))
+        }
+
+        fn modes(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Vec<String>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.texts(object, "modes"))
+        }
+
+        fn mode(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "mode"))
+        }
+
+        fn scale(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "scale"))
+        }
+
+        fn transform(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "transform"))
+        }
+
+        fn primary(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "primary"))
+        }
+
+        fn enabled(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "enabled"))
+        }
+
+        fn x(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<i64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.int(object, "x"))
+        }
+
+        fn y(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<i64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.int(object, "y"))
+        }
+
+        fn width(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "width"))
+        }
+
+        fn height(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "height"))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn apply(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            x: i64,
+            y: i64,
+            scale: f64,
+            transform: u64,
+            primary: bool,
+            enabled: bool,
+            mode: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("x".to_owned(), Value::Int(x));
+            arguments.insert("y".to_owned(), Value::Int(y));
+            arguments.insert("scale".to_owned(), Value::Double(scale));
+            arguments.insert("transform".to_owned(), Value::Uint(transform));
+            arguments.insert("primary".to_owned(), Value::Bool(primary));
+            arguments.insert("enabled".to_owned(), Value::Bool(enabled));
+            arguments.insert("mode".to_owned(), Value::Text(mode));
+            self.method(object, "output", "apply", arguments)
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {

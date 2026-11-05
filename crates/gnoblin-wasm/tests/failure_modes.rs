@@ -551,9 +551,11 @@ fn the_generated_wit_matches_the_schema() {
                     "`{resource}.{name}` takes self and the schema's parameters"
                 );
                 for (index, parameter) in method.params.iter().enumerate() {
+                    // WIT identifiers are kebab-case, so a schema `remote_session` is `remote-session`.
+                    let wit_name = parameter.name.replace('_', "-");
                     assert_eq!(
                         function.params[index + 1].name,
-                        parameter.name,
+                        wit_name,
                         "`{resource}.{name}` keeps the schema's parameter order"
                     );
                 }
