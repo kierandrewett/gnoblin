@@ -158,3 +158,43 @@ fn a_user_module_overrides_the_shipped_layout_of_the_same_name() {
 
     assert_eq!(settled_sizes(&mut client, &windows), vec![(1024, 768); 3]);
 }
+
+#[test]
+fn an_output_override_applies_to_the_workspaces_on_that_output() {
+    // The headless output is HEADLESS-1 and the workspace has no override of its own,
+    // so the output's layout arranges it.
+    let session = session_with(LayoutSettings {
+        outputs: vec![("HEADLESS-1".to_owned(), "master_stack".to_owned())],
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+
+    assert_eq!(
+        settled_sizes(&mut client, &windows),
+        vec![(512, 768), (512, 384), (512, 384)]
+    );
+}
+
+#[test]
+fn a_workspace_override_wins_over_the_output_override() {
+    // Workspace 1 is floating, so the output's master_stack must not arrange it.
+    let floating = {
+        let session = session_with(LayoutSettings::default());
+        let mut client = Client::connect(session.wayland());
+        let windows = map_three(&mut client);
+        settled_sizes(&mut client, &windows)
+    };
+
+    let session = session_with(LayoutSettings {
+        outputs: vec![("HEADLESS-1".to_owned(), "master_stack".to_owned())],
+        workspaces: vec![("1".to_owned(), "floating".to_owned())],
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+
+    assert_eq!(settled_sizes(&mut client, &windows), floating);
+}

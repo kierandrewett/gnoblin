@@ -395,7 +395,7 @@ impl Server {
     /// installed leaves the window manager tiling nothing.
     pub fn install_layouts(
         &mut self,
-        factory: impl FnMut(gnoblin_types::WorkspaceId) -> Box<dyn gnoblin_wm::layout::LayoutEngine> + 'static,
+        factory: impl FnMut(gnoblin_types::WorkspaceId, Option<&str>) -> Box<dyn gnoblin_wm::layout::LayoutEngine> + 'static,
     ) {
         self.state.install_layouts(factory);
     }

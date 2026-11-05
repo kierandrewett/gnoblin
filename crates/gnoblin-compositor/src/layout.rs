@@ -14,8 +14,10 @@
 //! - a module that raises or stalls while arranging: the wm reports it per run as
 //!   `LayoutFailed` and applies its own fallback, as it does for any layout.
 //!
-//! Not applied yet: `output` overrides. The wayland layer hands the factory only a
-//! workspace id, so an output override is logged at startup and otherwise ignored.
+//! Resolution order for a workspace: its workspace override, else the override of
+//! the output it is on, else `default`. The output is the connector name the wm
+//! knows for the workspace's current output; it is unknown until the output is
+//! identified, and then the output override does not apply.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,7 +44,7 @@ pub const FLOATING: &str = "floating";
 pub struct LayoutSettings {
     /// The layout of a workspace with no override.
     pub default: String,
-    /// Layout names by output connector. Not applied yet; see the module docs.
+    /// Layout names by output connector.
     pub outputs: Vec<(String, String)>,
     /// Layout names by workspace id, as the decimal id the wm uses.
     pub workspaces: Vec<(String, String)>,
@@ -123,6 +125,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 /// runs them. Built once, inside the thread that runs the compositor.
 pub struct WorkspaceLayouts {
     default: String,
+    outputs: BTreeMap<String, String>,
     workspaces: BTreeMap<String, String>,
     host: Rc<RefCell<Host>>,
     failed: BTreeSet<String>,
@@ -132,12 +135,6 @@ impl WorkspaceLayouts {
     /// Loads every layout the settings name. A layout that cannot be loaded is named
     /// in a warning, and every workspace that asks for it floats.
     pub fn new(settings: LayoutSettings) -> Self {
-        for (output, _) in &settings.outputs {
-            warn!(
-                output,
-                "[layout] output layout overrides are not applied yet; the output's workspaces use the default"
-            );
-        }
         let mut dirs = settings.module_dirs;
         dirs.push(installed_module_dir(&default_prefix(
             std::env::var_os("GNOBLIN_PREFIX").as_deref(),
@@ -145,6 +142,7 @@ impl WorkspaceLayouts {
         let mut host = Host::new(HostConfig::new(dirs));
         let mut failed = BTreeSet::new();
         let names: BTreeSet<&str> = std::iter::once(settings.default.as_str())
+            .chain(settings.outputs.iter().map(|(_, layout)| layout.as_str()))
             .chain(settings.workspaces.iter().map(|(_, layout)| layout.as_str()))
             .filter(|name| *name != FLOATING)
             .collect();
@@ -157,17 +155,23 @@ impl WorkspaceLayouts {
         }
         Self {
             default: settings.default,
+            outputs: settings.outputs.into_iter().collect(),
             workspaces: settings.workspaces.into_iter().collect(),
             host: Rc::new(RefCell::new(host)),
             failed,
         }
     }
 
-    /// The layout a workspace uses: its override, else `default`. A name that is
-    /// floating or failed to load resolves to [`FLOATING`].
-    pub fn resolve(&self, workspace: WorkspaceId) -> &str {
+    /// The layout a workspace on `output` uses: its workspace override, else the
+    /// override of `output`, else `default`. A name that is floating or failed to load
+    /// resolves to [`FLOATING`].
+    pub fn resolve(&self, workspace: WorkspaceId, output: Option<&str>) -> &str {
         let key = workspace.get().to_string();
-        let name = self.workspaces.get(&key).unwrap_or(&self.default);
+        let name = self
+            .workspaces
+            .get(&key)
+            .or_else(|| output.and_then(|output| self.outputs.get(output)))
+            .unwrap_or(&self.default);
         if name == FLOATING || self.failed.contains(name) {
             FLOATING
         } else {
@@ -175,10 +179,10 @@ impl WorkspaceLayouts {
         }
     }
 
-    /// The engine for `workspace`. Floating workspaces get [`FloatingEngine`];
-    /// others get a Lua engine over the shared host.
-    pub fn engine_for(&self, workspace: WorkspaceId) -> Box<dyn LayoutEngine> {
-        match self.resolve(workspace) {
+    /// The engine for `workspace` on `output`. Floating workspaces get
+    /// [`FloatingEngine`]; others get a Lua engine over the shared host.
+    pub fn engine_for(&self, workspace: WorkspaceId, output: Option<&str>) -> Box<dyn LayoutEngine> {
+        match self.resolve(workspace, output) {
             FLOATING => Box::new(FloatingEngine::default()),
             name => Box::new(LuaEngine::new(self.host.clone(), name, workspace, Gaps::default())),
         }

@@ -861,7 +861,7 @@ impl LayoutEngine for ScriptedEngine {
 fn install_scripted(session: &mut Session, shape: SharedShape) -> Arc<Mutex<Vec<WorkspaceId>>> {
     let made = Arc::new(Mutex::new(Vec::new()));
     let record = Arc::clone(&made);
-    session.server.install_layouts(move |workspace| {
+    session.server.install_layouts(move |workspace, _output| {
         record.lock().expect("the workspace lock").push(workspace);
         Box::new(ScriptedEngine {
             shape: Arc::clone(&shape),

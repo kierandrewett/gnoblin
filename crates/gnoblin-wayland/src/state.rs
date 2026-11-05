@@ -1548,7 +1548,10 @@ impl State {
 
     /// Installs the factory that makes one layout engine per workspace and submits
     /// every workspace's arrangement.
-    pub(crate) fn install_layouts(&mut self, factory: impl FnMut(WorkspaceId) -> Box<dyn LayoutEngine> + 'static) {
+    pub(crate) fn install_layouts(
+        &mut self,
+        factory: impl FnMut(WorkspaceId, Option<&str>) -> Box<dyn LayoutEngine> + 'static,
+    ) {
         let effects = self.wm.set_layout_engines(factory);
         self.apply(effects);
     }

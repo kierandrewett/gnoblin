@@ -1313,7 +1313,7 @@ impl Wm {
     /// effects only report input that was refused.
     pub fn set_layout_engines(
         &mut self,
-        factory: impl FnMut(WorkspaceId) -> Box<dyn LayoutEngine> + 'static,
+        factory: impl FnMut(WorkspaceId, Option<&str>) -> Box<dyn LayoutEngine> + 'static,
     ) -> Vec<Effect> {
         self.layouts.install(Box::new(factory));
         self.sync_layouts()
@@ -1327,8 +1327,16 @@ impl Wm {
         }
         let first_output = self.outputs.first().map(Output::id);
         let (outputs, windows) = (&self.outputs, &self.windows);
+        let output_name = |output: OutputId| {
+            outputs
+                .iter()
+                .find(|entry| entry.id() == output)
+                .map(|entry| entry.name())
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+        };
         self.layouts
-            .sync(self.workspaces.ids(), first_output, |workspace, output| {
+            .sync(self.workspaces.ids(), first_output, output_name, |workspace, output| {
                 arrange::tiled_params(workspace, output, windows, outputs)
             })
     }

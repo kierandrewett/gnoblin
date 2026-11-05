@@ -57,8 +57,10 @@ use crate::layout::{
 use crate::output::Output;
 use crate::window::{Window, WindowState};
 
-/// Builds the engine for one workspace.
-pub(crate) type Factory = Box<dyn FnMut(WorkspaceId) -> Box<dyn LayoutEngine>>;
+/// Builds the engine for one workspace. The second argument is the connector name
+/// of the output the workspace is on, `None` until the output is identified or
+/// when the workspace is on no output.
+pub(crate) type Factory = Box<dyn FnMut(WorkspaceId, Option<&str>) -> Box<dyn LayoutEngine>>;
 
 /// Every workspace's layout state, and the factory that makes engines.
 #[derive(Default)]
@@ -70,6 +72,9 @@ pub(crate) struct Layouts {
 /// One workspace's engine and the parameters of its latest submitted run.
 struct WorkspaceLayout {
     output: Option<OutputId>,
+    /// The output name the engine was built for. The engine is rebuilt when the
+    /// workspace's output name changes.
+    engine_output: Option<String>,
     slot: Slot,
     /// The parameters of the latest submitted run, `None` when nothing is tiled or
     /// the input was refused.
@@ -180,13 +185,19 @@ impl Layouts {
     /// Creates a layout for each declared workspace, drops the layouts of removed
     /// workspaces, and submits a run for each workspace whose wanted input changed.
     ///
-    /// `wanted` gives the parameters for a workspace on its current output. An
-    /// error means the input cannot be used: nothing is submitted, and the failure
-    /// is reported once until the input changes.
+    /// `wanted` gives the parameters for a workspace on its current output, and
+    /// `output_name` the connector name of an output (`None` while it is unknown).
+    /// An error means the input cannot be used: nothing is submitted, and the
+    /// failure is reported once until the input changes.
+    ///
+    /// A workspace whose output name changed gets a new engine, built for the new
+    /// name, so an output default applies to it. The engine's state is kept by the
+    /// layout host per layout name, so the rebuild does not lose it.
     pub(crate) fn sync(
         &mut self,
         workspaces: &[WorkspaceId],
         first_output: Option<OutputId>,
+        output_name: impl Fn(OutputId) -> Option<String>,
         wanted: impl Fn(WorkspaceId, Option<OutputId>) -> Result<Option<Params>, ParamsError>,
     ) -> Vec<Effect> {
         let Some(factory) = self.factory.as_mut() else {
@@ -194,15 +205,25 @@ impl Layouts {
         };
         self.by_workspace.retain(|id, _| workspaces.contains(id));
         for id in workspaces {
-            self.by_workspace.entry(*id).or_insert_with(|| WorkspaceLayout {
-                output: first_output,
-                slot: Slot::new(factory(*id)),
-                submitted: None,
-                placed: BTreeMap::new(),
+            self.by_workspace.entry(*id).or_insert_with(|| {
+                let name = first_output.and_then(&output_name);
+                WorkspaceLayout {
+                    output: first_output,
+                    slot: Slot::new(factory(*id, name.as_deref())),
+                    engine_output: name,
+                    submitted: None,
+                    placed: BTreeMap::new(),
+                }
             });
         }
         let mut effects = Vec::new();
         for (id, layout) in &mut self.by_workspace {
+            let name = layout.output.and_then(&output_name);
+            if name != layout.engine_output {
+                layout.slot = Slot::new(factory(*id, name.as_deref()));
+                layout.engine_output = name;
+                layout.submitted = None;
+            }
             let params = match wanted(*id, layout.output) {
                 Ok(params) => params,
                 Err(_) => {
