@@ -21,10 +21,10 @@
 //! The compositor's own object types sit directly on `gnoblin`, as `gnoblin.<type>`.
 //! An extension namespace is loaded with `require`, which returns a module table with
 //! one entry per object type: `local ext = require("example.ext")`, then
-//! `ext.probe.by_id(1)`. The namespace is quoted whole, so it is a wire identity and
-//! never split into nested tables. `require` answers only for an extension namespace the
-//! host loaded and the compositor granted; any other name is an error, and a loaded
-//! namespace that was not granted is refused by name.
+//! `ext.probe.lookup{ id = 1 }`. Those tables are built by `extension_bindings`, from the
+//! schema's owned types, so they are not part of the generated surface above. `require`
+//! answers only for an extension namespace the host loaded and the compositor granted;
+//! any other name is an error, and a loaded namespace that was not granted is refused by name.
 //!
 //! # Instances
 //!
@@ -37,7 +37,6 @@
 //! the connection, and it reflects every observation the pump has applied.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -45,7 +44,6 @@ use gnoblin_client::Transport;
 use gnoblin_model::{Fields, ObjectId, OperationId, Value as ModelValue};
 use mlua::{AnyUserData, Error, Function, Lua, Table, UserData, UserDataFields, UserDataMethods, Value, Variadic};
 
-use crate::extensions::ExtensionRegistry;
 use crate::host::{Shared, Status, Watching};
 use gnoblin_lua_sandbox::{Guard, Limits};
 
@@ -181,8 +179,6 @@ pub(super) fn install<T: Transport + 'static>(
     shared: Rc<RefCell<Shared<T>>>,
     guard: Rc<Guard>,
     limits: Limits,
-    extensions: &ExtensionRegistry,
-    granted: &BTreeSet<String>,
 ) -> mlua::Result<()> {
     lua.set_named_registry_value(CALLBACKS, lua.create_table()?)?;
     lua.set_named_registry_value(MODULES, lua.create_table()?)?;
@@ -235,64 +231,17 @@ pub(super) fn install<T: Transport + 'static>(
     }
     gnoblin.set("timers", timers)?;
 
-    // Core object types sit directly on `gnoblin`; each extension namespace becomes a
-    // module table that `require` returns. The build refuses a core type named like a
-    // hand-written member, so the two never share a key.
-    let modules: Table = lua.named_registry_value(MODULES)?;
+    // Core object types sit directly on `gnoblin`. The build refuses a core type named
+    // like a hand-written member, so the two never share a key. Extension namespaces are
+    // not generated here: `extension_bindings` builds them from the loaded schema.
     let mut accepted: Vec<&'static str> = HAND_WRITTEN.to_vec();
-    for namespace in NAMESPACES {
-        if namespace.name == "gnoblin" {
-            for spec in namespace.objects {
-                install_instance_meta(lua, &shared, namespace.name, spec)?;
-                gnoblin.set(spec.name, install_class(lua, &shared, namespace.name, spec)?)?;
-                accepted.push(spec.name);
-            }
-            continue;
-        }
-        // An extension namespace is bound only when the host loaded it and the compositor
-        // granted it, and then only with the object types the host declared.
-        if !extensions.is_loaded(namespace.name) || !granted.contains(namespace.name) {
-            continue;
-        }
-        let declared: Vec<&str> = extensions
-            .schema(namespace.name)
-            .map(|schema| schema.objects.iter().map(|object| object.name.as_str()).collect())
-            .unwrap_or_default();
-        if !declared
-            .iter()
-            .all(|class| namespace.objects.iter().any(|spec| spec.name == *class))
-        {
-            continue;
-        }
-        let table = lua.create_table()?;
-        for spec in namespace.objects.iter().filter(|spec| declared.contains(&spec.name)) {
+    for namespace in NAMESPACES.iter().filter(|namespace| namespace.name == "gnoblin") {
+        for spec in namespace.objects {
             install_instance_meta(lua, &shared, namespace.name, spec)?;
-            table.set(spec.name, install_class(lua, &shared, namespace.name, spec)?)?;
+            gnoblin.set(spec.name, install_class(lua, &shared, namespace.name, spec)?)?;
+            accepted.push(spec.name);
         }
-        modules.set(namespace.name, table)?;
     }
-    let loaded = extensions.clone();
-    let granted = granted.clone();
-    lua.globals().set(
-        "require",
-        lua.create_function(move |lua, name: String| {
-            let modules: Table = lua.named_registry_value(MODULES)?;
-            if let Some(table) = modules.raw_get::<Option<Table>>(name.as_str())? {
-                return Ok(table);
-            }
-            if !loaded.is_loaded(&name) {
-                return Err(Error::runtime(format!(
-                    "unknown module `{name}`: no extension namespace has that name"
-                )));
-            }
-            if !granted.contains(&name) {
-                return Err(Error::runtime(format!("extension not granted: {name}")));
-            }
-            Err(Error::runtime(format!(
-                "extension `{name}` is loaded and granted but its object types have no generated bindings"
-            )))
-        })?,
-    )?;
 
     let meta = lua.create_table()?;
     meta.set(
@@ -316,7 +265,7 @@ pub(super) fn install<T: Transport + 'static>(
 }
 
 /// The callback registry table.
-fn callbacks(lua: &Lua) -> mlua::Result<Table> {
+pub(super) fn callbacks(lua: &Lua) -> mlua::Result<Table> {
     lua.named_registry_value(CALLBACKS)
 }
 
@@ -325,7 +274,7 @@ fn callbacks(lua: &Lua) -> mlua::Result<Table> {
 /// `Table::raw_remove` shifts the entries above an integer key down, which would
 /// move every later callback onto a different identity; assigning nil removes one
 /// entry and leaves the rest alone.
-fn forget(lua: &Lua, id: u64) {
+pub(super) fn forget(lua: &Lua, id: u64) {
     if let Ok(callbacks) = callbacks(lua) {
         let _ = callbacks.raw_set(id, Value::Nil);
     }
@@ -834,9 +783,9 @@ impl<T: Transport + 'static> UserData for Operation<T> {
 }
 
 /// One signal handler registration.
-struct Subscription<T: Transport> {
-    shared: Rc<RefCell<Shared<T>>>,
-    handler: u64,
+pub(super) struct Subscription<T: Transport> {
+    pub(super) shared: Rc<RefCell<Shared<T>>>,
+    pub(super) handler: u64,
 }
 
 impl<T: Transport + 'static> UserData for Subscription<T> {

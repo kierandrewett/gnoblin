@@ -114,6 +114,7 @@
 mod bindings;
 mod configure;
 mod error;
+mod extension_bindings;
 mod extensions;
 mod glob;
 mod host;

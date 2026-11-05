@@ -63,6 +63,8 @@ pub(super) enum Status {
 pub(super) enum Watching {
     /// A signal on one object, delivered while the observation is dispatched.
     Signal { object: ObjectId, signal: String },
+    /// An extension signal, matched by namespace and `Object.Signal` member.
+    Extension { namespace: String, member: String },
     /// The single completion of one operation, delivered at the end of the pump.
     Completion { operation: OperationId },
 }
@@ -113,6 +115,8 @@ pub(super) struct Shared<T: Transport> {
     pub(super) reported: BTreeSet<String>,
     /// Errors reported since the caller last drained them.
     pub(super) reports: Vec<ScriptError>,
+    /// The extension schemas `require` binds from; a signal's declared fields come from here.
+    pub(super) extensions: ExtensionRegistry,
 }
 
 impl<T: Transport> Shared<T> {
@@ -154,6 +158,18 @@ impl<T: Transport> Shared<T> {
             .filter(|(_, watching)| {
                 matches!(watching, Watching::Signal { object: watched, signal: watched_signal }
                     if *watched == object && watched_signal == signal)
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The handlers waiting on one extension signal, in registration order.
+    pub(super) fn extension_handlers(&self, namespace: &str, member: &str) -> Vec<u64> {
+        self.handlers
+            .iter()
+            .filter(|(_, watching)| {
+                matches!(watching, Watching::Extension { namespace: watched, member: watched_member }
+                    if watched == namespace && watched_member == member)
             })
             .map(|(id, _)| *id)
             .collect()
@@ -252,11 +268,6 @@ impl<T: Transport + 'static> Host<T> {
         limits: Limits,
         extensions: &ExtensionRegistry,
     ) -> Result<Host<T>, HostError> {
-        let granted: BTreeSet<String> = client
-            .granted_extensions()
-            .iter()
-            .map(|grant| grant.namespace.clone())
-            .collect();
         let snapshot = client.subscribe(Filter::All).map_err(HostError::Subscribe)?;
         let mirror: BTreeMap<ObjectId, ObjectView> = snapshot
             .objects()
@@ -282,22 +293,35 @@ impl<T: Transport + 'static> Host<T> {
             configuring: false,
             reported: BTreeSet::new(),
             reports: Vec::new(),
+            extensions: ExtensionRegistry::new(),
         }));
-        crate::bindings::install(
-            &lua,
-            Rc::clone(&shared),
-            Rc::clone(&guard),
-            limits,
-            extensions,
-            &granted,
-        )
-        .map_err(HostError::Sandbox)?;
-        Ok(Host {
+        crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
+        let mut host = Host {
             lua,
             shared,
             guard,
             limits,
-        })
+        };
+        host.bind_extensions(extensions)?;
+        Ok(host)
+    }
+
+    /// Bind the extension namespaces this connection was granted, from `extensions`.
+    ///
+    /// A namespace gets a `require` entry only when the host loaded it and the compositor
+    /// granted it to this connection. Calling this again replaces the entries, so a host
+    /// is bound once from the registry the compositor built.
+    pub fn bind_extensions(&mut self, extensions: &ExtensionRegistry) -> Result<(), HostError> {
+        let granted: BTreeSet<String> = self
+            .shared
+            .borrow()
+            .client
+            .granted_extensions()
+            .iter()
+            .map(|grant| grant.namespace.clone())
+            .collect();
+        self.shared.borrow_mut().extensions = extensions.clone();
+        crate::extension_bindings::bind(&self.lua, &self.shared, extensions, &granted).map_err(HostError::Sandbox)
     }
 
     /// The connection, for a role that has a privileged member to send.
@@ -503,6 +527,11 @@ impl<T: Transport + 'static> Host<T> {
     fn dispatch(&mut self, event: Event, handlers: &mut usize) {
         match event {
             Event::Model(observation) => self.observe(observation, handlers),
+            Event::Extension {
+                namespace,
+                member,
+                fields,
+            } => self.run_extension_signal(&namespace, &member, &fields, handlers),
             // The runtime offers no requests in this slice: prompts are a later
             // lane, and a request nobody answers fails closed at its deadline in
             // the broker.
@@ -598,6 +627,30 @@ impl<T: Transport + 'static> Host<T> {
             if self.shared.borrow().handlers.contains_key(&id) {
                 self.run_handler(id, Some(arguments.clone()), handlers);
             }
+        }
+    }
+
+    /// Run every handler watching one extension signal, with its fields as a table.
+    fn run_extension_signal(&mut self, namespace: &str, member: &str, fields: &Fields, handlers: &mut usize) {
+        // A signal the schema does not declare, or one of a secret object, is dropped.
+        let declared = {
+            let shared = self.shared.borrow();
+            crate::extension_bindings::signal_fields(&shared.extensions, namespace, member)
+        };
+        let Some(declared) = declared else {
+            return;
+        };
+        match crate::extension_bindings::signal_table(&self.lua, &declared, fields) {
+            Ok(arguments) => {
+                let waiting = self.shared.borrow().extension_handlers(namespace, member);
+                for id in waiting {
+                    // A handler that ran may have unsubscribed another one.
+                    if self.shared.borrow().handlers.contains_key(&id) {
+                        self.run_handler(id, Some(LuaValue::Table(arguments.clone())), handlers);
+                    }
+                }
+            }
+            Err(error) => self.report(ScriptError::from_lua(&error)),
         }
     }
 
