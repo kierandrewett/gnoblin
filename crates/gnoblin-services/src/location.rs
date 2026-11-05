@@ -107,7 +107,7 @@ pub fn grant(outcome: &RequestOutcome, requested: u32, ceiling: u32) -> (bool, u
 }
 
 /// The state the handlers and the watchers share.
-struct State {
+struct LocationState {
     offerer: Box<dyn Offerer + Send>,
     waiting: BTreeMap<RequestId, oneshot::Sender<RequestOutcome>>,
     policy: Policy,
@@ -119,7 +119,7 @@ struct State {
 /// one state.
 #[derive(Clone)]
 pub struct Location {
-    shared: Arc<Mutex<State>>,
+    shared: Arc<Mutex<LocationState>>,
     deadline: Tick,
 }
 
@@ -140,7 +140,7 @@ impl Location {
     /// `deadline` if no provider answers.
     pub fn new<O: Offerer + Send + 'static>(offerer: O, policy: Policy, deadline: Tick) -> Location {
         Location {
-            shared: Arc::new(Mutex::new(State {
+            shared: Arc::new(Mutex::new(LocationState {
                 offerer: Box::new(offerer),
                 waiting: BTreeMap::new(),
                 policy,
@@ -153,7 +153,7 @@ impl Location {
 
     /// The shared state, with a poisoned lock recovered: every transition is a map or flag
     /// edit under the lock, so the state stays consistent after a panic.
-    fn lock(&self) -> MutexGuard<'_, State> {
+    fn lock(&self) -> MutexGuard<'_, LocationState> {
         self.shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
