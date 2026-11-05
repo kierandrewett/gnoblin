@@ -1,6 +1,6 @@
 //! Everything that can happen to the window manager.
 
-use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
+use gnoblin_types::{Insets, OutputId, Rect, Scale, WindowId, WorkspaceId};
 
 use crate::activation::ActivationDecision;
 use crate::rules::Rule;
@@ -74,6 +74,12 @@ pub enum Event {
     OutputMoved { output: OutputId, rect: Rect },
     /// The space panels reserve on an output changed.
     OutputReserved { output: OutputId, reserved: Insets },
+    /// The connector name and scale of an output, as layouts are told about it.
+    OutputIdentified {
+        output: OutputId,
+        name: String,
+        scale: Scale,
+    },
     /// A client mapped a new window.
     WindowOpened(WindowSpec),
     /// A client unmapped or destroyed a window.

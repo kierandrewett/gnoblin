@@ -30,12 +30,12 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, LayoutSnapshot, LuaEngine, OutputInfo, default_prefix, installed_module_dir,
+    Data, Gaps, Host, HostConfig, LayoutSnapshot, LuaEngine, default_prefix, installed_module_dir,
 };
 use gnoblin_types::{OutputId, RectF, Scale, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
-    Camera, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Params, Placement,
-    Reply, Transform3, settle,
+    Camera, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
+    Placement, Reply, Transform3, settle,
 };
 
 const SHIPPED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/data/lua");
@@ -119,7 +119,7 @@ fn shipped(layout: &str) -> Rc<RefCell<Host>> {
 fn snapshot(focus: Option<u64>) -> LayoutSnapshot {
     LayoutSnapshot {
         workspace: WorkspaceId::new(1),
-        output: OutputInfo {
+        output: LayoutOutput {
             id: OutputId::new(1),
             name: "test-output".into(),
             scale: Scale::integral(1),

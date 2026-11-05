@@ -1,9 +1,9 @@
 //! One test per validation failure mode, plus the accepted path and the fallback.
 
-use gnoblin_types::{Vec3, WindowId};
+use gnoblin_types::{OutputId, Scale, Vec3, WindowId};
 use gnoblin_wm::layout::{
-    Camera, Handled, LayoutEffect, LayoutFailure, LayoutWindow, Origin, Params, ParamsError, Placement, REFUSED_CODE,
-    Reply, ReplyError, Subject, Transform3, fallback, settle,
+    Camera, Handled, LayoutEffect, LayoutFailure, LayoutOutput, LayoutWindow, Origin, Params, ParamsError, Placement,
+    REFUSED_CODE, Reply, ReplyError, Subject, Transform3, fallback, settle,
 };
 
 fn win(id: u64) -> WindowId {
@@ -19,7 +19,15 @@ fn params(ids: &[u64]) -> Params {
             height: 50.0,
         })
         .collect();
-    Params::new(800.0, 600.0, windows).expect("valid params")
+    Params::new(output(), 800.0, 600.0, windows).expect("valid params")
+}
+
+fn output() -> LayoutOutput {
+    LayoutOutput {
+        id: OutputId::new(0),
+        name: String::new(),
+        scale: Scale::IDENTITY,
+    }
 }
 
 fn handled(placements: Vec<Placement>, effects: Vec<LayoutEffect>) -> Reply {
@@ -298,20 +306,20 @@ fn params_reject_duplicate_window() {
         },
     ];
     assert_eq!(
-        Params::new(10.0, 10.0, windows),
+        Params::new(output(), 10.0, 10.0, windows),
         Err(ParamsError::DuplicateWindow(win(1)))
     );
 }
 
 #[test]
 fn params_reject_empty_output() {
-    assert_eq!(Params::new(0.0, 10.0, vec![]), Err(ParamsError::EmptyOutput));
+    assert_eq!(Params::new(output(), 0.0, 10.0, vec![]), Err(ParamsError::EmptyOutput));
 }
 
 #[test]
 fn params_reject_non_finite_output() {
     assert_eq!(
-        Params::new(f64::NAN, 10.0, vec![]),
+        Params::new(output(), f64::NAN, 10.0, vec![]),
         Err(ParamsError::NonFinite("output width"))
     );
 }

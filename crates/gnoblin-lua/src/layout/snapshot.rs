@@ -3,20 +3,10 @@
 //! There is no clock field: a layout's output depends only on this snapshot and its
 //! own state.
 
-use gnoblin_types::{OutputId, RectF, Scale, WindowId, WorkspaceId};
+use gnoblin_types::{RectF, WindowId, WorkspaceId};
+use gnoblin_wm::layout::LayoutOutput;
 
 use super::data::Data;
-
-/// The output a workspace is on.
-#[derive(Clone, Debug, PartialEq)]
-pub struct OutputInfo {
-    /// The output's id.
-    pub id: OutputId,
-    /// The output's connector name.
-    pub name: String,
-    /// The output's scale.
-    pub scale: Scale,
-}
 
 /// A window's size limits. A maximum of zero means no limit.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -79,7 +69,7 @@ pub struct LayoutSnapshot {
     /// The workspace. Its layout state is kept per workspace.
     pub workspace: WorkspaceId,
     /// The output the workspace is on.
-    pub output: OutputInfo,
+    pub output: LayoutOutput,
     /// The work area the layout places windows in.
     pub area: RectF,
     /// The tiled windows, in stacking order.

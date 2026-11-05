@@ -7,10 +7,10 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use gnoblin_types::{Rect, WindowId};
+use gnoblin_types::{OutputId, Rect, Scale, WindowId};
 use gnoblin_wm::layout::{
-    Camera, Collected, Generation, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Origin,
-    Params, Placement, Reply, ReplyError, Request, RequestKind, Slot, Ticket,
+    Camera, Collected, Generation, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput,
+    LayoutWindow, Origin, Params, Placement, Reply, ReplyError, Request, RequestKind, Slot, Ticket,
 };
 
 fn win(id: u64) -> WindowId {
@@ -26,7 +26,15 @@ fn params(ids: &[u64]) -> Params {
             height: 50.0,
         })
         .collect();
-    Params::new(800.0, 600.0, windows).expect("valid params")
+    Params::new(output(), 800.0, 600.0, windows).expect("valid params")
+}
+
+fn output() -> LayoutOutput {
+    LayoutOutput {
+        id: OutputId::new(0),
+        name: String::new(),
+        scale: Scale::IDENTITY,
+    }
 }
 
 fn handled(placements: Vec<Placement>) -> Reply {

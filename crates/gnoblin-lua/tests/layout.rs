@@ -10,13 +10,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, LayoutSnapshot, LuaEngine, OutputInfo, WedgeHook, install, take_registrations,
-};
-use gnoblin_types::{OutputId, RectF, Scale, WindowId, WorkspaceId};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, WedgeHook, install, take_registrations};
+use gnoblin_types::{OutputId, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
-    Collected, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Params, Reply,
-    Request, RequestKind, Slot, Transform3, settle,
+    Collected, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
+    Reply, Request, RequestKind, Slot, Transform3, settle,
 };
 
 /// A fresh module directory holding the given `name -> source` modules.
@@ -34,27 +32,6 @@ fn host(dir: PathBuf) -> Rc<RefCell<Host>> {
     Rc::new(RefCell::new(Host::new(HostConfig::new(vec![dir]))))
 }
 
-/// What the wm's [`Params`] do not carry: the output, workspace, focus and gaps.
-fn template() -> LayoutSnapshot {
-    LayoutSnapshot {
-        workspace: WorkspaceId::new(1),
-        output: OutputInfo {
-            id: OutputId::new(1),
-            name: "test-output".into(),
-            scale: Scale::integral(1),
-        },
-        area: RectF {
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height: 0.0,
-        },
-        windows: Vec::new(),
-        focus: None,
-        gaps: Gaps::default(),
-    }
-}
-
 fn params(ids: &[u64], width: f64, height: f64) -> Params {
     let windows = ids
         .iter()
@@ -64,11 +41,16 @@ fn params(ids: &[u64], width: f64, height: f64) -> Params {
             height: 100.0,
         })
         .collect();
-    Params::new(width, height, windows).expect("valid params")
+    let output = LayoutOutput {
+        id: OutputId::new(1),
+        name: "test-output".into(),
+        scale: Scale::integral(1),
+    };
+    Params::new(output, width, height, windows).expect("valid params")
 }
 
 fn engine(host: &Rc<RefCell<Host>>, layout: &str) -> LuaEngine {
-    LuaEngine::new(Rc::clone(host), layout, template())
+    LuaEngine::new(Rc::clone(host), layout, WorkspaceId::new(1), Gaps::default())
 }
 
 /// Submits `job` as `generation` and collects it against a generous deadline.

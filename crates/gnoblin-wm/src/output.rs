@@ -1,20 +1,23 @@
 //! Outputs as abstract rectangles and their work areas.
 
-use gnoblin_types::{Insets, OutputId, Rect};
+use gnoblin_types::{Insets, OutputId, Rect, Scale};
 
 use crate::geometry::{clamp_to_i32, extent};
 
 /// One connected output.
 ///
-/// The window manager only needs the monitor rectangle and the space panels have
-/// reserved; mode, transform, scale and gamma belong to `gnoblin-output`. The
-/// first output in connection order is the primary output, which is where a new
-/// window goes when nothing is focused.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// The window manager needs the monitor rectangle, the space panels have reserved,
+/// and the identity a layout reports to its engine: the connector name and the
+/// scale. Mode, transform and gamma belong to `gnoblin-output`. The first output in
+/// connection order is the primary output, which is where a new window goes when
+/// nothing is focused.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Output {
     id: OutputId,
     rect: Rect,
     reserved: Insets,
+    name: String,
+    scale: Scale,
 }
 
 impl Output {
@@ -29,7 +32,22 @@ impl Output {
             id,
             rect: rect.at_least_one(),
             reserved,
+            name: String::new(),
+            scale: Scale::IDENTITY,
         }
+    }
+
+    /// The connector name, empty until the caller describes the output with
+    /// [`crate::Event::OutputIdentified`].
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The output's scale, [`Scale::IDENTITY`] until the caller describes it.
+    #[must_use]
+    pub const fn scale(&self) -> Scale {
+        self.scale
     }
 
     /// The caller's identity for this output.
@@ -76,6 +94,12 @@ impl Output {
     /// Replaces the reservation, keeping the monitor rectangle.
     pub(crate) fn set_reserved(&mut self, reserved: Insets) {
         self.reserved = reserved;
+    }
+
+    /// Replaces the connector name and scale that layouts are told about.
+    pub(crate) fn set_identity(&mut self, name: String, scale: Scale) {
+        self.name = name;
+        self.scale = scale;
     }
 }
 

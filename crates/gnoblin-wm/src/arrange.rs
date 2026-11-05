@@ -51,14 +51,14 @@ use gnoblin_types::{OutputId, RectF, WindowId, WorkspaceId};
 
 use crate::effect::Effect;
 use crate::layout::{
-    Collected, Job, Layout, LayoutEngine, LayoutFailure, LayoutWindow, Params, ParamsError, Placement, Request,
-    RequestKind, Slot, Transform3,
+    Collected, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutput, LayoutWindow, Params, ParamsError, Placement,
+    Request, RequestKind, Slot, Transform3,
 };
 use crate::output::Output;
 use crate::window::{Window, WindowState};
 
-/// Builds one engine for each workspace.
-pub(crate) type Factory = Box<dyn FnMut() -> Box<dyn LayoutEngine>>;
+/// Builds the engine for one workspace.
+pub(crate) type Factory = Box<dyn FnMut(WorkspaceId) -> Box<dyn LayoutEngine>>;
 
 /// Every workspace's layout state, and the factory that makes engines.
 #[derive(Default)]
@@ -132,9 +132,10 @@ pub(crate) fn tiled_params(
     let Some(output) = output else {
         return Ok(None);
     };
-    let Some(work_area) = outputs.iter().find(|entry| entry.id() == output).map(Output::work_area) else {
+    let Some(entry) = outputs.iter().find(|entry| entry.id() == output) else {
         return Ok(None);
     };
+    let work_area = entry.work_area();
     let tiled: Vec<LayoutWindow> = windows
         .values()
         .filter(|window| window.workspace == workspace && window.output == Some(output) && is_tiled(&window.state))
@@ -147,7 +148,12 @@ pub(crate) fn tiled_params(
     if tiled.is_empty() {
         return Ok(None);
     }
-    Params::new(f64::from(work_area.width), f64::from(work_area.height), tiled).map(Some)
+    let identity = LayoutOutput {
+        id: output,
+        name: entry.name().to_owned(),
+        scale: entry.scale(),
+    };
+    Params::new(identity, f64::from(work_area.width), f64::from(work_area.height), tiled).map(Some)
 }
 
 impl fmt::Debug for Layouts {
@@ -190,7 +196,7 @@ impl Layouts {
         for id in workspaces {
             self.by_workspace.entry(*id).or_insert_with(|| WorkspaceLayout {
                 output: first_output,
-                slot: Slot::new(factory()),
+                slot: Slot::new(factory(*id)),
                 submitted: None,
                 placed: BTreeMap::new(),
             });

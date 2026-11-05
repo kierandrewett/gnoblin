@@ -11,34 +11,35 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
-use gnoblin_types::RectF;
+use gnoblin_types::{RectF, WorkspaceId};
 use gnoblin_wm::layout::{Generation, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Reply, Ticket};
 
 use super::LayoutReason;
 use super::host::Host;
 use super::lua::{LayoutCall, LayoutFault};
-use super::snapshot::{LayoutSnapshot, SizeHints, SnapshotWindow};
+use super::snapshot::{Gaps, LayoutSnapshot, SizeHints, SnapshotWindow};
 use super::worker::LayoutFinished;
 
 /// One named Lua layout, driven through the wm's layout contract.
 pub struct LuaEngine {
     host: Rc<RefCell<Host>>,
     layout: String,
-    /// The output, workspace, focus and gaps every run is made with. The area and the
-    /// windows come from each run's [`Params`].
-    template: LayoutSnapshot,
+    /// The workspace and gaps every run is made with. The output, area and windows
+    /// come from each run's [`Params`].
+    workspace: WorkspaceId,
+    gaps: Gaps,
     /// Each submitted run: its host generation, or the fault that stopped it at submit.
     runs: BTreeMap<Generation, Result<u64, LayoutFault>>,
 }
 
 impl LuaEngine {
-    /// Drives layout `layout` on `host`. `template` supplies what the wm's [`Params`]
-    /// do not carry: the output, the workspace, the focus and the gaps.
-    pub fn new(host: Rc<RefCell<Host>>, layout: impl Into<String>, template: LayoutSnapshot) -> Self {
+    /// Drives layout `layout` on `host` for `workspace`, with the gaps `gaps`.
+    pub fn new(host: Rc<RefCell<Host>>, layout: impl Into<String>, workspace: WorkspaceId, gaps: Gaps) -> Self {
         Self {
             host,
             layout: layout.into(),
-            template,
+            workspace,
+            gaps,
             runs: BTreeMap::new(),
         }
     }
@@ -56,13 +57,9 @@ impl LuaEngine {
                 size_hints: SizeHints::default(),
             })
             .collect();
-        let focus = self
-            .template
-            .focus
-            .filter(|focus| windows.iter().any(|window| window.id == *focus));
         LayoutSnapshot {
-            workspace: self.template.workspace,
-            output: self.template.output.clone(),
+            workspace: self.workspace,
+            output: params.output().clone(),
             area: RectF {
                 x: 0.0,
                 y: 0.0,
@@ -70,8 +67,8 @@ impl LuaEngine {
                 height: params.output_height(),
             },
             windows,
-            focus,
-            gaps: self.template.gaps,
+            focus: None,
+            gaps: self.gaps,
         }
     }
 

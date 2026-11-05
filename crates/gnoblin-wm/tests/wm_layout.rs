@@ -103,7 +103,7 @@ fn wm_with_engines(decline: bool) -> Wm {
         output: out(0),
         rect: MONITOR,
     });
-    let effects = wm.set_layout_engines(move || -> Box<dyn LayoutEngine> {
+    let effects = wm.set_layout_engines(move |_workspace| -> Box<dyn LayoutEngine> {
         Box::new(MasterStack {
             decline,
             pending: 0,

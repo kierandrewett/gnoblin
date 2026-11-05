@@ -266,6 +266,15 @@ impl Wm {
                     None => vec![Effect::rejected(Rejection::UnknownOutput(output))],
                 }
             }
+            Event::OutputIdentified { output, name, scale } => {
+                match self.outputs.iter_mut().find(|entry| entry.id() == output) {
+                    Some(entry) => {
+                        entry.set_identity(name, scale);
+                        self.output_layout_changed(output)
+                    }
+                    None => vec![Effect::rejected(Rejection::UnknownOutput(output))],
+                }
+            }
             Event::WindowOpened(spec) => self.window_opened(spec),
             Event::WindowClosed { window } => self.window_closed(window),
             Event::WindowTitleChanged { window, title } => self.window_title_changed(window, title),
@@ -1219,10 +1228,14 @@ impl Wm {
         Self::configured_with(id, window.geometry, window.state)
     }
 
-    /// Installs `factory` as the source of one layout engine per workspace and
-    /// submits the arrangement of every workspace. Placements arrive on the next
-    /// [`Event::Frame`]; the returned effects only report input that was refused.
-    pub fn set_layout_engines(&mut self, factory: impl FnMut() -> Box<dyn LayoutEngine> + 'static) -> Vec<Effect> {
+    /// Installs `factory` as the source of one layout engine per workspace, called
+    /// with the workspace each engine is for, and submits the arrangement of every
+    /// workspace. Placements arrive on the next [`Event::Frame`]; the returned
+    /// effects only report input that was refused.
+    pub fn set_layout_engines(
+        &mut self,
+        factory: impl FnMut(WorkspaceId) -> Box<dyn LayoutEngine> + 'static,
+    ) -> Vec<Effect> {
         self.layouts.install(Box::new(factory));
         self.sync_layouts()
     }

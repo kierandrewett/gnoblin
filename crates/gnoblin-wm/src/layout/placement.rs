@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use gnoblin_types::{Rect, WindowId};
+use gnoblin_types::{OutputId, Rect, Scale, WindowId};
 
 use super::error::ParamsError;
 use super::transform::{BOUND, Transform3};
@@ -18,12 +18,28 @@ pub struct LayoutWindow {
     pub height: f64,
 }
 
-/// Validated input to a layout run: the output size and the tiled windows.
+/// The output a layout run is made for, as the layout sees it.
+///
+/// The identity travels in every run's [`Params`] rather than being fixed when an
+/// engine is built, so an output that is identified or rescaled after its
+/// workspace's engine exists is reported by the next run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayoutOutput {
+    /// The output's identity.
+    pub id: OutputId,
+    /// The connector name, empty until the output is identified.
+    pub name: String,
+    /// The output's scale.
+    pub scale: Scale,
+}
+
+/// Validated input to a layout run: the output, its size and the tiled windows.
 ///
 /// Fields are private so a `Params` always has a finite, positive output, finite
 /// bounded window sizes and no duplicate windows. Build one with [`Params::new`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Params {
+    output: LayoutOutput,
     output_width: f64,
     output_height: f64,
     windows: Vec<LayoutWindow>,
@@ -31,7 +47,12 @@ pub struct Params {
 
 impl Params {
     /// Checks the output size and every window, and keeps the window order.
-    pub fn new(output_width: f64, output_height: f64, windows: Vec<LayoutWindow>) -> Result<Self, ParamsError> {
+    pub fn new(
+        output: LayoutOutput,
+        output_width: f64,
+        output_height: f64,
+        windows: Vec<LayoutWindow>,
+    ) -> Result<Self, ParamsError> {
         check_size("output width", output_width)?;
         check_size("output height", output_height)?;
         if output_width <= 0.0 || output_height <= 0.0 {
@@ -46,10 +67,16 @@ impl Params {
             }
         }
         Ok(Self {
+            output,
             output_width,
             output_height,
             windows,
         })
+    }
+
+    /// The output the run is made for.
+    pub fn output(&self) -> &LayoutOutput {
+        &self.output
     }
 
     /// Output width in logical units.
