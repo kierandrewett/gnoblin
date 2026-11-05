@@ -9,6 +9,7 @@
 
 use gnoblin_types::{Rect, WindowId, WorkspaceId};
 
+use crate::layout::Placement;
 use crate::rules::WorkspaceSelector;
 use crate::window::WindowState;
 
@@ -22,7 +23,7 @@ pub enum RuleRejection {
 }
 
 /// A request to the compositor.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Effect {
     /// Send this geometry and state to the client and the frame renderer.
     Configure {
@@ -81,6 +82,24 @@ pub enum Effect {
     Rejected {
         /// Why.
         reason: crate::event::Rejection,
+    },
+    /// A layout settled and places this window. Sent once per placed window of a
+    /// settled run; the compositor applies the 3D placement, visibility, opacity and
+    /// decoration it carries.
+    PlacementTarget {
+        /// The workspace whose layout produced the placement.
+        workspace: WorkspaceId,
+        /// Where the window goes and how it is drawn.
+        placement: Placement,
+    },
+    /// A layout run failed or its input was refused. The last good placements of
+    /// the workspace stay in force.
+    LayoutFailed {
+        /// The workspace whose layout failed.
+        workspace: WorkspaceId,
+        /// The failure's name, as in [`crate::layout::LayoutFailure::reason`], or
+        /// `invalid-params` when the input was refused.
+        reason: &'static str,
     },
 }
 

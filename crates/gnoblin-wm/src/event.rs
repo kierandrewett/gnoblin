@@ -97,6 +97,9 @@ pub enum Event {
     },
     /// A window should move to the top of its layer.
     Raise { window: WindowId },
+    /// A compositor frame. Collects every layout run that finished before
+    /// `deadline`; a run still in flight keeps the last good placements.
+    Frame { deadline: std::time::Instant },
     /// A window should move to the bottom of its layer.
     Lower { window: WindowId },
     /// A window should be hidden.

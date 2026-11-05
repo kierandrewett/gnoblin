@@ -210,7 +210,7 @@ pub enum Command {
 }
 
 /// What the compositor does with one X11 event.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct EventOutcome {
     /// The window the event is about, when the policy decided it is managed.
     ///

@@ -1015,6 +1015,9 @@ impl State {
                     warn!(%window, rule, ?reason, "[rules] rule did not apply")
                 }
                 Effect::Rejected { reason } => debug!(?reason, "[wm] the event changed nothing"),
+                // The compositor does not map placements to the 3D scene yet; the wiring lane owns that.
+                Effect::PlacementTarget { .. } => {}
+                Effect::LayoutFailed { workspace, reason } => debug!(%workspace, reason, "[layout] failed"),
             }
         }
     }

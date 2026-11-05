@@ -1,14 +1,17 @@
 //! The window management state machine: events in, effects out.
 
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use gnoblin_types::{Insets, OutputId, Rect, Size, WindowId, WorkspaceId};
 
 use crate::activation::ActivationDecision;
+use crate::arrange::{self, Layouts};
 use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
 use crate::geometry::clamp_to_i32;
+use crate::layout::{LayoutEffect, LayoutEngine};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::rules::{Rule, RuleAction};
@@ -177,7 +180,7 @@ pub enum Broken {
 /// [`Wm::apply`] and read state back through the accessors. There is no interior
 /// mutability and no background work, so a caller can hold `&Wm` while it applies
 /// the returned effects.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Wm {
     options: WmOptions,
     outputs: Vec<Output>,
@@ -188,6 +191,7 @@ pub struct Wm {
     focus: Option<WindowId>,
     history: Vec<WindowId>,
     rules: Vec<Rule>,
+    layouts: Layouts,
 }
 
 impl Wm {
@@ -220,8 +224,15 @@ impl Wm {
     /// same manager state and the same event always produce the same effects, and
     /// nothing in this crate reads a clock or a random source.
     pub fn apply(&mut self, event: Event) -> Vec<Effect> {
+        let mut effects = self.apply_event(event);
+        effects.extend(self.sync_layouts());
+        effects
+    }
+
+    fn apply_event(&mut self, event: Event) -> Vec<Effect> {
         match event {
             Event::OutputConnected { output, rect } => self.output_connected(output, rect),
+            Event::Frame { deadline } => self.collect_layouts(deadline),
             Event::OutputDisconnected { output } => self.output_disconnected(output),
             Event::OutputMoved { output, rect } => match self.outputs.iter_mut().find(|entry| entry.id() == output) {
                 Some(entry) => {
@@ -595,6 +606,7 @@ impl Wm {
             return vec![Effect::rejected(Rejection::DuplicateOutput(id))];
         }
         self.outputs.push(Output::new(id, rect, Insets::ZERO));
+        self.layouts.output_connected(id);
         let Some(output) = self.output(id) else {
             return Vec::new();
         };
@@ -639,6 +651,8 @@ impl Wm {
             .outputs
             .first()
             .map(|output| (output.id(), output.work_area(), output.rect()));
+        self.layouts
+            .output_disconnected(id, survivor.map(|(output, _, _)| output));
         let affected: Vec<WindowId> = self
             .windows
             .values()
@@ -1186,6 +1200,63 @@ impl Wm {
         window.geometry = geometry;
         window.restore = geometry;
         Self::configured_with(id, window.geometry, window.state)
+    }
+
+    /// Installs `factory` as the source of one layout engine per workspace and
+    /// submits the arrangement of every workspace. Placements arrive on the next
+    /// [`Event::Frame`]; the returned effects only report input that was refused.
+    pub fn set_layout_engines(&mut self, factory: impl FnMut() -> Box<dyn LayoutEngine> + 'static) -> Vec<Effect> {
+        self.layouts.install(Box::new(factory));
+        self.sync_layouts()
+    }
+
+    /// Submits a run for every workspace whose tiled input changed since its last
+    /// submit. Does nothing when no factory is installed.
+    fn sync_layouts(&mut self) -> Vec<Effect> {
+        if !self.layouts.is_enabled() {
+            return Vec::new();
+        }
+        let first_output = self.outputs.first().map(Output::id);
+        let (outputs, windows) = (&self.outputs, &self.windows);
+        self.layouts
+            .sync(self.workspaces.ids(), first_output, |workspace, output| {
+                arrange::tiled_params(workspace, output, windows, outputs)
+            })
+    }
+
+    /// Collects the runs that finished before `deadline`. A settled `Float` takes a
+    /// window out of tiling only while it is still tiled on that workspace;
+    /// placements follow as [`Effect::PlacementTarget`] and failures as
+    /// [`Effect::LayoutFailed`].
+    fn collect_layouts(&mut self, deadline: Instant) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        for (workspace, outcome) in self.layouts.collect(deadline) {
+            match outcome {
+                Ok(layout) => {
+                    for effect in layout.effects {
+                        let LayoutEffect::Float { window } = effect;
+                        let tiled_here = self
+                            .windows
+                            .get(&window)
+                            .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state));
+                        if tiled_here {
+                            effects.extend(self.set_floating(window, true));
+                        }
+                    }
+                    effects.extend(
+                        layout
+                            .placements
+                            .into_iter()
+                            .map(|placement| Effect::PlacementTarget { workspace, placement }),
+                    );
+                }
+                Err(failure) => effects.push(Effect::LayoutFailed {
+                    workspace,
+                    reason: failure.reason(),
+                }),
+            }
+        }
+        effects
     }
 }
 

@@ -93,6 +93,7 @@
 pub mod layout;
 
 mod activation;
+mod arrange;
 mod drag;
 mod effect;
 mod event;
