@@ -467,6 +467,12 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
 
 ### Fixed
 
+- The compositor no longer stops for good in a session without a PipeWire daemon. The privacy monitor tried to
+  connect every 2 s, and each try made a PipeWire context, started its thread and stopped it at once when the
+  connection failed. A stop that came before the new thread had entered its loop was lost (PipeWire 1.0 to 1.6), and
+  Mutter's main thread waited for that thread for ever: no input, no `gnoblinctl` answer, no logout. It stopped 3 of
+  about 100 graphical test legs in CI. The monitor now makes nothing while the PipeWire socket is missing, connects
+  before it starts the thread, and waits until a started thread has entered its loop.
 - The packaged programs no longer hold paths of the build machine: `scripts/build-prefix.sh` maps the checkout to `.`
   (`-ffile-prefix-map`), and the system layout no longer builds the build-tree fallback path of the version file into
   `gnoblinctl`, which an installed `gnoblinctl` would have read.
@@ -489,11 +495,12 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
   with a soft lockup of 300 s or more (the longest that recovered in CI lasted 106 s).
 - The graphical VM test fails `session` at once when Gnoblin logs that its Lua runtime is lost for the session,
   instead of after the 600 s session timeout, and says why gnoblinctl cannot reach the session. A failed `session`
-  keeps a picture of the screen and where each compositor thread is (`compositor-threads.txt`, with an `eu-stack`
+  keeps a picture of the screen and where each compositor thread is (`compositor-threads.txt`, with a `gdb`
   backtrace), and its excerpt now holds Gnoblin's own log lines.
 - When a graphical check after the session fails (`globals` to `shutdown`), its detail says whether the compositor
   still answers `gnoblinctl status`, and the first such failure keeps the screen and `compositor-threads.txt`. A failed
-  `shutdown` also gives the exit status and message of `gnoblinctl logout`.
+  `shutdown` also gives the exit status and message of `gnoblinctl logout`. After the backtrace the harness asks the
+  compositor again, and says so when it answers only then (a wakeup that was lost).
 - The package suite runs an apk command again, at most 3 times in all, when a fetch from the repository fails in
   transit (TLS, DNS, a closed or reset connection, an HTTP timeout or server error), and prints the error each time.
   Any other apk failure, and a fetch error that stays, still fails the case.

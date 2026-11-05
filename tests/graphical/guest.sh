@@ -13,7 +13,7 @@
 #        guest.sh unbind-gpu            detach the virtio GPU from its driver (a broken-guest check)
 #        guest.sh threads USER PATTERN  print the threads of USER's compositor (pgrep -f PATTERN): state, CPU time
 #                                       twice 2 s apart, kernel wait channel and stack, and a user-space backtrace
-#                                       (eu-stack, installed when missing) after a failed check that needs the session
+#                                       (gdb, installed when missing) after a failed check that needs the session
 #
 # The session starts the way a display manager starts it: the Exec line of the installed wayland-sessions entry, in a
 # logind session of type wayland on seat0 and tty1 (see prepare_session). No display manager is installed, because
@@ -357,21 +357,28 @@ compositor_threads() {
         echo "-- kernel stack of ${task##*/} $(cat "$task/comm" 2>/dev/null)"
         cat "$task/stack" 2>/dev/null || echo "(not readable)"
     done
-    # The image has neither tool, so eu-stack is installed now, only for a check that failed: the passing path
-    # installs nothing more. A failed install leaves the samples above as the evidence. musl has no unwind tables of
-    # its own, so on Alpine eu-stack needs musl-dbg to walk past the first frame.
-    if ! command -v eu-stack >/dev/null && ! command -v gdb >/dev/null; then
-        local tools=elfutils
-        [[ "$kind" != apk ]] || tools="elfutils musl-dbg"
-        echo "-- installing $tools for eu-stack"
-        timeout 600 bash -c "$(declare -f pm_install); kind=$kind; pm_install $tools" >/dev/null 2>&1 || true
+    # The image has no debugger, so gdb is installed now, only for a check that failed: the passing path installs
+    # nothing more. musl has no unwind tables of its own and Alpine's GLib is stripped, so on Alpine musl-dbg and
+    # glib-dbg come too (not mesa-dbg, which is large and slow to install on an emulated guest): with them gdb names
+    # every frame, where eu-stack stopped at the first musl frame (run 41964995167). Each package goes in on its own, so
+    # one that a release lacks does not keep the others out. A failed install leaves the samples above as the evidence.
+    # The attach stops every thread, and a futex or epoll wait that it interrupts is restarted or returns, which can
+    # wake a thread whose wakeup was lost. So the caller asks the compositor again after this.
+    if ! command -v gdb >/dev/null; then
+        local tool tools=gdb
+        [[ "$kind" != apk ]] || tools="gdb musl-dbg glib-dbg"
+        for tool in $tools; do
+            echo "-- installing $tool"
+            timeout 600 bash -c "$(declare -f pm_install); kind=$kind; pm_install $tool" >/dev/null 2>&1 || true
+        done
     fi
-    if command -v eu-stack >/dev/null; then
-        eu-stack -p "$pid" 2>&1 | head -n 400 || true
-    elif command -v gdb >/dev/null; then
-        gdb -q -batch -p "$pid" -ex "thread apply all bt" 2>&1 | head -n 400 || true
+    if command -v gdb >/dev/null; then
+        timeout 600 gdb -q -batch -p "$pid" -ex "set pagination off" -ex "set debuginfod enabled off" \
+            -ex "info threads" -ex "thread apply all bt 40" -ex "info sharedlibrary" 2>&1 | head -n 2000 || true
+        echo "-- memory map"
+        cat "/proc/$pid/maps" 2>/dev/null || true
     else
-        echo "-- no eu-stack or gdb in the guest: no user-space backtrace"
+        echo "-- no gdb in the guest: no user-space backtrace"
     fi
 }
 

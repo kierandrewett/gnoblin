@@ -1078,8 +1078,17 @@ class Run:
             if not threads.exists():
                 guest.keep_screen(name=f"{name}-screen")
                 _, text, _ = guest.root(f"bash {GUEST_DIR}/guest.sh threads {USER} '{COMPOSITOR}'", check=False,
-                                        timeout=900)  # fmt: skip
+                                        timeout=1800)  # fmt: skip
                 threads.write_text(f"after the {name} check failed\n{text}")
+                if code != 0:
+                    # The debugger's attach restarts each futex wait with a fresh check of its word. A compositor that
+                    # answers only now was waiting for a wakeup that was lost (run 41964995167, Alpine 3.24 arm64).
+                    after, _, _ = guest.user("timeout 10 gnoblinctl status >/dev/null", check=False, timeout=60)
+                    clause += (
+                        "; after the stack dump it answers (a lost wakeup)"
+                        if after == 0
+                        else "; after the stack dump it still does not answer"
+                    )
             return clause
         except (subprocess.TimeoutExpired, OSError) as error:
             return f"; no compositor state: {error}"

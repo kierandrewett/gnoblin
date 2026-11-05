@@ -623,17 +623,19 @@ class CompositorState(unittest.TestCase):
     with no message from the compositor. A check that needs the compositor now says whether it still answers, and the
     first such failure keeps the screen and where each compositor thread is."""
 
-    def run_checks(self, status_code, names=("pointer", "keyboard")):
+    def run_checks(self, status_code, names=("pointer", "keyboard"), after_dump=None):
+        """status_code is what gnoblinctl status returns; after_dump, when given, what it returns once the stack dump
+        has run (the debugger's attach can wake a lost wakeup)."""
         commands = []
 
         class Guest:
             def user(self, command, **options):
                 commands.append(command)
-                return (
-                    (status_code, "", "gnoblinctl: the session is gone\n")
-                    if "gnoblinctl status" in command
-                    else (0, "", "")
-                )
+                if "gnoblinctl status" not in command:
+                    return 0, "", ""
+                dumped = any("guest.sh threads" in c for c in commands)
+                code = after_dump if dumped and after_dump is not None else status_code
+                return code, "", "" if code == 0 else "gnoblinctl: the session is gone\n"
 
             def root(self, command, **options):
                 commands.append(command)
@@ -656,20 +658,31 @@ class CompositorState(unittest.TestCase):
     def test_a_stalled_compositor_is_named_and_its_threads_kept_once(self):
         run, commands, work = self.run_checks(124)
         details = [item["detail"] for item in run.checks]
-        self.assertTrue(all(d.endswith("; the compositor does not answer gnoblinctl within 10 s") for d in details))
+        self.assertEqual(
+            details,
+            [
+                "the pointer never entered the client window; the compositor does not answer gnoblinctl within 10 s"
+                "; after the stack dump it still does not answer",
+                "the pointer never entered the client window; the compositor does not answer gnoblinctl within 10 s",
+            ],
+        )
         self.assertEqual([c for c in commands if c.startswith("screen")], ["screen pointer-screen"])
         self.assertEqual(sum("guest.sh threads" in c for c in commands), 1)
         self.assertTrue((work / "compositor-threads.txt").read_text().startswith("after the pointer check failed\n"))
 
     def test_a_compositor_that_answers_says_so(self):
-        run, _, _ = self.run_checks(0)
+        run, commands, _ = self.run_checks(0)
         self.assertTrue(run.checks[0]["detail"].endswith("; the compositor answers gnoblinctl"))
+        self.assertEqual(sum("gnoblinctl status" in c for c in commands), 2)  # no second ask after the dump
+
+    def test_a_compositor_that_answers_only_after_the_stack_dump_had_lost_a_wakeup(self):
+        # Run 41964995167, Alpine 3.24 arm64: the compositor came back when eu-stack detached.
+        run, _, _ = self.run_checks(124, names=("pointer",), after_dump=0)
+        self.assertTrue(run.checks[0]["detail"].endswith("; after the stack dump it answers (a lost wakeup)"))
 
     def test_another_error_is_quoted(self):
         run, _, _ = self.run_checks(1)
-        self.assertTrue(
-            run.checks[0]["detail"].endswith("; gnoblinctl status exited 1: gnoblinctl: the session is gone")
-        )
+        self.assertIn("; gnoblinctl status exited 1: gnoblinctl: the session is gone", run.checks[0]["detail"])
 
     def test_a_check_before_the_session_does_not_ask(self):
         run, commands, work = self.run_checks(124, names=("install",))
