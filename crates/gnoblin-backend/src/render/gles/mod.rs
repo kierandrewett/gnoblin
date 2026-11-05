@@ -568,6 +568,9 @@ impl Painter<'_> {
         let radius = (corner_radius * self.scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
         for pass in effects.passes() {
             match pass {
+                Pass::Shadow(_) | Pass::Blur(_) if placement.clip.is_some() => {
+                    warn!("unsupported-effect-on-3d: a shadow or blur on a transformed layer is not drawn");
+                }
                 Pass::Shadow(shadow) if shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
                     self.shadow(quad, radius, shadow)?;
                 }

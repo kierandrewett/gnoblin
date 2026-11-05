@@ -1772,3 +1772,21 @@ left = "gnoblin-wm::Request"
 right = "gnoblin-compositor::Request"
 kind = "same-name"
 reason = "a layout request asks the Lua layout provider; a portal UI request is a portal prompt"
+
+[[allow]]
+left = "gnoblin-a11y::Model"
+right = "gnoblin-backend::Model"
+kind = "same-name"
+reason = "a backend layer's 3D model matrix is a draw transform; the accessibility model is the tree of exposed objects"
+
+[[allow]]
+left = "gnoblin-backend::Placement"
+right = "gnoblin-wm::Placement"
+kind = "same-name"
+reason = "a backend quad placement is a clip-space draw transform; a window placement is a layout decision"
+
+[[allow]]
+left = "gnoblin-backend::Placement"
+right = "gnoblin-output::Placement"
+kind = "same-name"
+reason = "a backend quad placement is a clip-space draw transform; an output placement is a monitor arrangement"

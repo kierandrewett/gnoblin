@@ -926,3 +926,42 @@ fn a_rotated_quad_under_perspective_lands_on_its_projected_corners() {
         "the check must see both sides: inside {inside}, outside {outside}"
     );
 }
+
+/// A shadow or blur on a projected layer is refused rather than drawn in the flat plane, so the
+/// frame paints exactly the pixels it paints without the effects.
+#[test]
+fn an_effect_on_a_projected_layer_draws_nothing_extra() {
+    let size = Size::new(32, 32);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let red = Color::from_rgba8(255, 0, 0, 255);
+    let plain = layered_frame(
+        Color::WHITE,
+        size,
+        vec![spatial_solid(Rect::new(8, 8, 16, 16), red, Mat4::IDENTITY, true)],
+    );
+    let mut solid = spatial_solid(Rect::new(8, 8, 16, 16), red, Mat4::IDENTITY, true);
+    let mut effects = Effects::new();
+    effects
+        .push(Pass::Shadow(Shadow {
+            offset: Vec3::new(0.0, 4.0, 0.0),
+            blur: 8.0,
+            opacity: 0.5,
+            color: Color::BLACK,
+        }))
+        .expect("a shadow");
+    effects.push(Pass::Blur(Blur { radius: 6.0 })).expect("a blur");
+    solid.effects = effects;
+    let effectful = layered_frame(Color::WHITE, size, vec![solid]);
+
+    renderer.draw(&plain, Scale::IDENTITY).expect("drawn");
+    let expected = renderer.screenshot().expect("a readback");
+    renderer.draw(&effectful, Scale::IDENTITY).expect("drawn");
+    let actual = renderer.screenshot().expect("a readback");
+    for y in 0..32 {
+        for x in 0..32 {
+            assert_eq!(probe(&actual, x, y), probe(&expected, x, y), "at {x},{y}");
+        }
+    }
+}
