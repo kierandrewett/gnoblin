@@ -33,11 +33,8 @@ use tracing::{debug, warn};
 
 use gnoblin_backend::{Host, InputEvent, Target};
 use gnoblin_output::{LayoutConfig, compute};
-use gnoblin_types::{OutputId, Rect, Size};
-use gnoblin_wm::{
-    ActivationDecision, Effect, Event, OutputId as PolicyOutputId, Rect as PolicyRect, WindowId, WindowSpec, Wm,
-    WmOptions,
-};
+use gnoblin_types::{OutputId, Rect, Size, WindowId, WorkspaceId};
+use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
 use crate::observation::{ObservedWindow, SessionSnapshot};
 use crate::server::StartupError;
@@ -68,13 +65,13 @@ struct OutputEntry {
     /// The backend's identity for the output.
     backend: OutputId,
     /// The window manager's identity for it.
-    policy: PolicyOutputId,
+    policy: OutputId,
     /// The Smithay output, which owns the `wl_output` global.
     output: Output,
     /// The global the output created.
     global: GlobalId,
     /// The logical rectangle the layout assigned.
-    rect: PolicyRect,
+    rect: Rect,
 }
 
 /// The compositor state every protocol handler receives.
@@ -185,7 +182,7 @@ impl State {
 
         for raw in 0..workspaces.max(DEFAULT_WORKSPACES) {
             state.wm.apply(Event::WorkspaceAdded {
-                workspace: gnoblin_wm::WorkspaceId::new(raw + 1),
+                workspace: WorkspaceId::new(u64::from(raw) + 1),
             });
         }
         state.sync_outputs(backend_outputs);
@@ -309,8 +306,8 @@ impl State {
         );
         let global = smithay_output.create_global::<Self>(&self.display_handle);
 
-        let policy = PolicyOutputId::new(self.outputs.len() as u32);
-        let policy_rect = policy_rect(rect);
+        let policy = OutputId::new(self.outputs.len() as u64);
+        let policy_rect = rect;
         let effects = self.wm.apply(Event::OutputConnected {
             output: policy,
             rect: policy_rect,
@@ -332,7 +329,7 @@ impl State {
             return;
         };
         let policy = entry.policy;
-        let policy_rect = policy_rect(rect);
+        let policy_rect = rect;
         if entry.rect == policy_rect {
             return;
         }
@@ -379,7 +376,7 @@ impl State {
     /// The state is written to the surface's pending state either way; a toplevel
     /// that has not had its initial configure yet carries this state into that
     /// configure, which the client's first commit triggers.
-    fn configure(&mut self, window: WindowId, geometry: PolicyRect, state: gnoblin_wm::WindowState) {
+    fn configure(&mut self, window: WindowId, geometry: Rect, state: gnoblin_wm::WindowState) {
         let Some(surface) = self.windows.get(&window).map(|entry| entry.surface.clone()) else {
             // The window closed between the policy call and this action, which is
             // the race the policy's rejections describe.
@@ -387,7 +384,7 @@ impl State {
         };
         surface.with_pending_state(|pending| {
             pending.bounds = None;
-            pending.size = Some(SmithaySize::from((geometry.width, geometry.height)));
+            pending.size = Some(SmithaySize::from((geometry.width as i32, geometry.height as i32)));
             set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
             set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
         });
@@ -431,7 +428,7 @@ impl State {
         {
             return;
         }
-        let window = WindowId::new(self.next_window);
+        let window = WindowId::new(u64::from(self.next_window));
         self.next_window = self.next_window.saturating_add(1);
         let wl_surface = surface.wl_surface().clone();
         self.windows.insert(
@@ -588,12 +585,12 @@ impl State {
     }
 
     /// The window's geometry, for popup positioning. `None` when it closed.
-    pub(crate) fn geometry_of(&self, window: WindowId) -> Option<PolicyRect> {
+    pub(crate) fn geometry_of(&self, window: WindowId) -> Option<Rect> {
         Some(self.wm.window(window)?.geometry)
     }
 
     /// The monitor rectangle of the output the window is on.
-    pub(crate) fn monitor_of(&self, window: WindowId) -> Option<PolicyRect> {
+    pub(crate) fn monitor_of(&self, window: WindowId) -> Option<Rect> {
         let output = self.wm.window(window)?.output?;
         Some(self.wm.output(output)?.rect())
     }
@@ -680,10 +677,6 @@ fn smithay_mode(output: &gnoblin_backend::Output) -> Mode {
 }
 
 /// A layout rectangle as the window manager states it.
-fn policy_rect(rect: Rect) -> PolicyRect {
-    PolicyRect::new(rect.x, rect.y, rect.width as i32, rect.height as i32)
-}
-
 /// Sets or clears an xdg toplevel state flag.
 fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: bool) {
     if enabled {

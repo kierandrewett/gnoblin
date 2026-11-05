@@ -290,8 +290,8 @@ impl Client {
 /// The centre of a window, in the output's logical space.
 fn centre(window: &ObservedWindow) -> Point {
     Point::new(
-        window.geometry.x + window.geometry.width / 2,
-        window.geometry.y + window.geometry.height / 2,
+        window.geometry.x + (window.geometry.width / 2) as i32,
+        window.geometry.y + (window.geometry.height / 2) as i32,
     )
 }
 
@@ -332,8 +332,8 @@ fn a_real_client_maps_a_window_and_gets_focus() {
         assert!(
             managed.geometry.x >= 0
                 && managed.geometry.y >= 0
-                && managed.geometry.right() <= width
-                && managed.geometry.bottom() <= height,
+                && managed.geometry.right() <= i64::from(width)
+                && managed.geometry.bottom() <= i64::from(height),
             "the window is inside the output: {:?}",
             managed.geometry
         );
@@ -435,7 +435,7 @@ fn a_configure_that_is_never_acknowledged_does_not_stall_the_session() {
         let observation = session.wait_for(|observation| {
             observation
                 .titled("Slow")
-                .is_some_and(|window| window.geometry.width == headless_screen().0)
+                .is_some_and(|window| window.geometry.width as i32 == headless_screen().0)
         });
         assert!(
             slow.state.toplevel_configures >= 2,
@@ -443,7 +443,7 @@ fn a_configure_that_is_never_acknowledged_does_not_stall_the_session() {
             slow.state.toplevel_configures
         );
         assert_eq!(
-            observation.titled("Slow").map(|window| window.geometry.height),
+            observation.titled("Slow").map(|window| window.geometry.height as i32),
             Some(headless_screen().1),
             "the maximised window covers the work area"
         );

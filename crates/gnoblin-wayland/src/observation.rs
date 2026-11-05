@@ -8,8 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_types::OutputId;
-use gnoblin_wm::{Rect, WindowId};
+use gnoblin_types::{OutputId, Rect, WindowId};
 
 /// One window, as the server last saw it.
 #[derive(Clone, PartialEq, Eq, Debug)]

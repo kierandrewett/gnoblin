@@ -138,7 +138,7 @@ impl State {
     }
 
     /// The window a popup belongs to, if its parent chain reaches a managed one.
-    fn popup_root_window(&self, surface: &PopupSurface) -> Option<gnoblin_wm::WindowId> {
+    fn popup_root_window(&self, surface: &PopupSurface) -> Option<gnoblin_types::WindowId> {
         let root = find_popup_root_surface(&PopupKind::Xdg(surface.clone())).ok()?;
         self.window_of(&root)
     }
@@ -171,7 +171,7 @@ impl State {
         };
         let mut target = Rectangle::new(
             Point::from((monitor.x, monitor.y)),
-            Size::from((monitor.width, monitor.height)),
+            Size::from((monitor.width as i32, monitor.height as i32)),
         );
         target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
         target.loc -= Point::from((geometry.x, geometry.y));
