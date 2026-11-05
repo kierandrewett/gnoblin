@@ -35,7 +35,7 @@ use gnoblin_model::{Fields, ObjectId, Observation, OperationId, OperationOutcome
 use wasmtime::StoreLimits;
 use wasmtime::component::{Resource, ResourceTable, ResourceTableError};
 
-use crate::log::{self, Level, Record};
+use crate::log::{self, Level, Line};
 use crate::manifest::Capabilities;
 use crate::mirror::Mirror;
 
@@ -69,7 +69,7 @@ pub struct ObjectRep {
 /// namespace's interface impl turns one into its own enum, which is the only place
 /// the per-namespace types differ.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Refusal {
+pub(crate) enum RefusalKind {
     /// The manifest does not grant what the call needs.
     Denied,
     /// The identity is not an object of that type in the module's mirror.
@@ -80,9 +80,9 @@ pub(crate) enum Refusal {
     Refused,
 }
 
-impl From<ResourceTableError> for Refusal {
-    fn from(_: ResourceTableError) -> Refusal {
-        Refusal::Refused
+impl From<ResourceTableError> for RefusalKind {
+    fn from(_: ResourceTableError) -> RefusalKind {
+        RefusalKind::Refused
     }
 }
 
@@ -138,7 +138,7 @@ impl StoreData {
     pub(crate) fn write(&self, level: Level, message: &str) {
         log::write(
             &self.sink,
-            &Record {
+            &Line {
                 module: &self.module,
                 level,
                 message,
@@ -166,20 +166,20 @@ impl StoreData {
     }
 
     /// The identity behind a handle.
-    fn object(&self, handle: &Resource<ObjectRep>) -> Result<ObjectId, Refusal> {
+    fn object(&self, handle: &Resource<ObjectRep>) -> Result<ObjectId, RefusalKind> {
         Ok(self.table.get(handle)?.object)
     }
 
     /// A handle for `object`, if the manifest grants reading it and the mirror has
     /// it with the expected type.
-    fn open(&mut self, id: u64, object: &str) -> Result<Resource<ObjectRep>, Refusal> {
+    fn open(&mut self, id: u64, object: &str) -> Result<Resource<ObjectRep>, RefusalKind> {
         if !self.allowed(object, "read", self.capabilities.may_read(object)) {
-            return Err(Refusal::Denied);
+            return Err(RefusalKind::Denied);
         }
         let identity = ObjectId::new(id);
         match self.mirror.get(identity) {
             Some(entry) if entry.ty() == object => {}
-            _ => return Err(Refusal::UnknownObject),
+            _ => return Err(RefusalKind::UnknownObject),
         }
         Ok(self.table.push(ObjectRep { object: identity })?)
     }
@@ -204,6 +204,14 @@ impl StoreData {
         matches!(self.property(object, property), Some(Value::Bool(true)))
     }
 
+    /// A property as a signed integer, reading `0` for anything else.
+    fn int(&self, object: ObjectId, property: &str) -> i64 {
+        match self.property(object, property) {
+            Some(Value::Int(value)) => *value,
+            _ => 0,
+        }
+    }
+
     /// A property as an unsigned integer, reading `0` for anything else.
     fn uint(&self, object: ObjectId, property: &str) -> u64 {
         match self.property(object, property) {
@@ -219,35 +227,35 @@ impl StoreData {
         object_type: &str,
         method: &str,
         arguments: Fields,
-    ) -> Result<OperationId, Refusal> {
+    ) -> Result<OperationId, RefusalKind> {
         if !self.allowed(object_type, method, self.capabilities.may_call(object_type, method)) {
-            return Err(Refusal::Denied);
+            return Err(RefusalKind::Denied);
         }
         let Some(client) = self.client.as_mut() else {
-            return Err(Refusal::Refused);
+            return Err(RefusalKind::Refused);
         };
         match client.call(object, method, &arguments) {
             Ok(operation) => Ok(operation.id()),
             Err(ClientError::Refused { code, .. }) => Err(if code == "unknown-member" {
-                Refusal::UnknownMember
+                RefusalKind::UnknownMember
             } else {
-                Refusal::Refused
+                RefusalKind::Refused
             }),
-            Err(_) => Err(Refusal::Refused),
+            Err(_) => Err(RefusalKind::Refused),
         }
     }
 
     /// Record a handle for the operation a method returned.
-    fn operation(&mut self, id: OperationId) -> Result<Resource<ObjectRep>, Refusal> {
+    fn operation(&mut self, id: OperationId) -> Result<Resource<ObjectRep>, RefusalKind> {
         Ok(self.table.push(ObjectRep {
             object: ObjectId::new(id.get()),
         })?)
     }
 
     /// Subscribe the module to one object's events.
-    fn watch(&mut self, handle: &Resource<ObjectRep>) -> Result<(), Refusal> {
+    fn watch(&mut self, handle: &Resource<ObjectRep>) -> Result<(), RefusalKind> {
         if !self.allowed("event", "watch", self.capabilities.may_subscribe()) {
-            return Err(Refusal::Denied);
+            return Err(RefusalKind::Denied);
         }
         let object = self.object(handle)?;
         self.watched.insert(object);
@@ -255,7 +263,7 @@ impl StoreData {
     }
 
     /// Where an operation the module holds is.
-    fn operation_state(&self, handle: &Resource<ObjectRep>) -> Result<bool, Refusal> {
+    fn operation_state(&self, handle: &Resource<ObjectRep>) -> Result<bool, RefusalKind> {
         let id = ObjectId::new(self.object(handle)?.get());
         match self.outcomes.get(&OperationId::new(id.get())) {
             Some(outcome) => Ok(outcome.is_done()),
@@ -267,23 +275,23 @@ impl StoreData {
 /// The `error-code` case for one refusal, per namespace.
 ///
 /// One function per namespace because the generated enums are distinct types that
-/// happen to have the same cases. Every case a [`Refusal`] can be is declared in
+/// happen to have the same cases. Every case a [`RefusalKind`] can be is declared in
 /// every generated enum, so the mapping is total.
-fn gnoblin_error(refusal: Refusal) -> gnoblin::ipc::gnoblin::ErrorCode {
+fn gnoblin_error(refusal: RefusalKind) -> gnoblin::ipc::gnoblin::ErrorCode {
     match refusal {
-        Refusal::Denied => gnoblin::ipc::gnoblin::ErrorCode::Denied,
-        Refusal::UnknownObject => gnoblin::ipc::gnoblin::ErrorCode::UnknownObject,
-        Refusal::UnknownMember => gnoblin::ipc::gnoblin::ErrorCode::UnknownMember,
-        Refusal::Refused => gnoblin::ipc::gnoblin::ErrorCode::Refused,
+        RefusalKind::Denied => gnoblin::ipc::gnoblin::ErrorCode::Denied,
+        RefusalKind::UnknownObject => gnoblin::ipc::gnoblin::ErrorCode::UnknownObject,
+        RefusalKind::UnknownMember => gnoblin::ipc::gnoblin::ErrorCode::UnknownMember,
+        RefusalKind::Refused => gnoblin::ipc::gnoblin::ErrorCode::Refused,
     }
 }
 
-fn greeter_error(refusal: Refusal) -> gnoblin::ipc::bsm_greeter::ErrorCode {
+fn greeter_error(refusal: RefusalKind) -> gnoblin::ipc::bsm_greeter::ErrorCode {
     match refusal {
-        Refusal::Denied => gnoblin::ipc::bsm_greeter::ErrorCode::Denied,
-        Refusal::UnknownObject => gnoblin::ipc::bsm_greeter::ErrorCode::UnknownObject,
-        Refusal::UnknownMember => gnoblin::ipc::bsm_greeter::ErrorCode::UnknownMember,
-        Refusal::Refused => gnoblin::ipc::bsm_greeter::ErrorCode::Refused,
+        RefusalKind::Denied => gnoblin::ipc::bsm_greeter::ErrorCode::Denied,
+        RefusalKind::UnknownObject => gnoblin::ipc::bsm_greeter::ErrorCode::UnknownObject,
+        RefusalKind::UnknownMember => gnoblin::ipc::bsm_greeter::ErrorCode::UnknownMember,
+        RefusalKind::Refused => gnoblin::ipc::bsm_greeter::ErrorCode::Refused,
     }
 }
 
@@ -361,6 +369,26 @@ mod gnoblin_objects {
             Ok(self.boolean(object, "focused"))
         }
 
+        fn x(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<i64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.int(object, "x"))
+        }
+
+        fn y(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<i64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.int(object, "y"))
+        }
+
+        fn width(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "width"))
+        }
+
+        fn height(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "height"))
+        }
+
         fn focus(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(
@@ -395,6 +423,26 @@ mod gnoblin_objects {
         fn version(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "version"))
+        }
+
+        fn slot_auth_polkit(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "slot_auth_polkit"))
+        }
+
+        fn slot_prompt_secret(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "slot_prompt_secret"))
+        }
+
+        fn slot_location_agent(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "slot_location_agent"))
+        }
+
+        fn slot_idle_policy(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "slot_idle_policy"))
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {

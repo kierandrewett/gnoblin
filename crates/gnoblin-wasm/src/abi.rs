@@ -26,7 +26,7 @@ pub enum MemberKind {
 
 /// One member an event can name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Member {
+pub struct EventMember {
     /// The object type that declares it, as the schema names it.
     pub object: &'static str,
     /// The member's schema name.

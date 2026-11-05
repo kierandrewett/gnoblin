@@ -69,7 +69,7 @@ fn run() -> Result<(), String> {
     // candidate build generates `gnoblin:ipc@0.2.0-alpha.N`, so a module built
     // against a release candidate cannot be linked into a release compositor by
     // accident. The renderer checks the text is a version WIT accepts.
-    let rendered = wit::render(&catalog, env!("CARGO_PKG_VERSION")).map_err(|report| report.to_string())?;
+    let rendered = wit::render(&catalog, env!("CARGO_PKG_VERSION")).map_err(|error| error.to_string())?;
 
     write(&out_dir.join(WIT_FILE), &rendered.wit)?;
     write(&out_dir.join("members.rs"), &rendered.members)?;

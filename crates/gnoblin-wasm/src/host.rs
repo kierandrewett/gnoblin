@@ -53,9 +53,9 @@ use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimitsBuilder, Trap}
 
 use crate::abi;
 use crate::bindings::{Module, StoreData};
-use crate::error::{CallError, HostError};
+use crate::error::{CallError, ModuleError};
 use crate::log::{self, Level, Sink};
-use crate::manifest::{Budget, Capabilities, Limits, Manifest};
+use crate::manifest::{Budget, Capabilities, Manifest, ModuleLimits};
 use crate::mirror::Mirror;
 
 /// Where a module is in its life.
@@ -102,9 +102,9 @@ struct Runtime {
 }
 
 /// A module's slot: what it was allowed, where it is, and the runtime if any.
-struct Slot {
+struct ModuleSlot {
     capabilities: Capabilities,
-    limits: Limits,
+    limits: ModuleLimits,
     state: ModuleState,
     runtime: Option<Runtime>,
 }
@@ -114,7 +114,7 @@ pub struct ModuleHost {
     engine: Engine,
     linker: Linker<StoreData>,
     sink: log::Shared,
-    modules: BTreeMap<String, Slot>,
+    modules: BTreeMap<String, ModuleSlot>,
 }
 
 impl std::fmt::Debug for ModuleHost {
@@ -128,12 +128,12 @@ impl std::fmt::Debug for ModuleHost {
 
 impl ModuleHost {
     /// A host with no modules, reporting through standard error.
-    pub fn new() -> Result<ModuleHost, HostError> {
+    pub fn new() -> Result<ModuleHost, ModuleError> {
         ModuleHost::with_sink(Box::new(log::StderrSink))
     }
 
     /// A host reporting through `sink`.
-    pub fn with_sink(sink: Box<dyn Sink>) -> Result<ModuleHost, HostError> {
+    pub fn with_sink(sink: Box<dyn Sink>) -> Result<ModuleHost, ModuleError> {
         // The engine is configured once and never again: fuel is how a deadline is
         // measured, and the component model is the shape of the host API. Nothing
         // here enables a proposal the ABI does not use, and no WASI implementation
@@ -141,13 +141,13 @@ impl ModuleHost {
         let mut config = Config::new();
         config.wasm_component_model(true);
         config.consume_fuel(true);
-        let engine = Engine::new(&config).map_err(|error| HostError::Link {
+        let engine = Engine::new(&config).map_err(|error| ModuleError::Link {
             module: "engine".to_owned(),
             reason: error.to_string(),
         })?;
         let mut linker = Linker::new(&engine);
         Module::add_to_linker::<_, HasSelf<_>>(&mut linker, |data: &mut StoreData| data).map_err(|error| {
-            HostError::Link {
+            ModuleError::Link {
                 module: "linker".to_owned(),
                 reason: error.to_string(),
             }
@@ -163,19 +163,19 @@ impl ModuleHost {
     /// Load and instantiate a component under `manifest`.
     ///
     /// Nothing of the module runs until [`ModuleHost::start`].
-    pub fn load(&mut self, manifest: Manifest, bytes: &[u8], budget: Budget) -> Result<(), HostError> {
+    pub fn load(&mut self, manifest: Manifest, bytes: &[u8], budget: Budget) -> Result<(), ModuleError> {
         let name = manifest.name().to_owned();
         if self.modules.contains_key(&name) {
-            return Err(HostError::Duplicate { module: name });
+            return Err(ModuleError::Duplicate { module: name });
         }
-        manifest.granted().check().map_err(|reason| HostError::Unsupported {
+        manifest.granted().check().map_err(|reason| ModuleError::Unsupported {
             module: name.clone(),
             reason,
         })?;
         let runtime = self.build(&name, manifest.granted().clone(), manifest.bounds(), bytes, budget)?;
         self.modules.insert(
             name,
-            Slot {
+            ModuleSlot {
                 capabilities: manifest.granted().clone(),
                 limits: manifest.bounds(),
                 state: ModuleState::Loaded,
@@ -186,8 +186,8 @@ impl ModuleHost {
     }
 
     /// Load a component from a file, with the same rules as [`ModuleHost::load`].
-    pub fn load_file(&mut self, manifest: Manifest, path: &Path, budget: Budget) -> Result<(), HostError> {
-        let bytes = std::fs::read(path).map_err(|error| HostError::Read {
+    pub fn load_file(&mut self, manifest: Manifest, path: &Path, budget: Budget) -> Result<(), ModuleError> {
+        let bytes = std::fs::read(path).map_err(|error| ModuleError::Read {
             path: path.to_path_buf(),
             reason: error.to_string(),
         })?;
@@ -200,16 +200,16 @@ impl ModuleHost {
     /// is touched, and it is installed only when all of that succeeded: a broken
     /// reload leaves the module exactly as it was, still running. A successful one
     /// starts unconnected and unstarted, because its store is new.
-    pub fn reload(&mut self, name: &str, bytes: &[u8], budget: Budget) -> Result<(), HostError> {
+    pub fn reload(&mut self, name: &str, bytes: &[u8], budget: Budget) -> Result<(), ModuleError> {
         let Some(slot) = self.modules.get(name) else {
-            return Err(HostError::Missing {
+            return Err(ModuleError::Missing {
                 module: name.to_owned(),
             });
         };
         let capabilities = slot.capabilities.clone();
         let limits = slot.limits;
         let runtime = self.build(name, capabilities, limits, bytes, budget)?;
-        let slot = self.modules.get_mut(name).ok_or_else(|| HostError::Missing {
+        let slot = self.modules.get_mut(name).ok_or_else(|| ModuleError::Missing {
             module: name.to_owned(),
         })?;
         slot.runtime = Some(runtime);
@@ -231,7 +231,7 @@ impl ModuleHost {
     /// would have to know the identities before the module has seen them. A module
     /// that is already connected is left alone, so this is safe to call again after
     /// a reload.
-    pub fn connect(&mut self, server: &mut Server, version: Version) -> Result<(), HostError> {
+    pub fn connect(&mut self, server: &mut Server, version: Version) -> Result<(), ModuleError> {
         for (name, slot) in &mut self.modules {
             let Some(runtime) = slot.runtime.as_mut() else {
                 continue;
@@ -239,11 +239,11 @@ impl ModuleHost {
             if runtime.store.data().client.is_some() {
                 continue;
             }
-            let mut client = server.connect(version).map_err(|source| HostError::Connect {
+            let mut client = server.connect(version).map_err(|source| ModuleError::Connect {
                 module: name.clone(),
                 source,
             })?;
-            let snapshot = client.subscribe(Filter::All).map_err(|source| HostError::Subscribe {
+            let snapshot = client.subscribe(Filter::All).map_err(|source| ModuleError::Subscribe {
                 module: name.clone(),
                 source,
             })?;
@@ -423,11 +423,11 @@ impl ModuleHost {
         &self,
         name: &str,
         capabilities: Capabilities,
-        limits: Limits,
+        limits: ModuleLimits,
         bytes: &[u8],
         budget: Budget,
-    ) -> Result<Runtime, HostError> {
-        let component = Component::new(&self.engine, bytes).map_err(|error| HostError::Compile {
+    ) -> Result<Runtime, ModuleError> {
+        let component = Component::new(&self.engine, bytes).map_err(|error| ModuleError::Compile {
             module: name.to_owned(),
             reason: error.to_string(),
         })?;
@@ -448,7 +448,7 @@ impl ModuleHost {
             StoreData::new(name.to_owned(), capabilities, bounds, std::sync::Arc::clone(&self.sink)),
         );
         store.limiter(|data| &mut data.limits as &mut dyn ResourceLimiter);
-        store.set_fuel(budget.as_fuel()).map_err(|error| HostError::Link {
+        store.set_fuel(budget.as_fuel()).map_err(|error| ModuleError::Link {
             module: name.to_owned(),
             reason: error.to_string(),
         })?;
@@ -456,7 +456,7 @@ impl ModuleHost {
             // A module that imports something the host does not provide fails here,
             // and the message names the import: this is where "no WASI filesystem,
             // no network" is enforced, by there being nothing to link against.
-            HostError::Link {
+            ModuleError::Link {
                 module: name.to_owned(),
                 reason: error.to_string(),
             }
@@ -472,7 +472,7 @@ impl ModuleHost {
 /// same reason to the caller. A plain success marks nothing, because the caller
 /// knows which state it asked for.
 fn settle(
-    modules: &mut BTreeMap<String, Slot>,
+    modules: &mut BTreeMap<String, ModuleSlot>,
     sink: &log::Shared,
     name: &str,
     run: wasmtime::Result<()>,
@@ -512,7 +512,7 @@ fn failure(name: &str, error: wasmtime::Error, budget: Budget) -> CallError {
 }
 
 /// Remove a dead module's runtime and record why, writing one line.
-fn kill(modules: &mut BTreeMap<String, Slot>, sink: &log::Shared, name: &str, failure: &CallError) {
+fn kill(modules: &mut BTreeMap<String, ModuleSlot>, sink: &log::Shared, name: &str, failure: &CallError) {
     let reason = failure.to_string();
     if let Some(slot) = modules.get_mut(name) {
         slot.runtime = None;
@@ -520,7 +520,7 @@ fn kill(modules: &mut BTreeMap<String, Slot>, sink: &log::Shared, name: &str, fa
     }
     log::write(
         sink,
-        &log::Record {
+        &log::Line {
             module: name,
             level: Level::Error,
             message: &reason,

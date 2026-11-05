@@ -8,7 +8,7 @@ mod log;
 mod manifest;
 mod mirror;
 
-pub use error::{CallError, HostError};
+pub use error::{CallError, ModuleError};
 pub use host::{ModuleHost, ModuleState};
-pub use log::{Level, Record, Sink, StderrSink};
-pub use manifest::{Budget, Capabilities, Limits, Manifest};
+pub use log::{Level, Line, Sink, StderrSink};
+pub use manifest::{Budget, Capabilities, Manifest, ModuleLimits};

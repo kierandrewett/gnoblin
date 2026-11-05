@@ -838,17 +838,67 @@ left = "gnoblin-parity::CommandTarget"
 right = "gnoblin-services::UnknownSlot"
 kind = "same-shape"
 reason = "a slot name that did not parse versus a parity command target; the only shared shape is a name string"
->>>>>>> d4856a12 (feat(services): the slot registry and the polkit authentication agent)
+
+# The pairs below were found once the module host landed and every crate had a
+# schema to serve. Each is a homonym: the name is the obvious word for two
+# different things, and the two types are in different processes or different
+# layers, so neither can stand in for the other.
+[[allow]]
+left = "gnoblin-a11y::Published"
+right = "gnoblin-wayland::Published"
+kind = "same-name"
+reason = "the accessibility state the settings bridges publish versus one toplevel's snapshot the compositor is about to publish; the first is a policy result and the second is protocol bookkeeping, and the fields share nothing"
 
 [[allow]]
-left = "gnoblin-wasm::Refusal"
-right = "gnoblin-services::Refusal"
+left = "gnoblin-lock::Published"
+right = "gnoblin-wayland::Published"
 kind = "same-name"
-reason = "a guest module's refusal versus the services role's; the wasm one carries a component-model trap and this one names a slot or a request"
+reason = "the lock state observers see versus one toplevel's pre-publication snapshot; a lock state is a decision the session publishes and the other is the protocol layer's own record"
 
 [[allow]]
-left = "gnoblin-wasm::Slot"
-right = "gnoblin-services::Slot"
+left = "gnoblin-backend::Record"
+right = "gnoblin-wayland::Record"
 kind = "same-name"
-reason = "a module host's export slot versus a capability slot from the plan's provider table; the two share only the word"
->>>>>>> 91452082 (feat(compat): serve gcr's prompter without libgcr)
+reason = "a nested backend's per-output protocol state versus the session's roster entry for one connection; both are private bookkeeping in different crates and only the word is shared"
+
+[[allow]]
+left = "gnoblin-input::Target"
+right = "gnoblin-wayland::Target"
+kind = "same-name"
+reason = "where an input event goes (an active grab, a chord binding or the client) versus the selection kind a source serves (clipboard or primary); the two enums have no case in common"
+
+[[allow]]
+left = "gnoblin-output::Edge"
+right = "gnoblin-wayland::Edge"
+kind = "same-name"
+reason = "a placement side of a monitor, named Above and Below so a layout reads the way a person arranges screens, versus the side of an output a layer surface's exclusive zone lies along"
+
+[[allow]]
+left = "gnoblin-types::Edge"
+right = "gnoblin-wayland::Edge"
+kind = "same-name"
+reason = "one side of a rectangle in logical pixels versus a layer-shell exclusive zone's edge; the protocol spells the same four words and neither type can be passed where the other is expected"
+
+[[allow]]
+left = "gnoblin::Role"
+right = "gnoblin-wayland::Role"
+kind = "same-name"
+reason = "a role of the process model the plan names (guardian, compositor, runtime) versus what a Wayland connection has earned (unprivileged, trusted, privileged)"
+
+[[allow]]
+left = "gnoblin-session::Level"
+right = "gnoblin-wasm::Level"
+kind = "same-name"
+reason = "both name how urgent a log line is, and the two spellings differ (`Warn` against `Warning`); one copy belongs in gnoblin-types and moving the session's copy is that crate's change, so the duplication is recorded here instead of being hidden by a rename"
+
+[[allow]]
+left = "gnoblin-wayland::Entry"
+right = "gnoblinctl::Entry"
+kind = "same-name"
+reason = "one toplevel's publication record versus one object in the generated command tree"
+
+[[allow]]
+left = "gnoblin-wayland::Handle"
+right = "gnoblin-xwayland::Handle"
+kind = "same-name"
+reason = "one wlr foreign-toplevel handle object with the manager that made it versus a cloneable handle to a supervised Xwayland session"

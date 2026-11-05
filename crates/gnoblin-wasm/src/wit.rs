@@ -41,7 +41,7 @@
 //!
 //! The generator refuses rather than emits a package it knows is wrong: a member
 //! whose kebab-case form is not a WIT identifier, or is a WIT keyword, is reported
-//! with the schema file that declared it (`render` returns [`Report`]). Emitting
+//! with the schema file that declared it (`render` returns [`GeneratorError`]). Emitting
 //! it would produce a WIT file whose parse error names no schema member.
 
 use std::collections::BTreeMap;
@@ -118,21 +118,21 @@ pub struct Rendered {
 }
 
 /// One problem that stopped generation, worded for the build log.
-pub struct Report {
+pub struct GeneratorError {
     /// The schema file or member the problem is about.
     pub origin: String,
     /// What is wrong.
     pub message: String,
 }
 
-impl std::fmt::Display for Report {
+impl std::fmt::Display for GeneratorError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}: {}", self.origin, self.message)
     }
 }
 
 /// Render the WIT package at `version` and the member table for the same catalog.
-pub fn render(catalog: &Catalog, version: &str) -> Result<Rendered, Report> {
+pub fn render(catalog: &Catalog, version: &str) -> Result<Rendered, GeneratorError> {
     check_version(version)?;
     let mut wit = String::new();
     let _ = writeln!(wit, "/// The IPC object model as a component-model interface.");
@@ -147,7 +147,7 @@ pub fn render(catalog: &Catalog, version: &str) -> Result<Rendered, Report> {
             if let Some(other) = seen.insert(object.name.as_str(), namespace.as_str())
                 && other != namespace.as_str()
             {
-                return Err(Report {
+                return Err(GeneratorError {
                     origin: format!("schema namespace `{namespace}`"),
                     message: format!(
                         "object type `{}` is already declared by namespace `{other}`; a module's \
@@ -169,7 +169,7 @@ pub fn render(catalog: &Catalog, version: &str) -> Result<Rendered, Report> {
 
 /// One namespace's interface: its error codes, the operation handle, one resource
 /// per object type, and the lookups that turn an identity into a handle.
-fn interface(wit: &mut String, catalog: &Catalog, namespace: &Namespace) -> Result<(), Report> {
+fn interface(wit: &mut String, catalog: &Catalog, namespace: &Namespace) -> Result<(), GeneratorError> {
     let name = interface_name(namespace);
     let _ = writeln!(wit);
     let _ = writeln!(wit, "/// The object types of the `{namespace}` namespace.");
@@ -234,7 +234,7 @@ fn interface(wit: &mut String, catalog: &Catalog, namespace: &Namespace) -> Resu
 }
 
 /// One object type as a resource.
-fn resource(wit: &mut String, object: &ObjectType, namespace: &str) -> Result<(), Report> {
+fn resource(wit: &mut String, object: &ObjectType, namespace: &str) -> Result<(), GeneratorError> {
     let resource = identifier(&object.name, "object type", namespace)?;
     let _ = writeln!(wit);
     let _ = writeln!(wit, "    /// The `{}` object.", object.name);
@@ -259,7 +259,7 @@ fn resource(wit: &mut String, object: &ObjectType, namespace: &str) -> Result<()
 }
 
 /// One property as a getter.
-fn property(wit: &mut String, declared: &Property, namespace: &str) -> Result<(), Report> {
+fn property(wit: &mut String, declared: &Property, namespace: &str) -> Result<(), GeneratorError> {
     let getter = identifier(&declared.name, "property", namespace)?;
     let ty = wit_type(&declared.ty);
     let _ = writeln!(
@@ -272,7 +272,7 @@ fn property(wit: &mut String, declared: &Property, namespace: &str) -> Result<()
 }
 
 /// One method: its declared parameters and the operation handle it returns.
-fn method_signature(wit: &mut String, method: &Method, namespace: &str) -> Result<(), Report> {
+fn method_signature(wit: &mut String, method: &Method, namespace: &str) -> Result<(), GeneratorError> {
     let name = identifier(&method.name, "method", namespace)?;
     let mut parameters = String::new();
     for (index, parameter) in method.params.iter().enumerate() {
@@ -299,7 +299,7 @@ fn method_signature(wit: &mut String, method: &Method, namespace: &str) -> Resul
 }
 
 /// A method parameter or a signal field.
-fn field(field: &Field, namespace: &str) -> Result<String, Report> {
+fn field(field: &Field, namespace: &str) -> Result<String, GeneratorError> {
     let name = identifier(&field.name, "field", namespace)?;
     Ok(format!("{name}: {}", wit_type(&field.ty)))
 }
@@ -375,7 +375,7 @@ fn member_table(catalog: &Catalog) -> String {
             for (name, kind) in members {
                 let _ = writeln!(
                     rows,
-                    "    Member {{ object: \"{}\", name: \"{name}\", index: {index}, kind: MemberKind::{kind} }},",
+                    "    EventMember {{ object: \"{}\", name: \"{name}\", index: {index}, kind: MemberKind::{kind} }},",
                     object.name
                 );
                 let _ = writeln!(
@@ -399,7 +399,7 @@ fn member_table(catalog: &Catalog) -> String {
         members,
         "/// One member an event can name, indexed as the WIT package does."
     );
-    let _ = writeln!(members, "pub const MEMBERS: &[Member] = &[");
+    let _ = writeln!(members, "pub const MEMBERS: &[EventMember] = &[");
     members.push_str(&rows);
     let _ = writeln!(members, "];");
     let _ = writeln!(members);
@@ -453,7 +453,7 @@ fn callable(catalog: &Catalog) -> Vec<(String, String)> {
 /// The package line is `package gnoblin:ipc@<version>;`, and WIT wants semver
 /// there. Checking here means a bad version is a build error naming the version
 /// rather than a parse error in a file nobody wrote by hand.
-fn check_version(version: &str) -> Result<(), Report> {
+fn check_version(version: &str) -> Result<(), GeneratorError> {
     let (release, suffix) = match version.split_once(['-', '+']) {
         Some((release, suffix)) => (release, Some(suffix)),
         None => (version, None),
@@ -472,7 +472,7 @@ fn check_version(version: &str) -> Result<(), Report> {
     if numbers_ok && suffix_ok {
         Ok(())
     } else {
-        Err(Report {
+        Err(GeneratorError {
             origin: "crate version".to_owned(),
             message: format!("`{version}` is not a semver version WIT accepts"),
         })
@@ -494,7 +494,7 @@ fn constant_name(name: &str) -> String {
 }
 
 /// A schema name as a WIT identifier: `app_id` is `app-id`.
-fn identifier(name: &str, kind: &str, namespace: &str) -> Result<String, Report> {
+fn identifier(name: &str, kind: &str, namespace: &str) -> Result<String, GeneratorError> {
     let kebab: String = name.replace('_', "-");
     let valid = name.starts_with(|first: char| first.is_ascii_lowercase())
         && kebab
@@ -503,13 +503,13 @@ fn identifier(name: &str, kind: &str, namespace: &str) -> Result<String, Report>
         && !kebab.ends_with('-')
         && !kebab.contains("--");
     if !valid {
-        return Err(Report {
+        return Err(GeneratorError {
             origin: format!("schema namespace `{namespace}`"),
             message: format!("{kind} `{name}` is not a WIT identifier once kebab-cased as `{kebab}`"),
         });
     }
     if KEYWORDS.contains(&kebab.as_str()) {
-        return Err(Report {
+        return Err(GeneratorError {
             origin: format!("schema namespace `{namespace}`"),
             message: format!("{kind} `{name}` is the WIT keyword `{kebab}`; rename the schema member"),
         });

@@ -1,6 +1,6 @@
 //! What went wrong, in the two places it can.
 //!
-//! The split is the one the caller acts on: [`HostError`] means the host refused to
+//! The split is the one the caller acts on: [`ModuleError`] means the host refused to
 //! take a module at all (or could not subscribe it), so nothing about that module is
 //! running; [`CallError`] means one entry into a module failed, and the host either
 //! killed that module because of it or reports it and carries on. Every variant
@@ -16,7 +16,7 @@ use crate::host::ModuleState;
 
 /// The host would not (or could not) take the module.
 #[derive(Debug)]
-pub enum HostError {
+pub enum ModuleError {
     /// A module with that name is already loaded.
     Duplicate { module: String },
     /// No module with that name is loaded.
@@ -38,31 +38,31 @@ pub enum HostError {
     Subscribe { module: String, source: ClientError },
 }
 
-impl fmt::Display for HostError {
+impl fmt::Display for ModuleError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HostError::Duplicate { module } => write!(formatter, "module `{module}` is already loaded"),
-            HostError::Missing { module } => write!(formatter, "no module `{module}` is loaded"),
-            HostError::Unsupported { module, reason } => write!(formatter, "module `{module}`: {reason}"),
-            HostError::Compile { module, reason } => {
+            ModuleError::Duplicate { module } => write!(formatter, "module `{module}` is already loaded"),
+            ModuleError::Missing { module } => write!(formatter, "no module `{module}` is loaded"),
+            ModuleError::Unsupported { module, reason } => write!(formatter, "module `{module}`: {reason}"),
+            ModuleError::Compile { module, reason } => {
                 write!(
                     formatter,
                     "module `{module}` is not a component this host can run: {reason}"
                 )
             }
-            HostError::Link { module, reason } => write!(formatter, "module `{module}` cannot be linked: {reason}"),
-            HostError::Read { path, reason } => write!(formatter, "cannot read {}: {reason}", path.display()),
-            HostError::Connect { module, source } => {
+            ModuleError::Link { module, reason } => write!(formatter, "module `{module}` cannot be linked: {reason}"),
+            ModuleError::Read { path, reason } => write!(formatter, "cannot read {}: {reason}", path.display()),
+            ModuleError::Connect { module, source } => {
                 write!(formatter, "module `{module}` could not connect: {source}")
             }
-            HostError::Subscribe { module, source } => {
+            ModuleError::Subscribe { module, source } => {
                 write!(formatter, "module `{module}` could not subscribe: {source}")
             }
         }
     }
 }
 
-impl std::error::Error for HostError {}
+impl std::error::Error for ModuleError {}
 
 /// One entry into a module failed.
 #[derive(Debug)]

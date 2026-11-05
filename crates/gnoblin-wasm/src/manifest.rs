@@ -66,7 +66,7 @@ impl Default for Budget {
 /// works in kilobytes; a module that wants a hundred megabytes is either doing
 /// something this host does not offer or is the failure this limit exists for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Limits {
+pub struct ModuleLimits {
     /// The module's linear memory may not grow past this many bytes.
     pub memory_bytes: usize,
     /// The module's tables may not hold more than this many elements.
@@ -77,9 +77,9 @@ pub struct Limits {
     pub tables: usize,
 }
 
-impl Default for Limits {
-    fn default() -> Limits {
-        Limits {
+impl Default for ModuleLimits {
+    fn default() -> ModuleLimits {
+        ModuleLimits {
             memory_bytes: 16 * 1024 * 1024,
             table_elements: 10_000,
             memories: 1,
@@ -192,7 +192,7 @@ fn list<'a>(items: impl Iterator<Item = &'a str>) -> String {
 pub struct Manifest {
     name: String,
     capabilities: Capabilities,
-    limits: Limits,
+    limits: ModuleLimits,
 }
 
 impl Manifest {
@@ -201,7 +201,7 @@ impl Manifest {
         Manifest {
             name: name.into(),
             capabilities: Capabilities::none(),
-            limits: Limits::default(),
+            limits: ModuleLimits::default(),
         }
     }
 
@@ -212,7 +212,7 @@ impl Manifest {
     }
 
     /// Declare the module's resource limits.
-    pub fn limits(mut self, limits: Limits) -> Manifest {
+    pub fn limits(mut self, limits: ModuleLimits) -> Manifest {
         self.limits = limits;
         self
     }
@@ -229,7 +229,7 @@ impl Manifest {
     }
 
     /// What it may hold.
-    pub fn bounds(&self) -> Limits {
+    pub fn bounds(&self) -> ModuleLimits {
         self.limits
     }
 }

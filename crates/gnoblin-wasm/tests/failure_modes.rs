@@ -20,7 +20,7 @@ use gnoblin_types::Version;
 
 use gnoblin_wasm::abi::kind;
 use gnoblin_wasm::{
-    Budget, CallError, Capabilities, HostError, Limits, Manifest, ModuleHost, ModuleState, Record, Sink,
+    Budget, CallError, Capabilities, Line, Manifest, ModuleError, ModuleHost, ModuleLimits, ModuleState, Sink,
 };
 
 /// The IPC version the tests connect at.
@@ -49,7 +49,7 @@ impl Capture {
 }
 
 impl Sink for Capture {
-    fn write(&mut self, record: &Record<'_>) {
+    fn write(&mut self, record: &Line<'_>) {
         self.lines
             .lock()
             .expect("the lock is not poisoned")
@@ -74,6 +74,10 @@ fn window_fields(id: u64, title: &str) -> Fields {
     fields.insert("title".to_owned(), Value::Text(title.to_owned()));
     fields.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
     fields.insert("focused".to_owned(), Value::Bool(false));
+    fields.insert("x".to_owned(), Value::Int(0));
+    fields.insert("y".to_owned(), Value::Int(0));
+    fields.insert("width".to_owned(), Value::Uint(800));
+    fields.insert("height".to_owned(), Value::Uint(600));
     fields
 }
 
@@ -247,9 +251,9 @@ fn a_module_that_grows_without_bound_hits_the_memory_limit() {
     ));
 
     let (mut host, _) = host();
-    let small = Limits {
+    let small = ModuleLimits {
         memory_bytes: 2 * 64 * 1024,
-        ..Limits::default()
+        ..ModuleLimits::default()
     };
     host.load(reader("small").limits(small), &growing, budget())
         .expect("loads");
@@ -258,9 +262,9 @@ fn a_module_that_grows_without_bound_hits_the_memory_limit() {
 
     // The same module under a limit it cannot reach grows happily: the failure above
     // was the limit and not the module.
-    let roomy = Limits {
+    let roomy = ModuleLimits {
         memory_bytes: 64 * 64 * 1024,
-        ..Limits::default()
+        ..ModuleLimits::default()
     };
     host.load(reader("roomy").limits(roomy), &growing, budget())
         .expect("loads");
@@ -347,7 +351,7 @@ fn a_failed_reload_leaves_the_running_module_in_place() {
     let error = host
         .reload("reloaded", b"not a component", budget())
         .expect_err("refused");
-    assert!(matches!(error, HostError::Compile { .. }), "got {error}");
+    assert!(matches!(error, ModuleError::Compile { .. }), "got {error}");
     assert_eq!(
         host.state("reloaded"),
         Some(&ModuleState::Running),
@@ -364,7 +368,7 @@ fn a_failed_reload_leaves_the_running_module_in_place() {
     let missing = host
         .reload("absent", &idle_module(), budget())
         .expect_err("no such module");
-    assert!(matches!(missing, HostError::Missing { .. }), "got {missing}");
+    assert!(matches!(missing, ModuleError::Missing { .. }), "got {missing}");
 }
 
 // 6. A module imports something the host does not provide.
@@ -379,7 +383,7 @@ fn a_module_that_imports_wasi_is_refused_at_load() {
     let (mut host, _) = host();
     let error = host.load(reader("wasi"), &wasi, budget()).expect_err("no WASI here");
     match &error {
-        HostError::Link { reason, .. } => assert!(
+        ModuleError::Link { reason, .. } => assert!(
             reason.contains("wasi:filesystem/types"),
             "the reason names the import: {reason}"
         ),

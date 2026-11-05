@@ -17,12 +17,12 @@ use gnoblin_model::{Fields, ObjectId, ObjectView, Observation, Snapshot, TypeKey
 
 /// One object as the module's mirror holds it.
 #[derive(Clone, Debug)]
-pub(crate) struct Object {
+pub(crate) struct MirrorObject {
     ty: TypeKey,
     properties: Fields,
 }
 
-impl Object {
+impl MirrorObject {
     /// The object's type, which is what a capability names.
     pub(crate) fn ty(&self) -> &str {
         self.ty.name()
@@ -37,7 +37,7 @@ impl Object {
 /// Every object the module's subscription covers, by identity.
 #[derive(Debug, Default)]
 pub(crate) struct Mirror {
-    objects: BTreeMap<ObjectId, Object>,
+    objects: BTreeMap<ObjectId, MirrorObject>,
 }
 
 impl Mirror {
@@ -78,7 +78,7 @@ impl Mirror {
     }
 
     /// One object.
-    pub(crate) fn get(&self, id: ObjectId) -> Option<&Object> {
+    pub(crate) fn get(&self, id: ObjectId) -> Option<&MirrorObject> {
         self.objects.get(&id)
     }
 
@@ -86,7 +86,7 @@ impl Mirror {
     fn opened(&mut self, view: &ObjectView) {
         self.objects.insert(
             view.id(),
-            Object {
+            MirrorObject {
                 ty: view.ty().clone(),
                 properties: view.properties().clone(),
             },
