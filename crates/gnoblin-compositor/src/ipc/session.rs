@@ -336,10 +336,11 @@ impl SessionSync {
         }
         let lost: Vec<OutputId> = self.outputs.keys().filter(|id| !seen.contains(id)).copied().collect();
         for id in lost {
-            if let Some(published) = self.outputs.remove(&id) {
-                if let Err(error) = self.graph.close(published.object) {
-                    failures.push(PublishFailure::new("output", id.get(), error));
-                }
+            let Some(published) = self.outputs.remove(&id) else {
+                continue;
+            };
+            if let Err(error) = self.graph.close(published.object) {
+                failures.push(PublishFailure::new("output", id.get(), error));
             }
         }
     }
@@ -399,10 +400,11 @@ impl SessionSync {
             .copied()
             .collect();
         for id in lost {
-            if let Some(published) = self.workspaces.remove(&id) {
-                if let Err(error) = self.graph.close(published.object) {
-                    failures.push(PublishFailure::new("workspace", id.get(), error));
-                }
+            let Some(published) = self.workspaces.remove(&id) else {
+                continue;
+            };
+            if let Err(error) = self.graph.close(published.object) {
+                failures.push(PublishFailure::new("workspace", id.get(), error));
             }
         }
     }

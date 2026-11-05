@@ -332,7 +332,7 @@ impl Server {
                             } => {
                                 let _ = reply.send(state.set_floating(window, floating));
                             }
-                            Command::LayoutCommand {
+                            Command::Layout {
                                 workspace,
                                 command,
                                 reply,
@@ -597,7 +597,7 @@ impl ControlHandle {
         command: gnoblin_wm::layout::Command,
     ) -> Option<Result<(), String>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::LayoutCommand {
+        self.control.push(Command::Layout {
             workspace,
             command,
             reply,
@@ -827,7 +827,7 @@ enum Command {
         reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// A command for a workspace's layout; the answer is the refusal, if any.
-    LayoutCommand {
+    Layout {
         workspace: WorkspaceId,
         command: gnoblin_wm::layout::Command,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
