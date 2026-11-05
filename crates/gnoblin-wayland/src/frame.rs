@@ -251,7 +251,7 @@ mod tests {
         let backend = Headless::new();
         let display: Display<State> = Display::new().expect("a display");
         let outputs = Backend::<State>::outputs(&backend).to_vec();
-        let state = State::new(display, &outputs, "seat0", WmOptions::default(), 1, None)
+        let state = State::new(display, &outputs, "seat0", WmOptions::default(), 1, None, None)
             .expect("a state for the default output");
         (backend, state)
     }
@@ -444,7 +444,7 @@ mod tests {
         };
         let display: Display<State> = Display::new().expect("a display");
         let outputs = backend.outputs.clone();
-        let mut state = State::new(display, &outputs, "seat0", WmOptions::default(), 1, None)
+        let mut state = State::new(display, &outputs, "seat0", WmOptions::default(), 1, None, None)
             .expect("a state for the default output");
         let stats = Arc::new(Mutex::new(FrameStats::default()));
         let screenshots = Screenshots::default();

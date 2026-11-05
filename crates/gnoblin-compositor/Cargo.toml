@@ -8,3 +8,43 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+# The Wayland engine this process runs: the protocol handlers, the seat, the window
+# manager glue and the frame hook.
+gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The backend trait and the headless backend this build starts. A later lane adds
+# the DRM backend here or, better, as another variant of the backend selection.
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The live object graph the IPC serves, and the shared primitives its identities
+# and values are.
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-types.workspace = true
+# The schema the graph's vocabulary comes from, and the source of the IPC version
+# this process serves.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The wire vocabulary: the envelope, the handshake, the version rule and the
+# object-model members. A server speaks the same members a client does, so both
+# sides use one description of them.
+gnoblin-proto = { path = "../gnoblin-proto" }
+gnoblin-client = { path = "../gnoblin-client" }
+# Who this process is, for the IPC socket directory's ownership check.
+rustix.workspace = true
+# `[tag]` log lines, the same crate the Wayland engine logs through.
+tracing = "0.1.37"
+
+[build-dependencies]
+# The build script validates the checked-in schema once and embeds it, so the
+# process reads no source tree at run time.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+[dev-dependencies]
+# A real client for the real Wayland socket: the end-to-end tests drive the
+# session the way another process would.
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# The real command line client, called through its library entry point, so the
+# end-to-end tests exercise the shipped code rather than a copy of it.
+gnoblinctl = { path = "../gnoblinctl" }
+# A temporary directory for the two sockets, so a test run touches no shared path.
+tempfile = "3.23.0"

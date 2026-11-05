@@ -49,12 +49,19 @@ use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wm::WmOptions;
 
 use crate::frame::{FrameStats, Screenshots};
-use crate::observation::SessionSnapshot;
+use crate::observation::{Observer, SessionSnapshot};
 use crate::protocols::compositor::ClientState;
 use crate::state::State;
 
+/// How long [`ControlHandle::focus`] waits for the loop's answer.
+///
+/// A focus request is applied in the loop's next turn, so the wait is a scheduling
+/// delay and not work; the limit exists so a stopped loop answers "no" instead of
+/// hanging the caller.
+pub const FOCUS_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// How a session is configured.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Config {
     /// Where to listen for clients.
     ///
@@ -68,6 +75,12 @@ pub struct Config {
     pub workspaces: u32,
     /// The window management options from the configuration document.
     pub wm: WmOptions,
+    /// A reader outside the loop that is told when the observable state changed.
+    ///
+    /// It is how the composition root feeds its object graph from the same
+    /// snapshot every other reader sees, without a second description of the
+    /// window state that could drift from this one.
+    pub observer: Option<Arc<dyn Observer>>,
 }
 
 impl Default for Config {
@@ -77,6 +90,7 @@ impl Default for Config {
             seat_name: "seat0".to_owned(),
             workspaces: 1,
             wm: WmOptions::default(),
+            observer: None,
         }
     }
 }
@@ -148,6 +162,7 @@ impl Server {
             config.wm,
             config.workspaces,
             xwayland,
+            config.observer,
         )?;
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
@@ -191,6 +206,12 @@ impl Server {
                             Command::Input(event) => state.input(event),
                             Command::MoveWindow { window, geometry } => state.move_window(window, geometry),
                             Command::SetOpacity { window, opacity } => state.set_window_opacity(window, opacity),
+                            Command::Focus { window, reply } => {
+                                // The answer is sent after the publish, so a caller that
+                                // reads the observation on the strength of it sees what
+                                // the focus request did.
+                                let _ = reply.send(state.focus_window(window));
+                            }
                         }
                     }
                 }
@@ -330,6 +351,20 @@ impl ControlHandle {
         self.control.push(Command::SetOpacity { window, opacity });
     }
 
+    /// Asks the window manager to focus a window, as the IPC's `window.focus` does.
+    ///
+    /// The request is applied in the loop's next turn through the same event a click
+    /// produces, so focus policy still decides: `Some(true)` means the window holds
+    /// focus now, `Some(false)` means the policy declined or the window has closed,
+    /// and [`None`] means the loop did not answer within [`FOCUS_TIMEOUT`] because it
+    /// is stopping.
+    #[must_use]
+    pub fn focus(&self, window: WindowId) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::Focus { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Takes a picture of what `output` currently shows.
     ///
     /// The request is answered by the frame hook at the end of the next iteration, so
@@ -352,7 +387,7 @@ impl std::fmt::Debug for ControlHandle {
 ///
 /// They share a queue because they share a wake-up: a test that moves a window and
 /// takes a screenshot must see both in the order it asked for them.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 enum Command {
     /// An input event, as the backend would have delivered it.
     Input(InputEvent),
@@ -360,6 +395,11 @@ enum Command {
     MoveWindow { window: WindowId, geometry: Rect },
     /// A scene opacity, as an animation would produce.
     SetOpacity { window: WindowId, opacity: f32 },
+    /// A focus request, and the channel its answer goes back on.
+    Focus {
+        window: WindowId,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
 }
 
 /// The commands a control handle queued, and the ping that wakes the loop for them.

@@ -43,7 +43,7 @@ use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_types::{OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
-use crate::observation::{LockObservation, ObservedWindow, SessionSnapshot};
+use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::protocols::session_lock::LockTables;
 use crate::server::StartupError;
 
@@ -220,6 +220,11 @@ pub struct State {
 
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
+    /// A reader outside the loop that is told when the snapshot changed. It is the
+    /// compositor's own seam: the object graph it publishes is fed from the same
+    /// snapshot every other reader sees, so no second description of the window
+    /// state can drift from this one.
+    observer: Option<Arc<dyn Observer>>,
 }
 
 impl State {
@@ -236,6 +241,7 @@ impl State {
         options: WmOptions,
         workspaces: u32,
         xwayland: Option<crate::xwayland::XwaylandSession>,
+        observer: Option<Arc<dyn Observer>>,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
 
@@ -299,6 +305,7 @@ impl State {
             lock_embargo: Embargo::RELEASED,
             lock_tables: LockTables::default(),
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
+            observer,
         };
 
         for raw in 0..workspaces.max(DEFAULT_WORKSPACES) {
@@ -1000,9 +1007,51 @@ impl State {
                 },
             );
         }
-        if let Ok(mut guard) = self.observation.lock() {
-            *guard = snapshot;
+        match self.observation.lock() {
+            Ok(mut guard) => {
+                *guard = snapshot;
+                Self::announce(self.observer.as_deref(), &guard);
+            }
+            // A reader that panicked while holding the lock left the snapshot in
+            // place. The loop keeps running and this publish still replaces it, so the
+            // state stays whole rather than the session losing its observation.
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = snapshot;
+                Self::announce(self.observer.as_deref(), &guard);
+            }
         }
+    }
+
+    /// Tells the observer what the snapshot now holds.
+    ///
+    /// Stored first, then announced: a reader that wakes on this call reads the
+    /// state this call is about, which is what lets it treat the notification as a
+    /// hint rather than a payload.
+    fn announce(observer: Option<&dyn Observer>, snapshot: &SessionSnapshot) {
+        if let Some(observer) = observer {
+            observer.published(snapshot);
+        }
+    }
+
+    /// Asks the window manager to focus a window, as a shell's `window.focus` does.
+    ///
+    /// It takes the same path a click's activation takes, so the policy decides and
+    /// the result is what the next snapshot says. The return value is whether the
+    /// window manager holds focus on it now, which is what a caller that has to
+    /// answer an operation needs; a window that has closed is not focused and is not
+    /// invented.
+    pub(crate) fn focus_window(&mut self, window: WindowId) -> bool {
+        if self.wm.window(window).is_none() {
+            return false;
+        }
+        let effects = self.wm.apply(Event::ActivationRequested {
+            window,
+            decision: ActivationDecision::Allow,
+        });
+        self.apply(effects);
+        self.publish();
+        self.wm.focused() == Some(window)
     }
 
     /// Asks the window manager to focus the window under the pointer.

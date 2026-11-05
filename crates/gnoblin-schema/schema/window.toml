@@ -31,6 +31,30 @@ name = "focused"
 type = "bool"
 since = "0.2.0"
 
+# The frame rectangle in global logical coordinates: the left and top edges, then
+# the extents. Four numbers rather than one rectangle because the schema declares
+# no rectangle type yet, and a move changes x and y while a resize changes width
+# and height, so each diff says which kind of change it was.
+[[object.property]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+
 # Ask the compositor to focus the window. Focus policy decides whether it does;
 # the result arrives as a change to the `focused` property.
 [[object.method]]

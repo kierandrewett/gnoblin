@@ -87,6 +87,17 @@ const CLIENT_SIDE: &[&str] = &[
 /// The one binary that links the compat adapters.
 const COMPAT_HOST: &str = "gnoblin";
 
+/// What the session binary itself may depend on.
+///
+/// Design/rust-compositor.md, "Project structure": `gnoblin/compositor` is the
+/// composition root and "the only crate that knows every subsystem", and the binary is
+/// the supervisor that starts one role per process. A binary that named an engine or a
+/// policy crate directly would be a second composition root: two places deciding which
+/// backend runs, which IPC server serves and how a snapshot becomes an object. So the
+/// binary reaches the session only through the composition root and the guardian, and
+/// the compat adapters it serves are the one exception the plan states.
+const BINARY_ROOTS: &[&str] = &["gnoblin-compositor", "gnoblin-session"];
+
 /// The shared compat frame every compat crate depends on.
 const COMPAT_CORE: &str = "gnoblin-compat-core";
 
@@ -139,6 +150,10 @@ const RULES: &[Rule] = &[
     Rule {
         id: "types-roots",
         check: types_roots,
+    },
+    Rule {
+        id: "binary-roots",
+        check: binary_roots,
     },
 ];
 
@@ -343,6 +358,41 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
+/// The session binary reaches the session through the composition root and the
+/// guardian, and links the compat adapters it serves.
+///
+/// A dev-dependency is exempt for the reason the plan gives: a test target may drive
+/// the engine directly to prove what the binary does with it, and that edge cannot
+/// ship.
+fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != COMPAT_HOST || dep.kind == DepKind::Dev {
+        return None;
+    }
+    if BINARY_ROOTS.contains(&dep.name.as_str()) || is_compat(&dep.name) {
+        return None;
+    }
+    // Only the workspace's own crates can be a second composition root; `clap` and
+    // `tempfile` cannot, and holding the binary to a naming rule for the crate
+    // registry would fail for a reason that has nothing to do with the rule.
+    if !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    Some(format!(
+        "the session binary depends on the composition root and the guardian, not on `{}`; a second composition root decides the same things twice",
+        dep.name
+    ))
+}
+
+/// Whether a dependency is a crate of this workspace rather than one from a registry
+/// or a git pin.
+///
+/// The workspace's members are `gnoblin-*`, the session binary `gnoblin`, the portal
+/// `xdg-desktop-portal-gnoblin` and `xtask`; every other name in a member's dependency
+/// list comes from outside the workspace.
+fn is_workspace_crate(name: &str) -> bool {
+    name.starts_with("gnoblin") || name == "xdg-desktop-portal-gnoblin" || name == "xtask"
+}
+
 /// The test kit and the parity harness are development dependencies only.
 fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name != "gnoblin-testkit" && dep.name != "gnoblin-parity" {
@@ -380,6 +430,38 @@ mod tests {
         assert!(
             reported[0]
                 .starts_with("gnoblin-compat-mutter-screencast -> gnoblin-compat-mutter-clipboard [compat-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    #[test]
+    fn the_session_binary_may_depend_on_the_composition_root_and_the_guardian() {
+        assert_eq!(
+            violations(&[(
+                "gnoblin",
+                &["gnoblin-compositor", "gnoblin-session", "gnoblin-compat-gtk-shell1"],
+            )]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_session_binary_may_depend_on_an_external_crate() {
+        // `clap` parses the one flag and `tempfile` is the test's; neither is a
+        // subsystem.
+        assert_eq!(
+            violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-session", "clap"])]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_session_binary_may_not_depend_on_a_subsystem() {
+        let reported = violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-wayland"])]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin -> gnoblin-wayland [binary-roots]"),
             "unexpected violation: {}",
             reported[0]
         );

@@ -150,6 +150,13 @@ clap = { version = "4.6.7", default-features = false, features = [
 # never offer a member the schema does not declare.
 clap_complete = "4.6.9"
 
+# The effective user, for the IPC socket's ownership check: the socket is only as
+# private as the directory holding it, and a directory owned by another account is a
+# directory that account controls. It is already in the graph (calloop uses it), and
+# it is the smallest safe way to ask the kernel who this process is `libc` would
+# need `unsafe`, which the workspace forbids.
+rustix = { version = "1.1.6", features = ["process"] }
+
 # The shared primitives: geometry, transform, scale, identities, ticks and error
 # codes. Every crate that names a rectangle or an output uses this crate instead
 # of declaring its own.

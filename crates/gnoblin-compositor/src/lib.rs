@@ -1,1 +1,301 @@
-//! Composition root: event loop and wiring, the only crate that knows every subsystem.
+//! Composition root: one runnable compositor process, and the only crate that
+//! knows every subsystem.
+//!
+//! This is the integration lane of `design/rust-compositor.md` ("Process model",
+//! "One IPC", "Main data paths" and the `gnoblin-compositor` card): a process that
+//! starts a Wayland session on a backend, keeps the live object graph the IPC
+//! serves, and answers `gnoblinctl` and every other IPC client on
+//! `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`. Nothing here decides policy, renders or
+//! speaks a protocol by hand: it wires [`gnoblin_wayland`], [`gnoblin_backend`],
+//! [`gnoblin_model`] and the wire vocabulary together and gets out of the way.
+//!
+//! # What a run does
+//!
+//! 1. The schema is the graph's vocabulary, embedded at build time, and the
+//!    version its `gnoblin` namespace declares is the IPC version this process
+//!    serves — the plan makes that exactly the Gnoblin version.
+//! 2. The IPC socket is prepared and bound before anything else, on a directory
+//!    only this user can reach. Binding first is what lets a shell connect the
+//!    moment it sees the file, and it is where a second compositor is refused
+//!    rather than allowed to overwrite a live socket.
+//! 3. The Wayland session starts on the backend [`Config::backend`] names, with
+//!    an [`gnoblin_wayland::Observer`] that forwards every published snapshot.
+//! 4. The loop runs on this thread. The IPC server owns the graph on another one,
+//!    because a calloop loop and the backend it drives are not `Send`; the two
+//!    sides meet at the snapshot, which is the session's own description of its
+//!    windows and lock state.
+//! 5. When the loop stops, the IPC server is told to stop, both threads are
+//!    joined and the socket is removed.
+//!
+//! # The object graph
+//!
+//! [`SessionSync`] owns it: one `session` object carrying the version, and one
+//! `window` object per managed window carrying the title, the app id, focus and the
+//! frame rectangle. Every change is a property diff with its revision, published
+//! from the same [`SessionSnapshot`] every other reader sees, so the graph cannot
+//! describe a window the session does not have. `window.focus` is the one method
+//! this slice serves, and it goes through [`gnoblin_wayland::ControlHandle::focus`]
+//! into the window manager, so focus policy still decides.
+//!
+//! # Failure modes first
+//!
+//! Each entry names the test that covers it, in `tests/ipc.rs` unless it says
+//! otherwise.
+//!
+//! 1. **A stale socket blocks the next session.** A socket file a crashed session
+//!    left behind is replaced, because nothing is listening on it:
+//!    `a_stale_socket_is_replaced`.
+//! 2. **Two compositors bind one socket.** The second start is refused with the
+//!    path named and the first session keeps serving its clients:
+//!    `two_compositors_on_one_socket_are_refused`.
+//! 3. **The socket directory is reachable by other users.** A directory that is not
+//!    `0700` and owned by this user is refused before anything binds, so no other
+//!    account can drive the compositor: `a_reachable_socket_directory_is_refused`.
+//! 4. **An IPC peer's crash stops the compositor.** A connection that dies
+//!    mid-subscription ends that connection, its subscriptions and its pending
+//!    operations, and the session keeps serving everyone else:
+//!    `an_ipc_peer_that_dies_does_not_stop_the_compositor`.
+//! 5. **A window object outlives its surface.** A client that disconnects leaves no
+//!    `window` object behind, and the object it had is closed once:
+//!    `a_window_object_outlives_its_surface_only_until_the_surface_ends`.
+//! 6. **Focus is called on a window that is gone.** The call is refused with
+//!    `object-unknown` instead of focusing an identity nobody holds, and the session
+//!    keeps running: `focus_on_a_closed_window_is_refused`.
+//! 7. **A client speaks a version this compositor cannot serve.** The handshake
+//!    refuses before any envelope is decoded and names both versions:
+//!    `a_wrong_version_client_is_refused`.
+//! 8. **The graph publishes a window the session does not have, or keeps one it
+//!    lost.** The diffs are computed from the snapshot, and the pure mapping is
+//!    tested on its own in `ipc::session`'s tests.
+//!
+//! # Where the next lane plugs in
+//!
+//! Every seam below is a trait, a channel or a match arm, so a subsystem lands
+//! without editing an existing module:
+//!
+//! - a backend is a variant of [`Backend`] and one arm of its `build`;
+//! - a new IPC member is one arm of the IPC server's dispatch (a private module:
+//!   `src/ipc/server.rs`), or a schema member plus a generated client;
+//! - a snapshot consumer is a second [`gnoblin_wayland::Observer`];
+//! - requests (prompts, polkit, GeoClue) are the [`gnoblin_model::RequestBroker`]
+//!   the dispatch already refuses for, so offering one is adding the offer, not a
+//!   second vocabulary.
+
+mod backend;
+mod ipc;
+mod schema;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread::JoinHandle;
+
+use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
+use tracing::info;
+
+pub use backend::Backend;
+pub use gnoblin_types::Version;
+pub use gnoblin_wayland::{Observer, SessionSnapshot};
+pub use ipc::{IpcError, SessionSync};
+pub use schema::catalog;
+
+use gnoblin_model::ModelError;
+use gnoblin_schema::SchemaError;
+
+/// How a compositor session is configured.
+#[derive(Clone, Debug, Default)]
+pub struct Config {
+    /// The backend the session drives.
+    pub backend: Backend,
+    /// How the Wayland session itself is configured: its socket, seat, workspaces
+    /// and window management options.
+    pub wayland: gnoblin_wayland::Config,
+    /// The IPC socket, or [`None`] for `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`.
+    ///
+    /// A test passes its own path so the run touches no shared directory.
+    pub ipc_socket: Option<PathBuf>,
+    /// A handle a supervisor or a test stops the session with.
+    pub stop: Option<StopHandle>,
+}
+
+/// A handle that stops a running session from another thread.
+///
+/// A [`gnoblin_wayland::Server`] is created and run on one thread, so a supervisor
+/// that started the process in another thread cannot hold its
+/// [`ControlHandle`]. This is the seam: the handle is a request, and the run's own
+/// watcher resolves it into `ControlHandle::stop`, which is the only way the loop
+/// is ever stopped.
+#[derive(Clone, Debug)]
+pub struct StopHandle {
+    requested: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+}
+
+impl Default for StopHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StopHandle {
+    /// A handle that has not been asked to stop.
+    #[must_use]
+    pub fn new() -> StopHandle {
+        StopHandle {
+            requested: Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new())),
+        }
+    }
+
+    /// Asks the session to stop after its current turn. It is safe to call more than
+    /// once, and from any thread.
+    pub fn request(&self) {
+        let (requested, wake) = &*self.requested;
+        let mut guard = requested.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = true;
+        wake.notify_all();
+    }
+
+    /// Whether a stop has been requested.
+    #[must_use]
+    pub fn requested(&self) -> bool {
+        let (requested, _) = &*self.requested;
+        *requested.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Blocks until a stop is requested.
+    fn wait(&self) {
+        let (requested, wake) = &*self.requested;
+        let mut guard = requested.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        while !*guard {
+            guard = wake.wait(guard).unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
+}
+
+/// The Gnoblin version this build serves, which is its IPC version.
+///
+/// It is the schema's, not the package's: the plan makes the IPC version exactly the
+/// Gnoblin version, and a candidate build (`0.2.0-alpha.N`) advertises the triple of
+/// the release it becomes.
+#[must_use]
+pub fn version() -> Version {
+    let (major, minor, patch) = schema::IPC_VERSION;
+    Version::new(major, minor, patch)
+}
+
+/// The compositor process.
+pub struct Compositor;
+
+impl Compositor {
+    /// Runs a session until it stops.
+    ///
+    /// The Wayland loop runs on the calling thread — a calloop loop and the backend
+    /// it drives cannot move between threads — so this returns only when the session
+    /// does. A supervisor that needs the handle back passes a [`StopHandle`] in
+    /// [`Config::stop`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Schema`] when the embedded schema cannot be loaded,
+    /// [`Error::Ipc`] when the socket cannot be prepared or bound,
+    /// [`Error::Wayland`] when the Wayland session cannot start, and
+    /// [`Error::Loop`] when the running loop fails.
+    pub fn run(config: Config) -> Result<(), Error> {
+        let catalog = schema::catalog().map_err(Error::Schema)?;
+        let version = version();
+        let mut store = SessionSync::new(catalog, version).map_err(Error::Model)?;
+
+        let path = match &config.ipc_socket {
+            Some(path) => path.clone(),
+            None => gnoblin_client::unix::socket_path(|name| std::env::var(name).ok()).map_err(Error::IpcPath)?,
+        };
+
+        // Everything the socket has to be — its directory, its mode, no live
+        // compositor — is settled before a Wayland session exists to tear down, and
+        // the socket is bound before the loop starts so a shell that sees the file can
+        // connect.
+        let prepared = ipc::SocketPath::prepare(&path, version).map_err(Error::Ipc)?;
+        let (events, received) = ipc::events();
+        let (observer, pending) = ipc::wake(events.clone());
+        store.ready();
+
+        let backend = config.backend.build();
+        let wayland = gnoblin_wayland::Config {
+            observer: Some(observer),
+            ..config.wayland
+        };
+        let server = Server::new(backend, wayland).map_err(Error::Wayland)?;
+        let control = server.control();
+        let observation = server.observation();
+        let ipc = ipc::IpcServer::start(prepared, store, events, received, pending, observation, control.clone())
+            .map_err(Error::Ipc)?;
+
+        info!(
+            socket = %path.display(),
+            version = %version,
+            backend = config.backend.name(),
+            "[compositor] serving"
+        );
+        let stop = config.stop.clone();
+        let watcher = spawn_watcher(stop.clone(), control);
+
+        let loop_result = server.run();
+        ipc.shutdown();
+        if let Some(watcher) = watcher {
+            // The watcher waits for exactly this: a stop it can then resolve.
+            if let Some(stop) = &stop {
+                stop.request();
+            }
+            let _ = watcher.join();
+        }
+        let _ = std::fs::remove_file(&path);
+        loop_result.map_err(Error::Loop)
+    }
+}
+
+/// Why a session could not start or did not stop cleanly.
+#[derive(Debug)]
+pub enum Error {
+    /// The embedded schema could not be loaded or is not valid.
+    Schema(SchemaError),
+    /// No IPC socket path could be resolved from the environment.
+    IpcPath(String),
+    /// The IPC socket could not be prepared or bound.
+    Ipc(IpcError),
+    /// The Wayland session could not start.
+    Wayland(StartupError),
+    /// The running Wayland loop failed.
+    Loop(LoopError),
+    /// The object graph refused the session object, which means the schema and this
+    /// crate disagree about it.
+    Model(ModelError),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Schema(error) => write!(formatter, "the object schema cannot be loaded: {error}"),
+            Error::IpcPath(reason) => write!(formatter, "{reason}"),
+            Error::Ipc(error) => write!(formatter, "{error}"),
+            Error::Wayland(error) => write!(formatter, "the Wayland session cannot start: {error}"),
+            Error::Loop(error) => write!(formatter, "the Wayland session stopped: {error}"),
+            Error::Model(error) => write!(formatter, "the object graph refused the session: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// A watcher that turns a [`StopHandle`] into the loop's own stop.
+///
+/// It exists because the server is created and run on this thread: the handle is
+/// the only part of the session another thread may hold, so it is resolved here into
+/// the [`ControlHandle`] the loop answers.
+fn spawn_watcher(stop: Option<StopHandle>, control: ControlHandle) -> Option<JoinHandle<()>> {
+    let stop = stop?;
+    Some(std::thread::spawn({
+        let stop = stop.clone();
+        move || {
+            stop.wait();
+            control.stop();
+        }
+    }))
+}

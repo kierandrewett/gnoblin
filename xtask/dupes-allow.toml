@@ -673,3 +673,21 @@ left = "gnoblin-lua::Status"
 right = "gnoblin-xwayland::Status"
 kind = "same-name"
 reason = "a script's load status versus where an Xwayland instance is in its start and restart cycle"
+
+[[allow]]
+left = "gnoblin-compositor::Config"
+right = "gnoblin-wayland::Config"
+kind = "same-name"
+reason = "the composition root's Config is what this process was started with (backend, sockets, stop handle) and holds a gnoblin_wayland::Config as one field: the containing and the contained type sit one inside the other by design"
+
+[[allow]]
+left = "gnoblin-compositor::Config"
+right = "gnoblin-config::Config"
+kind = "same-name"
+reason = "the session configuration document a role reads versus the invocation of this process; the document describes the session, not the backend, sockets or supervisor handle it is started with"
+
+[[allow]]
+left = "gnoblin-a11y::Config"
+right = "gnoblin-compositor::Config"
+kind = "same-name"
+reason = "the accessibility settings a state machine holds versus the process invocation of the composition root; neither crate names the other"

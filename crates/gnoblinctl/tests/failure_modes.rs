@@ -55,6 +55,11 @@ fn window_properties(title: &str) -> Fields {
     properties.insert("title".to_owned(), Value::Text(title.to_owned()));
     properties.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
     properties.insert("focused".to_owned(), Value::Bool(false));
+    // The frame rectangle the compositor publishes as four numbers.
+    properties.insert("x".to_owned(), Value::Int(0));
+    properties.insert("y".to_owned(), Value::Int(0));
+    properties.insert("width".to_owned(), Value::Uint(800));
+    properties.insert("height".to_owned(), Value::Uint(600));
     properties
 }
 

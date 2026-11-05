@@ -6,5 +6,27 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "gnoblin"
+path = "src/main.rs"
+
+[dependencies]
+# The composition root: the only crate that knows every subsystem. This binary hands
+# it a configuration and stays out of the way; it must never learn a subsystem itself,
+# because a binary that reached into an engine crate would be a second composition
+# root.
+gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The guardian's policy: the plan of children, the events it answers and the effects
+# the caller performs. The role that performs them is not implemented in this build,
+# and this dependency is what lets the binary say exactly what it is missing.
+gnoblin-session = { path = "../gnoblin-session" }
+# The role flag. One flag with a documented default, and `--version`.
+clap.workspace = true
+
 [lints]
 workspace = true
+
+[dev-dependencies]
+# The tests run the built binary, so the exit codes and the flags are the shipped
+# ones rather than a function that happens to share their names.
+tempfile = "3.23.0"

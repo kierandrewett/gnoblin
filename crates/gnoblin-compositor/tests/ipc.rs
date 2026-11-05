@@ -1,0 +1,324 @@
+//! One test per documented failure mode, over real sockets and real peers.
+//!
+//! The list is in `src/lib.rs`; each entry names its test here. Nothing is mocked:
+//! the session is a real headless compositor, the Wayland peer is a real
+//! `wayland-client` connection, and the IPC peer is either the real `gnoblinctl`
+//! library entry or a socket that speaks the framing by hand to send what a client
+//! library would refuse to send.
+//!
+//! The tests in this file are the ones about the *boundary*: a socket that is stale,
+//! taken, or in a directory another account could reach; a peer with the wrong
+//! version; a peer that dies; a frame that does not decode. The happy path — a shell
+//! listing, watching and calling through `gnoblinctl` — is `end_to_end.rs`.
+
+mod support;
+
+use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::net::{UnixListener, UnixStream};
+
+use gnoblin_client::unix::UnixTransport;
+use gnoblin_client::{Client, ConnectError};
+use gnoblin_compositor::{Error, IpcError};
+use gnoblin_model::{Fields, Filter, ObjectId, Observation};
+use gnoblin_proto::HandshakeKind;
+use gnoblin_types::Version;
+
+use support::{Client as WaylandClient, Command, Session, config, run_refused, wait_for, wait_for_listed_id};
+
+/// The version this build serves.
+fn version() -> Version {
+    gnoblin_compositor::version()
+}
+
+/// An IPC client connection at the served version.
+#[track_caller]
+fn ipc(session: &Session) -> Client<UnixTransport> {
+    Client::connect(
+        UnixTransport::connect(session.socket()).expect("the session is listening"),
+        version(),
+    )
+    .expect("the session accepts this build")
+}
+
+#[test]
+fn a_stale_socket_is_replaced() {
+    let directory = support::private_directory();
+    let path = directory.path().join("ipc.sock");
+    // Exactly what a session that was killed leaves: a bound socket with nobody
+    // listening on it.
+    let listener = UnixListener::bind(&path).expect("bind");
+    drop(listener);
+    assert!(path.exists(), "the stale file is in the way");
+
+    let session = Session::start_with(Some(path.clone()));
+    session.ctl(&["window", "list"]).ok();
+    session.stop().expect("the session stops cleanly");
+    assert!(!path.exists(), "the socket is removed when the session stops");
+}
+
+#[test]
+fn two_compositors_on_one_socket_are_refused() {
+    let session = Session::start();
+    let directory = support::private_directory();
+    let error = run_refused(config(directory.path(), session.socket().to_path_buf()));
+    match error {
+        Error::Ipc(IpcError::Running { path }) => assert_eq!(path, session.socket()),
+        other => panic!("a live socket must be refused, got {other:?}"),
+    }
+    // The first session never noticed: it is still the one serving that socket.
+    session.ctl(&["session", "list"]).ok();
+    session.stop().expect("the first session stops cleanly");
+}
+
+#[test]
+fn a_reachable_socket_directory_is_refused() {
+    let directory = support::private_directory();
+    let shared = directory.path().join("shared");
+    std::fs::create_dir(&shared).expect("the directory");
+    std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o755)).expect("the mode");
+    let error = run_refused(config(&shared, shared.join("ipc.sock")));
+    match error {
+        Error::Ipc(IpcError::Directory { reason, .. }) => {
+            assert!(reason.contains("0700"), "the refusal names the mode: {reason}");
+        }
+        other => panic!("a directory another account can enter must be refused, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_wrong_version_client_is_refused() {
+    let session = Session::start();
+
+    // The fixed-layout handshake answers with the compositor's own version, so the
+    // raw refusal is readable before any envelope is decoded.
+    let (_wire, answer) = support::Wire::connect_version(session.socket(), Version::new(0, 3, 0));
+    assert_eq!(answer.kind, HandshakeKind::Refuse);
+    assert_eq!(answer.version, version());
+
+    // A real client turns that into an error that names both versions.
+    let error = Client::connect(
+        UnixTransport::connect(session.socket()).expect("the session is listening"),
+        Version::new(0, 3, 0),
+    )
+    .expect_err("a 0.3 client is refused by a 0.2 compositor");
+    let ConnectError::Refused(_) = &error else {
+        panic!("expected a version refusal, got {error:?}");
+    };
+    let message = error.to_string();
+    assert!(message.contains(&version().to_string()), "{message}");
+    assert!(message.contains("0.3.0"), "{message}");
+
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn an_ipc_peer_that_dies_does_not_stop_the_compositor() {
+    let session = Session::start();
+    let mut client = ipc(&session);
+    client.subscribe(Filter::All).expect("the snapshot");
+
+    // A process that is killed leaves its subscription behind; the connection ends
+    // and nothing else may notice.
+    drop(client);
+
+    session.ctl(&["session", "list"]).ok();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    wait_for_listed_id(&session, "Alpha");
+    assert_eq!(session.ctl(&["window", "list"]).ok().out.lines().count(), 1);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_window_object_outlives_its_surface_only_until_the_surface_ends() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+
+    // Subscribe to the window before it closes, so the end arrives as an observation
+    // rather than as a missing snapshot entry.
+    let mut client = ipc(&session);
+    let snapshot = client
+        .subscribe(Filter::Object(ObjectId::new(id)))
+        .expect("the snapshot");
+    assert!(snapshot.object(ObjectId::new(id)).is_some(), "the window is live");
+
+    wayland.destroy(window);
+    let closed = wait_for("the window object closes", || {
+        loop {
+            match client.next_event().expect("an observation") {
+                gnoblin_client::Event::Model(Observation::Closed { object, .. }) => return Some(object),
+                gnoblin_client::Event::Model(_) => {}
+                gnoblin_client::Event::RequestOffered { .. } | gnoblin_client::Event::RequestFinished { .. } => {}
+            }
+        }
+    });
+    assert_eq!(closed, ObjectId::new(id));
+    assert_eq!(session.ctl(&["window", "list"]).ok().out, "", "no window is left");
+
+    // The identity is never reused: a new window gets a new object, and this one stays
+    // unknown.
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Beta", "Beta");
+    let beta = wait_for_listed_id(&session, "Beta");
+    assert_ne!(beta, id, "an identity is never reused");
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn focus_on_a_closed_window_is_refused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    let window = wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let id = wait_for_listed_id(&session, "Alpha");
+    wayland.destroy(window);
+    wait_for("the window is gone", || {
+        let listed = session.ctl(&["window", "list"]).ok();
+        listed.out.is_empty().then_some(())
+    });
+
+    // The identity is dead, so the call is refused with the schema's code for an
+    // object no live object has, and the session keeps running.
+    let mut client = ipc(&session);
+    assert!(
+        client
+            .subscribe(Filter::Object(ObjectId::new(id)))
+            .expect("the snapshot")
+            .object(ObjectId::new(id))
+            .is_none(),
+        "the object is not in the snapshot"
+    );
+    let error = client
+        .call(ObjectId::new(id), "focus", &Fields::new())
+        .expect_err("a closed window cannot be focused");
+    match error {
+        gnoblin_client::ClientError::Refused { code, .. } => {
+            assert_eq!(code, gnoblin_client::code::OBJECT_UNKNOWN);
+        }
+        other => panic!("expected object-unknown, got {other:?}"),
+    }
+
+    // The same refusal through the real client, as a script sees it.
+    let refusal = session.ctl(&["window", "call", &id.to_string(), "focus"]);
+    assert_eq!(refusal.code, 1, "a refused call exits 1: {}", refusal.out);
+    assert!(refusal.err.contains("object-unknown"), "{}", refusal.err);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn focus_completes_after_the_diff_it_caused() {
+    let session = Session::start();
+    let mut wayland = WaylandClient::connect(session.wayland());
+    wayland.map_window("org.gnoblin.Alpha", "Alpha");
+    let alpha = wait_for_listed_id(&session, "Alpha");
+    let mut second = WaylandClient::connect(session.wayland());
+    second.map_window("org.gnoblin.Beta", "Beta");
+    let beta = wait_for_listed_id(&session, "Beta");
+
+    // The beta window mapped last, so it holds focus; ask for alpha and read the
+    // observations in the order the compositor sent them.
+    let mut client = ipc(&session);
+    client.subscribe(Filter::All).expect("the snapshot");
+    let operation = client
+        .call(ObjectId::new(alpha), "focus", &Fields::new())
+        .expect("the call is served");
+    let outcome = client.await_operation(operation).expect("the completion");
+    assert!(outcome.is_done(), "focus was carried out: {outcome:?}");
+
+    let mut focused_before_completion = None;
+    loop {
+        match client.next_event().expect("an observation") {
+            gnoblin_client::Event::Model(Observation::Changed {
+                object,
+                property,
+                value,
+                ..
+            }) if object == ObjectId::new(alpha) && property == "focused" => {
+                assert_eq!(value, gnoblin_model::Value::Bool(true), "alpha took focus");
+                focused_before_completion = Some(());
+            }
+            gnoblin_client::Event::Model(Observation::Finished { operation: done, .. }) if done == operation.id() => {
+                break;
+            }
+            gnoblin_client::Event::Model(_) => {}
+            gnoblin_client::Event::RequestOffered { .. } | gnoblin_client::Event::RequestFinished { .. } => {}
+        }
+    }
+    assert!(
+        focused_before_completion.is_some(),
+        "the diff reached the client before the completion"
+    );
+    assert_ne!(alpha, beta);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_malformed_frame_is_refused_and_the_connection_survives() {
+    let session = Session::start();
+    let mut wire = support::Wire::connect(session.socket());
+    // A subscribe whose payload is a filter tag this build does not know.
+    wire.send(&gnoblin_proto::Envelope::request(
+        gnoblin_client::NAMESPACE,
+        gnoblin_client::member::SUBSCRIBE,
+        1,
+        vec![0xff],
+    ));
+    let refusal = wire.receive().expect("an error frame");
+    assert_eq!(
+        refusal.error_code(),
+        Some(gnoblin_client::code::UNKNOWN_MEMBER),
+        "the payload is refused with the schema's code"
+    );
+
+    // The connection is still usable: the next frame is a real subscribe and it is
+    // answered with a snapshot.
+    wire.send(&gnoblin_client::wire::subscribe(2, Filter::All));
+    let reply = wire.receive().expect("a reply");
+    let snapshot =
+        gnoblin_client::wire::read_snapshot(reply.payload().unwrap_or_default()).expect("the snapshot payload decodes");
+    assert!(
+        snapshot
+            .objects()
+            .iter()
+            .any(|view| view.ty().to_string() == "gnoblin.session"),
+        "the session object is in the snapshot"
+    );
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn a_silent_peer_does_not_block_the_session() {
+    let session = Session::start();
+    // Connected and then silent: its own reader waits on it, and every other client is
+    // served in the meantime. A connection that never speaks gives up on the reader's
+    // own handshake deadline instead of holding a thread for the session's lifetime.
+    let silent = UnixStream::connect(session.socket()).expect("the session is listening");
+    session.ctl(&["session", "list"]).ok();
+    session.ctl(&["window", "list"]).ok();
+    drop(silent);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn the_session_object_carries_the_ipc_version() {
+    let session = Session::start();
+    let mut client = ipc(&session);
+    let snapshot = client.subscribe(Filter::All).expect("the snapshot");
+    let session_object = snapshot
+        .objects()
+        .iter()
+        .find(|view| view.ty().to_string() == "gnoblin.session")
+        .expect("the session object");
+    assert_eq!(
+        session_object.property("version"),
+        Some(&gnoblin_model::Value::Text(version().to_string()))
+    );
+
+    // A short-lived client reads the same value without a subscription of its own.
+    // The `ready` signal is raised before the server accepts anyone, so it is this
+    // property a client arriving later starts from.
+    let printed = Command::run(session.socket(), &["session", "get", "1", "version"]).ok();
+    assert_eq!(printed.out.trim(), format!("{:?}", version().to_string()));
+    session.stop().expect("the session stops cleanly");
+}

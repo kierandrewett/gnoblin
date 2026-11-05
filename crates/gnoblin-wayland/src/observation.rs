@@ -140,3 +140,44 @@ impl SessionSnapshot {
         self.lock.capture_allowed
     }
 }
+
+/// A reader outside the loop that wants to know when the session's state changed.
+///
+/// The snapshot is whole state rather than a diff, so the reader is free to miss a
+/// notification — coalescing two into one is correct, because it reads the latest
+/// snapshot anyway. What the contract does promise is that the snapshot is already
+/// stored when this is called, and that it is the state the session has now.
+///
+/// Implementations must not block: the call happens inside the loop's own turn, so
+/// an observer that waits for the loop would deadlock it. A coalescing channel is the
+/// intended shape — one queued "look again", not one message per publish.
+///
+/// It is [`std::fmt::Debug`] so a [`crate::Config`] holding one can still be
+/// formatted, which is what makes a start-up failure readable.
+pub trait Observer: Send + Sync + std::fmt::Debug {
+    /// The snapshot was replaced; `snapshot` is what it now holds.
+    fn published(&self, snapshot: &SessionSnapshot);
+}
+
+impl SessionSnapshot {
+    /// Assemble a snapshot from its parts.
+    ///
+    /// A session builds its own snapshot in [`crate::State`]; this is for a reader
+    /// that replays one it recorded and for a test that needs a state without a
+    /// session. The lock state is the released default, because a snapshot built
+    /// here describes no lock; a caller that has a lock state reads it from the
+    /// session that announced it.
+    #[must_use]
+    pub fn from_parts(
+        outputs: Vec<OutputId>,
+        focus: Option<WindowId>,
+        windows: Vec<ObservedWindow>,
+    ) -> SessionSnapshot {
+        SessionSnapshot {
+            windows: windows.into_iter().map(|window| (window.id, window)).collect(),
+            outputs,
+            focus,
+            lock: LockObservation::default(),
+        }
+    }
+}

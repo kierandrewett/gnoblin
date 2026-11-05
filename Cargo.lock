@@ -653,6 +653,12 @@ checksum = "37bfe73dc8ec21f54d181e5a60554327ec3f1c600c455a75ccbfc65d2106a6c4"
 [[package]]
 name = "gnoblin"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "clap",
+ "gnoblin-compositor",
+ "gnoblin-session",
+ "tempfile",
+]
 
 [[package]]
 name = "gnoblin-a11y"
@@ -773,6 +779,21 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compositor"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-backend",
+ "gnoblin-client",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "gnoblin-types",
+ "gnoblin-wayland",
+ "gnoblinctl",
+ "rustix",
+ "tempfile",
+ "tracing",
+ "wayland-client",
+ "wayland-protocols",
+]
 
 [[package]]
 name = "gnoblin-config"
