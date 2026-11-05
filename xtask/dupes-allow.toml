@@ -839,3 +839,16 @@ right = "gnoblin-services::UnknownSlot"
 kind = "same-shape"
 reason = "a slot name that did not parse versus a parity command target; the only shared shape is a name string"
 >>>>>>> d4856a12 (feat(services): the slot registry and the polkit authentication agent)
+
+[[allow]]
+left = "gnoblin-wasm::Refusal"
+right = "gnoblin-services::Refusal"
+kind = "same-name"
+reason = "a guest module's refusal versus the services role's; the wasm one carries a component-model trap and this one names a slot or a request"
+
+[[allow]]
+left = "gnoblin-wasm::Slot"
+right = "gnoblin-services::Slot"
+kind = "same-name"
+reason = "a module host's export slot versus a capability slot from the plan's provider table; the two share only the word"
+>>>>>>> 91452082 (feat(compat): serve gcr's prompter without libgcr)

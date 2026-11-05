@@ -1,0 +1,31 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.keyring.internal.Prompter",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "BeginPrompting",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "PerformPrompt",
+          "support": "partial",
+          "note": "the prompt is offered as a `prompt.secret` request and fails closed when no shell claimed the slot"
+        },
+        {
+          "kind": "method",
+          "name": "StopPrompting",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Prompting",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}
