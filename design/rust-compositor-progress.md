@@ -1,7 +1,7 @@
 # Rust compositor progress
 
-**Status:** what is on `origin/rust-compositor` at `8bf36b68`. Each commit is
-`git log --format=%h -1 -- crates/<crate>/src`, and each count is the number of
+**Status:** what is on `origin/rust-compositor` at `8778ccc8`. Each commit is
+`git log --format=%h -1 -- crates/<crate>`, and each count is the number of
 `#[test]` declarations in the crate at that commit. A count is declarations, not
 a run.
 
@@ -11,14 +11,14 @@ against it.
 | Lane | Crate                                                                                             | What landed                                                         | Commit     | Tests |
 | ---- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------- | ----- |
 | F    | `gnoblin-types`                                                                                   | shared primitives and the duplicate-type report                     | `b98dd5cb` | 20    |
-| F    | `gnoblin-schema`                                                                                  | schema model, rules, first slice, the `request` object              | `4dedd5ca` | 22    |
+| F    | `gnoblin-schema`                                                                                  | schema model, rules, first slice, the `request` object              | `8778ccc8` | 22    |
 | F    | `gnoblin-proto`                                                                                   | framed envelope, handshake, version rule, generated wire types      | `4dedd5ca` | 28    |
-| F    | `xtask`                                                                                           | dependency rules, `gen-proto`, `gen-config`, `dupes`, compat report | `4dedd5ca` | 23    |
+| F    | `xtask`                                                                                           | dependency rules, `gen-proto`, `gen-config`, `dupes`, compat report | `8778ccc8` | 23    |
 | P    | `gnoblin-parity`                                                                                  | scenario runner, targets, normaliser, report                        | `c3779eed` | 50    |
 | P    | `gnoblin-testkit`                                                                                 | runtime directory, clock, recorder                                  | `c3779eed` | 13    |
-| OBJ  | `gnoblin-model`                                                                                   | object graph, revisions, request broker, in-process loopback        | `ebd69a80` | 14    |
-| OBJ  | `gnoblin-client`                                                                                  | IPC client                                                          | `15cbc315` | 27    |
-| OBJ  | `gnoblinctl`                                                                                      | generated tree, typed arguments, `ipc dump` redaction               | `1412c6a8` | 45    |
+| OBJ  | `gnoblin-model`                                                                                   | object graph, revisions, request broker, in-process loopback        | `8778ccc8` | 15    |
+| OBJ  | `gnoblin-client`                                                                                  | IPC client                                                          | `8778ccc8` | 30    |
+| OBJ  | `gnoblinctl`                                                                                      | generated tree, typed arguments, `ipc dump` redaction               | `b9614390` | 45    |
 | CFG  | `gnoblin-config`                                                                                  | document, merge, salvage, last-good store                           | `0461a103` | 82    |
 | CFG  | `gnoblin-config-codegen`                                                                          | the schema generator; its output is tested in `gnoblin-config`      | `0461a103` | 0     |
 | CFG  | `gnoblin-lua`                                                                                     | sandboxed host, loader, generated bindings                          | `a3253b75` | 42    |

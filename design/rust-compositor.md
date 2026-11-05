@@ -221,7 +221,12 @@ The rewrite has one IPC:
   JSON, and `gnoblinctl ipc dump` decodes live traffic for debugging.
 
 The request layer is schema, not a side channel: `request` is an object with the
-methods `claim` and `answer` and the signals `offered` and `finished`.
+methods `claim`, `answer` and `decline` and the signals `offered` and
+`finished`.
+
+`decline` is its own member because "the provider refused" and "the provider
+answered with nothing" are different outcomes, and only `answer` carries a
+value.
 
 `answer`'s value field is marked `secret`. A frame's member is the schema's
 qualified member path, `<object>.<member>` — `request.answer`, or
