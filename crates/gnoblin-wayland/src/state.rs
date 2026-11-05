@@ -74,6 +74,7 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, WindowKind, WindowSpec, Wm, 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
+use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
 use crate::protocols::ext_idle_notify_v1::IdleTables;
 use crate::protocols::ext_session_lock_v1::LockTables;
@@ -316,6 +317,7 @@ pub struct State {
     /// gated by the access roster in [`crate::protocols::ext_background_effect_v1`].
     #[allow(dead_code)]
     pub(crate) background_effect_global: GlobalId,
+    pub(crate) output_controls: OutputControlState,
     /// Kept alive so `zwp_text_input_manager_v3` stays registered.
     #[allow(dead_code)]
     pub(crate) text_input_state: TextInputManagerState,
@@ -540,6 +542,14 @@ impl State {
         let foreign_toplevel_global =
             crate::protocols::zwlr_foreign_toplevel_management_v1::global(&display_handle, &access);
         let background_effect_global = crate::protocols::ext_background_effect_v1::global(&display_handle, &access);
+        // Created when the configuration advertises them; whether the host can honour
+        // them is checked at start-up, before any client connects.
+        let gamma_global = Global::GammaControl
+            .is_advertised(protocols)
+            .then(|| crate::protocols::zwlr_gamma_control_v1::global(&display_handle, &access));
+        let power_global = Global::OutputPower
+            .is_advertised(protocols)
+            .then(|| crate::protocols::zwlr_output_power_v1::global(&display_handle, &access));
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
@@ -637,6 +647,7 @@ impl State {
             xdg_toplevel_icon_manager,
             xdg_toplevel_tag_manager,
             fifo_manager_state,
+            output_controls: OutputControlState::new(gamma_global, power_global),
             text_input_state,
             input_method_state,
             virtual_keyboard_state,
@@ -970,6 +981,7 @@ impl State {
             let entry = self.outputs.remove(index);
             self.display_handle.remove_global::<Self>(entry.global);
             self.composer.remove_output(entry.backend);
+            self.output_controls_removed(entry.backend);
             debug!(connector = %entry.output.name(), "[output] disconnected");
             let effects = self.wm.apply(Event::OutputDisconnected { output: entry.policy });
             self.apply(effects);

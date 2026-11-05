@@ -442,6 +442,57 @@ pub trait Backend<S: Host + 'static> {
     /// Input is delivered first so a host that reacts to a mode change sees the
     /// pointer where the user left it.
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent>;
+
+    /// What this backend can control on its outputs: gamma tables and power state.
+    ///
+    /// The default is nothing, so a backend that does not implement the controls is
+    /// honest about it and the protocols that need them are not advertised.
+    fn output_controls(&self) -> OutputControls {
+        OutputControls::default()
+    }
+
+    /// The number of entries in each gamma table on `output`, if it has one.
+    fn gamma_size(&self, _output: OutputId) -> Option<u32> {
+        None
+    }
+
+    /// Load a gamma ramp onto `output`. Each channel has [`Backend::gamma_size`] entries.
+    fn set_gamma(&mut self, output: OutputId, _ramp: GammaRamp<'_>) -> Result<(), BackendError> {
+        Err(BackendError::Unsupported(output))
+    }
+
+    /// Put `output`'s gamma back to the identity ramp.
+    fn restore_gamma(&mut self, output: OutputId) -> Result<(), BackendError> {
+        Err(BackendError::Unsupported(output))
+    }
+
+    /// Switch `output` on or off. Off is a power state, not a disconnection.
+    fn set_power(&mut self, output: OutputId, _on: bool) -> Result<(), BackendError> {
+        Err(BackendError::Unsupported(output))
+    }
+}
+
+/// Which per-output controls a backend can honour.
+///
+/// A host advertises a protocol only when the backend reports the matching control, so a
+/// client never binds a global whose requests cannot be honoured.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OutputControls {
+    /// Gamma tables can be loaded and restored.
+    pub gamma: bool,
+    /// Output power can be switched on and off.
+    pub power: bool,
+}
+
+/// One gamma ramp: a table per colour channel, each as long as [`Backend::gamma_size`].
+#[derive(Clone, Copy, Debug)]
+pub struct GammaRamp<'a> {
+    /// Red output values, one per input step.
+    pub red: &'a [u16],
+    /// Green output values, one per input step.
+    pub green: &'a [u16],
+    /// Blue output values, one per input step.
+    pub blue: &'a [u16],
 }
 
 /// Why a backend refused an operation.
@@ -462,6 +513,10 @@ pub enum BackendError {
     /// The output exists but this backend has no scan-out path for it yet, so no frame can be
     /// presented to it. Distinct from [`BackendError::UnknownOutput`]: the output is real.
     Unpresentable(OutputId),
+    /// The backend cannot control this output's gamma or power state.
+    Unsupported(OutputId),
+    /// The gamma ramp's length does not match the output's table size.
+    InvalidGamma(OutputId),
 }
 
 impl fmt::Display for BackendError {
@@ -476,6 +531,18 @@ impl fmt::Display for BackendError {
                 write!(
                     formatter,
                     "the backend cannot present output {output}: its scan-out path is not built"
+                )
+            }
+            Self::Unsupported(output) => {
+                write!(
+                    formatter,
+                    "the backend has no gamma or power control for output {output}"
+                )
+            }
+            Self::InvalidGamma(output) => {
+                write!(
+                    formatter,
+                    "the gamma ramp for output {output} does not match its table size"
                 )
             }
         }

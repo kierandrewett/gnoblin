@@ -45,7 +45,7 @@
 //!    next frame is drawn against a buffer that holds nothing and the target counts a
 //!    present with the new extent: `a_resize_replaces_the_pixels`.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -55,7 +55,30 @@ use smithay::reexports::calloop::LoopHandle;
 use gnoblin_output::DisplayMode;
 
 use crate::render::{Gles, Image, OutputFrame, RenderError, Software};
-use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
+use crate::{
+    Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
+    Target,
+};
+
+/// The number of entries in each gamma table a headless output has.
+///
+/// The size the kernel's legacy gamma interface uses for an ordinary CRTC, so a client that
+/// sizes its ramp from the advertised size takes the same path it would on hardware.
+pub const HEADLESS_GAMMA_SIZE: u32 = 256;
+
+/// The colour state a headless backend was asked to apply, shared with its handle so a test
+/// can read what reached the virtual hardware.
+#[derive(Debug, Default)]
+struct HeadlessControl {
+    /// The gamma tables loaded per output, one per channel. No entry means the identity ramp.
+    gamma: HashMap<OutputId, [Vec<u16>; 3]>,
+    /// The power state set per output. No entry means the output is on.
+    power: HashMap<OutputId, bool>,
+}
+
+fn locked<T>(shared: &Mutex<T>) -> MutexGuard<'_, T> {
+    shared.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// The size a fresh headless session starts at.
 ///
@@ -390,6 +413,7 @@ struct HeadlessRequests {
 #[derive(Clone, Debug)]
 pub struct HeadlessHandle {
     requests: Arc<Mutex<HeadlessRequests>>,
+    control: Arc<Mutex<HeadlessControl>>,
 }
 
 impl HeadlessHandle {
@@ -428,6 +452,19 @@ impl HeadlessHandle {
     fn requests(&self) -> MutexGuard<'_, HeadlessRequests> {
         self.requests.lock().unwrap_or_else(PoisonError::into_inner)
     }
+
+    /// The gamma tables last loaded on `output`, one per channel, or [`None`] when it is at
+    /// the identity ramp.
+    #[must_use]
+    pub fn applied_gamma(&self, output: OutputId) -> Option<[Vec<u16>; 3]> {
+        locked(&self.control).gamma.get(&output).cloned()
+    }
+
+    /// Whether `output` is on. An output is on until a client switches it off.
+    #[must_use]
+    pub fn power(&self, output: OutputId) -> bool {
+        locked(&self.control).power.get(&output).copied().unwrap_or(true)
+    }
 }
 
 /// A headless backend: the outputs it drives and the events it has to report.
@@ -453,6 +490,8 @@ pub struct Headless {
     next_output: u64,
     /// The renderer every output this backend connects draws with.
     renderer: HeadlessRenderer,
+    /// The gamma and power state last applied, shared with the handle a test holds.
+    control: Arc<Mutex<HeadlessControl>>,
 }
 
 impl std::fmt::Debug for Headless {
@@ -516,6 +555,7 @@ impl Headless {
             presenting: true,
             next_output: 0,
             renderer: HeadlessRenderer::default(),
+            control: Arc::new(Mutex::new(HeadlessControl::default())),
         }
     }
 
@@ -525,6 +565,7 @@ impl Headless {
     pub fn handle(&self) -> HeadlessHandle {
         HeadlessHandle {
             requests: Arc::clone(&self.requests),
+            control: Arc::clone(&self.control),
         }
     }
 
@@ -723,6 +764,40 @@ impl<S: Host + 'static> Backend<S> for Headless {
         }
         self.apply_requests();
         std::mem::take(&mut self.pending)
+    }
+
+    fn output_controls(&self) -> OutputControls {
+        OutputControls {
+            gamma: true,
+            power: true,
+        }
+    }
+
+    fn gamma_size(&self, output: OutputId) -> Option<u32> {
+        self.index(output).map(|_| HEADLESS_GAMMA_SIZE)
+    }
+
+    fn set_gamma(&mut self, output: OutputId, ramp: GammaRamp<'_>) -> Result<(), BackendError> {
+        self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        let fits = |table: &[u16]| u32::try_from(table.len()) == Ok(HEADLESS_GAMMA_SIZE);
+        if ![ramp.red, ramp.green, ramp.blue].into_iter().all(fits) {
+            return Err(BackendError::InvalidGamma(output));
+        }
+        let tables = [ramp.red.to_vec(), ramp.green.to_vec(), ramp.blue.to_vec()];
+        locked(&self.control).gamma.insert(output, tables);
+        Ok(())
+    }
+
+    fn restore_gamma(&mut self, output: OutputId) -> Result<(), BackendError> {
+        self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        locked(&self.control).gamma.remove(&output);
+        Ok(())
+    }
+
+    fn set_power(&mut self, output: OutputId, on: bool) -> Result<(), BackendError> {
+        self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        locked(&self.control).power.insert(output, on);
+        Ok(())
     }
 }
 

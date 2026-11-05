@@ -216,6 +216,9 @@ impl Server {
             config.titlebar_actions,
             &config.extensions,
         )?;
+        // The host's per-output controls are learnt before any client connects, so an
+        // unsupported control's global is removed before it is ever advertised.
+        state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
         // The keyboard is configured before the socket is bound, so the first client that
         // connects already sees the keymap the document asked for.
         if let Some(keyboard) = &config.keyboard {
@@ -468,7 +471,9 @@ impl Server {
                     // recomputed from the connected set, once, rather than patched
                     // per event.
                     state.sync_outputs(backend.outputs());
+                    state.refresh_output_controls(&crate::output_control::BackendControl(backend.as_mut()));
                 }
+                state.apply_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
                 crate::frame::render(backend.as_mut(), state, &frames, &control.screenshots);
                 // The frame just drawn produced buffer releases and frame callbacks;
                 // flushing them now rather than on the next wake is the difference

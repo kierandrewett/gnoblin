@@ -180,6 +180,7 @@ mod access;
 mod frame;
 mod keyboard;
 mod observation;
+mod output_control;
 mod protocols;
 mod server;
 mod state;
@@ -187,6 +188,7 @@ mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use observation::{ActivationDenial, LockObservation, ObservedLayer, ObservedWindow, Observer, SessionSnapshot};
+pub use output_control::{NoOutputControl, OutputControl};
 pub use server::{
     Config, ControlHandle, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError,
 };

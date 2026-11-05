@@ -13,6 +13,7 @@
 
 #![allow(dead_code)]
 
+use std::io;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -20,7 +21,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{Headless, HeadlessHandle};
+use gnoblin_backend::render::Image;
+use gnoblin_backend::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
+use gnoblin_types::OutputId;
 use gnoblin_wayland::{ClientRole, Config, ControlHandle, LoopError, Server};
+use smithay::reexports::calloop::LoopHandle;
 use wayland_client::DispatchError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool};
@@ -52,6 +57,51 @@ impl Handle {
     }
 }
 
+/// A headless backend that reports no gamma or power control.
+///
+/// Its outputs are the headless ones; only the controls are missing, which is the case
+/// a backend that cannot change its outputs presents. The protocols that need the
+/// controls must not be advertised.
+pub struct WithoutOutputControls(pub Headless);
+
+impl<S: Host + 'static> Backend<S> for WithoutOutputControls {
+    fn name(&self) -> &'static str {
+        <Headless as Backend<S>>::name(&self.0)
+    }
+
+    fn outputs(&self) -> &[Output] {
+        <Headless as Backend<S>>::outputs(&self.0)
+    }
+
+    fn output(&self, id: OutputId) -> Option<&Output> {
+        <Headless as Backend<S>>::output(&self.0, id)
+    }
+
+    fn target(&mut self, id: OutputId) -> Option<&mut dyn Target> {
+        <Headless as Backend<S>>::target(&mut self.0, id)
+    }
+
+    fn input(&mut self) -> &mut dyn InputSource {
+        <Headless as Backend<S>>::input(&mut self.0)
+    }
+
+    fn register(&mut self, loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
+        <Headless as Backend<S>>::register(&mut self.0, loop_handle)
+    }
+
+    fn render(&mut self, host: &mut S, output: OutputId) -> Result<Present, BackendError> {
+        <Headless as Backend<S>>::render(&mut self.0, host, output)
+    }
+
+    fn screenshot(&mut self, output: OutputId) -> Option<Image> {
+        <Headless as Backend<S>>::screenshot(&mut self.0, output)
+    }
+
+    fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
+        <Headless as Backend<S>>::dispatch(&mut self.0, host)
+    }
+}
+
 /// Stops the session when the worker finishes, including when it panics.
 pub struct StopOnDrop(pub ControlHandle);
 
@@ -77,15 +127,31 @@ impl Session {
     /// the test connects is recorded with the role. That is the same seam the
     /// composition root uses: promise, then start the renderer or the session.
     pub fn start(role: Option<ClientRole>) -> Self {
+        Self::boot(role, true)
+    }
+
+    /// A session whose backend reports no gamma or power control, so neither protocol
+    /// is advertised.
+    pub fn start_without_output_controls() -> Self {
+        Self::boot(None, false)
+    }
+
+    /// Starts the session; `controls` says whether the headless backend keeps its controls.
+    fn boot(role: Option<ClientRole>, controls: bool) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
             ..Config::default()
         };
-        let backend = Headless::new();
-        let outputs = backend.handle();
-        let mut server = Server::new(Box::new(backend), config).expect("the session starts");
+        let headless = Headless::new();
+        let outputs = headless.handle();
+        let started = if controls {
+            Server::new(Box::new(headless), config)
+        } else {
+            Server::new(Box::new(WithoutOutputControls(headless)), config)
+        };
+        let mut server = started.expect("the session starts");
         if let Some(role) = role {
             server.promise_role(std::process::id(), role);
         }
