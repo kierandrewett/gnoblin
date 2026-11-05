@@ -441,6 +441,17 @@ mod gnoblin_objects {
             self.method(object, "request", "answer", arguments)
         }
 
+        fn decline(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            request: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("request".to_owned(), Value::Uint(request));
+            self.method(object, "request", "decline", arguments)
+        }
+
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
             Ok(match self.watch(&handle) {
                 Ok(()) => Ok(true),
