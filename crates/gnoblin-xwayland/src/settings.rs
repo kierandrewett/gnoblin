@@ -31,6 +31,9 @@ pub struct Settings {
     pub disable_extensions: Vec<XwaylandExtension>,
     /// The fixed client scale, or [`None`] to follow the output.
     pub scale: Option<Scale>,
+    /// The `XDG_RUNTIME_DIR` the `Xwayland` process is started with, or [`None`] to
+    /// inherit the compositor's own.
+    pub runtime_dir: Option<PathBuf>,
 }
 
 /// Why a setting a caller supplied is refused.
@@ -72,6 +75,7 @@ impl Settings {
                 Some(factor) => Self::scale_from_factor(factor).unwrap_or(defaults.scale),
                 None => defaults.scale,
             },
+            runtime_dir: defaults.runtime_dir,
         }
     }
 
@@ -201,10 +205,19 @@ impl Settings {
     /// The reason from [`Settings::arguments`] when the configured policy cannot be
     /// enforced by this server.
     pub fn launch(&self, display: Option<u32>, capabilities: Capabilities) -> Result<Launch, String> {
+        let runtime_dir = match &self.runtime_dir {
+            Some(dir) => Some((
+                "XDG_RUNTIME_DIR".to_owned(),
+                dir.to_str()
+                    .ok_or_else(|| format!("the runtime directory {} is not UTF-8", dir.display()))?
+                    .to_owned(),
+            )),
+            None => None,
+        };
         Ok(Launch {
             display,
             args: self.arguments(capabilities)?,
-            env: Vec::new(),
+            env: runtime_dir.into_iter().collect(),
             open_abstract_socket: false,
             scale: self.scale,
         })

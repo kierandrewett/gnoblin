@@ -149,8 +149,17 @@ struct Session {
 
 impl Session {
     /// A session with an Xwayland session configured from `settings`.
-    fn start(settings: Settings, path: Option<std::ffi::OsString>) -> Self {
+    fn start(mut settings: Settings, path: Option<std::ffi::OsString>) -> Self {
+        use std::os::unix::fs::PermissionsExt as _;
+
         let directory = tempfile::tempdir().expect("a temporary directory");
+        // Xwayland inherits only PATH and XDG_RUNTIME_DIR from the compositor, so the
+        // test must not depend on the ambient runtime dir: the child gets its own,
+        // created mode 0700 as XDG requires.
+        let runtime = directory.path().join("xdg-runtime");
+        std::fs::create_dir(&runtime).expect("a runtime directory");
+        std::fs::set_permissions(&runtime, std::fs::Permissions::from_mode(0o700)).expect("runtime directory mode");
+        settings.runtime_dir = Some(runtime);
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket),
