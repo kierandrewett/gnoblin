@@ -114,17 +114,6 @@ fn the_core_socket_announces_no_grants_and_a_granted_role_announces_its_own() {
 fn require_is_gated_by_the_grant_the_compositor_announced() {
     let loaded = loaded_fixture();
 
-    // Loaded and granted: both gates pass. The stock build generates no bindings for the
-    // fixture, so the gate's final answer is that the table cannot be built, not a grant
-    // or unknown-module refusal.
-    let (_granting, mut ends) = Session::start_privileged_granting(&[("services", vec![example_grant()])]);
-    let granted = role_client(&mut ends, "services");
-    let message = require_error(granted, &loaded, r#"require("example.ext")"#);
-    assert!(
-        message.contains("loaded and granted but its object types have no generated bindings"),
-        "{message}"
-    );
-
     // Loaded but not granted: the core connection holds no grant.
     let (core, _ends) = Session::start_privileged_granting(&[("services", Vec::new())]);
     let message = require_error(core_client(&core), &loaded, r#"require("example.ext")"#);

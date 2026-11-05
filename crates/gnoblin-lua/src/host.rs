@@ -532,12 +532,9 @@ impl<T: Transport + 'static> Host<T> {
                 member,
                 fields,
             } => self.run_extension_signal(&namespace, &member, &fields, handlers),
-            // The runtime offers no requests in this slice: prompts are a later
-            // lane, and a request nobody answers fails closed at its deadline in
-            // the broker.
-            // The runtime offers no requests in this slice, and it offers none it
-            // would have to answer: prompts and input policy are later lanes, and a
-            // request nobody answers fails closed at its deadline in the broker.
+            // The runtime offers no requests in this slice and answers none: prompts and
+            // input policy are later lanes, and a request nobody answers fails closed at
+            // its deadline in the broker.
             Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
         }
     }
