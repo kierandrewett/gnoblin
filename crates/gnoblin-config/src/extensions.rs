@@ -16,6 +16,10 @@
 //! its objects must not reuse a stock or already accepted object name, and the schema
 //! parser already refuses duplicate member names within an object.
 //!
+//! A method parameter must be a scalar. An object reference or a list parameter has no
+//! Lua conversion, so a schema that declares one is refused as a whole at load time with
+//! `unsupported-field-kind`; a method is never bound that could only fail when called.
+//!
 //! This module reads schema files, so the caller passes the directory of the
 //! configuration file and the stock schemas. It holds no extension name of its own.
 
@@ -23,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use gnoblin_schema::{Catalog, Schema, parse_schema};
+use gnoblin_schema::{Catalog, Schema, Type, parse_schema};
 
 use crate::value::Value;
 
@@ -143,6 +147,7 @@ fn load_one(
         )));
     }
     check_members(&schema, stock, accepted).map_err(here)?;
+    check_method_params(&schema).map_err(here)?;
 
     let candidate: Vec<Schema> = stock
         .iter()
@@ -196,6 +201,32 @@ fn check_members(schema: &Schema, stock: &[Schema], accepted: &[ExtensionEntry])
                 "object `{}` is already declared by namespace `{owner}`",
                 object.name
             ));
+        }
+    }
+    Ok(())
+}
+
+/// Refuse a schema whose visible method takes an object reference or a list parameter.
+///
+/// Only methods that Lua can see are checked: `without_secrets` removes the rest, so a
+/// secret method's signature never reaches a check that could refuse the schema.
+fn check_method_params(schema: &Schema) -> Result<(), String> {
+    for object in &schema.objects {
+        let Some(visible) = object.without_secrets() else {
+            continue;
+        };
+        for method in &visible.methods {
+            for param in &method.params {
+                let kind = match &param.ty {
+                    Type::ObjectRef(_) => "an object reference",
+                    Type::List(_) => "a list",
+                    _ => continue,
+                };
+                return Err(format!(
+                    "unsupported-field-kind: {}.{}.{} is {kind}",
+                    object.name, method.name, param.name
+                ));
+            }
         }
     }
     Ok(())

@@ -316,6 +316,42 @@ fn a_member_declared_twice_in_one_object_is_refused_by_the_schema_parser() {
 }
 
 #[test]
+fn an_object_reference_parameter_refuses_the_extension_at_load() {
+    let loaded = load(document(vec![entry(
+        "example.objparam",
+        "object-param.toml",
+        "example",
+        vec![text("panel")],
+    )]));
+    assert_refused_with(
+        &loaded,
+        "example.objparam",
+        "unsupported-field-kind: probe.adopt.other is an object reference",
+    );
+    assert!(loaded.accepted.is_empty(), "the method is never bound");
+}
+
+#[test]
+fn a_list_parameter_refuses_only_that_extension_at_load() {
+    let loaded = load(document(vec![
+        entry("example.listparam", "list-param.toml", "example", vec![]),
+        entry(
+            EXAMPLE_NAMESPACE,
+            &example_schema_path(),
+            "example",
+            vec![text("panel")],
+        ),
+    ]));
+    assert_refused_with(
+        &loaded,
+        "example.listparam",
+        "unsupported-field-kind: probe.tag.names is a list",
+    );
+    assert_eq!(loaded.accepted.len(), 1, "the other extension still loads");
+    assert_eq!(loaded.accepted[0].namespace, EXAMPLE_NAMESPACE);
+}
+
+#[test]
 fn a_non_table_entry_is_refused_by_its_index() {
     let loaded = load(document(vec![
         text("example.ext"),
