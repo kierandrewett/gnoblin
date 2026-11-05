@@ -90,6 +90,17 @@ impl Session {
         roles: &[(&str, Vec<gnoblin_proto::Grant>)],
         routes: &[gnoblin_compositor::ExtensionRoute],
     ) -> (Session, Vec<(String, UnixStream)>) {
+        let routes = routes.to_vec();
+        Session::start_privileged_configured(roles, move |config| config.extensions = routes)
+    }
+
+    /// Starts a session whose privileged connections are `roles`, and lets `configure` set
+    /// the rest of its [`SessionConfig`] before the compositor runs. `configure` sees the
+    /// privileged connections already in place, so it can load extensions against them.
+    pub fn start_privileged_configured(
+        roles: &[(&str, Vec<gnoblin_proto::Grant>)],
+        configure: impl FnOnce(&mut SessionConfig),
+    ) -> (Session, Vec<(String, UnixStream)>) {
         let directory = private_directory();
         let ipc = directory.path().join("ipc.sock");
         let wayland = directory.path().join("wayland.sock");
@@ -105,7 +116,7 @@ impl Session {
             ends.push(((*role).to_owned(), role_end));
         }
         let stop = StopHandle::new();
-        let config = SessionConfig {
+        let mut config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
             wayland: gnoblin_wayland::Config {
@@ -113,9 +124,9 @@ impl Session {
                 ..gnoblin_wayland::Config::default()
             },
             privileged,
-            extensions: routes.to_vec(),
             ..SessionConfig::default()
         };
+        configure(&mut config);
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
             .spawn(move || Compositor::run(config))

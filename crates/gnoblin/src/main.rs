@@ -106,10 +106,12 @@ fn compositor() -> Result<(), Exit> {
             return Err(Exit(1));
         }
     };
-    let config = gnoblin_compositor::SessionConfig {
+    let mut config = gnoblin_compositor::SessionConfig {
         privileged,
         ..gnoblin_compositor::SessionConfig::default()
     };
+    // A refused extension is logged and left out; the session starts either way.
+    gnoblin_compositor::configure_from_environment(&mut config);
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {

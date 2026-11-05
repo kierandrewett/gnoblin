@@ -36,6 +36,9 @@ gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-diag = { path = "../gnoblin-diag" }
 # Who this process is, for the IPC socket directory's ownership check.
 rustix.workspace = true
+# The accepted configuration document and its last-good store: the compositor reads the
+# extensions a session serves from it before the session starts.
+gnoblin-config = { path = "../gnoblin-config" }
 # `[tag]` log lines, the same crate the Wayland engine logs through.
 tracing = "0.1.37"
 
@@ -57,5 +60,3 @@ tempfile = "3.23.0"
 # The Lua host the grants end-to-end test drives: a granted socket feeds its
 # `require` gate, the same way the runtime role does.
 gnoblin-lua = { path = "../gnoblin-lua" }
-# The configuration search paths the Lua host is pointed at.
-gnoblin-config = { path = "../gnoblin-config" }
