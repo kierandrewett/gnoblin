@@ -4,6 +4,11 @@
 
 ### Added
 
+- `pkgrepo pull --restore-from DIR` and the workflow input `restore_run` (`nightly.yml`, `release.yml`,
+  `package-repository.yml`; a run id, empty by default) restore a package file that the host lost from the repository
+  artifact of an earlier run. A file is used only when its sha256 equals the manifest's; a signature, which the
+  manifest has no digest for, only when its package file is available. Every restored file is printed, no package is
+  dropped, and any other missing file still fails the pull.
 - `Window.client_type` (`"wayland"` or `"x11"`, bridge API 1.93) in window records, `gnoblin.find("Window", {client_type = ...})`,
   the window rule `match.client_type` key and `gnoblinctl window list` and `window match`.
 

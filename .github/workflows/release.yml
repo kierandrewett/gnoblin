@@ -106,6 +106,10 @@ on:
         description: Build the nightly channel. The version becomes a pre-release of the next release, the GitHub release is skipped, and the repository stage publishes the nightly channel.
         type: boolean
         default: false
+      restore_run:
+        description: Id of an earlier run whose repository artifact holds package files that the host lost, for the repository stage to restore. Empty (the default) restores nothing. See package-repository.yml.
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       tag:
@@ -658,12 +662,16 @@ jobs:
       && needs.gate.outputs.publish_count != '' && needs.gate.outputs.publish_count != '0'
       && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     uses: ./.github/workflows/package-repository.yml
+    permissions:
+      contents: read
+      actions: read # restore_run: download the repository artifact of an earlier run
     with:
       channel: ${{ inputs.nightly && 'nightly' || 'stable' }}
       ref: ${{ needs.source.outputs.ref }}
       release_tag: ${{ needs.source.outputs.release_tag }}
       source_commit: ${{ needs.source.outputs.commit }}
       publish: ${{ needs.source.outputs.is_release == 'true' || inputs.nightly == true }}
+      restore_run: ${{ inputs.restore_run }}
       # The publish set of the gate, not every package that was built.
       packages_artifact: publishable-${{ needs.source.outputs.release_tag }}
     secrets:

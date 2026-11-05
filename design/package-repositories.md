@@ -317,6 +317,25 @@ without them would remove them on upload. Two checks guard against it:
   sha256 equals the manifest's, and says so on stderr. The next publication
   uploads the file again. Every other missing file, and a copy with other bytes,
   stays an error.
+- `pkgrepo pull --restore-from DIR` repairs a manifest that lists a file the host
+  lost, when another copy of it exists. `DIR` is a channel tree laid out like the
+  published one (`DIR/arch/aarch64/...`), usually the `repository-<project>-<channel>-*`
+  artifact of the run that built the file. A listed file that is unavailable at
+  the URL, and has no copy in another architecture directory, is taken from the
+  same relative path in `DIR`, only when its sha256 equals the manifest's; a
+  file with other bytes is not used. The manifest records no digest for a
+  signature, so a missing signature is taken from `DIR` when its package file is
+  available (it is handled first, so already fetched or restored), and the build
+  and `verify` check it against the key like every signature. Every restored file
+  is printed to stderr with its path, sha256 and source. Nothing is dropped, so
+  the package list does not change, and any file that cannot be restored still
+  fails the pull. An orphan signature that the host kept is not a problem: the
+  publish step uploads the restored package file and overwrites it. In the
+  workflows the input `restore_run` (a run id; empty by default, never set by the
+  scheduled run) of `nightly.yml`, `release.yml` and `package-repository.yml`
+  downloads the repository artifact of that run and passes it to the pull; the
+  token needs `actions: read`. A non-empty value also forces the nightly build.
+  Run it once, then leave the input empty.
 - `pkgrepo publish` refuses a first publication when the destination already
   has a `manifest.json` for the channel. That is the sign that `REPO_URL` and
   `REPO_DESTINATION` name different places, or that the pull saw nothing.

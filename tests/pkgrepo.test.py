@@ -1033,6 +1033,7 @@ class PublishedChannel(unittest.TestCase):
       - a file of a package that has an architecture is missing (error, nothing to restore it from),
       - the signature of a package is missing (error),
       - the listed copy is present but does not match the manifest sha256 (error).
+    --restore-from DIR takes a file that no copy can replace from a channel tree, when its sha256 is the manifest's.
     """
 
     PAYLOAD = b"architecture independent package"
@@ -1126,8 +1127,23 @@ class PublishedChannel(unittest.TestCase):
             text=True,
         )
 
-    def pull(self):
-        return self.run_command("pull", "--output", str(self.output))
+    def pull(self, *extra: str):
+        return self.run_command("pull", "--output", str(self.output), *extra)
+
+    def restore_tree(self, files: dict[str, bytes]) -> str:
+        """A channel tree like the published one, as the repository artifact of an earlier run has it."""
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory, True)
+        for relative, data in files.items():
+            (directory / relative).parent.mkdir(parents=True, exist_ok=True)
+            (directory / relative).write_bytes(data)
+        return str(directory)
+
+    def lost(self) -> str:
+        return f"arch/aarch64/{self.independent.filename}"
+
+    def pulled(self, relative: str) -> Path:
+        return self.output / "gnoblin" / "nightly" / relative
 
     def verify(self):
         return self.run_command("verify-published")
@@ -1217,6 +1233,64 @@ class PublishedChannel(unittest.TestCase):
         done = self.pull()
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("does not match the sha256", done.stderr)
+
+    def test_a_lost_file_is_restored_from_a_tree_with_the_same_sha256(self):
+        self.publish(independent=None)
+        tree = self.restore_tree({self.lost(): self.PAYLOAD})
+        done = self.pull("--restore-from", tree)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        digest = hashlib.sha256(self.PAYLOAD).hexdigest()
+        self.assertIn(f"restored from {tree}/{self.lost()} (sha256 {digest}", done.stderr)
+        self.assertEqual(self.pulled(self.lost()).read_bytes(), self.PAYLOAD)
+        self.assertIn("pulled 3 packages", done.stdout)
+
+    def test_a_file_with_another_sha256_is_not_restored(self):
+        self.publish(independent=None)
+        done = self.pull("--restore-from", self.restore_tree({self.lost(): b"other bytes"}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("not restoring it", done.stderr)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_file_that_the_tree_does_not_have_is_an_error_as_before(self):
+        self.publish(independent=None)
+        done = self.pull("--restore-from", self.restore_tree({"arch/aarch64/unrelated.pkg.tar.zst": b"x"}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_missing_file_is_still_an_error_when_another_one_is_restorable(self):
+        self.publish(independent=None, native=False)
+        done = self.pull("--restore-from", self.restore_tree({self.lost(): self.PAYLOAD}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(f"arch/aarch64/{self.native.filename} is " + self.MISSING, done.stderr)
+
+    def test_the_copy_fallback_comes_before_the_restore_tree(self):
+        self.publish(independent=None, copy=self.PAYLOAD)
+        done = self.pull("--restore-from", self.restore_tree({self.lost(): self.PAYLOAD}))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("using the copy at arch/x86_64/", done.stderr)
+        self.assertNotIn("restored from", done.stderr)
+
+    def test_a_lost_signature_is_restored_with_an_available_package_file(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        (self.site / "gnoblin" / "nightly" / (self.lost() + ".sig")).unlink()
+        tree = self.restore_tree({self.lost() + ".sig": b"signature"})
+        done = self.pull("--restore-from", tree)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("the manifest has no signature digest", done.stderr)
+        self.assertEqual(self.pulled(self.lost() + ".sig").read_bytes(), b"signature")
+
+    def test_a_lost_signature_is_not_restored_when_its_package_file_is_lost_and_not_restorable(self):
+        self.publish(signatures=True, independent=None)
+        done = self.pull("--restore-from", self.restore_tree({self.lost() + ".sig": b"signature"}))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_lost_signature_is_an_error_without_the_tree(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        (self.site / "gnoblin" / "nightly" / (self.lost() + ".sig")).unlink()
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(".sig is " + self.MISSING, done.stderr)
 
 
 if __name__ == "__main__":

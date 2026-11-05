@@ -18,6 +18,14 @@ on:
         description: Build even when the published nightly was built from this commit.
         type: boolean
         default: false
+      restore_run:
+        description: >-
+          Repairs a published nightly manifest that lists files the host lost. The id of an earlier run (a number)
+          whose repository artifact (repository-gnoblin-nightly-*) has the files. A lost file is restored from it only
+          when its sha256 equals the manifest's; a file that is not restorable still fails the run. Forces a build. Use
+          once, then leave empty.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -42,8 +50,9 @@ jobs:
         env:
           REPO_URL: ${{ vars.REPO_URL || 'https://repo.gnoblin.org' }}
           FORCE: ${{ inputs.force }}
+          RESTORE_RUN: ${{ inputs.restore_run }}
         run: |
-          if [ "$FORCE" = true ]; then
+          if [ "$FORCE" = true ] || [ -n "$RESTORE_RUN" ]; then
             echo "needs_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -57,6 +66,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       nightly: true
+      restore_run: ${{ inputs.restore_run }}
     # The release workflow asks for write access in its publish job, which a nightly never runs, and in its issues
     # job, which a nightly runs. A called workflow cannot ask for more than its caller grants, so the caller grants
     # the same.
@@ -65,4 +75,5 @@ jobs:
       id-token: write
       attestations: write
       issues: write
+      actions: read # the repository stage downloads the artifact of restore_run
     secrets: inherit

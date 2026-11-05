@@ -45,6 +45,13 @@ on:
         description: Upload the tree after it verifies. Nothing is uploaded without the secrets and variables above.
         type: boolean
         default: false
+      restore_run:
+        description: >-
+          One-time repair. The id of an earlier run whose repository artifact (repository-gnoblin-<channel>-*) holds
+          package files that the host lost. The pull restores a listed file that is unavailable from it, only when its
+          sha256 equals the manifest's; any other missing file still fails the run. Empty (the default) restores nothing.
+        type: string
+        default: ""
     secrets:
       REPO_GPG_PRIVATE_KEY:
         required: false
@@ -65,6 +72,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # restore_run: download the repository artifact of an earlier run
 
 # One publication per channel at a time: the job pulls the published channel, merges and uploads, so two runs at once
 # could drop each other's packages.
@@ -166,9 +174,19 @@ jobs:
             test -n "$(ls -A "$directory")"
           done
           find packages/alpine -type f | sort
+      - name: Download the repository artifact to restore lost files from
+        if: inputs.restore_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.restore_run }}
+          github-token: ${{ github.token }}
+          pattern: repository-${{ env.PROJECT }}-${{ inputs.channel }}-*
+          merge-multiple: true
+          path: restore
       - name: Pull the published channel
         env:
           PUBLISH: ${{ inputs.publish }}
+          RESTORE_RUN: ${{ inputs.restore_run }}
           KEY_IS_REAL: ${{ steps.key.outputs.real }}
           BACKEND: ${{ vars.REPO_BACKEND }}
           DESTINATION: ${{ vars.REPO_DESTINATION }}
@@ -179,8 +197,11 @@ jobs:
           if [ "$PUBLISH" != true ] || [ "$KEY_IS_REAL" != true ] || [ -z "$BACKEND" ] || [ -z "$DESTINATION" ]; then
             unreachable=(--allow-unreachable)
           fi
+          # The artifact holds the tree of the earlier run: <project>/<channel>/arch/..., laid out like the site.
+          restore=()
+          if [ -n "$RESTORE_RUN" ]; then restore=(--restore-from "restore/$PROJECT/$CHANNEL"); fi
           python3 scripts/pkgrepo pull --project "$PROJECT" --channel "$CHANNEL" --url "$REPO_URL" \
-            --output existing --allow-missing "${unreachable[@]}"
+            --output existing --allow-missing "${unreachable[@]}" "${restore[@]}"
       - name: Build and verify the signed tree
         env:
           REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
