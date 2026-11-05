@@ -38,6 +38,7 @@ members = [
     "crates/gnoblin-config-codegen",
     "crates/gnoblin-diag",
     "crates/gnoblin-input",
+    "crates/gnoblin-layout",
     "crates/gnoblin-lock",
     "crates/gnoblin-lua",
     "crates/gnoblin-model",
