@@ -81,14 +81,14 @@ const SEAT_KEYCODE_OFFSET: u32 = 8;
 
 /// One layout the session can switch between, as the configuration document writes it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Source {
+pub(crate) struct KeySource {
     /// The XKB layout, such as `us`.
     pub(crate) layout: String,
     /// The XKB variant, such as `intl`. Empty means the layout's base variant.
     pub(crate) variant: String,
 }
 
-impl Source {
+impl KeySource {
     /// Parses a document id: `us`, `gb`, `us+intl`.
     fn from_id(id: &str) -> Self {
         match id.split_once('+') {
@@ -108,7 +108,7 @@ impl Source {
 #[derive(Debug)]
 pub(crate) struct KeyboardTables {
     /// The switchable layouts, in the document's order.
-    pub(crate) sources: Vec<Source>,
+    pub(crate) sources: Vec<KeySource>,
     /// Which source is active for a window that has no memory of its own.
     pub(crate) active: usize,
     /// Whether a window remembers its own source.
@@ -187,7 +187,7 @@ impl State {
     /// already has: the configuration reference is explicit that a document without the
     /// section leaves the current keymap in place.
     pub(crate) fn apply_input_sources(&mut self, sources: &gnoblin_config::InputSources) {
-        let layouts: Vec<Source> = sources
+        let layouts: Vec<KeySource> = sources
             .sources
             .as_deref()
             .unwrap_or_default()
@@ -195,7 +195,7 @@ impl State {
             .filter(|source| source.r#type == Some(gnoblin_config::InputSourceType::Xkb))
             .filter_map(|source| source.id.as_deref())
             .filter(|id| !id.is_empty())
-            .map(Source::from_id)
+            .map(KeySource::from_id)
             .collect();
         if layouts.is_empty() {
             return;
@@ -262,10 +262,10 @@ impl State {
             return false;
         }
         self.keyboard_tables.active = index;
-        if self.keyboard_tables.per_window {
-            if let Some(window) = self.wm().focused() {
-                self.keyboard_tables.remembered.insert(window, index);
-            }
+        if self.keyboard_tables.per_window
+            && let Some(window) = self.wm().focused()
+        {
+            self.keyboard_tables.remembered.insert(window, index);
         }
         self.rebuild_keymap();
         true
@@ -282,12 +282,18 @@ impl State {
         self.keyboard_tables.remembered.remove(&window);
     }
 
-    /// Records the focused window's layout before focus moves away from it.
+    /// Records the layout of the window focus is leaving.
+    ///
+    /// The window is read from the seat's own keyboard focus, not from the window manager's:
+    /// [`State::set_keyboard_focus`] runs *after* the manager has already applied the focus
+    /// change, so asking the manager at this point names the window that is arriving and a
+    /// window would overwrite its own memory with the layout it is about to be given.
     pub(crate) fn remember_layout(&mut self) {
         if !self.keyboard_tables.per_window {
             return;
         }
-        if let Some(window) = self.wm().focused() {
+        let leaving = self.keyboard.current_focus();
+        if let Some(window) = leaving.as_ref().and_then(|surface| self.window_of(surface)) {
             self.keyboard_tables
                 .remembered
                 .insert(window, self.keyboard_tables.active);

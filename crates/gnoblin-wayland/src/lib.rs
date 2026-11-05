@@ -53,6 +53,74 @@
 //! [`gnoblin_backend::Present::Nothing`] because a headless output scans out nothing —
 //! the pixels are still composed and readable.
 //!
+//! # Protocols, and what is still missing
+//!
+//! The seat and input slice is served. Each entry below says what a client can rely on
+//! today and what it still cannot.
+//!
+//! **Served, with a test in `tests/protocols.rs`:**
+//!
+//! - **`wp_fractional_scale_v1`** — a surface is told its output's preferred scale, and is
+//!   told again when it moves to an output of another scale.
+//! - **`wp_cursor_shape_v1`** — a client asks for a pointer shape by name and the session
+//!   records it; the shape is not yet drawn, because there is no cursor plane in a headless
+//!   output.
+//! - **`zwp_relative_pointer_v1`** — relative motion is delivered to a client that asked
+//!   for it, alongside the ordinary absolute motion.
+//! - **`zwp_pointer_gestures_v1`** — hold, pinch and swipe exist as the interfaces a client
+//!   binds. No backend of this slice reports a touchpad gesture, so nothing is delivered
+//!   through them yet; `gnoblin-input`'s recogniser is what will emit the events.
+//! - **`zwp_pointer_constraints_v1`** — a lock and a confine are granted, the lock reports
+//!   relative motion, focus moving away releases it, and a session lock releases every
+//!   lock it holds.
+//! - **`ext_idle_notify_v1`** — a notification fires after its timeout, a resumed input
+//!   stops it, and an inhibitor suppresses the whole session's idleness without leaking
+//!   past the surface that made it.
+//! - **`zwp_idle_inhibit_manager_v1`** — the same inhibitors through the older protocol.
+//! - **`zwp_keyboard_shortcuts_inhibit_manager_v1`** — an inhibitor is granted to the
+//!   focused client and refused while the session is locked.
+//! - **`wp_presentation`** — a client that asks for feedback is answered after the frame it
+//!   described reached the output, with a timestamp read from the frame.
+//! - **`wp_content_type_v1`** — the hint a client sets is kept per surface and read back
+//!   through [`State::content_type`], so a policy has one function to call. The frame path
+//!   of this slice reads no content type: it composes and presents every surface alike.
+//! - **`wp_single_pixel_buffer_v1`** — a one-pixel buffer is a complete buffer, which is
+//!   what a solid background or a session lock's cover needs.
+//! - **`wp_tearing_control_v1`** — the hint is kept per surface and read back through
+//!   [`State::tearing_hint`]. A headless output presents nothing, so there is no vsync for
+//!   it to lift and the hint has no visible effect.
+//! - **`zwp_text_input_v3`** and **`zwp_input_method_v2`** — a text input is told it has
+//!   focus, the input method is told when one is enabled, and a `commit_string` reaches the
+//!   focused text input. A text input created on an already-focused surface is told it has
+//!   focus too, which Smithay alone does not do.
+//! - **`zwp_virtual_keyboard_v1`** — an injected key is routed through the same
+//!   [`State::dispatch_key`] as a physical one, so a binding still wins over an on-screen
+//!   keyboard.
+//! - **xkb layouts, per-window layout memory and the router.** The document's
+//!   `input-sources` become the keymap, a switch rebuilds it, a window remembers the layout
+//!   it had when focus left it and gets it back when focus returns, and key delivery
+//!   applies the evdev offset so a client's `keysym` is what the evdev code meant. The
+//!   delivery order is `gnoblin-input`'s: grab, binding, client.
+//!
+//! **Not served, and not pretended:**
+//!
+//! - **Touch.** The seat advertises keyboard and pointer only. A `wl_touch` request is not
+//!   answered because no touch device reaches this slice, and a seat that advertised touch
+//!   without one would make every toolkit wait for events that never come.
+//! - **Pointer and touch gestures that carry data.** The gesture interfaces bind, but no
+//!   hold, pinch or swipe ever arrives: the backends of this slice report motion, buttons,
+//!   keys and scroll only.
+//! - **Cursor drawing.** A `wp_cursor_shape_v1` or `wl_cursor` request is recorded and never
+//!   painted, for the same reason: a headless output has no pointer plane.
+//! - **Text input on a surface that is not a `xdg_toplevel`** — there is no input-panel or
+//!   popup text input path, and an input method's popups are recorded for a renderer that
+//!   does not draw them yet.
+//! - **`zwp_input_method_v1`** (the original, deprecated input-method protocol). Only v2 is
+//!   served.
+//! - **Idle inhibition by a client's own request** beyond what the two protocols above
+//!   state: the session's idleness is `gnoblin-input`'s counter, and a protocol inhibitor is
+//!   the only way to hold it.
+//!
 //! # Failure modes first
 //!
 //! Each entry names the integration test in `tests/real_client.rs` unless it says

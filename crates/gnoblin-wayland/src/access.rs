@@ -240,6 +240,13 @@ pub const fn decide(role: ClientRole, global: Global) -> bool {
 /// re-enters that lock and deadlocks the loop for every client on it. The roster is a
 /// lock over a map for exactly this reason: a decision must be answerable from what the
 /// compositor already recorded, never from a call back into the connection.
+///
+/// The signature is the rule made mechanical: [`allows`](AccessPolicy::allows) takes a
+/// [`ClientKey`] and nothing else, so a policy has no client to query, and a later editor
+/// would have to change this trait to break it. `tests/access.rs` guards the same rule from
+/// the outside with
+/// `a_filtered_registry_round_trip_does_not_deadlock`, which fails a stalled round trip
+/// after five seconds instead of hanging the suite.
 pub trait AccessPolicy: Send + Sync + 'static {
     /// Whether the connection `client` may bind `global`.
     fn allows(&self, client: &ClientKey, global: Global) -> bool;
@@ -496,11 +503,15 @@ mod tests {
 
     #[test]
     fn a_new_global_is_privileged_until_it_says_otherwise() {
-        // The safe default, stated as a test: nothing in the enum is unprivileged today,
-        // and a lane that adds a global has to opt out explicitly.
+        // The safe default, stated as a test: a global that a lane adds without thinking
+        // about it is hidden from applications. The seat's two halves are the only globals
+        // that opt out, and they do it because an input method and an on-screen keyboard
+        // are how ordinary applications type in a language the keymap does not cover.
+        let unprivileged = [Global::InputMethod, Global::VirtualKeyboard];
         for global in ALL {
-            assert!(
+            assert_eq!(
                 global.is_privileged(),
+                !unprivileged.contains(global),
                 "{} must opt out of privilege explicitly",
                 global.as_str()
             );

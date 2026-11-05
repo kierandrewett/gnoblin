@@ -7,7 +7,7 @@
 //! Smithay type and this module never decides policy: the same split the plan draws
 //! between the composition root and the pure crates.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use smithay::backend::input::{ButtonState, InputTime};
@@ -19,7 +19,7 @@ use smithay::input::{Seat, SeatState, pointer::PointerHandle};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Display;
-use smithay::reexports::wayland_server::backend::GlobalId;
+use smithay::reexports::wayland_server::backend::{GlobalId, ObjectId};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
@@ -333,6 +333,13 @@ pub struct State {
     pub(crate) shortcuts_held: Vec<KeyboardShortcutsInhibitor>,
     /// The input method popups, so a renderer can draw one.
     pub(crate) input_method_popups: Vec<PopupSurface>,
+    /// The text inputs the focused client has already been told about.
+    ///
+    /// `enter` is sent when the keyboard focus moves, and Smithay only sends it when a
+    /// text input is *created* if an input method already exists. A text input that
+    /// arrives afterwards therefore has to be found by the compositor, and this is what
+    /// keeps that search from sending `enter` twice for one object.
+    pub(crate) announced_text_inputs: HashSet<ObjectId>,
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
     /// The tearing hints clients set, keyed by surface.
@@ -588,6 +595,7 @@ impl State {
             presentation_tables: PresentationTables::default(),
             shortcuts_held: Vec::new(),
             input_method_popups: Vec::new(),
+            announced_text_inputs: HashSet::new(),
             cursor_image: CursorImageStatus::default_named(),
             tearing: Vec::new(),
             clock: Tick::ZERO,
@@ -1101,8 +1109,12 @@ impl State {
             let text_input = self.seat.text_input().clone();
             text_input.leave();
             text_input.set_focus(target.clone());
+            // The connection leaving was told; the one arriving has not been, so the
+            // announcement set starts again and the sweep below tells every text input the
+            // new focus owns exactly once.
+            self.announced_text_inputs.clear();
             if target.is_some() {
-                text_input.enter();
+                crate::protocols::text_input::announce_new_text_inputs(self);
             }
         }
         let serial = SERIAL_COUNTER.next_serial();
@@ -1466,6 +1478,9 @@ impl State {
         };
         let result = display.dispatch_clients(self);
         self.restore_display(display);
+        // A dispatch is the only place a text input can appear, so this is where one that
+        // arrived on an already-focused surface is told it has focus.
+        crate::protocols::text_input::announce_new_text_inputs(self);
         result
     }
 

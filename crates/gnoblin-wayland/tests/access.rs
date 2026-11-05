@@ -191,3 +191,77 @@ fn a_sandboxed_client_still_uses_the_ordinary_clipboard() {
         }
     });
 }
+
+/// How long the watchdog gives the filter round trip before it calls a deadlock.
+const DEADLOCK_WATCHDOG: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A registry round trip over the access filters completes instead of deadlocking.
+///
+/// Every global a connection may not see is decided by a `can_view` filter, and that filter
+/// runs while the backend holds the connection's own state locked. A policy that answers by
+/// asking the backend about the client — credentials, a resource lookup — would re-enter
+/// that lock and stop the loop for every connection on it, with no error and no timeout:
+/// the suite would hang instead of failing. It cannot be provoked from the policy's side,
+/// so the guard is the clock: the round trip below has five seconds, and a run that spends
+/// them is reported as a deadlock.
+///
+/// The watchdog aborts the process because nothing else can undo a deadlock: the loop is
+/// inside a `dispatch` that will never return, so no stop request and no thread join can
+/// reach it. The message names the deadlock before the abort, so a failing run says what
+/// happened rather than merely vanishing.
+#[test]
+fn a_filtered_registry_round_trip_does_not_deadlock() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let session = Session::start();
+    session.run(|session| {
+        let finished = Arc::new(AtomicBool::new(false));
+        let watchdog = {
+            let finished = Arc::clone(&finished);
+            std::thread::spawn(move || {
+                let deadline = std::time::Instant::now() + DEADLOCK_WATCHDOG;
+                while std::time::Instant::now() < deadline {
+                    if finished.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                eprintln!(
+                    "a_filtered_registry_round_trip_does_not_deadlock: the registry round trip did not \
+                     finish in {DEADLOCK_WATCHDOG:?}: an access filter deadlocked the session by \
+                     querying the client inside `can_view`"
+                );
+                std::process::abort();
+            })
+        };
+
+        // The allowed side of the filter: a connection that may see the privileged globals
+        // binds one, which is a request the filter answers for.
+        let mut privileged = Client::connect(session.privileged_socket());
+        let shell: wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::ZwlrLayerShellV1 = privileged
+            .globals
+            .bind(&privileged.qh, 1..=4, ())
+            .expect("the privileged socket sees zwlr_layer_shell_v1");
+        privileged.roundtrip();
+        drop(shell);
+
+        // The denying side: every privileged global is refused to an ordinary application,
+        // and refusing each one is a filter call under the connection's own lock.
+        let mut application = Client::connect(session.socket());
+        application.roundtrip();
+        assert!(
+            application.has_global("wl_compositor"),
+            "the connection is a working client"
+        );
+        for interface in PRIVILEGED {
+            assert!(
+                !application.has_global(interface),
+                "an application must not see {interface}"
+            );
+        }
+
+        finished.store(true, Ordering::SeqCst);
+        watchdog.join().expect("the watchdog thread");
+    });
+}

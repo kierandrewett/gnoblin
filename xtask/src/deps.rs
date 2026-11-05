@@ -76,6 +76,21 @@ const ENGINE: &[&str] = &[
 /// the composition root. Every other engine-to-engine edge still fails.
 const HUB_SCENE: &str = "gnoblin-render";
 
+/// The second engine crate a mechanism crate may depend on: the seat's delivery order.
+///
+/// The plan puts input in the mechanism layer and says mechanism crates meet "through
+/// traits in `gnoblin-backend` and types in `gnoblin-model`". Serving a seat cannot be
+/// written inside that shape: a key arrives, and the *order* it is offered in — the grab,
+/// then a binding, then the client — is a rule, not a type. `gnoblin-input` is where that
+/// rule lives, and a protocol engine that restated it would be a second answer to "does a
+/// binding beat a client", which is exactly the divergence these rules exist to prevent.
+///
+/// The edge is safe for the same reasons the scene's is, and `gnoblin-input` is smaller
+/// still: it depends on `gnoblin-types` alone, so it cannot pull Smithay, a device or a
+/// policy crate in behind a caller, and it names no engine crate itself. That direction
+/// stays a violation, and so does every other engine-to-engine edge.
+const HUB_INPUT: &str = "gnoblin-input";
+
 /// Crates that talk to the compositor as clients, so they may not link it.
 ///
 /// `gnoblin-wasm` joins them because a module host is an IPC client by design
@@ -237,9 +252,9 @@ fn foundation_purity(package: &Package, dep: &Dep) -> Option<String> {
     None
 }
 
-/// Engine crates reach each other only through `gnoblin-backend` traits, and none of
-/// them depends on the composition root. The hub's own edge to the pure scene crate
-/// is the single exception: see [`HUB_SCENE`].
+/// Engine crates reach each other only through `gnoblin-backend`'s traits, and none of them
+/// depends on the composition root. The two hub edges are the exceptions: see
+/// [`HUB_SCENE`] and [`HUB_INPUT`].
 ///
 /// A **development** edge is not this rule's business. The rule guards what ships: a
 /// library that names another mechanism crate pulls the whole mechanism in behind every
@@ -258,16 +273,25 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
         return Some("engine crates do not depend on the composition root".to_owned());
     }
     if package.name == HUB_SCENE && is_engine(&dep.name) {
-        // The exception below is one-directional, and this is the direction that has
-        // to stay shut: the scene crate is a leaf, so an edge from it into the
-        // mechanism would make every crate that names the scene pull Smithay in.
+        // The exceptions below are one-directional, and this is the direction that has to
+        // stay shut: the scene crate is a leaf, so an edge from it into the mechanism would
+        // make every crate that names the scene pull Smithay in.
         return Some(format!(
             "the pure scene crate depends on no engine crate, not even the hub; `{}` is an engine crate",
             dep.name
         ));
     }
+    if package.name == HUB_INPUT && is_engine(&dep.name) {
+        // The same direction, for the same reason: `gnoblin-input` is the seat's rule book
+        // and a leaf of the mechanism, so an edge from it into the mechanism would make
+        // every crate that asks "where does this key go" pull a compositor in behind it.
+        return Some(format!(
+            "the input policy crate depends on no engine crate, not even the hub; `{}` is an engine crate",
+            dep.name
+        ));
+    }
     if is_engine(&dep.name) && dep.name != "gnoblin-backend" {
-        if dep.name == HUB_SCENE {
+        if dep.name == HUB_SCENE || dep.name == HUB_INPUT {
             return None;
         }
         return Some(format!(
@@ -585,18 +609,57 @@ mod tests {
     }
 
     #[test]
-    fn an_engine_crate_may_not_depend_on_another_mechanism_crate() {
+    fn any_engine_crate_may_name_the_input_hub() {
+        // The seat's delivery order is a rule, not a device: a protocol engine that
+        // restated it would answer "does a binding beat a client" a second time.
+        assert_eq!(
+            violations(&[
+                ("gnoblin-wayland", &["gnoblin-backend", "gnoblin-input"]),
+                ("gnoblin-input", &["gnoblin-types"]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_input_hub_may_not_name_another_mechanism_crate() {
+        // The exception is one-directional: `gnoblin-input` is a leaf of the mechanism, so
+        // an edge from it would pull a compositor in behind every crate that asks where a
+        // key goes.
+        for forbidden in [
+            "gnoblin-wayland",
+            "gnoblin-backend",
+            "gnoblin-render",
+            "gnoblin-xwayland",
+        ] {
+            let reported = violations(&[("gnoblin-input", &[forbidden]), ("gnoblin-wayland", &["gnoblin-input"])]);
+            assert_eq!(
+                reported.len(),
+                1,
+                "expected one violation for {forbidden}, got {reported:#?}"
+            );
+            assert!(
+                reported[0].starts_with(&format!("gnoblin-input -> {forbidden} [engine-isolation]")),
+                "unexpected violation: {}",
+                reported[0]
+            );
+        }
+    }
+
+    #[test]
+    fn an_engine_crate_still_may_not_depend_on_another_mechanism_crate() {
+        // The hub is the only exception: a protocol engine may not name the backend's
+        // sibling engines directly.
         let reported = violations(&[
             (
                 "gnoblin-wayland",
-                &["gnoblin-backend", "gnoblin-input", "gnoblin-render"],
+                &["gnoblin-backend", "gnoblin-input", "gnoblin-xwayland"],
             ),
-            ("gnoblin-input", &[]),
-            ("gnoblin-render", &["gnoblin-types"]),
+            ("gnoblin-input", &["gnoblin-types"]),
         ]);
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
-            reported[0].starts_with("gnoblin-wayland -> gnoblin-input [engine-isolation]"),
+            reported[0].starts_with("gnoblin-wayland -> gnoblin-xwayland [engine-isolation]"),
             "unexpected violation: {}",
             reported[0]
         );

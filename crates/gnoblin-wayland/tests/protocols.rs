@@ -331,13 +331,6 @@ impl Client {
         self.state.pointer.clone().expect("the seat offered a pointer")
     }
 
-    /// Reads every event that has arrived, then reports the state.
-    fn settle(&mut self) -> &App {
-        self.roundtrip();
-        self.roundtrip();
-        &self.state
-    }
-
     /// Waits for `predicate` over the client's own state, with a round trip per try.
     fn wait_for(&mut self, predicate: impl Fn(&App) -> bool) -> &App {
         let deadline = Instant::now() + TIMEOUT;
@@ -739,11 +732,7 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for App {
         match event {
             zwp_text_input_v3::Event::Enter { .. } => state.text_enters += 1,
             zwp_text_input_v3::Event::Leave { .. } => state.text_leaves += 1,
-            zwp_text_input_v3::Event::CommitString { text } => {
-                if let Some(text) = text {
-                    state.text_commits.push(text);
-                }
-            }
+            zwp_text_input_v3::Event::CommitString { text: Some(text) } => state.text_commits.push(text),
             _ => {}
         }
     }
@@ -1153,27 +1142,32 @@ fn a_bound_key_is_consumed_and_its_release_is_not_leaked() {
 
 #[test]
 fn a_keymap_change_under_a_held_key_keeps_its_target() {
-    let mut config = Config::default();
-    config.input_sources = Some(gnoblin_config::InputSources {
-        sources: Some(vec![
-            gnoblin_config::InputSource {
-                r#type: Some(gnoblin_config::InputSourceType::Xkb),
-                id: Some("us".to_owned()),
-            },
-            gnoblin_config::InputSource {
-                r#type: Some(gnoblin_config::InputSourceType::Xkb),
-                id: Some("gb".to_owned()),
-            },
-        ]),
-        per_window: Some(false),
-    });
+    let config = Config {
+        input_sources: Some(gnoblin_config::InputSources {
+            sources: Some(vec![
+                gnoblin_config::InputSource {
+                    r#type: Some(gnoblin_config::InputSourceType::Xkb),
+                    id: Some("us".to_owned()),
+                },
+                gnoblin_config::InputSource {
+                    r#type: Some(gnoblin_config::InputSourceType::Xkb),
+                    id: Some("gb".to_owned()),
+                },
+            ]),
+            per_window: Some(false),
+        }),
+        ..Config::default()
+    };
     let session = Session::with_config(config);
     session.run(|session| {
         let mut client = Client::app(session.socket());
         let _window = client.map_window("org.gnoblin.Layouts");
         session.focused_window();
-        let state = client.wait_for(|state| state.keymaps.len() == 1).clone();
-        let first = state.last_keymap().expect("a keymap").to_owned();
+        let first = client
+            .wait_for(|state| state.keymaps.len() == 1)
+            .last_keymap()
+            .expect("a keymap")
+            .to_owned();
 
         session.control.bind("test-key", "a");
         thread::sleep(Duration::from_millis(50));
@@ -1202,20 +1196,22 @@ fn a_keymap_change_under_a_held_key_keeps_its_target() {
 
 #[test]
 fn a_window_remembers_its_layout() {
-    let mut config = Config::default();
-    config.input_sources = Some(gnoblin_config::InputSources {
-        sources: Some(vec![
-            gnoblin_config::InputSource {
-                r#type: Some(gnoblin_config::InputSourceType::Xkb),
-                id: Some("us".to_owned()),
-            },
-            gnoblin_config::InputSource {
-                r#type: Some(gnoblin_config::InputSourceType::Xkb),
-                id: Some("gb".to_owned()),
-            },
-        ]),
-        per_window: Some(true),
-    });
+    let config = Config {
+        input_sources: Some(gnoblin_config::InputSources {
+            sources: Some(vec![
+                gnoblin_config::InputSource {
+                    r#type: Some(gnoblin_config::InputSourceType::Xkb),
+                    id: Some("us".to_owned()),
+                },
+                gnoblin_config::InputSource {
+                    r#type: Some(gnoblin_config::InputSourceType::Xkb),
+                    id: Some("gb".to_owned()),
+                },
+            ]),
+            per_window: Some(true),
+        }),
+        ..Config::default()
+    };
     let session = Session::with_config(config);
     session.run(|session| {
         let mut client = Client::app(session.socket());
@@ -1226,13 +1222,19 @@ fn a_window_remembers_its_layout() {
             .only()
             .expect("the first window")
             .id;
-        let state = client.wait_for(|state| state.keymaps.len() == 1).clone();
-        let us = state.last_keymap().expect("a keymap").to_owned();
+        let us = client
+            .wait_for(|state| state.keymaps.len() == 1)
+            .last_keymap()
+            .expect("a keymap")
+            .to_owned();
 
         // The first window takes the next layout: it has focus while the switch happens.
         session.control.select_input_source(1);
-        let state = client.wait_for(|state| state.keymaps.len() == 2).clone();
-        let gb = state.last_keymap().expect("a keymap").to_owned();
+        let gb = client
+            .wait_for(|state| state.keymaps.len() == 2)
+            .last_keymap()
+            .expect("a keymap")
+            .to_owned();
         assert_ne!(us, gb, "the two layouts produce different keymaps");
 
         // A new window has no layout of its own yet, so focusing it keeps the active one
@@ -1304,15 +1306,29 @@ fn text_input_enter_and_commit_round_trip() {
             .expect("the session advertises zwp_text_input_manager_v3");
         let seat = client.seat.clone();
         let input = manager.get_text_input(&seat, &client.qh, ());
-        // A new text input is told it has focus, which is what makes its `enable` count.
-        client.wait_for(|state| state.text_enters == 1);
+        // A text input created on a surface that already has focus is told it has focus by
+        // the session rather than by a focus change. At this point the input method above
+        // is still only in this connection's buffer, so the session has no instance of it:
+        // an `enter` that arrives now can only be the session's own. It is counted rather
+        // than timed, because the input method's arrival greets the input again below.
+        client.wait_for(|state| state.text_enters >= 1);
+        // The input method reaches the session now, before the client asks to be served.
+        ime_client.roundtrip();
         input.enable();
         input.commit();
+        // `enable` and `commit` reach the session on a flush, and the wait below is on the
+        // other connection: without this round trip the request would still be in this
+        // connection's buffer when the test starts waiting.
+        client.roundtrip();
         ime_client.wait_for(|state| state.ime_activates == 1);
 
         // The input method's commit reaches the focused text input.
+        let serial = ime_client.state.ime_dones;
         method.commit_string("hello".to_owned());
-        method.commit(ime_client.state.ime_dones);
+        method.commit(serial);
+        // `commit_string` and `commit` reach the session on a flush of the input method's
+        // own connection, and the wait below is on the application's.
+        ime_client.roundtrip();
         let state = client.wait_for(|state| !state.text_commits.is_empty());
         assert_eq!(state.text_commits, vec!["hello".to_owned()]);
         let _ = window;
