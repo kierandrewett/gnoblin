@@ -9,14 +9,13 @@
 //! 2. Every started track produces exactly one terminal report, for its own id,
 //!    with the node and property it was started for.
 //!
-//! It also exercises the refusal paths: a depth component written through the
-//! scene or targeted by a track must return `unsupported-3d` and leave the
-//! transform untouched, which the damage check then judges as "nothing changed".
+//! It also exercises the depth paths: a depth component written through the
+//! scene or targeted by a track is accepted, and a value that would make the
+//! transform non-finite is refused and leaves the transform untouched, which the
+//! damage check then judges as "nothing changed".
 
 use std::collections::BTreeMap;
 
-use crate::scene::SceneError;
-use crate::tween::TrackError;
 use crate::{
     Color, Easing, NodeId, NodeSpec, OutputId, PropertyValue, Rect, Scene, TrackId, TrackSpec, TrackStart, TweenPlayer,
     Vec3, VisualProperty,
@@ -103,8 +102,8 @@ fn random_value(rng: &mut Rng, property: VisualProperty) -> PropertyValue {
             rng.coordinate(0.0, 1.0),
             rng.coordinate(0.0, 1.0),
         )),
-        // Depth components are refused by the scene; the model only tries them
-        // through the explicit refusal checks.
+        // Depth components are ordinary targets: the model writes them through
+        // the same path as every other property.
         _ => PropertyValue::number(0.0),
     }
 }
@@ -195,10 +194,9 @@ fn the_scene_and_the_player_keep_their_invariants() {
                 if !nodes.is_empty() {
                     let id = nodes[rng.below(nodes.len())];
                     if rng.below(8) == 0 {
-                        let error = scene
+                        scene
                             .set_property(id, VisualProperty::OffsetZ, PropertyValue::number(1.0))
-                            .expect_err("a depth write is refused");
-                        assert!(matches!(error, SceneError::Unsupported3d(_)));
+                            .expect("a depth write is accepted");
                     } else {
                         let property = IN_PLANE[rng.below(IN_PLANE.len())];
                         let value = random_value(&mut rng, property);
@@ -213,13 +211,17 @@ fn the_scene_and_the_player_keep_their_invariants() {
                 if !nodes.is_empty() {
                     let id = nodes[rng.below(nodes.len())];
                     if rng.below(10) == 0 {
-                        let error = player
+                        let track = player
                             .start(
                                 &mut scene,
                                 TrackSpec::new(id, VisualProperty::ScaleZ, PropertyValue::number(2.0)),
                             )
-                            .expect_err("a depth track is refused at start");
-                        assert!(matches!(error, TrackError::Unsupported3d(_)));
+                            .expect("a depth track is accepted");
+                        assert_eq!(
+                            started.insert(track, (id, VisualProperty::ScaleZ)),
+                            None,
+                            "track ids are unique"
+                        );
                     } else {
                         let property = IN_PLANE[rng.below(IN_PLANE.len())];
                         let mut spec = TrackSpec::new(id, property, random_value(&mut rng, property));

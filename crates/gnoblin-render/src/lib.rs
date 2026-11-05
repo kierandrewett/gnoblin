@@ -13,14 +13,12 @@
 //!
 //! # What it guarantees
 //!
-//! - **3D-ready, 2D today.** A node carries a three-axis offset, rotation and
-//!   scale plus a draw depth, and may be a space with a camera. Only the 2D
-//!   subset is accepted: depth stays zero, rotation is about the z axis, the
-//!   camera is orthographic and drawing is in painter's order. Anything else is
-//!   refused with the code `unsupported-3d`
-//!   ([`gnoblin_types::Unsupported3d::CODE`]), never silently clamped or
-//!   dropped. Enabling depth later adds capabilities and changes no released
-//!   member.
+//! - **3D by default.** A node carries a three-axis offset, rotation and scale
+//!   plus a draw depth, and may be a space with a perspective camera. Every node
+//!   is placed by a 4x4 matrix; a flat scene is the orthographic case at depth
+//!   zero and draws exactly as before. Only a non-finite or non-invertible
+//!   transform is refused, with the code `unsupported-3d`
+//!   ([`gnoblin_types::Unsupported3d::CODE`]) on the value that caused it.
 //! - **Damage follows the transform.** Every mutation damages the projected
 //!   pixel bounds of the node and its descendants before and after the change,
 //!   so a move damages the pixels it left and the pixels it entered, and a
@@ -38,8 +36,8 @@
 //!   the older one with [`TrackEndReason::Superseded`]. Tracks advance in
 //!   ascending id order, so a frame does not depend on map iteration order.
 //! - **Hit testing is the inverse of rendering.** [`Scene::hit_test`] maps the
-//!   point through the same transform chain, backwards, so a hit cannot disagree
-//!   with the drawn position.
+//!   point through the inverse of the same matrix chain, so a hit cannot
+//!   disagree with the drawn position.
 //!
 //! # Failure modes first
 //!
@@ -64,13 +62,13 @@
 //!    under a perspective camera:
 //!    `scene::tests::the_damage_cap_degrades_to_full_output_instead_of_dropping_rectangles`,
 //!    `scene::tests::a_perspective_camera_falls_back_to_full_damage`.
-//! 9. A 3D value is silently ignored instead of refused:
-//!    `scene::tests::a_3d_transform_is_refused_at_insert_and_at_mutation`,
-//!    `scene::tests::a_property_write_of_a_depth_component_is_refused_and_leaves_the_node_unchanged`,
-//!    `scene::tests::a_perspective_space_is_refused`,
-//!    `tween::tests::a_depth_component_is_refused_at_start_and_starts_no_track`,
-//!    `effect::tests::a_3d_shadow_offset_is_refused_by_name`,
-//!    `transform::tests::a_depth_transform_has_no_inverse_and_is_not_silently_mapped`.
+//! 9. A 3D value is silently dropped instead of stored, or a 2D-only effect
+//!    accepts depth and draws the wrong thing:
+//!    `scene::tests::a_depth_transform_is_accepted_and_stored`,
+//!    `scene::tests::a_depth_property_write_is_stored`,
+//!    `scene::tests::a_perspective_space_is_accepted_and_a_bad_field_of_view_is_refused`,
+//!    `tween::tests::a_depth_track_starts_and_reaches_its_target`,
+//!    `effect::tests::a_3d_shadow_offset_is_refused_by_name`.
 //! 10. Damage is computed from an untransformed rectangle:
 //!     `scene::tests::damage_covers_a_child_of_a_transformed_parent`,
 //!     `scene::tests::an_effect_change_damages_the_padding_a_shadow_draws_outside_the_bounds`.
@@ -137,6 +135,7 @@ mod damage;
 mod easing;
 mod effect;
 mod id;
+mod matrix;
 mod property;
 mod scene;
 mod transform;
@@ -145,7 +144,7 @@ mod tween;
 #[cfg(test)]
 mod model_test;
 
-pub use camera::{Camera, Projection, UnsupportedProjection};
+pub use camera::{Camera, CameraError, Projection};
 pub use color::Color;
 pub use cursor::{
     CursorBackend, CursorBuild, CursorSelection, DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, InstalledTheme,

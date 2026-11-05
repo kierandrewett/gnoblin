@@ -14,10 +14,10 @@
 //! descendant's damage follows every ancestor's scale, rotation and offset
 //! instead of the rectangle it was born with.
 //!
-//! Today a transform must lie in the 2D subset ([`VisualTransform::check_2d`])
-//! and a space's camera must be orthographic. A depth component, a perspective
-//! camera or a non-zero draw depth is refused with the named `unsupported-3d`
-//! error, never clamped and never ignored: an ignored depth value would render
+//! Every transform is a 3D offset, rotation and scale, and every node is placed
+//! by a 4x4 matrix. A flat scene is the orthographic case at depth zero. Only a
+//! non-finite or non-invertible transform is refused, with the named
+//! `unsupported-3d` error, never clamped: a silently repaired matrix would draw
 //! the wrong frame while looking successful.
 //!
 //! # Damage
@@ -31,9 +31,8 @@
 //! `take_damage` clips the accumulated rectangles to each output, merges
 //! rectangles whose union costs no extra pixels, and degrades an output to full
 //! damage when more than [`Scene::damage_rect_limit`] rectangles remain. A node
-//! under a perspective camera degrades its outputs to full damage directly; that
-//! branch is unreachable through today's API because the camera is refused, but
-//! it is implemented and unit-tested so depth does not need a damage rewrite.
+//! under a perspective camera degrades its outputs to full damage directly,
+//! because a projected bound under perspective is not the node's rectangle.
 //!
 //! # Hit testing
 //!
@@ -44,14 +43,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use gnoblin_types::{OutputId, PointF, Rect, RectF, Unsupported3d, Vec3};
+use gnoblin_types::{OutputId, PointF, Rect, RectF, Vec3};
 
-use crate::camera::{Camera, Projection, UnsupportedProjection};
+use crate::camera::{Camera, CameraError, Projection};
 use crate::damage::{Damage, OutputDamage, merge_rects};
 use crate::effect::{EffectError, Effects};
 use crate::id::NodeId;
+use crate::matrix::Mat4;
 use crate::property::{PropertyError, PropertyValue, VisualProperty};
-use crate::transform::{VisualTransform, inverse_transform_point, transform_rect};
+use crate::transform::VisualTransform;
 
 /// The default number of damage rectangles per output.
 ///
@@ -68,16 +68,6 @@ pub enum NodeKind {
     Visual,
     /// A 3D space: its children are projected through the camera.
     Space(Camera),
-}
-
-impl NodeKind {
-    /// Refuse a camera this build cannot honour.
-    fn check_2d(&self) -> Result<(), UnsupportedProjection> {
-        match self {
-            Self::Visual => Ok(()),
-            Self::Space(camera) => camera.check_2d(),
-        }
-    }
 }
 
 /// How to create a node.
@@ -114,20 +104,14 @@ impl NodeSpec {
     /// Validate every value this build must refuse before the node exists.
     fn validate(&self) -> Result<(), SceneError> {
         validate_transform(&self.transform)?;
-        self.kind.check_2d()?;
+        if let NodeKind::Space(camera) = self.kind {
+            camera.validate(self.bounds.to_f64())?;
+        }
         for pass in self.effects.passes() {
             pass.validate()?;
         }
         Ok(())
     }
-}
-
-fn validate_transform(transform: &VisualTransform) -> Result<(), SceneError> {
-    if !transform.is_finite() {
-        return Err(SceneError::NonFinite { field: "transform" });
-    }
-    transform.check_2d()?;
-    Ok(())
 }
 
 /// A node as the scene stores it.
@@ -194,13 +178,28 @@ impl Node {
     fn visual_local(&self) -> RectF {
         self.effects.expand(self.bounds.to_f64())
     }
+
+    /// The matrix that places this node's local plane in its parent's plane.
+    fn local_matrix(&self) -> Mat4 {
+        Mat4::node_local(&self.transform.base, self.pivot())
+    }
+
+    /// The matrix a space applies between its own plane and its children.
+    fn content_matrix(&self) -> Mat4 {
+        match self.kind {
+            NodeKind::Visual => Mat4::IDENTITY,
+            NodeKind::Space(camera) => camera.content_matrix(self.bounds.to_f64()),
+        }
+    }
 }
 
-/// One node's projected bounds plus the projection that produced them.
+/// One node's projected damage bounds, and whether it is drawn flat.
 #[derive(Clone, Copy, Debug)]
 struct DamageSample {
-    rect: Rect,
-    projection: Projection,
+    /// The projected pixel bounds, or `None` when a corner lies behind the eye.
+    rect: Option<Rect>,
+    /// Whether the node is drawn without perspective, so its bounds are exact.
+    affine: bool,
 }
 
 /// A hit-test result.
@@ -227,10 +226,13 @@ pub enum SceneError {
         /// The value's path.
         field: &'static str,
     },
-    /// A transform value needs depth support.
-    Unsupported3d(Unsupported3d),
-    /// A perspective camera needs depth support.
-    UnsupportedPerspective(UnsupportedProjection),
+    /// A transform cannot be inverted, so the scene cannot project through it.
+    NotInvertible {
+        /// The field that collapsed to zero.
+        field: &'static str,
+    },
+    /// A camera cannot be honoured.
+    Camera(CameraError),
     /// A property value was refused.
     Property(PropertyError),
     /// An effect or uniform was refused.
@@ -244,25 +246,36 @@ impl std::fmt::Display for SceneError {
             Self::UnknownNode(id) => write!(formatter, "no node {id}"),
             Self::UnknownParent(id) => write!(formatter, "no parent {id}"),
             Self::NonFinite { field } => write!(formatter, "`{field}` is not finite"),
-            Self::Unsupported3d(error) => write!(formatter, "{error}"),
-            Self::UnsupportedPerspective(error) => write!(formatter, "{error}"),
+            Self::NotInvertible { field } => write!(formatter, "`{field}` is not invertible (code unsupported-3d)"),
+            Self::Camera(error) => write!(formatter, "{error}"),
             Self::Property(error) => write!(formatter, "{error}"),
             Self::Effect(error) => write!(formatter, "{error}"),
         }
     }
 }
 
-impl std::error::Error for SceneError {}
-
-impl From<Unsupported3d> for SceneError {
-    fn from(error: Unsupported3d) -> Self {
-        Self::Unsupported3d(error)
+/// Refuse a transform the scene cannot project through.
+///
+/// A non-finite value is refused, and so is a zero scale: a flattened axis has no
+/// inverse, so a matrix built from it would draw nothing sensible.
+fn validate_transform(transform: &VisualTransform) -> Result<(), SceneError> {
+    if !transform.is_finite() {
+        return Err(SceneError::NonFinite { field: "transform" });
     }
+    let scale = transform.base.scale;
+    for (field, value) in [("scale.x", scale.x), ("scale.y", scale.y), ("scale.z", scale.z)] {
+        if value == 0.0 {
+            return Err(SceneError::NotInvertible { field });
+        }
+    }
+    Ok(())
 }
 
-impl From<UnsupportedProjection> for SceneError {
-    fn from(error: UnsupportedProjection) -> Self {
-        Self::UnsupportedPerspective(error)
+impl std::error::Error for SceneError {}
+
+impl From<CameraError> for SceneError {
+    fn from(error: CameraError) -> Self {
+        Self::Camera(error)
     }
 }
 
@@ -356,7 +369,7 @@ impl Scene {
                 sort_siblings(&mut self.roots, &self.nodes);
             }
         }
-        let sample = self.sample(id);
+        let sample = self.sample(id).expect("node was just inserted");
         self.push_sample(sample);
         self.dirty.insert(id);
         self.dirty.extend(self.ancestors(id));
@@ -373,7 +386,7 @@ impl Scene {
             return Err(SceneError::UnknownNode(id));
         }
         let removed = self.subtree_ids(id);
-        let samples: Vec<DamageSample> = removed.iter().map(|node| self.sample(*node)).collect();
+        let samples: Vec<DamageSample> = removed.iter().filter_map(|node| self.sample(*node)).collect();
         let parent = self.nodes[&id].parent;
         match parent {
             Some(parent) => {
@@ -471,10 +484,9 @@ impl Scene {
 
     /// Write one property.
     ///
-    /// The value is applied to a copy first and the copy is checked against the
-    /// 2D subset, so a refused depth value leaves the node exactly as it was.
-    /// This is what makes `scale_z` a targetable property that is refused rather
-    /// than silently accepted and dropped.
+    /// The value is applied to a copy first and the copy is checked for a finite,
+    /// invertible transform, so a refused value leaves the node exactly as it was.
+    /// Depth components are ordinary targets and are accepted and stored.
     pub fn set_property(
         &mut self,
         id: NodeId,
@@ -510,7 +522,7 @@ impl Scene {
             Some(parent) => self.nodes[&parent].children.clone(),
             None => self.roots.clone(),
         };
-        let before: Vec<DamageSample> = siblings.iter().map(|node| self.sample(*node)).collect();
+        let before: Vec<DamageSample> = siblings.iter().filter_map(|node| self.sample(*node)).collect();
         self.nodes.get_mut(&id).expect("node existence checked above").z_order = z_order;
         sort_siblings(&mut siblings, &self.nodes);
         match parent {
@@ -522,7 +534,7 @@ impl Scene {
             }
             None => self.roots = siblings.clone(),
         }
-        let after: Vec<DamageSample> = siblings.iter().map(|node| self.sample(*node)).collect();
+        let after: Vec<DamageSample> = siblings.iter().filter_map(|node| self.sample(*node)).collect();
         for sample in before.into_iter().chain(after) {
             self.push_sample(sample);
         }
@@ -601,33 +613,27 @@ impl Scene {
 
     /// A node's projected pixel bounds, including effect padding.
     ///
-    /// `None` for a missing node or a node under a perspective camera, whose
-    /// projected bound is not a rectangle this build can name.
+    /// `None` for a missing node, or when a corner of the node lies behind the eye.
+    /// The bound is the bounding box of the projected corners.
     #[must_use]
     pub fn absolute_bounds(&self, id: NodeId) -> Option<Rect> {
-        self.nodes.get(&id)?;
-        match self.projection_for(id)? {
-            Projection::Orthographic => Some(self.own_absolute(id).to_pixel()),
-            Projection::Perspective { .. } => None,
-        }
+        let node = self.nodes.get(&id)?;
+        let world = self.world_matrix(id)?;
+        project_bounds(&world, node.visual_local()).map(|bounds| bounds.to_pixel())
     }
 
-    /// The topmost node containing a point on the output plane.
+    /// The nearest node containing a point on the output plane; equal depths go to
+    /// the topmost node in paint order.
     #[must_use]
     pub fn hit_test(&self, point: PointF) -> Option<Hit> {
         if !point.is_finite() {
             return None;
         }
+        let mut best = None;
         for root in self.roots.iter().rev() {
-            let node = &self.nodes[root];
-            let Some(local) = inverse_transform_point(point, node.pivot(), &node.transform().base) else {
-                continue;
-            };
-            if let Some(hit) = self.hit_node(*root, local) {
-                return Some(hit);
-            }
+            self.hit_walk(*root, &Mat4::IDENTITY, point, &mut best);
         }
-        None
+        best.map(|(_, hit)| hit)
     }
 
     /// Take the accumulated damage, clipped and merged per output.
@@ -670,12 +676,12 @@ impl Scene {
     /// Apply a mutation while recording the projected bounds before and after.
     fn change(&mut self, id: NodeId, apply: impl FnOnce(&mut Node)) {
         let scope = self.subtree_ids(id);
-        let before: Vec<DamageSample> = scope.iter().map(|node| self.sample(*node)).collect();
+        let before: Vec<DamageSample> = scope.iter().filter_map(|node| self.sample(*node)).collect();
         {
             let node = self.nodes.get_mut(&id).expect("caller checked the node exists");
             apply(node);
         }
-        let after: Vec<DamageSample> = scope.iter().map(|node| self.sample(*node)).collect();
+        let after: Vec<DamageSample> = scope.iter().filter_map(|node| self.sample(*node)).collect();
         for sample in before.into_iter().chain(after) {
             self.push_sample(sample);
         }
@@ -710,42 +716,50 @@ impl Scene {
         ancestors
     }
 
-    /// A node's bounds in the root space, before projection.
-    fn own_absolute(&self, id: NodeId) -> RectF {
-        let Some(node) = self.nodes.get(&id) else {
-            return RectF::EMPTY;
-        };
-        let mut pivot = node.pivot();
-        let mut rect = node.visual_local();
-        rect = transform_rect(rect, pivot, &node.transform().base);
-        let mut parent = node.parent;
-        while let Some(ancestor) = parent {
-            let Some(ancestor_node) = self.nodes.get(&ancestor) else {
+    /// The matrix that maps a node's local plane into output space, before the
+    /// perspective divide. `None` for a missing node.
+    fn world_matrix(&self, id: NodeId) -> Option<Mat4> {
+        let mut chain = Vec::new();
+        let mut current = Some(id);
+        while let Some(node_id) = current {
+            let Some(node) = self.nodes.get(&node_id) else {
                 break;
             };
-            pivot = ancestor_node.pivot();
-            rect = transform_rect(rect, pivot, &ancestor_node.transform().base);
-            parent = ancestor_node.parent;
+            chain.push(node);
+            current = node.parent;
         }
-        rect
+        if chain.is_empty() {
+            return None;
+        }
+        let mut frame = Mat4::IDENTITY;
+        let mut world = Mat4::IDENTITY;
+        for node in chain.iter().rev() {
+            world = frame.mul(&node.local_matrix());
+            frame = world.mul(&node.content_matrix());
+        }
+        Some(world)
     }
 
-    /// The current projected bounds of a node, with the projection that applies.
-    fn sample(&self, id: NodeId) -> DamageSample {
-        DamageSample {
-            rect: self.own_absolute(id).to_pixel(),
-            projection: self.projection_for(id).unwrap_or(Projection::Orthographic),
-        }
+    /// A node's current projected damage bounds, and whether it is drawn flat.
+    fn sample(&self, id: NodeId) -> Option<DamageSample> {
+        let world = self.world_matrix(id)?;
+        let node = self.nodes.get(&id)?;
+        Some(DamageSample {
+            rect: project_bounds(&world, node.visual_local()).map(|bounds| bounds.to_pixel()),
+            affine: world.m[3] == [0.0, 0.0, 0.0, 1.0],
+        })
     }
 
-    /// Record one node's damage, or degrade its outputs to full damage under a
-    /// perspective camera.
+    /// Record one node's damage: exact bounds for a flat node, the outputs it
+    /// touches for a node under perspective, and every output when a corner lies
+    /// behind the eye.
     fn push_sample(&mut self, sample: DamageSample) {
-        match sample.projection {
-            Projection::Orthographic => self.pending.push(sample.rect),
-            Projection::Perspective { .. } => {
-                for (output, rect) in &self.outputs {
-                    if rect.intersection(sample.rect).is_some() {
+        match (sample.rect, sample.affine) {
+            (None, _) => self.full.extend(self.outputs.keys().copied()),
+            (Some(rect), true) => self.pending.push(rect),
+            (Some(rect), false) => {
+                for (output, output_rect) in &self.outputs {
+                    if output_rect.intersection(rect).is_some() {
                         self.full.insert(*output);
                     }
                 }
@@ -753,22 +767,30 @@ impl Scene {
         }
     }
 
-    fn hit_node(&self, id: NodeId, local: PointF) -> Option<Hit> {
-        let node = self.nodes.get(&id)?;
+    /// Visit a node and its descendants, topmost first, keeping the nearest hit.
+    /// A candidate replaces the current hit only when strictly nearer, so an equal
+    /// depth goes to the topmost node in paint order.
+    fn hit_walk(&self, id: NodeId, frame: &Mat4, point: PointF, best: &mut Option<(f64, Hit)>) {
+        let Some(node) = self.nodes.get(&id) else {
+            return;
+        };
+        let world = frame.mul(&node.local_matrix());
+        let child_frame = world.mul(&node.content_matrix());
         for child in node.children.iter().rev() {
-            let child_node = &self.nodes[child];
-            let Some(child_local) = inverse_transform_point(local, child_node.pivot(), &child_node.transform().base)
-            else {
-                continue;
-            };
-            if let Some(hit) = self.hit_node(*child, child_local) {
-                return Some(hit);
-            }
+            self.hit_walk(*child, &child_frame, point, best);
         }
-        if contains_point(node.bounds, local) {
-            Some(Hit { node: id, local })
-        } else {
-            None
+        let Some((local, depth)) = locate(&world, point) else {
+            return;
+        };
+        if !contains_point(node.bounds, local) {
+            return;
+        }
+        let nearer = match best {
+            Some((best_depth, _)) => depth > *best_depth,
+            None => true,
+        };
+        if nearer {
+            *best = Some((depth, Hit { node: id, local }));
         }
     }
 }
@@ -777,6 +799,82 @@ impl Scene {
 fn contains_point(rect: Rect, point: PointF) -> bool {
     let bounds = rect.to_f64();
     point.x >= bounds.x && point.y >= bounds.y && point.x < bounds.right() && point.y < bounds.bottom()
+}
+
+/// Map a point on the output plane into a node's local plane.
+///
+/// Returns the local point and its depth, or `None` when the point lies behind
+/// the eye or the plane is edge-on. The depth is `Z / W`, so a nearer point has
+/// the larger depth.
+fn locate(world: &Mat4, point: PointF) -> Option<(PointF, f64)> {
+    let m = world.m;
+    let h = [
+        [m[0][0], m[0][1], m[0][3]],
+        [m[1][0], m[1][1], m[1][3]],
+        [m[3][0], m[3][1], m[3][3]],
+    ];
+    let det = det3(h);
+    if det == 0.0 || !det.is_finite() {
+        return None;
+    }
+    let p = [point.x, point.y, 1.0];
+    let column = |index: usize| {
+        let mut replaced = h;
+        for (row, values) in replaced.iter_mut().enumerate() {
+            values[index] = p[row];
+        }
+        det3(replaced)
+    };
+    let (d0, d1, d2) = (column(0), column(1), column(2));
+    // Cramer's rule: the point's homogeneous weight is `d2 / det`, which must be
+    // positive for the point to lie in front of the eye.
+    if d2 / det <= 0.0 {
+        return None;
+    }
+    let u = d0 / d2;
+    let v = d1 / d2;
+    let depth = (m[2][0] * d0 + m[2][1] * d1 + m[2][3] * d2) / det;
+    if !(u.is_finite() && v.is_finite() && depth.is_finite()) {
+        return None;
+    }
+    Some((PointF { x: u, y: v }, depth))
+}
+
+fn det3(a: [[f64; 3]; 3]) -> f64 {
+    a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+        + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
+}
+
+/// The bounding box of a rectangle's corners after projection, or `None` when a
+/// corner lies behind the eye, where the projected box is not meaningful.
+fn project_bounds(world: &Mat4, rect: RectF) -> Option<RectF> {
+    let corners = [
+        (rect.x, rect.y),
+        (rect.right(), rect.y),
+        (rect.x, rect.bottom()),
+        (rect.right(), rect.bottom()),
+    ];
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for (x, y) in corners {
+        let [sx, sy, _, w] = world.apply([x, y, 0.0, 1.0]);
+        if w.is_nan() || w <= 0.0 {
+            return None;
+        }
+        let (px, py) = (sx / w, sy / w);
+        min_x = min_x.min(px);
+        min_y = min_y.min(py);
+        max_x = max_x.max(px);
+        max_y = max_y.max(py);
+    }
+    Some(RectF {
+        x: min_x,
+        y: min_y,
+        width: max_x - min_x,
+        height: max_y - min_y,
+    })
 }
 
 /// Sort sibling ids by paint order, breaking a tie by id so the result is a
@@ -889,13 +987,12 @@ mod tests {
     }
 
     #[test]
-    fn a_3d_transform_is_refused_at_insert_and_at_mutation() {
+    fn a_depth_transform_is_accepted_and_stored() {
         let mut scene = Scene::new();
         let mut spec = NodeSpec::new(rect(0, 0, 10, 10));
         spec.transform.base.depth = 1.0;
-        let error = scene.insert(NodeId::new(1), spec).expect_err("must refuse");
-        assert!(matches!(error, SceneError::Unsupported3d(_)));
-        assert!(!scene.contains(NodeId::new(1)));
+        scene.insert(NodeId::new(1), spec.clone()).expect("depth is accepted");
+        assert_eq!(scene.transform(NodeId::new(1)), Some(&spec.transform));
 
         let node = NodeId::new(2);
         scene.insert(node, NodeSpec::new(rect(0, 0, 10, 10))).expect("node");
@@ -906,42 +1003,36 @@ mod tests {
             },
             ..VisualTransform::IDENTITY
         };
-        let error = scene.set_transform(node, transform).expect_err("must refuse");
-        assert!(matches!(error, SceneError::Unsupported3d(_)));
-        assert_eq!(
-            scene.transform(node),
-            Some(&VisualTransform::IDENTITY),
-            "a refused transform must not be partly applied"
-        );
+        scene.set_transform(node, transform).expect("rotation is accepted");
+        assert_eq!(scene.transform(node), Some(&transform));
     }
 
     #[test]
-    fn a_property_write_of_a_depth_component_is_refused_and_leaves_the_node_unchanged() {
+    fn a_depth_property_write_is_stored() {
         let mut scene = Scene::new();
         let node = NodeId::new(1);
         scene.insert(node, NodeSpec::new(rect(0, 0, 10, 10))).expect("node");
-        let error = scene
+        scene
             .set_property(node, VisualProperty::OffsetZ, PropertyValue::number(4.0))
-            .expect_err("must refuse");
-        assert!(matches!(error, SceneError::Unsupported3d(_)));
+            .expect("offset-z is accepted");
         assert_eq!(
             scene.property(node, VisualProperty::OffsetZ).expect("readable"),
-            PropertyValue::number(0.0)
-        );
-        assert_eq!(
-            scene.property(node, VisualProperty::ScaleZ).expect("readable"),
-            PropertyValue::number(1.0)
+            PropertyValue::number(4.0)
         );
     }
 
     #[test]
-    fn a_perspective_space_is_refused() {
+    fn a_perspective_space_is_accepted_and_a_bad_field_of_view_is_refused() {
         let mut scene = Scene::new();
         let mut spec = NodeSpec::new(rect(0, 0, 100, 100));
         spec.kind = NodeKind::Space(Camera::perspective(60.0, 0.1, 100.0));
-        let error = scene.insert(NodeId::new(1), spec).expect_err("must refuse");
-        assert!(matches!(error, SceneError::UnsupportedPerspective(_)));
-        assert!(format!("{error}").starts_with(crate::camera::UnsupportedProjection::CODE));
+        scene.insert(NodeId::new(1), spec).expect("perspective is accepted");
+
+        let mut bad = NodeSpec::new(rect(0, 0, 100, 100));
+        bad.kind = NodeKind::Space(Camera::perspective(0.0, 0.1, 100.0));
+        let error = scene.insert(NodeId::new(2), bad).expect_err("must refuse");
+        assert!(matches!(error, SceneError::Camera(CameraError::FieldOfView { .. })));
+        assert!(!scene.contains(NodeId::new(2)));
     }
 
     #[test]
@@ -1059,10 +1150,10 @@ mod tests {
 
     #[test]
     fn a_perspective_camera_falls_back_to_full_damage() {
-        // The scene refuses a perspective camera, so this state is built
-        // directly: the branch exists for the day depth lands, and a damage
-        // rewrite then must not be needed. A projected bound under perspective is
-        // not the node's rectangle, so the whole output is redrawn.
+        // The scene accepts a perspective camera, so this state is built
+        // directly to pin the damage branch on its own terms: a projected bound
+        // under perspective is not the node's rectangle, so the whole output is
+        // redrawn.
         let mut scene = scene_with_output();
         let space = NodeId::new(1);
         let node = NodeId::new(2);

@@ -2,18 +2,14 @@
 //!
 //! A property is addressed by name, not by a closure or an offset into the
 //! transform, so the tween player can target every component the scene model
-//! has, including the depth components that this build refuses. That split is
-//! deliberate: the player is axis-agnostic, and the scene's 2D check is the only
-//! place that decides what is accepted today. A track on `scale_z` therefore
-//! exists as a type, is refused at the point of application with the named
-//! error, and needs no new player code when depth lands.
+//! has, including the depth components. The player is axis-agnostic: the scene
+//! decides only whether a resulting transform is finite and invertible. A track
+//! on `scale_z` therefore needs no new player code.
 //!
 //! Values are typed ([`PropertyValue`]) rather than all `f32`: a tint is a
 //! colour and a uniform scale is two in-plane components, and flattening them
 //! into one numeric channel would make a wrong-kind assignment a runtime
 //! surprise instead of a typed refusal.
-
-use gnoblin_types::Unsupported3d;
 
 use crate::color::Color;
 use crate::transform::VisualTransform;
@@ -108,11 +104,11 @@ pub enum VisualProperty {
     OffsetX,
     /// Translation on the second axis.
     OffsetY,
-    /// Translation on the depth axis; refused today.
+    /// Translation on the depth axis.
     OffsetZ,
-    /// Rotation about the first axis; refused today.
+    /// Rotation about the first axis.
     RotationX,
-    /// Rotation about the second axis; refused today.
+    /// Rotation about the second axis.
     RotationY,
     /// Rotation about the depth axis, the 2D rotation.
     RotationZ,
@@ -122,7 +118,7 @@ pub enum VisualProperty {
     ScaleX,
     /// Scale on the second axis.
     ScaleY,
-    /// Scale on the depth axis; refused today.
+    /// Scale on the depth axis.
     ScaleZ,
     /// Multiplicative colour.
     Tint,
@@ -177,17 +173,6 @@ impl VisualProperty {
             Self::Tint => ValueKind::Color,
             _ => ValueKind::Number,
         }
-    }
-
-    /// Whether this build can apply the property at all.
-    ///
-    /// A depth component can still be *read* and still be targeted by a track;
-    /// it cannot be set to a non-2D value. [`VisualProperty::apply`] is where
-    /// that refusal happens, so the query here is about the component, not about
-    /// a particular value.
-    #[must_use]
-    pub const fn is_2d_component(self) -> bool {
-        !matches!(self, Self::OffsetZ | Self::RotationX | Self::RotationY | Self::ScaleZ)
     }
 
     /// The value a transform carries for this property.
@@ -324,8 +309,6 @@ pub enum PropertyError {
         /// The property.
         property: VisualProperty,
     },
-    /// A depth component was supplied to the 2D scene.
-    Unsupported3d(Unsupported3d),
 }
 
 impl std::fmt::Display for PropertyError {
@@ -341,7 +324,6 @@ impl std::fmt::Display for PropertyError {
                 property.name()
             ),
             Self::NonFinite { property } => write!(formatter, "`{}` is not finite", property.name()),
-            Self::Unsupported3d(error) => write!(formatter, "{error}"),
         }
     }
 }

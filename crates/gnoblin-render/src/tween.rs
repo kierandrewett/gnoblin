@@ -28,10 +28,11 @@
 //! vanished node, and [`TweenPlayer::finish_node`] does the same as soon as the
 //! caller knows the closure happened.
 //!
-//! A track whose target cannot be applied at all — a depth component in this
-//! build — is refused by [`TweenPlayer::start`] and never enters the live map,
-//! so the exactly-once rule and the refusal rule do not fight: the caller sees
-//! `unsupported-3d` instead of a track that can never finish usefully.
+//! A track whose target cannot be applied (a non-finite value, or a track that
+//! would leave a non-invertible transform) is refused by [`TweenPlayer::start`]
+//! and never enters the live map, so the exactly-once rule and the refusal rule
+//! do not fight: the caller sees the named error instead of a track that can
+//! never finish usefully. Depth components are ordinary targets.
 
 use std::collections::BTreeMap;
 
@@ -39,7 +40,6 @@ use crate::easing::{Easing, EasingError};
 use crate::id::{NodeId, TrackId};
 use crate::property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
 use crate::scene::{Scene, SceneError};
-use gnoblin_types::Unsupported3d;
 
 /// Where a track starts.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -130,8 +130,6 @@ pub enum TrackError {
     UnknownTrack(TrackId),
     /// A property value was refused.
     Property(PropertyError),
-    /// A value needs depth support.
-    Unsupported3d(Unsupported3d),
     /// A component is NaN or infinite.
     NonFinite {
         /// The value's path.
@@ -158,7 +156,6 @@ impl std::fmt::Display for TrackError {
             Self::UnknownNode(id) => write!(formatter, "no node {id}"),
             Self::UnknownTrack(id) => write!(formatter, "no track {id}"),
             Self::Property(error) => write!(formatter, "{error}"),
-            Self::Unsupported3d(error) => write!(formatter, "{error}"),
             Self::NonFinite { field } => write!(formatter, "`{field}` is not finite"),
             Self::Easing(error) => write!(formatter, "{error}"),
             Self::ValueMismatch { property, from, to } => write!(
@@ -179,12 +176,6 @@ impl From<PropertyError> for TrackError {
     }
 }
 
-impl From<Unsupported3d> for TrackError {
-    fn from(error: Unsupported3d) -> Self {
-        Self::Unsupported3d(error)
-    }
-}
-
 impl From<EasingError> for TrackError {
     fn from(error: EasingError) -> Self {
         Self::Easing(error)
@@ -193,10 +184,7 @@ impl From<EasingError> for TrackError {
 
 impl From<SceneError> for TrackError {
     fn from(error: SceneError) -> Self {
-        match error {
-            SceneError::Unsupported3d(error) => Self::Unsupported3d(error),
-            other => Self::Scene(other),
-        }
+        Self::Scene(error)
     }
 }
 
@@ -474,8 +462,7 @@ impl TweenPlayer {
 /// Coerce a value, apply it to a copy of the transform and check the result.
 ///
 /// The copy is the point of this helper: a refused value leaves the scene
-/// untouched, which is what makes a depth component a refusal rather than a
-/// silently dropped write.
+/// untouched, so a failed write never half-applies a transform.
 fn apply_candidate(
     transform: &crate::transform::VisualTransform,
     property: VisualProperty,
@@ -487,7 +474,6 @@ fn apply_candidate(
     if !candidate.is_finite() {
         return Err(TrackError::NonFinite { field: "transform" });
     }
-    candidate.check_2d()?;
     Ok(value)
 }
 
@@ -728,10 +714,10 @@ mod tests {
     }
 
     #[test]
-    fn a_depth_component_is_refused_at_start_and_starts_no_track() {
+    fn a_depth_track_starts_and_reaches_its_target() {
         let (mut scene, node) = scene_with_node();
         let mut player = TweenPlayer::new();
-        let error = player
+        player
             .start(
                 &mut scene,
                 TrackSpec {
@@ -739,13 +725,13 @@ mod tests {
                     ..TrackSpec::new(node, VisualProperty::OffsetZ, PropertyValue::number(5.0))
                 },
             )
-            .expect_err("must refuse");
-        assert!(matches!(error, TrackError::Unsupported3d(_)));
+            .expect("a depth track is accepted");
+        assert_eq!(player.active(), 1);
+        player.advance(&mut scene, 100);
         assert_eq!(player.active(), 0);
-        assert!(player.take_ended().is_empty());
         assert_eq!(
             scene.property(node, VisualProperty::OffsetZ).expect("readable"),
-            PropertyValue::number(0.0)
+            PropertyValue::number(5.0)
         );
     }
 
