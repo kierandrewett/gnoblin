@@ -296,3 +296,44 @@ right = "gnoblin-wm::Event"
 kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
+[[allow]]
+left = "gnoblin-a11y::Mode"
+right = "gnoblin-compat-core::Mode"
+kind = "same-name"
+reason = "an accessibility input mode and a compat adapter's mode gate share a word and nothing else"
+
+[[allow]]
+left = "gnoblin-input::Phase"
+right = "gnoblin-output::Phase"
+kind = "same-name"
+reason = "an output transaction's lifecycle phase and the input router's phase belong to different state machines"
+
+[[allow]]
+left = "gnoblin-output::Verdict"
+right = "gnoblin-parity::Verdict"
+kind = "same-name"
+reason = "a caller's test result of a proposed layout and a parity report's verdict are unrelated judgments"
+
+[[allow]]
+left = "gnoblin-output::Broken"
+right = "gnoblin-wm::Broken"
+kind = "same-name"
+reason = "each state machine names its own invariant failure; the name is shared, the failure is not"
+
+[[allow]]
+left = "gnoblin-output::Rejection"
+right = "gnoblin-wm::Rejection"
+kind = "same-name"
+reason = "each state machine names its own refused request; the name is shared, the refusal is not"
+
+[[allow]]
+left = "gnoblin-output::Edge"
+right = "gnoblin-types::Edge"
+kind = "same-name"
+reason = "a placement side, which can be above or below an anchor, is not one axis direction of a rectangle"
+
+[[allow]]
+left = "gnoblin-a11y::ButtonAction"
+right = "gnoblin-input::Phase"
+kind = "same-shape"
+reason = "a mouse-key action and an input-router phase carry the same pressing vocabulary and mean different things"
