@@ -435,24 +435,44 @@ fn completions_can_be_written_to_a_file() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// The payload written into the sensitive frame, which the dump must never show.
+const SECRET: &[u8] = b"hunter2";
+
 /// A recorded stream: a handshake, a plain event, and a frame whose schema member
 /// is secret.
-fn record_frames(path: &Path) {
+///
+/// The member spelling is not this crate's business: the object layer keeps the
+/// envelope's own `object.*` names, while a schema member's path is the schema's to
+/// choose (`auth_response` today, `greeter.auth_response` if members become
+/// qualified). So the spelling is the one the crate flags as sensitive, and the
+/// assertion that one of them is flagged is what keeps this test from passing
+/// without a secret in the stream.
+fn record_frames(path: &Path) -> &'static str {
     let mut file = std::fs::File::create(path).expect("a recording");
     file.write_all(&Handshake::hello(VERSION).encode())
         .expect("the handshake is written");
     let plain = Envelope::event("gnoblin", "object.changed", vec![1, 2, 3]);
     assert!(!plain.is_sensitive(), "a plain member is not flagged");
     write_frame(&mut file, &plain).expect("the plain frame is written");
-    let secret = Envelope::request("bsm.greeter", "auth_response", 7, b"hunter2".to_vec());
-    assert!(secret.is_sensitive(), "the schema flags `auth_response`");
+    let member = ["auth_response", "greeter.auth_response"]
+        .into_iter()
+        .find(|member| Envelope::request("bsm.greeter", *member, 7, Vec::new()).is_sensitive())
+        .expect("the schema marks the greeter's auth_response secret");
+    let secret = Envelope::request("bsm.greeter", member, 7, SECRET.to_vec());
+    assert!(secret.is_sensitive(), "the schema flags `{member}`");
     write_frame(&mut file, &secret).expect("the secret frame is written");
+    member
 }
 
 #[test]
 fn a_sensitive_frame_is_never_printed() {
     let path = scratch("frames.bin");
-    record_frames(&path);
+    let member = record_frames(&path);
+    let recorded = std::fs::read(&path).expect("the recording is readable");
+    assert!(
+        recorded.windows(SECRET.len()).any(|window| window == SECRET),
+        "the recording does not carry the secret, so the assertions below would prove nothing"
+    );
     let (code, out, err) = run(&["ipc", "dump", &path.display().to_string()], nowhere());
     let _ = std::fs::remove_file(&path);
     assert_eq!(code, 0, "{err}");
@@ -466,7 +486,7 @@ fn a_sensitive_frame_is_never_printed() {
     );
     assert!(out.contains("event    gnoblin.object.changed"), "{out}");
     assert!(
-        out.contains("request  bsm.greeter.auth_response #7 [redacted]"),
+        out.contains(&format!("request  bsm.greeter.{member} #7 [redacted]")),
         "the sensitive frame keeps its routing fields and loses everything else:\n{out}"
     );
 }
