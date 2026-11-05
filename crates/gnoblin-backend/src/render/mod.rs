@@ -49,7 +49,7 @@ pub mod software;
 pub use compose::{Composer, Content};
 // The colour a frame is described with, so a caller that paints a surface the scene
 // graph does not know about names the same type the renderer does.
-pub use frame::{Layer, OutputFrame, Solid, Surface};
+pub use frame::{Layer, OutputFrame, Overlay, Solid, Surface};
 pub use gles::Gles;
 pub use gnoblin_render::{Color, Mat4};
 pub use image::Image;

@@ -44,11 +44,15 @@
 //!
 //! [`VisualTransform`]: gnoblin_render::VisualTransform
 
+use std::sync::Arc;
+
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
 use gnoblin_render::{Color, Effects, Mat4};
 use gnoblin_types::{Rect, RectF};
+
+use super::image::Image;
 
 /// One thing a frame paints.
 #[derive(Clone, Debug)]
@@ -156,6 +160,70 @@ pub struct Model {
     pub opaque: bool,
 }
 
+/// A compositor-drawn image on top of every layer: the portal dialog.
+///
+/// Unlike a [`Surface`] it has no client buffer, so it is not tied to a
+/// `wl_buffer` and survives the client that asked for it. The pixels are
+/// premultiplied at construction, because both renderers blend premultiplied
+/// colour and a straight-alpha edge would brighten. It is drawn above every
+/// layer and below the cursor, and a screen capture leaves it out unless the
+/// frame says otherwise (see [`OutputFrame::set_overlay`]).
+#[derive(Clone, Debug)]
+pub struct Overlay {
+    /// Where the image lands, in the output's logical space.
+    dst: Rect,
+    /// The premultiplied RGBA8 pixels, rows packed.
+    image: Arc<Image>,
+}
+
+impl Overlay {
+    /// An overlay of `image`, drawn at `dst`.
+    ///
+    /// Returns [`None`] when `dst` is empty. The image's own size is the source
+    /// rectangle, so a `dst` of another size scales it.
+    #[must_use]
+    pub fn new(dst: Rect, image: &Image) -> Option<Self> {
+        if dst.is_empty() {
+            return None;
+        }
+        let size = image.size();
+        let width = size.width as usize;
+        let height = size.height as usize;
+        let packed = width.checked_mul(4)?;
+        let mut data = Vec::with_capacity(packed.checked_mul(height)?);
+        for row in image.data().chunks(image.stride()).take(height) {
+            for pixel in row.get(..packed)?.as_chunks::<4>().0 {
+                let alpha = u32::from(pixel[3]);
+                let premultiply =
+                    |channel: u8| u8::try_from((u32::from(channel) * alpha + 127) / 255).unwrap_or(u8::MAX);
+                data.extend_from_slice(&[
+                    premultiply(pixel[0]),
+                    premultiply(pixel[1]),
+                    premultiply(pixel[2]),
+                    pixel[3],
+                ]);
+            }
+        }
+        let image = Image::new(size, packed, data)?;
+        Some(Self {
+            dst,
+            image: Arc::new(image),
+        })
+    }
+
+    /// Where the image lands, in the output's logical space.
+    #[must_use]
+    pub fn dst(&self) -> Rect {
+        self.dst
+    }
+
+    /// The premultiplied pixels.
+    #[must_use]
+    pub fn image(&self) -> &Image {
+        &self.image
+    }
+}
+
 /// The frame an output draws.
 ///
 /// A frame is reused across iterations: [`OutputFrame::clear`] drops the layers but
@@ -165,6 +233,7 @@ pub struct OutputFrame {
     background: Color,
     damage: Vec<Rect>,
     layers: Vec<Layer>,
+    overlay: Option<Overlay>,
     cursor: Option<Solid>,
 }
 
@@ -180,6 +249,7 @@ impl OutputFrame {
             background: Color::BLACK,
             damage: Vec::new(),
             layers: Vec::new(),
+            overlay: None,
             cursor: None,
         }
     }
@@ -189,6 +259,7 @@ impl OutputFrame {
         self.background = Color::BLACK;
         self.damage.clear();
         self.layers.clear();
+        self.overlay = None;
         self.cursor = None;
     }
 
@@ -275,6 +346,17 @@ impl OutputFrame {
             }
         }
         self.layers.push(layer);
+    }
+
+    /// The overlay, drawn above every layer and below the cursor.
+    #[must_use]
+    pub fn overlay(&self) -> Option<&Overlay> {
+        self.overlay.as_ref()
+    }
+
+    /// Sets the overlay, or removes it with [`None`].
+    pub fn set_overlay(&mut self, overlay: Option<Overlay>) {
+        self.overlay = overlay.filter(|overlay| !overlay.dst().is_empty());
     }
 
     /// The cursor, drawn above every layer.

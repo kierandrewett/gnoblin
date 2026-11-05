@@ -103,9 +103,9 @@ pub(crate) mod gl;
 mod program;
 mod shaders;
 
-use smithay::backend::renderer::ImportMemWl;
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::backend::renderer::glow::GlowRenderer;
+use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::Rectangle;
 use tracing::warn;
 
@@ -113,9 +113,10 @@ use gnoblin_render::{Color, Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Rect, RectF, Scale, Size};
 
 use crate::render::RenderError;
-use crate::render::frame::{Layer, Model, OutputFrame, Solid, Surface};
+use crate::render::frame::{Layer, Model, OutputFrame, Overlay, Solid, Surface};
 use crate::render::image::Image;
 use crate::render::physical_rect;
+use crate::render::software::READBACK_FORMAT;
 
 pub use program::ShaderError;
 
@@ -489,6 +490,11 @@ impl Gles {
                 Layer::Surface(surface) => self.import(surface),
             });
         }
+        // The imported texture owns the GL name, so it lives until the frame is painted.
+        let overlay_texture = frame.overlay().and_then(|overlay| self.import_overlay(overlay.image()));
+        let overlay = frame
+            .overlay()
+            .zip(overlay_texture.as_ref().and_then(Texture::from_smithay));
         let background = frame.background();
         let Self {
             device,
@@ -533,6 +539,9 @@ impl Gles {
                 let layer = &frame.layers()[*index];
                 let texture = textures.get(*index).and_then(|texture| *texture);
                 painter.layer(layer, texture, *placement)?;
+            }
+            if let Some((overlay, texture)) = overlay {
+                painter.overlay(overlay, texture)?;
             }
             if let Some(cursor) = frame.cursor() {
                 painter.cursor(cursor)?;
@@ -584,6 +593,28 @@ impl Gles {
             })
             .ok()?;
         Texture::from_smithay(&texture)
+    }
+
+    /// Imports the overlay's premultiplied pixels as a texture.
+    ///
+    /// An import failure is logged and the overlay is skipped for this frame, the same way a
+    /// client buffer is.
+    fn import_overlay(&mut self, image: &Image) -> Option<GlesTexture> {
+        let size = image.size();
+        let texture = self
+            .device
+            .renderer()
+            .import_memory(
+                image.data(),
+                READBACK_FORMAT,
+                (size.width as i32, size.height as i32).into(),
+                false,
+            )
+            .map_err(|error| {
+                warn!(?error, "[render] the overlay could not be imported; it is not drawn");
+            })
+            .ok()?;
+        Some(texture)
     }
 }
 
@@ -719,6 +750,21 @@ impl Painter<'_> {
             self.report(error);
         }
         drawn
+    }
+
+    /// The overlay, above every layer and below the cursor.
+    fn overlay(&mut self, overlay: &Overlay, texture: Texture) -> Result<(), RenderError> {
+        let dst = physical_rect(overlay.dst(), self.scale);
+        let quad = Rect::new(dst.loc.x, dst.loc.y, dst.size.w.max(0) as u32, dst.size.h.max(0) as u32);
+        if quad.is_empty() {
+            return Ok(());
+        }
+        let Self {
+            device, passes, bytes, ..
+        } = self;
+        let uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], Color::WHITE, 1.0, 0.0);
+        passes.surface.pack_fixed(&uniforms, bytes);
+        device.draw(&passes.surface, bytes, quad, Some(texture), Placement::FLAT)
     }
 
     /// The cursor, above every layer.

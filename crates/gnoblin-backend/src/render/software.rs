@@ -56,9 +56,9 @@
 //!    `a_resize_replaces_the_buffer`.
 
 use smithay::backend::allocator::Fourcc;
-use smithay::backend::renderer::pixman::{PixmanRenderer, PixmanTexture};
+use smithay::backend::renderer::pixman::{PixmanRenderer, PixmanTarget, PixmanTexture};
 use smithay::backend::renderer::{
-    Bind, Color32F, ExportMem, Frame as _, ImportMem, ImportMemWl, Offscreen, Renderer, Texture,
+    Bind, Color32F, ExportMem, Frame as _, ImportMem, ImportMemWl, Offscreen, Renderer, Texture, TextureFilter,
 };
 use smithay::reexports::pixman::Image as PixmanImage;
 use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as PhysicalSize, Transform};
@@ -68,7 +68,7 @@ use gnoblin_render::Color;
 use gnoblin_types::{Scale, Size};
 
 use crate::render::RenderError;
-use crate::render::frame::{Layer, OutputFrame, Surface};
+use crate::render::frame::{Layer, OutputFrame, Overlay, Surface};
 use crate::render::image::Image;
 use crate::render::physical_rect;
 
@@ -86,9 +86,9 @@ const TARGET_FORMAT: Fourcc = Fourcc::Argb8888;
 /// needs no channel swap, which is the difference between a copy and a copy plus a
 /// pass over every pixel.
 #[cfg(target_endian = "little")]
-const READBACK_FORMAT: Fourcc = Fourcc::Abgr8888;
+pub(crate) const READBACK_FORMAT: Fourcc = Fourcc::Abgr8888;
 #[cfg(target_endian = "big")]
-const READBACK_FORMAT: Fourcc = Fourcc::Rgba8888;
+pub(crate) const READBACK_FORMAT: Fourcc = Fourcc::Rgba8888;
 
 /// A Pixman renderer and the offscreen buffer it draws into.
 pub struct Software {
@@ -100,6 +100,8 @@ pub struct Software {
     /// The client textures of the frame being drawn, one entry per layer in the
     /// same order, reused across frames so a steady frame allocates nothing.
     textures: Vec<Option<PixmanTexture>>,
+    /// The overlay's texture for the frame being drawn, if it has one.
+    overlay: Option<PixmanTexture>,
     /// The bytes of a tinted layer, reused for the same reason.
     scratch: Vec<u8>,
     /// The frame's damage and the current layer's share of it, in physical pixels,
@@ -132,6 +134,7 @@ impl Software {
             buffer,
             physical,
             textures: Vec::new(),
+            overlay: None,
             scratch: Vec::new(),
             damage: Vec::new(),
             clipped: Vec::new(),
@@ -250,6 +253,7 @@ impl Software {
             buffer,
             physical,
             textures,
+            overlay,
             ..
         } = self;
         let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
@@ -282,19 +286,33 @@ impl Software {
                 }
             }
         }
-        if let Some(cursor) = frame.cursor() {
-            let dst = physical_rect(cursor.dst, scale);
-            layer_damage(damage, dst, clipped);
-            if !clipped.is_empty() {
-                pixman_frame
-                    .draw_solid(dst, clipped, colour(tinted(cursor.colour, cursor.tint)))
-                    .map_err(failed)?;
-            }
-        }
         // Pixman signals nothing: its sync point is already signalled, and the
         // offscreen buffer is read on the same thread. The value is dropped on
         // purpose rather than waited on.
         let _sync = pixman_frame.finish().map_err(failed)?;
+        // Pixman scales a texture with the renderer's upscale filter, which a frame
+        // cannot change while it is open, so the overlay is a pass of its own. The
+        // overlay is a bitmap, so it scales with nearest neighbour; the default is
+        // restored whether or not the draw succeeded.
+        if let (Some(overlay), Some(texture)) = (frame.overlay(), overlay.as_ref()) {
+            renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
+            let drawn = draw_overlay(renderer, &mut target, output, overlay, texture, scale, damage, clipped);
+            renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
+            drawn?;
+        }
+        if let Some(cursor) = frame.cursor() {
+            let dst = physical_rect(cursor.dst, scale);
+            layer_damage(damage, dst, clipped);
+            if !clipped.is_empty() {
+                let mut pixman_frame = renderer
+                    .render(&mut target, output, Transform::Normal)
+                    .map_err(failed)?;
+                pixman_frame
+                    .draw_solid(dst, clipped, colour(tinted(cursor.colour, cursor.tint)))
+                    .map_err(failed)?;
+                let _sync = pixman_frame.finish().map_err(failed)?;
+            }
+        }
         Ok(())
     }
 
@@ -303,6 +321,7 @@ impl Software {
         let Self {
             renderer,
             textures,
+            overlay: overlay_texture,
             scratch,
             ..
         } = self;
@@ -313,6 +332,9 @@ impl Software {
                 Layer::Surface(surface) => textures.push(import(renderer, surface, scratch)),
             }
         }
+        *overlay_texture = frame
+            .overlay()
+            .and_then(|overlay| import_overlay(renderer, overlay.image()));
     }
 }
 
@@ -332,6 +354,38 @@ fn layer_damage(
             clipped.push(Rectangle::new(part.loc - dst.loc, part.size));
         }
     }
+}
+
+/// Draws the overlay over what the layers painted, scaled to its destination.
+///
+/// The caller sets the renderer's upscale filter, which pixman uses for the scaling.
+#[allow(clippy::too_many_arguments)]
+fn draw_overlay(
+    renderer: &mut PixmanRenderer,
+    target: &mut PixmanTarget<'_>,
+    output: PhysicalSize<i32, Physical>,
+    overlay: &Overlay,
+    texture: &PixmanTexture,
+    scale: Scale,
+    damage: &[Rectangle<i32, Physical>],
+    clipped: &mut Vec<Rectangle<i32, Physical>>,
+) -> Result<(), RenderError> {
+    let dst = physical_rect(overlay.dst(), scale);
+    layer_damage(damage, dst, clipped);
+    if clipped.is_empty() {
+        return Ok(());
+    }
+    let size = overlay.image().size();
+    let src = Rectangle::new(
+        (0.0, 0.0).into(),
+        (f64::from(size.width), f64::from(size.height)).into(),
+    );
+    let mut pixman_frame = renderer.render(target, output, Transform::Normal).map_err(failed)?;
+    pixman_frame
+        .render_texture_from_to(texture, src, dst, clipped, &[], Transform::Normal, 1.0)
+        .map_err(failed)?;
+    let _sync = pixman_frame.finish().map_err(failed)?;
+    Ok(())
 }
 
 /// Creates an offscreen buffer.
@@ -388,6 +442,25 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
                 ?error,
                 "[render] a tinted layer could not be made; the layer is skipped"
             );
+        })
+        .ok()
+}
+
+/// Imports the overlay's premultiplied pixels.
+///
+/// An import failure is logged and the overlay is skipped for this frame, the same
+/// way a client buffer is.
+fn import_overlay(renderer: &mut PixmanRenderer, image: &Image) -> Option<PixmanTexture> {
+    let size = image.size();
+    renderer
+        .import_memory(
+            image.data(),
+            READBACK_FORMAT,
+            PhysicalSize::from((size.width as i32, size.height as i32)),
+            false,
+        )
+        .map_err(|error| {
+            warn!(?error, "[render] the overlay could not be imported; it is not drawn");
         })
         .ok()
 }
@@ -617,5 +690,56 @@ mod tests {
             "half of white over black is mid grey, within a rounding step: {red} {green} {blue}"
         );
         assert_eq!(alpha, 255, "the opaque background keeps the frame opaque");
+    }
+
+    #[test]
+    fn an_overlay_blends_over_the_layers_and_clearing_removes_it() {
+        let mut software = Software::new(Size::new(6, 6)).expect("a software renderer");
+        let translucent_red = Image::new(Size::new(2, 2), 8, [255, 0, 0, 128].repeat(4)).expect("a 2x2 image");
+        let overlay = Overlay::new(Rect::new(2, 2, 2, 2), &translucent_red).expect("an overlay");
+        let mut frame = OutputFrame::new();
+        frame.push_damage(Rect::new(0, 0, 6, 6));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 6, 6),
+            Color::from_rgba8(0, 0, 255, 255),
+        )));
+        frame.set_overlay(Some(overlay));
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        // Half red over opaque blue: red 128 from the premultiplied overlay, blue 255 * (255 - 128) / 255.
+        assert_eq!(
+            image.colour_at(2, 2),
+            Some([128, 0, 127, 255]),
+            "the overlay blends over the blue layer at its top-left pixel"
+        );
+        assert_eq!(
+            image.colour_at(3, 3),
+            Some([128, 0, 127, 255]),
+            "and at its bottom-right pixel"
+        );
+        assert_eq!(
+            image.colour_at(1, 1),
+            Some([0, 0, 255, 255]),
+            "the blue layer is unchanged just outside the overlay"
+        );
+        assert_eq!(
+            image.colour_at(4, 4),
+            Some([0, 0, 255, 255]),
+            "and just past its far edge"
+        );
+
+        frame.clear();
+        frame.push_damage(Rect::new(0, 0, 6, 6));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 6, 6),
+            Color::from_rgba8(0, 0, 255, 255),
+        )));
+        software.draw(&frame, Scale::IDENTITY).expect("the cleared frame");
+        let image = software.screenshot().expect("a readback");
+        assert_eq!(
+            image.colour_at(2, 2),
+            Some([0, 0, 255, 255]),
+            "clearing the frame removes the overlay"
+        );
     }
 }
