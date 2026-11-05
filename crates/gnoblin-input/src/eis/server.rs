@@ -218,7 +218,7 @@ fn wake(socket: &UnixStream) {
 }
 
 /// One connection, from accept to the socket closing.
-enum Stage {
+enum Progress {
     /// The EI handshake is still running.
     Handshake(EisHandshaker),
     /// The client is connected and its context exists.
@@ -227,7 +227,7 @@ enum Stage {
 
 struct Peer {
     socket: eis::Context,
-    state: Stage,
+    state: Progress,
 }
 
 /// A connected client: the protocol objects and the context they belong to.
@@ -255,8 +255,8 @@ impl Peer {
     /// The context this session belongs to, if the handshake finished.
     fn context(&self) -> Option<ContextId> {
         match &self.state {
-            Stage::Handshake(_) => None,
-            Stage::Connected(connected) => Some(connected.context()),
+            Progress::Handshake(_) => None,
+            Progress::Connected(connected) => Some(connected.context()),
         }
     }
 
@@ -306,7 +306,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
                             next_session,
                             Peer {
                                 socket,
-                                state: Stage::Handshake(handshaker),
+                                state: Progress::Handshake(handshaker),
                             },
                         );
                         next_session += 1;
@@ -340,7 +340,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
         // A tick of flushing per iteration keeps a client that sent one request from
         // waiting for the next poll to hear back.
         for session in sessions.values() {
-            if let Stage::Connected(connected) = &session.state
+            if let Progress::Connected(connected) = &session.state
                 && let Err(error) = connected.connection.flush()
             {
                 debug!(%error, "[eis] a flush failed; the client will see it as a read error");
@@ -454,13 +454,13 @@ fn handle(session: &mut Peer, service: &mut Service, sink: &Sink) -> Next {
                 // so the client is told and closed instead of every later request being
                 // answered against the wrong object.
                 warn!(%error, "[eis] the client sent an unparseable request");
-                if let Stage::Connected(connected) = &mut session.state {
+                if let Progress::Connected(connected) = &mut session.state {
                     refuse(connected, service, &error.to_string(), sink);
                 }
                 return Next::Close;
             }
             PendingRequestResult::InvalidObject(object) => {
-                if let Stage::Connected(connected) = &session.state {
+                if let Progress::Connected(connected) = &session.state {
                     connected
                         .connection
                         .connection()
@@ -470,8 +470,8 @@ fn handle(session: &mut Peer, service: &mut Service, sink: &Sink) -> Next {
             }
         };
         let control = match &session.state {
-            Stage::Handshake(_) => handshake(session, request, service, sink),
-            Stage::Connected(_) => request_connected(session, request, service, sink),
+            Progress::Handshake(_) => handshake(session, request, service, sink),
+            Progress::Connected(_) => request_connected(session, request, service, sink),
         };
         if let Next::Close = control {
             return Next::Close;
@@ -482,7 +482,7 @@ fn handle(session: &mut Peer, service: &mut Service, sink: &Sink) -> Next {
 /// Advances the handshake, and switches the session to connected when it finishes.
 fn handshake(session: &mut Peer, request: eis::Request, service: &mut Service, sink: &Sink) -> Next {
     let finished = {
-        let Stage::Handshake(handshaker) = &mut session.state else {
+        let Progress::Handshake(handshaker) = &mut session.state else {
             return Next::Continue;
         };
         match handshaker.handle_request(request) {
@@ -520,13 +520,13 @@ fn handshake(session: &mut Peer, request: eis::Request, service: &mut Service, s
         ended: false,
     };
     perform_all_connected(&mut connected, actions, sink);
-    session.state = Stage::Connected(connected);
+    session.state = Progress::Connected(connected);
     Next::Continue
 }
 
 /// Answers one request on a connected session.
 fn request_connected(session: &mut Peer, request: eis::Request, service: &mut Service, sink: &Sink) -> Next {
-    let Stage::Connected(connected) = &mut session.state else {
+    let Progress::Connected(connected) = &mut session.state else {
         return Next::Continue;
     };
     if let Err(error) = connected.converter.handle_request(request) {
@@ -576,7 +576,7 @@ fn releases(service: &mut Service, context: ContextId) -> Vec<Action> {
 
 /// Performs actions for a session, which must be connected.
 fn perform_all(session: &mut Peer, actions: Vec<Action>, sink: &Sink) {
-    if let Stage::Connected(connected) = &mut session.state {
+    if let Progress::Connected(connected) = &mut session.state {
         perform_all_connected(connected, actions, sink);
     }
 }

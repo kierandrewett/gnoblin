@@ -987,3 +987,9 @@ left = "gnoblin-input::Violation"
 right = "xtask::Violation"
 kind = "same-name"
 reason = "a violation in xtask is a broken dependency rule; a violation in gnoblin-input is a rule an EI client broke"
+
+[[allow]]
+left = "gnoblin-backend::Device"
+right = "gnoblin-input::Device"
+kind = "same-name"
+reason = "the backend's device is a GLES resource handle; the input device is what an EI client binds, with its capabilities, regions and held edges"
