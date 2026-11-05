@@ -28,7 +28,7 @@ use gnoblin_model::{
     Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, Provider, RequestCompletion, RequestId,
     Snapshot, Tick,
 };
-use gnoblin_proto::{Capabilities, Envelope, Handshake, HandshakeKind, Kind, Mismatch, Version};
+use gnoblin_proto::{Capabilities, Envelope, Grant, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
 use crate::error::{ClientError, ConnectError, HandshakeError, WireError};
 use crate::transport::Transport;
@@ -77,6 +77,7 @@ pub struct Client<T: Transport> {
     transport: T,
     version: Version,
     capabilities: Capabilities,
+    grants: Vec<Grant>,
     next_request: u64,
     inbox: VecDeque<Event>,
     descriptors: Vec<OwnedFd>,
@@ -94,12 +95,15 @@ impl<T: Transport> Client<T> {
         match answer.kind {
             HandshakeKind::Accept => {
                 gnoblin_proto::check(answer.version, version).map_err(ConnectError::Refused)?;
+                // The grants frame follows every accept, before any other frame.
+                let grants = transport.receive_grants()?;
                 Ok(Client {
                     transport,
                     version: answer.version,
                     // What the compositor granted travels on the accept frame; a
                     // refusal carried none, so an ordinary connection holds nothing.
                     capabilities: answer.capabilities,
+                    grants,
                     next_request: 1,
                     inbox: VecDeque::new(),
                     descriptors: Vec::new(),
@@ -114,6 +118,14 @@ impl<T: Transport> Client<T> {
                 got: HandshakeKind::Hello,
             })),
         }
+    }
+
+    /// The extension namespaces and versions the compositor granted this connection.
+    ///
+    /// The grants frame arrives right after the accept, so this is known as soon as
+    /// the client connects. It is empty when nothing is granted.
+    pub fn granted_extensions(&self) -> &[Grant] {
+        &self.grants
     }
 
     /// The IPC version the compositor serves, which is also the version this client

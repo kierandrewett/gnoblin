@@ -38,6 +38,9 @@ pub struct Privileged {
     pub role: String,
     /// This process's end of the pair.
     pub stream: UnixStream,
+    /// The extension grants this socket advertises after every accept. Empty grants
+    /// nothing; the core socket never carries grants.
+    pub extension_grants: Vec<gnoblin_proto::Grant>,
 }
 
 /// Why the privileged connections could not be read.
@@ -94,7 +97,11 @@ impl Privileged {
                     }
                 })?;
             if let Some(stream) = stream {
-                connections.push(Privileged { role, stream });
+                connections.push(Privileged {
+                    role,
+                    stream,
+                    extension_grants: Vec::new(),
+                });
             }
         }
         connections.sort_by(|left, right| left.role.cmp(&right.role));

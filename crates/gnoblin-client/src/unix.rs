@@ -36,7 +36,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gnoblin_proto::{CodecError, Envelope, HANDSHAKE_LEN, Handshake, read_frame, write_frame};
+use gnoblin_proto::{CodecError, Envelope, Grant, HANDSHAKE_LEN, Handshake, read_frame, read_grants, write_frame};
 
 use crate::error::HandshakeError;
 use crate::transport::Transport;
@@ -177,6 +177,10 @@ impl Transport for UnixTransport {
             }
         }
         Handshake::decode(&frame).map_err(HandshakeError::Codec)
+    }
+
+    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError> {
+        read_grants(&mut self.reader).map_err(HandshakeError::Codec)
     }
 }
 

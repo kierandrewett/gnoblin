@@ -26,6 +26,8 @@ pub enum CodecError {
     UnknownHandshakeKind { kind: u8 },
     /// The body was not a valid message of the expected type.
     Decode(prost::DecodeError),
+    /// A grants frame whose body the grants rules refuse.
+    Grants(crate::grants::GrantsError),
 }
 
 impl fmt::Display for CodecError {
@@ -52,6 +54,7 @@ impl fmt::Display for CodecError {
                 write!(formatter, "handshake frame names unknown kind {kind}")
             }
             CodecError::Decode(error) => write!(formatter, "message did not decode: {error}"),
+            CodecError::Grants(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -75,5 +78,10 @@ impl From<io::Error> for CodecError {
 impl From<prost::DecodeError> for CodecError {
     fn from(error: prost::DecodeError) -> CodecError {
         CodecError::Decode(error)
+    }
+}
+impl From<crate::grants::GrantsError> for CodecError {
+    fn from(error: crate::grants::GrantsError) -> CodecError {
+        CodecError::Grants(error)
     }
 }

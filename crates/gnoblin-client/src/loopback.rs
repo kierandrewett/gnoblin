@@ -26,7 +26,7 @@ use gnoblin_model::{
     Fields, Graph, ModelError, ObjectId, OperationId, OperationOutcome, OwnerId, RequestBroker, RequestError,
     RequestEvent, RequestId, Subscription, Tick, TypeKey, Value,
 };
-use gnoblin_proto::{CodecError, Envelope, Handshake, HandshakeKind, Version};
+use gnoblin_proto::{CodecError, Envelope, Grant, Handshake, HandshakeKind, Version};
 
 use crate::client::Client;
 use crate::error::{ConnectError, HandshakeError};
@@ -38,6 +38,8 @@ use crate::wire;
 enum LinkFrame {
     Handshake(Handshake),
     Envelope(Envelope),
+    /// The grants frame that follows an accept. Only sent on accept, never on refuse.
+    Grants(Vec<Grant>),
 }
 
 /// One client connection's state.
@@ -73,6 +75,8 @@ struct Inner {
     version: Version,
     next_owner: u64,
     links: Vec<Link>,
+    /// The grants every accepted connection receives after its accept frame.
+    grants: Vec<Grant>,
 }
 
 impl Inner {
@@ -328,8 +332,15 @@ impl Server {
                 version,
                 next_owner: 1,
                 links: Vec::new(),
+                grants: Vec::new(),
             })),
         }
+    }
+
+    /// Set the grants every connection accepted from now on receives after its accept.
+    /// Stock servers grant nothing; a restricted socket configures its set here.
+    pub fn set_grants(&mut self, grants: Vec<Grant>) {
+        self.inner.borrow_mut().grants = grants;
     }
 
     /// Connect a client at `version`, exchanging the handshake in process.
@@ -457,13 +468,19 @@ impl crate::transport::Transport for Loopback {
         }
         let mut inner = self.inner.borrow_mut();
         let version = inner.version;
-        let reply = match gnoblin_proto::check(version, frame.version) {
-            Ok(()) => Handshake::accept(version),
-            Err(_) => Handshake::refuse(version),
+        let accepted = gnoblin_proto::check(version, frame.version).is_ok();
+        let reply = if accepted {
+            Handshake::accept(version)
+        } else {
+            Handshake::refuse(version)
         };
+        let grants = if accepted { inner.grants.clone() } else { Vec::new() };
         let link = inner.link(self.owner)?;
         link.inbound.push_back(LinkFrame::Handshake(*frame));
         link.outbound.push_back(LinkFrame::Handshake(reply));
+        if accepted {
+            link.outbound.push_back(LinkFrame::Grants(grants));
+        }
         Ok(())
     }
 
@@ -471,6 +488,19 @@ impl crate::transport::Transport for Loopback {
         let mut inner = self.inner.borrow_mut();
         match inner.link(self.owner)?.outbound.pop_front() {
             Some(LinkFrame::Handshake(handshake)) => Ok(handshake),
+            Some(LinkFrame::Envelope(_) | LinkFrame::Grants(_)) => Err(HandshakeError::NotAHandshake),
+            None => Err(HandshakeError::Codec(disconnected())),
+        }
+    }
+
+    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError> {
+        let mut inner = self.inner.borrow_mut();
+        match inner.link(self.owner)?.outbound.pop_front() {
+            Some(LinkFrame::Grants(grants)) => Ok(grants),
+            Some(LinkFrame::Handshake(_)) => Err(HandshakeError::Codec(CodecError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "a handshake arrived where the grants frame belonged",
+            )))),
             Some(LinkFrame::Envelope(_)) => Err(HandshakeError::NotAHandshake),
             None => Err(HandshakeError::Codec(disconnected())),
         }
@@ -499,7 +529,7 @@ impl gnoblin_proto::Transport for Loopback {
         let mut inner = self.inner.borrow_mut();
         match inner.link(self.owner)?.outbound.pop_front() {
             Some(LinkFrame::Envelope(envelope)) => Ok(Some(envelope)),
-            Some(LinkFrame::Handshake(_)) => Err(CodecError::Io(io::Error::new(
+            Some(LinkFrame::Handshake(_) | LinkFrame::Grants(_)) => Err(CodecError::Io(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "a handshake arrived after the connection started",
             ))),

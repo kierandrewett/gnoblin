@@ -323,6 +323,10 @@ fn a_handshake_cannot_ask_for_a_grant() {
         reader.read_exact(&mut frame).expect("the answer");
     }
     let answer = gnoblin_proto::Handshake::decode(&frame).expect("a handshake");
+    {
+        let mut reader = &stream;
+        gnoblin_proto::read_grants(&mut reader).expect("the grants frame after the accept");
+    }
     assert!(
         answer.capabilities.is_empty(),
         "the compositor grants nothing on the socket, whatever the hello asked for: {answer:?}"

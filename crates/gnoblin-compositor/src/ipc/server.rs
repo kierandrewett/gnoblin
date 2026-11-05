@@ -198,6 +198,16 @@ impl IpcServer {
         control: ControlHandle,
         privileged: Vec<Privileged>,
     ) -> Result<IpcServer, IpcError> {
+        // Each connection's frame is encoded before anything is spawned, so a bad grant
+        // list fails the whole start instead of leaving threads behind.
+        let no_grants: Arc<[u8]> = gnoblin_proto::encode_grants(&[]).map_err(IpcError::Grants)?.into();
+        let mut frames = Vec::with_capacity(privileged.len());
+        for connection in &privileged {
+            let frame: Arc<[u8]> = gnoblin_proto::encode_grants(&connection.extension_grants)
+                .map_err(IpcError::Grants)?
+                .into();
+            frames.push(frame);
+        }
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
             path: path.clone(),
@@ -225,14 +235,14 @@ impl IpcServer {
         // — so they are served like a client that has arrived, with the capabilities
         // their role grants. A failure to serve one is reported and the session runs:
         // losing the runtime's connection must not take the desktop down.
-        for connection in privileged {
+        for (connection, frame) in privileged.into_iter().zip(frames) {
             let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
             let grants = super::privileged::grants(&connection.role);
             let served = events.clone();
             let mut handles = lock(&readers);
             match std::thread::Builder::new()
                 .name(format!("gnoblin-ipc-{}", client.get()))
-                .spawn(move || serve_privileged(connection.stream, client, version, served, grants))
+                .spawn(move || serve_privileged(connection.stream, client, version, served, grants, frame))
             {
                 Ok(handle) => {
                     handles.insert(client, handle);
@@ -247,7 +257,8 @@ impl IpcServer {
             {
                 let events = events.clone();
                 let stopping = Arc::clone(&stopping);
-                move || accept_loop(listener, events, stopping, readers, clients, version)
+                let grants = Arc::clone(&no_grants);
+                move || accept_loop(listener, events, stopping, readers, clients, version, grants)
             },
             &path,
         )?;
@@ -289,6 +300,7 @@ fn accept_loop(
     readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>>,
     clients: Arc<AtomicU64>,
     version: Version,
+    extension_grants: Arc<[u8]>,
 ) {
     loop {
         let stream = match listener.accept() {
@@ -307,13 +319,14 @@ fn accept_loop(
         }
         let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
         let served = events.clone();
+        let grants = Arc::clone(&extension_grants);
         // Holding the lock across the spawn and the insert is what lets the dispatcher
         // join a reader it has just been told about: the handle is in the map before
         // the reader can report anything.
         let mut handles = lock(&readers);
         match std::thread::Builder::new()
             .name(format!("gnoblin-ipc-{}", client.get()))
-            .spawn(move || serve(stream, client, version, served, Capabilities::NONE))
+            .spawn(move || serve(stream, client, version, served, Capabilities::NONE, grants))
         {
             Ok(handle) => {
                 handles.insert(client, handle);
@@ -328,7 +341,17 @@ fn accept_loop(
 /// `capabilities` is what this connection was granted before it said anything, which is
 /// what the compositor answers the handshake with: a connection accepted from the
 /// socket is granted nothing, and only the ends the guardian passed can carry more.
-fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<IpcEvent>, capabilities: Capabilities) {
+///
+/// Every accept is followed by `extension_grants`, the grants frame that tells the client
+/// which extension namespaces it may use.
+fn serve(
+    stream: UnixStream,
+    client: ClientId,
+    version: Version,
+    events: Sender<IpcEvent>,
+    capabilities: Capabilities,
+    extension_grants: Arc<[u8]>,
+) {
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
         Err(error) => {
@@ -355,7 +378,7 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
             return;
         }
     };
-    if write_handshake(&writer, &answer).is_err() {
+    if write_accept(&writer, &answer, &extension_grants).is_err() {
         return;
     }
     // An idle subscriber waits as long as its compositor lives, so the handshake's
@@ -409,6 +432,7 @@ fn serve_privileged(
     version: Version,
     events: Sender<IpcEvent>,
     capabilities: Capabilities,
+    extension_grants: Arc<[u8]>,
 ) {
     let Ok(writer) = stream.try_clone() else {
         debug!("[ipc] a privileged connection could not be duplicated");
@@ -457,7 +481,7 @@ fn serve_privileged(
                 return;
             }
         };
-        if write_handshake(&writer, &answer).is_err() {
+        if write_accept(&writer, &answer, &extension_grants).is_err() {
             return;
         }
         if reader.get_ref().set_read_timeout(None).is_err() || writer.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
@@ -518,6 +542,14 @@ fn read_handshake(reader: &mut std::io::BufReader<UnixStream>) -> Option<Handsha
 fn write_handshake(writer: &UnixStream, handshake: &Handshake) -> io::Result<()> {
     let mut writer = writer;
     io::Write::write_all(&mut writer, &handshake.encode())?;
+    io::Write::flush(&mut writer)
+}
+
+/// Writes a granted handshake, then the grants frame that follows every accept.
+fn write_accept(writer: &UnixStream, handshake: &Handshake, extension_grants: &[u8]) -> io::Result<()> {
+    let mut writer = writer;
+    io::Write::write_all(&mut writer, &handshake.encode())?;
+    io::Write::write_all(&mut writer, extension_grants)?;
     io::Write::flush(&mut writer)
 }
 

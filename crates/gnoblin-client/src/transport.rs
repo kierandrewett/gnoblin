@@ -9,7 +9,7 @@
 //! the tests use ([`crate::loopback`]) does the same, so the client above this seam
 //! is exercised exactly as it will be on a socket.
 
-use gnoblin_proto::Handshake;
+use gnoblin_proto::{Grant, Handshake};
 
 use crate::error::HandshakeError;
 
@@ -24,6 +24,12 @@ pub trait Transport: gnoblin_proto::Transport {
     /// peer that starts with an envelope has misunderstood the protocol, and a
     /// version mismatch after it would be unreadable.
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError>;
+
+    /// Receive the grants frame that the compositor sends right after an accept.
+    ///
+    /// It is mandatory after every accept, so a missing or malformed frame is an error.
+    /// A refusal carries no grants frame and must not reach this.
+    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError>;
 
     /// Set the deadline one read waits for, or clear it.
     ///

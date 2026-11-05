@@ -56,6 +56,8 @@ pub enum IpcError {
     Bind { path: PathBuf, source: std::io::Error },
     /// A temporary directory could not be created or a stale socket removed.
     Io { path: PathBuf, source: std::io::Error },
+    /// The extension grants cannot be encoded as a grants frame, so nothing is bound.
+    Grants(gnoblin_proto::GrantsError),
 }
 
 impl std::fmt::Display for IpcError {
@@ -79,6 +81,7 @@ impl std::fmt::Display for IpcError {
             ),
             IpcError::Bind { path, source } => write!(formatter, "cannot bind {}: {source}", path.display()),
             IpcError::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
+            IpcError::Grants(source) => write!(formatter, "the extension grants are not valid: {source}"),
         }
     }
 }

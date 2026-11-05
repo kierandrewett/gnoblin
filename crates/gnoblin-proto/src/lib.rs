@@ -34,6 +34,7 @@ mod envelope;
 mod error;
 mod frame;
 mod generated;
+mod grants;
 mod handshake;
 pub mod privilege;
 #[cfg(test)]
@@ -49,6 +50,9 @@ pub use frame::{LENGTH_PREFIX_LEN, MAX_FRAME_LEN, StreamFrame, read_any, read_fr
 pub use generated::gnoblin;
 pub use generated::ipc::envelope::Kind;
 pub use generated::ipc::{Envelope, Error, Event, Reply, Request};
+pub use grants::{
+    Grant, GrantsError, MAX_GRANTS, MAX_NAMESPACE_LEN, decode_grants, encode_grants, read_grants, write_grants,
+};
 pub use handshake::{HANDSHAKE_LEN, Handshake, HandshakeKind, MAGIC};
 #[cfg(unix)]
 pub use transport::Transport;

@@ -1104,12 +1104,6 @@ kind = "same-shape"
 reason = "a connector's DPMS state (lit or dark) versus a publish toggle an application sets; both are an on/off pair and nothing else"
 
 [[allow]]
-left = "gnoblin-client::LinkFrame"
-right = "gnoblin-proto::StreamFrame"
-kind = "same-shape"
-reason = "the in-process loopback link's handshake or envelope versus the wire codec's stream frame; the loopback never serialises, so the two enums share a shape and nothing else"
-
-[[allow]]
 left = "gnoblin-a11y::Key"
 right = "xdg-desktop-portal-gnoblin::Key"
 kind = "same-name"
@@ -1778,3 +1772,21 @@ left = "gnoblin-lua::LayoutCall"
 right = "gnoblin-wm::Job"
 kind = "same-shape"
 reason = "the VM's call selector is a payload-free projection of the wm Job; the wm type carries the params the VM reads from its snapshot, which the VM does not need"
+
+[[allow]]
+left = "gnoblin-authority::Grant"
+right = "gnoblin-proto::Grant"
+kind = "same-name"
+reason = "the authority's grant is a consent record for a portal requester; the proto grant is an extension namespace and version on the wire"
+
+[[allow]]
+left = "gnoblin-diag::Grant"
+right = "gnoblin-proto::Grant"
+kind = "same-name"
+reason = "the portal's grant is the outcome a provider returns for a request; the proto grant is an extension namespace and version on the wire"
+
+[[allow]]
+left = "gnoblin-input::Grant"
+right = "gnoblin-proto::Grant"
+kind = "same-name"
+reason = "the eis grant is the consent and capabilities a seat holds; the proto grant is an extension namespace and version on the wire"

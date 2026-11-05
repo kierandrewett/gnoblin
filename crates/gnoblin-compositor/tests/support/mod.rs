@@ -67,21 +67,31 @@ impl Session {
     }
 
     /// Starts a session that was handed one privileged connection per role, and returns
-    /// the ends the roles would hold.
+    /// the ends the roles would hold. Each role's socket grants nothing.
     ///
     /// The pair is the guardian's, exactly as `design/rust-compositor.md`'s process model
     /// describes it: this test makes it because this test is the guardian.
     pub fn start_privileged(roles: &[&str]) -> (Session, Vec<(String, UnixStream)>) {
+        let granted: Vec<(&str, Vec<gnoblin_proto::Grant>)> = roles.iter().map(|role| (*role, Vec::new())).collect();
+        Session::start_privileged_granting(&granted)
+    }
+
+    /// Like [`Session::start_privileged`], but each role's socket advertises its own
+    /// extension grants after every accept.
+    pub fn start_privileged_granting(
+        roles: &[(&str, Vec<gnoblin_proto::Grant>)],
+    ) -> (Session, Vec<(String, UnixStream)>) {
         let directory = private_directory();
         let ipc = directory.path().join("ipc.sock");
         let wayland = directory.path().join("wayland.sock");
         let mut privileged = Vec::new();
         let mut ends = Vec::new();
-        for role in roles {
+        for (role, grants) in roles {
             let (compositor_end, role_end) = UnixStream::pair().expect("a socket pair");
             privileged.push(gnoblin_compositor::Privileged {
                 role: (*role).to_owned(),
                 stream: compositor_end,
+                extension_grants: grants.clone(),
             });
             ends.push(((*role).to_owned(), role_end));
         }
@@ -295,6 +305,10 @@ impl Wire {
             writer.flush().expect("the hello");
         }
         let answer = wire.read_handshake();
+        if answer.kind == gnoblin_proto::HandshakeKind::Accept {
+            // The grants frame follows every accept; a reader of envelopes reads past it.
+            gnoblin_proto::read_grants(&mut wire.reader).expect("the grants frame after the accept");
+        }
         (wire, answer)
     }
 
