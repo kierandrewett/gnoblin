@@ -15,6 +15,7 @@
 //! | [`content_type`] | `wp_content_type_v1` | records whether a surface shows video or a game |
 //! | [`cursor_shape`] | `wp_cursor_shape_manager_v1` | records the cursor a client names |
 //! | [`decoration`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
+//! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
 //! | [`foreign_toplevel`] | `zwlr_foreign_toplevel_manager_v1`, `ext_foreign_toplevel_list_v1` | the window list a taskbar reads and the requests it may make |
 //! | [`fractional_scale`] | `wp_fractional_scale_manager_v1` | tells a surface the scale its output draws it at |
 //! | [`idle_inhibit`] | `zwp_idle_inhibit_manager_v1` | records the surfaces that keep the session awake |
@@ -44,6 +45,7 @@ pub mod compositor;
 pub mod content_type;
 pub mod cursor_shape;
 pub mod decoration;
+pub mod extension;
 pub mod foreign_toplevel;
 pub mod fractional_scale;
 pub mod idle_inhibit;

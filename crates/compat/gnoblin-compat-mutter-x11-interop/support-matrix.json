@@ -1,0 +1,21 @@
+{
+  "interfaces": [
+    {
+      "name": "mutter_x11_interop",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "destroy",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "set_x11_parent",
+          "support": "partial",
+          "note": "the relation is resolved on both sides of the X11 boundary and recorded, but not applied to a window that is already managed: gnoblin-wm has no transient-change event, so an already-mapped dialog keeps its own stacking until that event exists"
+        }
+      ]
+    }
+  ]
+}

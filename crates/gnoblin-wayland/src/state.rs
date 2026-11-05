@@ -71,6 +71,7 @@ use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnaps
 use crate::protocols::activation::Activation;
 use crate::protocols::blur_fade;
 use crate::protocols::capture::CaptureTables;
+use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel::ForeignToplevels;
 use crate::protocols::idle_notify::IdleTables;
 use crate::protocols::layer_shell::Layers;
@@ -309,6 +310,15 @@ pub struct State {
     pub(crate) foreign_toplevels: ForeignToplevels,
     /// The activation tokens.
     pub(crate) activation: Activation,
+    /// The titlebar actions the configuration declares, for the redirects that map a
+    /// gesture to one. It is a copy of three configured values rather than a handle on
+    /// the configuration, because a protocol handler must not re-read a document on
+    /// the session's own turn.
+    pub(crate) titlebar_actions: TitlebarActions,
+    /// How many times a client rang the bell. The count is published so a reader can
+    /// see that it happened; the visual bell is `gnoblin-a11y`'s and the audible one
+    /// is the shell's.
+    bells: u64,
     /// The current clipboard and primary selections.
     pub(crate) selections: Selections,
     /// Sandbox listeners waiting for the event loop to watch them.
@@ -429,6 +439,8 @@ impl State {
         xwayland: Option<crate::xwayland::XwaylandSession>,
         observer: Option<Arc<dyn Observer>>,
         protocols: &Protocols,
+        titlebar_actions: TitlebarActions,
+        extensions: &[Arc<dyn Extension>],
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
 
@@ -586,6 +598,8 @@ impl State {
             layers: Layers::default(),
             foreign_toplevels: ForeignToplevels::default(),
             activation: Activation::default(),
+            titlebar_actions,
+            bells: 0,
             selections: Selections::default(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
@@ -623,6 +637,11 @@ impl State {
                 workspace: WorkspaceId::new(u64::from(raw) + 1),
             });
         }
+        // Every extension registers before the loop runs, so no client can observe a
+        // session with half its globals.
+        crate::protocols::extension::Extensions::default()
+            .register(extensions, &state.display_handle)
+            .map_err(StartupError::Extension)?;
         state.sync_outputs(backend_outputs);
         if let Some(session) = xwayland {
             state.start_xwayland(session);
@@ -1583,6 +1602,27 @@ impl State {
         self.composer.set_window_opacity(window, opacity);
     }
 
+    /// Rings the session bell, counting it for the published snapshot.
+    ///
+    /// The window is the one that asked, when the protocol named one: a shell that
+    /// wanted to say *which* application is asking reads it from the snapshot, and the
+    /// bell itself is the count.
+    pub(crate) fn ring_bell(&mut self, window: Option<WindowId>) {
+        self.bells = self.bells.saturating_add(1);
+        debug!(?window, bells = self.bells, "[bell] rung");
+        self.publish();
+    }
+
+    /// The managed window an X11 window id names, when Xwayland has one.
+    ///
+    /// `gnoblin-xwayland` owns the window table, so the answer comes from the session's
+    /// table rather than from a second mapping here. `None` covers a session with no
+    /// Xwayland and an X11 window this session did not manage, which are the same
+    /// answer to the protocol that asks.
+    pub(crate) fn x11_window(&self, xwindow: u32) -> Option<WindowId> {
+        self.x11.as_ref()?.window_for_x11(xwindow)
+    }
+
     /// Publishes the window state for the tests and for a diagnostics reader.
     pub(crate) fn publish(&mut self) {
         let active = self.wm.active_workspace();
@@ -1608,6 +1648,7 @@ impl State {
             capture_sessions: self.capture.sessions(),
             layers: self.layers.observed(),
             activation_denied: self.activation.denied().cloned(),
+            bells: self.bells,
             selection: self.clipboard_mime_types(),
             ..SessionSnapshot::default()
         };

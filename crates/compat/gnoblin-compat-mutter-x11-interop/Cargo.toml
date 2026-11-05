@@ -1,10 +1,30 @@
 [package]
 name = "gnoblin-compat-mutter-x11-interop"
-description = "mutter_x11_interop Wayland redirect (later)."
+description = "mutter_x11_interop Wayland redirect: a dialogs parent when it is an X11 window."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+# Same reason as `gnoblin-compat-gtk-shell1`: `wayland-scanner`'s C interface tables
+# contain raw pointers and one `unsafe impl Sync`, and the workspace's `forbid` cannot be
+# lifted. `deny` lets the generated module carry the one allowance, and no other module
+# can contain unsafe code.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-types = { path = "../../gnoblin-types" }
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+tracing.workspace = true
+wayland-backend.workspace = true
+wayland-server.workspace = true
+wayland-scanner.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23.0"
+wayland-client.workspace = true

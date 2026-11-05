@@ -265,6 +265,15 @@ pub trait Windows: Send {
     /// Only consulted when [`Windows::allow_grabs`] is true. An empty rule list
     /// allows every client, which is what the configuration's default means.
     fn grab_allowed(&self, class: &str, instance: &str) -> bool;
+
+    /// The managed identity of an X11 window, when the manager holds it.
+    ///
+    /// `mutter_x11_interop` is the caller that needs it: a Wayland dialog names its
+    /// X11 parent by the *X11* window id, and only this table knows which of the
+    /// session's windows that id is. `None` means the window was never managed (or is
+    /// already gone), which is the same answer to a dialog that wanted a parent: there
+    /// is nothing to attach to.
+    fn managed_window(&self, xwindow: u32) -> Option<WindowId>;
 }
 
 /// The supervision policy for the Xwayland process.

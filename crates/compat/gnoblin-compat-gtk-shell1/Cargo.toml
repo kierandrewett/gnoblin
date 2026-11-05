@@ -6,5 +6,28 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+# The workspace's `forbid(unsafe_code)` cannot be lifted anywhere, and it has to be here:
+# `wayland-scanner`'s `generate_interfaces!` emits the protocol's C interface tables, which
+# are raw pointers and one `unsafe impl Sync`, and there is no code-generation mode that
+# leaves them out. `deny` is the strongest level that a named module can lower, so the
+# crate declares the clippy levels the workspace declares and allows `unsafe_code` in
+# exactly one place: the generated `protocol` module, whose own attribute says why.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-config = { path = "../../gnoblin-config" }
+gnoblin-wayland = { path = "../../gnoblin-wayland" }
+tracing.workspace = true
+wayland-backend.workspace = true
+wayland-server.workspace = true
+wayland-scanner.workspace = true
+
+[dev-dependencies]
+gnoblin-types = { path = "../../gnoblin-types" }
+tempfile = "3.23.0"
+wayland-client.workspace = true

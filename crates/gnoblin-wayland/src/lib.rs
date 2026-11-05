@@ -190,6 +190,18 @@ pub use observation::{ActivationDenial, LockObservation, ObservedLayer, Observed
 pub use server::{
     Config, ControlHandle, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError,
 };
+/// The dispatch glue a redirect implements.
+///
+/// `smithay`'s one-call `Dispatch2` and `GlobalDispatch2` plus the `delegate_dispatch2!`
+/// that bridges them, re-exported because the redirect adapters reach the transport
+/// through this crate: a compat adapter names its transport, never a second copy of
+/// the library behind it.
+pub use smithay::delegate_dispatch2;
+pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
+
+pub use protocols::extension::{
+    Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
+};
 pub use state::State;
 pub use xwayland::XwaylandSession;
 

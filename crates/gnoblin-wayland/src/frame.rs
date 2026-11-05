@@ -270,6 +270,8 @@ mod tests {
             None,
             None,
             &gnoblin_config::Protocols::default(),
+            crate::protocols::extension::TitlebarActions::default(),
+            &[],
         )
         .expect("a state for the default output");
         (backend, state)
@@ -518,6 +520,8 @@ mod tests {
             None,
             None,
             &gnoblin_config::Protocols::default(),
+            crate::protocols::extension::TitlebarActions::default(),
+            &[],
         )
         .expect("a state for the default output");
         let stats = Arc::new(Mutex::new(FrameStats::default()));

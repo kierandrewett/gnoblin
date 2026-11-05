@@ -311,7 +311,11 @@ impl State {
     }
 
     /// Records a refusal and asks the window manager to report it.
-    fn refuse_activation(&mut self, window: Option<WindowId>, reason: &str) {
+    ///
+    /// Crate-visible because the `gtk_shell1` seam refuses an activation the same way:
+    /// one refusal path is what keeps `activation-denied` meaning the same thing
+    /// whichever protocol asked.
+    pub(crate) fn refuse_activation(&mut self, window: Option<WindowId>, reason: &str) {
         self.activation.denied = Some(ActivationDenial {
             window,
             reason: reason.to_owned(),

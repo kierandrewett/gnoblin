@@ -157,6 +157,15 @@ impl Running {
         self.surfaces.get(&window)
     }
 
+    /// The managed window an X11 window id names, when the window table has one.
+    ///
+    /// The table is `gnoblin-xwayland`'s policy and this is the one question
+    /// `mutter_x11_interop` has of it: an X11 dialog's parent is named by its X11 id,
+    /// and only the table knows which of this session's windows that is.
+    pub(crate) fn window_for_x11(&self, xwindow: u32) -> Option<gnoblin_types::WindowId> {
+        self.windows.managed_window(xwindow)
+    }
+
     /// Advances the session: starts it, watches it and fails it.
     fn advance(&mut self, handle: &LoopHandle<'static, State>, state: &mut State, now: Instant) {
         if let Some(process) = self.process.as_mut() {

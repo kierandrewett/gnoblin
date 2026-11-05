@@ -1,0 +1,102 @@
+{
+  "interfaces": [
+    {
+      "name": "gtk_surface1",
+      "version": 7,
+      "members": [
+        {
+          "kind": "method",
+          "name": "set_dbus_properties",
+          "support": "partial",
+          "note": "the application id reaches window rules; the menu, window and application object paths and the unique bus name are accepted and not used"
+        },
+        {
+          "kind": "method",
+          "name": "set_modal",
+          "support": "partial",
+          "note": "recorded by the protocol object; gnoblin-wm has no kind-change event, so the parent is not blocked yet"
+        },
+        {
+          "kind": "method",
+          "name": "unset_modal",
+          "support": "partial",
+          "note": "recorded by the protocol object; nothing was blocked, so nothing is released"
+        },
+        {
+          "kind": "method",
+          "name": "present",
+          "support": "partial",
+          "note": "honoured for the client that already holds keyboard focus, which is the only trusted context the protocol offers; an unfocused window's request is refused as `activation-denied: no-authority`"
+        },
+        {
+          "kind": "method",
+          "name": "request_focus",
+          "support": "partial",
+          "note": "the same rule as present; an unfocused request is refused and no attention state is recorded, because gnoblin-wm has none"
+        },
+        {
+          "kind": "method",
+          "name": "release",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "titlebar_gesture",
+          "support": "partial",
+          "note": "resolved through window_management.action_double_click_titlebar, action_middle_click_titlebar and action_right_click_titlebar; toggle-maximize, minimize and lower are performed, while the horizontal and vertical maximise and the window menu have no gnoblin-wm event and are logged as unavailable"
+        },
+        {
+          "kind": "method",
+          "name": "set_a11y_properties",
+          "support": "unsupported",
+          "reason": "the accessibility tree is not published over AT-SPI yet, so an object path would name nothing"
+        },
+        {
+          "kind": "signal",
+          "name": "configure",
+          "support": "unsupported",
+          "reason": "the tiled states and edge constraints are not sent: gnoblin-wm computes geometry from its own state and the adapter has no change hook to announce it"
+        },
+        {
+          "kind": "signal",
+          "name": "configure_edges",
+          "support": "unsupported",
+          "reason": "same reason as configure: nothing publishes edge constraints to the adapter"
+        }
+      ]
+    },
+    {
+      "name": "gtk_shell1",
+      "version": 7,
+      "members": [
+        {
+          "kind": "method",
+          "name": "get_gtk_surface",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "set_startup_id",
+          "support": "partial",
+          "note": "recorded in the session log; there is no startup-notification sequence table to complete"
+        },
+        {
+          "kind": "method",
+          "name": "system_bell",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "notify_launch",
+          "support": "partial",
+          "note": "logged and attributed to nothing: no startup-notification sequence table yet, so nothing is completed by it"
+        },
+        {
+          "kind": "signal",
+          "name": "capabilities",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

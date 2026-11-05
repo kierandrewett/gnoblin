@@ -946,6 +946,18 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compat-gtk-shell1"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+ "gnoblin-config",
+ "gnoblin-types",
+ "gnoblin-wayland",
+ "tempfile",
+ "tracing",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+ "wayland-server",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-clipboard"
@@ -982,6 +994,17 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compat-mutter-x11-interop"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+ "gnoblin-types",
+ "gnoblin-wayland",
+ "tempfile",
+ "tracing",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+ "wayland-server",
+]
 
 [[package]]
 name = "gnoblin-compat-qt-portal-settings"

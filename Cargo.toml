@@ -146,6 +146,20 @@ toml = "1.2.0"
 # backend in by itself, so a session that never asks for a GLES renderer pays for
 # the bindings and nothing else.
 smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman", "renderer_gl", "renderer_glow"] }
+# Wayland server and code generation, for the protocols Gnoblin owns or vendors.
+#
+# `smithay` re-exports `wayland_server`, so a crate that already names Smithay takes
+# it from there. These entries exist for the two crates that must name it directly:
+# a compat redirect generates its bindings from its own XML, so `wayland-scanner`
+# is a build-time dependency of that crate, and the generated server code names
+# `wayland-server` itself. The versions are the ones the pinned Smithay resolves to,
+# so cargo unifies them with the compositor's copy rather than building a second
+# one; `Cargo.lock` is what proves it.
+wayland-server = "0.31.14"
+wayland-client = "0.31.15"
+wayland-scanner = "0.31.11"
+wayland-backend = "0.3.17"
+
 # The Lua VM the script runtime embeds (design/rust-compositor.md, D10). Lua 5.5
 # is vendored and compiled by the build so the runtime links one Lua version on
 # every distribution target instead of whatever the distribution ships. Only

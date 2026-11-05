@@ -101,6 +101,13 @@ pub struct SessionSnapshot {
     pub(crate) layers: Vec<ObservedLayer>,
     pub(crate) activation_denied: Option<ActivationDenial>,
     pub(crate) selection: Option<Vec<String>>,
+    /// How many times a client rang the session bell.
+    ///
+    /// A bell is an event and not a property: nothing reads "the bell is now at
+    /// seven", a reader reacts to the change. The counter is what makes the change
+    /// observable to a reader that holds a snapshot and can compare it, and it is
+    /// `gtk_shell1.system_bell` and `wl_display`'s own bell path that raise it.
+    pub(crate) bells: u64,
     /// How many capture sessions are open.
     ///
     /// The plan's capture card needs it: a session ends when the client that opened it
@@ -110,6 +117,12 @@ pub struct SessionSnapshot {
 }
 
 impl SessionSnapshot {
+    /// How many times a client rang the bell since the session started.
+    #[must_use]
+    pub fn bells(&self) -> u64 {
+        self.bells
+    }
+
     /// How many capture sessions are open.
     #[must_use]
     pub fn capture_sessions(&self) -> usize {
@@ -256,6 +269,7 @@ impl SessionSnapshot {
             layers: Vec::new(),
             activation_denied: None,
             selection: None,
+            bells: 0,
             capture_sessions: 0,
         }
     }

@@ -993,3 +993,75 @@ left = "gnoblin-backend::Device"
 right = "gnoblin-input::Device"
 kind = "same-name"
 reason = "the backend's device is a GLES resource handle; the input device is what an EI client binds, with its capabilities, regions and held edges"
+# The compat frame's own vocabulary: every adapter declares a `Call` per member it maps
+# and an `Admission` that applies the frame's matrix to it. The names are the frame's, the
+# members are the adapter's, and two adapters that shared one enum would be a single
+# adapter. `gnoblin-compat-gnome-keyring-prompter` was the first to declare them.
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Call"
+right = "gnoblin-compat-gtk-shell1::Call"
+kind = "same-name"
+reason = "each adapter declares the members it maps; the frame is shared and the calls are not"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Call"
+right = "gnoblin-compat-mutter-x11-interop::Call"
+kind = "same-name"
+reason = "each adapter declares the members it maps; the frame is shared and the calls are not"
+
+[[allow]]
+left = "gnoblin-compat-gtk-shell1::Call"
+right = "gnoblin-compat-mutter-x11-interop::Call"
+kind = "same-name"
+reason = "each adapter declares the members it maps; the frame is shared and the calls are not"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-gtk-shell1::Admission"
+kind = "same-name"
+reason = "each adapter's admission holds its own declaration and gate; the name is the frame's"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-x11-interop::Admission"
+kind = "same-name"
+reason = "each adapter's admission holds its own declaration and gate; the name is the frame's"
+
+[[allow]]
+left = "gnoblin-compat-gtk-shell1::Admission"
+right = "gnoblin-compat-mutter-x11-interop::Admission"
+kind = "same-name"
+reason = "each adapter's admission holds its own declaration and gate; the name is the frame's"
+
+[[allow]]
+left = "gnoblin-authority::Gesture"
+right = "gnoblin-compat-gtk-shell1::Gesture"
+kind = "same-name"
+reason = "an authority gesture is a trusted input context for a token; gtk_surface1's is a titlebar click the configuration maps to an action"
+
+# The redirects' own vocabulary, and one settings writer's.
+
+[[allow]]
+left = "gnoblin-backend::Surface"
+right = "gnoblin-wayland::Surface"
+kind = "same-name"
+reason = "the backend's is a rendered surface with a buffer; the Wayland extension's is what a redirect learns about the surface it named (a window, or gone)"
+
+[[allow]]
+left = "gnoblin-compat-gtk-dconf-settings::Action"
+right = "gnoblinctl::Action"
+kind = "same-name"
+reason = "one is a key the dconf layer writes; the other is a command line invocation"
+
+[[allow]]
+left = "gnoblin-compat-gtk-shell1::Screening"
+right = "gnoblin-compat-mutter-x11-interop::Screening"
+kind = "same-name"
+reason = "each adapter has its own private wrapper that applies the shared frame's matrix to its own calls; the wrapper holds nothing but a declaration"
+
+[[allow]]
+left = "gnoblin-compat-x11-xsettings::Owner"
+right = "gnoblin-lock::Owner"
+kind = "same-name"
+reason = "an XSETTINGS owner supplies the property's values; a lock owner is the client that holds the session lock"

@@ -54,6 +54,7 @@ use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
 use crate::protocols::blur_fade::Fade;
 use crate::protocols::compositor::ClientState;
+use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::session_host::{HostRequest, HostedSession};
 use crate::protocols::window_frame::WindowFrame;
 use crate::state::State;
@@ -110,6 +111,18 @@ pub struct Config {
     pub input_sources: Option<gnoblin_config::InputSources>,
     /// The document's `input.keyboard`: repeat delay, repeat interval and XKB options.
     pub keyboard: Option<gnoblin_config::Keyboard>,
+    /// The titlebar actions `window_management` declares.
+    ///
+    /// The redirect in `gnoblin-compat-gtk-shell1` maps a titlebar gesture to one of
+    /// these three, and the session is what it asks, so the values travel with the
+    /// session rather than with the adapter: one session, one set of actions.
+    pub titlebar_actions: TitlebarActions,
+    /// The redirect adapters this session serves.
+    ///
+    /// Each one registers its globals before the loop runs. An empty list is a session
+    /// with no redirect, which is a working session: no global is advertised and no
+    /// adapter's code is linked in.
+    pub extensions: Vec<Arc<dyn Extension>>,
 }
 
 impl Default for Config {
@@ -124,6 +137,8 @@ impl Default for Config {
             protocols: Protocols::default(),
             input_sources: None,
             keyboard: None,
+            titlebar_actions: TitlebarActions::default(),
+            extensions: Vec::new(),
         }
     }
 }
@@ -197,6 +212,8 @@ impl Server {
             xwayland,
             config.observer,
             &config.protocols,
+            config.titlebar_actions,
+            &config.extensions,
         )?;
         // The keyboard is configured before the socket is bound, so the first client that
         // connects already sees the keymap the document asked for.
@@ -794,6 +811,8 @@ pub enum StartupError {
     Keyboard(smithay::input::keyboard::Error),
     /// The outputs could not be laid out.
     Layout(LayoutError),
+    /// A redirect adapter could not register its globals.
+    Extension(ExtensionError),
 }
 
 impl std::fmt::Display for StartupError {
@@ -805,6 +824,7 @@ impl std::fmt::Display for StartupError {
             Self::Socket(error) => write!(formatter, "the listening socket could not be bound: {error}"),
             Self::Keyboard(error) => write!(formatter, "the keyboard keymap could not be built: {error}"),
             Self::Layout(error) => write!(formatter, "the output layout could not be computed: {error:?}"),
+            Self::Extension(error) => write!(formatter, "a redirect adapter could not register: {error}"),
         }
     }
 }
