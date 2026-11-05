@@ -1141,6 +1141,49 @@ fn a_bound_key_is_consumed_and_its_release_is_not_leaked() {
 }
 
 #[test]
+fn a_key_reaches_the_client_with_its_evdev_code_from_either_source() {
+    // A backend names a key by its evdev code and the seat's keymap is indexed by the X11
+    // keycode, which is that number plus the eight the protocol reserves. Smithay removes
+    // the eight again when it sends `wl_keyboard.key`, so the offset must be applied
+    // exactly once, in the seat's key path, and nowhere else: a key shifted twice would
+    // arrive as `KEY_A + 8` and one not shifted at all as `KEY_A - 8`, and a client would
+    // read a different letter than the user pressed.
+    let session = Session::start();
+    session.run(|session| {
+        let mut client = Client::app(session.socket());
+        let _window = client.map_window("org.gnoblin.Keys");
+        session.focused_window();
+        client.wait_for(|state| state.keyboard_enters == 1);
+
+        // The backend's path: the event a physical device produces.
+        session.key(KEY_A, true);
+        session.key(KEY_A, false);
+        // The input sink's path: what an EIS client, a remote desktop or a test delivers.
+        // It is the same event through the same queue, and the whole point is that the two
+        // sources cannot answer differently.
+        let sink = session.control.input_sink();
+        sink.inject(InputEvent::Key {
+            keycode: KEY_A,
+            pressed: true,
+        });
+        sink.inject(InputEvent::Key {
+            keycode: KEY_A,
+            pressed: false,
+        });
+
+        let state = client.wait_for(|state| state.keys.len() == 4);
+        assert_eq!(
+            state.keys,
+            vec![KEY_A, KEY_A, KEY_A, KEY_A],
+            "every edge must reach the client as the evdev code it was injected as: \
+             a double offset would give {} and a missing one {}",
+            KEY_A + 8,
+            KEY_A.saturating_sub(8)
+        );
+    });
+}
+
+#[test]
 fn a_keymap_change_under_a_held_key_keeps_its_target() {
     let config = Config {
         input_sources: Some(gnoblin_config::InputSources {
