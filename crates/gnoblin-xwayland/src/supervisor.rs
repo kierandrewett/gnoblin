@@ -42,7 +42,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::x11::{Restart, Setting, Start};
 
-use crate::settings::{Settings, probe};
+use crate::settings::{Capabilities, Settings, probe};
 use crate::windows::Xwm;
 use crate::xsettings::XSettings;
 
@@ -235,10 +235,15 @@ impl Handle {
 impl gnoblin_backend::x11::Session for Handle {
     fn start(&mut self, _now: Instant) -> Start {
         let mut lifecycle = self.lock();
-        if let Err(reason) = probe(lifecycle.path.as_deref()) {
-            lifecycle.status = Status::Disabled { reason: reason.clone() };
-            return Start::Disabled(reason);
-        }
+        let launch = match probe(lifecycle.path.as_deref())
+            .and_then(|binary| lifecycle.settings.launch(None, Capabilities::of(&binary)))
+        {
+            Ok(launch) => launch,
+            Err(reason) => {
+                lifecycle.status = Status::Disabled { reason: reason.clone() };
+                return Start::Disabled(reason);
+            }
+        };
         lifecycle.attempt = lifecycle.attempt.saturating_add(1);
         lifecycle.status = Status::Starting {
             attempt: lifecycle.attempt,
@@ -246,7 +251,7 @@ impl gnoblin_backend::x11::Session for Handle {
         // The display number is not fixed: the server writes the one it took to the
         // readiness pipe, and fixing it here would collide with another session on the
         // same machine.
-        Start::Spawn(lifecycle.settings.launch(None))
+        Start::Spawn(launch)
     }
 
     fn ready(&mut self, display: u32, _now: Instant) {
@@ -317,6 +322,16 @@ mod tests {
         std::env::var_os("PATH")
     }
 
+    /// The settings a test that starts the real server uses. Byte-swapped clients are
+    /// allowed because the default refuses them with a switch that Xwayland before 23
+    /// rejects; `tests/real_xwayland.rs` gives the same reasoning.
+    fn real_settings() -> Settings {
+        Settings {
+            allow_byte_swapped_clients: true,
+            ..Settings::default()
+        }
+    }
+
     fn now() -> Instant {
         Instant::now()
     }
@@ -345,7 +360,7 @@ mod tests {
     /// cannot work.
     #[test]
     fn a_crash_loop_stops_after_the_last_attempt() {
-        let mut handle = Xwayland::new(Settings::default(), real_path()).handle();
+        let mut handle = Xwayland::new(real_settings(), real_path()).handle();
         let mut delays = Vec::new();
 
         for attempt in 1..ATTEMPTS {
@@ -383,7 +398,7 @@ mod tests {
     /// as a crash loop.
     #[test]
     fn a_ready_server_starts_the_ladder_again() {
-        let mut handle = Xwayland::new(Settings::default(), real_path()).handle();
+        let mut handle = Xwayland::new(real_settings(), real_path()).handle();
 
         handle.start(now());
         handle.failed(now());
@@ -409,7 +424,7 @@ mod tests {
     /// them.
     #[test]
     fn a_restart_reports_a_new_display() {
-        let mut handle = Xwayland::new(Settings::default(), real_path()).handle();
+        let mut handle = Xwayland::new(real_settings(), real_path()).handle();
 
         handle.start(now());
         handle.ready(3, now());
@@ -435,12 +450,10 @@ mod tests {
     #[test]
     fn a_start_that_never_becomes_ready_fails() {
         assert_eq!(
-            Xwayland::new(Settings::default(), real_path())
-                .handle()
-                .startup_deadline(),
+            Xwayland::new(real_settings(), real_path()).handle().startup_deadline(),
             STARTUP_DEADLINE
         );
-        let mut handle = Xwayland::new(Settings::default(), real_path()).handle();
+        let mut handle = Xwayland::new(real_settings(), real_path()).handle();
         handle.start(now());
         assert_eq!(handle.status(), Status::Starting { attempt: 1 });
         assert!(matches!(handle.failed(now()), Restart::RetryAfter(_)));
@@ -453,8 +466,7 @@ mod tests {
     fn an_attached_owner_hears_what_publishing_did() {
         let owner = RecordingOwner::default();
         owner.set("gtk-theme", Setting::Text("Adwaita".to_owned()));
-        let mut handle =
-            Xwayland::with_settings(Settings::default(), real_path(), Some(Box::new(owner.clone()))).handle();
+        let mut handle = Xwayland::with_settings(real_settings(), real_path(), Some(Box::new(owner.clone()))).handle();
 
         assert_eq!(
             handle.settings(),
@@ -467,7 +479,7 @@ mod tests {
     /// With no owner there is nothing to publish, and reporting an answer is harmless.
     #[test]
     fn a_session_without_an_owner_publishes_nothing() {
-        let mut handle = Xwayland::new(Settings::default(), real_path()).handle();
+        let mut handle = Xwayland::new(real_settings(), real_path()).handle();
         assert!(handle.settings().is_empty());
         handle.settings_published(Ok(()));
     }
@@ -476,7 +488,7 @@ mod tests {
     /// what the compositor's half did.
     #[test]
     fn the_halves_share_one_lifecycle() {
-        let session = Xwayland::new(Settings::default(), real_path());
+        let session = Xwayland::new(real_settings(), real_path());
         let (mut driven, windows) = session.parts();
         assert_eq!(session.status(), Status::Idle);
 

@@ -98,6 +98,7 @@ pub use gnoblin_wayland::{Observer, SessionSnapshot};
 pub use ipc::{IpcError, Privileged, SessionSync};
 pub use schema::catalog;
 
+use gnoblin_backend::nested::NestedError;
 use gnoblin_model::ModelError;
 use gnoblin_schema::SchemaError;
 
@@ -109,6 +110,11 @@ use gnoblin_schema::SchemaError;
 pub struct SessionConfig {
     /// The backend the session drives.
     pub backend: Backend,
+    /// The X11 session, or [`None`] for a session that starts no X server.
+    ///
+    /// [`None`] is the default. [`Some`] starts Xwayland under `gnoblin-xwayland`'s
+    /// supervisor with these settings, and the compositor ticks it and owns its window policy.
+    pub xwayland: Option<gnoblin_xwayland::Settings>,
     /// How the Wayland session itself is configured: its socket, seat, workspaces
     /// and window management options.
     pub wayland: gnoblin_wayland::Config,
@@ -206,8 +212,9 @@ impl Compositor {
     ///
     /// [`Error::Schema`] when the embedded schema cannot be loaded,
     /// [`Error::Ipc`] when the socket cannot be prepared or bound,
-    /// [`Error::Wayland`] when the Wayland session cannot start, and
-    /// [`Error::Loop`] when the running loop fails.
+    /// [`Error::BackendRefused`] names a backend this build does not carry, and
+    /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
+    /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
     pub fn run(config: SessionConfig) -> Result<(), Error> {
         let catalog = schema::catalog().map_err(Error::Schema)?;
         let version = version();
@@ -238,12 +245,23 @@ impl Compositor {
                 || gnoblin_wayland::DEFAULT_SOCKET_NAME.to_owned(),
                 |name| name.to_string_lossy().into_owned(),
             );
-        let backend = config.backend.build();
+        let backend_name = config.backend.name();
+        let backend = config.backend.build()?;
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
             ..config.wayland
         };
-        let server = Server::new(backend, wayland).map_err(Error::Wayland)?;
+        let server = match config.xwayland {
+            // No X11: the server has no X server, no grab manager and no process.
+            None => Server::new(backend, wayland),
+            Some(settings) => {
+                let supervisor = gnoblin_xwayland::Xwayland::with_settings(settings, std::env::var_os("PATH"), None);
+                let (handle, windows) = supervisor.parts();
+                let session = gnoblin_wayland::XwaylandSession::new(Box::new(handle), Box::new(windows));
+                Server::with_xwayland(backend, wayland, session)
+            }
+        }
+        .map_err(Error::Wayland)?;
         let control = server.control();
         let observation = server.observation();
         let ipc = ipc::IpcServer::start(
@@ -270,7 +288,7 @@ impl Compositor {
             socket = %path.display(),
             display = %display_name,
             version = %version,
-            backend = config.backend.name(),
+            backend = backend_name,
             "[compositor] serving"
         );
         let stop = config.stop.clone();
@@ -306,6 +324,16 @@ pub enum Error {
     /// The object graph refused the session object, which means the schema and this
     /// crate disagree about it.
     Model(ModelError),
+    /// The nested backend could not connect to its parent compositor.
+    Nested(NestedError),
+    /// The selected backend is not carried by this build. It is named so the refusal says
+    /// which backend it refused, rather than starting a different one in its place.
+    BackendRefused {
+        /// The backend's name, as [`Backend::name`] reports it.
+        backend: &'static str,
+        /// Why this build cannot start it.
+        reason: &'static str,
+    },
 }
 
 impl std::fmt::Display for Error {
@@ -317,6 +345,10 @@ impl std::fmt::Display for Error {
             Error::Wayland(error) => write!(formatter, "the Wayland session cannot start: {error}"),
             Error::Loop(error) => write!(formatter, "the Wayland session stopped: {error}"),
             Error::Model(error) => write!(formatter, "the object graph refused the session: {error}"),
+            Error::Nested(error) => write!(formatter, "the nested session cannot start: {error}"),
+            Error::BackendRefused { backend, reason } => {
+                write!(formatter, "the {backend} backend cannot start: {reason}")
+            }
         }
     }
 }

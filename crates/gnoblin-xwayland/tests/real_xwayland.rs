@@ -31,7 +31,7 @@ use x11rb::wrapper::ConnectionExt as _;
 use gnoblin_backend::headless::Headless;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
 
-use gnoblin_xwayland::{Handle, Settings, Status, Xwayland};
+use gnoblin_xwayland::{Capabilities, Handle, Settings, Status, Xwayland};
 
 /// How long a test waits for a state before failing.
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -210,6 +210,20 @@ fn display_path() -> Option<std::ffi::OsString> {
     }
 }
 
+/// The settings the real-server tests start with.
+///
+/// Byte-swapped clients are allowed here, not refused: the default refuses them with
+/// `-byteswappedclients`, which a server before that switch (Xwayland 22.1, the
+/// environment these tests also run in) rejects as an unknown option. Allowing needs no
+/// switch, so the tests run on both old and new servers and exercise the same paths.
+/// Refusal itself is covered by the unit tests in `settings.rs`.
+fn real_settings() -> Settings {
+    Settings {
+        allow_byte_swapped_clients: true,
+        ..Settings::default()
+    }
+}
+
 /// A real X11 client on a real display.
 struct XClient {
     connection: RustConnection,
@@ -327,7 +341,7 @@ fn xwayland_starts_and_the_display_is_usable() {
     let Some(path) = display_path() else {
         return;
     };
-    let session = Session::start(Settings::default(), Some(path));
+    let session = Session::start(real_settings(), Some(path));
     let xwayland = session.handle.xwayland.clone();
     session.run(move |_handle| {
         let display = wait_ready(&xwayland);
@@ -352,7 +366,7 @@ fn an_x11_window_is_managed_configured_and_removed() {
     let Some(path) = display_path() else {
         return;
     };
-    let session = Session::start(Settings::default(), Some(path));
+    let session = Session::start(real_settings(), Some(path));
     let xwayland = session.handle.xwayland.clone();
     session.run(move |handle| {
         let display = wait_ready(&xwayland);
@@ -396,7 +410,7 @@ fn an_override_redirect_popup_is_not_managed() {
     let Some(path) = display_path() else {
         return;
     };
-    let session = Session::start(Settings::default(), Some(path));
+    let session = Session::start(real_settings(), Some(path));
     let xwayland = session.handle.xwayland.clone();
     session.run(move |handle| {
         let display = wait_ready(&xwayland);
@@ -425,7 +439,7 @@ fn a_client_that_disconnects_leaves_no_window() {
     let Some(path) = display_path() else {
         return;
     };
-    let session = Session::start(Settings::default(), Some(path));
+    let session = Session::start(real_settings(), Some(path));
     let xwayland = session.handle.xwayland.clone();
     session.run(move |handle| {
         let display = wait_ready(&xwayland);
@@ -445,11 +459,18 @@ fn a_client_that_disconnects_leaves_no_window() {
 #[test]
 fn a_launch_carries_the_display_and_no_environment() {
     let settings = Settings::default();
-    let automatic = settings.launch(None);
+    let capabilities = Capabilities {
+        byte_order_switch: true,
+    };
+    let automatic = settings
+        .launch(None, capabilities)
+        .expect("the default settings launch on a server with the switch");
     assert_eq!(automatic.display, None, "the server picks the number");
     assert!(automatic.env.is_empty(), "a launch adds no environment");
 
-    let pinned = settings.launch(Some(7));
+    let pinned = settings
+        .launch(Some(7), capabilities)
+        .expect("the default settings launch on a server with the switch");
     assert_eq!(pinned.display, Some(7));
     assert!(
         pinned.env.is_empty(),
@@ -463,7 +484,7 @@ fn killing_xwayland_restarts_it_and_a_fresh_client_works() {
     let Some(path) = display_path() else {
         return;
     };
-    let session = Session::start(Settings::default(), Some(path));
+    let session = Session::start(real_settings(), Some(path));
     let xwayland = session.handle.xwayland.clone();
     session.run(move |handle| {
         let first = wait_ready(&xwayland);

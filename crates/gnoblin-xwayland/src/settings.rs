@@ -120,23 +120,70 @@ impl Settings {
             .iter()
             .any(|rule| rule == class || rule == instance)
     }
+}
 
-    /// The Xwayland arguments the settings add.
+/// What one `Xwayland` binary supports, read from its own help text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Capabilities {
+    /// Whether the binary knows the `-byteswappedclients` switch. Servers before the
+    /// switch existed reject it as an unknown option and stop before they listen.
+    pub byte_order_switch: bool,
+}
+
+impl Capabilities {
+    /// Asks the binary for its switches with `-help`, which prints the usage and exits
+    /// without starting a server.
+    ///
+    /// A binary that cannot be run answers "no switches": the conservative answer,
+    /// because every switch that depends on it is then refused with a reason rather
+    /// than passed to a server that will reject it.
+    #[must_use]
+    pub fn of(binary: &Path) -> Self {
+        let Ok(output) = std::process::Command::new(binary)
+            .arg("-help")
+            .stdin(std::process::Stdio::null())
+            .output()
+        else {
+            return Self::default();
+        };
+        // The usage goes to stderr on some servers and stdout on others.
+        let text = [output.stdout, output.stderr].concat();
+        Self {
+            byte_order_switch: String::from_utf8_lossy(&text).contains("byteswappedclients"),
+        }
+    }
+}
+
+impl Settings {
+    /// The Xwayland arguments the settings add, for a server with `capabilities`.
     ///
     /// Only the switches that map to a setting are here. Everything else Smithay's
     /// `XWayland::spawn` already passes: the display, `-rootless`, `-terminate`, the
     /// window manager socket and the readiness pipe.
-    #[must_use]
-    pub fn arguments(&self) -> Vec<String> {
+    ///
+    /// # Errors
+    ///
+    /// Refusing byte-swapped clients needs the switch. A server without it would accept
+    /// them, so the session is refused with the reason instead of starting with a weaker
+    /// policy than the one configured.
+    pub fn arguments(&self, capabilities: Capabilities) -> Result<Vec<String>, String> {
         let mut arguments = Vec::new();
-        // Xwayland defaults to accepting a client whose byte order differs from the
-        // server's; the setting defaults to refusing one, so both directions state
-        // themselves instead of relying on the server's compiled default.
-        arguments.push(if self.allow_byte_swapped_clients {
-            "+byteswappedclients".to_owned()
-        } else {
-            "-byteswappedclients".to_owned()
-        });
+        // Xwayland accepts a client whose byte order differs from the server's unless
+        // told otherwise. Allowing them is the server's default, so it needs no switch;
+        // refusing them needs the switch, and the setting defaults to refusing.
+        match (self.allow_byte_swapped_clients, capabilities.byte_order_switch) {
+            (true, true) => arguments.push("+byteswappedclients".to_owned()),
+            (false, true) => arguments.push("-byteswappedclients".to_owned()),
+            (true, false) => {}
+            (false, false) => {
+                return Err(
+                    "Xwayland is not started: this Xwayland has no -byteswappedclients switch, \
+                    so byte-swapped clients cannot be refused; install a newer Xwayland or allow \
+                    byte-swapped clients"
+                        .to_owned(),
+                );
+            }
+        }
         for extension in &self.disable_extensions {
             arguments.push("-extension".to_owned());
             arguments.push(match extension {
@@ -144,19 +191,23 @@ impl Settings {
                 XwaylandExtension::Xtest => "XTEST".to_owned(),
             });
         }
-        arguments
+        Ok(arguments)
     }
 
-    /// The start parameters for one attempt.
-    #[must_use]
-    pub fn launch(&self, display: Option<u32>) -> Launch {
-        Launch {
+    /// The start parameters for one attempt against a server with `capabilities`.
+    ///
+    /// # Errors
+    ///
+    /// The reason from [`Settings::arguments`] when the configured policy cannot be
+    /// enforced by this server.
+    pub fn launch(&self, display: Option<u32>, capabilities: Capabilities) -> Result<Launch, String> {
+        Ok(Launch {
             display,
-            args: self.arguments(),
+            args: self.arguments(capabilities)?,
             env: Vec::new(),
             open_abstract_socket: false,
             scale: self.scale,
-        }
+        })
     }
 }
 
@@ -260,25 +311,74 @@ mod tests {
         assert!(!settings.grab_allowed("Gnome-terminal", "gnome-terminal"));
     }
 
-    /// The two switches that map to a setting are always stated, and a disabled
-    /// extension becomes its `-extension` pair in declaration order.
+    /// The byte-order switch is stated in both directions when the server has it, and
+    /// a disabled extension becomes its `-extension` pair in declaration order.
     #[test]
     fn the_settings_become_arguments() {
-        let settings = Settings {
+        let modern = Capabilities {
+            byte_order_switch: true,
+        };
+        let refusing = Settings {
             allow_byte_swapped_clients: false,
             disable_extensions: vec![XwaylandExtension::Security, XwaylandExtension::Xtest],
             ..Settings::default()
         };
         assert_eq!(
-            settings.arguments(),
-            vec!["-byteswappedclients", "-extension", "SECURITY", "-extension", "XTEST"]
+            refusing.arguments(modern),
+            Ok(
+                vec!["-byteswappedclients", "-extension", "SECURITY", "-extension", "XTEST"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            )
         );
 
         let allowed = Settings {
             allow_byte_swapped_clients: true,
             ..Settings::default()
         };
-        assert_eq!(allowed.arguments(), vec!["+byteswappedclients"]);
+        assert_eq!(allowed.arguments(modern), Ok(vec!["+byteswappedclients".to_owned()]));
+    }
+
+    /// A server without the switch cannot refuse byte-swapped clients, so refusing is a
+    /// reason to disable the session rather than a silent start that accepts them. Allowing
+    /// them needs no switch at all, because accepting is the server's default.
+    #[test]
+    fn an_old_server_cannot_refuse_byte_swapped_clients() {
+        let old = Capabilities::default();
+        let refusing = Settings::default();
+        let reason = refusing.arguments(old).expect_err("refusal needs the switch");
+        assert!(reason.contains("-byteswappedclients"), "{reason}");
+        assert!(refusing.launch(None, old).is_err());
+
+        let allowed = Settings {
+            allow_byte_swapped_clients: true,
+            ..Settings::default()
+        };
+        assert_eq!(allowed.arguments(old), Ok(Vec::new()));
+        assert!(allowed.launch(None, old).is_ok());
+    }
+
+    /// The capabilities are read from the binary's own help text, so a binary that
+    /// prints the switch has it and one that prints nothing has none.
+    #[cfg(unix)]
+    #[test]
+    fn capabilities_come_from_the_help_text() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = std::env::temp_dir().join(format!("gnoblin-xwayland-caps-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).expect("a temporary directory");
+        let modern = directory.join("modern");
+        std::fs::write(&modern, "#!/bin/sh\necho '+byteswappedclients    Allow clients' >&2\n").expect("a script");
+        std::fs::set_permissions(&modern, std::fs::Permissions::from_mode(0o755)).expect("an executable mode");
+        let old = directory.join("old");
+        std::fs::write(&old, "#!/bin/sh\nexit 0\n").expect("a script");
+        std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("an executable mode");
+
+        assert!(Capabilities::of(&modern).byte_order_switch);
+        assert!(!Capabilities::of(&old).byte_order_switch);
+        assert!(!Capabilities::of(&directory.join("missing")).byte_order_switch);
+
+        let _ = std::fs::remove_dir_all(&directory);
     }
 
     /// An empty `PATH`, or one without the binary, disables the session with a reason

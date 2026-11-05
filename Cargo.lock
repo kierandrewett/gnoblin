@@ -80,9 +80,9 @@ dependencies = [
  "futures-lite",
  "parking",
  "polling",
- "rustix",
+ "rustix 1.1.6",
  "slab",
- "windows-sys",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1182,6 +1182,7 @@ dependencies = [
  "gnoblin-schema",
  "gnoblin-types",
  "gnoblin-wayland",
+ "gnoblin-xwayland",
  "gnoblinctl",
  "rustix 1.1.6",
  "tempfile",

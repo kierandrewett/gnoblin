@@ -206,6 +206,10 @@ impl Running {
     }
 
     /// Starts the server with the policy's parameters.
+    ///
+    /// Xwayland's stdout and stderr are inherited, so the reason a server exits (an
+    /// unknown switch, a missing display) reaches the compositor's log. Discarding them
+    /// left a failed start with only "did not become ready" and no cause.
     fn spawn(&mut self, state: &mut State, launch: Launch, now: Instant) {
         let args = launch.args.clone();
         let env = launch.env.clone();
@@ -215,8 +219,8 @@ impl Running {
             env,
             args,
             launch.open_abstract_socket,
-            Stdio::null(),
-            Stdio::null(),
+            Stdio::inherit(),
+            Stdio::inherit(),
             |_| {},
         );
         match result {

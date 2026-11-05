@@ -38,7 +38,7 @@ pub mod supervisor;
 pub mod windows;
 pub mod xsettings;
 
-pub use settings::{Settings, SettingsError, probe};
+pub use settings::{Capabilities, Settings, SettingsError, probe};
 pub use supervisor::{Handle, Status, Xwayland};
 pub use windows::{Xwm, window_id};
 pub use xsettings::{RecordingOwner, Setting, XSettings};
