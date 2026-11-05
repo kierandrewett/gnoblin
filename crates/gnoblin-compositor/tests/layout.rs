@@ -10,7 +10,7 @@ mod support;
 use std::path::PathBuf;
 
 use gnoblin_compositor::LayoutSettings;
-use support::{Client, Session, Window, wait_for};
+use support::{Client, Session, Window, wait_for, wait_for_listed_id};
 
 /// The repository's shipped Lua layouts, the directory an installed prefix provides.
 fn shipped_modules() -> PathBuf {
@@ -196,5 +196,32 @@ fn a_workspace_override_wins_over_the_output_override() {
     let mut client = Client::connect(session.wayland());
     let windows = map_three(&mut client);
 
+    assert_eq!(settled_sizes(&mut client, &windows), floating);
+}
+
+#[test]
+fn set_floating_overrides_the_workspace_layout() {
+    let floating = {
+        let session = session_with(LayoutSettings::default());
+        let mut client = Client::connect(session.wayland());
+        let windows = map_three(&mut client);
+        settled_sizes(&mut client, &windows)
+    };
+
+    let session = session_with(LayoutSettings {
+        default: "master_stack".to_owned(),
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    assert_ne!(settled_sizes(&mut client, &windows), floating);
+
+    for title in ["one", "two", "three"] {
+        let id = wait_for_listed_id(&session, title);
+        session
+            .ctl(&["window", "call", &id.to_string(), "set_floating", "floating=true"])
+            .ok();
+    }
     assert_eq!(settled_sizes(&mut client, &windows), floating);
 }
