@@ -1,6 +1,7 @@
 //! Workspace automation: dependency-rule checks over `cargo metadata`, and the
 //! code generation the schema drives.
 
+mod compat_report;
 mod deps;
 mod gen_proto;
 mod metadata;
@@ -14,7 +15,9 @@ usage: cargo xtask <subcommand>
 subcommands:
   deps               check the workspace dependency rules from design/rust-compositor.md
   gen-proto          write crates/gnoblin-proto/proto from the object schema
-  gen-proto --check  fail when a checked-in .proto file is stale or orphaned";
+  gen-proto --check  fail when a checked-in .proto file is stale or orphaned
+  compat-report      print the declared support matrix of every compat adapter
+  compat-report --json  the same report as JSON";
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -27,7 +30,9 @@ fn main() -> ExitCode {
         ("deps", []) => deps_command(),
         ("gen-proto", []) => gen_proto::run(false),
         ("gen-proto", [flag]) if flag == "--check" => gen_proto::run(true),
-        ("deps" | "gen-proto", _) => usage_error("unexpected argument"),
+        ("compat-report", []) => compat_report::run(false),
+        ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
+        ("deps" | "gen-proto" | "compat-report", _) => usage_error("unexpected argument"),
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
 }

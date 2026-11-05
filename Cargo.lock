@@ -106,75 +106,78 @@ name = "gnoblin-client"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-clipboard"
+name = "gnoblin-compat-mutter-clipboard"
 version = "0.2.0-alpha.0"
 
 [[package]]
 name = "gnoblin-compat-core"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
-name = "gnoblin-compat-displayconfig"
+name = "gnoblin-compat-mutter-displayconfig"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-gcr-prompter"
+name = "gnoblin-compat-gnome-keyring-prompter"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-gtk-settings"
+name = "gnoblin-compat-gtk-dconf-settings"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-gtk-shell"
+name = "gnoblin-compat-gtk-shell1"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-idlemonitor"
+name = "gnoblin-compat-mutter-idlemonitor"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-inputcapture"
+name = "gnoblin-compat-mutter-inputcapture"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-inputmapping"
+name = "gnoblin-compat-mutter-inputmapping"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-qt-settings"
+name = "gnoblin-compat-qt-portal-settings"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-remotedesktop"
+name = "gnoblin-compat-mutter-remotedesktop"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-screencast"
+name = "gnoblin-compat-mutter-screencast"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-servicechannel"
+name = "gnoblin-compat-mutter-servicechannel"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-sessionmanager"
+name = "gnoblin-compat-gnome-session-manager"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-shell-introspect"
+name = "gnoblin-compat-gnome-shell-introspect"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-shell-screenshot"
+name = "gnoblin-compat-gnome-shell-screenshot"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-x11-interop"
+name = "gnoblin-compat-mutter-x11-interop"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-xsettings"
+name = "gnoblin-compat-x11-xsettings"
 version = "0.2.0-alpha.0"
 
 [[package]]

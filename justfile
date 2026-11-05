@@ -43,6 +43,12 @@ gen-proto:
 gen-proto-check:
     cargo xtask gen-proto --check
 
+# Print every compat adapter's declared support matrix. Adapters declare theirs in
+# `crates/compat/<crate>/support-matrix.json`; with none declared this prints the
+# empty set and succeeds.
+compat-report:
+    cargo xtask compat-report
+
 # Check advisories, licences, duplicate versions and git sources.
 deny:
     cargo deny check
