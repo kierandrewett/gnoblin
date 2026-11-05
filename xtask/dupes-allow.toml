@@ -519,6 +519,18 @@ kind = "same-name"
 reason = "the locker's state is where the session lock controller is (unlocked, locking, locked, cover failed); the wayland state is the compositor object every protocol handler receives"
 
 [[allow]]
+left = "gnoblin-authority::Limits"
+right = "gnoblin-lua::Limits"
+kind = "same-name"
+reason = "authority's limits are how many live tokens, gestures and grants the machine keeps; the Lua host's are the instruction, memory and time budget one entry into a script runs under"
+
+[[allow]]
+left = "gnoblin-authority::Pending"
+right = "gnoblin-lua::Pending"
+kind = "same-name"
+reason = "authority's pending is a consent prompt waiting for the portal provider; the Lua host's is one operation it called and is still waiting on"
+
+[[allow]]
 left = "gnoblin-schema::Signal"
 right = "gnoblin-session::Signal"
 kind = "same-name"
