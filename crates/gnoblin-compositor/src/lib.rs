@@ -96,7 +96,7 @@ use tracing::info;
 pub use backend::Backend;
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Observer, SessionSnapshot};
-pub use ipc::{IpcError, Privileged, SessionSync};
+pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync};
 pub use schema::catalog;
 
 use gnoblin_backend::nested::NestedError;
@@ -132,6 +132,11 @@ pub struct SessionConfig {
     /// binary role calls it. A test builds them itself, so a privileged connection can
     /// be driven without a supervisor.
     pub privileged: Vec<ipc::Privileged>,
+    /// The extensions this session serves, each with the role that provides it.
+    ///
+    /// A namespace is routed to its provider connection and granted to the privileged
+    /// connections that list it. An extension that fails to load is absent from this list.
+    pub extensions: Vec<ipc::ExtensionRoute>,
 }
 
 /// A handle that stops a running session from another thread.
@@ -274,6 +279,7 @@ impl Compositor {
             observation,
             control.clone(),
             config.privileged,
+            &config.extensions,
         )
         .map_err(Error::Ipc)?;
 

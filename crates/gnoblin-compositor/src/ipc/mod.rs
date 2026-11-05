@@ -24,6 +24,7 @@
 //! code that keeps the promise, and `tests/ipc.rs` drives the same paths through a
 //! real socket.
 
+mod extension;
 mod path;
 mod privileged;
 mod requests;
@@ -32,6 +33,7 @@ mod session;
 
 use std::path::PathBuf;
 
+pub use extension::ExtensionRoute;
 pub use path::SocketPath;
 pub use privileged::Privileged;
 pub(crate) use server::IpcServer;

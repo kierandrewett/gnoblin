@@ -76,6 +76,7 @@ use gnoblin_types::{ClientId, Version};
 use gnoblin_wayland::{ControlHandle, Observer, SessionSnapshot};
 use tracing::{debug, info, warn};
 
+use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::requests::{FrameDelivery, Requests};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
@@ -197,6 +198,7 @@ impl IpcServer {
         observation: Arc<Mutex<SessionSnapshot>>,
         control: ControlHandle,
         privileged: Vec<Privileged>,
+        routes: &[ExtensionRoute],
     ) -> Result<IpcServer, IpcError> {
         // Each connection's frame is encoded before anything is spawned, so a bad grant
         // list fails the whole start instead of leaving threads behind.
@@ -219,6 +221,20 @@ impl IpcServer {
         let readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>> = Arc::new(Mutex::new(BTreeMap::new()));
         let clients = Arc::new(AtomicU64::new(1));
         let version = prepared.version();
+        // The privileged connections get their ids before the dispatcher starts, so the
+        // extension router knows each provider and grantee by the id it will serve.
+        let ids: Vec<ClientId> = privileged
+            .iter()
+            .map(|_| ClientId::new(clients.fetch_add(1, Ordering::Relaxed)))
+            .collect();
+        let mut extensions = ExtensionRouter::new(routes);
+        for (connection, client) in privileged.iter().zip(&ids) {
+            extensions.connect(
+                *client,
+                &connection.role,
+                connection.extension_grants.iter().map(|grant| grant.namespace.clone()),
+            );
+        }
 
         let dispatcher = Dispatcher {
             store,
@@ -229,21 +245,23 @@ impl IpcServer {
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
             start: Instant::now(),
+            extensions,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
         // The privileged connections are already connected — the guardian made the pair
         // — so they are served like a client that has arrived, with the capabilities
         // their role grants. A failure to serve one is reported and the session runs:
         // losing the runtime's connection must not take the desktop down.
-        for (connection, frame) in privileged.into_iter().zip(frames) {
-            let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
+        for ((connection, frame), client) in privileged.into_iter().zip(frames).zip(ids) {
             let grants = super::privileged::grants(&connection.role);
             let served = events.clone();
             let mut handles = lock(&readers);
             match std::thread::Builder::new()
                 .name(format!("gnoblin-ipc-{}", client.get()))
-                .spawn(move || serve_privileged(connection.stream, client, version, served, grants, frame))
-            {
+                .spawn(move || {
+                    serve_privileged(connection.stream, client, version, served.clone(), grants, frame);
+                    let _ = served.send(IpcEvent::Closed { client });
+                }) {
                 Ok(handle) => {
                     handles.insert(client, handle);
                 }
@@ -593,6 +611,8 @@ struct Dispatcher {
     /// deadline it measures. The compositor is the only party that needs a clock here:
     /// the broker takes its tick as an argument, so the model stays replayable.
     start: Instant,
+    /// The routing state of the loaded extensions: which connection serves and which may call each.
+    extensions: ExtensionRouter,
 }
 
 impl Dispatcher {
@@ -653,12 +673,8 @@ impl Dispatcher {
     /// Decodes and answers one frame.
     fn request(&mut self, client: ClientId, envelope: &Envelope) {
         if envelope.namespace != wire::NAMESPACE {
-            self.refuse(
-                client,
-                envelope,
-                wire::code::UNKNOWN_MEMBER,
-                "this connection serves the `gnoblin` namespace only",
-            );
+            let deliveries = self.extensions.route(client, envelope);
+            self.deliver(deliveries);
             return;
         }
         // The gate is before the member is looked at: a member this connection may not
@@ -1133,6 +1149,8 @@ impl Dispatcher {
         }
         let departed = self.requests.departed(client);
         self.deliver(departed);
+        let lost = self.extensions.provider_gone(client);
+        self.deliver(lost);
         self.connections.insert(
             client,
             Connection {
@@ -1147,6 +1165,8 @@ impl Dispatcher {
 
     /// Ends one connection: its subscriptions, its writer and its reader.
     fn close(&mut self, client: ClientId, shutdown: bool) {
+        let departed = self.extensions.departed(client);
+        self.deliver(departed);
         let Some(connection) = self.connections.remove(&client) else {
             return;
         };

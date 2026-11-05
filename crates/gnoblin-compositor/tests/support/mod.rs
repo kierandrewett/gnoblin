@@ -81,6 +81,15 @@ impl Session {
     pub fn start_privileged_granting(
         roles: &[(&str, Vec<gnoblin_proto::Grant>)],
     ) -> (Session, Vec<(String, UnixStream)>) {
+        Session::start_privileged_extensions(roles, &[])
+    }
+
+    /// Like [`Session::start_privileged_granting`], and also serves `routes` as the
+    /// session's loaded extensions, each provided by the role its route names.
+    pub fn start_privileged_extensions(
+        roles: &[(&str, Vec<gnoblin_proto::Grant>)],
+        routes: &[gnoblin_compositor::ExtensionRoute],
+    ) -> (Session, Vec<(String, UnixStream)>) {
         let directory = private_directory();
         let ipc = directory.path().join("ipc.sock");
         let wayland = directory.path().join("wayland.sock");
@@ -104,6 +113,7 @@ impl Session {
                 ..gnoblin_wayland::Config::default()
             },
             privileged,
+            extensions: routes.to_vec(),
             ..SessionConfig::default()
         };
         let thread = std::thread::Builder::new()
@@ -321,6 +331,49 @@ impl Wire {
             "the session refused this build"
         );
         wire
+    }
+
+    /// Completes the handshake on a connection the test already holds, such as a
+    /// privileged role's end, and returns the wire ready for envelopes.
+    pub fn over(stream: UnixStream) -> Wire {
+        let reader = std::io::BufReader::new(stream.try_clone().expect("a duplicated socket"));
+        let mut wire = Wire { stream, reader };
+        {
+            let mut writer = &wire.stream;
+            let hello = gnoblin_proto::Handshake::hello(gnoblin_compositor::version());
+            writer.write_all(&hello.encode()).expect("the hello");
+            writer.flush().expect("the hello");
+        }
+        let answer = wire.read_handshake();
+        assert_eq!(
+            answer.kind,
+            gnoblin_proto::HandshakeKind::Accept,
+            "the session refused this role"
+        );
+        gnoblin_proto::read_grants(&mut wire.reader).expect("the grants frame after the accept");
+        wire
+    }
+
+    /// Makes [`Wire::receive_within`] wait at most `limit` for each frame.
+    pub fn set_read_timeout(&self, limit: std::time::Duration) {
+        self.stream.set_read_timeout(Some(limit)).expect("a read deadline");
+    }
+
+    /// Reads one frame, or `None` when none arrives before the deadline set by
+    /// [`Wire::set_read_timeout`]. A closed connection or a bad frame still panics.
+    pub fn receive_within(&mut self) -> Option<gnoblin_proto::Envelope> {
+        match gnoblin_proto::read_frame(&mut self.reader) {
+            Ok(envelope) => envelope,
+            Err(gnoblin_proto::CodecError::Io(error))
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                None
+            }
+            Err(error) => panic!("a bad frame: {error:?}"),
+        }
     }
 
     fn read_handshake(&mut self) -> gnoblin_proto::Handshake {
