@@ -145,6 +145,7 @@ pub enum Rejection {
     NotVisible(WindowId),
     /// The window is fullscreen, so a drag, snap or maximise does not apply.
     NotFloating(WindowId),
-    /// `window_management.edge_tiling` is off, so edge snapping is unavailable.
+    /// `window_management.edge_tiling` is off, so edge snapping is unavailable. The
+    /// rejection is not about one window, because the setting applies to the session.
     EdgeTilingDisabled,
 }

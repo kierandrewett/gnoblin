@@ -75,11 +75,12 @@ pub struct Window {
     pub restore: Rect,
     /// Maximise, fullscreen, minimise and snap flags.
     pub state: WindowState,
-    /// How many window rules have been applied to this window.
+    /// How many window rules applied completely to this window.
     ///
     /// Rules run once, when the window is taken into management. The counter makes
     /// that observable, so a test can prove that a title change or a rules reload
-    /// did not apply them again.
+    /// did not apply them again, and a rule whose workspace target was missing is
+    /// not counted because nothing was applied.
     pub applied_rules: usize,
 }
 

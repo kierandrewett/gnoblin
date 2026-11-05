@@ -102,7 +102,7 @@ pub enum Broken {
     NoActiveWorkspace,
     /// The active workspace is not declared.
     ActiveWorkspaceUnknown(WorkspaceId),
-    /// A workspace is not declared but the manager considers it active.
+    /// No workspace is declared but the manager considers one active.
     ActiveWorkspaceWhileNone,
     /// The stack and the window map disagree on how many windows exist.
     StackLength {
