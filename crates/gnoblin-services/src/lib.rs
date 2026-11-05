@@ -73,5 +73,5 @@ pub mod subject;
 
 pub use agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Proposition, Refusal};
 pub use polkit::Polkit;
-pub use role::{Buses, Environment, Host, Role, RoleError};
+pub use role::{Buses, Host, Role, RoleError};
 pub use slot::{ClaimError, Provider, Slot, Slots, UnknownSlot};

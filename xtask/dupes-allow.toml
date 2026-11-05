@@ -1137,3 +1137,28 @@ left = "gnoblin-compat-core::Refusal"
 right = "gnoblin-compositor::Refusal"
 kind = "same-name"
 reason = "a compat refusal says why an adapter refused an upstream call, with the rule id a report quotes; the compositor's refusal is an IPC error frame's answer to a member the schema does not serve"
+
+[[allow]]
+left = "gnoblin-lua::Host"
+right = "gnoblin-services::Host"
+kind = "same-name"
+reason = "the services role's inherited IPC host versus the script runtime's object host"
+
+[[allow]]
+left = "gnoblin-lua::Role"
+right = "gnoblin-services::Role"
+kind = "same-name"
+reason = "how the services role runs (its environment, deadline and buses) versus a script's role configuration"
+
+[[allow]]
+left = "gnoblin-lua::RoleError"
+right = "gnoblin-services::RoleError"
+kind = "same-name"
+reason = "why the services role could not run versus why a script's role could not be built"
+
+[[allow]]
+left = "gnoblin::Role"
+right = "gnoblin-services::Role"
+kind = "same-name"
+reason = "the session binary's role versus the services role's own settings"
+

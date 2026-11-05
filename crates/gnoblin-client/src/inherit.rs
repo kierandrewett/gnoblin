@@ -83,6 +83,14 @@ impl fmt::Display for Inherited {
 
 impl std::error::Error for Inherited {}
 
+/// How a role process reads its environment.
+///
+/// A boxed closure rather than a function pointer so a test can hand a role an environment of
+/// its own: a descriptor number belongs to one run and one socket pair. It lives here because
+/// this is the module that reads a descriptor out of an environment, and one alias means the
+/// runtime and the services role cannot drift apart on what an environment reader is.
+pub type Environment = Box<dyn Fn(&str) -> Option<String> + Send>;
+
 /// The socket `variable` names in `env`, if the variable names one.
 ///
 /// `env` is passed in so a caller can read the environment once and so the failures

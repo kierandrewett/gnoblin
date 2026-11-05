@@ -1,7 +1,7 @@
 //! Which backend a session drives.
 //!
 //! The backend is the one place a session touches hardware, so it is the one place
-//! [`Config`](crate::Config) has to name a choice. It is an enum and not a trait
+//! [`SessionConfig`](crate::SessionConfig) has to name a choice. It is an enum and not a trait
 //! object because the choice is data: a supervisor reads it from a configuration
 //! document, a test passes it in, and a later lane adds the DRM backend as one more
 //! variant and one more arm of [`Backend::build`]. Nothing else in this crate has to

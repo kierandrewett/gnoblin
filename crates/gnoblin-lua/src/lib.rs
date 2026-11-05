@@ -120,6 +120,10 @@ mod sandbox;
 
 pub use bindings::{stub, write_stub};
 pub use error::{HostError, ScriptError};
+/// How the runtime role reads its environment, re-exported from the client that reads a
+/// descriptor out of one.
+pub use gnoblin_client::Environment;
 pub use host::{Host, MAX_LOADS, PumpReport, RunReport};
-pub use role::{Environment, Role, RoleError};
+
+pub use role::{Role, RoleError};
 pub use sandbox::Limits;

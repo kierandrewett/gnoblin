@@ -76,7 +76,7 @@ struct Offer {
 
 /// One frame the dispatcher has to write, and the connection to write it to.
 #[derive(Debug)]
-pub(crate) struct Delivery {
+pub(crate) struct FrameDelivery {
     /// The connection to write to.
     pub client: ClientId,
     /// The frame.
@@ -85,7 +85,7 @@ pub(crate) struct Delivery {
 
 /// Why the request layer refused a member.
 #[derive(Debug)]
-pub(crate) struct Refusal {
+pub(crate) struct RequestRefusal {
     /// The wire code, which is what the client reads.
     pub code: &'static str,
     /// A sentence for a log and a bug report. Never carries an answer.
@@ -143,8 +143,8 @@ impl Requests {
         title: &str,
         message: &str,
         deadline: Tick,
-    ) -> Result<(RequestId, Vec<Delivery>), Refusal> {
-        let slot = Slot::from_str(slot).map_err(|error| Refusal {
+    ) -> Result<(RequestId, Vec<FrameDelivery>), RequestRefusal> {
+        let slot = Slot::from_str(slot).map_err(|error| RequestRefusal {
             code: wire::code::UNKNOWN_SLOT,
             message: error.to_string(),
         })?;
@@ -166,14 +166,14 @@ impl Requests {
     }
 
     /// The connection an offer for `slot` goes to.
-    fn provider_of(&self, slot: Slot, offered_by: ClientId) -> Result<ClientId, Refusal> {
+    fn provider_of(&self, slot: Slot, offered_by: ClientId) -> Result<ClientId, RequestRefusal> {
         match self.slots.provider(slot) {
             Provider::Services => Ok(offered_by),
-            Provider::Shell => self.claims.get(&slot).copied().ok_or_else(|| Refusal {
+            Provider::Shell => self.claims.get(&slot).copied().ok_or_else(|| RequestRefusal {
                 code: wire::code::NO_PROVIDER,
                 message: format!("the `{slot}` slot is claimed by a connection that is gone"),
             }),
-            Provider::None => Err(Refusal {
+            Provider::None => Err(RequestRefusal {
                 code: wire::code::NO_PROVIDER,
                 message: format!("no provider claims the `{slot}` slot, so the request was not offered"),
             }),
@@ -186,10 +186,10 @@ impl Requests {
         owner: ClientId,
         slot: Slot,
         provider: Provider,
-    ) -> Result<Vec<Delivery>, Refusal> {
+    ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.slots
             .claim(slot, provider, Some(OwnerId::new(owner.get())))
-            .map_err(|error| Refusal {
+            .map_err(|error| RequestRefusal {
                 code: wire::code::DENIED,
                 message: error.to_string(),
             })?;
@@ -202,10 +202,10 @@ impl Requests {
     }
 
     /// Release a slot this connection claimed.
-    pub(crate) fn release_slot(&mut self, owner: ClientId, slot: Slot) -> Result<Vec<Delivery>, Refusal> {
+    pub(crate) fn release_slot(&mut self, owner: ClientId, slot: Slot) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.slots
             .release(slot, OwnerId::new(owner.get()))
-            .map_err(|error| Refusal {
+            .map_err(|error| RequestRefusal {
                 code: wire::code::DENIED,
                 message: error.to_string(),
             })?;
@@ -214,10 +214,14 @@ impl Requests {
     }
 
     /// Claim a request this connection was offered.
-    pub(crate) fn claim_request(&mut self, owner: ClientId, request: RequestId) -> Result<Vec<Delivery>, Refusal> {
+    pub(crate) fn claim_request(
+        &mut self,
+        owner: ClientId,
+        request: RequestId,
+    ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.broker
             .claim(request, OwnerId::new(owner.get()))
-            .map_err(|error| Refusal {
+            .map_err(|error| RequestRefusal {
                 code: request_code(&error),
                 message: error.to_string(),
             })?;
@@ -232,10 +236,10 @@ impl Requests {
         owner: ClientId,
         request: RequestId,
         answer: Vec<u8>,
-    ) -> Result<Vec<Delivery>, Refusal> {
+    ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.broker
             .answer(request, OwnerId::new(owner.get()), answer)
-            .map_err(|error| Refusal {
+            .map_err(|error| RequestRefusal {
                 code: request_code(&error),
                 message: error.to_string(),
             })?;
@@ -243,10 +247,14 @@ impl Requests {
     }
 
     /// Decline a request this connection claimed.
-    pub(crate) fn decline(&mut self, owner: ClientId, request: RequestId) -> Result<Vec<Delivery>, Refusal> {
+    pub(crate) fn decline(
+        &mut self,
+        owner: ClientId,
+        request: RequestId,
+    ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.broker
             .decline(request, OwnerId::new(owner.get()))
-            .map_err(|error| Refusal {
+            .map_err(|error| RequestRefusal {
                 code: request_code(&error),
                 message: error.to_string(),
             })?;
@@ -254,7 +262,7 @@ impl Requests {
     }
 
     /// Fail every request at or past its deadline.
-    pub(crate) fn tick(&mut self, now: Tick) -> Vec<Delivery> {
+    pub(crate) fn tick(&mut self, now: Tick) -> Vec<FrameDelivery> {
         if self.broker.tick(now) == 0 {
             return Vec::new();
         }
@@ -263,7 +271,7 @@ impl Requests {
 
     /// A connection ended: end what it held, abandon what it offered, release its
     /// slots.
-    pub(crate) fn departed(&mut self, client: ClientId) -> Vec<Delivery> {
+    pub(crate) fn departed(&mut self, client: ClientId) -> Vec<FrameDelivery> {
         // A claim it held is released, so its requests end as gone rather than staying
         // with a connection that will never answer them.
         let _ = self.broker.release(OwnerId::new(client.get()));
@@ -278,7 +286,7 @@ impl Requests {
         }
         // The requests that ended are reported by `drain`, which reads the broker's
         // queue, and the departed connection is not written to: its writer is gone.
-        let deliveries: Vec<Delivery> = self
+        let deliveries: Vec<FrameDelivery> = self
             .drain()
             .into_iter()
             .filter(|delivery| delivery.client != client)
@@ -324,7 +332,7 @@ impl Requests {
     ///
     /// One place, so a request can never be reported twice: the broker emits exactly
     /// one `Finished` per request, and this drains the queue once per transition.
-    fn drain(&mut self) -> Vec<Delivery> {
+    fn drain(&mut self) -> Vec<FrameDelivery> {
         let mut deliveries = Vec::new();
         for event in self.broker.events() {
             match event {
@@ -332,7 +340,7 @@ impl Requests {
                     let Some(offer) = self.offers.get(&request).cloned() else {
                         continue;
                     };
-                    deliveries.push(Delivery {
+                    deliveries.push(FrameDelivery {
                         client: offer.provider,
                         envelope: wire::offer(0, request, deadline, offer.slot.name(), &offer.title, &offer.message),
                     });
@@ -344,7 +352,7 @@ impl Requests {
                     // Only the host that offered the request reads the answer, and the
                     // frame that carries it is flagged sensitive by the schema.
                     if let RequestOutcome::Answered(answer) = &outcome {
-                        deliveries.push(Delivery {
+                        deliveries.push(FrameDelivery {
                             client: offer.offered_by,
                             envelope: wire::answered(request, answer),
                         });
@@ -358,7 +366,7 @@ impl Requests {
                             continue;
                         }
                         told.push(client);
-                        deliveries.push(Delivery {
+                        deliveries.push(FrameDelivery {
                             client,
                             envelope: wire::finished(request, completion),
                         });

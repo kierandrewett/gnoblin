@@ -47,7 +47,7 @@ use std::time::Duration;
 
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_client::{Client, ClientError, Inherited, Reporter, inherited_stream, privilege};
+use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
 use gnoblin_compat_core::Gate;
 use gnoblin_compat_gnome_keyring_prompter::{Names, Offerer as PromptOfferer, PromptService, export, run};
 use gnoblin_model::{RequestCompletion, RequestId, RequestOutcome, Slot, Tick};
@@ -67,12 +67,6 @@ pub const PUMP_TIMEOUT: Duration = Duration::from_millis(100);
 /// Two minutes is `gcr-prompter`'s own deadline and polkit's default; the compositor owns
 /// the deadline, so this is the number the offer asks for.
 pub const PROMPT_DEADLINE: Duration = Duration::from_secs(120);
-
-/// How a role reads its environment.
-///
-/// A boxed closure rather than a function pointer so a test can hand the role an environment
-/// of its own: a descriptor number belongs to one run and one socket pair.
-pub type Environment = Box<dyn Fn(&str) -> Option<String> + Send>;
 
 /// Why the services role could not run.
 #[derive(Debug)]

@@ -76,7 +76,7 @@ use gnoblin_types::{ClientId, Version};
 use gnoblin_wayland::{ControlHandle, Observer, SessionSnapshot};
 use tracing::{debug, info, warn};
 
-use super::requests::{Delivery, Requests};
+use super::requests::{FrameDelivery, Requests};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
 /// How long a new connection gets to send its handshake.
@@ -679,7 +679,7 @@ impl Dispatcher {
     }
 
     /// Write every frame the request layer produced, in order.
-    fn deliver(&mut self, deliveries: Vec<Delivery>) {
+    fn deliver(&mut self, deliveries: Vec<FrameDelivery>) {
         for delivery in deliveries {
             if let Some(connection) = self.connections.get_mut(&delivery.client) {
                 connection.send(&delivery.envelope);

@@ -77,11 +77,11 @@ use crate::time::{Tick, secs};
 /// ladder and a 2 s stop grace — because that is what a person's desktop needs. A test that
 /// had to wait twenty seconds to see the circuit breaker trip would be a test nobody runs, so
 /// setting this variable makes the tick, the stop grace and the restart ladders small. It is
-/// read once, in [`Config::from_environment`], and nothing else in the workspace looks at it.
+/// read once, in [`SupervisorConfig::from_environment`], and nothing else in the workspace looks at it.
 pub const TEST_FAST_VARIABLE: &str = "GNOBLIN_TEST_FAST";
 
 /// How the guardian role runs.
-pub struct Config {
+pub struct SupervisorConfig {
     /// The executable to start the children from, which is this binary.
     pub program: PathBuf,
     /// The children to supervise.
@@ -96,15 +96,15 @@ pub struct Config {
     pub tick: Duration,
 }
 
-impl Config {
+impl SupervisorConfig {
     /// The configuration the process finds: the standard plan, the C supervisor's numbers and
     /// the recovery state under `$XDG_STATE_HOME/gnoblin`.
     ///
     /// # Errors
     ///
-    /// [`Error::Plan`] when the standard plan is not a valid plan, which would mean the crate
+    /// [`SupervisorError::Plan`] when the standard plan is not a valid plan, which would mean the crate
     /// and its own defaults disagree.
-    pub fn from_environment(program: PathBuf) -> Result<Config, Error> {
+    pub fn from_environment(program: PathBuf) -> Result<SupervisorConfig, SupervisorError> {
         let prefix = std::env::var("GNOBLIN_PREFIX").unwrap_or_else(|_| "/usr".to_owned());
         let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned());
         let library_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
@@ -115,7 +115,7 @@ impl Config {
             library_path: &library_path,
             data_dirs: &data_dirs,
         };
-        let mut plan = Plan::standard(false, Vec::new()).map_err(Error::Plan)?;
+        let mut plan = Plan::standard(false, Vec::new()).map_err(SupervisorError::Plan)?;
         let mut rules = Rules::standard(&inherited);
         let mut tick = Duration::from_millis(200);
         if std::env::var_os(TEST_FAST_VARIABLE).is_some() {
@@ -124,7 +124,7 @@ impl Config {
             tick = Duration::from_millis(10);
         }
         let recovery_path = state_home().join("gnoblin").join("recovery");
-        Ok(Config {
+        Ok(SupervisorConfig {
             program,
             plan,
             rules,
@@ -137,7 +137,7 @@ impl Config {
 
 /// Why the guardian role could not run.
 #[derive(Debug)]
-pub enum Error {
+pub enum SupervisorError {
     /// The plan the role supervises is not a valid plan.
     Plan(crate::plan::PlanError),
     /// The session's own signals could not be observed.
@@ -146,20 +146,20 @@ pub enum Error {
     Descriptors(std::io::Error),
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for SupervisorError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Plan(error) => write!(formatter, "the session plan is not usable: {error}"),
-            Error::Signals(error) => write!(formatter, "the session's signals cannot be observed: {error}"),
-            Error::Descriptors(error) => write!(formatter, "cannot create a descriptor pair: {error}"),
+            SupervisorError::Plan(error) => write!(formatter, "the session plan is not usable: {error}"),
+            SupervisorError::Signals(error) => write!(formatter, "the session's signals cannot be observed: {error}"),
+            SupervisorError::Descriptors(error) => write!(formatter, "cannot create a descriptor pair: {error}"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for SupervisorError {}
 
 /// What the loop is waiting for.
-enum Wake {
+enum LoopWake {
     /// Something the policy has to answer.
     Event(Event),
     /// The session manager asked the session to end.
@@ -167,7 +167,7 @@ enum Wake {
 }
 
 /// One child the guardian has started.
-struct Running {
+struct RunningChild {
     /// The process group to signal: the child was started in a group of its own, so the
     /// group id is its pid and a helper it started goes with it.
     pid: i32,
@@ -175,20 +175,20 @@ struct Running {
 
 /// The process supervisor.
 struct Supervisor {
-    config: Config,
+    config: SupervisorConfig,
     guardian: Guardian,
     /// The environment every child inherits before [`Effect::Spawn`] adds to it: this
     /// process's own, so `XDG_RUNTIME_DIR`, `HOME` and the bus address reach the session.
     base: Environment,
     /// The children that are alive, by plan slot.
-    running: BTreeMap<ChildId, Running>,
+    running: BTreeMap<ChildId, RunningChild>,
     /// The child ends of the privileged pairs, waiting for the child that owns each.
     pending: BTreeMap<String, OwnedFd>,
     /// The compositor's ends of those pairs, until the compositor starts.
     compositor: Vec<(String, OwnedFd)>,
     /// The events the children and the signal handler produce.
-    sender: Sender<Wake>,
-    receiver: Receiver<Wake>,
+    sender: Sender<LoopWake>,
+    receiver: Receiver<LoopWake>,
     /// The clock every event is stamped with.
     start: Instant,
 }
@@ -344,7 +344,7 @@ impl Supervisor {
             .spawn(move || supervise_child(reader, process, child, generation, events, start));
         match spawned {
             Ok(_) => {
-                self.running.insert(child, Running { pid: pid as i32 });
+                self.running.insert(child, RunningChild { pid: pid as i32 });
             }
             Err(error) => log(
                 Level::Error,
@@ -378,7 +378,7 @@ impl Supervisor {
     }
 
     /// Create one privileged pair per privileged child, keeping both ends for now.
-    fn open_pairs(&mut self) -> Result<(), Error> {
+    fn open_pairs(&mut self) -> Result<(), SupervisorError> {
         for spec in self.config.plan.children() {
             let Some(role) = self.role_name(spec) else {
                 continue;
@@ -392,7 +392,7 @@ impl Supervisor {
                 rustix::net::SocketFlags::CLOEXEC,
                 None,
             )
-            .map_err(|error| Error::Descriptors(error.into()))?;
+            .map_err(|error| SupervisorError::Descriptors(error.into()))?;
             self.compositor.push((role.clone(), compositor_end));
             self.pending.insert(role, child_end);
         }
@@ -417,7 +417,7 @@ impl Supervisor {
 
     /// Send one event to the loop's queue.
     fn report(&self, kind: EventKind) {
-        let _ = self.sender.send(Wake::Event(Event::new(self.now(), kind)));
+        let _ = self.sender.send(LoopWake::Event(Event::new(self.now(), kind)));
     }
 }
 
@@ -431,7 +431,7 @@ fn privileged_role(role: &str) -> bool {
 }
 
 /// A plan whose restart ladders are short, for the test-only hook.
-fn fast_plan(plan: &Plan) -> Result<Plan, Error> {
+fn fast_plan(plan: &Plan) -> Result<Plan, SupervisorError> {
     let children: Vec<ChildSpec> = plan
         .children()
         .iter()
@@ -449,7 +449,7 @@ fn fast_plan(plan: &Plan) -> Result<Plan, Error> {
             child
         })
         .collect();
-    Plan::new(children).map_err(Error::Plan)
+    Plan::new(children).map_err(SupervisorError::Plan)
 }
 
 /// Read the recovery state the last session wrote, or a fresh one.
@@ -574,7 +574,7 @@ fn supervise_child(
     mut process: Child,
     child: ChildId,
     generation: u64,
-    events: Sender<Wake>,
+    events: Sender<LoopWake>,
     start: Instant,
 ) {
     let tick = move || Tick::new(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
@@ -590,7 +590,7 @@ fn supervise_child(
             report::Line::Environment { key, value } => environment.push((key, value)),
             report::Line::End => {
                 if ready {
-                    let _ = events.send(Wake::Event(Event::new(
+                    let _ = events.send(LoopWake::Event(Event::new(
                         tick(),
                         EventKind::Ready {
                             child,
@@ -604,10 +604,13 @@ fn supervise_child(
                 }
             }
             report::Line::ConfigAccepted { revision } => {
-                let _ = events.send(Wake::Event(Event::new(tick(), EventKind::ConfigAccepted { revision })));
+                let _ = events.send(LoopWake::Event(Event::new(
+                    tick(),
+                    EventKind::ConfigAccepted { revision },
+                )));
             }
             report::Line::ConfigRejected { revision, diagnostic } => {
-                let _ = events.send(Wake::Event(Event::new(
+                let _ = events.send(LoopWake::Event(Event::new(
                     tick(),
                     EventKind::ConfigRejected { revision, diagnostic },
                 )));
@@ -624,7 +627,7 @@ fn supervise_child(
         },
         Err(_) => ExitStatus::Exited(1),
     };
-    let _ = events.send(Wake::Event(Event::new(
+    let _ = events.send(LoopWake::Event(Event::new(
         tick(),
         EventKind::Exited {
             child,
@@ -659,9 +662,9 @@ fn log(level: Level, message: &str) {
 ///
 /// # Errors
 ///
-/// [`Error`] when the role cannot start at all, which is the case a session manager reports
+/// [`SupervisorError`] when the role cannot start at all, which is the case a session manager reports
 /// rather than retries.
-pub fn run(config: Config) -> Result<u8, Error> {
+pub fn run(config: SupervisorConfig) -> Result<u8, SupervisorError> {
     let base = base_environment();
     let guardian = Guardian::with_recovery(config.plan.clone(), config.rules.clone(), config.recovery.clone());
     let (sender, receiver) = channel();
@@ -684,14 +687,14 @@ pub fn run(config: Config) -> Result<u8, Error> {
         // the policy is told time passed; both are this one wait.
         let wake = match supervisor.receiver.recv_timeout(supervisor.config.tick) {
             Ok(wake) => wake,
-            Err(RecvTimeoutError::Timeout) => Wake::Event(Event::new(supervisor.now(), EventKind::Tick)),
+            Err(RecvTimeoutError::Timeout) => LoopWake::Event(Event::new(supervisor.now(), EventKind::Tick)),
             // The supervisor holds a sender of its own, so this cannot happen; ending is the
             // only safe answer if it did.
             Err(RecvTimeoutError::Disconnected) => break,
         };
         let event = match wake {
-            Wake::Event(event) => event,
-            Wake::Signal => Event::new(
+            LoopWake::Event(event) => event,
+            LoopWake::Signal => Event::new(
                 supervisor.now(),
                 EventKind::Shutdown {
                     reason: ShutdownReason::Signal,
@@ -717,7 +720,7 @@ pub fn run(config: Config) -> Result<u8, Error> {
         let deadline = Instant::now() + Duration::from_millis(supervisor.config.rules.stop_grace.get());
         while !supervisor.running.is_empty() && Instant::now() < deadline {
             match supervisor.receiver.recv_timeout(Duration::from_millis(20)) {
-                Ok(Wake::Event(Event {
+                Ok(LoopWake::Event(Event {
                     kind: EventKind::Exited { child, .. },
                     ..
                 })) => {
@@ -743,11 +746,11 @@ pub fn run(config: Config) -> Result<u8, Error> {
 }
 
 /// Turn the session manager's signals into one event.
-fn watch_signals(events: &Sender<Wake>) -> Result<(), Error> {
+fn watch_signals(events: &Sender<LoopWake>) -> Result<(), SupervisorError> {
     use signal_hook::consts::{SIGINT, SIGTERM as TERM};
     use signal_hook::iterator::Signals;
 
-    let mut signals = Signals::new([TERM, SIGINT]).map_err(Error::Signals)?;
+    let mut signals = Signals::new([TERM, SIGINT]).map_err(SupervisorError::Signals)?;
     let events = events.clone();
     std::thread::Builder::new()
         .name("gnoblin-signals".to_owned())
@@ -755,9 +758,9 @@ fn watch_signals(events: &Sender<Wake>) -> Result<(), Error> {
             // One signal is enough: the first stop request begins the sequence, and the
             // policy ignores the rest.
             if signals.forever().next().is_some() {
-                let _ = events.send(Wake::Signal);
+                let _ = events.send(LoopWake::Signal);
             }
         })
-        .map_err(Error::Signals)?;
+        .map_err(SupervisorError::Signals)?;
     Ok(())
 }

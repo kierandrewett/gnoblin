@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use gnoblin_compositor::{Compositor, Config, StopHandle};
+use gnoblin_compositor::{Compositor, SessionConfig, StopHandle};
 use gnoblinctl::SocketConnection;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
@@ -86,7 +86,7 @@ impl Session {
             ends.push(((*role).to_owned(), role_end));
         }
         let stop = StopHandle::new();
-        let config = Config {
+        let config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
             wayland: gnoblin_wayland::Config {
@@ -94,7 +94,7 @@ impl Session {
                 ..gnoblin_wayland::Config::default()
             },
             privileged,
-            ..Config::default()
+            ..SessionConfig::default()
         };
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
@@ -117,14 +117,14 @@ impl Session {
         let ipc = ipc.unwrap_or_else(|| directory.path().join("ipc.sock"));
         let wayland = directory.path().join("wayland-0.sock");
         let stop = StopHandle::new();
-        let config = Config {
+        let config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 ..gnoblin_wayland::Config::default()
             },
-            ..Config::default()
+            ..SessionConfig::default()
         };
         let thread = std::thread::Builder::new()
             .name("compositor".to_owned())
@@ -216,14 +216,14 @@ impl Drop for Session {
 }
 
 /// A configuration for a session rooted at `directory`, with both sockets named.
-pub fn config(directory: &Path, ipc: PathBuf) -> Config {
-    Config {
+pub fn config(directory: &Path, ipc: PathBuf) -> SessionConfig {
+    SessionConfig {
         ipc_socket: Some(ipc),
         wayland: gnoblin_wayland::Config {
             socket_path: Some(directory.join("wayland.sock")),
             ..gnoblin_wayland::Config::default()
         },
-        ..Config::default()
+        ..SessionConfig::default()
     }
 }
 
@@ -232,7 +232,7 @@ pub fn config(directory: &Path, ipc: PathBuf) -> Config {
 /// The refusal happens while the socket is prepared, which is before the Wayland
 /// session exists, so this returns instead of needing a thread and a stop.
 #[track_caller]
-pub fn run_refused(config: Config) -> gnoblin_compositor::Error {
+pub fn run_refused(config: SessionConfig) -> gnoblin_compositor::Error {
     match Compositor::run(config) {
         Ok(()) => panic!("the compositor should have been refused"),
         Err(error) => error,

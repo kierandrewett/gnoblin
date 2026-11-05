@@ -121,9 +121,9 @@ fn compositor() -> Result<(), Exit> {
             return Err(Exit(1));
         }
     };
-    let config = gnoblin_compositor::Config {
+    let config = gnoblin_compositor::SessionConfig {
         privileged,
-        ..gnoblin_compositor::Config::default()
+        ..gnoblin_compositor::SessionConfig::default()
     };
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),

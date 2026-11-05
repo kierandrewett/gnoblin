@@ -38,7 +38,9 @@
 use std::time::{Duration, Instant};
 
 use gnoblin_client::unix::UnixTransport;
-use gnoblin_client::{Client, ClientError, Inherited, Reporter, Transport, inherited_stream, privilege, report};
+use gnoblin_client::{
+    Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
+};
 use gnoblin_config::SearchPaths;
 use gnoblin_proto::Version;
 use gnoblin_types::Tick;
@@ -67,12 +69,6 @@ pub const TEST_CRASH_VARIABLE: &str = "GNOBLIN_TEST_RUNTIME_CRASH";
 /// A script that answers its own signals could otherwise keep one pump busy for ever; the
 /// pump returns and the loop is entered again, so the process still notices a shutdown.
 const PUMP_HANDLERS: usize = 256;
-
-/// How a role reads its environment.
-///
-/// A boxed closure rather than a function pointer so a test can hand the role an environment
-/// of its own: a descriptor number belongs to one run and one socket pair.
-pub type Environment = Box<dyn Fn(&str) -> Option<String> + Send>;
 
 /// Why the runtime role could not run.
 #[derive(Debug)]

@@ -18,7 +18,7 @@
 //!    only this user can reach. Binding first is what lets a shell connect the
 //!    moment it sees the file, and it is where a second compositor is refused
 //!    rather than allowed to overwrite a live socket.
-//! 3. The Wayland session starts on the backend [`Config::backend`] names, with
+//! 3. The Wayland session starts on the backend [`SessionConfig::backend`] names, with
 //!    an [`gnoblin_wayland::Observer`] that forwards every published snapshot.
 //! 4. The loop runs on this thread. The IPC server owns the graph on another one,
 //!    because a calloop loop and the backend it drives are not `Send`; the two
@@ -106,7 +106,7 @@ use gnoblin_schema::SchemaError;
 /// Not `Clone`: a session's configuration owns the privileged connections it was handed,
 /// and duplicating a descriptor would give two owners of one socket.
 #[derive(Debug, Default)]
-pub struct Config {
+pub struct SessionConfig {
     /// The backend the session drives.
     pub backend: Backend,
     /// How the Wayland session itself is configured: its socket, seat, workspaces
@@ -200,7 +200,7 @@ impl Compositor {
     /// The Wayland loop runs on the calling thread — a calloop loop and the backend
     /// it drives cannot move between threads — so this returns only when the session
     /// does. A supervisor that needs the handle back passes a [`StopHandle`] in
-    /// [`Config::stop`].
+    /// [`SessionConfig::stop`].
     ///
     /// # Errors
     ///
@@ -208,7 +208,7 @@ impl Compositor {
     /// [`Error::Ipc`] when the socket cannot be prepared or bound,
     /// [`Error::Wayland`] when the Wayland session cannot start, and
     /// [`Error::Loop`] when the running loop fails.
-    pub fn run(config: Config) -> Result<(), Error> {
+    pub fn run(config: SessionConfig) -> Result<(), Error> {
         let catalog = schema::catalog().map_err(Error::Schema)?;
         let version = version();
         let mut store = SessionSync::new(catalog, version).map_err(Error::Model)?;

@@ -42,6 +42,8 @@ struct Session {
     directory: TempDir,
     guardian: Option<Child>,
     log: PathBuf,
+    /// Set when the test ends, so the watchdog below stops waiting.
+    finished: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Session {
@@ -69,16 +71,55 @@ impl Session {
             command.env(key, value);
         }
         let guardian = command.spawn().expect("the guardian starts");
+        // A real-process test that overruns must fail, not hang: after the wall-clock limit this
+        // kills the guardian and everything it started, so the test's own deadlines are bounded
+        // waits rather than the only thing between a regression and a stuck suite.
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let finished = std::sync::Arc::clone(&finished);
+            let log = log.clone();
+            let guardian = guardian.id();
+            std::thread::Builder::new()
+                .name("guardian-test-watchdog".to_owned())
+                .spawn(move || {
+                    let deadline = Instant::now() + TIMEOUT;
+                    while Instant::now() < deadline {
+                        if finished.load(std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    eprintln!(
+                        "the session overran {TIMEOUT:?}; killing it. It said:\n{}",
+                        log_text(&log)
+                    );
+                    for pid in std::fs::read_to_string(&log)
+                        .unwrap_or_default()
+                        .lines()
+                        .filter_map(pid_of_line)
+                        .collect::<Vec<i32>>()
+                    {
+                        if let Some(id) = Pid::from_raw(pid) {
+                            let _ = rustix::process::kill_process(id, Signal::KILL);
+                        }
+                    }
+                    if let Some(id) = Pid::from_raw(guardian as i32) {
+                        let _ = rustix::process::kill_process(id, Signal::KILL);
+                    }
+                })
+                .expect("the watchdog thread");
+        }
         Session {
             directory,
             guardian: Some(guardian),
             log,
+            finished,
         }
     }
 
     /// Everything the guardian and its children have written so far.
     fn log(&self) -> String {
-        std::fs::read_to_string(&self.log).unwrap_or_default()
+        log_text(&self.log)
     }
 
     /// Wait until the log contains `text`, and return the whole log.
@@ -154,80 +195,6 @@ impl Session {
     }
 }
 
-impl Drop for Session {
-    fn drop(&mut self) {
-        if let Some(mut guardian) = self.guardian.take() {
-            // The guardian's children are in the session's process group only if it made one;
-            // killing the guardian and then every pid it reported is what keeps a failing test
-            // from leaving a session behind.
-            let pids = self.pids();
-            let _ = guardian.kill();
-            let _ = guardian.wait();
-            for pid in pids {
-                if let Some(id) = Pid::from_raw(pid) {
-                    let _ = rustix::process::kill_process(id, Signal::KILL);
-                }
-            }
-        }
-    }
-}
-
-/// Run `body` with a wall-clock limit, killing the session's processes if it overruns.
-///
-/// A real-process test that hangs is worse than one that fails: this makes every deadline in
-/// this file a bounded wait with the captured log in the message.
-#[track_caller]
-fn within(body: impl FnOnce(&mut Session)) {
-    let mut session = Session::start();
-    let deadline = Instant::now() + TIMEOUT;
-    let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let flag = std::sync::Arc::clone(&finished);
-    let watched = std::thread::Builder::new()
-        .name("guardian-test-deadline".to_owned())
-        .spawn(move || {
-            while !flag.load(std::sync::atomic::Ordering::SeqCst) {
-                if Instant::now() > deadline {
-                    return false;
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            true
-        })
-        .expect("the deadline thread");
-    body(&mut session);
-    finished.store(true, std::sync::atomic::Ordering::SeqCst);
-    assert!(
-        watched.join().expect("the deadline thread"),
-        "the test overran {TIMEOUT:?}; the session said:\n{}",
-        session.log()
-    );
-}
-
-/// The pid on a `started <name> (generation N, pid P)` line.
-fn pid_of_line(line: &str) -> Option<i32> {
-    let rest = line.split("pid ").nth(1)?;
-    rest.split(')').next()?.trim().parse().ok()
-}
-
-/// The latest pid a log names for `name`.
-fn last_pid(log: &str, name: &str) -> Option<i32> {
-    log.lines()
-        .filter(|line| line.contains(&format!("started {name} (")))
-        .filter_map(pid_of_line)
-        .next_back()
-}
-
-/// Kill one process the way a crash does.
-fn kill(pid: i32) {
-    let id = Pid::from_raw(pid).unwrap_or_else(|| panic!("{pid} is not a pid"));
-    rustix::process::kill_process(id, Signal::KILL).expect("the process is killed");
-}
-
-/// Whether a pid is still a live process.
-fn alive(pid: i32) -> bool {
-    Pid::from_raw(pid).is_some_and(|id| rustix::process::test_kill_process(id).is_ok())
-}
-
 /// Whether a process holds a socket with this inode, as `/proc` reports it.
 fn socket_inodes(pid: i32) -> Vec<String> {
     let directory = format!("/proc/{pid}/fd");
@@ -256,6 +223,55 @@ fn socket_at(pid: i32, number: i32) -> Option<String> {
     std::fs::read_link(format!("/proc/{pid}/fd/{number}"))
         .ok()
         .map(|target| target.to_string_lossy().into_owned())
+}
+
+/// Kill one process the way a crash does.
+fn kill(pid: i32) {
+    let id = Pid::from_raw(pid).unwrap_or_else(|| panic!("{pid} is not a pid"));
+    rustix::process::kill_process(id, Signal::KILL).expect("the process is killed");
+}
+
+/// Whether a pid is still a live process.
+fn alive(pid: i32) -> bool {
+    Pid::from_raw(pid).is_some_and(|id| rustix::process::test_kill_process(id).is_ok())
+}
+
+/// A session log, or nothing when it cannot be read.
+fn log_text(path: &std::path::Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
+/// The pid on a `started <name> (generation N, pid P)` line.
+fn pid_of_line(line: &str) -> Option<i32> {
+    let rest = line.split("pid ").nth(1)?;
+    rest.split(')').next()?.trim().parse().ok()
+}
+
+/// The latest pid a log names for `name`.
+fn last_pid(log: &str, name: &str) -> Option<i32> {
+    log.lines()
+        .filter(|line| line.contains(&format!("started {name} (")))
+        .filter_map(pid_of_line)
+        .next_back()
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.finished.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(mut guardian) = self.guardian.take() {
+            // The guardian's children are in the session's process group only if it made one;
+            // killing the guardian and then every pid it reported is what keeps a failing test
+            // from leaving a session behind.
+            let pids = self.pids();
+            let _ = guardian.kill();
+            let _ = guardian.wait();
+            for pid in pids {
+                if let Some(id) = Pid::from_raw(pid) {
+                    let _ = rustix::process::kill_process(id, Signal::KILL);
+                }
+            }
+        }
+    }
 }
 
 #[test]

@@ -90,7 +90,7 @@ pub use client::{Client, Event};
 #[cfg(unix)]
 pub use error::{ClientError, ConnectError, HandshakeError, WireError};
 #[cfg(unix)]
-pub use inherit::{Inherited, file as inherited_file, stream as inherited_stream};
+pub use inherit::{Environment, Inherited, file as inherited_file, stream as inherited_stream};
 #[cfg(unix)]
 pub use loopback::{Loopback, Server};
 #[cfg(unix)]

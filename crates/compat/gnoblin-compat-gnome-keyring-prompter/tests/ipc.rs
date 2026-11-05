@@ -13,6 +13,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use gnoblin_client::{Event, Server};
+use gnoblin_compat_gnome_keyring_prompter::state::SLOT;
 use gnoblin_compat_gnome_keyring_prompter::{
     Callback, Effect, Exchange, Offerer, Prompt, PromptKind, Prompter, Unavailable,
 };
@@ -31,11 +32,13 @@ struct LoopbackHost {
 
 impl Offerer for LoopbackHost {
     fn offer(&mut self, prompt: &Prompt, deadline: Tick) -> Result<RequestId, Unavailable> {
-        // The proposition is what the shell shows, and the slot is the one this adapter serves.
+        // The offer carries what a provider must show: the slot it belongs to and the
+        // title and message the caller wrote, which is exactly what the trusted prompt
+        // request is offered with.
         Ok(self
             .server
             .borrow_mut()
-            .offer("prompt.secret", &prompt.title, &prompt.message, deadline))
+            .offer(SLOT, &prompt.title, &prompt.message, deadline))
     }
 }
 
@@ -100,10 +103,20 @@ fn a_shells_answer_reaches_the_prompter_encrypted() {
         .perform(&callback(), password_prompt(), &caller_exchange, Tick::new(120))
         .expect("the prompt is offered");
 
-    let Event::RequestOffered { request: offered, .. } = shell.next_event().expect("the offer") else {
+    let Event::RequestOffered {
+        request: offered,
+        slot,
+        title,
+        message,
+        ..
+    } = shell.next_event().expect("the offer")
+    else {
         panic!("expected an offer");
     };
     assert_eq!(offered, request);
+    assert_eq!(slot, SLOT, "the offer names the slot the prompt belongs to");
+    assert_eq!(title, "Unlock keyring", "the provider is given the caller's title");
+    assert_eq!(message, "Enter the password", "and the caller's message");
     shell.claim(request).expect("the shell claims the prompt");
     shell
         .answer(request, PASSPHRASE.as_bytes())

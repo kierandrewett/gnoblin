@@ -127,5 +127,5 @@ pub use ids::ChildId;
 pub use plan::{Backoff, ChildKind, ChildSpec, DEFAULT_READY_WITHIN, Plan, PlanError, Restart};
 pub use recovery::{ConfigRecovery, ConfigStatus, Recovery};
 pub use state::{ChildState, ChildStatus, SessionState, StopReason};
-pub use supervisor::{Config as SupervisorConfig, Error as SupervisorError, TEST_FAST_VARIABLE, run as run_guardian};
+pub use supervisor::{SupervisorConfig, SupervisorError, TEST_FAST_VARIABLE, run as run_guardian};
 pub use time::Tick;
