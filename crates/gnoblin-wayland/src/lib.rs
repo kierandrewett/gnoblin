@@ -18,14 +18,19 @@
 //!   [`gnoblin_wm::Effect`]. Output rectangles come from `gnoblin-output`'s layout
 //!   engine, so the window manager and the `wl_output` globals agree on where a
 //!   monitor is.
+//! - The frame path runs every iteration: the hook in `frame.rs` asks each output for its
+//!   damage, and a client's committed `wl_shm` buffer reaches the output's pixels
+//!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
+//!   reads those pixels back, which is what the pixel tests assert on.
 //!
 //! # What is deliberately not here
 //!
-//! The session lock global, interactive move and resize, popup grabs, rendering and
-//! the scene graph belong to later slices. Nothing here is a stub that silently
-//! pretends to work: a popup grab is refused and explained, a decoration request is
-//! answered with client-side decorations because no frames are drawn, and a frame is
-//! presented as nothing because there is no renderer.
+//! The session lock global, interactive move and resize, popup grabs and the effects
+//! passes belong to later slices. Nothing here is a stub that silently pretends to
+//! work: a popup grab is refused and explained, a decoration request is answered with
+//! client-side decorations because no frames are drawn, and a frame is presented as
+//! [`gnoblin_backend::Present::Nothing`] because a headless output scans out nothing —
+//! the pixels are still composed and readable.
 //!
 //! # Failure modes first
 //!
@@ -57,6 +62,21 @@
 //!    that asks for a second role on one surface gets the error on its own
 //!    connection, and another client still maps, is focused and is cleaned up:
 //!    `a_protocol_error_from_a_client_does_not_stop_the_compositor`.
+//! 6. **A frame is drawn for a window that has attached nothing.** A window with no
+//!    committed buffer has no scene node and contributes no layer, and the copied
+//!    buffer is never read as if it were pixels:
+//!    `a_window_without_a_buffer_is_not_drawn` and
+//!    `a_stride_padded_buffer_is_read_from_the_right_offsets` in `tests/render.rs`.
+//! 7. **A move leaves the old pixels behind.** The scene damages both rectangles and
+//!    the frame repaints exactly those:
+//!    `moving_a_window_moves_its_pixels_and_clears_the_old_rectangle`.
+//! 8. **An idle iteration repaints the output.** [`FrameStats`] counts iterations and
+//!    frames separately, so a session with nothing to redraw leaves the frame count
+//!    still: `an_idle_session_draws_no_frames` and `frame::tests`.
+//! 9. **A rotated window is drawn as its bounding box, or a half-opaque one is drawn
+//!    opaque.** The composer refuses the rotation and the renderer blends the
+//!    opacity: `overlapping_windows_are_drawn_in_stacking_order` and
+//!    `a_half_transparent_window_blends_with_the_background`.
 //!
 //! # Determinism
 //!
@@ -64,11 +84,13 @@
 //! deterministic, and the only clock the protocol side reads is the serial counter.
 //! A test therefore asserts on window order and geometry rather than on timing.
 
+mod frame;
 mod observation;
 mod protocols;
 mod server;
 mod state;
 
+pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use observation::{ObservedWindow, SessionSnapshot};
 pub use server::{Config, ControlHandle, LoopError, Server, StartupError};
 pub use state::State;

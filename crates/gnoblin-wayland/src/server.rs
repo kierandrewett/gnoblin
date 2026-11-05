@@ -42,10 +42,13 @@ use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::InitError;
 use tracing::{debug, info, warn};
 
+use gnoblin_backend::render::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_output::LayoutError;
+use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wm::WmOptions;
 
+use crate::frame::{FrameStats, Screenshots};
 use crate::observation::SessionSnapshot;
 use crate::protocols::compositor::ClientState;
 use crate::state::State;
@@ -86,6 +89,7 @@ pub struct Server {
     socket_path: PathBuf,
     stop: LoopSignal,
     control: Arc<Control>,
+    frames: Arc<Mutex<FrameStats>>,
 }
 
 impl Server {
@@ -146,14 +150,19 @@ impl Server {
         let control = Arc::new(Control {
             queue: Mutex::new(VecDeque::new()),
             ping,
+            screenshots: Screenshots::default(),
         });
         event_loop
             .handle()
             .insert_source(source, {
                 let control = Arc::clone(&control);
                 move |(), _, state: &mut State| {
-                    for event in control.drain() {
-                        state.input(event);
+                    for command in control.drain() {
+                        match command {
+                            Command::Input(event) => state.input(event),
+                            Command::MoveWindow { window, geometry } => state.move_window(window, geometry),
+                            Command::SetOpacity { window, opacity } => state.set_window_opacity(window, opacity),
+                        }
                     }
                 }
             })
@@ -167,6 +176,7 @@ impl Server {
             socket_path,
             stop,
             control,
+            frames: Arc::new(Mutex::new(FrameStats::default())),
         })
     }
 
@@ -188,7 +198,13 @@ impl Server {
         &self.state
     }
 
-    /// A handle that stops the loop and injects input.
+    /// What the loop's frame hook has done, for a test or a diagnostics reader.
+    #[must_use]
+    pub fn frames(&self) -> Arc<Mutex<FrameStats>> {
+        Arc::clone(&self.frames)
+    }
+
+    /// A handle that stops the loop, injects input and takes screenshots.
     #[must_use]
     pub fn control(&self) -> ControlHandle {
         ControlHandle {
@@ -200,9 +216,9 @@ impl Server {
     /// Runs until the loop is stopped.
     ///
     /// Each iteration flushes the clients, takes the backend's input and state
-    /// changes, and draws one frame per output. Rendering every iteration is what
-    /// this slice does because nothing reports damage yet; a frame on the headless
-    /// target presents nothing, so the cost is a counter.
+    /// changes, and runs the frame hook: every output asks the scene for its
+    /// damage and draws only when something changed, so an idle iteration costs no
+    /// rendering at all.
     ///
     /// # Errors
     ///
@@ -215,6 +231,8 @@ impl Server {
                 mut event_loop,
                 mut state,
                 mut backend,
+                control,
+                frames,
                 ..
             } = self;
             event_loop.run(Duration::from_millis(100), &mut state, |state| {
@@ -226,12 +244,11 @@ impl Server {
                     // per event.
                     state.sync_outputs(backend.outputs());
                 }
-                let outputs: Vec<_> = backend.outputs().iter().map(|output| output.id).collect();
-                for output in outputs {
-                    if let Err(error) = backend.render(state, output) {
-                        warn!(?error, "[frame] a frame could not be presented");
-                    }
-                }
+                crate::frame::render(backend.as_mut(), state, &frames, &control.screenshots);
+                // The frame just drawn produced buffer releases and frame callbacks;
+                // flushing them now rather than on the next wake is the difference
+                // between a client drawing at once and drawing up to a timeout later.
+                state.flush();
             })
         };
         let _ = std::fs::remove_file(&socket_path);
@@ -258,7 +275,33 @@ impl ControlHandle {
     /// without a device: the event takes the same path through `Host::input` that a
     /// libinput event will.
     pub fn inject_input(&self, event: InputEvent) {
-        self.control.push(event);
+        self.control.push(Command::Input(event));
+    }
+
+    /// Moves a window through the window manager, as a drag would.
+    ///
+    /// The event takes the policy's own path, so the work-area constraint, the
+    /// configure to the client and the scene's damage are the ones a real drag
+    /// produces. It is the seam a test and the parity harness drive movement with
+    /// until the input layer computes drag rectangles of its own.
+    pub fn move_window(&self, window: WindowId, geometry: Rect) {
+        self.control.push(Command::MoveWindow { window, geometry });
+    }
+
+    /// Sets a window's scene opacity, as an animation would.
+    pub fn set_window_opacity(&self, window: WindowId, opacity: f32) {
+        self.control.push(Command::SetOpacity { window, opacity });
+    }
+
+    /// Takes a picture of what `output` currently shows.
+    ///
+    /// The request is answered by the frame hook at the end of the next iteration, so
+    /// it is the last frame *drawn*, not a fresh one: a screenshot of an idle session
+    /// is the screen that is on screen. [`None`] means the loop did not answer within
+    /// [`crate::frame::SCREENSHOT_TIMEOUT`], which is what a stopped session does.
+    #[must_use]
+    pub fn screenshot(&self, output: OutputId) -> Option<Image> {
+        self.control.screenshot(output)
     }
 }
 
@@ -268,24 +311,43 @@ impl std::fmt::Debug for ControlHandle {
     }
 }
 
-/// The input a control handle queued, and the ping that wakes the loop for it.
+/// One command a control handle queued for the loop.
+///
+/// They share a queue because they share a wake-up: a test that moves a window and
+/// takes a screenshot must see both in the order it asked for them.
+#[derive(Clone, Copy, Debug)]
+enum Command {
+    /// An input event, as the backend would have delivered it.
+    Input(InputEvent),
+    /// A window-manager move, as a drag would produce.
+    MoveWindow { window: WindowId, geometry: Rect },
+    /// A scene opacity, as an animation would produce.
+    SetOpacity { window: WindowId, opacity: f32 },
+}
+
+/// The commands a control handle queued, and the ping that wakes the loop for them.
 struct Control {
-    queue: Mutex<VecDeque<InputEvent>>,
+    queue: Mutex<VecDeque<Command>>,
     ping: Ping,
+    screenshots: Screenshots,
 }
 
 impl Control {
-    fn push(&self, event: InputEvent) {
+    fn push(&self, command: Command) {
         self.queue
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push_back(event);
+            .push_back(command);
         self.ping.ping();
     }
 
-    fn drain(&self) -> Vec<InputEvent> {
+    fn drain(&self) -> Vec<Command> {
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         queue.drain(..).collect()
+    }
+
+    fn screenshot(&self, output: OutputId) -> Option<Image> {
+        self.screenshots.request(output, &self.ping)
     }
 }
 

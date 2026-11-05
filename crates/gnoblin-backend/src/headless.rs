@@ -2,16 +2,26 @@
 //!
 //! This is the backend CI and the integration tests run. It exists so protocol
 //! behaviour can be exercised end to end — a real client, a real socket, the real
-//! handlers — on a machine with no display, and so the compositor has one backend
-//! that starts anywhere.
+//! handlers, real pixels — on a machine with no display, and so the compositor has
+//! one backend that starts anywhere.
 //!
-//! It presents no pixels: no renderer is installed, so [`NullTarget::present`]
-//! reports [`Present::Nothing`] and only counts the frames it was asked for. What
-//! the target does keep is the clipped damage of each present, which is what a test
-//! asserts on when it cares that the compositor asked for the right region.
+//! Each output owns a [`Software`] renderer drawing into an offscreen buffer, so a
+//! headless session produces the same pixels a DRM session would: the difference is
+//! that nothing is scanned out, which is why [`HeadlessTarget::present`] reports
+//! [`Present::Nothing`] while still keeping the clipped damage of each present. The
+//! buffer is what [`Backend::screenshot`] reads back.
 //!
 //! The virtual output's size is settable, which is how a test drives a mode change
 //! and how the parity harness will run a session at a fixed size.
+//!
+//! # Failure modes
+//!
+//! 1. **A frame is drawn on a target whose renderer was never created.** Constructing
+//!    an output creates its buffer, and construction fails rather than deferring the
+//!    failure to the first frame: see `# Panics` on [`Headless::push_output`].
+//! 2. **A resize keeps the old pixels.** A mode change replaces the buffer, so the
+//!    next frame is drawn against a buffer that holds nothing and the target counts a
+//!    present with the new extent: `a_resize_replaces_the_pixels`.
 
 use std::collections::VecDeque;
 use std::io;
@@ -21,6 +31,7 @@ use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::DisplayMode;
 
+use crate::render::{Image, OutputFrame, RenderError, Software};
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 
 /// The size a fresh headless session starts at.
@@ -36,29 +47,53 @@ pub const DEFAULT_MODE: DisplayMode = DisplayMode::new(1024, 768, 60_000);
 /// configuration document can address it and a log line reads like a session.
 pub const DEFAULT_CONNECTOR: &str = "HEADLESS-1";
 
-/// A target that presents nothing and remembers what it was asked to present.
+/// A virtual output: an offscreen buffer, its damage and its present count.
 ///
 /// The damage it keeps is clipped to its own extent, so a test can prove that a
 /// window hanging off the output produced damage inside the output and nothing
-/// outside it, which is the property the software renderer will rely on.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct NullTarget {
+/// outside it, and the software renderer relies on the same clipping.
+pub struct HeadlessTarget {
+    /// The logical size, which is what the compositor lays out against.
     size: Size,
+    /// The physical size of the offscreen buffer.
+    physical: Size,
     scale: Scale,
     presents: u64,
     damage: Vec<Rect>,
+    software: Software,
 }
 
-impl NullTarget {
-    /// A target of the given logical size and scale.
-    #[must_use]
-    pub fn new(size: Size, scale: Scale) -> Self {
-        Self {
+impl std::fmt::Debug for HeadlessTarget {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HeadlessTarget")
+            .field("size", &self.size)
+            .field("physical", &self.physical)
+            .field("scale", &self.scale)
+            .field("presents", &self.presents)
+            .field("damage", &self.damage)
+            .finish_non_exhaustive()
+    }
+}
+
+impl HeadlessTarget {
+    /// A target of the given mode and scale.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError`] when the size covers no pixels or the software renderer
+    /// cannot be created, which means the session cannot draw at all.
+    pub fn new(mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
+        let physical = Size::new(mode.width, mode.height);
+        let size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
+        Ok(Self {
             size,
+            physical,
             scale,
             presents: 0,
             damage: Vec::new(),
-        }
+            software: Software::new(physical)?,
+        })
     }
 
     /// How many frames the target was asked to present.
@@ -73,19 +108,38 @@ impl NullTarget {
         &self.damage
     }
 
+    /// The physical size of the offscreen buffer.
+    #[must_use]
+    pub fn physical_size(&self) -> Size {
+        self.physical
+    }
+
+    /// Reads the offscreen buffer back.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
+    pub fn screenshot(&mut self) -> Result<Image, RenderError> {
+        self.software.screenshot()
+    }
+
     /// The target's whole extent as a rectangle, for clipping.
     fn bounds(&self) -> Rect {
         Rect::new(0, 0, self.size.width, self.size.height)
     }
 
-    /// Replaces the target's extent after a mode change.
-    fn resize(&mut self, size: Size, scale: Scale) {
-        self.size = size;
+    /// Replaces the target's extent and buffer after a mode change.
+    fn resize(&mut self, mode: DisplayMode, scale: Scale) -> Result<(), RenderError> {
+        self.software.resize(Size::new(mode.width, mode.height))?;
+        self.physical = Size::new(mode.width, mode.height);
+        self.size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
         self.scale = scale;
+        self.damage.clear();
+        Ok(())
     }
 }
 
-impl Target for NullTarget {
+impl Target for HeadlessTarget {
     fn size(&self) -> Size {
         self.size
     }
@@ -94,12 +148,19 @@ impl Target for NullTarget {
         self.scale
     }
 
+    fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
+        self.software.draw(frame, self.scale)
+    }
+
     fn present(&mut self, damage: &[Rect]) -> Present {
         self.presents = self.presents.saturating_add(1);
         self.damage.clear();
         let bounds = self.bounds();
         self.damage
             .extend(damage.iter().filter_map(|rect| rect.intersection(bounds)));
+        // Nothing is scanned out and no buffer is swapped, so the frame is complete
+        // without a present. Saying otherwise would make a test believe a display is
+        // attached.
         Present::Nothing
     }
 }
@@ -141,17 +202,30 @@ impl InputSource for HeadlessInput {
 }
 
 /// A headless backend: the outputs it drives and the events it has to report.
-#[derive(Debug)]
 pub struct Headless {
     /// The outputs, and the target for each one, kept in step by every method that
     /// changes them. They are parallel vectors rather than a map so that
     /// [`Backend::outputs`] can hand out a slice in connection order.
     outputs: Vec<Output>,
-    targets: Vec<NullTarget>,
+    targets: Vec<HeadlessTarget>,
     /// State changes waiting for the next dispatch, at most one per output so a
     /// resize storm cannot queue stale sizes.
     pending: Vec<BackendEvent>,
     input: HeadlessInput,
+    /// The frame description the host fills, kept here so a steady frame allocates
+    /// nothing.
+    frame: OutputFrame,
+}
+
+impl std::fmt::Debug for Headless {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Headless")
+            .field("outputs", &self.outputs)
+            .field("targets", &self.targets.len())
+            .field("pending", &self.pending)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for Headless {
@@ -162,6 +236,12 @@ impl Default for Headless {
 
 impl Headless {
     /// A backend with one virtual output at [`DEFAULT_MODE`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the virtual output's offscreen buffer cannot be created, which on a
+    /// working system means the allocation failed. A headless session exists to draw,
+    /// so a backend that cannot is not a session that can limp along.
     #[must_use]
     pub fn new() -> Self {
         let mut backend = Self::empty();
@@ -181,6 +261,7 @@ impl Headless {
             targets: Vec::new(),
             pending: Vec::new(),
             input: HeadlessInput::default(),
+            frame: OutputFrame::new(),
         }
     }
 
@@ -188,9 +269,10 @@ impl Headless {
     ///
     /// # Panics
     ///
-    /// Panics if `mode` covers no pixels. The constructor is for callers that have a
-    /// size to hand; a runtime request goes through [`Self::resize`], which reports
-    /// the same problem as [`BackendError::DegenerateMode`].
+    /// Panics if `mode` covers no pixels, or if the output's offscreen buffer cannot
+    /// be created. The constructor is for callers that have a size to hand; a runtime
+    /// request goes through [`Self::resize`], which reports the same problems as a
+    /// [`BackendError`].
     pub fn push_output(&mut self, connector: &str, mode: DisplayMode, scale: Scale) {
         assert!(
             mode.width > 0 && mode.height > 0,
@@ -198,13 +280,10 @@ impl Headless {
         );
         let id = OutputId::new(self.outputs.len() as u64);
         let output = Output::new(id, connector, mode, scale);
-        let mut target = NullTarget::new(output.logical_size(), scale);
-        // A new output starts with a full-extent frame pending, so the first
-        // dispatch after a start-up or a hotplug reports it like any other change.
-        target.present(&[target.bounds()]);
+        let target = HeadlessTarget::new(mode, scale).expect("a virtual output with a software renderer");
+        self.outputs.push(output.clone());
         self.targets.push(target);
-        self.pending.push(BackendEvent::OutputConnected(output.clone()));
-        self.outputs.push(output);
+        self.pending.push(BackendEvent::OutputConnected(output));
     }
 
     /// Sets the mode and scale of an output, reporting the change on the next
@@ -212,10 +291,11 @@ impl Headless {
     ///
     /// # Errors
     ///
-    /// [`BackendError::UnknownOutput`] when the id is not this backend's, and
-    /// [`BackendError::DegenerateMode`] when the mode covers no pixels.
+    /// [`BackendError::UnknownOutput`] when the id is not this backend's,
+    /// [`BackendError::DegenerateMode`] when the mode covers no pixels, and
+    /// [`BackendError::Render`] when the new buffer cannot be created.
     pub fn resize(&mut self, output: OutputId, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
-        let Some(index) = self.outputs.iter().position(|entry| entry.id == output) else {
+        let Some(index) = self.index(output) else {
             return Err(BackendError::UnknownOutput(output));
         };
         if mode.width == 0 || mode.height == 0 {
@@ -224,11 +304,15 @@ impl Headless {
                 height: mode.height,
             });
         }
-        let entry = &mut self.outputs[index];
+        let Some(target) = self.targets.get_mut(index) else {
+            return Err(BackendError::UnknownOutput(output));
+        };
+        target.resize(mode, scale).map_err(BackendError::Render)?;
+        let Some(entry) = self.outputs.get_mut(index) else {
+            return Err(BackendError::UnknownOutput(output));
+        };
         entry.mode = mode;
         entry.scale = scale;
-        let size = entry.logical_size();
-        self.targets[index].resize(size, scale);
         // One pending change per output, so the latest size wins and a storm of
         // resizes cannot deliver a queue of sizes that are already gone.
         self.pending.retain(|event| {
@@ -246,9 +330,9 @@ impl Headless {
         self.input.push(event);
     }
 
-    /// The target for an output, for a test that wants the damage it recorded.
+    /// The target for an output, for a test that wants its damage or its pixels.
     #[must_use]
-    pub fn target_of(&self, output: OutputId) -> Option<&NullTarget> {
+    pub fn target_of(&self, output: OutputId) -> Option<&HeadlessTarget> {
         self.index(output).and_then(|index| self.targets.get(index))
     }
 
@@ -259,6 +343,18 @@ impl Headless {
             .iter()
             .find(|entry| entry.id == output)
             .map(Output::logical_size)
+    }
+
+    /// The pixels of the last frame drawn on an output, read back from its buffer.
+    ///
+    /// It is an inherent method as well as a [`Backend`] one because a readback does
+    /// not depend on the compositor type the backend drives, and a caller should not
+    /// have to name one to take a screenshot.
+    #[must_use]
+    pub fn screenshot(&mut self, output: OutputId) -> Option<Image> {
+        let index = self.index(output)?;
+        let target = self.targets.get_mut(index)?;
+        target.screenshot().ok()
     }
 
     /// The position of an output in the backend's table.
@@ -296,21 +392,21 @@ impl<S: Host + 'static> Backend<S> for Headless {
     }
 
     fn render(&mut self, host: &mut S, output: OutputId) -> Result<Present, BackendError> {
-        let Some(index) = self.index(output) else {
-            return Err(BackendError::UnknownOutput(output));
-        };
+        let index = self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        if !host.frame(output, &mut self.frame) {
+            // Nothing changed, so nothing is drawn or presented. This is what makes an
+            // idle iteration free.
+            return Ok(Present::Nothing);
+        }
         let Some(target) = self.targets.get_mut(index) else {
             return Err(BackendError::UnknownOutput(output));
         };
-        let before = target.presents();
-        host.render(output, target);
-        if target.presents() == before {
-            // The contract says `render` presents a frame; a host that drew without
-            // presenting gets an empty present here rather than a frame that is
-            // silently dropped.
-            return Ok(target.present(&[]));
-        }
-        Ok(Present::Nothing)
+        target.draw(&self.frame).map_err(BackendError::Render)?;
+        Ok(target.present(self.frame.damage()))
+    }
+
+    fn screenshot(&mut self, output: OutputId) -> Option<Image> {
+        Self::screenshot(self, output)
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
@@ -326,17 +422,36 @@ mod tests {
     use gnoblin_types::Point;
 
     use super::*;
+    use crate::render::{Layer, Solid};
 
-    /// A host that records what the backend asked it to do.
+    /// A host that describes one red rectangle and records what it was asked.
     #[derive(Default)]
     struct Recorder {
-        renders: Vec<OutputId>,
+        /// The outputs the host was asked to describe.
+        described: Vec<OutputId>,
         inputs: Vec<InputEvent>,
+        /// What to describe: a changed frame or nothing at all.
+        changed: bool,
+        /// The damage the last description held, for the tests to read back.
+        damage: Vec<Rect>,
     }
 
     impl Host for Recorder {
-        fn render(&mut self, output: OutputId, _target: &mut dyn Target) {
-            self.renders.push(output);
+        fn begin_frame(&mut self) {}
+
+        fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
+            self.described.push(output);
+            self.damage = frame.damage().to_vec();
+            if !self.changed {
+                return false;
+            }
+            frame.set_background(gnoblin_render::Color::BLACK);
+            frame.push_damage(Rect::new(0, 0, 4, 4));
+            frame.push_layer(Layer::Solid(Solid {
+                dst: Rect::new(0, 0, 4, 4),
+                colour: gnoblin_render::Color::from_rgba8(255, 0, 0, 255),
+            }));
+            true
         }
 
         fn input(&mut self, event: InputEvent) {
@@ -344,29 +459,23 @@ mod tests {
         }
     }
 
-    /// A host that presents the whole target itself, as the real compositor does.
-    #[derive(Default)]
-    struct Presenter {
-        presents: Vec<Present>,
-    }
-
-    impl Host for Presenter {
-        fn render(&mut self, _output: OutputId, target: &mut dyn Target) {
-            let size = target.size();
-            let full = Rect::new(0, 0, size.width, size.height);
-            self.presents.push(target.present(&[full]));
+    fn changing() -> Recorder {
+        Recorder {
+            changed: true,
+            ..Recorder::default()
         }
-
-        fn input(&mut self, _event: InputEvent) {}
     }
 
     #[test]
     fn rendering_an_unknown_output_is_refused() {
         let mut backend = Headless::new();
-        let mut host = Recorder::default();
+        let mut host = changing();
         let error = backend.render(&mut host, OutputId::new(9)).expect_err("unknown output");
         assert_eq!(error, BackendError::UnknownOutput(OutputId::new(9)));
-        assert!(host.renders.is_empty(), "the host was asked to draw a gone output");
+        assert!(
+            host.described.is_empty(),
+            "the host was asked to describe a gone output"
+        );
     }
 
     #[test]
@@ -412,7 +521,7 @@ mod tests {
 
     #[test]
     fn damage_outside_the_target_is_clipped() {
-        let mut target = NullTarget::new(Size::new(1024, 768), Scale::integral(1));
+        let mut target = HeadlessTarget::new(DEFAULT_MODE, Scale::integral(1)).expect("a virtual output");
         let damage = [
             Rect::new(-100, -100, 200, 200),
             Rect::new(1000, 700, 500, 500),
@@ -430,7 +539,7 @@ mod tests {
     fn a_backend_with_no_outputs_renders_nothing() {
         let mut backend = Headless::empty();
         assert!(backend.outputs.is_empty());
-        let mut host = Recorder::default();
+        let mut host = changing();
         for raw in 0..4 {
             let error = backend
                 .render(&mut host, OutputId::new(raw))
@@ -438,8 +547,8 @@ mod tests {
             assert_eq!(error, BackendError::UnknownOutput(OutputId::new(raw)));
         }
         assert!(
-            host.renders.is_empty(),
-            "the host drew on an output that does not exist"
+            host.described.is_empty(),
+            "the host described an output that does not exist"
         );
         assert!(backend.dispatch(&mut host).is_empty());
     }
@@ -470,30 +579,46 @@ mod tests {
     fn a_headless_present_reports_that_it_drew_nothing() {
         let mut backend = Headless::new();
         let output = backend.outputs[0].id;
-        let mut host = Recorder::default();
+        let mut host = changing();
         assert_eq!(
             backend.render(&mut host, output),
             Ok(Present::Nothing),
-            "the headless target presents no pixels"
+            "the headless target presents no pixels to a display"
         );
-        assert_eq!(host.renders, vec![output]);
+        assert_eq!(host.described, vec![output]);
         let target = backend.target_of(output).expect("the output has a target");
-        assert_eq!(target.presents(), 2, "the start-up frame and the render");
+        assert_eq!(target.presents(), 1, "one present for the one frame that changed");
         assert_eq!(target.size(), Size::new(1024, 768));
+        assert_eq!(target.damage(), &[Rect::new(0, 0, 4, 4)]);
+        let image = backend.screenshot(output).expect("a readback");
+        assert_eq!(
+            image.colour_at(1, 1),
+            Some([255, 0, 0, 255]),
+            "the frame the host described is in the buffer"
+        );
     }
 
     #[test]
-    fn a_host_that_presents_itself_is_not_presented_twice() {
+    fn a_backend_that_changed_nothing_draws_nothing() {
         let mut backend = Headless::new();
         let output = backend.outputs[0].id;
-        let mut host = Presenter::default();
-        backend.render(&mut host, output).expect("the output exists");
-        assert_eq!(host.presents, vec![Present::Nothing]);
+        let mut host = Recorder::default();
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        let target = backend.target_of(output).expect("the output has a target");
+        assert_eq!(target.presents(), 0, "an idle iteration does not present");
+        assert!(target.damage().is_empty());
+        let image = backend.screenshot(output).expect("a readback");
         assert_eq!(
-            backend.target_of(output).map(NullTarget::presents),
-            Some(2),
-            "the host's own present is the frame, not an extra one"
+            image.colour_at(0, 0),
+            Some([0, 0, 0, 0]),
+            "nothing was drawn, so the buffer holds no pixels"
         );
+    }
+
+    #[test]
+    fn a_screenshot_of_an_unknown_output_is_none() {
+        let mut backend = Headless::new();
+        assert!(backend.screenshot(OutputId::new(4)).is_none());
     }
 
     #[test]
@@ -522,6 +647,27 @@ mod tests {
                 output,
                 position: Point::new(10, 20),
             }]
+        );
+    }
+
+    #[test]
+    fn a_resize_replaces_the_pixels() {
+        let mut backend = Headless::new();
+        let output = backend.outputs[0].id;
+        let mut host = changing();
+        backend.render(&mut host, output).expect("the first frame");
+        backend
+            .resize(output, DisplayMode::new(64, 48, 60_000), Scale::integral(1))
+            .expect("a new mode");
+        let target = backend.target_of(output).expect("the output has a target");
+        assert_eq!(target.physical_size(), Size::new(64, 48));
+        assert_eq!(target.size(), Size::new(64, 48));
+        backend.render(&mut host, output).expect("the frame after the resize");
+        let image = backend.screenshot(output).expect("a readback");
+        assert_eq!(
+            image.size(),
+            Size::new(64, 48),
+            "the readback follows the new buffer, not the old one"
         );
     }
 }

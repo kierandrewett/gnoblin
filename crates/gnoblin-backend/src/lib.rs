@@ -12,6 +12,11 @@
 //! - **The backends themselves.** [`headless`] is the first one: no DRM, no GPU, no
 //!   session, a virtual output with a settable size. It is what CI and the
 //!   integration tests run, and it is the contract's reference implementation.
+//! - **The render path they share.** [`render`] holds the frame description, the
+//!   Pixman renderer, the RGBA8 readback and the session scene that produces a
+//!   frame from the scene graph. It lives here for the same reason: this crate is
+//!   the one place the engine's crates may meet, so `gnoblin-wayland` and
+//!   `gnoblin-render` never name each other.
 //!
 //! # Why the traits look like this
 //!
@@ -26,9 +31,13 @@
 //! - the event-loop hook is `register`, and the source it adds calls back into the
 //!   backend's own methods, because a DRM backend's source is where libseat and
 //!   udev events turn into [`BackendEvent`]s;
-//! - rendering is `render(host, output)`: the host composites into the target and
-//!   the target presents, which is the same split for a GLES surface, a Pixman
-//!   buffer and a headless frame that presents nothing.
+//! - drawing is `frame(host, output)`: the host *describes* what the output shows,
+//!   the backend's target draws it and presents it. The description is a
+//!   [`render::OutputFrame`], so the host never learns which renderer is installed and a
+//!   GLES target can replace a Pixman one without touching the compositor.
+//! - the host is told when an iteration starts (`begin_frame`) because damage is
+//!   accumulated once and consumed per output: taking it per output would clear the
+//!   other outputs' damage and leave them stale.
 //!
 //! # This slice uses no unsafe code
 //!
@@ -64,16 +73,22 @@
 //! 6. **A backend without outputs holds a render target anyway.** With no outputs,
 //!    [`Backend::outputs`] is empty, every id is unknown, and the host is never
 //!    asked to draw: `a_backend_with_no_outputs_renders_nothing`.
-//! 7. **A present is reported as rendered when nothing was drawn.** The headless
-//!    target presents no pixels, so it reports [`Present::Nothing`] and counts the
-//!    frames it was asked for; a host that presents itself is not presented twice:
-//!    `a_headless_present_reports_that_it_drew_nothing` and
-//!    `a_host_that_presents_itself_is_not_presented_twice`.
+//! 7. **A present is reported as rendered when nothing was drawn.** A headless
+//!    target presents no pixels to a display, so it reports [`Present::Nothing`] and
+//!    counts the frames it was asked to present; a host that presents the frame
+//!    itself is not presented twice: `a_headless_present_reports_that_it_drew_nothing`
+//!    and `a_host_that_presents_itself_is_not_presented_twice`.
 //! 8. **A change is reported more than once.** A start-up output is announced on
 //!    one dispatch and never again, because the pending list is drained:
 //!    `a_started_backend_reports_its_output_once`.
+//! 9. **A frame is drawn although the host reports no change.** An idle iteration
+//!    draws nothing and presents nothing: `a_backend_that_changed_nothing_draws_nothing`.
+//! 10. **A readback is taken from a target that has none.**
+//!     [`Backend::screenshot`] answers [`None`] for an output this backend does not
+//!     drive: `a_screenshot_of_an_unknown_output_is_none`.
 
 pub mod headless;
+pub mod render;
 
 use std::fmt;
 use std::io;
@@ -152,18 +167,27 @@ pub enum Present {
     Nothing,
 }
 
-/// A surface a backend can present to.
+/// A surface a backend can present to, and the renderer that draws into it.
 ///
-/// The trait is deliberately about presenting and not about drawing: the host
-/// draws through its own renderer, and the backend only says how big the target is
-/// and what to do with the finished frame. That is what lets one renderer serve a
-/// GLES target, a Pixman buffer and the headless target that presents nothing.
+/// The trait is about presenting and drawing, not about *what* is drawn: the host
+/// describes a [`render::OutputFrame`] and the target draws it with whatever renderer the
+/// backend installed. That is what lets one compositor serve a GLES surface, a
+/// Pixman buffer and the headless target that presents nothing.
 pub trait Target {
     /// The target's size in logical pixels.
     fn size(&self) -> Size;
 
     /// The scale the target composes at.
     fn scale(&self) -> Scale;
+
+    /// Draw the described frame, repainting only what it damaged.
+    ///
+    /// # Errors
+    ///
+    /// [`render::RenderError`] when the renderer refuses an operation. A layer whose
+    /// client buffer cannot be read is not an error: a client may destroy its buffer
+    /// at any time, and the rest of the frame still has to appear.
+    fn draw(&mut self, frame: &render::OutputFrame) -> Result<(), render::RenderError>;
 
     /// Present the frame the host drew, with the damage that changed.
     ///
@@ -237,13 +261,22 @@ pub enum BackendEvent {
 ///
 /// The compositor implements this; the backend calls it. Keeping the two apart is
 /// what lets `gnoblin-wayland` and the backends meet without either naming the
-/// other's types.
+/// other's types, and it is why the host describes a frame rather than drawing one:
+/// the backend owns the renderer, the host owns the scene.
 pub trait Host {
-    /// Composite the scene for `output` into `target`.
+    /// Start an iteration, before any output is rendered.
     ///
-    /// The host decides what is drawn: this slice's scene is empty, so the call
-    /// fills nothing and the target presents nothing.
-    fn render(&mut self, output: OutputId, target: &mut dyn Target);
+    /// A host that accumulates damage snapshots it here, because the backend then
+    /// asks for one output at a time and a per-output snapshot would clear the other
+    /// outputs' damage and leave them stale.
+    fn begin_frame(&mut self);
+
+    /// Describe what `output` shows now, and answer whether anything changed.
+    ///
+    /// The frame is cleared by [`render::OutputFrame::clear`] at the start of every call, so
+    /// a host fills it from scratch. A `false` answer means the backend draws nothing
+    /// for this output: an idle iteration must not repaint the screen.
+    fn frame(&mut self, output: OutputId, frame: &mut render::OutputFrame) -> bool;
 
     /// Handle one input event the backend delivered.
     fn input(&mut self, event: InputEvent);
@@ -282,10 +315,19 @@ pub trait Backend<S: Host + 'static> {
 
     /// Draw and present one frame on `output`.
     ///
-    /// Errors only when the output is unknown: a frame that cannot be presented
-    /// because the monitor went away is reported as an [`BackendEvent`] on the next
-    /// dispatch, not as a failure of the frame.
+    /// Nothing is drawn when the host reports no change. Errors only when the output
+    /// is unknown or the renderer refuses an operation: a frame that cannot be
+    /// presented because the monitor went away is reported as a [`BackendEvent`] on
+    /// the next dispatch, not as a failure of the frame.
     fn render(&mut self, host: &mut S, output: OutputId) -> Result<Present, BackendError>;
+
+    /// Read the last frame drawn on `output` back as pixels.
+    ///
+    /// [`None`] when this backend does not drive the output or has no renderer for
+    /// it. The image is in physical pixels, top-left first, RGBA8: see
+    /// [`render::Image`]. Capture and the tests read through this, which is why it is
+    /// on the contract and not on one backend.
+    fn screenshot(&mut self, output: OutputId) -> Option<render::Image>;
 
     /// Deliver queued input to the host and report state changes.
     ///
@@ -307,6 +349,8 @@ pub enum BackendError {
         /// The requested height.
         height: u32,
     },
+    /// The output's renderer refused to draw.
+    Render(render::RenderError),
 }
 
 impl fmt::Display for BackendError {
@@ -316,6 +360,7 @@ impl fmt::Display for BackendError {
             Self::DegenerateMode { width, height } => {
                 write!(formatter, "a {width}x{height} mode covers no pixels")
             }
+            Self::Render(error) => write!(formatter, "the output's renderer refused a frame: {error}"),
         }
     }
 }

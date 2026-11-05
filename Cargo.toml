@@ -121,10 +121,13 @@ toml = "1.2.0"
 # Send the old focus its frame before proximity_in"). Reported version is 0.7.0,
 # `rust-version` 1.87, so the toolchain pin builds it.
 #
-# `default-features = false` keeps the DRM, libinput, X11, winit, GLES and Xwayland
+# `default-features = false` keeps the DRM, libinput, X11, winit and Xwayland
 # backends out of the dependency graph until their crates ask for them: a member
-# adds the features it needs on top of this entry.
-smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop"] }
+# adds the features it needs on top of this entry. `renderer_pixman` is here and
+# not in a member because D12's software path is the reference renderer: it links
+# the system `pixman-1` and turns `#[cfg]`s on in Smithay's own modules, both of
+# which must look the same for the whole workspace.
+smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman"] }
 # The Lua VM the script runtime embeds (design/rust-compositor.md, D10). Lua 5.5
 # is vendored and compiled by the build so the runtime links one Lua version on
 # every distribution target instead of whatever the distribution ships. Only

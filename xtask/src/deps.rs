@@ -53,6 +53,22 @@ const ENGINE: &[&str] = &[
     "gnoblin-xwayland",
 ];
 
+/// The one engine crate every mechanism crate may depend on: the pure scene graph.
+///
+/// The plan says engine crates meet "through traits in `gnoblin-backend` and types
+/// in `gnoblin-model`", and this one exception is what makes the render half of that
+/// statement implementable. A frame *is* the scene's paint order and damage: a
+/// description that could not name the scene would either duplicate the scene graph
+/// or drop its damage on the floor, and `gnoblin-backend` is the crate that carries
+/// the frame description, so it is the hub that needed the edge first.
+///
+/// The edge is safe because `gnoblin-render` depends on `gnoblin-types` alone. It
+/// cannot pull Smithay, a protocol or a policy crate in behind a caller, it depends
+/// on no engine crate itself (that direction stays a violation), and no cycle is
+/// possible because nothing depends on the mechanism crates except each other and
+/// the composition root. Every other engine-to-engine edge still fails.
+const HUB_SCENE: &str = "gnoblin-render";
+
 /// Crates that talk to the compositor as clients, so they may not link it.
 const CLIENT_SIDE: &[&str] = &["gnoblin-lua", "gnoblin-services", "xdg-desktop-portal-gnoblin"];
 
@@ -187,8 +203,9 @@ fn foundation_purity(package: &Package, dep: &Dep) -> Option<String> {
     None
 }
 
-/// Engine crates reach each other only through `gnoblin-backend` traits, and
-/// none of them depends on the composition root.
+/// Engine crates reach each other only through `gnoblin-backend` traits, and none of
+/// them depends on the composition root. The hub's own edge to the pure scene crate
+/// is the single exception: see [`HUB_SCENE`].
 fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if !is_engine(&package.name) {
         return None;
@@ -196,7 +213,19 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name == "gnoblin-compositor" {
         return Some("engine crates do not depend on the composition root".to_owned());
     }
+    if package.name == HUB_SCENE && is_engine(&dep.name) {
+        // The exception below is one-directional, and this is the direction that has
+        // to stay shut: the scene crate is a leaf, so an edge from it into the
+        // mechanism would make every crate that names the scene pull Smithay in.
+        return Some(format!(
+            "the pure scene crate depends on no engine crate, not even the hub; `{}` is an engine crate",
+            dep.name
+        ));
+    }
     if is_engine(&dep.name) && dep.name != "gnoblin-backend" {
+        if dep.name == HUB_SCENE {
+            return None;
+        }
         return Some(format!(
             "engine crates reach each other only through gnoblin-backend traits; `{}` is an engine crate",
             dep.name
@@ -342,6 +371,117 @@ mod tests {
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].starts_with("gnoblin-wm -> gnoblin-testkit [dev-crates]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    /// A metadata document with one package per `(name, dependencies)` pair.
+    fn graph(packages: &[(&str, &[&str])]) -> Graph {
+        let packages: Vec<serde_json::Value> = packages
+            .iter()
+            .map(|(name, deps)| {
+                let deps: Vec<serde_json::Value> = deps
+                    .iter()
+                    .map(|dep| serde_json::json!({ "name": dep, "kind": null }))
+                    .collect();
+                serde_json::json!({ "name": name, "dependencies": deps })
+            })
+            .collect();
+        let document = serde_json::json!({ "packages": packages });
+        from_json(&document.to_string()).expect("the fixture parses")
+    }
+
+    /// Every violation in a fixture, as the report prints them.
+    fn violations(packages: &[(&str, &[&str])]) -> Vec<String> {
+        check(&graph(packages)).iter().map(Violation::to_string).collect()
+    }
+
+    #[test]
+    fn the_hub_may_depend_on_the_pure_scene_crate() {
+        // The frame a backend draws is the scene's damage, so this edge is the one the
+        // render path cannot exist without.
+        assert_eq!(
+            violations(&[
+                ("gnoblin-backend", &["gnoblin-render", "gnoblin-types"]),
+                ("gnoblin-render", &["gnoblin-types"]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn any_engine_crate_may_name_the_pure_scene_crate() {
+        // The scene crate is dependency-free, so naming it cannot pull mechanism in
+        // behind a caller: a capture path and a protocol engine may both read it.
+        assert_eq!(
+            violations(&[
+                ("gnoblin-wayland", &["gnoblin-backend", "gnoblin-render"]),
+                ("gnoblin-render", &["gnoblin-types"]),
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_hub_may_not_depend_on_another_mechanism_crate() {
+        let reported = violations(&[
+            ("gnoblin-backend", &["gnoblin-wayland"]),
+            ("gnoblin-wayland", &["gnoblin-backend"]),
+        ]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-backend -> gnoblin-wayland [engine-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    #[test]
+    fn an_engine_crate_may_not_depend_on_another_mechanism_crate() {
+        let reported = violations(&[
+            (
+                "gnoblin-wayland",
+                &["gnoblin-backend", "gnoblin-input", "gnoblin-render"],
+            ),
+            ("gnoblin-input", &[]),
+            ("gnoblin-render", &["gnoblin-types"]),
+        ]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-wayland -> gnoblin-input [engine-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    #[test]
+    fn the_pure_scene_crate_may_not_depend_on_an_engine_crate() {
+        // The exception is one-directional: the scene is a leaf, so an edge back into
+        // the mechanism would make every caller of the scene pull Smithay in.
+        let reported = violations(&[
+            ("gnoblin-render", &["gnoblin-backend"]),
+            ("gnoblin-backend", &["gnoblin-render"]),
+        ]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-render -> gnoblin-backend [engine-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    #[test]
+    fn a_foundation_crate_may_not_name_the_pure_scene_crate() {
+        // The exception is for mechanism crates only: a policy crate that reached the
+        // renderer would make the window manager depend on the render path.
+        let reported = violations(&[
+            ("gnoblin-wm", &["gnoblin-render"]),
+            ("gnoblin-render", &["gnoblin-types"]),
+        ]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].contains("[foundation-purity]"),
             "unexpected violation: {}",
             reported[0]
         );

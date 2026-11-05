@@ -11,11 +11,20 @@ workspace = true
 
 [dependencies]
 # The event-loop handle the backend contract registers its sources with, and the
-# library the DRM and nested backends will drive. Pinned workspace-wide (D7); this
-# crate adds no feature on top, so it pulls in no backend of its own.
+# library the DRM and nested backends will drive. Pinned workspace-wide (D7) with the
+# `renderer_pixman` feature, which is the software path of the Frame card and the
+# reference renderer the headless backend uses. No backend feature is added here, so
+# this crate pulls in no DRM, libinput or X11 code of its own.
 smithay.workspace = true
 # Outputs, events and targets are stated in the shared primitives.
 gnoblin-types.workspace = true
 # A backend produces output descriptors and their modes; the layout engine owns
 # where they sit.
 gnoblin-output = { path = "../gnoblin-output" }
+# The scene graph the frame is composed from: visual transforms, paint order and
+# damage. This crate is the one place the engine's crates may meet, so the scene sits
+# on this side of the contract and `gnoblin-wayland` never names it.
+gnoblin-render = { path = "../gnoblin-render" }
+# `[tag]` log lines for a refused frame or a client buffer that went away. Smithay
+# already brings `tracing` in, so this adds no crate to the graph.
+tracing = "0.1.37"

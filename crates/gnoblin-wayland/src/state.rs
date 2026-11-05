@@ -31,9 +31,10 @@ use smithay::wayland::shm::ShmState;
 use smithay::wayland::viewporter::ViewporterState;
 use tracing::{debug, warn};
 
-use gnoblin_backend::{Host, InputEvent, Target};
+use gnoblin_backend::render::{Composer, Content, OutputFrame};
+use gnoblin_backend::{Host, InputEvent};
 use gnoblin_output::{LayoutConfig, compute};
-use gnoblin_types::{OutputId, Rect, Size, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
 use crate::observation::{ObservedWindow, SessionSnapshot};
@@ -125,6 +126,12 @@ pub struct State {
     /// coordinates.
     pointer_position: SmithayPoint<f64, Logical>,
 
+    /// The scene the frame path composes from: window nodes, stacking and damage.
+    composer: Composer,
+    /// The output whose frame the host described last, and its damage, so the frame
+    /// hook can record what was drawn.
+    last_frame: Option<(OutputId, Vec<Rect>)>,
+
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
 }
@@ -177,6 +184,8 @@ impl State {
             outputs: Vec::new(),
             next_window: 1,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
+            composer: Composer::new(),
+            last_frame: None,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
         };
 
@@ -278,6 +287,7 @@ impl State {
         for index in gone.into_iter().rev() {
             let entry = self.outputs.remove(index);
             self.display_handle.remove_global::<Self>(entry.global);
+            self.composer.remove_output(entry.backend);
             debug!(connector = %entry.output.name(), "[output] disconnected");
             let effects = self.wm.apply(Event::OutputDisconnected { output: entry.policy });
             self.apply(effects);
@@ -313,6 +323,7 @@ impl State {
             rect: policy_rect,
         });
         self.apply(effects);
+        self.composer.set_output(output.id, rect);
         debug!(connector = %output.connector, ?rect, "[output] connected");
         self.outputs.push(OutputEntry {
             backend: output.id,
@@ -337,6 +348,7 @@ impl State {
         entry
             .output
             .change_current_state(None, None, None, Some(SmithayPoint::from((rect.x, rect.y))));
+        self.composer.set_output(entry.backend, policy_rect);
         let effects = self.wm.apply(Event::OutputMoved {
             output: policy,
             rect: policy_rect,
@@ -355,9 +367,20 @@ impl State {
                     window,
                     geometry,
                     state,
-                } => self.configure(window, geometry, state),
-                Effect::SetVisible { window, visible } => self.set_visible(window, visible),
-                Effect::Stack { order } => debug!(log = ?order, "[stack]"),
+                } => {
+                    self.composer.place_window(window, geometry);
+                    self.configure(window, geometry, state);
+                }
+                Effect::SetVisible { window, visible } => {
+                    self.composer.set_window_visible(window, visible);
+                    self.set_visible(window, visible);
+                }
+                Effect::Stack { order } => {
+                    // The policy states the order topmost first; the scene keeps its
+                    // paint order bottom first.
+                    self.composer.set_stacking(&order);
+                    debug!(log = ?order, "[stack]");
+                }
                 Effect::Focus { focused, .. } => self.move_focus(focused),
                 Effect::ActivationDenied { window } => {
                     debug!(%window, "[focus] activation refused by the caller");
@@ -443,6 +466,11 @@ impl State {
         // The window is placed now and takes focus when it first maps; the
         // activation event is sent from `toplevel_committed` for that reason.
         let effects = self.wm.apply(Event::WindowOpened(WindowSpec::normal(window, "")));
+        // The scene learns the window before the effects are applied, so the initial
+        // configure's geometry has a window to place.
+        if let Some(managed) = self.wm.window(window) {
+            self.composer.insert_window(window, managed.geometry);
+        }
         self.apply(effects);
         debug!(%window, surface = ?wl_surface.id(), "[window] opened");
         self.publish();
@@ -458,6 +486,7 @@ impl State {
             for output in &self.outputs {
                 output.output.leave(&wl_surface);
             }
+            self.composer.remove_window(window);
             debug!(%window, surface = ?wl_surface.id(), "[window] closed");
         }
         let effects = self.wm.apply(Event::WindowClosed { window });
@@ -516,7 +545,47 @@ impl State {
             });
         }
         self.apply_events(effects);
+        self.sync_content(window, surface);
         self.publish();
+    }
+
+    /// Records what a window's client last committed into the scene.
+    ///
+    /// The buffer and its view come from Smithay's renderer surface state rather than
+    /// from `SurfaceAttributes`: `on_commit_buffer_handler` takes the buffer out of the
+    /// attributes when it applies a commit, so the renderer's copy is the only one that
+    /// still knows what the client drew.
+    fn sync_content(&mut self, window: WindowId, surface: &WlSurface) {
+        let committed = with_renderer_surface_state(surface, |state| {
+            let buffer = state.buffer()?.clone();
+            let view = state.view()?;
+            let size = state.buffer_size()?;
+            let scale = f64::from(state.buffer_scale());
+            let transform = state.buffer_transform();
+            let buffer_size = SmithaySize::from((f64::from(size.w), f64::from(size.h)));
+            let src = view.src.to_buffer(scale, transform, &buffer_size);
+            Some((
+                buffer,
+                Content {
+                    src: RectF::new(src.loc.x, src.loc.y, src.size.w, src.size.h),
+                    size: Size::new(view.dst.w.max(0).unsigned_abs(), view.dst.h.max(0).unsigned_abs()),
+                    transform,
+                },
+            ))
+        })
+        .flatten();
+        match committed {
+            Some((buffer, content)) => {
+                self.composer.set_window_content(window, Some(content));
+                // `Buffer` derefs to the protocol object; the scene holds the handle and
+                // Smithay keeps the object alive for as long as a frame can read it.
+                self.composer.set_window_buffer(window, Some((*buffer).clone()));
+            }
+            None => {
+                self.composer.set_window_content(window, None);
+                self.composer.set_window_buffer(window, None);
+            }
+        }
     }
 
     /// Applies a batch of events to the policy and then their effects.
@@ -593,6 +662,39 @@ impl State {
     pub(crate) fn monitor_of(&self, window: WindowId) -> Option<Rect> {
         let output = self.wm.window(window)?.output?;
         Some(self.wm.output(output)?.rect())
+    }
+
+    /// Ends the iteration the frame hook ran, dropping the damage it consumed.
+    pub(crate) fn end_frame(&mut self) {
+        self.composer.end_frame();
+    }
+
+    /// The damage of the frame the host described for `output`, if it described one.
+    ///
+    /// The frame hook asks immediately after rendering that output, which is why one
+    /// remembered frame is enough.
+    pub(crate) fn frame_damage(&self, output: OutputId) -> Option<&[Rect]> {
+        match &self.last_frame {
+            Some((described, damage)) if *described == output => Some(damage),
+            _ => None,
+        }
+    }
+
+    /// Moves a window through the window manager, as a drag would.
+    ///
+    /// It is the seam a test and the parity harness drive window movement with until
+    /// the input layer produces drag rectangles of its own: the event takes the same
+    /// path a drag's would, including the work-area constraint and the configure the
+    /// client receives.
+    pub(crate) fn move_window(&mut self, window: WindowId, geometry: Rect) {
+        let effects = self.wm.apply(Event::MoveResize { window, geometry });
+        self.apply(effects);
+        self.publish();
+    }
+
+    /// Sets a window's scene opacity, as an animation would.
+    pub(crate) fn set_window_opacity(&mut self, window: WindowId, opacity: f32) {
+        self.composer.set_window_opacity(window, opacity);
     }
 
     /// Publishes the window state for the tests and for a diagnostics reader.
@@ -698,15 +800,19 @@ pub(crate) fn has_buffer(surface: &WlSurface) -> bool {
 }
 
 impl Host for State {
-    fn render(&mut self, output: OutputId, target: &mut dyn Target) {
-        // The scene is empty in this slice. The frame is still presented with the
-        // whole target as damage so a capture or a screenshot sees a defined
-        // background rather than whatever the target held.
-        if !self.outputs.iter().any(|entry| entry.backend == output) {
-            return;
+    fn begin_frame(&mut self) {
+        // The damage is taken once for every output, because the backend renders one
+        // output at a time and a per-output take would clear the others' damage.
+        self.composer.begin_frame();
+        self.last_frame = None;
+    }
+
+    fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
+        let changed = self.composer.compose(output, frame);
+        if changed {
+            self.last_frame = Some((output, frame.damage().to_vec()));
         }
-        let size: Size = target.size();
-        target.present(&[Rect::new(0, 0, size.width, size.height)]);
+        changed
     }
 
     fn input(&mut self, event: InputEvent) {

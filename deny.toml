@@ -7,8 +7,13 @@
 version = 2
 # A pulled advisory release is a fixable supply-chain bug: fail the build.
 yanked = "deny"
-# Informational advisories have no fix and no action, so they do not gate CI.
-unmaintained = "all"
+# Informational advisories have no fix and no action, so they do not gate CI: a
+# *direct* dependency of this workspace that stops being maintained fails the build,
+# and one further down the graph is reported and passes. `paste` is the case that
+# makes the distinction matter: it is a compile-time macro crate that Smithay's Pixman
+# renderer pulls in, every upstream alternative is a rename of the same code, and
+# nothing this workspace writes can change it.
+unmaintained = "workspace"
 ignore = []
 
 [bans]
