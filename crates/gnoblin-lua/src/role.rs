@@ -35,17 +35,20 @@
 //!    non-zero with the compositor's code, while the last accepted document stays in force:
 //!    `tests::a_refused_commit_ends_the_role`.
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{
     Client, ClientError, Environment, Inherited, Reporter, Transport, inherited_stream, privilege, report,
 };
-use gnoblin_config::SearchPaths;
+use gnoblin_config::{SearchPaths, extensions::load_extensions};
 use gnoblin_proto::Version;
+use gnoblin_schema::Schema;
 use gnoblin_types::Tick;
 
 use crate::error::HostError;
+use crate::extensions::ExtensionRegistry;
 use crate::host::{Host, RunReport};
 use gnoblin_lua_sandbox::Limits;
 
@@ -120,16 +123,19 @@ pub struct RoleRunner {
     pub paths: SearchPaths,
     /// The budgets the sandbox runs under.
     pub limits: Limits,
+    /// The stock schemas. An extension may not reuse their namespaces.
+    pub stock: Vec<Schema>,
 }
 
 impl RoleRunner {
     /// The role as the process finds it: the real environment, the real search path and
-    /// the default sandbox budgets.
-    pub fn from_environment() -> RoleRunner {
+    /// the default sandbox budgets, and the stock schemas the extensions are checked against.
+    pub fn from_environment(stock: Vec<Schema>) -> RoleRunner {
         RoleRunner {
             env: Box::new(|name| std::env::var(name).ok()),
             paths: SearchPaths::from_env(),
             limits: Limits::default(),
+            stock,
         }
     }
 
@@ -168,6 +174,7 @@ impl RoleRunner {
         let loaded = host
             .run_config(&self.paths)
             .map_err(|error| RoleError::Config(error.to_string()))?;
+        bind_configured_extensions(&mut host, &loaded, &self.stock)?;
         let revision = commit(&mut host, &loaded, &mut reporter)?;
         tracing::info!(
             path = %loaded.path.path().display(),
@@ -212,6 +219,35 @@ fn commit<T: Transport + 'static>(
     };
     reporter.write(&report::config_accepted(revision));
     Ok(revision)
+}
+
+/// Load the extensions the accepted configuration names, and bind the ones that pass.
+///
+/// A rejected document loads nothing: the commit that follows refuses it, and the last
+/// accepted configuration stays in force. A refused extension is logged with its reason and
+/// the rest still bind, so one broken extension never stops the runtime.
+fn bind_configured_extensions<T: Transport + 'static>(
+    host: &mut Host<T>,
+    report: &RunReport,
+    stock: &[Schema],
+) -> Result<(), RoleError> {
+    if report.config.is_err() {
+        return Ok(());
+    }
+    let base = report.path.path().parent().unwrap_or_else(|| Path::new("."));
+    let loaded = load_extensions(&report.document, base, stock);
+    for refusal in &loaded.refused {
+        tracing::warn!("[runtime] {refusal}");
+    }
+    let mut registry = ExtensionRegistry::new();
+    for extension in loaded.accepted {
+        let namespace = extension.namespace.clone();
+        if let Err(error) = registry.register_extension(extension.schema) {
+            tracing::warn!(namespace = %namespace, error = ?error, "[runtime] extension refused at registration");
+        }
+    }
+    host.bind_extensions(&registry)
+        .map_err(|error| RoleError::Config(error.to_string()))
 }
 
 /// Serve the handlers until the guardian asks the role to stop or the connection ends.

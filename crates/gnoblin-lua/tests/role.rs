@@ -29,6 +29,7 @@ fn the_role_refuses_without_a_privileged_connection() {
             override_path: None,
         },
         limits: Limits::default(),
+        stock: Vec::new(),
     };
     let message = role.run(|| true).expect_err("no connection").to_string();
     assert!(message.contains("GNOBLIN_IPC_FD"), "{message}");

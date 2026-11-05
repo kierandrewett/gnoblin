@@ -147,7 +147,11 @@ fn guardian() -> Result<(), Exit> {
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
-    match gnoblin_lua::RoleRunner::from_environment().run(never_stopped) {
+    let catalog = gnoblin_compositor::catalog().map_err(|error| {
+        eprintln!("gnoblin: runtime: the stock schemas do not load: {error}");
+        Exit(1)
+    })?;
+    match gnoblin_lua::RoleRunner::from_environment(catalog.schemas().to_vec()).run(never_stopped) {
         Ok(()) => Ok(()),
         Err(error) => {
             eprintln!("gnoblin: runtime: {error}");
