@@ -128,7 +128,7 @@ fn rules(rng: &mut Rng) -> Vec<Rule> {
 
 /// One event from the generator, covering every variant of [`Event`].
 fn next_event(rng: &mut Rng) -> Event {
-    match rng.below(100) {
+    match rng.below(101) {
         0..=20 => {
             let id = rng.window();
             if rng.below(6) == 0 {
@@ -200,6 +200,10 @@ fn next_event(rng: &mut Rng) -> Event {
             },
         },
         98 => Event::RulesChanged { rules: rules(rng) },
+        99 => Event::SetFloating {
+            window: rng.window(),
+            floating: rng.below(2) == 0,
+        },
         _ => Event::WindowTitleChanged {
             window: rng.window(),
             title: "Report 2".to_owned(),

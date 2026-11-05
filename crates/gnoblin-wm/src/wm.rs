@@ -261,6 +261,7 @@ impl Wm {
             Event::ToggleMaximise { window } => self.toggle_maximise(window),
             Event::ToggleFullscreen { window } => self.toggle_fullscreen(window),
             Event::SnapRequested { window, zone } => self.snap(window, zone),
+            Event::SetFloating { window, floating } => self.set_floating(window, floating),
             Event::Unsnap { window } => self.unsnap(window),
             Event::MoveResize { window, geometry } => self.move_resize(window, geometry),
         }
@@ -755,6 +756,9 @@ impl Wm {
                 (workspace, Some(fallback_output), geometry, None)
             }
         };
+        // A transient always floats: it is placed relative to its parent and
+        // is never part of a workspace's tiled set.
+        let floating = spec.kind.is_transient();
         let mut window = Window {
             id: spec.id,
             app_id: spec.app_id,
@@ -765,7 +769,10 @@ impl Wm {
             output,
             geometry,
             restore: geometry,
-            state: WindowState::default(),
+            state: WindowState {
+                floating,
+                ..WindowState::default()
+            },
             applied_rules: 0,
         };
         let mut effects = Vec::new();
@@ -1112,6 +1119,42 @@ impl Wm {
         };
         window.state.snapped = None;
         if let Some(work_area) = work_area {
+            window.geometry = restore.clamp_inside(work_area);
+        }
+        Self::configured_with(id, window.geometry, window.state)
+    }
+
+    /// Takes a window out of the tiled set (`floating`) or returns it to it.
+    ///
+    /// Floating is the weakest explicit state: a maximised, snapped, or fullscreen
+    /// window keeps its stronger state, and only the floating flag changes. Setting
+    /// it saves the rectangle the window currently has so a later restore returns
+    /// to it. Clearing it restores that rectangle if the window is still floating
+    /// in the built-in sense, so a tiled window keeps its slot in the layout.
+    fn set_floating(&mut self, id: WindowId, floating: bool) -> Vec<Effect> {
+        let Some(window) = self.windows.get(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
+        if window.kind.is_transient() && !floating {
+            // Transients are always floating; clearing the flag would tile them.
+            return vec![Effect::rejected(Rejection::TransientAlwaysFloating(id))];
+        }
+        if window.state.floating == floating {
+            return Vec::new();
+        }
+        let (state, geometry, restore) = (window.state, window.geometry, window.restore);
+        let work_area = window.output.and_then(|output| self.work_area(output));
+        let Some(window) = self.windows.get_mut(&id) else {
+            return Vec::new();
+        };
+        window.state.floating = floating;
+        if floating {
+            if !state.maximised && state.snapped.is_none() && !state.fullscreen {
+                window.restore = geometry;
+            }
+        } else if let Some(work_area) =
+            work_area.filter(|_| !state.maximised && state.snapped.is_none() && !state.fullscreen)
+        {
             window.geometry = restore.clamp_inside(work_area);
         }
         Self::configured_with(id, window.geometry, window.state)

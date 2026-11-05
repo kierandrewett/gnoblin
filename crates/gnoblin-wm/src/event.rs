@@ -111,6 +111,8 @@ pub enum Event {
     SnapRequested { window: WindowId, zone: SnapZone },
     /// Return a snapped window to its floating rectangle.
     Unsnap { window: WindowId },
+    /// Take a window out of the tiled set (`true`) or put it back (`false`).
+    SetFloating { window: WindowId, floating: bool },
     /// A drag or resize produced this candidate rectangle.
     MoveResize { window: WindowId, geometry: Rect },
 }
@@ -145,6 +147,8 @@ pub enum Rejection {
     NotVisible(WindowId),
     /// The window is fullscreen, so a drag, snap or maximise does not apply.
     NotFloating(WindowId),
+    /// The window is a transient, which always floats and cannot be tiled.
+    TransientAlwaysFloating(WindowId),
     /// `window_management.edge_tiling` is off, so edge snapping is unavailable. The
     /// rejection is not about one window, because the setting applies to the session.
     EdgeTilingDisabled,

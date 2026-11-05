@@ -9,8 +9,8 @@ use std::time::Instant;
 
 use gnoblin_types::WindowId;
 use gnoblin_wm::layout::{
-    Camera, Collected, Generation, Handled, Job, LayoutEngine, LayoutFailure, LayoutWindow, Origin, Outcome, Params,
-    Placement, Reply, ReplyError, Slot, Ticket,
+    Camera, Collected, Generation, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Origin,
+    Params, Placement, Reply, ReplyError, Slot, Ticket,
 };
 
 fn win(id: u64) -> WindowId {
@@ -59,14 +59,14 @@ impl LayoutEngine for FakeEngine {
         Ticket::new(generation)
     }
 
-    fn collect(&mut self, generation: Generation, _deadline: Instant) -> Outcome {
+    fn collect(&mut self, generation: Generation, _deadline: Instant) -> LayoutOutcome {
         match self.script.pop_front().unwrap_or(Answer::Hang) {
-            Answer::Now(result) => Outcome::Ready { generation, result },
-            Answer::Stale(result) => Outcome::Ready {
+            Answer::Now(result) => LayoutOutcome::Ready { generation, result },
+            Answer::Stale(result) => LayoutOutcome::Ready {
                 generation: Generation::FIRST,
                 result,
             },
-            Answer::Hang => Outcome::Pending,
+            Answer::Hang => LayoutOutcome::Pending,
         }
     }
 }

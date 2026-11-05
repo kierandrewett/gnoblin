@@ -44,6 +44,9 @@ pub struct WindowState {
     pub minimised: bool,
     /// The snapping zone the window is occupying, if any.
     pub snapped: Option<SnapZone>,
+    /// The window is taken out of its workspace's tiled set and keeps its own
+    /// rectangle. Transients are always floating.
+    pub floating: bool,
 }
 
 /// One window the manager is responsible for.

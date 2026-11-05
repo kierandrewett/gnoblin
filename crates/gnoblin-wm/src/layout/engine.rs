@@ -75,7 +75,7 @@ impl Job {
 /// What [`LayoutEngine::collect`] found.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
-pub enum Outcome {
+pub enum LayoutOutcome {
     /// Nothing was ready before the deadline. The caller keeps its last good
     /// placements for this frame.
     Pending,
@@ -95,8 +95,8 @@ pub trait LayoutEngine {
     fn submit(&mut self, job: Job, generation: Generation) -> Ticket;
 
     /// Returns a finished run if one is ready before `deadline`, and
-    /// [`Outcome::Pending`] otherwise. Must not wait past `deadline`.
-    fn collect(&mut self, generation: Generation, deadline: Instant) -> Outcome;
+    /// [`LayoutOutcome::Pending`] otherwise. Must not wait past `deadline`.
+    fn collect(&mut self, generation: Generation, deadline: Instant) -> LayoutOutcome;
 }
 
 /// What a slot reports for a frame.
@@ -153,9 +153,9 @@ impl Slot {
             None => return Collected::Idle,
         };
         match self.engine.collect(generation, deadline) {
-            Outcome::Pending => Collected::Pending,
-            Outcome::Ready { generation: found, .. } if found != generation => Collected::Pending,
-            Outcome::Ready { result, .. } => {
+            LayoutOutcome::Pending => Collected::Pending,
+            LayoutOutcome::Ready { generation: found, .. } if found != generation => Collected::Pending,
+            LayoutOutcome::Ready { result, .. } => {
                 let Some(in_flight) = self.in_flight.take() else {
                     return Collected::Idle;
                 };
