@@ -1,8 +1,9 @@
 //! The hotplug state machine: the connected set, the declared layout and its transaction.
 
+use gnoblin_types::OutputId;
+
 use crate::effect::{Effect, Rejection, RollbackReason};
 use crate::engine::compute;
-use crate::ids::OutputId;
 use crate::layout::{Layout, LayoutConfig};
 use crate::output::OutputDescriptor;
 use crate::transaction::{Phase, Transaction, TransactionToken, Verdict};
@@ -30,7 +31,7 @@ impl Default for ModelOptions {
 pub enum Event {
     /// A connector became usable, or was reconnected with a new descriptor.
     Connected(OutputDescriptor),
-    /// A connector went away.
+    /// A connector went away, named by its graph token as the backend numbers it.
     Disconnected(OutputId),
     /// The declarative configuration was replaced.
     Configured(LayoutConfig),
@@ -62,26 +63,26 @@ pub enum Event {
 
 /// A broken invariant reported by [`OutputModel::check_invariants`].
 ///
-/// Every variant names the monitor or output that broke it, because the only
-/// consumer is a test and the message has to be enough to find the event that
+/// Every variant names the monitor, connector or output that broke it, because the
+/// only consumer is a test and the message has to be enough to find the event that
 /// broke it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Broken {
-    /// A monitor's rectangle is not the size its mode, scale and transform imply.
-    LogicalSize(OutputId),
+    /// A monitor's rectangle is not the size its mode, scale and orientation imply.
+    LogicalSize(String),
     /// Two monitors share a pixel.
     Overlap {
         /// One monitor.
-        first: OutputId,
+        first: String,
         /// The other monitor.
-        second: OutputId,
+        second: String,
     },
     /// A monitor is not edge-adjacent to the rest of the layout.
-    Disconnected(OutputId),
+    Disconnected(String),
     /// A monitor names an output that is not connected.
     MemberNotConnected(OutputId),
     /// An enabled entry names a connected output that no monitor shows.
-    OutputMissing(OutputId),
+    OutputMissing(String),
     /// A connected output is shown by more than one monitor.
     OutputDuplicated(OutputId),
     /// There are monitors but no primary output.
@@ -96,10 +97,13 @@ pub enum Broken {
 ///
 /// The model owns the three things a display configuration has to keep consistent:
 /// which outputs are connected, what the configuration declares, and which layout
-/// the session is presenting. Hotplug is the hard part, so it is handled in one
-/// place: a connect or disconnect during a pending test abandons the test, and a
-/// declared layout that no longer resolves is replaced by a row of whatever is
-/// left, rather than leaving a monitor that names a connector which is gone.
+/// the session is presenting. It is also the token-to-connector table: the backend
+/// connects an output with a graph token, the configuration names it by connector,
+/// and every effect leaves here with tokens. Hotplug is the hard part, so it is
+/// handled in one place: a connect or disconnect during a pending test abandons the
+/// test, and a declared layout that no longer resolves is replaced by a row of
+/// whatever is left, rather than leaving a monitor that names a connector which is
+/// gone.
 #[derive(Debug)]
 pub struct OutputModel {
     outputs: Vec<OutputDescriptor>,
@@ -134,6 +138,15 @@ impl OutputModel {
         self.transaction.phase()
     }
 
+    /// The connector a graph token names, for a caller that has to log one.
+    #[must_use]
+    pub fn connector(&self, id: OutputId) -> Option<&str> {
+        self.outputs
+            .iter()
+            .find(|descriptor| descriptor.id == id)
+            .map(|descriptor| descriptor.connector.as_str())
+    }
+
     /// Applies one event and returns everything the backend must do, in order.
     pub fn apply(&mut self, event: Event) -> Vec<Effect> {
         match event {
@@ -147,14 +160,14 @@ impl OutputModel {
                 self.after_hotplug()
             }
             Event::Disconnected(id) => {
-                if !self.outputs.iter().any(|descriptor| descriptor.id == id) {
+                let Some(index) = self.outputs.iter().position(|descriptor| descriptor.id == id) else {
                     // A duplicate unplug is what a retrying udev monitor produces;
                     // ignoring it keeps the model idempotent.
                     return Vec::new();
-                }
-                self.outputs.retain(|descriptor| descriptor.id != id);
-                self.config.outputs.retain(|entry| entry.id != id);
-                if self.config.primary.as_ref() == Some(&id) {
+                };
+                let removed = self.outputs.remove(index);
+                self.config.outputs.retain(|entry| entry.connector != removed.connector);
+                if self.config.primary.as_deref() == Some(removed.connector.as_str()) {
                     self.config.primary = None;
                 }
                 self.after_hotplug()
@@ -218,11 +231,11 @@ impl OutputModel {
         if let Ok(layout) = compute(&self.outputs, &self.config) {
             return layout;
         }
-        let order: Vec<OutputId> = self
+        let order: Vec<String> = self
             .outputs
             .iter()
             .filter(|descriptor| is_presentable(descriptor))
-            .map(|descriptor| descriptor.id.clone())
+            .map(|descriptor| descriptor.connector.clone())
             .collect();
         if order.is_empty() {
             return Layout::default();
@@ -326,22 +339,22 @@ impl OutputModel {
         for monitor in &self.applied.monitors {
             checks += 1;
             if monitor.rect.size() != monitor.derived_size() {
-                return Err(Broken::LogicalSize(monitor.id.clone()));
+                return Err(Broken::LogicalSize(monitor.monitor.clone()));
             }
             for member in &monitor.members {
                 checks += 1;
-                if !self.outputs.iter().any(|descriptor| &descriptor.id == member) {
-                    return Err(Broken::MemberNotConnected(member.clone()));
+                if !self.outputs.iter().any(|descriptor| descriptor.id == *member) {
+                    return Err(Broken::MemberNotConnected(*member));
                 }
                 checks += 1;
                 let shown = self
                     .applied
                     .monitors
                     .iter()
-                    .filter(|monitor| monitor.contains(member))
+                    .filter(|monitor| monitor.contains(*member))
                     .count();
                 if shown != 1 {
-                    return Err(Broken::OutputDuplicated(member.clone()));
+                    return Err(Broken::OutputDuplicated(*member));
                 }
             }
         }
@@ -349,10 +362,10 @@ impl OutputModel {
         for (index, monitor) in self.applied.monitors.iter().enumerate() {
             for other in &self.applied.monitors[index + 1..] {
                 checks += 1;
-                if monitor.rect.overlaps(other.rect) {
+                if monitor.rect.intersects(other.rect) {
                     return Err(Broken::Overlap {
-                        first: monitor.id.clone(),
-                        second: other.id.clone(),
+                        first: monitor.monitor.clone(),
+                        second: other.monitor.clone(),
                     });
                 }
             }
@@ -362,7 +375,7 @@ impl OutputModel {
         if !config.allow_gaps && self.applied.monitors.len() > 1 {
             checks += 1;
             if let Some(index) = unreachable_monitor(&self.applied) {
-                return Err(Broken::Disconnected(self.applied.monitors[index].id.clone()));
+                return Err(Broken::Disconnected(self.applied.monitors[index].monitor.clone()));
             }
         }
 
@@ -382,28 +395,31 @@ impl OutputModel {
             if !entry.enabled {
                 continue;
             }
-            if !self
+            let Some(descriptor) = self
                 .outputs
                 .iter()
-                .any(|descriptor| descriptor.id == entry.id && is_presentable(descriptor))
-            {
+                .find(|descriptor| descriptor.connector == entry.connector)
+            else {
+                continue;
+            };
+            if !is_presentable(descriptor) {
                 continue;
             }
             checks += 1;
-            if !self.applied.monitors.iter().any(|monitor| monitor.contains(&entry.id)) {
-                return Err(Broken::OutputMissing(entry.id.clone()));
+            if self.applied.monitor_of(descriptor.id).is_none() {
+                return Err(Broken::OutputMissing(entry.connector.clone()));
             }
         }
 
-        match (&self.applied.primary, self.applied.monitors.is_empty()) {
+        match (self.applied.primary, self.applied.monitors.is_empty()) {
             (Some(primary), false) => {
                 checks += 1;
-                if !self.applied.monitors.iter().any(|monitor| monitor.contains(primary)) {
-                    return Err(Broken::PrimaryMissing(primary.clone()));
+                if self.applied.monitor_of(primary).is_none() {
+                    return Err(Broken::PrimaryMissing(primary));
                 }
             }
             (None, false) => return Err(Broken::NoPrimary),
-            (Some(primary), true) => return Err(Broken::PrimaryMissing(primary.clone())),
+            (Some(primary), true) => return Err(Broken::PrimaryMissing(primary)),
             (None, true) => {}
         }
 

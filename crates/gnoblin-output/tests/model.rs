@@ -8,7 +8,7 @@
 //!
 //! Invariants (from [`OutputModel::check_invariants`]):
 //!
-//! - a monitor's rectangle is always the size its mode, scale and transform imply,
+//! - a monitor's rectangle is always the size its mode, scale and orientation imply,
 //!   so a logical size is never a rounded product;
 //! - enabled outputs never overlap;
 //! - the layout is connected unless the configuration declares gaps;
@@ -19,9 +19,10 @@
 //! - a rollback restores the layout that was in force when the proposal arrived.
 
 use gnoblin_output::{
-    Align, Edge, Effect, Event, Layout, LayoutConfig, Mode, ModelOptions, OutputConfig, OutputDescriptor, OutputId,
-    OutputModel, Phase, Placement, Scale, TransactionToken, Transform, Verdict, VrrSupport,
+    Align, Edge, Effect, Event, Layout, LayoutConfig, Mode, ModelOptions, OutputConfig, OutputDescriptor, OutputModel,
+    Phase, Placement, TransactionToken, Verdict, VrrSupport,
 };
+use gnoblin_types::{Orientation, OutputId, Scale};
 
 /// Connectors the generator connects, disconnects and configures.
 const CONNECTORS: [&str; 5] = ["DP-1", "DP-2", "DP-3", "HDMI-1", "eDP-1"];
@@ -35,6 +36,15 @@ const EVENTS_PER_SEQUENCE: u32 = 240;
 /// A passing run must report at least this many invariant checks, so a suite that
 /// silently stops exercising the state machine is visible.
 const MIN_CHECKS: usize = 20_000;
+
+/// The graph token output discovery would have allocated for this connector.
+fn output_token(connector: &str) -> OutputId {
+    let index = CONNECTORS
+        .iter()
+        .position(|name| *name == connector)
+        .expect("the generator only names declared connectors");
+    OutputId::new(u64::try_from(index).expect("a small index") + 1)
+}
 
 /// A deterministic xorshift64 generator.
 struct Rng(u64);
@@ -62,8 +72,8 @@ impl Rng {
         options[self.below(options.len() as u32) as usize]
     }
 
-    fn connector(&mut self) -> OutputId {
-        OutputId::new(self.pick(&CONNECTORS))
+    fn connector(&mut self) -> &'static str {
+        self.pick(&CONNECTORS)
     }
 }
 
@@ -82,6 +92,7 @@ fn small() -> Mode {
 /// A connector with a random mode list and scale list, so configurations hit both
 /// supported and unsupported combinations.
 fn descriptor(rng: &mut Rng) -> OutputDescriptor {
+    let connector = rng.connector();
     let modes = match rng.below(6) {
         0 => Vec::new(),
         1 => vec![full_hd()],
@@ -95,7 +106,7 @@ fn descriptor(rng: &mut Rng) -> OutputDescriptor {
         2 => vec![Scale::integral(1), Scale::from_percent(150)],
         _ => vec![Scale::integral(2)],
     };
-    let mut descriptor = OutputDescriptor::new(rng.connector(), modes);
+    let mut descriptor = OutputDescriptor::new(output_token(connector), connector, modes);
     descriptor.scales = scales;
     descriptor.vrr = if rng.below(4) == 0 {
         VrrSupport::Supported
@@ -111,7 +122,7 @@ fn config(rng: &mut Rng) -> LayoutConfig {
     let count = 1 + rng.below(3);
     let mut outputs = Vec::with_capacity(count as usize);
     for _ in 0..count {
-        let id = rng.connector();
+        let connector = rng.connector();
         let enabled = rng.below(10) != 0;
         let placement = match rng.below(7) {
             0 => None,
@@ -120,7 +131,7 @@ fn config(rng: &mut Rng) -> LayoutConfig {
                 y: rng.below(1000) as i32 - 200,
             }),
             2..=3 => Some(Placement::Relative {
-                of: rng.connector(),
+                of: rng.connector().to_owned(),
                 edge: rng.pick(&[Edge::Left, Edge::Right, Edge::Above, Edge::Below]),
                 align: rng.pick(&[Align::Start, Align::Center, Align::End]),
             }),
@@ -136,18 +147,22 @@ fn config(rng: &mut Rng) -> LayoutConfig {
             2 => Some(Scale::integral(2)),
             _ => Some(Scale::from_percent(150)),
         };
-        let mirror_of = if rng.below(7) == 0 { Some(rng.connector()) } else { None };
+        let mirror_of = if rng.below(7) == 0 {
+            Some(rng.connector().to_owned())
+        } else {
+            None
+        };
         outputs.push(OutputConfig {
-            id,
+            connector: connector.to_owned(),
             enabled,
             mode,
             scale,
-            transform: rng.pick(&[
-                Transform::Normal,
-                Transform::Normal,
-                Transform::Rotate90,
-                Transform::Rotate180,
-                Transform::Flipped90,
+            orientation: rng.pick(&[
+                Orientation::Normal,
+                Orientation::Normal,
+                Orientation::Rotate90,
+                Orientation::Rotate180,
+                Orientation::Flipped90,
             ]),
             vrr: rng.below(4) == 0,
             placement,
@@ -156,7 +171,11 @@ fn config(rng: &mut Rng) -> LayoutConfig {
     }
     LayoutConfig {
         outputs,
-        primary: if rng.below(4) == 0 { Some(rng.connector()) } else { None },
+        primary: if rng.below(4) == 0 {
+            Some(rng.connector().to_owned())
+        } else {
+            None
+        },
         allow_gaps: rng.below(5) == 0,
     }
 }
@@ -189,13 +208,13 @@ fn run(seed: u64) -> Summary {
         let event = if roll < 14 {
             let descriptor = descriptor(&mut rng);
             if !connected.contains(&descriptor.id) {
-                connected.push(descriptor.id.clone());
+                connected.push(descriptor.id);
             }
             before = None;
             Event::Connected(descriptor)
         } else if roll < 24 {
-            let id = rng.connector();
-            connected.retain(|other| other != &id);
+            let id = output_token(rng.connector());
+            connected.retain(|other| *other != id);
             before = None;
             Event::Disconnected(id)
         } else if roll < 44 {

@@ -1,7 +1,7 @@
 //! The EDID base block: identity, physical size and the preferred mode.
 
-use crate::geometry::PhysicalSize;
 use crate::mode::Mode;
+use crate::physical::PhysicalSize;
 
 /// The length of an EDID base block.
 const BASE_BLOCK: usize = 128;

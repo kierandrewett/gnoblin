@@ -1,10 +1,10 @@
 //! What is true about a connected output, independent of the layout.
 
+use gnoblin_types::{OutputId, Scale};
+
 use crate::edid::Edid;
-use crate::geometry::PhysicalSize;
-use crate::ids::OutputId;
 use crate::mode::Mode;
-use crate::scale::Scale;
+use crate::physical::PhysicalSize;
 
 /// Whether the connector can vary its refresh rate with the content.
 ///
@@ -23,13 +23,20 @@ pub enum VrrSupport {
 
 /// One connected output, described without any backend type.
 ///
-/// Everything the layout needs to choose a mode, a scale and a rectangle is here;
-/// nothing a mode set needs is. The backend keeps the CRTC, the plane and the
-/// connector handle, and looks them up from the identity this struct carries.
+/// Two identities meet here on purpose. [`OutputDescriptor::id`] is the graph
+/// token the compositor hands to window management, accessibility and the locker,
+/// because those tables want a cheap compare-and-hash key. The connector name is
+/// the identity a person and the public output record use: it is what
+/// `docs/shell-api/outputs.md` calls the output's `id` and what a saved
+/// configuration has to survive a reboot with, since a token is allocated per
+/// session. Output discovery owns the table between the two, which is why it is
+/// this crate's job to keep them together.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct OutputDescriptor {
-    /// The connector name the session reports as the output's `id`.
+    /// The graph token, as the backend numbers the connector.
     pub id: OutputId,
+    /// The connector name, such as `"DP-1"`, which is the public output `id`.
+    pub connector: String,
     /// A human-readable name, when the hardware provides one.
     pub name: Option<String>,
     /// The manufacturer string, three letters when it came from EDID.
@@ -55,9 +62,10 @@ impl OutputDescriptor {
     /// has not been asked about scaling can always be driven unscaled, and an
     /// empty list would make every configuration invalid.
     #[must_use]
-    pub fn new(id: OutputId, modes: Vec<Mode>) -> Self {
+    pub fn new(id: OutputId, connector: impl Into<String>, modes: Vec<Mode>) -> Self {
         Self {
             id,
+            connector: connector.into(),
             name: None,
             make: None,
             model: None,
@@ -75,9 +83,10 @@ impl OutputDescriptor {
     /// scales the session offers or whether the connector can vary its rate, so
     /// those keep their defaults until the backend fills them in.
     #[must_use]
-    pub fn from_edid(id: OutputId, edid: &Edid) -> Self {
+    pub fn from_edid(id: OutputId, connector: impl Into<String>, edid: &Edid) -> Self {
         Self {
             id,
+            connector: connector.into(),
             name: edid.name.clone(),
             make: edid.manufacturer.clone(),
             model: None,
@@ -163,7 +172,8 @@ mod tests {
 
     fn descriptor(scales: Vec<Scale>) -> OutputDescriptor {
         let mut output = OutputDescriptor::new(
-            OutputId::new("DP-1"),
+            OutputId::new(1),
+            "DP-1",
             vec![Mode::new(2560, 1440, 60_000), Mode::new(1920, 1080, 60_000)],
         );
         output.scales = scales;
@@ -196,12 +206,5 @@ mod tests {
             Scale::from_percent(75)
         );
         assert_eq!(descriptor(Vec::new()).default_scale(), Scale::integral(1));
-    }
-
-    #[test]
-    fn a_scale_is_compared_by_value_not_by_storage() {
-        assert_eq!(Scale::new(6, 4), Scale::new(3, 2));
-        assert!(Scale::new(12, 8) > Scale::integral(1));
-        assert!(Scale::integral(2) > Scale::new(7, 4));
     }
 }

@@ -1,77 +1,76 @@
 //! The layout engine: a declarative configuration becomes logical monitor rectangles.
 
-use crate::geometry::{Rect, Size};
-use crate::ids::OutputId;
+use gnoblin_types::{Orientation, Rect, Scale, Size};
+
 use crate::layout::{Align, Edge, Layout, LayoutConfig, LogicalMonitor, OutputConfig, Placement, clamp_to_i32};
 use crate::mode::Mode;
 use crate::output::{OutputDescriptor, VrrSupport};
-use crate::scale::Scale;
-use crate::transform::Transform;
 
 /// Why a configuration could not become a layout.
 ///
-/// Each variant names the entry or the pair that failed, because the consumer has
-/// to tell a person which output to fix.
+/// Each variant names the connector or the pair that failed, because the consumer
+/// has to tell a person which output to fix and a configuration is written in
+/// connector names.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LayoutError {
     /// No connected output is enabled, so the session would show nothing.
     NoEnabledOutputs,
-    /// The configuration has two entries for one output.
-    DuplicateOutput(OutputId),
+    /// The configuration has two entries for one connector.
+    DuplicateOutput(String),
     /// The output has no modes at all, so no mode can be chosen.
-    NoPreferredMode(OutputId),
+    NoPreferredMode(String),
     /// The requested mode is not one the connector accepts.
     ModeNotSupported {
-        /// The output.
-        output: OutputId,
+        /// The connector.
+        output: String,
         /// The refused mode.
         mode: Mode,
     },
     /// The requested scale is not one the session offers for this output.
     ScaleNotSupported {
-        /// The output.
-        output: OutputId,
+        /// The connector.
+        output: String,
         /// The refused scale.
         scale: Scale,
     },
     /// An enabled, non-mirrored output has no placement.
-    MissingPlacement(OutputId),
-    /// A relative placement names an output that is not an enabled monitor.
+    MissingPlacement(String),
+    /// A relative placement names a connector that is not an enabled monitor.
     DanglingAnchor {
-        /// The output being placed.
-        output: OutputId,
+        /// The connector being placed.
+        output: String,
         /// The anchor it names.
-        anchor: OutputId,
+        anchor: String,
     },
     /// Relative placements form a cycle, so no output in it has a position.
-    PlacementCycle(OutputId),
+    PlacementCycle(String),
     /// A mirror names another mirror, which has no size of its own.
     MirrorOfMirror {
-        /// The mirrored output.
-        output: OutputId,
+        /// The mirrored connector.
+        output: String,
         /// The mirror it names.
-        source: OutputId,
+        source: String,
     },
     /// A mirror names an output that is not connected and enabled.
     MirrorSourceUnavailable {
-        /// The mirrored output.
-        output: OutputId,
+        /// The mirrored connector.
+        output: String,
         /// The source it names.
-        source: OutputId,
+        source: String,
     },
-    /// A mirror sets its own mode, scale, transform or VRR.
-    MirrorOverridesSource(OutputId),
+    /// A mirror sets its own mode, scale, orientation or VRR.
+    MirrorOverridesSource(String),
     /// The requested primary is not an enabled member of the layout.
-    PrimaryNotEnabled(OutputId),
+    PrimaryNotEnabled(String),
     /// Two logical monitors share a pixel.
     Overlap {
         /// One of the monitors.
-        first: OutputId,
+        first: String,
         /// The other monitor.
-        second: OutputId,
+        second: String,
     },
     /// A logical monitor is not edge-adjacent to the rest of the layout.
-    Disconnected(OutputId),
+    Disconnected(String),
 }
 
 /// One enabled, non-mirrored output while the layout is being resolved.
@@ -82,7 +81,7 @@ struct Source<'a> {
     scale: Scale,
     size: Size,
     rect: Option<Rect>,
-    mirrors: Vec<OutputId>,
+    mirrors: Vec<&'a OutputDescriptor>,
 }
 
 /// Turns a configuration into the layout it describes.
@@ -92,17 +91,23 @@ struct Source<'a> {
 /// a rectangle or fails by name: nothing here invents a position, because an
 /// invented position is what turns a stale profile into a monitor the pointer
 /// cannot reach.
-pub fn compute(connected: &[OutputDescriptor], config: &LayoutConfig) -> Result<Layout, LayoutError> {
-    let mut sources: Vec<Source<'_>> = Vec::new();
+pub fn compute<'a>(connected: &'a [OutputDescriptor], config: &'a LayoutConfig) -> Result<Layout, LayoutError> {
+    let mut sources: Vec<Source<'a>> = Vec::new();
 
     for (position, entry) in config.outputs.iter().enumerate() {
-        if config.outputs[..position].iter().any(|earlier| earlier.id == entry.id) {
-            return Err(LayoutError::DuplicateOutput(entry.id.clone()));
+        if config.outputs[..position]
+            .iter()
+            .any(|earlier| earlier.connector == entry.connector)
+        {
+            return Err(LayoutError::DuplicateOutput(entry.connector.clone()));
         }
         if !entry.enabled {
             continue;
         }
-        let Some(descriptor) = connected.iter().find(|descriptor| descriptor.id == entry.id) else {
+        let Some(descriptor) = connected
+            .iter()
+            .find(|descriptor| descriptor.connector == entry.connector)
+        else {
             continue;
         };
         if entry.mirror_of.is_some() {
@@ -112,18 +117,18 @@ pub fn compute(connected: &[OutputDescriptor], config: &LayoutConfig) -> Result<
             Some(mode) => mode,
             None => descriptor
                 .preferred_mode()
-                .ok_or_else(|| LayoutError::NoPreferredMode(entry.id.clone()))?,
+                .ok_or_else(|| LayoutError::NoPreferredMode(entry.connector.clone()))?,
         };
         if !descriptor.supports_mode(mode) {
             return Err(LayoutError::ModeNotSupported {
-                output: entry.id.clone(),
+                output: entry.connector.clone(),
                 mode,
             });
         }
         let scale = entry.scale.unwrap_or_else(|| descriptor.default_scale());
         if !descriptor.supports_scale(scale) {
             return Err(LayoutError::ScaleNotSupported {
-                output: entry.id.clone(),
+                output: entry.connector.clone(),
                 scale,
             });
         }
@@ -132,7 +137,7 @@ pub fn compute(connected: &[OutputDescriptor], config: &LayoutConfig) -> Result<
             descriptor,
             mode,
             scale,
-            size: mode.logical_size(entry.transform, scale),
+            size: mode.logical_size(entry.orientation, scale),
             rect: None,
             mirrors: Vec::new(),
         });
@@ -149,31 +154,31 @@ pub fn compute(connected: &[OutputDescriptor], config: &LayoutConfig) -> Result<
     for source in &sources {
         let Some(rect) = source.rect else {
             // `resolve_placements` either places every source or returns an error.
-            return Err(LayoutError::MissingPlacement(source.entry.id.clone()));
+            return Err(LayoutError::MissingPlacement(source.entry.connector.clone()));
         };
-        let mut members = source.mirrors.clone();
-        members.push(source.entry.id.clone());
-        members.sort();
-        let Some(id) = members.first().cloned() else {
+        let mut members: Vec<&OutputDescriptor> = source.mirrors.clone();
+        members.push(source.descriptor);
+        members.sort_by(|left, right| left.connector.cmp(&right.connector));
+        let Some(monitor) = members.first().map(|descriptor| descriptor.connector.clone()) else {
             continue;
         };
         monitors.push(LogicalMonitor {
-            id,
+            monitor,
             rect,
             scale: source.scale,
-            transform: source.entry.transform,
+            orientation: source.entry.orientation,
             vrr: source.entry.vrr && source.descriptor.vrr == VrrSupport::Supported,
             mode: source.mode,
-            members,
+            members: members.iter().map(|descriptor| descriptor.id).collect(),
         });
     }
 
     for (index, monitor) in monitors.iter().enumerate() {
         for other in &monitors[index + 1..] {
-            if monitor.rect.overlaps(other.rect) {
+            if monitor.rect.intersects(other.rect) {
                 return Err(LayoutError::Overlap {
-                    first: monitor.id.clone(),
-                    second: other.id.clone(),
+                    first: monitor.monitor.clone(),
+                    second: other.monitor.clone(),
                 });
             }
         }
@@ -183,19 +188,22 @@ pub fn compute(connected: &[OutputDescriptor], config: &LayoutConfig) -> Result<
         check_connected(&monitors)?;
     }
 
-    monitors.sort_by(|left, right| (left.rect.x, left.rect.y, &left.id).cmp(&(right.rect.x, right.rect.y, &right.id)));
+    monitors.sort_by(|left, right| {
+        (left.rect.x, left.rect.y, &left.monitor).cmp(&(right.rect.x, right.rect.y, &right.monitor))
+    });
 
+    // The configuration names a connector and the layout carries tokens, so the
+    // primary is resolved through the descriptor table rather than guessed from
+    // the member order.
     let primary = match &config.primary {
-        Some(primary) => {
-            if !monitors.iter().any(|monitor| monitor.contains(primary)) {
-                return Err(LayoutError::PrimaryNotEnabled(primary.clone()));
-            }
-            Some(primary.clone())
-        }
+        Some(connector) => match connected.iter().find(|descriptor| &descriptor.connector == connector) {
+            Some(descriptor) if monitors.iter().any(|monitor| monitor.contains(descriptor.id)) => Some(descriptor.id),
+            _ => return Err(LayoutError::PrimaryNotEnabled(connector.clone())),
+        },
         None => connected
             .iter()
-            .find(|descriptor| monitors.iter().any(|monitor| monitor.contains(&descriptor.id)))
-            .map(|descriptor| descriptor.id.clone()),
+            .find(|descriptor| monitors.iter().any(|monitor| monitor.contains(descriptor.id)))
+            .map(|descriptor| descriptor.id),
     };
 
     Ok(Layout { monitors, primary })
@@ -208,42 +216,48 @@ pub fn compute(connected: &[OutputDescriptor], config: &LayoutConfig) -> Result<
 /// contradiction rather than an override. Its placement is simply ignored, since
 /// `OutputConfig::enabled` sets one by default and the source decides where the
 /// group sits.
-fn attach_mirrors(
-    connected: &[OutputDescriptor],
-    config: &LayoutConfig,
-    sources: &mut [Source<'_>],
+fn attach_mirrors<'a>(
+    connected: &'a [OutputDescriptor],
+    config: &'a LayoutConfig,
+    sources: &mut [Source<'a>],
 ) -> Result<(), LayoutError> {
     for entry in &config.outputs {
         if !entry.enabled {
             continue;
         }
-        let Some(source_id) = &entry.mirror_of else {
+        let Some(source_connector) = &entry.mirror_of else {
             continue;
         };
-        if !connected.iter().any(|descriptor| descriptor.id == entry.id) {
+        let Some(descriptor) = connected
+            .iter()
+            .find(|descriptor| descriptor.connector == entry.connector)
+        else {
             continue;
+        };
+        if entry.mode.is_some() || entry.scale.is_some() || entry.orientation != Orientation::Normal || entry.vrr {
+            return Err(LayoutError::MirrorOverridesSource(entry.connector.clone()));
         }
-        if entry.mode.is_some() || entry.scale.is_some() || entry.transform != Transform::Normal || entry.vrr {
-            return Err(LayoutError::MirrorOverridesSource(entry.id.clone()));
-        }
-        let Some(index) = sources.iter().position(|source| &source.entry.id == source_id) else {
+        let Some(index) = sources
+            .iter()
+            .position(|source| &source.entry.connector == source_connector)
+        else {
             let names_a_mirror = config
                 .outputs
                 .iter()
-                .any(|other| &other.id == source_id && other.mirror_of.is_some());
+                .any(|other| &other.connector == source_connector && other.mirror_of.is_some());
             return Err(if names_a_mirror {
                 LayoutError::MirrorOfMirror {
-                    output: entry.id.clone(),
-                    source: source_id.clone(),
+                    output: entry.connector.clone(),
+                    source: source_connector.clone(),
                 }
             } else {
                 LayoutError::MirrorSourceUnavailable {
-                    output: entry.id.clone(),
-                    source: source_id.clone(),
+                    output: entry.connector.clone(),
+                    source: source_connector.clone(),
                 }
             });
         };
-        sources[index].mirrors.push(entry.id.clone());
+        sources[index].mirrors.push(descriptor);
     }
     Ok(())
 }
@@ -262,7 +276,7 @@ fn resolve_placements(sources: &mut [Source<'_>]) -> Result<(), LayoutError> {
             let source = &sources[*index];
             let size = source.size;
             let rect = match &source.entry.placement {
-                None => return Err(LayoutError::MissingPlacement(source.entry.id.clone())),
+                None => return Err(LayoutError::MissingPlacement(source.entry.connector.clone())),
                 Some(Placement::Origin) => Some(Rect::new(0, 0, size.width, size.height)),
                 Some(Placement::Absolute { x, y }) => Some(Rect::new(*x, *y, size.width, size.height)),
                 Some(Placement::Relative { of, edge, align }) => source_index(sources, of)
@@ -278,14 +292,14 @@ fn resolve_placements(sources: &mut [Source<'_>]) -> Result<(), LayoutError> {
             let source = &sources[pending[0]];
             return Err(match &source.entry.placement {
                 Some(Placement::Relative { of, .. }) if source_index(sources, of).is_some() => {
-                    LayoutError::PlacementCycle(source.entry.id.clone())
+                    LayoutError::PlacementCycle(source.entry.connector.clone())
                 }
                 Some(Placement::Relative { of, .. }) => LayoutError::DanglingAnchor {
-                    output: source.entry.id.clone(),
+                    output: source.entry.connector.clone(),
                     anchor: of.clone(),
                 },
                 // Every other placement resolves in the first pass.
-                _ => LayoutError::MissingPlacement(source.entry.id.clone()),
+                _ => LayoutError::MissingPlacement(source.entry.connector.clone()),
             });
         }
         for position in resolved.into_iter().rev() {
@@ -295,12 +309,14 @@ fn resolve_placements(sources: &mut [Source<'_>]) -> Result<(), LayoutError> {
     Ok(())
 }
 
-/// The group index that `id` names, following one mirror to its source.
-fn source_index(sources: &[Source<'_>], id: &OutputId) -> Option<usize> {
-    if let Some(index) = sources.iter().position(|source| &source.entry.id == id) {
+/// The group index that `connector` names, following one mirror to its source.
+fn source_index(sources: &[Source<'_>], connector: &str) -> Option<usize> {
+    if let Some(index) = sources.iter().position(|source| source.entry.connector == connector) {
         return Some(index);
     }
-    sources.iter().position(|source| source.mirrors.contains(id))
+    sources
+        .iter()
+        .position(|source| source.mirrors.iter().any(|mirror| mirror.connector == connector))
 }
 
 /// Places `size` against one side of `anchor`.
@@ -326,6 +342,8 @@ fn place(anchor: Rect, size: Size, edge: Edge, align: Align) -> Rect {
         Edge::Below => (along(left, anchor_width, width), top + anchor_height),
         Edge::Above => (along(left, anchor_width, width), top - height),
     };
+    // A logical size is never zero (`Scale::apply` guarantees a pixel), so the
+    // rectangle is never empty and `Rect::new` needs no clamp.
     Rect::new(clamp_to_i32(x), clamp_to_i32(y), size.width, size.height)
 }
 
@@ -347,7 +365,7 @@ fn check_connected(monitors: &[LogicalMonitor]) -> Result<(), LayoutError> {
         }
     }
     match reached.iter().position(|reached| !reached) {
-        Some(index) => Err(LayoutError::Disconnected(monitors[index].id.clone())),
+        Some(index) => Err(LayoutError::Disconnected(monitors[index].monitor.clone())),
         None => Ok(()),
     }
 }

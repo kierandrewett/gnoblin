@@ -6,14 +6,30 @@
 //! and the result is a [`Layout`] of integer logical monitor rectangles. The backend
 //! performs the mode sets, gamma updates and power changes that the effects name.
 //!
-//! Three pieces fit together:
+//! Geometry, the compositing scale and graph identities are the shared primitives of
+//! `gnoblin-types`, not copies kept here, so a rectangle that leaves this crate is
+//! the same value the window manager and the renderer already know.
+//!
+//! # Two identities
+//!
+//! An output has two names and they serve different readers. The graph token
+//! ([`gnoblin_types::OutputId`]) is what window management, accessibility and the
+//! locker key their tables by: a cheap compare-and-hash value the backend allocates.
+//! The connector name (`"DP-1"`) is what a person, the public output record and a
+//! saved configuration use, and it is the only one that survives a reboot. A
+//! configuration therefore names connectors ([`OutputConfig::connector`]) and a
+//! [`Layout`] carries tokens ([`LogicalMonitor::members`]) plus the monitor's
+//! connector name ([`LogicalMonitor::monitor`]); this crate owns the table between
+//! them because it owns discovery.
+//!
+//! # Three pieces
 //!
 //! - [`compute`] turns a declarative configuration into a layout. Placement is
 //!   relative (`right of DP-1`, centred), absolute, at the origin, or inherited from
-//!   the output it mirrors. Logical sizes come from the mode, the transform and the
-//!   scale, always as whole pixels (see [`Scale::apply`]). A layout with two
-//!   overlapping monitors, or with a monitor that is not edge-adjacent to the rest,
-//!   is refused unless the configuration declares gaps.
+//!   the output it mirrors. Logical sizes come from the mode, the orientation and
+//!   the scale, always as whole pixels (see `gnoblin_types::Scale::apply`). A layout
+//!   with two overlapping monitors, or with a monitor that is not edge-adjacent to
+//!   the rest, is refused unless the configuration declares gaps.
 //! - [`Transaction`] is the apply protocol `wlr-output-management` and the display
 //!   configuration interface need: propose, let the caller test the hardware, commit,
 //!   then confirm or roll back. A confirmation timeout measured in caller ticks
@@ -88,25 +104,19 @@
 mod edid;
 mod effect;
 mod engine;
-mod geometry;
-mod ids;
 mod layout;
 mod mode;
 mod model;
 mod output;
-mod scale;
+mod physical;
 mod transaction;
-mod transform;
 
 pub use edid::{Edid, EdidError};
 pub use effect::{Effect, Rejection, RollbackReason};
 pub use engine::{LayoutError, compute};
-pub use geometry::{PhysicalSize, Rect, Size};
-pub use ids::OutputId;
 pub use layout::{Align, Edge, Layout, LayoutConfig, LogicalMonitor, OutputConfig, Placement};
 pub use mode::Mode;
 pub use model::{Broken, Event, ModelOptions, OutputModel};
 pub use output::{OutputDescriptor, VrrSupport};
-pub use scale::Scale;
+pub use physical::PhysicalSize;
 pub use transaction::{Phase, Transaction, TransactionToken, Verdict};
-pub use transform::Transform;

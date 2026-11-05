@@ -1,12 +1,22 @@
 //! The declarative configuration, and the layout it produces.
+//!
+//! Two vocabularies meet in this module and the split is deliberate. A
+//! configuration is written by a person or a script and has to survive a reboot,
+//! so it names outputs by connector ([`OutputConfig::connector`]); a layout is
+//! what window management, accessibility and the locker consume, so it names
+//! outputs by the graph token ([`gnoblin_types::OutputId`]) and carries the
+//! monitor's connector name for the public record.
 
-use crate::geometry::{Rect, Size};
-use crate::ids::OutputId;
+use gnoblin_types::{Orientation, OutputId, Rect, Scale, Size};
+
 use crate::mode::Mode;
-use crate::scale::Scale;
-use crate::transform::Transform;
 
 /// Which side of its anchor an output is placed against.
+///
+/// This is not `gnoblin_types::Edge` (`Left`, `Right`, `Top`, `Bottom`): a
+/// placement edge is a side of a monitor, and naming the vertical pair `Above`
+/// and `Below` is what makes a configuration read the way a person arranges
+/// screens. The two enums share two variant names and nothing else.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Edge {
     /// Left of the anchor, flush with its right edge.
@@ -53,9 +63,9 @@ pub enum Placement {
     },
     /// Against one side of another output.
     Relative {
-        /// The output this one is placed against. A mirrored output stands for
+        /// The connector this one is placed against. A mirrored output stands for
         /// the output it clones, so naming either has the same meaning.
-        of: OutputId,
+        of: String,
         /// Which side.
         edge: Edge,
         /// Where along that side.
@@ -66,24 +76,25 @@ pub enum Placement {
 /// How one output is configured.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct OutputConfig {
-    /// The output this entry configures.
-    pub id: OutputId,
+    /// The connector name, such as `"DP-1"`.
+    pub connector: String,
     /// Whether the output takes part in the layout at all.
     pub enabled: bool,
     /// The mode to drive, or `None` for the preferred one.
     pub mode: Option<Mode>,
     /// The scale to compose at, or `None` for the supported scale closest to 1.
     pub scale: Option<Scale>,
-    /// The rotation or reflection to present.
-    pub transform: Transform,
+    /// The rotation or reflection to present. The public output record reports it
+    /// as `transform`.
+    pub orientation: Orientation,
     /// Whether to ask the connector for a variable refresh rate.
     pub vrr: bool,
     /// Where the output is placed. A mirrored output has no position of its own,
     /// so this is `None` for it and the engine refuses an enabled output without
     /// one.
     pub placement: Option<Placement>,
-    /// The output this one clones, if it is a mirror.
-    pub mirror_of: Option<OutputId>,
+    /// The connector this one clones, if it is a mirror.
+    pub mirror_of: Option<String>,
 }
 
 impl OutputConfig {
@@ -93,13 +104,13 @@ impl OutputConfig {
     /// Two outputs both built this way overlap, which the engine reports; the
     /// shortcut exists so a caller only has to set the placement it cares about.
     #[must_use]
-    pub fn enabled(id: OutputId) -> Self {
+    pub fn enabled(connector: impl Into<String>) -> Self {
         Self {
-            id,
+            connector: connector.into(),
             enabled: true,
             mode: None,
             scale: None,
-            transform: Transform::Normal,
+            orientation: Orientation::Normal,
             vrr: false,
             placement: Some(Placement::Origin),
             mirror_of: None,
@@ -108,13 +119,13 @@ impl OutputConfig {
 
     /// A configured but disabled output.
     #[must_use]
-    pub fn disabled(id: OutputId) -> Self {
+    pub fn disabled(connector: impl Into<String>) -> Self {
         Self {
-            id,
+            connector: connector.into(),
             enabled: false,
             mode: None,
             scale: None,
-            transform: Transform::Normal,
+            orientation: Orientation::Normal,
             vrr: false,
             placement: None,
             mirror_of: None,
@@ -125,15 +136,15 @@ impl OutputConfig {
 /// The whole declared layout of the session.
 ///
 /// The configuration is written for a hardware setup, so an entry for an output
-/// that is not connected is inert rather than wrong: the same Lua configuration
-/// has to survive a dock being plugged in and out.
+/// that is not connected is inert rather than wrong: the same configuration has
+/// to survive a dock being plugged in and out.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct LayoutConfig {
     /// One entry per output the configuration has an opinion about.
     pub outputs: Vec<OutputConfig>,
-    /// The output that owns new windows, or `None` for the first enabled one in
-    /// connection order.
-    pub primary: Option<OutputId>,
+    /// The connector that owns new windows, or `None` for the first enabled one
+    /// in connection order.
+    pub primary: Option<String>,
     /// Whether the layout may contain gaps.
     ///
     /// A gap is refused by default because an absolute position left behind by a
@@ -152,16 +163,16 @@ impl LayoutConfig {
         }
     }
 
-    /// Every output in `order`, enabled, left to right in a row.
+    /// Every connector in `order`, enabled, left to right in a row.
     ///
     /// This is what a session uses before anything is configured and what a
     /// hotplug falls back to when the declared layout no longer resolves: it is
     /// connected, gapless and free of overlap by construction, so an unconfigured
     /// session still has a usable desktop.
     #[must_use]
-    pub fn row_over(order: &[OutputId]) -> Self {
+    pub fn row_over(order: &[String]) -> Self {
         let mut outputs = Vec::with_capacity(order.len());
-        for (index, id) in order.iter().enumerate() {
+        for (index, connector) in order.iter().enumerate() {
             let placement = match index.checked_sub(1).and_then(|previous| order.get(previous)) {
                 Some(previous) => Placement::Relative {
                     of: previous.clone(),
@@ -172,7 +183,7 @@ impl LayoutConfig {
             };
             outputs.push(OutputConfig {
                 placement: Some(placement),
-                ..OutputConfig::enabled(id.clone())
+                ..OutputConfig::enabled(connector.clone())
             });
         }
         Self {
@@ -189,38 +200,40 @@ impl LayoutConfig {
 /// is not a second position on the desktop; it is the same content shown twice.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct LogicalMonitor {
-    /// The monitor's identity: the lowest connector name among its members, which
-    /// is what window `monitor_id` and `window:move_to_monitor()` accept.
-    pub id: OutputId,
+    /// The monitor's public identity: the lowest connector name among its
+    /// members, which is what window `monitor_id` and `window:move_to_monitor()`
+    /// accept.
+    pub monitor: String,
     /// Position and size in logical pixels.
     pub rect: Rect,
     /// The scale every member composes at.
     pub scale: Scale,
     /// The rotation every member presents.
-    pub transform: Transform,
+    pub orientation: Orientation,
     /// Whether the group was granted a variable refresh rate.
     pub vrr: bool,
     /// The mode every member drives.
     pub mode: Mode,
-    /// Every output that shows this monitor, in connector order.
+    /// Every output that shows this monitor, as graph tokens, in connector order:
+    /// the first entry is the output the monitor is named after.
     pub members: Vec<OutputId>,
 }
 
 impl LogicalMonitor {
     /// Whether `output` shows this monitor.
     #[must_use]
-    pub fn contains(&self, output: &OutputId) -> bool {
-        self.members.contains(output)
+    pub fn contains(&self, output: OutputId) -> bool {
+        self.members.contains(&output)
     }
 
-    /// The logical extent the mode, scale and transform imply.
+    /// The logical extent the mode, scale and orientation imply.
     ///
     /// The model's invariant check recomputes this rather than trusting the
-    /// rectangle, so a layout that passed a mode through unchanged while its scale
-    /// changed does not go unnoticed.
+    /// rectangle, so a layout that passed a mode through unchanged while its
+    /// scale changed does not go unnoticed.
     #[must_use]
     pub fn derived_size(&self) -> Size {
-        self.mode.logical_size(self.transform, self.scale)
+        self.mode.logical_size(self.orientation, self.scale)
     }
 }
 
@@ -228,10 +241,10 @@ impl LogicalMonitor {
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Layout {
     /// The logical monitors, in a fixed order: left to right, then top to bottom,
-    /// then by identity.
+    /// then by monitor name.
     pub monitors: Vec<LogicalMonitor>,
-    /// The output that owns new windows. It is always a member of some monitor
-    /// when there is one.
+    /// The output that owns new windows, as a graph token. It is always a member
+    /// of some monitor when there is one.
     pub primary: Option<OutputId>,
 }
 
@@ -242,15 +255,15 @@ impl Layout {
         self.monitors.is_empty()
     }
 
-    /// The monitor with this identity.
+    /// The monitor with this public identity.
     #[must_use]
-    pub fn monitor(&self, id: &OutputId) -> Option<&LogicalMonitor> {
-        self.monitors.iter().find(|monitor| &monitor.id == id)
+    pub fn monitor(&self, monitor: &str) -> Option<&LogicalMonitor> {
+        self.monitors.iter().find(|entry| entry.monitor == monitor)
     }
 
     /// The monitor that `output` shows.
     #[must_use]
-    pub fn monitor_of(&self, output: &OutputId) -> Option<&LogicalMonitor> {
+    pub fn monitor_of(&self, output: OutputId) -> Option<&LogicalMonitor> {
         self.monitors.iter().find(|monitor| monitor.contains(output))
     }
 }

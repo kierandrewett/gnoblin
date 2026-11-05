@@ -3,11 +3,28 @@
 
 use gnoblin_output::{
     Align, Edge, Edid, EdidError, Effect, Event, Layout, LayoutConfig, LayoutError, Mode, ModelOptions, OutputConfig,
-    OutputDescriptor, OutputId, OutputModel, Phase, PhysicalSize, Placement, Rect, Rejection, RollbackReason, Scale,
-    TransactionToken, Verdict, VrrSupport, compute,
+    OutputDescriptor, OutputModel, Phase, PhysicalSize, Placement, Rejection, RollbackReason, TransactionToken,
+    Verdict, VrrSupport, compute,
 };
+use gnoblin_types::{Orientation, OutputId, Rect, Scale};
 
 const TIMEOUT: u64 = 10;
+
+/// The connectors these tests use, in the order their graph tokens are allocated.
+const CONNECTORS: [&str; 5] = ["DP-1", "DP-2", "DP-3", "DP-4", "HDMI-9"];
+
+/// The graph token output discovery would have allocated for this connector.
+fn output_token(connector: &str) -> OutputId {
+    let index = CONNECTORS
+        .iter()
+        .position(|name| *name == connector)
+        .expect("the test only names connectors it declared");
+    OutputId::new(u64::try_from(index).expect("a small index") + 1)
+}
+
+fn name(connector: &str) -> String {
+    connector.to_owned()
+}
 
 fn full_hd() -> Mode {
     Mode::new(1920, 1080, 60_000)
@@ -17,19 +34,15 @@ fn qhd() -> Mode {
     Mode::new(2560, 1440, 60_000)
 }
 
-fn id(raw: &str) -> OutputId {
-    OutputId::new(raw)
-}
-
 /// A 1920x1080 panel that offers the scales the tests change between.
-fn panel(raw: &str) -> OutputDescriptor {
-    let mut descriptor = OutputDescriptor::new(id(raw), vec![full_hd()]);
+fn panel(connector: &str) -> OutputDescriptor {
+    let mut descriptor = OutputDescriptor::new(output_token(connector), connector, vec![full_hd()]);
     descriptor.scales = vec![Scale::integral(1), Scale::integral(2)];
     descriptor
 }
 
-fn wide(raw: &str) -> OutputDescriptor {
-    let mut descriptor = OutputDescriptor::new(id(raw), vec![qhd()]);
+fn wide(connector: &str) -> OutputDescriptor {
+    let mut descriptor = OutputDescriptor::new(output_token(connector), connector, vec![qhd()]);
     descriptor.scales = vec![Scale::integral(1)];
     descriptor
 }
@@ -50,43 +63,43 @@ fn configured(outputs: &[OutputDescriptor], config: LayoutConfig) -> OutputModel
     model
 }
 
-fn entry(raw: &str, placement: Placement) -> OutputConfig {
+fn entry(connector: &str, placement: Placement) -> OutputConfig {
     OutputConfig {
         placement: Some(placement),
-        ..OutputConfig::enabled(id(raw))
+        ..OutputConfig::enabled(connector)
     }
 }
 
-fn scaled(raw: &str, placement: Placement, scale: u32) -> OutputConfig {
+fn scaled(connector: &str, placement: Placement, scale: u32) -> OutputConfig {
     OutputConfig {
         scale: Some(Scale::integral(scale)),
-        ..entry(raw, placement)
+        ..entry(connector, placement)
     }
 }
 
-fn mirror(raw: &str, of: &str) -> OutputConfig {
+fn mirror(connector: &str, of: &str) -> OutputConfig {
     OutputConfig {
-        mirror_of: Some(id(of)),
-        ..OutputConfig::enabled(id(raw))
+        mirror_of: Some(name(of)),
+        ..OutputConfig::enabled(connector)
     }
 }
 
 fn right_of(of: &str) -> Placement {
     Placement::Relative {
-        of: id(of),
+        of: name(of),
         edge: Edge::Right,
         align: Align::Start,
     }
 }
 
-fn row(names: &[&str]) -> LayoutConfig {
-    let outputs = names
+fn row(connectors: &[&str]) -> LayoutConfig {
+    let outputs = connectors
         .iter()
         .enumerate()
         .map(
-            |(position, name)| match position.checked_sub(1).and_then(|previous| names.get(previous)) {
-                Some(previous) => entry(name, right_of(previous)),
-                None => entry(name, Placement::Origin),
+            |(position, connector)| match position.checked_sub(1).and_then(|previous| connectors.get(previous)) {
+                Some(previous) => entry(connector, right_of(previous)),
+                None => entry(connector, Placement::Origin),
             },
         )
         .collect();
@@ -128,10 +141,10 @@ fn assert_no_overlap(layout: &Layout) {
     for (index, monitor) in layout.monitors.iter().enumerate() {
         for other in &layout.monitors[index + 1..] {
             assert!(
-                !monitor.rect.overlaps(other.rect),
+                !monitor.rect.intersects(other.rect),
                 "{} and {} overlap: {:?} and {:?}",
-                monitor.id,
-                other.id,
+                monitor.monitor,
+                other.monitor,
                 monitor.rect,
                 other.rect
             );
@@ -150,7 +163,7 @@ fn rollback_restores_the_previous_layout_exactly() {
         entry(
             "DP-2",
             Placement::Relative {
-                of: id("DP-1"),
+                of: name("DP-1"),
                 edge: Edge::Below,
                 align: Align::End,
             },
@@ -227,7 +240,7 @@ fn a_configuration_that_enables_no_output_is_rejected() {
     let mut model = configured(&[panel("DP-1")], row(&["DP-1"]));
     let previous = model.layout().clone();
 
-    let disabled = LayoutConfig::new(vec![OutputConfig::disabled(id("DP-1"))]);
+    let disabled = LayoutConfig::new(vec![OutputConfig::disabled("DP-1")]);
     let effects = model.apply(Event::Configured(disabled.clone()));
     assert_eq!(rejection(&effects), Rejection::Invalid(LayoutError::NoEnabledOutputs));
     assert_eq!(model.layout(), &previous, "a refused configuration changes nothing");
@@ -288,8 +301,8 @@ fn a_scale_change_that_would_overlap_is_rejected() {
 
     let at_one = LayoutConfig::new(vec![scaled("DP-1", Placement::Origin, 1), entry("DP-2", fixed)]);
     let overlap = LayoutError::Overlap {
-        first: id("DP-1"),
-        second: id("DP-2"),
+        first: name("DP-1"),
+        second: name("DP-2"),
     };
     assert_eq!(compute(&outputs, &at_one), Err(overlap.clone()));
 
@@ -330,12 +343,15 @@ fn hotplug_mid_transaction_aborts_the_test() {
     let token = token_of(&effects);
     assert_eq!(model.phase(), Phase::Testing);
 
-    let effects = model.apply(Event::Disconnected(id("DP-2")));
+    let effects = model.apply(Event::Disconnected(output_token("DP-2")));
     let (restored, reason) = rolled_back(&effects);
     assert_eq!(reason, RollbackReason::Hotplug);
     assert_eq!(model.phase(), Phase::Idle);
     assert!(
-        restored.monitors.iter().all(|monitor| !monitor.contains(&id("DP-2"))),
+        restored
+            .monitors
+            .iter()
+            .all(|monitor| !monitor.contains(output_token("DP-2"))),
         "no monitor names the output that went away: {restored:?}"
     );
     assert_eq!(model.layout(), &restored);
@@ -356,19 +372,19 @@ fn disconnecting_the_anchor_rearranges_the_remaining_outputs() {
     );
     assert_eq!(model.layout().monitors.len(), 3);
 
-    let effects = model.apply(Event::Disconnected(id("DP-2")));
+    let effects = model.apply(Event::Disconnected(output_token("DP-2")));
     assert!(matches!(effects.as_slice(), [Effect::Applied { .. }]));
     let layout = model.layout();
     assert_eq!(layout.monitors.len(), 2);
-    assert_eq!(layout.monitors[0].id, id("DP-1"));
-    assert_eq!(layout.monitors[1].id, id("DP-3"));
+    assert_eq!(layout.monitors[0].monitor, "DP-1");
+    assert_eq!(layout.monitors[1].monitor, "DP-3");
     assert_no_overlap(layout);
     let adjacent = i32::try_from(layout.monitors[0].rect.width).expect("a monitor is narrower than i32");
     assert_eq!(layout.monitors[1].rect.x, adjacent);
     assert!(model.check_invariants().is_ok());
 
     assert_eq!(
-        model.apply(Event::Disconnected(id("DP-2"))),
+        model.apply(Event::Disconnected(output_token("DP-2"))),
         Vec::new(),
         "a repeated unplug changes nothing"
     );
@@ -382,8 +398,8 @@ fn mirroring_two_outputs_produces_one_monitor() {
     let layout = compute(&outputs, &mirrored).expect("a clone shows the source's mode");
     assert_eq!(layout.monitors.len(), 1);
     let monitor = &layout.monitors[0];
-    assert_eq!(monitor.id, id("DP-1"), "the lowest connector name names the monitor");
-    assert_eq!(monitor.members, vec![id("DP-1"), id("DP-2")]);
+    assert_eq!(monitor.monitor, "DP-1", "the lowest connector name names the monitor");
+    assert_eq!(monitor.members, vec![output_token("DP-1"), output_token("DP-2")]);
     assert_eq!(monitor.rect, Rect::new(0, 0, 1920, 1080));
 
     let chain = LayoutConfig::new(vec![
@@ -394,23 +410,23 @@ fn mirroring_two_outputs_produces_one_monitor() {
     assert_eq!(
         compute(&[panel("DP-1"), panel("DP-2"), panel("DP-4")], &chain),
         Err(LayoutError::MirrorOfMirror {
-            output: id("DP-4"),
-            source: id("DP-2"),
+            output: name("DP-4"),
+            source: name("DP-2"),
         })
     );
 
     // A third enabled output keeps the configuration from being refused for
     // presenting nothing, so the mirror itself is what is reported.
     let disabled_source = LayoutConfig::new(vec![
-        OutputConfig::disabled(id("DP-1")),
+        OutputConfig::disabled("DP-1"),
         mirror("DP-2", "DP-1"),
         entry("DP-3", Placement::Origin),
     ]);
     assert_eq!(
         compute(&[panel("DP-1"), panel("DP-2"), panel("DP-3")], &disabled_source),
         Err(LayoutError::MirrorSourceUnavailable {
-            output: id("DP-2"),
-            source: id("DP-1"),
+            output: name("DP-2"),
+            source: name("DP-1"),
         })
     );
 
@@ -423,7 +439,7 @@ fn mirroring_two_outputs_produces_one_monitor() {
     ]);
     assert_eq!(
         compute(&outputs, &overriding),
-        Err(LayoutError::MirrorOverridesSource(id("DP-2")))
+        Err(LayoutError::MirrorOverridesSource(name("DP-2")))
     );
 }
 
@@ -435,7 +451,7 @@ fn an_undeclared_gap_is_rejected_and_a_declared_gap_is_allowed() {
         entry("DP-1", Placement::Origin),
         entry("DP-2", Placement::Absolute { x: 2000, y: 0 }),
     ]);
-    assert_eq!(compute(&outputs, &gapped), Err(LayoutError::Disconnected(id("DP-2"))));
+    assert_eq!(compute(&outputs, &gapped), Err(LayoutError::Disconnected(name("DP-2"))));
 
     let declared = LayoutConfig {
         allow_gaps: true,
@@ -460,7 +476,7 @@ fn a_duplicate_or_unreachable_configuration_is_rejected() {
     let duplicated = LayoutConfig::new(vec![entry("DP-1", Placement::Origin), entry("DP-1", Placement::Origin)]);
     assert_eq!(
         compute(&outputs, &duplicated),
-        Err(LayoutError::DuplicateOutput(id("DP-1")))
+        Err(LayoutError::DuplicateOutput(name("DP-1")))
     );
 
     let dangling = LayoutConfig::new(vec![
@@ -470,21 +486,24 @@ fn a_duplicate_or_unreachable_configuration_is_rejected() {
     assert_eq!(
         compute(&outputs, &dangling),
         Err(LayoutError::DanglingAnchor {
-            output: id("DP-2"),
-            anchor: id("HDMI-9"),
+            output: name("DP-2"),
+            anchor: name("HDMI-9"),
         })
     );
 
     let cycle = LayoutConfig::new(vec![entry("DP-1", right_of("DP-2")), entry("DP-2", right_of("DP-1"))]);
-    assert_eq!(compute(&outputs, &cycle), Err(LayoutError::PlacementCycle(id("DP-1"))));
+    assert_eq!(
+        compute(&outputs, &cycle),
+        Err(LayoutError::PlacementCycle(name("DP-1")))
+    );
 
     let unplaced = LayoutConfig::new(vec![OutputConfig {
         placement: None,
-        ..OutputConfig::enabled(id("DP-1"))
+        ..OutputConfig::enabled("DP-1")
     }]);
     assert_eq!(
         compute(&outputs, &unplaced),
-        Err(LayoutError::MissingPlacement(id("DP-1")))
+        Err(LayoutError::MissingPlacement(name("DP-1")))
     );
 }
 
@@ -498,7 +517,7 @@ fn an_unsupported_mode_scale_or_primary_is_rejected() {
     assert_eq!(
         compute(&outputs, &wrong_mode),
         Err(LayoutError::ModeNotSupported {
-            output: id("DP-1"),
+            output: name("DP-1"),
             mode: qhd(),
         })
     );
@@ -508,23 +527,23 @@ fn an_unsupported_mode_scale_or_primary_is_rejected() {
     assert_eq!(
         compute(&outputs, &wrong_scale),
         Err(LayoutError::ScaleNotSupported {
-            output: id("DP-1"),
+            output: name("DP-1"),
             scale: Scale::from_percent(150),
         })
     );
 
     let mut wrong_primary = row(&["DP-1"]);
-    wrong_primary.primary = Some(id("DP-2"));
+    wrong_primary.primary = Some(name("DP-2"));
     assert_eq!(
         compute(&outputs, &wrong_primary),
-        Err(LayoutError::PrimaryNotEnabled(id("DP-2")))
+        Err(LayoutError::PrimaryNotEnabled(name("DP-2")))
     );
 
-    let mut mode_less = OutputDescriptor::new(id("DP-3"), Vec::new());
+    let mut mode_less = OutputDescriptor::new(output_token("DP-3"), "DP-3", Vec::new());
     mode_less.scales = vec![Scale::integral(1)];
     assert_eq!(
         compute(&[mode_less], &row(&["DP-3"])),
-        Err(LayoutError::NoPreferredMode(id("DP-3")))
+        Err(LayoutError::NoPreferredMode(name("DP-3")))
     );
 }
 
@@ -544,6 +563,16 @@ fn requesting_vrr_on_an_unsupported_output_downgrades_silently() {
     assert!(layout.monitors[1].vrr);
 }
 
+/// An output's orientation reaches the layout, so a quarter turn is visible there.
+#[test]
+fn a_quarter_turn_changes_the_logical_monitor_size() {
+    let mut config = row(&["DP-1"]);
+    config.outputs[0].orientation = Orientation::Rotate90;
+    let layout = compute(&[panel("DP-1")], &config).expect("one monitor resolves");
+    assert_eq!(layout.monitors[0].rect, Rect::new(0, 0, 1080, 1920));
+    assert_eq!(layout.monitors[0].derived_size(), layout.monitors[0].rect.size());
+}
+
 /// Failure mode 6: an EDID block that is short, corrupt or hostile.
 #[test]
 fn a_malformed_edid_never_panics() {
@@ -555,6 +584,11 @@ fn a_malformed_edid_never_panics() {
     assert_eq!(parsed.physical, PhysicalSize::new(600, 340));
     assert_eq!(parsed.name.as_deref(), Some("GNB 27"));
     assert_eq!(parsed.preferred_mode, Some(full_hd()));
+
+    let descriptor = OutputDescriptor::from_edid(output_token("DP-1"), "DP-1", &parsed);
+    assert_eq!(descriptor.make.as_deref(), Some("DEL"));
+    assert_eq!(descriptor.serial.as_deref(), Some("3735928559"));
+    assert_eq!(descriptor.preferred_mode(), Some(full_hd()));
 
     assert_eq!(Edid::parse(&block[..120]), Err(EdidError::TooShort { length: 120 }));
     assert_eq!(Edid::parse(&[]), Err(EdidError::TooShort { length: 0 }));

@@ -1,15 +1,14 @@
 //! A physical mode and the logical size it produces.
 
-use crate::geometry::Size;
-use crate::scale::Scale;
-use crate::transform::Transform;
+use gnoblin_types::{Orientation, Scale, Size};
 
 /// One mode a connector can drive: physical pixels and a refresh rate.
 ///
 /// The refresh rate is stored in millihertz because mode lists are full of
 /// 59.94 Hz and 23.976 Hz entries. A whole-hertz field would either round those
 /// to 60 and 24, which picks a different mode than the caller asked for, or hold
-/// a float, which would make mode equality depend on binary rounding.
+/// a float, which would make mode equality depend on binary rounding. A mode is
+/// a property of one connector, so it is not a shared primitive.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Mode {
     /// Active horizontal pixels, before rotation.
@@ -42,20 +41,19 @@ impl Mode {
     /// Rotation happens before scaling because a quarter turn changes which axis
     /// the physical width lies along.
     #[must_use]
-    pub const fn presented_size(self, transform: Transform) -> Size {
+    pub const fn presented_size(self, orientation: Orientation) -> Size {
         let size = self.physical_size();
-        if transform.swaps_axes() { size.swapped() } else { size }
+        if orientation.swaps_axes() { size.swapped() } else { size }
     }
 
-    /// The logical extent this mode produces at `scale` under `transform`.
+    /// The logical extent this mode produces at `scale` under `orientation`.
     ///
     /// Each axis is scaled independently and rounded to a whole pixel by
     /// [`Scale::apply`], so the result is a valid logical monitor extent at every
     /// scale rather than only at integer ones.
     #[must_use]
-    pub fn logical_size(self, transform: Transform, scale: Scale) -> Size {
-        let presented = self.presented_size(transform);
-        Size::new(scale.apply(presented.width), scale.apply(presented.height))
+    pub fn logical_size(self, orientation: Orientation, scale: Scale) -> Size {
+        scale.logical_size(self.presented_size(orientation))
     }
 }
 
@@ -68,11 +66,11 @@ mod tests {
     #[test]
     fn a_quarter_turn_makes_the_logical_monitor_portrait() {
         assert_eq!(
-            FULL_HD.logical_size(Transform::Rotate90, Scale::integral(1)),
+            FULL_HD.logical_size(Orientation::Rotate90, Scale::integral(1)),
             Size::new(1080, 1920)
         );
         assert_eq!(
-            FULL_HD.logical_size(Transform::Rotate180, Scale::integral(1)),
+            FULL_HD.logical_size(Orientation::Rotate180, Scale::integral(1)),
             Size::new(1920, 1080)
         );
     }
@@ -80,11 +78,11 @@ mod tests {
     #[test]
     fn rotation_and_scale_compose_in_that_order() {
         assert_eq!(
-            FULL_HD.logical_size(Transform::Rotate270, Scale::integral(2)),
+            FULL_HD.logical_size(Orientation::Rotate270, Scale::integral(2)),
             Size::new(540, 960)
         );
         assert_eq!(
-            FULL_HD.logical_size(Transform::Normal, Scale::from_percent(150)),
+            FULL_HD.logical_size(Orientation::Normal, Scale::from_percent(150)),
             Size::new(1280, 720)
         );
     }
