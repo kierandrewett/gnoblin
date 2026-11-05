@@ -3,7 +3,7 @@
 //! A relative pointer reports the motion vector instead of a position, which is the only
 //! motion a locked pointer can be said to have: the cursor does not move, so there is no
 //! position to report. The global is therefore half of the pointer-lock story —
-//! [`crate::protocols::pointer_constraints`] holds the pointer still, and this protocol is
+//! [`crate::protocols::zwp_pointer_constraints_v1`] holds the pointer still, and this protocol is
 //! where the movement that would have happened goes.
 //!
 //! The compositor sends `relative_motion` from one place, [`crate::State::send_relative_motion`],

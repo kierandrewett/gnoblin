@@ -8,7 +8,7 @@
 //! locked before a covering frame reached every output.
 //!
 //! The tests are the crate's failure-mode list for this protocol, in the order
-//! `crates/gnoblin-wayland/src/protocols/session_lock.rs` states them.
+//! `crates/gnoblin-wayland/src/protocols/ext_session_lock_v1.rs` states them.
 
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;

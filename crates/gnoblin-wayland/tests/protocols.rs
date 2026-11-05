@@ -5,16 +5,16 @@
 //! makes) and asserts on what each connection received. The failure-mode list each test
 //! covers is at the top of the module it exercises:
 //!
-//! - `a_surface_is_told_the_scale_of_its_output` — `protocols::fractional_scale`
+//! - `a_surface_is_told_the_scale_of_its_output` — `protocols::wp_fractional_scale_v1`
 //! - `a_locked_pointer_reports_motion_as_relative_events`,
 //!   `a_pointer_lock_is_released_when_focus_moves`,
-//!   `a_session_lock_releases_a_pointer_lock` — `protocols::pointer_constraints`
+//!   `a_session_lock_releases_a_pointer_lock` — `protocols::zwp_pointer_constraints_v1`
 //! - `idle_notify_fires_after_its_timeout`, `input_resumes_an_idled_notification`,
-//!   `an_idle_inhibitor_suppresses_idle_and_never_leaks` — `protocols::idle_notify`
-//! - `presentation_feedback_reports_a_present_timestamp` — `protocols::presentation`
-//! - `a_shortcuts_inhibitor_is_refused_while_locked` — `protocols::shortcuts_inhibit`
-//! - `text_input_enter_and_commit_round_trip` — `protocols::text_input`
-//! - `a_sandboxed_client_does_not_see_the_privileged_globals` — `protocols::security_context`
+//!   `an_idle_inhibitor_suppresses_idle_and_never_leaks` — `protocols::ext_idle_notify_v1`
+//! - `presentation_feedback_reports_a_present_timestamp` — `protocols::wp_presentation`
+//! - `a_shortcuts_inhibitor_is_refused_while_locked` — `protocols::zwp_keyboard_shortcuts_inhibit_v1`
+//! - `text_input_enter_and_commit_round_trip` — `protocols::zwp_text_input_v3`
+//! - `a_sandboxed_client_does_not_see_the_privileged_globals` — `protocols::wp_security_context_v1`
 //! - `a_bound_key_is_consumed_and_its_release_is_not_leaked`,
 //!   `a_keymap_change_under_a_held_key_keeps_its_target`,
 //!   `a_window_remembers_its_layout` — `keyboard`

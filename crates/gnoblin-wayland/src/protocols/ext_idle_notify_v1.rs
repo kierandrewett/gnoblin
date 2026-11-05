@@ -16,7 +16,7 @@
 //!
 //! `zwp_idle_inhibit_manager_v1` is the other half: while any client holds an inhibitor
 //! on a live surface, nothing is idle, and every notification that was idled is resumed
-//! at once. It is implemented in [`crate::protocols::idle_inhibit`]; the read side is
+//! at once. It is implemented in [`crate::protocols::zwp_idle_inhibit_v1`]; the read side is
 //! here, because the answer is "is this session idle" and there is one place that
 //! decides it.
 //!

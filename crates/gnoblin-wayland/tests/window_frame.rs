@@ -3,7 +3,7 @@
 //!
 //! The scenarios are the C suite's (`tests/frame-bind-no-buffer.c`,
 //! `frame-renderer-policy.test.py` and `window-frames-input.js`) and the rules in
-//! `src/protocols/window_frame.rs`, in order. Two connections are used the way the
+//! `src/protocols/gnoblin_window_frame_v1.rs`, in order. Two connections are used the way the
 //! real arrangement has them: the renderer is promised `ClientRole::FrameRenderer`
 //! and the app is an ordinary client that maps one window.
 
@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use gnoblin_types::{Rect, WindowId};
 use gnoblin_wayland::{ClientRole, FrameAction};
-use owned::protocols::window_frame::gnoblin_window_frame_manager_v1;
-use owned::protocols::window_frame::gnoblin_window_frame_v1;
+use owned::protocols::gnoblin_window_frame_v1::gnoblin_window_frame_manager_v1;
+use owned::protocols::gnoblin_window_frame_v1::gnoblin_window_frame_v1;
 use owned::{Connected, Handle, Session, TIMEOUT};
 use wayland_client::protocol::{wl_buffer, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle};

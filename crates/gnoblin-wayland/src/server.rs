@@ -52,11 +52,11 @@ use gnoblin_wm::WmOptions;
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
-use crate::protocols::blur_fade::Fade;
-use crate::protocols::compositor::ClientState;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
-use crate::protocols::session_host::{HostRequest, HostedSession};
-use crate::protocols::window_frame::WindowFrame;
+use crate::protocols::gnoblin_blur_fade_v1::Fade;
+use crate::protocols::gnoblin_session_host_v1::{HostRequest, HostedSession};
+use crate::protocols::gnoblin_window_frame_v1::WindowFrame;
+use crate::protocols::wl_compositor::ClientState;
 use crate::state::State;
 
 /// The file a session binds when no socket path is configured.

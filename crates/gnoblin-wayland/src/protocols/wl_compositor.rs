@@ -1,4 +1,5 @@
-//! `wl_compositor`, `wl_subcompositor` and `wl_shm`.
+//! `wl_compositor` and `wl_subcompositor` (XML `wayland.xml`), with the sync-subsurface rules
+//! applied in its commit handler. `wl_shm` lives in `wl_shm.rs`.
 //!
 //! Surfaces, subsurfaces and shared-memory buffers are Smithay's job once the
 //! handlers below exist: the compositor keeps surface state, tracks the buffer tree
@@ -23,13 +24,10 @@ use std::sync::Arc;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::backend::ClientData;
-use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     CompositorClientState, CompositorHandler, CompositorState, get_parent, is_sync_subsurface,
 };
-use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::xwayland::XWaylandClientData;
 
 use crate::State;
@@ -110,16 +108,5 @@ impl CompositorHandler for State {
             root = parent;
         }
         self.toplevel_committed(&root);
-    }
-}
-
-/// A buffer is gone: Smithay has already released whatever it tracked.
-impl BufferHandler for State {
-    fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
-}
-
-impl ShmHandler for State {
-    fn shm_state(&self) -> &ShmState {
-        &self.shm_state
     }
 }

@@ -1,7 +1,7 @@
 //! `gnoblin_blur_fade_v1` against a real client.
 //!
 //! The scenarios are the C suite's (`tests/blur-fade-protocol.c` and
-//! `test-blur-fade-protocol.sh`) and the rules in `src/protocols/blur_fade.rs`:
+//! `test-blur-fade-protocol.sh`) and the rules in `src/protocols/gnoblin_blur_fade_v1.rs`:
 //! the record layout, the limits, the `invalid_fades` error and the double
 //! buffering with `wl_surface.commit`.
 
@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_types::WindowId;
-use owned::protocols::blur_fade::gnoblin_blur_fade_manager_v1;
+use owned::protocols::gnoblin_blur_fade_v1::gnoblin_blur_fade_manager_v1;
 use owned::{Connected, Handle, Session, TIMEOUT};
 use wayland_client::protocol::{wl_buffer, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle};

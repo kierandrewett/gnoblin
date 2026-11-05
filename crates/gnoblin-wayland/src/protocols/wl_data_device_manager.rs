@@ -1,5 +1,6 @@
-//! The clipboard: `wl_data_device_manager`, `zwp_primary_selection_device_manager_v1`
-//! and the two privileged data-control managers.
+//! The clipboard: `wl_data_device_manager` (XML `wayland.xml`) and the selection state every
+//! selection protocol shares. The primary selection, `ext_data_control_v1` and
+//! `wlr_data_control_unstable_v1` are in their own modules.
 //!
 //! ## What the compositor's part is
 //!
@@ -47,13 +48,6 @@ use std::os::unix::io::OwnedFd;
 use smithay::input::Seat;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::selection::data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler};
-use smithay::wayland::selection::ext_data_control::{
-    DataControlHandler as ExtDataControlHandler, DataControlState as ExtDataControlState,
-};
-use smithay::wayland::selection::primary_selection::{PrimarySelectionHandler, PrimarySelectionState};
-use smithay::wayland::selection::wlr_data_control::{
-    DataControlHandler as WlrDataControlHandler, DataControlState as WlrDataControlState,
-};
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
 use tracing::{debug, trace};
 
@@ -157,24 +151,6 @@ impl DataDeviceHandler for State {
 /// grab cannot be finished by anybody, so the default (cancel the source) is what this
 /// slice states explicitly rather than leaving to a silent no-op.
 impl WaylandDndGrabHandler for State {}
-
-impl PrimarySelectionHandler for State {
-    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
-        &mut self.primary_selection_state
-    }
-}
-
-impl ExtDataControlHandler for State {
-    fn data_control_state(&mut self) -> &mut ExtDataControlState {
-        &mut self.ext_data_control_state
-    }
-}
-
-impl WlrDataControlHandler for State {
-    fn data_control_state(&mut self) -> &mut WlrDataControlState {
-        &mut self.wlr_data_control_state
-    }
-}
 
 impl State {
     /// The mime types of the current clipboard selection, for a diagnostics reader.

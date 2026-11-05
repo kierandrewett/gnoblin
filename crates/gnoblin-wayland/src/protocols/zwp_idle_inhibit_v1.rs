@@ -3,7 +3,7 @@
 //! A video player and a presentation tool both need it: the screen must not blank while
 //! the user is watching something and not touching the input devices. The protocol's
 //! object is a surface, so the inhibitor's lifetime is the surface's, and the answer —
-//! "is this session idle?" — is decided in [`crate::protocols::idle_notify`], because a
+//! "is this session idle?" — is decided in [`crate::protocols::ext_idle_notify_v1`], because a
 //! second place deciding it would be a second answer to one question.
 //!
 //! # Failure modes

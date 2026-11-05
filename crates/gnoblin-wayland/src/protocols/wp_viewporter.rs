@@ -2,7 +2,7 @@
 //!
 //! Smithay needs no handler trait for this protocol: the global is created once and
 //! a viewport is validated on commit by `on_commit_buffer_handler`, which
-//! [`crate::protocols::compositor`] already calls for every surface. A client that
+//! [`crate::protocols::wl_compositor`] already calls for every surface. A client that
 //! sets a viewport outside its buffer gets a protocol error on that client, not a
 //! session failure.
 //!

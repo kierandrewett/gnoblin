@@ -30,7 +30,7 @@
 //!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
 //!   reads those pixels back, which is what the pixel tests assert on.
 //! - Session locking is `gnoblin-lock`'s: a lock request is an
-//!   [`gnoblin_lock::Event`], the effects it returns are what `protocols::session_lock`
+//!   [`gnoblin_lock::Event`], the effects it returns are what `protocols::ext_session_lock_v1`
 //!   performs, and a frame carrying the armed cover generation on every output is what
 //!   lets the locker hear `locked`. While anything is covered the frame path describes
 //!   the opaque cover instead of the desktop, input reaches the owner's lock surface or
@@ -125,7 +125,7 @@
 //!
 //! Each entry names the integration test in `tests/real_client.rs` unless it says
 //! otherwise; the session lock's own list is at the top of
-//! `protocols::session_lock` and its tests are in `tests/session_lock.rs`.
+//! `protocols::ext_session_lock_v1` and its tests are in `tests/session_lock.rs`.
 //!
 //! 1. **A client crash leaves a mapped ghost window.** A client that disconnects
 //!    without destroying its toplevel has its resources destroyed by the display, so
@@ -206,9 +206,9 @@ pub use state::State;
 pub use xwayland::XwaylandSession;
 
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
-pub use protocols::blur_fade::Fade;
-pub use protocols::session_host::{HostRequest, HostRequestKind, HostedSession, OutputHint, PowerAction};
-pub use protocols::window_frame::{FrameAction, FrameRegion, WindowFrame};
+pub use protocols::gnoblin_blur_fade_v1::Fade;
+pub use protocols::gnoblin_session_host_v1::{HostRequest, HostRequestKind, HostedSession, OutputHint, PowerAction};
+pub use protocols::gnoblin_window_frame_v1::{FrameAction, FrameRegion, WindowFrame};
 
 // The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
 // `Dispatch2` implementation below, which is why no protocol module carries its own

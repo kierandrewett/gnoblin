@@ -3,7 +3,7 @@
 //!
 //! Every test starts a session on a socket of its own and connects a client whose
 //! role the session promised first, which is what makes the global visible. The
-//! tests are the failure-mode list in `src/protocols/session_host.rs`, in order.
+//! tests are the failure-mode list in `src/protocols/gnoblin_session_host_v1.rs`, in order.
 
 mod owned;
 
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::InputEvent;
 use gnoblin_lock::ProtectionState;
 use gnoblin_wayland::{ClientRole, HostRequestKind, PowerAction};
-use owned::protocols::session_host::gnoblin_session_host_v1;
+use owned::protocols::gnoblin_session_host_v1::gnoblin_session_host_v1;
 use owned::{Connected, Handle, Session, TIMEOUT};
 use wayland_client::protocol::{wl_keyboard, wl_seat, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle};

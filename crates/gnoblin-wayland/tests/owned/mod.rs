@@ -249,7 +249,7 @@ where
 /// cannot speak a wire the server does not.
 pub mod protocols {
     /// `gnoblin_window_frame_v1`.
-    pub mod window_frame {
+    pub mod gnoblin_window_frame_v1 {
         use wayland_client;
         use wayland_client::protocol::wl_surface;
 
@@ -267,7 +267,7 @@ pub mod protocols {
     }
 
     /// `gnoblin_blur_fade_v1`.
-    pub mod blur_fade {
+    pub mod gnoblin_blur_fade_v1 {
         use wayland_client;
         use wayland_client::protocol::wl_surface;
 
@@ -285,7 +285,7 @@ pub mod protocols {
     }
 
     /// `gnoblin_session_host_v1`.
-    pub mod session_host {
+    pub mod gnoblin_session_host_v1 {
         use wayland_client;
 
         pub mod __interfaces {

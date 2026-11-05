@@ -68,20 +68,20 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
-use crate::protocols::activation::Activation;
-use crate::protocols::blur_fade;
 use crate::protocols::capture::CaptureTables;
+use crate::protocols::ext_idle_notify_v1::IdleTables;
+use crate::protocols::ext_session_lock_v1::LockTables;
 use crate::protocols::extension::{Extension, TitlebarActions};
 use crate::protocols::foreign_toplevel::ForeignToplevels;
-use crate::protocols::idle_notify::IdleTables;
-use crate::protocols::layer_shell::Layers;
-use crate::protocols::pointer_constraints::ConstraintTables;
-use crate::protocols::presentation::PresentationTables;
-use crate::protocols::selection::Selections;
-use crate::protocols::session_host::SessionHostTables;
-use crate::protocols::session_lock::LockTables;
-use crate::protocols::tearing_control::TearingHint;
-use crate::protocols::window_frame::FrameTables;
+use crate::protocols::gnoblin_blur_fade_v1;
+use crate::protocols::gnoblin_session_host_v1::SessionHostTables;
+use crate::protocols::gnoblin_window_frame_v1::FrameTables;
+use crate::protocols::wl_data_device_manager::Selections;
+use crate::protocols::wlr_layer_shell_unstable_v1::Layers;
+use crate::protocols::wp_presentation::PresentationTables;
+use crate::protocols::wp_tearing_control_v1::TearingHint;
+use crate::protocols::xdg_activation_v1::Activation;
+use crate::protocols::zwp_pointer_constraints_v1::ConstraintTables;
 use crate::server::StartupError;
 
 /// How many workspaces a session declares when its configuration names none.
@@ -200,11 +200,11 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) viewporter_state: ViewporterState,
     /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
-    /// handler in [`crate::protocols::decoration`] answers its requests.
+    /// handler in [`crate::protocols::xdg_decoration_unstable_v1`] answers its requests.
     #[allow(dead_code)]
     pub(crate) decoration_state: XdgDecorationState,
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
-    /// handler in [`crate::protocols::session_lock`] answers its requests.
+    /// handler in [`crate::protocols::ext_session_lock_v1`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
     /// Kept alive so `xwayland-shell-v1` stays registered. Only the Xwayland client can
     /// bind it, so the global is invisible to every other one; it is created only when a
@@ -239,7 +239,7 @@ pub struct State {
 
     // The seat and its keyboard features. One field per protocol, as above.
     /// Kept alive so `wp_fractional_scale_manager_v1` stays registered; the handler in
-    /// [`crate::protocols::fractional_scale`] answers its requests.
+    /// [`crate::protocols::wp_fractional_scale_v1`] answers its requests.
     #[allow(dead_code)]
     pub(crate) fractional_scale_state: FractionalScaleManagerState,
     /// Kept alive so `wp_cursor_shape_manager_v1` stays registered.
@@ -249,14 +249,14 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) relative_pointer_state: RelativePointerManagerState,
     /// Kept alive so `zwp_pointer_constraints_v1` stays registered; the handler in
-    /// [`crate::protocols::pointer_constraints`] decides which constraints are active.
+    /// [`crate::protocols::zwp_pointer_constraints_v1`] decides which constraints are active.
     #[allow(dead_code)]
     pub(crate) pointer_constraints_state: PointerConstraintsState,
     /// Kept alive so `zwp_pointer_gestures_v1` stays registered.
     #[allow(dead_code)]
     pub(crate) pointer_gestures_state: PointerGesturesState,
     /// Kept alive so `zwp_idle_inhibit_manager_v1` stays registered; the handler in
-    /// [`crate::protocols::idle_inhibit`] records the inhibitors.
+    /// [`crate::protocols::zwp_idle_inhibit_v1`] records the inhibitors.
     #[allow(dead_code)]
     pub(crate) idle_inhibit_state: IdleInhibitManagerState,
     /// Kept alive so `zwp_keyboard_shortcuts_inhibit_manager_v1` stays registered, and
@@ -272,11 +272,11 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) single_pixel_buffer_state: SinglePixelBufferState,
     /// Kept alive so `wp_tearing_control_manager_v1` stays registered; the handler in
-    /// [`crate::protocols::tearing_control`] records the hints.
+    /// [`crate::protocols::wp_tearing_control_v1`] records the hints.
     #[allow(dead_code)]
     pub(crate) tearing_control_global: GlobalId,
     /// Kept alive so `ext_idle_notifier_v1` stays registered; the handler in
-    /// [`crate::protocols::idle_notify`] answers its notifications.
+    /// [`crate::protocols::ext_idle_notify_v1`] answers its notifications.
     #[allow(dead_code)]
     pub(crate) idle_notify_global: GlobalId,
     /// Kept alive so `zwp_text_input_manager_v3` stays registered.
@@ -381,7 +381,7 @@ pub struct State {
 
     /// The session lock and protection-cover policy. Every request, output change
     /// and committed lock surface is an event for it, and the effects it returns are
-    /// what the protocol side in [`crate::protocols::session_lock`] performs.
+    /// what the protocol side in [`crate::protocols::ext_session_lock_v1`] performs.
     pub(crate) lock: Lock,
     /// The embargo the lock last announced. It is what the capture and selection
     /// queries answer, so a consumer reads what the lock decided rather than a second
@@ -397,10 +397,10 @@ pub struct State {
     pub(crate) capture: CaptureTables,
 
     /// The frame renderers' managers and the frames they were offered, which is
-    /// `gnoblin_window_frame_v1` (`protocols::window_frame`).
+    /// `gnoblin_window_frame_v1` (`protocols::gnoblin_window_frame_v1`).
     pub(crate) frame_tables: FrameTables,
     /// The hosted sessions, their protection covers and their requests, which is
-    /// `gnoblin_session_host_v1` (`protocols::session_host`).
+    /// `gnoblin_session_host_v1` (`protocols::gnoblin_session_host_v1`).
     pub(crate) session_host: SessionHostTables,
 
     /// The snapshot tests read.
@@ -441,7 +441,7 @@ impl State {
         let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
         let shm_state = ShmState::new::<Self>(&display_handle, Vec::new());
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
-        let viewporter_state = crate::protocols::viewporter::global(&display_handle);
+        let viewporter_state = crate::protocols::wp_viewporter::global(&display_handle);
         let decoration_state = XdgDecorationState::new::<Self>(&display_handle);
         // The lock global is advertised to every client: the standard protocol makes
         // the socket the admission boundary, and `docs/session-lock.md` states that
@@ -490,7 +490,7 @@ impl State {
         // manager is hidden from the connections that already have one. Every other
         // connection may create one, and what the sandbox buys is a *denied* role for
         // the connection it creates.
-        let security_context_state = crate::protocols::security_context::global(&display_handle, {
+        let security_context_state = crate::protocols::wp_security_context_v1::global(&display_handle, {
             let access = Arc::clone(&access);
             move |client: &Client| access.role(&client.id()) != ClientRole::Sandboxed
         });
@@ -504,7 +504,7 @@ impl State {
         let session_host = SessionHostTables::new(&display_handle, &access);
         // Nothing decides who may see the fade metadata: it describes the client's
         // own surface, so the handle is only kept alive by the global itself.
-        let _blur_fade_global = blur_fade::global(&display_handle);
+        let _blur_fade_global = crate::protocols::gnoblin_blur_fade_v1::global(&display_handle);
         remove_disabled_globals(
             &display_handle,
             protocols,
@@ -523,21 +523,22 @@ impl State {
         // The seat's protocols. Each global is created here and answered by its own
         // module; the argument this list carries is the access policy for the globals
         // that can act on the whole session.
-        let fractional_scale_state = crate::protocols::fractional_scale::global(&display_handle);
-        let cursor_shape_state = crate::protocols::cursor_shape::global(&display_handle);
-        let relative_pointer_state = crate::protocols::relative_pointer::global(&display_handle);
-        let pointer_constraints_state = crate::protocols::pointer_constraints::global(&display_handle);
-        let pointer_gestures_state = crate::protocols::pointer_gestures::global(&display_handle);
-        let idle_inhibit_state = crate::protocols::idle_inhibit::global(&display_handle);
-        let shortcuts_inhibit_state = crate::protocols::shortcuts_inhibit::global(&display_handle);
-        let presentation_state = crate::protocols::presentation::global(&display_handle);
-        let content_type_state = crate::protocols::content_type::global(&display_handle);
-        let single_pixel_buffer_state = crate::protocols::single_pixel_buffer::global(&display_handle);
-        let tearing_control_global = crate::protocols::tearing_control::global(&display_handle);
-        let idle_notify_global = crate::protocols::idle_notify::global(&display_handle, &access);
-        let text_input_state = crate::protocols::text_input::text_input_global(&display_handle);
-        let input_method_state = crate::protocols::text_input::input_method_global(&display_handle, &access);
-        let virtual_keyboard_state = crate::protocols::text_input::virtual_keyboard_global(&display_handle, &access);
+        let fractional_scale_state = crate::protocols::wp_fractional_scale_v1::global(&display_handle);
+        let cursor_shape_state = crate::protocols::wp_cursor_shape_v1::global(&display_handle);
+        let relative_pointer_state = crate::protocols::zwp_relative_pointer_v1::global(&display_handle);
+        let pointer_constraints_state = crate::protocols::zwp_pointer_constraints_v1::global(&display_handle);
+        let pointer_gestures_state = crate::protocols::zwp_pointer_gestures_v1::global(&display_handle);
+        let idle_inhibit_state = crate::protocols::zwp_idle_inhibit_v1::global(&display_handle);
+        let shortcuts_inhibit_state = crate::protocols::zwp_keyboard_shortcuts_inhibit_v1::global(&display_handle);
+        let presentation_state = crate::protocols::wp_presentation::global(&display_handle);
+        let content_type_state = crate::protocols::wp_content_type_v1::global(&display_handle);
+        let single_pixel_buffer_state = crate::protocols::wp_single_pixel_buffer_v1::global(&display_handle);
+        let tearing_control_global = crate::protocols::wp_tearing_control_v1::global(&display_handle);
+        let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
+        let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
+        let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
+        let virtual_keyboard_state =
+            crate::protocols::zwp_virtual_keyboard_v1::virtual_keyboard_global(&display_handle, &access);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
@@ -692,7 +693,7 @@ impl State {
     pub(crate) fn insert_client(
         &mut self,
         stream: std::os::unix::net::UnixStream,
-        data: Arc<crate::protocols::compositor::ClientState>,
+        data: Arc<crate::protocols::wl_compositor::ClientState>,
         role: ClientRole,
     ) -> std::io::Result<Client> {
         let client = self.display_handle.insert_client(
@@ -735,7 +736,7 @@ impl State {
     pub(crate) fn accept_sandbox(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<Client> {
         let client = self.insert_client(
             stream,
-            Arc::new(crate::protocols::compositor::ClientState::new(&self.access)),
+            Arc::new(crate::protocols::wl_compositor::ClientState::new(&self.access)),
             ClientRole::Sandboxed,
         )?;
         debug!(client = ?client.id(), "[access] a sandboxed connection joined");
@@ -1126,7 +1127,7 @@ impl State {
             // new focus owns exactly once.
             self.announced_text_inputs.clear();
             if target.is_some() {
-                crate::protocols::text_input::announce_new_text_inputs(self);
+                crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
             }
         }
         let serial = SERIAL_COUNTER.next_serial();
@@ -1492,7 +1493,7 @@ impl State {
         self.restore_display(display);
         // A dispatch is the only place a text input can appear, so this is where one that
         // arrived on an already-focused surface is told it has focus.
-        crate::protocols::text_input::announce_new_text_inputs(self);
+        crate::protocols::zwp_text_input_v3::announce_new_text_inputs(self);
         result
     }
 

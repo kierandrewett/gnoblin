@@ -8,8 +8,8 @@
 //! file.
 //!
 //! Each protocol is generated once here and used by its module
-//! ([`crate::protocols::window_frame`], [`crate::protocols::blur_fade`] and
-//! [`crate::protocols::session_host`]), so no protocol has a second,
+//! ([`crate::protocols::gnoblin_window_frame_v1`], [`crate::protocols::gnoblin_blur_fade_v1`] and
+//! [`crate::protocols::gnoblin_session_host_v1`]), so no protocol has a second,
 //! hand-written idea of its own wire.
 //!
 //! # Why the `unsafe_code` allowed here
