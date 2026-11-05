@@ -9,7 +9,7 @@ mod support;
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_config::extensions::{Extensions, load_extensions};
+use gnoblin_config::extensions::{LoadedExtensions, load_extensions};
 use gnoblin_config::{Config, Value};
 use gnoblin_schema::{Catalog, Schema, parse_schema};
 
@@ -53,16 +53,16 @@ fn document(entries: Vec<Value>) -> Value {
 
 /// Validate the document through the config load path, then read its extensions
 /// against the given stock catalog.
-fn load_with(base: &Path, stock: &[Schema], document: Value) -> Extensions {
+fn load_with(base: &Path, stock: &[Schema], document: Value) -> LoadedExtensions {
     let config = Config::from_value(document).expect("the config accepts the extensions section");
     load_extensions(config.document(), base, stock)
 }
 
-fn load(document: Value) -> Extensions {
+fn load(document: Value) -> LoadedExtensions {
     load_with(&fixture_dir(), &stock(), document)
 }
 
-fn refusal_reason<'a>(loaded: &'a Extensions, namespace: &str) -> &'a str {
+fn refusal_reason<'a>(loaded: &'a LoadedExtensions, namespace: &str) -> &'a str {
     &loaded
         .refused
         .iter()
@@ -71,7 +71,7 @@ fn refusal_reason<'a>(loaded: &'a Extensions, namespace: &str) -> &'a str {
         .reason
 }
 
-fn assert_refused_with(loaded: &Extensions, namespace: &str, needle: &str) {
+fn assert_refused_with(loaded: &LoadedExtensions, namespace: &str, needle: &str) {
     let reason = refusal_reason(loaded, namespace);
     assert!(
         reason.contains(needle),

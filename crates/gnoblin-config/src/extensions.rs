@@ -50,14 +50,14 @@ pub struct ExtensionEntry {
 
 /// One entry that was refused, with the namespace it named and the reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Refusal {
+pub struct ExtensionRefusal {
     /// The namespace the entry named, or `<extensions[N]>` when it named none.
     pub namespace: String,
     /// The reason, naming the check that failed.
     pub reason: String,
 }
 
-impl fmt::Display for Refusal {
+impl fmt::Display for ExtensionRefusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "extension `{}` refused: {}", self.namespace, self.reason)
     }
@@ -65,11 +65,11 @@ impl fmt::Display for Refusal {
 
 /// The result of reading the `extensions` section: what loaded, and what did not.
 #[derive(Debug, Default)]
-pub struct Extensions {
+pub struct LoadedExtensions {
     /// Extensions that passed every check, in configuration order.
     pub accepted: Vec<ExtensionEntry>,
     /// Entries that failed, in configuration order.
-    pub refused: Vec<Refusal>,
+    pub refused: Vec<ExtensionRefusal>,
 }
 
 /// Read the `extensions` section of an accepted configuration document.
@@ -77,13 +77,13 @@ pub struct Extensions {
 /// `base` is the directory relative schema paths resolve against. `stock` is the
 /// stock catalog's schemas; an extension may not reuse their namespaces or object
 /// names. A document with no `extensions` section loads nothing and refuses nothing.
-pub fn load_extensions(document: &Value, base: &Path, stock: &[Schema]) -> Extensions {
-    let mut out = Extensions::default();
+pub fn load_extensions(document: &Value, base: &Path, stock: &[Schema]) -> LoadedExtensions {
+    let mut out = LoadedExtensions::default();
     let Some(section) = document.as_table().and_then(|table| table.get("extensions")) else {
         return out;
     };
     let Some(entries) = section.as_list() else {
-        out.refused.push(Refusal {
+        out.refused.push(ExtensionRefusal {
             namespace: "<extensions>".to_owned(),
             reason: format!("expected a list of extensions, found {}", section.kind()),
         });
@@ -106,7 +106,7 @@ fn load_one(
     stock: &[Schema],
     accepted: &[ExtensionEntry],
     seen: &mut BTreeSet<String>,
-) -> Result<ExtensionEntry, Refusal> {
+) -> Result<ExtensionEntry, ExtensionRefusal> {
     let Some(table) = entry.as_table() else {
         return Err(refuse(
             format!("<extensions[{index}]>"),
@@ -161,8 +161,8 @@ fn load_one(
     })
 }
 
-fn refuse(namespace: String, reason: String) -> Refusal {
-    Refusal { namespace, reason }
+fn refuse(namespace: String, reason: String) -> ExtensionRefusal {
+    ExtensionRefusal { namespace, reason }
 }
 
 fn check_namespace(namespace: &str, stock: &[Schema]) -> Result<(), String> {
