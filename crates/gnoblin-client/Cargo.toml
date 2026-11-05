@@ -6,5 +6,19 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# The client's public vocabulary is the object model's: identities, values,
+# observations, snapshots and the request outcome. Reusing them is what keeps the
+# graph, the wire and the client from growing three dialects.
+gnoblin-model = { path = "../gnoblin-model" }
+# The wire: the envelope, its four kinds, the fixed-layout handshake and the
+# version rule.
+gnoblin-proto = { path = "../gnoblin-proto" }
+
+[dev-dependencies]
+# The tests build a graph from the checked-in schema, so the loopback pair is
+# exercised against the real contract rather than a fixture.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
 [lints]
 workspace = true
