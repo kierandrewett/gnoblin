@@ -154,3 +154,23 @@ clap_complete = "4.6.9"
 # codes. Every crate that names a rectangle or an output uses this crate instead
 # of declaring its own.
 gnoblin-types = { path = "crates/gnoblin-types" }
+# The WebAssembly runtime the module host embeds (design/rust-compositor.md, D6).
+# The component model is the host API's shape: a WIT package generated from the
+# schema, so a module links against the object model and a member that moved is a
+# link error rather than a call that misbehaves.
+#
+# Default features are off because the default set pulls in the CLI, the compile
+# cache, profiling, the async engine and the GC proposals, none of which the host
+# uses, and every one of them is code that runs inside the compositor. What is
+# left is the smallest set that compiles and runs a component: the core runtime,
+# one compiler, and the component model. There is no WASI feature here and no
+# `wasmtime-wasi` dependency anywhere in the tree, so a module that imports
+# `wasi:*` has nothing to link against: filesystem, network and process access are
+# denied by the absence of an implementation, not by a policy check that could be
+# wrong (D6: "Isolation holds only if the host API is the module's only reach").
+wasmtime = { version = "50.0.1", default-features = false, features = [
+    "std",
+    "runtime",
+    "cranelift",
+    "component-model",
+] }

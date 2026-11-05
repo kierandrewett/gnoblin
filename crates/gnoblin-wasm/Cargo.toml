@@ -6,5 +6,34 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# The host is an IPC client and never a compositor: a module reaches the object
+# model through the same vocabulary a shell does, which is what keeps a module
+# fault away from the session (design/rust-compositor.md, D6 and "Dependency
+# rules").
+gnoblin-client = { path = "../gnoblin-client" }
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-types = { path = "../gnoblin-types" }
+# The sandbox (D6). The feature set is picked in the workspace manifest.
+wasmtime.workspace = true
+
+[build-dependencies]
+# The WIT package is generated from the schema at build time, so the schema is a
+# build dependency only: nothing at runtime parses the schema files, and a schema
+# edit is a rebuild of the generated API rather than a regeneration step.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+[dev-dependencies]
+# Test modules are WAT text compiled by the test, so no module binary is checked
+# in and a failing module is readable in the test that built it.
+wat = "1.263.0"
+# The schema, so the generated WIT is compared with the tree's schema and not with a
+# copy of it.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The generated WIT is checked against the schema with the same parser
+# `wit-component` uses to compile a module, so "it parses" means "wasmtime and
+# `wasm-tools` accept it".
+wit-parser = "0.263.0"
+
 [lints]
 workspace = true

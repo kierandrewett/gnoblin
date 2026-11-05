@@ -70,7 +70,19 @@ const ENGINE: &[&str] = &[
 const HUB_SCENE: &str = "gnoblin-render";
 
 /// Crates that talk to the compositor as clients, so they may not link it.
-const CLIENT_SIDE: &[&str] = &["gnoblin-lua", "gnoblin-services", "xdg-desktop-portal-gnoblin"];
+///
+/// `gnoblin-wasm` joins them because a module host is an IPC client by design
+/// (design/rust-compositor.md, D6): it reaches the object model through
+/// `gnoblin-client` and nothing else, so a module fault cannot be a compositor
+/// fault. The edge also has to point this way for a mechanical reason: the
+/// compositor is what will host this crate, and a crate that named it would make
+/// that edge a cycle.
+const CLIENT_SIDE: &[&str] = &[
+    "gnoblin-lua",
+    "gnoblin-services",
+    "gnoblin-wasm",
+    "xdg-desktop-portal-gnoblin",
+];
 
 /// The one binary that links the compat adapters.
 const COMPAT_HOST: &str = "gnoblin";
