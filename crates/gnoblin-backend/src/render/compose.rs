@@ -62,8 +62,8 @@ use smithay::utils::Transform;
 use tracing::debug;
 
 use gnoblin_render::{
-    Color, Damage, Easing, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, Scene, TrackId, TrackSpec,
-    TrackStart, TweenPlayer, VisualProperty, VisualTransform,
+    Color, Damage, Easing, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, PropertyValue, Scene, TrackId,
+    TrackSpec, TrackStart, TweenPlayer, VisualProperty, VisualTransform,
 };
 use gnoblin_types::{OutputId, Rect, RectF, Size, Vec3, WindowId};
 
@@ -564,6 +564,8 @@ impl Composer {
         let Some(node) = entry.node else {
             return;
         };
+        let immediate = !animate || self.reduced_motion;
+        let mut landing = Vec::new();
         let target = Self::target(entry);
         for property in VisualProperty::ALL {
             if property == VisualProperty::Scale {
@@ -574,8 +576,8 @@ impl Composer {
             if self.scene.property(node, property).ok() == Some(value) {
                 continue;
             }
-            if !animate || self.reduced_motion {
-                let _ = self.scene.set_property(node, property, value);
+            if immediate {
+                landing.push((property, value));
                 continue;
             }
             let spec = TrackSpec {
@@ -587,6 +589,30 @@ impl Composer {
             if let Ok(track) = self.motion.start(&mut self.scene, spec) {
                 self.tracks.insert((window, property), track);
             }
+        }
+        self.land(node, &landing);
+    }
+
+    /// Writes several properties of one node as a single transform change.
+    ///
+    /// The scene damages the node's before and after bounds on every write, so writing
+    /// the properties one at a time would damage each intermediate pose: a move from
+    /// (20, 30) to (200, 300) would also damage (200, 30). A property a value refuses is
+    /// left as it was, as `Scene::set_property` leaves it.
+    fn land(&mut self, node: NodeId, changes: &[(VisualProperty, PropertyValue)]) {
+        let Some(mut candidate) = self.scene.transform(node).copied() else {
+            return;
+        };
+        let mut changed = false;
+        for &(property, value) in changes {
+            let mut next = candidate;
+            if property.apply(&mut next, value).is_ok() {
+                candidate = next;
+                changed = true;
+            }
+        }
+        if changed {
+            let _ = self.scene.set_transform(node, candidate);
         }
     }
 
@@ -794,6 +820,22 @@ mod tests {
         let window = WindowId::new(1);
         composer.insert_window(window, Rect::new(20, 30, 40, 50));
         composer.set_window_content(window, Some(content()));
+        damage_of(&mut composer, output);
+        composer.place_window(window, Rect::new(200, 300, 40, 50));
+        let rects = damage_of(&mut composer, output).expect("both rectangles");
+        assert_eq!(rects.len(), 2, "the old and the new rectangle: {rects:?}");
+        assert!(rects.contains(&Rect::new(20, 30, 40, 50)));
+        assert!(rects.contains(&Rect::new(200, 300, 40, 50)));
+    }
+
+    #[test]
+    fn moving_a_translucent_rounded_window_damages_both_rectangles() {
+        let (mut composer, output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.set_window_opacity(window, 0.5);
+        composer.set_window_corner_radius(window, 4.0);
         damage_of(&mut composer, output);
         composer.place_window(window, Rect::new(200, 300, 40, 50));
         let rects = damage_of(&mut composer, output).expect("both rectangles");
