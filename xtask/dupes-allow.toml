@@ -637,3 +637,39 @@ left = "gnoblin-lua::Ty"
 right = "gnoblin-model::Value"
 kind = "same-shape"
 reason = "a Lua type tag for a dynamically typed script value versus the graph's typed property value; the overlapping shape is the small variant set, not one type"
+
+[[allow]]
+left = "gnoblin-authority::Launch"
+right = "gnoblin-backend::Launch"
+kind = "same-name"
+reason = "authority grants permission to launch a process; a backend launch is the parameters of one Xwayland start"
+
+[[allow]]
+left = "gnoblin-backend::Command"
+right = "gnoblin-wayland::Command"
+kind = "same-name"
+reason = "an X11 request the compositor performs on an X11 window versus a control command queued for the session loop"
+
+[[allow]]
+left = "gnoblin-backend::Restart"
+right = "gnoblin-session::Restart"
+kind = "same-name"
+reason = "the Xwayland supervision answer after a failed start versus the guardian's plan for restarting a role"
+
+[[allow]]
+left = "gnoblin-backend::Setting"
+right = "gnoblin-config::Setting"
+kind = "same-name"
+reason = "one XSETTINGS value published to X11 clients versus the catalogue entry that describes a configuration key"
+
+[[allow]]
+left = "gnoblin-config::Status"
+right = "gnoblin-xwayland::Status"
+kind = "same-name"
+reason = "the last-good store's resolution state versus where an Xwayland instance is in its start and restart cycle"
+
+[[allow]]
+left = "gnoblin-lua::Status"
+right = "gnoblin-xwayland::Status"
+kind = "same-name"
+reason = "a script's load status versus where an Xwayland instance is in its start and restart cycle"

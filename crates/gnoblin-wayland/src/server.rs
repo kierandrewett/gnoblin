@@ -33,7 +33,7 @@ use std::os::fd::AsFd;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::ping::{Ping, make_ping};
@@ -105,7 +105,35 @@ impl Server {
     /// [`StartupError::Socket`] when the path cannot be bound,
     /// [`StartupError::Keyboard`] when the seat has no keymap, and
     /// [`StartupError::Layout`] when the backend's outputs cannot be laid out.
-    pub fn new(mut backend: Box<dyn Backend<State>>, config: Config) -> Result<Self, StartupError> {
+    pub fn new(backend: Box<dyn Backend<State>>, config: Config) -> Result<Self, StartupError> {
+        Self::start(backend, config, None)
+    }
+
+    /// Starts a session that also runs Xwayland.
+    ///
+    /// The session is a separate argument rather than a [`Config`] field because it is
+    /// not a setting: it owns the process, the X11 connection and the window table, and it
+    /// is the only thing in the server that cannot be compared or cloned. `None` in
+    /// [`Server::new`] means no X11 support at all — no `xwayland-shell-v1`, no keyboard
+    /// grab manager, no data device and no process — which is a different statement from
+    /// "the server is not running yet", and that is what the session's status reports.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Server::new`].
+    pub fn with_xwayland(
+        backend: Box<dyn Backend<State>>,
+        config: Config,
+        xwayland: crate::xwayland::XwaylandSession,
+    ) -> Result<Self, StartupError> {
+        Self::start(backend, config, Some(xwayland))
+    }
+
+    fn start(
+        mut backend: Box<dyn Backend<State>>,
+        config: Config,
+        xwayland: Option<crate::xwayland::XwaylandSession>,
+    ) -> Result<Self, StartupError> {
         let event_loop: EventLoop<'static, State> = EventLoop::try_new().map_err(StartupError::EventLoop)?;
         let display: Display<State> = Display::new().map_err(StartupError::Display)?;
 
@@ -119,6 +147,7 @@ impl Server {
             &config.seat_name,
             config.wm,
             config.workspaces,
+            xwayland,
         )?;
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
@@ -235,11 +264,16 @@ impl Server {
                 frames,
                 ..
             } = self;
+            let handle = event_loop.handle();
             event_loop.run(Duration::from_millis(100), &mut state, |state| {
                 state.flush();
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.
                 state.poll_lock();
+                // The Xwayland session is ticked here: the loop's own timeout is the only
+                // clock its process needs, and a dead or hung instance is noticed within
+                // one turn.
+                state.poll_xwayland(&handle, Instant::now());
                 let events = backend.dispatch(state);
                 if events.iter().any(is_output_change) {
                     // A hotplug, a removal or a mode change: the whole layout is

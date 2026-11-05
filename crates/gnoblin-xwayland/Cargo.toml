@@ -8,3 +8,26 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+# The vocabulary this crate and `gnoblin-wayland` share: the start parameters, the
+# supervision answers and the X11 window events. Neither engine crate may name the
+# other, so the seam is the hub's.
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The policy the X11 windows become events for.
+gnoblin-wm = { path = "../gnoblin-wm" }
+# Rectangles and identities.
+gnoblin-types.workspace = true
+# The `xwayland` section this crate applies, and its generated enum.
+gnoblin-config = { path = "../gnoblin-config" }
+# `[tag]` log lines. Smithay already brings `tracing` into the graph.
+tracing = "0.1.37"
+
+[dev-dependencies]
+# The real test: a headless `gnoblin-wayland` server with Xwayland inside it. A
+# development-only edge, so the shipped crate still does not link the Wayland engine.
+gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The X11 client the tests use: a real client on a real display, not a mock peer.
+x11rb = "0.14.0"
+# A temporary runtime directory for the test socket and the X11 lock files.
+tempfile = "3.23.0"

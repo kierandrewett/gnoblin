@@ -43,3 +43,9 @@ wayland-client = "0.31.14"
 # feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
 # falls back to the integer scale of its `wl_output`.
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# The Xwayland seam ([`x11`]) states the answer to an X11 event as the window
+# manager's own effects, so the two engine crates that meet there share one
+# vocabulary instead of translating between two. That is why `gnoblin-wm` is here:
+# the alternative was a second event enum in this crate and a translation in each
+# direction.
+gnoblin-wm = { path = "../gnoblin-wm" }

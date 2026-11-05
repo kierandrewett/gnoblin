@@ -206,8 +206,18 @@ fn foundation_purity(package: &Package, dep: &Dep) -> Option<String> {
 /// Engine crates reach each other only through `gnoblin-backend` traits, and none of
 /// them depends on the composition root. The hub's own edge to the pure scene crate
 /// is the single exception: see [`HUB_SCENE`].
+///
+/// A **development** edge is not this rule's business. The rule guards what ships: a
+/// library that names another mechanism crate pulls the whole mechanism in behind every
+/// caller. A test target does the opposite of that — `gnoblin-xwayland`'s real-Xwayland
+/// tests run a `gnoblin-wayland` session, and the only way to do that from the crate that
+/// owns the policy is to link it in the test binary. The edge cannot ship, because a
+/// development dependency is not compiled for a dependent.
 fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
     if !is_engine(&package.name) {
+        return None;
+    }
+    if dep.kind == DepKind::Dev {
         return None;
     }
     if dep.name == "gnoblin-compositor" {
@@ -406,6 +416,42 @@ mod tests {
                 ("gnoblin-backend", &["gnoblin-render", "gnoblin-types"]),
                 ("gnoblin-render", &["gnoblin-types"]),
             ]),
+            Vec::<String>::new()
+        );
+    }
+
+    /// A test target may link a sibling engine to run it; a shipped dependency may not.
+    #[test]
+    fn an_engine_crate_may_link_another_only_as_a_development_dependency() {
+        let shipping = serde_json::json!({
+            "packages": [
+                { "name": "gnoblin-xwayland", "dependencies": [
+                    { "name": "gnoblin-wayland", "kind": null }
+                ] },
+                { "name": "gnoblin-wayland", "dependencies": [] },
+            ]
+        });
+        let graph = from_json(&shipping.to_string()).expect("the fixture parses");
+        assert_eq!(
+            check(&graph).iter().map(Violation::to_string).collect::<Vec<_>>(),
+            vec![
+                "gnoblin-xwayland -> gnoblin-wayland [engine-isolation]: engine crates reach each other only \
+                 through gnoblin-backend traits; `gnoblin-wayland` is an engine crate"
+                    .to_owned()
+            ]
+        );
+
+        let testing = serde_json::json!({
+            "packages": [
+                { "name": "gnoblin-xwayland", "dependencies": [
+                    { "name": "gnoblin-wayland", "kind": "dev" }
+                ] },
+                { "name": "gnoblin-wayland", "dependencies": [] },
+            ]
+        });
+        let graph = from_json(&testing.to_string()).expect("the fixture parses");
+        assert_eq!(
+            check(&graph).iter().map(Violation::to_string).collect::<Vec<_>>(),
             Vec::<String>::new()
         );
     }

@@ -22,14 +22,20 @@ use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
-use smithay::utils::{Logical, Point as SmithayPoint, SERIAL_COUNTER, Size as SmithaySize, Transform};
+use smithay::utils::{
+    Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform,
+};
 use smithay::wayland::compositor::{CompositorState, SurfaceAttributes, with_states};
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::session_lock::SessionLockManagerState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData};
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::viewporter::ViewporterState;
+use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
+use smithay::wayland::xwayland_shell::XWaylandShellState;
+use smithay::xwayland::xwm::X11Surface;
 use tracing::{debug, warn};
 
 use gnoblin_backend::render::{Composer, Content, OutputFrame};
@@ -51,27 +57,77 @@ const DEFAULT_WORKSPACES: u32 = 1;
 const KEY_REPEAT_DELAY: i32 = 200;
 const KEY_REPEAT_RATE: i32 = 25;
 
+/// The protocol object behind a managed window.
+///
+/// A Wayland window is its `xdg_toplevel`; an X11 window is the X11 surface the window
+/// manager created for it, and its `wl_surface` exists only once Xwayland has associated
+/// one. Keeping both in one enum is what lets the rest of this module treat "a managed
+/// window" without knowing which protocol it came from.
+///
+/// The X11 surface is boxed because it is four times the size of a toplevel and the two
+/// live in the same table: an unboxed enum would pay for the larger variant on every
+/// Wayland window in the session.
+pub(crate) enum Managed {
+    /// An `xdg_toplevel`.
+    Wayland(ToplevelSurface),
+    /// An X11 window managed through Xwayland.
+    X11(Box<X11Surface>),
+}
+
+impl Managed {
+    /// The Wayland surface behind the window, when one exists yet.
+    fn wl_surface(&self) -> Option<WlSurface> {
+        match self {
+            Self::Wayland(surface) => Some(surface.wl_surface().clone()),
+            Self::X11(surface) => surface.wl_surface(),
+        }
+    }
+
+    /// The toplevel, for a window that is a Wayland one.
+    fn toplevel(&self) -> Option<&ToplevelSurface> {
+        match self {
+            Self::Wayland(surface) => Some(surface),
+            Self::X11(_) => None,
+        }
+    }
+}
+
 /// One toplevel the server is managing.
-struct WindowEntry {
+pub(crate) struct WindowEntry {
     /// The protocol object the client owns.
-    surface: ToplevelSurface,
+    pub(crate) surface: Managed,
     /// Whether the client has committed a buffer, which is what "mapped" means for
     /// a toplevel.
-    mapped: bool,
+    pub(crate) mapped: bool,
     /// The application id the client last sent.
-    app_id: String,
+    pub(crate) app_id: String,
     /// The title the client last sent.
-    title: String,
+    pub(crate) title: String,
+}
+
+impl WindowEntry {
+    /// An entry for an X11 window the manager took in.
+    ///
+    /// An X11 window is mapped when the manager tells the server it is, so it starts
+    /// mapped: the entry exists from that point on, and an unmap removes it.
+    pub(crate) fn x11(surface: X11Surface) -> Self {
+        Self {
+            surface: Managed::X11(Box::new(surface)),
+            mapped: true,
+            app_id: String::new(),
+            title: String::new(),
+        }
+    }
 }
 
 /// One output the server presents on.
-struct OutputEntry {
+pub(crate) struct OutputEntry {
     /// The backend's identity for the output.
     backend: OutputId,
     /// The window manager's identity for it.
     policy: OutputId,
     /// The Smithay output, which owns the `wl_output` global.
-    output: Output,
+    pub(crate) output: Output,
     /// The global the output created.
     global: GlobalId,
     /// The logical rectangle the layout assigned.
@@ -115,17 +171,31 @@ pub struct State {
     /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
     /// handler in [`crate::protocols::session_lock`] answers its requests.
     pub(crate) session_lock_state: SessionLockManagerState,
+    /// Kept alive so `xwayland-shell-v1` stays registered. Only the Xwayland client can
+    /// bind it, so the global is invisible to every other one; it is created only when a
+    /// session is configured, and the handler below is only reachable with one.
+    pub(crate) xwayland_shell_state: Option<XWaylandShellState>,
+    /// Kept alive so `zwp_xwayland_keyboard_grab_manager_v1` stays registered. Privileged
+    /// in the same way: Xwayland is its only client.
+    #[allow(dead_code)]
+    pub(crate) keyboard_grab_state: Option<XWaylandKeyboardGrabState>,
+    /// The data device global, created with the Xwayland session because Smithay's X11
+    /// window manager needs the drag-and-drop target type for its X11 surfaces. A session
+    /// without Xwayland advertises neither global rather than one that answers nothing.
+    pub(crate) data_device: Option<DataDeviceState>,
+    /// The Xwayland session, when one is configured.
+    pub(crate) x11: Option<crate::xwayland::Running>,
 
     /// Keyboard and pointer handles for the one seat this slice creates.
     pub(crate) keyboard: KeyboardHandle<State>,
     pub(crate) pointer: PointerHandle<State>,
 
     /// The window management policy.
-    wm: Wm,
+    pub(crate) wm: Wm,
     /// The protocol objects of the managed windows, keyed by policy identity.
-    windows: BTreeMap<WindowId, WindowEntry>,
+    pub(crate) windows: BTreeMap<WindowId, WindowEntry>,
     /// The outputs, in connection order.
-    outputs: Vec<OutputEntry>,
+    pub(crate) outputs: Vec<OutputEntry>,
     /// The next window identity to hand out.
     next_window: u32,
     /// The last pointer position the backend reported, in global logical
@@ -133,7 +203,7 @@ pub struct State {
     pointer_position: SmithayPoint<f64, Logical>,
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
-    composer: Composer,
+    pub(crate) composer: Composer,
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     last_frame: Option<(OutputId, Vec<Rect>)>,
@@ -167,6 +237,7 @@ impl State {
         seat_name: &str,
         options: WmOptions,
         workspaces: u32,
+        xwayland: Option<crate::xwayland::XwaylandSession>,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
 
@@ -180,6 +251,19 @@ impl State {
         // the socket the admission boundary, and `docs/session-lock.md` states that
         // the first request owns the lock.
         let session_lock_state = SessionLockManagerState::new::<Self, _>(&display_handle, |_| true);
+        // The three Xwayland globals exist only with a session: `xwayland-shell-v1` and
+        // the keyboard grab manager are bound by Xwayland alone, and the data device is
+        // the drag-and-drop target Smithay's X11 window manager requires. Advertising a
+        // data device to Wayland clients in a session with no clipboard path would be a
+        // protocol that answers nothing.
+        let (xwayland_shell_state, keyboard_grab_state, data_device) = match &xwayland {
+            Some(_) => (
+                Some(XWaylandShellState::new::<Self>(&display_handle)),
+                Some(XWaylandKeyboardGrabState::new::<Self>(&display_handle)),
+                Some(DataDeviceState::new::<Self>(&display_handle)),
+            ),
+            None => (None, None, None),
+        };
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
@@ -200,6 +284,10 @@ impl State {
             viewporter_state,
             decoration_state,
             session_lock_state,
+            xwayland_shell_state,
+            keyboard_grab_state,
+            data_device,
+            x11: None,
             keyboard,
             pointer,
             wm: Wm::new(options),
@@ -221,6 +309,9 @@ impl State {
             });
         }
         state.sync_outputs(backend_outputs);
+        if let Some(session) = xwayland {
+            state.start_xwayland(session);
+        }
         state.publish();
         Ok(state)
     }
@@ -431,19 +522,32 @@ impl State {
     /// that has not had its initial configure yet carries this state into that
     /// configure, which the client's first commit triggers.
     fn configure(&mut self, window: WindowId, geometry: Rect, state: gnoblin_wm::WindowState) {
-        let Some(surface) = self.windows.get(&window).map(|entry| entry.surface.clone()) else {
+        let Some(surface) = self.windows.get(&window).map(|entry| &entry.surface) else {
             // The window closed between the policy call and this action, which is
             // the race the policy's rejections describe.
             return;
         };
-        surface.with_pending_state(|pending| {
-            pending.bounds = None;
-            pending.size = Some(SmithaySize::from((geometry.width as i32, geometry.height as i32)));
-            set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
-            set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
-        });
-        if surface.is_initial_configure_sent() {
-            surface.send_configure();
+        match surface {
+            Managed::Wayland(surface) => {
+                surface.with_pending_state(|pending| {
+                    pending.bounds = None;
+                    pending.size = Some(SmithaySize::from((geometry.width as i32, geometry.height as i32)));
+                    set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
+                    set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
+                });
+                if surface.is_initial_configure_sent() {
+                    surface.send_configure();
+                }
+            }
+            Managed::X11(surface) => {
+                // An X11 configure is a request on the X connection, so the client hears
+                // a ConfigureNotify and answers with its own geometry. Smithay keeps the
+                // surface's `last_configure` in step, which is what popup positioning
+                // reads.
+                if let Err(error) = surface.configure(Some(x11_geometry(geometry))) {
+                    debug!(%error, %window, "[wm] the X11 configure failed");
+                }
+            }
         }
         debug!(%window, width = geometry.width, height = geometry.height, "[wm] configured");
     }
@@ -453,7 +557,9 @@ impl State {
         let Some(entry) = self.windows.get(&window) else {
             return;
         };
-        let surface = entry.surface.wl_surface().clone();
+        let Some(surface) = entry.surface.wl_surface() else {
+            return;
+        };
         for output in &self.outputs {
             if visible {
                 output.output.enter(&surface);
@@ -475,7 +581,17 @@ impl State {
         }
         let target = focused
             .and_then(|window| self.windows.get(&window))
-            .map(|entry| entry.surface.wl_surface().clone());
+            .and_then(|entry| entry.surface.wl_surface());
+        // X11 windows also carry their activation state in `_NET_WM_STATE_FOCUSED`, which
+        // is what draws a title bar as focused; a Wayland window has no such property and
+        // the loop finds nothing to do.
+        for (window, entry) in &self.windows {
+            if let Managed::X11(surface) = &entry.surface
+                && let Err(error) = surface.set_activated(Some(*window) == focused)
+            {
+                debug!(%error, %window, "[focus] the X11 activation state was not sent");
+            }
+        }
         self.set_keyboard_focus(target);
     }
 
@@ -506,9 +622,7 @@ impl State {
     /// The surface of the window the window manager has focused.
     pub(crate) fn focused_window_surface(&self) -> Option<WlSurface> {
         let window = self.wm.focused()?;
-        self.windows
-            .get(&window)
-            .map(|entry| entry.surface.wl_surface().clone())
+        self.windows.get(&window).and_then(|entry| entry.surface.wl_surface())
     }
 
     /// The identity of a `wl_output` global this session created.
@@ -546,7 +660,7 @@ impl State {
         if self
             .windows
             .values()
-            .any(|entry| entry.surface.wl_surface() == surface.wl_surface())
+            .any(|entry| entry.surface.wl_surface().as_ref() == Some(surface.wl_surface()))
         {
             return;
         }
@@ -556,7 +670,7 @@ impl State {
         self.windows.insert(
             window,
             WindowEntry {
-                surface,
+                surface: Managed::Wayland(surface),
                 mapped: false,
                 app_id: String::new(),
                 title: String::new(),
@@ -581,12 +695,13 @@ impl State {
             return;
         };
         if let Some(entry) = self.windows.remove(&window) {
-            let wl_surface = entry.surface.wl_surface().clone();
-            for output in &self.outputs {
-                output.output.leave(&wl_surface);
+            if let Some(wl_surface) = entry.surface.wl_surface() {
+                for output in &self.outputs {
+                    output.output.leave(&wl_surface);
+                }
             }
             self.composer.remove_window(window);
-            debug!(%window, surface = ?wl_surface.id(), "[window] closed");
+            debug!(%window, "[window] closed");
         }
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
@@ -594,10 +709,21 @@ impl State {
     }
 
     /// A toplevel committed: record its title, application id and buffer.
+    ///
+    /// An X11 window's `wl_surface` also reaches this commit hook, because the compositor
+    /// hook runs for every surface; it has no `xdg_toplevel` attributes and its content
+    /// arrives through the X11 surface, so it is not a toplevel commit.
     pub(crate) fn toplevel_committed(&mut self, surface: &WlSurface) {
         let Some(window) = self.window_of(surface) else {
             return;
         };
+        if self
+            .windows
+            .get(&window)
+            .is_some_and(|entry| entry.surface.toplevel().is_none())
+        {
+            return;
+        }
         let (app_id, title) = with_states(surface, |states| {
             let attributes = states
                 .data_map
@@ -625,8 +751,10 @@ impl State {
             let mapped = has_buffer(surface);
             newly_mapped = mapped && !entry.mapped;
             entry.mapped = mapped;
-            if !entry.surface.is_initial_configure_sent() {
-                initial_configure = Some(entry.surface.clone());
+            if let Some(toplevel) = entry.surface.toplevel()
+                && !toplevel.is_initial_configure_sent()
+            {
+                initial_configure = Some(toplevel.clone());
             }
         }
         if let Some(surface) = initial_configure {
@@ -700,7 +828,7 @@ impl State {
     pub(crate) fn window_of(&self, surface: &WlSurface) -> Option<WindowId> {
         self.windows
             .iter()
-            .find(|(_, entry)| entry.surface.wl_surface() == surface)
+            .find(|(_, entry)| entry.surface.wl_surface().as_ref() == Some(surface))
             .map(|(window, _)| *window)
     }
 
@@ -778,7 +906,9 @@ impl State {
             if !entry.mapped {
                 continue;
             }
-            let surface = entry.surface.wl_surface().clone();
+            let Some(surface) = entry.surface.wl_surface() else {
+                continue;
+            };
             with_states(&surface, |states| {
                 for callback in states
                     .cached_state
@@ -927,7 +1057,7 @@ impl State {
                 && position.y < geometry.bottom() as f64;
             if inside {
                 let origin = SmithayPoint::from((f64::from(geometry.x), f64::from(geometry.y)));
-                return Some((entry.surface.wl_surface().clone(), origin));
+                return entry.surface.wl_surface().map(|surface| (surface, origin));
             }
         }
         None
@@ -950,6 +1080,22 @@ fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: 
     } else {
         states.unset(state);
     }
+}
+
+/// An X11 rectangle in the policy's coordinates.
+///
+/// The X11 window manager works in logical pixels and so does the policy, so this is a
+/// type conversion, not a scale: a fractional client scale reaches Xwayland through its
+/// own `wl_surface` scale, which is where Smithay reads it.
+pub(crate) fn x11_geometry(rect: Rect) -> Rectangle<i32, Logical> {
+    Rectangle::new(
+        (rect.x, rect.y).into(),
+        (
+            i32::try_from(rect.width).unwrap_or(i32::MAX),
+            i32::try_from(rect.height).unwrap_or(i32::MAX),
+        )
+            .into(),
+    )
 }
 
 /// Whether a surface has a committed buffer, which is what makes a toplevel

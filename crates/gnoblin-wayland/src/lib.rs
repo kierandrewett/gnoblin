@@ -14,6 +14,12 @@
 //!   (with `zxdg_output_manager_v1`), `wl_seat` with a keyboard and a pointer,
 //!   `xdg_shell`, `ext_session_lock_manager_v1`, `wp_viewporter` and
 //!   `zxdg_decoration_manager_v1`.
+//! - [`Server::with_xwayland`] adds X11: `xwayland-shell-v1`, the Xwayland keyboard grab
+//!   manager, the data device Smithay's X11 window manager needs and the Xwayland process
+//!   itself. The decisions are `gnoblin-xwayland`'s: this crate spawns, configures and
+//!   performs, and asks `gnoblin_backend::x11` what each X11 event means. A restart after
+//!   a crash is the session's policy, and a server that never becomes ready is a failure
+//!   rather than a hang.
 //! - Window state is `gnoblin-wm`'s: every map, unmap, configure, focus change and
 //!   close is an [`gnoblin_wm::Event`] and comes back as an
 //!   [`gnoblin_wm::Effect`]. Output rectangles come from `gnoblin-output`'s layout
@@ -102,11 +108,13 @@ mod observation;
 mod protocols;
 mod server;
 mod state;
+mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use observation::{LockObservation, ObservedWindow, SessionSnapshot};
 pub use server::{Config, ControlHandle, LoopError, Server, StartupError};
 pub use state::State;
+pub use xwayland::XwaylandSession;
 
 // The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
 // `Dispatch2` implementation below, which is why no protocol module carries its own

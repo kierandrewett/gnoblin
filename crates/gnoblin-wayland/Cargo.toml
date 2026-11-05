@@ -13,7 +13,11 @@ workspace = true
 # The Wayland server itself, pinned to the revision in the root manifest (D7).
 # The safe API is enough for this slice, so the crate keeps the workspace's
 # `unsafe_code = "forbid"` and has no FFI shim module.
-smithay.workspace = true
+# `xwayland` adds Smithay's `XWayland` process handle, the `X11Wm` window manager and the
+# `xwayland-shell-v1` and keyboard grab globals. It is enabled here because this crate is
+# the only one that owns the display the Xwayland client is inserted into; the policy
+# crate stays free of Smithay.
+smithay = { workspace = true, features = ["xwayland"] }
 # Rectangles, sizes, scales and output identities, so a geometry value is the same
 # value the window manager and the output layout already know.
 gnoblin-types.workspace = true

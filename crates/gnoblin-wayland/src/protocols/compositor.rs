@@ -28,6 +28,7 @@ use smithay::wayland::compositor::{
     CompositorClientState, CompositorHandler, CompositorState, get_parent, is_sync_subsurface,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::xwayland::XWaylandClientData;
 
 use crate::State;
 
@@ -51,9 +52,15 @@ impl CompositorHandler for State {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        // Xwayland is inserted with Smithay's own client data, because its compositor
+        // state is where the client scale and the X11 surface association live; every
+        // other client carries this server's [`ClientState`].
+        if let Some(state) = client.get_data::<ClientState>() {
+            return &state.compositor_state;
+        }
         &client
-            .get_data::<ClientState>()
-            .expect("every client is inserted with ClientState")
+            .get_data::<XWaylandClientData>()
+            .expect("every client is inserted with its compositor state")
             .compositor_state
     }
 

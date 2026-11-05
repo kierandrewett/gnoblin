@@ -22,6 +22,9 @@
 //!   frame from the scene graph. It lives here for the same reason: this crate is
 //!   the one place the engine's crates may meet, so `gnoblin-wayland` and
 //!   `gnoblin-render` never name each other.
+//! - **The Xwayland seam.** [`x11`] is the vocabulary `gnoblin-xwayland` (the start and
+//!   restart policy, the X11 window table) and `gnoblin-wayland` (the process, the X11
+//!   connection, the surfaces) share, for that same reason.
 //!
 //! # Why the traits look like this
 //!
@@ -111,6 +114,7 @@
 pub mod headless;
 pub mod nested;
 pub mod render;
+pub mod x11;
 
 use std::fmt;
 use std::io;
