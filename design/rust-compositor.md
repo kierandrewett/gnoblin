@@ -459,9 +459,8 @@ gnoblin/
       gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
       gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem
-    gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; extension Lua modules (D22); uses gnoblin-lua-sandbox
-    gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset, shared by gnoblin-lua and gnoblin-layout-lua
-    gnoblin-layout-lua/       Lua layout host: worker thread, generations, abandon-and-replace backstop, module loader (D17)
+    gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; the `layout` module (Lua layout host, D17, in progress); extension Lua modules (D22); uses gnoblin-lua-sandbox
+    gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset; a separate crate until the layout host lands, then folds into gnoblin-lua
     gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6); WASM extension tier (D22)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
     gnoblin-services/         D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit, idle
@@ -553,7 +552,7 @@ edge, so a violation names the edge and the rule:
   does not depend on Smithay, so `gnoblin-input` and `gnoblin-render` call it
   and its tests run without a session.
 - `gnoblin-testkit` and `gnoblin-parity` are development dependencies only.
-- `gnoblin-wm` depends on `gnoblin-types` alone, and holds the layout module (`gnoblin_wm::layout`). `gnoblin-layout-lua` depends on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-lua-sandbox` depends on `mlua` alone. Only `gnoblin-compositor` may name `gnoblin-layout-lua`; `gnoblin-lua` may name `gnoblin-lua-sandbox`, never `gnoblin-layout-lua`. `gnoblin-wasm` may name `gnoblin-wm` (`layout` module only) for WASM layouts (D22).
+- `gnoblin-wm` depends on `gnoblin-types` alone and holds the layout value types, the placement validator, the floating fallback and the `LayoutEngine` contract (`gnoblin_wm::layout`). It names no Lua or WASM crate. `gnoblin-lua-sandbox` depends on `mlua` alone. The Lua layout host is the `layout` module of `gnoblin-lua`, which may name `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-wasm` may name `gnoblin-wm` (`layout` module only) for WASM layouts (D22). Only `gnoblin-compositor` registers a layout engine with `gnoblin-wm`.
 
 These rules are what makes concurrent work safe: a lane can change a crate
 without breaking another lane, provided the shared types do not change.
@@ -990,11 +989,11 @@ failure-mode list that must be complete before isolated tests or code.
 - **Done when:** model tests cover the failure modes; parity scenarios for
   focus, stacking, workspaces, snapping and rules pass.
 
-### Layout engines: `gnoblin-wm::layout`, `gnoblin-layout-lua`, `gnoblin-lua-sandbox`
+### Layout engines: `gnoblin-wm::layout`, the Lua layout host, `gnoblin-lua-sandbox`
 
-- **Owns:** `gnoblin-wm::layout` holds the pure value types (`Placement`, `Transform3`, `Camera`, `Request`, `Reply`, `LayoutEffect`, `ReplyError`, `LayoutFailure`), the placement validator and the floating fallback. `gnoblin-layout-lua` holds the Lua host: the worker thread, generation bookkeeping, the abandon-and-replace backstop and module loader. `gnoblin-lua-sandbox` holds the mlua VM construction and limits, shared with `gnoblin-lua`. The standard layouts are Lua files under `gnoblin.layouts.*`, not Rust.
+- **Owns:** `gnoblin-wm::layout` holds the pure value types (`Placement`, `Transform3`, `Camera`, `Request`, `Reply`, `LayoutEffect`, `ReplyError`, `LayoutFailure`), the placement validator, the floating fallback and the `LayoutEngine` contract. The Lua layout host is the `layout` module of `gnoblin-lua` (in progress): the worker thread, generation bookkeeping, the abandon-and-replace backstop and module loader. `gnoblin-lua-sandbox` holds the mlua VM construction and limits, shared with `gnoblin-lua`; it folds into `gnoblin-lua` once the host lands. The standard layouts are Lua files under `gnoblin.layouts.*`, not Rust.
 - **Replaces:** nothing. Tiling, scrolling and 3D layouts are new features.
-- **Depends on:** `gnoblin-wm` on `gnoblin-types` alone; `gnoblin-layout-lua` on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`; `gnoblin-lua-sandbox` on `mlua` alone. `gnoblin-wm` hosts one layout engine per workspace.
+- **Depends on:** `gnoblin-wm` on `gnoblin-types` alone; `gnoblin-lua` (`layout` module) on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`; `gnoblin-lua-sandbox` on `mlua` alone. `gnoblin-wm` hosts one layout engine per workspace.
 - **Interface:** `arrange(ctx) -> Result<Reply, LayoutFailure>` and `on_request(ctx, req) -> Result<Reply, LayoutFailure>`, where a `Reply` is `Handled` or `Declined`. Full contract in D17.
 - **Failure modes first:** zero, one and oversized windows; area smaller than gaps; removal of the focused or only window; rapid add and remove; output resize mid-layout; non-deterministic output; a transient added to a full workspace; a spinning layout; a wedged worker (a native call that never returns); a late or stale reply; a reply with a bad count, id or transform. D17 lists the full set.
 - **Parity:** none. This is a new feature, not a divergence, so it has no ledger entry. Floating keeps its parity scenarios in `gnoblin-wm`.
@@ -1052,12 +1051,8 @@ failure-mode list that must be complete before isolated tests or code.
 - **Replaces:** `src/config`, `src/config/lua`,
   `src/session/gnoblin-runtime-worker.c`.
 - **Extension classes:** `gnoblin-lua` builds the Lua classes for a loaded extension at load time from its schema file. It holds no compiled-in extension names (D21).
-- **Layout host (D17):** a module of this crate, not a separate crate. It owns the
-  worker thread, generations and the abandon-and-replace backstop for Lua
-  layouts, and implements the `gnoblin-wm::layout` trait.
-- **Depends on:** `gnoblin-lua-sandbox` (VM construction and limits), `gnoblin-wm`
-  (`layout` module only), `gnoblin-types`, `gnoblin-schema`. The layout module
-  is the only part allowed to name `gnoblin-wm`; see the dependency rules.
+- **Layout host (D17, in progress):** the `layout` module of this crate, not a separate crate. It owns the worker thread, generations and the abandon-and-replace backstop for Lua layouts, and implements the `gnoblin_wm::layout::LayoutEngine` trait.
+- **Depends on:** `gnoblin-lua-sandbox` (VM construction and limits; it folds into this crate once the layout host lands), `gnoblin-wm` (`layout` module only), `gnoblin-types`, `gnoblin-schema`. The layout module is the only part allowed to name `gnoblin-wm`; see the dependency rules.
 - **Failure modes first:** a handler loops; a reload races a pending operation;
   salvage removes a key that changes lock or protocol policy; a saved last-good
   document is from an older schema; a callback throws.
@@ -2083,19 +2078,13 @@ declines every request and returns no placements, so each window keeps its own
 rectangle.
 
 ```rust
-pub trait Layout {
-    fn arrange(&mut self, ctx: &ArrangeContext) -> Result<Reply, LayoutFailure>;
-    fn on_request(&mut self, ctx: &ArrangeContext, req: &LayoutRequest)
-        -> Result<Reply, LayoutFailure>;
+pub trait LayoutEngine {
+    fn submit(&mut self, job: Job, generation: Generation) -> Ticket;
+    fn collect(&mut self, generation: Generation, deadline: Instant) -> Outcome;
 }
 ```
 
-`gnoblin-layout-lua` implements the trait for a Lua layout. It owns the worker
-thread, the generation bookkeeping, and the abandon-and-replace backstop. It depends on
-`gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. The sandbox crate
-owns the mlua VM construction and limits, and `gnoblin-lua` moves its sandbox
-code into `gnoblin-lua-sandbox` so both share one set of limits. `gnoblin-wm`
-holds a `Box<dyn Layout>` per workspace and never names the Lua crates.
+The Lua layout host is the `layout` module of `gnoblin-lua`. It implements `LayoutEngine` for a Lua layout. It owns the worker thread, the generation bookkeeping, and the abandon-and-replace backstop, and it runs every run on that worker, never on the frame thread. It depends on `gnoblin-wm` (`layout` module), `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-lua-sandbox` owns the mlua VM construction and limits; it is a separate crate only until the host lands, then it folds into `gnoblin-lua` so one crate holds every Lua limit. `gnoblin-wm` holds a `Slot`, wrapping a `Box<dyn LayoutEngine>`, per workspace, and never names the Lua crates.
 
 **Composition rules.**
 
@@ -2817,9 +2806,9 @@ No new crate. Each piece goes to a crate that already owns the same concern.
 | Process supervision                                      | `gnoblin-session`                                  | The guardian owns supervision                                                                 |
 | WASM host, WIT, workers, WASM layout adapter             | `gnoblin-wasm`                                     | The D6 crate; names `gnoblin-schema`, `gnoblin-types` and `gnoblin-wm` (`layout` module only) |
 | Lua extension modules                                    | `gnoblin-lua`                                      | Lua host for extension modules (D22)                                                          |
-| In-process Lua layout host                               | `gnoblin-layout-lua`                               | Worker, generations, abandon-and-replace backstop (D17)                                       |
+| Lua layout host (`layout` module)                        | `gnoblin-lua`                                      | Worker, generations, abandon-and-replace backstop (D17); in progress                          |
 | Dynamic Wayland globals                                  | `gnoblin-wayland` (`dynamic` module)               | Protocol handlers and the per-client roster                                                   |
-| Layout trait, value types, registry, validator, fallback | `gnoblin-wm::layout`                               | Pure policy (D17)                                                                             |
+| Layout engine contract, value types, validator, fallback | `gnoblin-wm::layout`                               | Pure policy (D17)                                                                             |
 | IPC envelope and stock extension surface                 | `gnoblin-proto`, `gnoblin-model`, `gnoblin-client` | D21                                                                                           |
 | Commands                                                 | `gnoblinctl`                                       | Command-line client                                                                           |
 
