@@ -1,0 +1,96 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.ScreenCast",
+      "version": 4,
+      "members": [
+        {
+          "kind": "method",
+          "name": "CreateSession",
+          "support": "partial",
+          "note": "the session is wire state plus the compositor's `capture.open`; `remote-desktop-session-id` is passed through and `disable-animations` is accepted but has no IPC switch"
+        },
+        {
+          "kind": "property",
+          "name": "Version",
+          "support": "supported"
+        }
+      ]
+    },
+    {
+      "name": "org.gnome.Mutter.ScreenCast.Session",
+      "version": 4,
+      "members": [
+        {
+          "kind": "method",
+          "name": "RecordArea",
+          "support": "partial",
+          "note": "the stream object is created as upstream and `Parameters` reports its area; no PipeWire node exists, so `Stream.Start` refuses with `unsupported-pipewire`"
+        },
+        {
+          "kind": "method",
+          "name": "RecordMonitor",
+          "support": "partial",
+          "note": "the stream object is created as upstream; no PipeWire node exists, so `Stream.Start` refuses with `unsupported-pipewire`"
+        },
+        {
+          "kind": "method",
+          "name": "RecordVirtual",
+          "support": "unsupported",
+          "reason": "the compositor publishes no virtual-monitor target, and an adapter must not invent one"
+        },
+        {
+          "kind": "method",
+          "name": "RecordWindow",
+          "support": "partial",
+          "note": "the stream object is created as upstream; no PipeWire node exists, so `Stream.Start` refuses with `unsupported-pipewire`"
+        },
+        {
+          "kind": "method",
+          "name": "Start",
+          "support": "partial",
+          "note": "the compositor's capture session is opened through `capture.open`; a stream still produces no frames until the PipeWire producer exists"
+        },
+        {
+          "kind": "method",
+          "name": "Stop",
+          "support": "supported"
+        },
+        {
+          "kind": "signal",
+          "name": "Closed",
+          "support": "supported"
+        }
+      ]
+    },
+    {
+      "name": "org.gnome.Mutter.ScreenCast.Stream",
+      "version": 4,
+      "members": [
+        {
+          "kind": "method",
+          "name": "Start",
+          "support": "unsupported",
+          "reason": "unsupported-pipewire: the PipeWire producer cannot be built with the pinned toolchain (`pipewire-sys` and libclang), so no node id exists to return"
+        },
+        {
+          "kind": "method",
+          "name": "Stop",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Parameters",
+          "support": "partial",
+          "note": "`position` and `size` are reported for area streams and `output-name` for monitor streams; a window stream reports nothing because the IPC publishes no window geometry"
+        },
+        {
+          "kind": "signal",
+          "name": "PipeWireStreamAdded",
+          "support": "unsupported",
+          "reason": "unsupported-pipewire: no PipeWire node is produced, so the signal is never emitted"
+        }
+      ]
+    }
+  ]
+}

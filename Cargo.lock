@@ -1031,6 +1031,12 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compat-mutter-screencast"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-compat-core",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-servicechannel"

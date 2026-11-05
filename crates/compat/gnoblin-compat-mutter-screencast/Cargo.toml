@@ -8,3 +8,11 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+zbus.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+futures-lite.workspace = true
