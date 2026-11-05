@@ -16,7 +16,7 @@ use super::{LayoutReason, WedgeHook};
 
 /// Work the host sends to a worker. Generation 0 marks a load the host replays after a
 /// respawn; its result is never reported to a caller.
-pub(crate) enum Job {
+pub(crate) enum WorkerJob {
     Load {
         generation: u64,
         name: String,
@@ -32,10 +32,10 @@ pub(crate) enum Job {
     },
 }
 
-impl Job {
+impl WorkerJob {
     fn generation(&self) -> u64 {
         match self {
-            Job::Load { generation, .. } | Job::Run { generation, .. } => *generation,
+            WorkerJob::Load { generation, .. } | WorkerJob::Run { generation, .. } => *generation,
         }
     }
 }
@@ -63,7 +63,7 @@ pub(crate) struct Spawn {
 
 /// A running worker: the sending end of its jobs and the receiving end of its answers.
 pub(crate) struct Worker {
-    jobs: Sender<Job>,
+    jobs: Sender<WorkerJob>,
     pub(crate) done: Receiver<Done>,
     /// Dropped without joining: a wedged worker is abandoned, never waited for.
     _thread: JoinHandle<()>,
@@ -85,7 +85,7 @@ impl Worker {
     }
 
     /// Queues `job`. Returns false when the worker thread has exited.
-    pub(crate) fn send(&self, job: Job) -> bool {
+    pub(crate) fn send(&self, job: WorkerJob) -> bool {
         self.jobs.send(job).is_ok()
     }
 
@@ -98,7 +98,7 @@ impl Worker {
     }
 }
 
-fn serve(jobs: Receiver<Job>, done: Sender<Done>, spawn: Spawn) {
+fn serve(jobs: Receiver<WorkerJob>, done: Sender<Done>, spawn: Spawn) {
     let mut vm = Vm::new(spawn.limits, spawn.module_dirs).map_err(message);
     for job in jobs {
         let generation = job.generation();
@@ -106,13 +106,13 @@ fn serve(jobs: Receiver<Job>, done: Sender<Done>, spawn: Spawn) {
             (Err(text), _) => Err(LayoutFault::new(LayoutReason::VmDown, text.clone())),
             (
                 Ok(vm),
-                Job::Load {
+                WorkerJob::Load {
                     name, module, options, ..
                 },
             ) => vm.load(&name, &module, &options).map(|_| LayoutFinished::Loaded),
             (
                 Ok(vm),
-                Job::Run {
+                WorkerJob::Run {
                     name,
                     call,
                     snapshot,

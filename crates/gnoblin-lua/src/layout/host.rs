@@ -10,13 +10,13 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
 use gnoblin_lua_sandbox::Limits;
-use gnoblin_wm::layout::{Layout, LayoutWindow, Params, fallback, settle};
+use gnoblin_wm::layout::{Layout, LayoutFailure, LayoutWindow, Params, fallback, settle};
 
 use super::LayoutReason;
 use super::data::Data;
 use super::lua::{LayoutCall, LayoutFault};
 use super::snapshot::{LayoutRequest, LayoutSnapshot};
-use super::worker::{LayoutFinished, Job, Spawn, Worker};
+use super::worker::{LayoutFinished, Spawn, Worker, WorkerJob};
 
 /// Decides whether a layout's worker must stall, for tests of the wedge path. Returns
 /// true to make the worker stop answering the named layout's next call.
@@ -64,7 +64,7 @@ pub struct HostFailure {
 
 /// What a layout call produced for the caller.
 #[derive(Clone, Debug)]
-pub enum LayoutOutcome {
+pub enum HostOutcome {
     /// The layout's placement. A declined request yields the built-in floating
     /// placement here, with `origin` set to the fallback.
     Placed(Layout),
@@ -150,7 +150,7 @@ impl Host {
             },
         );
         let generation = self.next_generation();
-        let job = Job::Load {
+        let job = WorkerJob::Load {
             generation,
             name: name.to_owned(),
             module: module.to_owned(),
@@ -180,21 +180,21 @@ impl Host {
     }
 
     /// The arrange pass for layout `name` over `snapshot`.
-    pub fn arrange(&mut self, name: &str, snapshot: &LayoutSnapshot) -> LayoutOutcome {
+    pub fn arrange(&mut self, name: &str, snapshot: &LayoutSnapshot) -> HostOutcome {
         self.dispatch(name, LayoutCall::Arrange, snapshot)
     }
 
     /// A message to layout `name`: a window was added or removed, a request arrived, or
     /// a command ran.
-    pub fn message(&mut self, name: &str, request: LayoutRequest, snapshot: &LayoutSnapshot) -> LayoutOutcome {
+    pub fn message(&mut self, name: &str, request: LayoutRequest, snapshot: &LayoutSnapshot) -> HostOutcome {
         self.dispatch(name, LayoutCall::Message(request), snapshot)
     }
 
-    fn dispatch(&mut self, name: &str, call: LayoutCall, snapshot: &LayoutSnapshot) -> LayoutOutcome {
+    fn dispatch(&mut self, name: &str, call: LayoutCall, snapshot: &LayoutSnapshot) -> HostOutcome {
         let params = match params_of(snapshot) {
             Ok(params) => params,
             Err(message) => {
-                return LayoutOutcome::Failed {
+                return HostOutcome::Failed {
                     layout: name.to_owned(),
                     reason: LayoutReason::Error,
                     message,
@@ -202,7 +202,7 @@ impl Host {
                 };
             }
         };
-        let failed = |reason: LayoutReason, message: String| LayoutOutcome::Failed {
+        let failed = |reason: LayoutReason, message: String| HostOutcome::Failed {
             layout: name.to_owned(),
             reason,
             message,
@@ -223,12 +223,15 @@ impl Host {
             );
         }
         if !self.registered.contains_key(name) {
-            return failed(LayoutReason::MissingModule, format!("layout `{name}` is not registered"));
+            return failed(
+                LayoutReason::MissingModule,
+                format!("layout `{name}` is not registered"),
+            );
         }
         self.ensure_worker();
         let generation = self.next_generation();
         let state = self.states.get(name).cloned();
-        let job = Job::Run {
+        let job = WorkerJob::Run {
             generation,
             name: name.to_owned(),
             call,
@@ -241,14 +244,23 @@ impl Host {
                 format!("layout `{name}` did not answer within the frame"),
             ),
             Some(Err(fault)) => failed(fault.reason, fault.message),
-            Some(Ok(LayoutFinished::Loaded)) => failed(LayoutReason::Error, "the worker answered a layout call with a load".into()),
+            Some(Ok(LayoutFinished::Loaded)) => failed(
+                LayoutReason::Error,
+                "the worker answered a layout call with a load".into(),
+            ),
             Some(Ok(LayoutFinished::Ran(ran))) => match settle(&params, ran.reply) {
                 Ok(layout) => {
                     self.states.insert(name.to_owned(), (ran.hash, ran.state));
-                    LayoutOutcome::Placed(layout)
+                    HostOutcome::Placed(layout)
                 }
                 Err(failure) => failed(
-                    LayoutReason::from(failure),
+                    match failure {
+                        LayoutFailure::Error => LayoutReason::Error,
+                        LayoutFailure::Timeout => LayoutReason::Deadline,
+                        LayoutFailure::Disabled => LayoutReason::MissingModule,
+                        LayoutFailure::VmWedged => LayoutReason::VmWedged,
+                        LayoutFailure::InvalidReply(_) => LayoutReason::RefusedReply,
+                    },
                     format!("layout `{name}` returned an invalid reply"),
                 ),
             },
@@ -257,14 +269,22 @@ impl Host {
 
     /// Queues `job` and waits up to `timeout` for the answer with `generation`. Answers
     /// with other generations are stale and are discarded. `None` means no answer.
-    fn submit(&mut self, job: Job, generation: u64, timeout: Duration) -> Option<Result<LayoutFinished, LayoutFault>> {
+    fn submit(
+        &mut self,
+        job: WorkerJob,
+        generation: u64,
+        timeout: Duration,
+    ) -> Option<Result<LayoutFinished, LayoutFault>> {
         let sent = match self.worker.as_ref() {
             Some(worker) => worker.send(job),
             None => false,
         };
         if !sent {
             self.lost_worker();
-            return Some(Err(LayoutFault::new(LayoutReason::VmDown, "the layout worker is not running")));
+            return Some(Err(LayoutFault::new(
+                LayoutReason::VmDown,
+                "the layout worker is not running",
+            )));
         }
         self.note_sent();
         let deadline = Instant::now() + timeout;
@@ -272,7 +292,12 @@ impl Host {
             let remaining = deadline.saturating_duration_since(Instant::now());
             let received = match self.worker.as_ref() {
                 Some(worker) => worker.recv_timeout(remaining),
-                None => return Some(Err(LayoutFault::new(LayoutReason::VmDown, "the layout worker is not running"))),
+                None => {
+                    return Some(Err(LayoutFault::new(
+                        LayoutReason::VmDown,
+                        "the layout worker is not running",
+                    )));
+                }
             };
             match received {
                 Ok(done) => {
@@ -344,7 +369,7 @@ impl Host {
             .map(|(name, layout)| (name.clone(), layout.module.clone(), layout.options.clone()))
             .collect();
         for (name, module, options) in replay {
-            let job = Job::Load {
+            let job = WorkerJob::Load {
                 generation: 0,
                 name,
                 module,

@@ -8,7 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gnoblin_lua::layout::{
-    HostConfig, Data, Gaps, Host, LayoutOutcome, OutputInfo, LayoutReason, LayoutRequest, LayoutSnapshot, WedgeHook, SnapshotWindow,
+    Data, Gaps, Host, HostConfig, HostOutcome, LayoutReason, LayoutRequest, LayoutSnapshot, OutputInfo, SnapshotWindow,
+    WedgeHook,
 };
 use gnoblin_types::{OutputId, RectF, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{Layout, Origin, Transform3};
@@ -104,17 +105,17 @@ end
 return M
 "#;
 
-fn placed(outcome: LayoutOutcome) -> Layout {
+fn placed(outcome: HostOutcome) -> Layout {
     match outcome {
-        LayoutOutcome::Placed(layout) => layout,
-        LayoutOutcome::Failed { reason, message, .. } => panic!("expected a placement, got {reason:?}: {message}"),
+        HostOutcome::Placed(layout) => layout,
+        HostOutcome::Failed { reason, message, .. } => panic!("expected a placement, got {reason:?}: {message}"),
     }
 }
 
-fn failed(outcome: LayoutOutcome) -> (LayoutReason, String) {
+fn failed(outcome: HostOutcome) -> (LayoutReason, String) {
     match outcome {
-        LayoutOutcome::Failed { reason, message, .. } => (reason, message),
-        LayoutOutcome::Placed(layout) => panic!("expected a failure, got {layout:?}"),
+        HostOutcome::Failed { reason, message, .. } => (reason, message),
+        HostOutcome::Placed(layout) => panic!("expected a failure, got {layout:?}"),
     }
 }
 
@@ -194,7 +195,10 @@ fn spinning_layout_is_aborted_by_the_instruction_budget() {
     let mut host = host(modules("spin", &[("spin", spin)]));
     host.register("spin", "spin", no_options()).expect("registers");
     let (reason, _) = failed(host.arrange("spin", &snapshot(&[1], 100.0, 100.0)));
-    assert!(matches!(reason, LayoutReason::Stalled | LayoutReason::Deadline), "{reason:?}");
+    assert!(
+        matches!(reason, LayoutReason::Stalled | LayoutReason::Deadline),
+        "{reason:?}"
+    );
 }
 
 #[test]
@@ -233,7 +237,10 @@ fn bad_returns_are_refused() {
         host.register(name, name, no_options()).expect("registers");
         let (reason, _) = failed(host.arrange(name, &snapshot(&[1], 100.0, 100.0)));
         assert!(
-            matches!(reason, LayoutReason::RefusedReply | LayoutReason::InvalidLayout | LayoutReason::Error),
+            matches!(
+                reason,
+                LayoutReason::RefusedReply | LayoutReason::InvalidLayout | LayoutReason::Error
+            ),
             "{name}: {reason:?}"
         );
     }
@@ -284,7 +291,10 @@ fn wedged_worker_is_abandoned_and_the_leak_cap_disables_layouts() {
     for _ in 0..4 {
         std::thread::sleep(Duration::from_millis(60));
         let (reason, _) = failed(host.arrange("wedged", &snap));
-        assert!(matches!(reason, LayoutReason::VmWedged | LayoutReason::Deadline), "{reason:?}");
+        assert!(
+            matches!(reason, LayoutReason::VmWedged | LayoutReason::Deadline),
+            "{reason:?}"
+        );
     }
     assert!(host.disabled(), "three abandoned workers disable layouts");
     assert!(host.leaked() >= 3);

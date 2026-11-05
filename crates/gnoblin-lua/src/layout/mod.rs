@@ -3,7 +3,7 @@
 //! A layout is a Lua module that the configuration registers with
 //! `gnoblin.layout.register(name, module)`. The host runs it on the worker, waits at
 //! most one frame deadline for the answer, and turns the answer into a validated
-//! [`gnoblin_wm::layout::Layout`]. Every failure becomes an [`LayoutOutcome::Failed`] that
+//! [`gnoblin_wm::layout::Layout`]. Every failure becomes an [`HostOutcome::Failed`] that
 //! carries the built-in floating fallback, so the caller always has a placement.
 //!
 //! # LayoutFailure modes
@@ -36,12 +36,11 @@ mod require;
 mod snapshot;
 mod worker;
 
-use gnoblin_wm::layout::LayoutFailure;
 use mlua::{Lua, Table};
 
 pub use data::{Data, DataError, LayoutKey};
-pub use host::{HostConfig, Host, LayoutOutcome, WedgeHook};
-pub use snapshot::{Gaps, OutputInfo, LayoutRequest, SizeHints, LayoutSnapshot, SnapshotWindow};
+pub use host::{Host, HostConfig, HostOutcome, WedgeHook};
+pub use snapshot::{Gaps, LayoutRequest, LayoutSnapshot, OutputInfo, SizeHints, SnapshotWindow};
 
 /// Why a layout did not produce a placement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,20 +78,6 @@ impl LayoutReason {
             LayoutReason::VmDown => "vm-down",
             LayoutReason::MissingModule => "missing-module",
             LayoutReason::InvalidLayout => "invalid-layout",
-        }
-    }
-}
-
-impl From<LayoutFailure> for LayoutReason {
-    fn from(failure: LayoutFailure) -> Self {
-        match failure {
-            LayoutFailure::Deadline => LayoutReason::Deadline,
-            LayoutFailure::Memory => LayoutReason::Memory,
-            LayoutFailure::Error => LayoutReason::Error,
-            LayoutFailure::Stalled => LayoutReason::Stalled,
-            LayoutFailure::VmDown => LayoutReason::VmDown,
-            LayoutFailure::MissingModule => LayoutReason::MissingModule,
-            LayoutFailure::RefusedReply(_) => LayoutReason::RefusedReply,
         }
     }
 }

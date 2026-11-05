@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use super::LayoutReason;
 use gnoblin_lua_sandbox::{self as sandbox, Guard, Limits, Profile};
-use gnoblin_wm::layout::{LayoutFailure, Reply};
+use gnoblin_wm::layout::Reply;
 use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
 
 use super::data::Data;
@@ -89,14 +89,15 @@ impl Vm {
         let (value, hash) = self
             .modules
             .reload(&self.lua, module)
-            .map_err(|error| self.fault(error, LayoutFailure::MissingModule))?;
-        let defaults = shape(&value).map_err(|error| self.fault(error, LayoutFailure::Error))?;
+            .map_err(|error| self.fault(error, LayoutReason::MissingModule))?;
+        let defaults = shape(&value).map_err(|error| self.fault(error, LayoutReason::Error))?;
         let options = merge(defaults, options)?;
         let value = self
             .lua
             .create_registry_value(value)
-            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
-        self.layouts.insert(name.to_owned(), LayoutEntry { value, hash, options });
+            .map_err(|error| self.fault(error, LayoutReason::Error))?;
+        self.layouts
+            .insert(name.to_owned(), LayoutEntry { value, hash, options });
         Ok(hash)
     }
 
@@ -112,7 +113,7 @@ impl Vm {
         let entry = self
             .layouts
             .get(name)
-            .ok_or_else(|| LayoutFault::new(LayoutFailure::MissingModule, format!("layout `{name}` did not load")))?;
+            .ok_or_else(|| LayoutFault::new(LayoutReason::MissingModule, format!("layout `{name}` did not load")))?;
         let state = match state {
             Some((hash, state)) if hash == entry.hash => state,
             _ => Data::table(),
@@ -120,23 +121,23 @@ impl Vm {
         let layout: LuaValue = self
             .lua
             .registry_value(&entry.value)
-            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
-        let handler = handler(&layout, call).map_err(|error| self.fault(error, LayoutFailure::Error))?;
+            .map_err(|error| self.fault(error, LayoutReason::Error))?;
+        let handler = handler(&layout, call).map_err(|error| self.fault(error, LayoutReason::Error))?;
         let ctx = build_ctx(&self.lua, snapshot, &entry.options, &state)
-            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
+            .map_err(|error| self.fault(error, LayoutReason::Error))?;
         let reply = match handler {
             None => Reply::Declined,
             Some(handler) => {
                 self.guard.begin(&self.limits);
                 let value =
-                    invoke(&self.lua, &handler, call, &ctx).map_err(|error| self.fault(error, LayoutFailure::Error))?;
-                reply::read(&value).map_err(|error| self.fault(error, LayoutFailure::Error))?
+                    invoke(&self.lua, &handler, call, &ctx).map_err(|error| self.fault(error, LayoutReason::Error))?;
+                reply::read(&value).map_err(|error| self.fault(error, LayoutReason::Error))?
             }
         };
         let state: LuaValue = ctx
             .get("state")
-            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
-        let state = Data::from_lua(&state).map_err(|error| LayoutFault::new(LayoutFailure::Error, error.0))?;
+            .map_err(|error| self.fault(error, LayoutReason::Error))?;
+        let state = Data::from_lua(&state).map_err(|error| LayoutFault::new(LayoutReason::Error, error.0))?;
         Ok(Ran {
             reply,
             hash: entry.hash,
@@ -146,9 +147,9 @@ impl Vm {
 
     /// Classify a Lua error. A budget the hook stopped is a stall; a memory error is a
     /// memory failure; anything else is `default`.
-    fn fault(&self, error: mlua::Error, default: LayoutFailure) -> LayoutFault {
+    fn fault(&self, error: mlua::Error, default: LayoutReason) -> LayoutFault {
         let failure = if self.guard.aborted() {
-            LayoutFailure::Stalled
+            LayoutReason::Stalled
         } else {
             classify(&error, default)
         };
@@ -156,9 +157,9 @@ impl Vm {
     }
 }
 
-fn classify(error: &mlua::Error, default: LayoutFailure) -> LayoutFailure {
+fn classify(error: &mlua::Error, default: LayoutReason) -> LayoutReason {
     match error {
-        mlua::Error::MemoryError(_) => LayoutFailure::Memory,
+        mlua::Error::MemoryError(_) => LayoutReason::Memory,
         mlua::Error::CallbackError { cause, .. } => classify(cause, default),
         _ => default,
     }
@@ -217,7 +218,7 @@ fn key_name(key: &LuaValue) -> String {
 fn merge(defaults: Data, values: &Data) -> Result<Data, LayoutFault> {
     let mut merged = defaults;
     let (Data::Table(base), Data::Table(user)) = (&mut merged, values) else {
-        return Err(LayoutFault::new(LayoutFailure::Error, "layout options must be a table"));
+        return Err(LayoutFault::new(LayoutReason::Error, "layout options must be a table"));
     };
     for (key, value) in user {
         base.insert(key.clone(), value.clone());
@@ -258,11 +259,15 @@ fn invoke(lua: &Lua, handler: &Function, call: &LayoutCall, ctx: &Table) -> mlua
     let ctx = ctx.clone();
     match call {
         LayoutCall::Arrange => handler.call::<LuaValue>((ctx,)),
-        LayoutCall::Message(LayoutRequest::Place { window }) => handler.call::<LuaValue>((ctx, event(lua, "place", window.get())?)),
+        LayoutCall::Message(LayoutRequest::Place { window }) => {
+            handler.call::<LuaValue>((ctx, event(lua, "place", window.get())?))
+        }
         LayoutCall::Message(LayoutRequest::Remove { window }) => {
             handler.call::<LuaValue>((ctx, event(lua, "remove", window.get())?))
         }
-        LayoutCall::Message(LayoutRequest::Command { params, .. }) => handler.call::<LuaValue>((ctx, params.to_lua(lua)?)),
+        LayoutCall::Message(LayoutRequest::Command { params, .. }) => {
+            handler.call::<LuaValue>((ctx, params.to_lua(lua)?))
+        }
     }
 }
 
