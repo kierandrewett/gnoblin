@@ -39,13 +39,7 @@ esac
 
 case_install() {
     pm_refresh
-    local core frames
-    core="$(find_package gnoblin "$package_dir")"
-    frames="$(find_package gnoblin-x11-frames "$package_dir")"
-    case "$kind" in
-        arch | apk) pm_install_files "$core" "$frames" ;;
-        *) pm_install_files "$core" ;;
-    esac
+    pm_install_files "$(find_package gnoblin "$package_dir")"
     pm_install "${tools[@]}"
     for tool in dbus-run-session wayland-info grim swaybg python3; do
         command -v "$tool"

@@ -6,11 +6,6 @@
       "version": "gnoblin",
       "compiled": true
     },
-    "gnoblin-x11-frames": {
-      "licence": "GPL-2.0-or-later",
-      "version": "gnoblin",
-      "compiled": true
-    },
     "xdg-desktop-portal-gnoblin": {
       "licence": "LGPL-2.1-or-later",
       "version": "portal",

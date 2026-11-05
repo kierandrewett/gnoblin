@@ -128,9 +128,6 @@ install_gnoblin() {
             echo "[guest] expected one gnoblin${separator}*${suffix} in $source, found ${#files[@]}" >&2
             exit 1
         }
-        # The frames client is a recommendation on rpm and deb and a dependency on Arch and Alpine. The test installs
-        # it when it is there, as a user who installs the recommended packages would.
-        mapfile -t -O 1 files < <(package_files "$source" gnoblin-x11-frames)
         echo "[guest] installing ${files[*]}"
         pm_install_files "${files[@]}"
         return
@@ -146,7 +143,7 @@ install_gnoblin() {
     [[ "$source" == nightly ]] && channel=(--nightly)
     curl -fsSL "${GNOBLIN_REPO_URL:-https://repo.gnoblin.org}/setup.sh" | sh -s -- --gnoblin "${channel[@]}"
     pm_refresh
-    pm_install gnoblin gnoblin-x11-frames
+    pm_install gnoblin
 }
 
 # The session runs the way a display manager runs it: the Exec line of the installed wayland-sessions entry, in a
@@ -298,10 +295,9 @@ systemd_guest() {
 }
 
 info() {
-    local kernel gnoblin frames mesa python
+    local kernel gnoblin mesa python
     kernel="$(uname -r)"
     gnoblin="$(pm_version gnoblin || true)"
-    frames="$(pm_version gnoblin-x11-frames || true)"
     case "$kind" in
         rpm) mesa="$(pm_version mesa-dri-drivers || true)" ;;
         suse) mesa="$(pm_version Mesa-dri || true)" ;;
@@ -310,9 +306,9 @@ info() {
         deb) mesa="$(pm_version libgl1-mesa-dri || true)" ;;
     esac
     python="$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null || true)"
-    python3 - "$PRETTY_NAME" "$kernel" "$gnoblin" "$frames" "$mesa" "$python" <<'PY'
+    python3 - "$PRETTY_NAME" "$kernel" "$gnoblin" "$mesa" "$python" <<'PY'
 import json, sys
-keys = ("os", "kernel", "gnoblin", "gnoblin_x11_frames", "mesa", "python")
+keys = ("os", "kernel", "gnoblin", "mesa", "python")
 print(json.dumps(dict(zip(keys, sys.argv[1:]))))
 PY
 }

@@ -247,18 +247,11 @@ systemctl --user reset-failed xdg-desktop-portal-gnome.service
 
 Restart the session so apps reconnect to the portal.
 
-## X11 apps have no title bar or do not open
+## An X11 app has no title bar
 
-Mutter draws the title bar of an X11 app through a separate program, `mutter-x11-frames`. It is in the
-`gnoblin-x11-frames` package. If an X11 app such as `xterm` has no title bar or borders, or does not open while
-Wayland apps do, check the package:
-
-```sh
-ls /usr/lib/gnoblin/libexec/mutter-x11-frames
-```
-
-If the file is missing, install `gnoblin-x11-frames` with your package manager, then log out and in again. Apps that
-draw their own title bar do not need it. See [optional packages](optional-packages.md#x11-window-frames).
+Gnoblin draws the frame of an X11 app itself, as it does for a Wayland app. An X11 app that turns its decorations
+off gets no frame. A window rule can also change the frame of X11 apps: `client_type = "x11"` in a rule match selects
+them. Check your [frame mode](/guides/window_frames#choose-a-mode).
 
 ## X11 apps closed but Wayland apps kept running
 

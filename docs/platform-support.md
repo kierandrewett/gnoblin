@@ -70,19 +70,9 @@ stays a candidate.
 
 ## X11 apps and GTK 4
 
-The split of GTK 4 out of `gnoblin` is not complete. It is not a promise that an install with no GTK 4 is safe for
-X11 apps. The title bars and borders that Mutter shows on X11 apps come from a program that needs GTK 4. It is in
-its own package, `gnoblin-x11-frames`.
-
-- Without that package, X11 apps that use the system title bar get no title bar and no borders, and some X11
-  windows may fail to open. No one has tested that case in a graphical session. Wayland apps and apps that draw
-  their own title bar do not change.
-- Fedora, openSUSE and Debian install the package with `gnoblin` as a recommended package. You can refuse it, at
-  your own risk for X11 apps.
-- Arch and Alpine cannot recommend a package, so `gnoblin` depends on it there. A plain install brings GTK 4 with it.
-- The `.tar.xz` packages have no dependencies. The frames tarball is needed for X11 apps.
-
-See [optional packages](optional-packages.md#x11-window-frames).
+The `gnoblin` package does not need GTK 4 or libadwaita on any system. Gnoblin draws the title bars and borders of
+X11 apps itself, as it does for Wayland apps. Only the optional portal backend, `xdg-desktop-portal-gnoblin`, needs
+GTK 4 and libadwaita. See [optional packages](optional-packages.md#gtk-4).
 
 ## Older system libraries
 

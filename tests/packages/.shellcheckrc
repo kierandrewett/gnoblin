@@ -1,0 +1,2 @@
+# The suite scripts source lib.sh through a source= directive; follow it.
+external-sources=true

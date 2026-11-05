@@ -56,17 +56,6 @@ required_patterns=(
     'gnoblin-[0-9]*-arm64.tar.xz'
     'gnoblin-[0-9]*-r[0-9]*.apk'
     'xdg-desktop-portal-gnoblin-[0-9]*-r[0-9]*.apk'
-    'gnoblin-x11-frames-[0-9]*.fc[0-9]*.x86_64.rpm'
-    'gnoblin-x11-frames-[0-9]*.fc[0-9]*.aarch64.rpm'
-    'gnoblin-x11-frames-[0-9]*.tumbleweed.x86_64.rpm'
-    'gnoblin-x11-frames-[0-9]*.tumbleweed.aarch64.rpm'
-    'gnoblin-x11-frames_[0-9]*_amd64.deb'
-    'gnoblin-x11-frames_[0-9]*_arm64.deb'
-    'gnoblin-x11-frames-[0-9]*-x86_64.pkg.tar.zst'
-    'gnoblin-x11-frames-[0-9]*-aarch64.pkg.tar.zst'
-    'gnoblin-x11-frames-[0-9]*-amd64.tar.xz'
-    'gnoblin-x11-frames-[0-9]*-arm64.tar.xz'
-    'gnoblin-x11-frames-[0-9]*-r[0-9]*.apk'
     'gnoblin-ananicy-rules*'
 )
 shopt -s nullglob

@@ -113,8 +113,8 @@ sources at testing or edge and upgrades), and reboots.
    drives (the first code and vars pair of `firmware` that exists; the vars file is copied for the run). `virt` has
    no PS/2 controller, so the virtio devices are the only input there too.
 4. It copies `guest.sh` and `wlclient.py` (and the package files) into the guest. `guest.sh install` installs the
-   graphics stack (Mesa with llvmpipe, a D-Bus user session and Python 3) and the `gnoblin` and
-   `gnoblin-x11-frames` packages, from the files or from repo.gnoblin.org.
+   graphics stack (Mesa with llvmpipe, a D-Bus user session and Python 3) and the `gnoblin` package, from the files
+   or from repo.gnoblin.org.
 5. `guest.sh start` starts the session: a systemd service with `PAMName=login`, `TTYPath=/dev/tty1` and
    `XDG_SESSION_TYPE=wayland` runs the `Exec` line of `/usr/share/wayland-sessions/gnoblin.desktop`. This is how a
    display manager starts a session: a logind session of type wayland on seat0, with a user systemd instance. The
@@ -236,7 +236,7 @@ core global and keeps the session up.
 Every run writes a folder:
 
 - `result.json`: the target and its architecture, each check with its status, detail, log excerpt and time, the
-  first failure, the guest versions (system, kernel, `gnoblin`, `gnoblin-x11-frames`, Mesa, Python), the QEMU
+  first failure, the guest versions (system, kernel, `gnoblin`, Mesa, Python), the QEMU
   version, the accelerator, the image URL and checksum, and the total time.
 - `harness.txt` and `command.txt`: the harness command line and the full QEMU command line.
 - `qemu-version.txt`, `qemu.log`, `serial.log`.

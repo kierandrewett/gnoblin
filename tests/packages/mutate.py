@@ -24,6 +24,8 @@ from formats import format_of  # noqa: E402
 
 # The dependency that each drop-* mutation removes from the Depends of the gnoblin deb.
 DROPPED = {"drop-library-dep": "libinput", "drop-gobject-dep": "python3-gi"}
+# The dependency that each add-* mutation adds to it.
+ADDED = {"add-gtk-dep": "libgtk-4-1"}
 # name: (layer, case, formats, what it does)
 MUTATIONS = {
     "foreign-file": ("static", "S4", ("deb", "archlinux", "tar"), "gnoblin also installs /usr/bin/mutter"),
@@ -36,6 +38,7 @@ MUTATIONS = {
     "drop-copyright": ("static", "S2", ("deb",), "the gnoblin deb loses /usr/share/doc/gnoblin/copyright"),
     "drop-library-dep": ("install", "I5", ("deb",), "the gnoblin deb no longer asks for the package of libinput.so.10"),
     "drop-gobject-dep": ("install", "I6", ("deb",), "the gnoblin deb no longer asks for PyGObject, which gdctl needs"),
+    "add-gtk-dep": ("install", "I2", ("deb",), "the gnoblin deb asks for libgtk-4-1, so installing it brings GTK 4"),
     "rename-global": (
         "runtime",
         "R2",
@@ -143,7 +146,7 @@ def mutate_deb(path: Path, mutation: str):
             "rename-global",
         ):
             content = compress(name, edit_tar(decompress(name, content), payload_editor(mutation)))
-        if name.startswith("control.tar") and mutation in DROPPED:
+        if name.startswith("control.tar") and (mutation in DROPPED or mutation in ADDED):
 
             def edit(member, data):
                 if member is None:
@@ -153,9 +156,12 @@ def mutate_deb(path: Path, mutation: str):
                     for line in data.decode().splitlines():
                         if line.startswith("Depends:"):
                             items = [item.strip() for item in line[len("Depends:") :].split(",")]
-                            kept = [item for item in items if not item.startswith(DROPPED[mutation])]
-                            if len(kept) == len(items):
-                                raise SystemExit(f"the gnoblin deb asks for no {DROPPED[mutation]} package")
+                            if mutation in ADDED:
+                                kept = [*items, ADDED[mutation]]
+                            else:
+                                kept = [item for item in items if not item.startswith(DROPPED[mutation])]
+                                if len(kept) == len(items):
+                                    raise SystemExit(f"the gnoblin deb asks for no {DROPPED[mutation]} package")
                             line = "Depends: " + ", ".join(kept)
                         lines.append(line)
                     data = ("\n".join(lines) + "\n").encode()
@@ -186,7 +192,7 @@ def apply(mutation: str, directory: Path) -> int:
         for path in sorted(directory.iterdir())
         if format_of(path) in formats
         and path.name.startswith(("gnoblin_", "gnoblin-0", "gnoblin-1", "gnoblin-2"))
-        and not path.name.startswith(("gnoblin-x11", "gnoblin-geoclue", "gnoblin-ananicy"))
+        and not path.name.startswith(("gnoblin-geoclue", "gnoblin-ananicy"))
     ]
     if not candidates:
         raise SystemExit(f"{mutation} needs a gnoblin package in one of the formats {', '.join(formats)}")

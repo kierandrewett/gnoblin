@@ -17,7 +17,7 @@
   `mutter-x11-frames` is no longer built or installed. A request for frame extents before the window exists is answered
   from the rules that match only the window type and `client_type`. The Mutter code for a frame window (`MetaFrame`,
   its sync counter and borders, the `_MUTTER_FRAME_FOR`, `_MUTTER_FRAME_EXTENTS` and `_MUTTER_NEEDS_FRAME` properties,
-  and the frame mask in the X11 window actor) is removed in patch `11-window-frames/0011`.
+  and the frame mask in the X11 window actor) is removed in patch `11-window-frames/0009`.
 
 ### Changed
 
@@ -436,15 +436,11 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
 - The platform support page lists Arch, Fedora 45 and openSUSE Tumbleweed as candidates. Release run
   39855522942 passed their package build, install, stock GNOME coexistence and removal gates. Graphical
   session support is not claimed.
-- The X11 window frames client (`mutter-x11-frames`), the only program of the compositor that links GTK 4, is
-  in a new package, `gnoblin-x11-frames`. The `gnoblin` rpm and deb ask the system for no GTK 4 or libadwaita and
-  recommend the new package, so `dnf`, `zypper` and `apt` install it by default. Arch and apk cannot recommend a
-  package, so `gnoblin` depends on it there (one constant in `pkgsmith/runtime.star`,
-  `FRAMES_HARD_DEPENDENCY_ON_NO_WEAK_DEP_FORMATS`, sets this), and a plain install keeps the title bars. The
-  `.tar.xz` frames package is needed for X11 apps. The split is not complete. Without the frames client, X11 apps
-  that use the system title bar get no title bar and no borders, and some X11 windows may fail to open. This is
-  not tested in a graphical session, so a no-GTK install is not a promise of safe X11 apps. The portal backend
-  still needs GTK 4 and libadwaita. See [optional packages](docs/optional-packages.md#x11-window-frames).
+- The `gnoblin` package asks for no GTK 4 and no libadwaita in any format. The compositor draws the frames of X11
+  apps itself, so Mutter's GTK frames client (`mutter-x11-frames`) is gone and there is no `gnoblin-x11-frames`
+  package. Only the optional portal backend, `xdg-desktop-portal-gnoblin`, needs GTK 4 and libadwaita. The package
+  suite checks this in every format: `gnoblin` asks for no GTK (`S3`), and installing it alone brings none (`I2`).
+  See [optional packages](docs/optional-packages.md#gtk-4).
 
 ### Fixed
 

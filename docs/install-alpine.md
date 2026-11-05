@@ -13,9 +13,6 @@ apk update
 apk add gnoblin
 ```
 
-This also installs `gnoblin-x11-frames`, which draws the title bars of X11 apps and needs GTK 4. See
-[X11 window frames](optional-packages.md#x11-window-frames).
-
 To follow the main branch instead of releases, use `nightly` in place of `stable` in the address.
 
 ## Next steps

@@ -28,7 +28,6 @@ PREFIX_FILES = {
     "usr/share/wayland-sessions/gnoblin.desktop": "gnoblin",
     "usr/share/xdg-desktop-portal/gnoblin-portals.conf": "gnoblin",
     "usr/lib/systemd/user/gnoblin-session.target": "gnoblin",
-    "usr/lib/gnoblin/libexec/mutter-x11-frames": "gnoblin-x11-frames",
     "usr/lib/gnoblin/libexec/xdg-desktop-portal-gnoblin": "xdg-desktop-portal-gnoblin",
     "usr/lib/gnoblin/lib/systemd/user/xdg-desktop-portal-gnoblin.service": "xdg-desktop-portal-gnoblin",
     "usr/lib/gnoblin/share/applications/xdg-desktop-portal-gnoblin.desktop": "xdg-desktop-portal-gnoblin",
@@ -49,7 +48,6 @@ ARGUMENTS = {
     "PORTAL_VERSION": "51.0.0",
     "NEEDED_GNOBLIN": "libatk-1.0.so.0,libc.so.6,libglib-2.0.so.0,libinput.so.10,libwayland-server.so.0",
     "NEEDED_PORTAL": "libc.so.6,libgtk-4.so.1,libadwaita-1.so.0",
-    "NEEDED_FRAMES": "libc.so.6,libgtk-4.so.1,libX11.so.6",
     "GLIBC": "2.43",
     "FEDORA": "45",
     "LANES": "all",
@@ -57,7 +55,7 @@ ARGUMENTS = {
 # The build arguments of pkgsmith/*.star (arg("NAME")). pkgsmith takes one that is not given from the environment.
 AMBIENT = {
     "PKGSMITH_PLUGIN_PATH", "ARCH", "LIBC", "RELEASE", "FEDORA", "LANES", "GLIBC", "LIBINPUT", "DEB_RELEASE",
-    "OPENSUSE_RELEASE", "VERSION", "PORTAL_VERSION", "NEEDED_GNOBLIN", "NEEDED_PORTAL", "NEEDED_FRAMES", "EPOCH",
+    "OPENSUSE_RELEASE", "VERSION", "PORTAL_VERSION", "NEEDED_GNOBLIN", "NEEDED_PORTAL", "EPOCH",
 }  # fmt: skip
 
 
@@ -111,14 +109,13 @@ class PackageDefinitions(unittest.TestCase):
         formats = {row["format"] for row in self.plan("runtime", LIBC="musl")}
         self.assertEqual(formats, {"apk"})
 
-    def test_five_packages_with_the_names_the_old_recipes_used(self):
+    def test_four_packages_with_the_names_the_old_recipes_used(self):
         names = {row["values"]["name"] for script in ("runtime", "integrations") for row in self.plan(script)}
         self.assertEqual(
             names,
             {
                 "gnoblin",
                 "xdg-desktop-portal-gnoblin",
-                "gnoblin-x11-frames",
                 "gnoblin-geoclue-integration",
                 "gnoblin-ananicy-rules",
             },
@@ -139,7 +136,6 @@ class PackageDefinitions(unittest.TestCase):
                     files,
                     {
                         f"gnoblin-0.1.13-1.fc{release}.x86_64.rpm",
-                        f"gnoblin-x11-frames-0.1.13-1.fc{release}.x86_64.rpm",
                         f"xdg-desktop-portal-gnoblin-51.0.0-1013.fc{release}.x86_64.rpm",
                     },
                 )
@@ -190,7 +186,6 @@ class PackageDefinitions(unittest.TestCase):
             {row["file"] for row in rows},
             {
                 "gnoblin-0.1.13-1.leap16.0.x86_64.rpm",
-                "gnoblin-x11-frames-0.1.13-1.leap16.0.x86_64.rpm",
                 "xdg-desktop-portal-gnoblin-51.0.0-1013.leap16.0.x86_64.rpm",
                 "gnoblin-geoclue-integration-0.1.13-1.leap16.0.noarch.rpm",
                 "gnoblin-ananicy-rules-0.1.13-1.leap16.0.noarch.rpm",
@@ -245,14 +240,14 @@ class PackageDefinitions(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("libnew-thing.so.1", result.stderr + result.stdout)
 
-    def test_the_musl_prefix_makes_the_frames_package_too(self):
+    def test_the_musl_prefix_makes_both_compiled_packages(self):
         names = {row["values"]["name"] for row in self.plan("runtime", LIBC="musl")}
-        self.assertEqual(names, {"gnoblin", "xdg-desktop-portal-gnoblin", "gnoblin-x11-frames"})
+        self.assertEqual(names, {"gnoblin", "xdg-desktop-portal-gnoblin"})
 
-    def test_a_script_without_the_frames_libraries_stops(self):
-        result = self.run_pkgsmith("plan", "runtime", NEEDED_FRAMES="")
+    def test_a_script_without_the_portal_libraries_stops(self):
+        result = self.run_pkgsmith("plan", "runtime", NEEDED_PORTAL="")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("NEEDED_FRAMES", result.stderr + result.stdout)
+        self.assertIn("NEEDED_PORTAL", result.stderr + result.stdout)
 
     def deb_fields(self, package):
         """The control fields of the deb that pkgsmith writes for one package, read without dpkg."""
@@ -274,18 +269,12 @@ class PackageDefinitions(unittest.TestCase):
                 return dict(line.split(": ", 1) for line in text.splitlines() if ": " in line)
         self.fail(f"{deb} has no control archive")
 
-    def test_gnoblin_asks_the_system_for_no_gtk_and_recommends_the_frames_package(self):
+    def test_gnoblin_asks_the_system_for_no_gtk_and_recommends_nothing(self):
+        # The compositor draws the frames of X11 apps itself, so no GTK frames client is recommended either.
         fields = self.deb_fields("gnoblin")
         self.assertNotRegex(fields["Depends"], r"gtk|adwaita")
         self.assertIn("libatk1.0-0t64", fields["Depends"])
-        self.assertEqual(fields["Recommends"], "gnoblin-x11-frames")
-
-    def test_the_frames_package_needs_gtk_and_the_gnoblin_build_that_it_was_made_with(self):
-        fields = self.deb_fields("gnoblin-x11-frames")
-        self.assertIn("libgtk-4-1 (>= 4.14.0)", fields["Depends"])
-        self.assertIn("gnoblin (= 1:0.1.13-1)", fields["Depends"])
-        # The file moved out of gnoblin, so dpkg must let the new package take it from the old one.
-        self.assertEqual(fields["Replaces"], "gnoblin (<< 1:0.1.13)")
+        self.assertNotIn("Recommends", fields)
 
     def test_the_portal_backend_still_needs_gtk_and_libadwaita(self):
         depends = self.deb_fields("xdg-desktop-portal-gnoblin")["Depends"]
@@ -293,9 +282,7 @@ class PackageDefinitions(unittest.TestCase):
         self.assertIn("libadwaita-1-0", depends)
 
     @unittest.skipUnless(shutil.which("zstd"), "zstd is not on PATH")
-    def test_arch_gnoblin_depends_on_the_frames_package_and_the_frames_package_does_not_depend_back(self):
-        # Arch cannot install an optional dependency, so gnoblin depends on the frames package until the missing-helper
-        # path is tested (FRAMES_HARD_DEPENDENCY_ON_NO_WEAK_DEP_FORMATS in pkgsmith/runtime.star).
+    def test_arch_gnoblin_asks_for_no_gtk(self):
         output = Path(tempfile.mkdtemp(prefix="pkgsmith-arch-"))
         self.addCleanup(shutil.rmtree, output, ignore_errors=True)
         result = self.run_pkgsmith("build", "runtime", "-F", "archlinux", "-o", str(output), "--progress", "plain")
@@ -308,12 +295,9 @@ class PackageDefinitions(unittest.TestCase):
                 return archive.extractfile(".PKGINFO").read().decode()
 
         gnoblin = pkginfo("gnoblin")
-        frames = pkginfo("gnoblin-x11-frames")
-        self.assertIn("depend = gnoblin-x11-frames=1:0.1.13-1\n", gnoblin)
+        self.assertIn("depend = glib2>=2.82.0\n", gnoblin)
         self.assertNotIn("optdepend", gnoblin)
         self.assertNotRegex(gnoblin, r"depend = (gtk4|libadwaita)")
-        self.assertNotRegex(frames, r"depend = gnoblin[=>< \n]")
-        self.assertIn("depend = gtk4>=4.14.0", frames)
 
     def test_every_file_is_in_exactly_one_package(self):
         found = {}

@@ -4,10 +4,10 @@
 # usage: scripts/build-prefix.sh [--prefix DIR] [--jobs N]
 #
 # The prefix is laid out like an installed system: DIR/usr/lib/gnoblin holds the private runtime (Mutter, the
-# compositor, the X11 frames client, the portal backend), DIR/usr/bin, DIR/usr/share and DIR/usr/lib/systemd hold the
-# public entries, and DIR/etc holds the configuration files of the optional GeoClue and ananicy-cpp packages.
-# pkgsmith/runtime.star and pkgsmith/integrations.star cut the packages out of it. The X11 frames client is the only
-# program of the compositor that links GTK 4, so it has a package of its own. Nothing here writes a package.
+# compositor, the portal backend), DIR/usr/bin, DIR/usr/share and DIR/usr/lib/systemd hold the public entries, and
+# DIR/etc holds the configuration files of the optional GeoClue and ananicy-cpp packages. pkgsmith/runtime.star and
+# pkgsmith/integrations.star cut the packages out of it. The portal backend is the only program that links GTK 4, so it
+# has a package of its own. Nothing here writes a package.
 #
 # The build is ./build.sh --layout system. It needs a system with the packages of the matching
 # scripts/install-<system>-build-deps.sh (Fedora, Debian and Ubuntu, Alpine, openSUSE), checked-out submodules, and git

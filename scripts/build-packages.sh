@@ -6,7 +6,7 @@
 # DIR is the prefix that scripts/build-prefix.sh made. The script runs pkgsmith once for each script in pkgsmith/ and
 # writes every package into the output folder (default: dist):
 #
-#   pkgsmith/runtime.star       gnoblin, gnoblin-x11-frames and xdg-desktop-portal-gnoblin, which hold compiled code
+#   pkgsmith/runtime.star       gnoblin and xdg-desktop-portal-gnoblin, which hold compiled code
 #   pkgsmith/integrations.star  gnoblin-geoclue-integration and gnoblin-ananicy-rules, which hold configuration only
 #
 # --version is a SemVer number. The default is the version of the tree (src/gnoblin-version.json), which is also the
@@ -149,25 +149,23 @@ fi
 echo "[packages] version $version, $arch, $libc"
 
 # pkgsmith does not look inside the programs, so the libraries they need go to the scripts as arguments. The portal
-# backend and the X11 frames client have their own lists, so that gnoblin asks for no GTK. A library that the prefix
-# carries itself, such as Mutter's, needs no package.
+# backend has its own list, so that gnoblin asks for no GTK. A library that the prefix carries itself, such as Mutter's,
+# needs no package.
 is_elf() {
     [ "$(head -c 4 -- "$1" | od -An -tx1 | tr -d ' ')" = 7f454c46 ]
 }
 mapfile -t provided < <(find "$prefix/usr/lib/gnoblin/lib" -name '*.so*' -printf '%f\n' | sort -u)
 core_programs=()
 portal_programs=()
-frames_programs=()
 while IFS= read -r -d '' file; do
     is_elf "$file" || continue
     case "$file" in
         */libexec/xdg-desktop-portal-gnoblin) portal_programs+=("$file") ;;
-        */libexec/mutter-x11-frames) frames_programs+=("$file") ;;
         *) core_programs+=("$file") ;;
     esac
 done < <(find "$prefix/usr" -type f -perm /111 -print0)
-[ "${#core_programs[@]}" -gt 0 ] && [ "${#portal_programs[@]}" -gt 0 ] && [ "${#frames_programs[@]}" -gt 0 ] || {
-    echo "[packages] found no programs, or no portal backend or frames client, in $prefix/usr" >&2
+[ "${#core_programs[@]}" -gt 0 ] && [ "${#portal_programs[@]}" -gt 0 ] || {
+    echo "[packages] found no programs, or no portal backend, in $prefix/usr" >&2
     exit 1
 }
 # On arm64 the dynamic loader (ld-linux-aarch64.so.1) is a NEEDED entry too. It comes with glibc, like libc.so.6, which
@@ -177,7 +175,7 @@ needed() {
         grep -v -x -F -f <(printf '%s\n' "${provided[@]}") | paste -sd, -
 }
 needed_gnoblin="$(needed "${core_programs[@]}")"
-# gnoblin asks the system for no GTK. If a program or library other than the two optional ones links it, the package
+# gnoblin asks the system for no GTK. If a program or library other than the portal backend links it, the package
 # would pull GTK 4 onto every install again, so the build stops. Move that file into its own package instead.
 case ",$needed_gnoblin," in
     *,libgtk-* | *,libadwaita-*)
@@ -186,9 +184,6 @@ case ",$needed_gnoblin," in
         ;;
 esac
 needed_portal="$(needed "${portal_programs[@]}")"
-needed_frames="$(needed "${frames_programs[@]}")"
-# The glibc floor below counts every program, so the frames client joins the list after its libraries are read.
-core_programs+=("${frames_programs[@]}")
 # The newest glibc symbol version that any program uses is the oldest glibc that runs them.
 glibc="$(objdump -T -- "${core_programs[@]}" "${portal_programs[@]}" 2>/dev/null | grep -o '(GLIBC_[0-9][0-9.]*)' |
     tr -d '()' | sed 's/^GLIBC_//' | sort -V | tail -n 1 || true)"
@@ -203,7 +198,6 @@ done
 echo "[packages] glibc ${glibc:-none}, libinput ${libinput:-none}, portal $portal_version"
 echo "[packages] gnoblin needs: $needed_gnoblin"
 echo "[packages] portal needs:  $needed_portal"
-echo "[packages] frames needs:  $needed_frames"
 
 : "${SOURCE_DATE_EPOCH:=$(git log -1 --format=%ct 2>/dev/null || stat -c %Y build.sh)}"
 export SOURCE_DATE_EPOCH
@@ -219,7 +213,7 @@ for script in runtime integrations; do
         --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "LANES=$lanes" --build-arg "GLIBC=$glibc"
         --build-arg "LIBINPUT=$libinput" --build-arg "DEB_RELEASE=$deb_release" --build-arg "OPENSUSE_RELEASE=$opensuse_release"
         --build-arg "PORTAL_VERSION=$portal_version" --build-arg "NEEDED_GNOBLIN=$needed_gnoblin"
-        --build-arg "NEEDED_PORTAL=$needed_portal" --build-arg "NEEDED_FRAMES=$needed_frames"
+        --build-arg "NEEDED_PORTAL=$needed_portal"
     )
     if "$list"; then
         pkgsmith files . "${script_args[@]}"

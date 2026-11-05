@@ -43,16 +43,16 @@ nothing.
 
 Failure modes:
 
-- `S1` A package of the set is missing, or is there twice: gnoblin, gnoblin-x11-frames, xdg-desktop-portal-gnoblin,
-  gnoblin-ananicy-rules or gnoblin-geoclue-integration, in the format of the target. A glibc target that installs the
-  shared packages also gets the tar packages, and the same five must be there.
+- `S1` A package of the set is missing, or is there twice: gnoblin, xdg-desktop-portal-gnoblin, gnoblin-ananicy-rules
+  or gnoblin-geoclue-integration, in the format of the target. A glibc target that installs the shared packages also
+  gets the tar packages, and the same four must be there.
 - `S2` The metadata is wrong: an unknown name, a version other than the version of the tree (or of the portal source,
   for the portal backend), a release that does not carry the release of the target (`.fc43`, `.leap16.0`,
   `~deb13`) or carries one on a shared package, an architecture other than the architecture of the target (or an
   architecture-independent one for a package that holds compiled code), an empty licence, or no description.
-- `S3` A dependency is wrong: gnoblin asks for GTK or libadwaita, a package asks for a development package
-  (`pkgconfig(...)`, `-devel`, `-dev`), a package declares a conflict with or replaces a stock GNOME package, or the
-  frames client and the portal backend do not ask for exactly the gnoblin of their own version.
+- `S3` A dependency is wrong: gnoblin asks for or recommends GTK or libadwaita (only the portal backend may), a package
+  asks for a development package (`pkgconfig(...)`, `-devel`, `-dev`), or a package declares a conflict with or
+  replaces a stock GNOME package.
 - `S4` A file is outside the paths that Gnoblin owns, or replaces a stock GNOME file: a file in `/usr/bin` other than
   the two commands, a Mutter or GNOME Shell file at a system path, a schema or a `.desktop` file outside the private
   prefix other than the public entries. The rules are the ones of `scripts/check-rpm-isolation.py`, applied to every
@@ -99,9 +99,9 @@ Failure modes:
 
 - `I1` gnoblin does not install with the package manager of the release, or installs only with recommended packages,
   stock GNOME or a second Mutter.
-- `I2` gnoblin pulls GTK 4 or libadwaita where the format allows it not to (rpm and deb, with recommended packages
-  refused), or gnoblin-x11-frames does not behave as the format documents: optional on rpm and deb, a dependency of
-  gnoblin on Arch and apk.
+- `I2` gnoblin asks for GTK 4 or libadwaita, or installing gnoblin alone brings either of them, in any format, or a
+  GTK frames client (`mutter-x11-frames`) is installed. The compositor draws the frames of X11 apps itself, so only the
+  optional portal backend needs GTK.
 - `I3` A public file or the private runtime is not where the documentation says.
 - `I4` An ELF file does not resolve in the image with no `LD_LIBRARY_PATH`: a library is not found, a symbol version is
   not found, or (with `ldd -r`) a symbol is undefined.
@@ -112,7 +112,8 @@ Failure modes:
 - `I8` The schemas are not compiled in the private prefix, or GSettings cannot read the Mutter schemas from it.
 - `I9` The session is not in the list of a display manager: no `gnoblin.desktop` in `/usr/share/wayland-sessions`,
   or its `Exec` or `TryExec` is not an executable file.
-- `I10` An optional package does not install beside gnoblin, or a Gnoblin package asks for GTK 3 or gnome-desktop.
+- `I10` An optional package does not install beside gnoblin, the portal backend does not bring GTK 4, or a Gnoblin
+  package asks for GTK 3 or gnome-desktop.
 - `I11` Stock GNOME does not install beside Gnoblin, or a file of stock GNOME belongs to a Gnoblin package.
 - `I12` A reinstall of the same files fails, or leaves a file that the package manager reports as changed.
 - `I13` The upgrade from the version that is published at `https://repo.gnoblin.org` for the family and release of the
@@ -231,6 +232,7 @@ the layer fails. The mutations:
 | `drop-copyright`   | `static`     | the gnoblin deb has no `/usr/share/doc/gnoblin/copyright`       | `S2`         |
 | `drop-library-dep` | `install`    | the gnoblin deb no longer asks for the package of libinput      | `I5`         |
 | `drop-gobject-dep` | `install`    | the gnoblin deb no longer asks for PyGObject, which gdctl needs | `I6`         |
+| `add-gtk-dep`      | `install`    | the gnoblin deb asks for `libgtk-4-1`, so it brings GTK 4       | `I2`         |
 | `rename-global`    | `runtime`    | libmutter names the layer-shell global `zwlr_layer_shell_v0`    | `R2`         |
 | `corrupt-payload`  | `repository` | one byte of the payload of the gnoblin rpm is changed           | `P1`         |
 

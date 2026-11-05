@@ -9,12 +9,11 @@ as supported until its graphical-session gate has passed.
 
 ## Package layout
 
-Gnoblin installs as its own session and can coexist with GNOME. Five packages come from one build:
+Gnoblin installs as its own session and can coexist with GNOME. Four packages come from one build:
 
 | Package                       | Contents                                                               | Optional |
 | ----------------------------- | ---------------------------------------------------------------------- | -------- |
 | `gnoblin`                     | Compositor, Lua runtime, session services, private Mutter, login entry | No       |
-| `gnoblin-x11-frames`          | `mutter-x11-frames`, the title bars and borders of X11 apps (GTK 4)    | Yes      |
 | `xdg-desktop-portal-gnoblin`  | Gnoblin's GTK-based portal backend                                     | Yes      |
 | `gnoblin-geoclue-integration` | The GeoClue agent authorization file                                   | Yes      |
 | `gnoblin-ananicy-rules`       | The `ananicy-cpp` rules for the Gnoblin processes                      | Yes      |
@@ -26,59 +25,32 @@ Gnoblin installs as its own session and can coexist with GNOME. Five packages co
   `gnoblin-mutter-devel`, so systems with the old packages upgrade.
 - Private libraries must not satisfy stock GNOME dependencies. `gnoblinctl` needs GLib and
   JSON-GLib at runtime. Python is a build tool.
-- The five packages have the same version, the Gnoblin version in `src/gnoblin-version.json`,
+- The four packages have the same version, the Gnoblin version in `src/gnoblin-version.json`,
   and epoch 1. The portal backend keeps the version of its GNOME source (`51.0.0`). Its release
   number follows the Gnoblin release, so each release has a distinct portal package.
 
 ### GTK and the `gnoblin` package
 
-The split is not complete. The `gnoblin` package itself links no GTK 4 and no libadwaita, and the rpm and
-deb ask the system for none. Arch and Alpine packages still pull GTK 4 in, through a dependency on
-`gnoblin-x11-frames`, until the missing-helper path is tested (see below). A no-GTK install is
-not yet a safe install for X11 apps. Two files link GTK: `mutter-x11-frames` links GTK 4, and
-`xdg-desktop-portal-gnoblin` links GTK 4 and libadwaita. Each has its own package.
+The `gnoblin` package links no GTK 4 and no libadwaita, and no format asks the system for them. Only
+`xdg-desktop-portal-gnoblin` links GTK 4 and libadwaita, and it has its own package.
 `libmutter-clutter` links ATK. That library has no GTK dependency and stays in `gnoblin`. GCR is
 `gcr-libs` on Fedora, `libgcr-4-4` on Debian and `gcr4-base` on Alpine. These packages have no GTK
-dependency either. `scripts/build-packages.sh` stops if a program other than the two links GTK, and
-`scripts/check-rpm-isolation.py` rejects a `gnoblin` rpm that requires it.
+dependency either. `scripts/build-packages.sh` stops if a program other than the portal backend links
+GTK, `scripts/check-rpm-isolation.py` rejects a `gnoblin` rpm that requires it, and the package suite
+checks it in every format (`S3` and `I2` in `design/package-testing.md`).
 
-The frames client is not optional in the way that the portal backend is, so read this part with care.
+X11 apps get their frames from the compositor. Until main's commit 13fdebd9, Mutter started a GTK 4
+program, `mutter-x11-frames`, which drew the title bar and borders of X11 apps, and it was packaged on
+its own as `gnoblin-x11-frames`. Now the compositor frames Xwayland windows like Wayland windows, and
+Mutter has no frames client (`patches/mutter/11-window-frames`, 0005 to 0009; `docs/guides/window_frames.md`).
+So the `gnoblin-x11-frames` package is gone, and with it the hard dependency that Arch and apk had on it
+and the recommendation in rpm and deb. No release or repository channel carried that package, so no
+upgrade path is needed. The earlier released `gnoblin` packages carried `mutter-x11-frames` in
+`gnoblin` itself, and an upgrade removes the file with them.
 
-- **What it does.** Mutter marks each X11 window that needs a frame with the `_MUTTER_NEEDS_FRAME`
-  property. The frames client sees the mark, makes the frame window and sets `_MUTTER_FRAME_FOR`.
-  Mutter then finishes the set-up of the window (`events.c`, `meta_window_x11_initialize_state`).
-  Apps that draw their own frame (`_GTK_FRAME_EXTENTS`) and Wayland apps do not use it.
-- **Without it.** `meta_frame_launch_client` logs `Could not launch X11 frames client` and returns
-  nothing. No frame is ever made, so X11 apps that need one get no title bar and no borders. Mutter
-  has no second code path for that case. The set-up of such a window waits for the frame, so the window
-  may not open at all. This is read from the source of the pinned Mutter and has not been run in a
-  session. A build without the client is not possible either: `meson.build` requires GTK 4 for
-  Xwayland (`X11 client support requires gtk4`), so `-Dxwayland=false` would remove X11 apps.
-- **How a user keeps it.** `gnoblin` recommends `gnoblin-x11-frames` in rpm and deb. `dnf`, `zypper` and
-  `apt` install a recommended package by default, so a normal install has frames. A user who wants no GTK
-  refuses it (`--setopt=install_weak_deps=False`, `--no-recommends`, `--no-install-recommends`).
-- **Formats without a weak dependency.** pkgsmith writes an Arch recommendation as `optdepends`,
-  which pacman prints and does not install. apk has no weak dependency. A tar package has no
-  dependency at all. For now `gnoblin` therefore DEPENDS on `gnoblin-x11-frames` in Arch and apk, so
-  a plain `pacman -S gnoblin` or `apk add gnoblin` keeps the title bars. One constant,
-  `FRAMES_HARD_DEPENDENCY_ON_NO_WEAK_DEP_FORMATS` in `pkgsmith/runtime.star`, sets this. Set it to
-  `False` and Arch gets the optional dependency and apk gets nothing, so a user installs the frames
-  package by name. Do that only when the missing-helper path is tested in a graphical session, or when
-  Mutter is patched to run without the client. A tar package has no dependencies, so
-  `docs/optional-packages.md` tells its user that the frames tarball is needed for X11 apps.
-- **Upgrade from an earlier release.** The earlier `gnoblin` package carried the file. rpm moves it in
-  one transaction. The deb has `Replaces: gnoblin (<< 1:VERSION)` for the same reason. On Arch and apk
-  the dependency brings the package in on upgrade. An rpm or deb upgrade may not install a newly
-  recommended package by itself, so a user whose X11 apps lose their title bars after it installs
-  `gnoblin-x11-frames` once.
-- **Same build.** The frames package needs the exact `gnoblin` build that it came from (`gnoblin = 1:VERSION-RELEASE`
-  in rpm and deb). Where `gnoblin` depends on the frames package (Arch and apk now), it pins the build
-  from that side, because two packages that need each other make a dependency cycle. On Arch the pin is
-  exact. On apk it names the package only, because pkgsmith spells an apk nightly version in a way that
-  `pkgsmith/common.star` does not.
-
-A change that makes Mutter run without the frames client, for example a start that skips the frame when
-the binary is missing, would let a user opt out with no loss of windows. It belongs in `patches/`.
+Mutter's `meson.build` still requires GTK 4 headers when Xwayland is on (`X11 client support requires
+gtk4`), though nothing that it builds links GTK any more. The portal backend needs GTK 4 to build in any case, so
+the build dependency scripts keep it.
 
 Nix uses separate store outputs. Source builds use their own prefix, `/usr/local/lib/gnoblin` by default.
 Bingux owns and releases its shell package separately.
@@ -115,8 +87,8 @@ compiles, and stops with the library and version that the system lacks.
 These files make up the definitions:
 
 - `scripts/pkgsmith.ref` pins the pkgsmith commit.
-- `pkgsmith/runtime.star` writes `gnoblin`, `gnoblin-x11-frames` and the portal backend. It lists
-  the files of the frames client and of the portal, so everything else in the prefix belongs to `gnoblin`.
+- `pkgsmith/runtime.star` writes `gnoblin` and the portal backend. It lists the files of the portal, so
+  everything else in the prefix belongs to `gnoblin`.
 - `pkgsmith/integrations.star` writes the two configuration packages.
 - `pkgsmith/dependencies.star` maps each library to the Debian and Arch package that ships it.
 

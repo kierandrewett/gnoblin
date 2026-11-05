@@ -6,13 +6,13 @@ Source: https://github.com/kierandrewett/gnoblin
 Files: *
 Copyright: 2026 Working Directory Ltd.
 License: GPL-2.0-or-later
-Comment: Gnoblin's own source files, unless a file states otherwise. The packages gnoblin, gnoblin-x11-frames,
+Comment: Gnoblin's own source files, unless a file states otherwise. The packages gnoblin,
  gnoblin-geoclue-integration and gnoblin-ananicy-rules are built from this source.
 
 Files: subprojects/mutter/*
 Copyright: The Mutter and GNOME authors, as identified by the notices in the source files
 License: GPL-2.0-or-later
-Comment: The patched Mutter runtime in /usr/lib/gnoblin and the X11 frames client.
+Comment: The patched Mutter runtime in /usr/lib/gnoblin.
 
 Files: subprojects/mutter/subprojects/gvdb/*
 Copyright: The GLib authors, as identified by the notices in the source files

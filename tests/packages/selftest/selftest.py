@@ -377,7 +377,6 @@ class StaticOnFixture(unittest.TestCase):
         program = Path(shutil.which("true")).resolve()
         for path in (
             "usr/lib/gnoblin/bin/gnoblin",
-            "usr/lib/gnoblin/libexec/mutter-x11-frames",
             "usr/lib/gnoblin/libexec/xdg-desktop-portal-gnoblin",
         ):
             (prefix / path).parent.mkdir(parents=True, exist_ok=True)

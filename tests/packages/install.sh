@@ -5,8 +5,8 @@
 #
 # Run as root, with bash, in a clean container of the install image of the target. scripts/run-package-tests.sh starts
 # it. PACKAGE_DIR holds the packages of the target and nothing else (the host selects them): gnoblin,
-# gnoblin-x11-frames, xdg-desktop-portal-gnoblin, gnoblin-geoclue-integration and gnoblin-ananicy-rules in the format of
-# the system, and the tar packages for a glibc target of the shared set. PUBLISHED_DIR holds the packages of the
+# xdg-desktop-portal-gnoblin, gnoblin-geoclue-integration and gnoblin-ananicy-rules in the format of the system, and the
+# tar packages for a glibc target of the shared set. PUBLISHED_DIR holds the packages of the
 # version that https://repo.gnoblin.org publishes for the target, one folder for each channel, or a file SKIP that says
 # why there are none. OUT_DIR receives results.tsv and one log for each case.
 #
@@ -46,27 +46,21 @@ glibc=true
 
 case_refresh() {
     pm_refresh
-    for name in gnoblin gnoblin-x11-frames xdg-desktop-portal-gnoblin gnoblin-geoclue-integration gnoblin-ananicy-rules; do
+    for name in gnoblin xdg-desktop-portal-gnoblin gnoblin-geoclue-integration gnoblin-ananicy-rules; do
         find_package "$name" "$package_dir" >/dev/null
     done
 }
 core() { find_package gnoblin "$package_dir"; }
-frames() { find_package gnoblin-x11-frames "$package_dir"; }
 optional_packages() {
     find_package xdg-desktop-portal-gnoblin "$package_dir"
     find_package gnoblin-geoclue-integration "$package_dir"
     find_package gnoblin-ananicy-rules "$package_dir"
 }
 
-# I1: gnoblin installs on its own: no portal backend, no stock GNOME, no second Mutter. rpm and deb recommend the
-# frames package, and the install refuses recommended packages. While gnoblin depends on the frames package on Arch and
-# apk (FRAMES_HARD_DEPENDENCY_ON_NO_WEAK_DEP_FORMATS in pkgsmith/runtime.star), the two files go in together, because the
-# package is not in any repository.
+# I1: gnoblin installs on its own: no portal backend, no stock GNOME, no second Mutter. The install refuses recommended
+# packages.
 case_install_core() {
-    case "$kind" in
-        arch | apk) pm_install_files "$(core)" "$(frames)" ;;
-        *) pm_install_files "$(core)" ;;
-    esac
+    pm_install_files "$(core)"
     pm_is_installed gnoblin
     not_installed xdg-desktop-portal-gnoblin
     for package in "${stock[@]}"; do
@@ -74,20 +68,15 @@ case_install_core() {
     done
 }
 
-# I2: gnoblin asks for no GTK and no libadwaita in any format; the frames client is optional on rpm and deb and a
-# dependency on Arch and apk.
+# I2: gnoblin asks for no GTK 4 and no libadwaita in any format, and installing it alone brings neither. The compositor
+# draws the frames of X11 apps itself, so there is no GTK frames client (mutter-x11-frames) to install. Only the
+# optional portal backend needs GTK (I10).
 case_gtk() {
     requires_none gnoblin 'gtk|adwaita'
-    case "$kind" in
-        rpm | suse | deb)
-            not_installed gnoblin-x11-frames
-            test ! -e "$private/libexec/mutter-x11-frames"
-            for package in "${gtk_packages[@]}"; do
-                not_installed "$package"
-            done
-            ;;
-        *) pm_is_installed gnoblin-x11-frames ;;
-    esac
+    for package in "${gtk_packages[@]}"; do
+        not_installed "$package"
+    done
+    test ! -e "$private/libexec/mutter-x11-frames"
     case "$kind" in
         rpm | suse)
             # The old payload packages are replaced, and the capability that other packages ask for stays.
@@ -156,19 +145,13 @@ case_session_entry() {
     [ -z "$program" ] || test -x "$program"
 }
 
-# I10: the frames client, the portal backend, the GeoClue integration and the ananicy rules install beside gnoblin, and
-# no Gnoblin package asks for GTK 3 or gnome-desktop.
+# I10: the portal backend, the GeoClue integration and the ananicy rules install beside gnoblin, the portal backend
+# brings GTK 4, and no Gnoblin package asks for GTK 3 or gnome-desktop.
 case_optional() {
-    case "$kind" in
-        rpm | suse | deb) pm_install_files "$(frames)" ;;
-    esac
-    pm_is_installed gnoblin-x11-frames
-    owner_is "$private/libexec/mutter-x11-frames" gnoblin-x11-frames
-    test -x "$private/libexec/mutter-x11-frames"
-    pm_is_installed "${gtk_packages[0]}"
     mapfile -t optional < <(optional_packages)
     pm_install_files "${optional[@]}"
     pm_is_installed xdg-desktop-portal-gnoblin
+    pm_is_installed "${gtk_packages[0]}"
     pm_is_installed gnoblin-geoclue-integration
     pm_is_installed gnoblin-ananicy-rules
     owner_is "$portal_conf" gnoblin
@@ -227,7 +210,7 @@ case_resolve() {
 # I5: every library that an ELF file needs comes from a package that the Gnoblin package asks for, and every library
 # package that it asks for is needed.
 case_abi() {
-    python3 "$here/abi_owner.py" --kind "$kind" gnoblin gnoblin-x11-frames xdg-desktop-portal-gnoblin
+    python3 "$here/abi_owner.py" --kind "$kind" gnoblin xdg-desktop-portal-gnoblin
 }
 
 # I11: stock GNOME installs beside Gnoblin, and none of its files belongs to a Gnoblin package.
@@ -246,8 +229,8 @@ case_stock() {
 # I12: the same files install again, and the package manager reports no changed file afterwards. apk has no reinstall
 # of a local file, so there the same files are removed and added again.
 case_reinstall() {
-    local files=("$(core)" "$(frames)")
-    mapfile -t -O 2 files < <(optional_packages)
+    local files=("$(core)")
+    mapfile -t -O 1 files < <(optional_packages)
     if [ "$kind" = apk ]; then
         mapfile -t gnoblin_packages < <(pm_installed_gnoblin)
         apk del "${gnoblin_packages[@]}" || apk_failed
@@ -314,8 +297,8 @@ case_upgrade() {
     mapfile -t old_files < <(find "$published_dir/$chosen" -maxdepth 1 -type f | sort)
     echo "upgrade from $chosen: $(basename -a "${old_files[@]}" | paste -sd' ')"
     pm_install_files "${old_files[@]}"
-    local new_files=("$(core)" "$(frames)")
-    mapfile -t -O 2 new_files < <(optional_packages)
+    local new_files=("$(core)")
+    mapfile -t -O 1 new_files < <(optional_packages)
     pm_install_files "${new_files[@]}"
     local file name
     for file in "${new_files[@]}"; do
@@ -378,7 +361,7 @@ case_tar() {
 
 run_case I0 "refresh the package manager, find the packages" fatal case_refresh
 run_case I1 "gnoblin installs alone" fatal case_install_core
-run_case I2 "no GTK in gnoblin, frames client as documented" continue case_gtk
+run_case I2 "no GTK 4 or libadwaita in gnoblin" continue case_gtk
 run_case I3 "public files and private runtime in place" continue case_files
 run_case I6 "programs start" continue case_programs
 run_case I7 "default configuration and gnoblinctl init" continue case_config

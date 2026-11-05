@@ -254,8 +254,11 @@ def check_dependencies(layer, target, pkg, pset):
         name = dep.name
         if name.startswith("pkgconfig(") or re.search(r"-(devel|dev)$", name):
             errors.append(f"asks for a development package: {dep.raw}")
-        if pkg.name == "gnoblin" and re.search(r"(^|[:(_-])(lib)?(gtk|adwaita)", name.lower()) and "frames" not in name:
-            errors.append(f"gnoblin asks for GTK or libadwaita: {dep.raw}. Only gnoblin-x11-frames and the portal may.")
+    # The compositor draws the frames of X11 apps itself (no GTK frames client), so only the portal backend needs GTK.
+    if pkg.name == "gnoblin":
+        for dep in pkg.depends + pkg.recommends:
+            if re.search(r"(^|[:(_-])(lib)?(gtk|adwaita)", dep.name.lower()):
+                errors.append(f"gnoblin asks for GTK or libadwaita: {dep.raw}. Only the portal backend may.")
     for capability in pkg.provides:
         if re.match(ISOLATION_PROVIDES, capability):
             errors.append(f"provides a system capability: {capability}")
@@ -264,28 +267,7 @@ def check_dependencies(layer, target, pkg, pset):
         other = re.split(r"[\s(<>=]", relation, maxsplit=1)[0]
         if pkg.name == "gnoblin" and other in OLD_NAMES:
             continue
-        if pkg.name == "gnoblin-x11-frames" and other == "gnoblin" and pkg.fmt == "deb":
-            continue  # the frames client took a file over from the gnoblin package of earlier releases
         errors.append(f"declares a conflict with or replaces {relation}")
-    gnoblin = pset.by_name.get("gnoblin")
-    frames = pset.by_name.get("gnoblin-x11-frames")
-    if pkg.name == "gnoblin-x11-frames" and gnoblin and pkg.fmt != "tar":
-        pins = [dep for dep in pkg.depends if dep.name == "gnoblin"]
-        hard = [dep for dep in gnoblin.depends if dep.name == "gnoblin-x11-frames"]
-        if pins and pkg.fmt != "apk":
-            want = f"{gnoblin.epoch}:{gnoblin.version}-{gnoblin.release}"
-            if not any(dep.op in ("=", "==") and dep.version == want for dep in pins):
-                errors.append(f"asks for {pins[0].raw}, not for exactly gnoblin {want}")
-        if not pins and not hard:
-            errors.append("neither depends on gnoblin nor is a dependency of gnoblin")
-    if pkg.name == "gnoblin" and frames and pkg.fmt in ("rpm", "deb"):
-        if any(dep.name == "gnoblin-x11-frames" for dep in pkg.depends):
-            errors.append("depends on gnoblin-x11-frames; rpm and deb recommend it")
-        if not any(dep.name == "gnoblin-x11-frames" for dep in pkg.recommends):
-            errors.append("does not recommend gnoblin-x11-frames")
-    if pkg.name == "gnoblin" and frames and pkg.fmt in ("archlinux", "apk"):
-        if not any(dep.name == "gnoblin-x11-frames" for dep in pkg.depends):
-            errors.append("does not depend on gnoblin-x11-frames, which Arch and apk require (pkgsmith/runtime.star)")
     layer.check("S3", "dependencies", pkg.file.name, errors)
 
 

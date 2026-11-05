@@ -43,7 +43,7 @@ packages=(
     'pkgconfig(wayland-server)' 'pkgconfig(xkbcommon)' 'pkgconfig(xkbfile)' 'pkgconfig(xwayland)'
     'pkgconfig(x11)' 'pkgconfig(xcomposite)' 'pkgconfig(xcursor)' 'pkgconfig(xdamage)' 'pkgconfig(xfixes)'
     'pkgconfig(xi)' 'pkgconfig(xinerama)' 'pkgconfig(xrandr)'
-    # Mutter's X11 frames client and the portal backend
+    # The portal backend. Mutter's meson.build still asks for gtk4 when Xwayland is on, though nothing of it links GTK
     'pkgconfig(atk)' 'pkgconfig(cairo)' 'pkgconfig(fontconfig)' 'pkgconfig(fribidi)' 'pkgconfig(gdk-pixbuf-2.0)'
     'pkgconfig(gsettings-desktop-schemas)' 'pkgconfig(gtk4)' 'pkgconfig(gtk4-unix-print)' 'pkgconfig(harfbuzz)'
     'pkgconfig(libadwaita-1)' 'pkgconfig(pango)' 'pkgconfig(xdg-desktop-portal)'
