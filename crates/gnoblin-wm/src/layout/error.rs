@@ -62,23 +62,33 @@ impl ReplyError {
     }
 }
 
-/// Why a layout run produced no usable layout.
+/// Why a layout run produced no usable layout. Each reason names one fallback
+/// the wm takes for the workspace on that frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayoutFailure {
-    /// The layout did not answer before its deadline.
-    Deadline,
-    /// The layout ran out of memory.
-    Memory,
-    /// The layout raised an error.
+    /// The layout raised an error, or ran out of memory.
     Error,
-    /// The layout stopped making progress.
-    Stalled,
-    /// The Lua virtual machine is gone.
-    VmDown,
-    /// The module that defines the layout is not loaded.
-    MissingModule,
+    /// The layout did not answer before its deadline.
+    Timeout,
+    /// Lua layouts are switched off for this session, or the module is not loaded.
+    Disabled,
+    /// The layout's worker stopped answering and was abandoned.
+    VmWedged,
     /// The layout answered, but the reply failed validation.
-    RefusedReply(ReplyError),
+    InvalidReply(ReplyError),
+}
+
+impl LayoutFailure {
+    /// The name reported in the `layout-failed` effect.
+    pub const fn reason(&self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Timeout => "timeout",
+            Self::Disabled => "disabled",
+            Self::VmWedged => "vm-wedged",
+            Self::InvalidReply(_) => "invalid-reply",
+        }
+    }
 }
 
 /// Why a set of layout parameters cannot be used.

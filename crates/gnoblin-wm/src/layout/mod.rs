@@ -7,11 +7,14 @@
 //! or refuses it with a [`ReplyError`]. A declined reply falls back to
 //! [`fallback`], a cascade of floating windows.
 
+mod engine;
 mod error;
 mod fallback;
 mod placement;
 mod settle;
 mod transform;
+
+pub use engine::{Collected, Generation, Job, LayoutEngine, Outcome, Slot, Ticket};
 
 pub use error::{LayoutFailure, ParamsError, REFUSED_CODE, ReplyError, Subject};
 pub use fallback::fallback;

@@ -35,7 +35,7 @@ pub struct Layout {
 pub fn settle(params: &Params, reply: Reply) -> Result<Layout, LayoutFailure> {
     match reply {
         Reply::Declined => Ok(fallback(params)),
-        Reply::Handled(handled) => validate(params, handled).map_err(LayoutFailure::RefusedReply),
+        Reply::Handled(handled) => validate(params, handled).map_err(LayoutFailure::InvalidReply),
     }
 }
 

@@ -32,7 +32,7 @@ fn handled(placements: Vec<Placement>, effects: Vec<LayoutEffect>) -> Reply {
 
 fn refused(reply: Reply, ids: &[u64]) -> ReplyError {
     match settle(&params(ids), reply) {
-        Err(LayoutFailure::RefusedReply(error)) => error,
+        Err(LayoutFailure::InvalidReply(error)) => error,
         other => panic!("expected a refused reply, got {other:?}"),
     }
 }
