@@ -10,6 +10,9 @@ publish.workspace = true
 # The Lua VM (D10): Lua 5.5, vendored, so the runtime links one Lua on every
 # distribution target.
 mlua.workspace = true
+# The sandboxed VM and its limits, shared with the layout host (D17). The runtime
+# builds its state through it, so the limits are stated once.
+gnoblin-lua-sandbox = { path = "../gnoblin-lua-sandbox" }
 # The runtime is an IPC client, not part of the compositor (D1): it reaches the
 # object graph through the same client `gnoblinctl` and the shells use.
 gnoblin-client = { path = "../gnoblin-client" }

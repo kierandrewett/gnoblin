@@ -47,7 +47,7 @@ use gnoblin_types::Tick;
 
 use crate::error::HostError;
 use crate::host::{Host, RunReport};
-use crate::sandbox::Limits;
+use gnoblin_lua_sandbox::Limits;
 
 /// How long one pump waits for a frame before it looks at its own signals.
 ///

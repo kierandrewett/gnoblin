@@ -496,7 +496,7 @@ reason = "the locker's state is where the session lock controller is (unlocked, 
 
 [[allow]]
 left = "gnoblin-authority::Limits"
-right = "gnoblin-lua::Limits"
+right = "gnoblin-lua-sandbox::Limits"
 kind = "same-name"
 reason = "authority's limits are how many live tokens, gestures and grants the machine keeps; the Lua host's are the instruction, memory and time budget one entry into a script runs under"
 
@@ -1272,7 +1272,7 @@ kind = "same-name"
 reason = "lock's State is where the session lock controller is; the portal's State is how far one portal session has got"
 
 [[allow]]
-left = "gnoblin-lua::Guard"
+left = "gnoblin-lua-sandbox::Guard"
 right = "xdg-desktop-portal-gnoblin::Guard"
 kind = "same-name"
 reason = "lua's Guard is the budgets one entry into Lua consumes, shared between host and hook; the portal's Guard is the session table and the grants behind it"

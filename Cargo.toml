@@ -41,6 +41,7 @@ members = [
     "crates/gnoblin-layout",
     "crates/gnoblin-lock",
     "crates/gnoblin-lua",
+    "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
     "crates/gnoblin-portal-ui",

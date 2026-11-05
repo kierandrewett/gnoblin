@@ -42,7 +42,7 @@
 //!
 //! # The pieces
 //!
-//! - The sandbox (`src/sandbox.rs`): the Lua state, the library whitelist, the
+//! - The sandbox (`gnoblin-lua-sandbox`): the Lua state, the library whitelist, the
 //!   instruction budget, the memory limit and the per-entry deadline, sized by
 //!   [`Limits`].
 //! - [`Host::run_config`] and the `gnoblin.load` binding: the loader, confined to
@@ -116,7 +116,6 @@ mod glob;
 mod host;
 mod loader;
 pub mod role;
-mod sandbox;
 
 pub use bindings::{stub, write_stub};
 pub use error::{HostError, ScriptError};
@@ -125,5 +124,5 @@ pub use error::{HostError, ScriptError};
 pub use gnoblin_client::Environment;
 pub use host::{Host, MAX_LOADS, PumpReport, RunReport};
 
+pub use gnoblin_lua_sandbox::Limits;
 pub use role::{RoleError, RoleRunner};
-pub use sandbox::Limits;

@@ -41,7 +41,7 @@ use mlua::{Error, Lua};
 
 use crate::error::{HostError, ScriptError};
 use crate::loader::{self, Resolution};
-use crate::sandbox::{Guard, Limits};
+use gnoblin_lua_sandbox::{Guard, Limits, Profile};
 
 /// How many configuration files one load may nest, the limit the C core applies.
 pub const MAX_LOADS: usize = 32;
@@ -90,6 +90,8 @@ pub(super) struct Shared<T: Transport> {
     pub(super) client: Client<T>,
     pub(super) mirror: BTreeMap<ObjectId, ObjectView>,
     pub(super) document: Value,
+    /// The caller's clock, as of the last pump; timers are due against it.
+    pub(super) clock: Tick,
     pub(super) root: Option<PathBuf>,
     pub(super) stack: Vec<PathBuf>,
     pub(super) loaded: Vec<PathBuf>,
@@ -243,11 +245,13 @@ impl<T: Transport + 'static> Host<T> {
             .map(|view| (view.id(), view.clone()))
             .collect();
         let guard = Rc::new(Guard::new());
-        let lua = crate::sandbox::create(&limits, Rc::clone(&guard)).map_err(HostError::Sandbox)?;
+        let lua =
+            gnoblin_lua_sandbox::create(Profile::Config, &limits, Rc::clone(&guard)).map_err(HostError::Sandbox)?;
         let shared = Rc::new(RefCell::new(Shared {
             client,
             mirror,
             document: Value::Map(BTreeMap::new()),
+            clock: Tick::default(),
             root: None,
             stack: Vec::new(),
             loaded: Vec::new(),
@@ -414,7 +418,7 @@ impl<T: Transport + 'static> Host<T> {
     /// same answer as [`ClientError::Disconnected`]; on a socket the caller
     /// pumps when it is readable.
     pub fn pump(&mut self, now: Tick) -> Result<PumpReport, HostError> {
-        self.guard.set_tick(now);
+        self.shared.borrow_mut().clock = now;
         let mut events = 0usize;
         let mut handlers = 0usize;
         loop {

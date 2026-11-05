@@ -42,7 +42,7 @@ use gnoblin_model::{Fields, ObjectId, OperationId, Value as ModelValue};
 use mlua::{AnyUserData, Error, Function, Lua, Table, UserData, UserDataFields, UserDataMethods, Value, Variadic};
 
 use crate::host::{Shared, Status, Watching};
-use crate::sandbox::{Guard, Limits};
+use gnoblin_lua_sandbox::{Guard, Limits};
 
 /// The registry table of handler and timer callbacks, keyed by identity.
 ///
@@ -199,11 +199,10 @@ pub(super) fn install<T: Transport + 'static>(
     let timers = lua.create_table()?;
     {
         let shared = Rc::clone(&shared);
-        let timer_guard = Rc::clone(&guard);
         timers.set(
             "after",
             lua.create_function(move |lua, (ticks, callback): (u64, Function)| {
-                let due = timer_guard.tick().saturating_add(ticks);
+                let due = shared.borrow().clock.saturating_add(ticks);
                 let id = shared.borrow_mut().allocate();
                 callbacks(lua)?.raw_set(id, callback)?;
                 shared.borrow_mut().timers.insert(id, due);
@@ -214,7 +213,13 @@ pub(super) fn install<T: Transport + 'static>(
             })?,
         )?;
     }
-    timers.set("now", lua.create_function(move |_, ()| Ok(guard.tick().get()))?)?;
+    {
+        let shared = Rc::clone(&shared);
+        timers.set(
+            "now",
+            lua.create_function(move |_, ()| Ok(shared.borrow().clock.get()))?,
+        )?;
+    }
     gnoblin.set("timers", timers)?;
 
     let objects = lua.create_table()?;
