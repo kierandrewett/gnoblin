@@ -6,5 +6,18 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# The document is stored as plain JSON so the state file can be read and diffed
+# by a person; see src/last_good.rs for why the stored document is flattened
+# rather than written as a tagged tree.
+serde_json.workspace = true
+
+[dev-dependencies]
+# A private temporary directory for the store tests, and nothing else: the
+# validation core takes its input as an argument precisely so it needs no fixture.
+# A path dependency rather than a workspace one, so adding this crate's tests does
+# not rewrite the shared dependency table.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
+
 [lints]
 workspace = true

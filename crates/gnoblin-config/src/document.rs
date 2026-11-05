@@ -1,0 +1,357 @@
+//! The configuration document: the typed sections built from a value tree.
+//!
+//! The Lua host evaluates `init.lua`, layers the files it loaded, and hands the
+//! result here as a [`Value`]. This crate never evaluates Lua and never reads the
+//! config file: it owns what a setting *means*, so a misspelled key, an
+//! out-of-range number or a deprecated spelling is caught once, with a path and
+//! an accepted-values hint, before any subsystem acts on it.
+//!
+//! Two properties are deliberate.
+//!
+//! *All problems at once.* [`Config::from_value`] collects every problem and
+//! returns them in one [`Report`]; a user fixes a document, not a document per
+//! reload.
+//!
+//! *One stored spelling.* Parsing rewrites a deprecated spelling to its current
+//! one in the tree it was given, so [`Config::document`] is the canonical
+//! accepted document. The last-good store writes that tree, which is why a
+//! document saved by this version never needs the "an older Gnoblin wrote this"
+//! check the C core performs on load.
+//!
+//! Five sections are *carried*: `keybindings`, `shortcuts`, `autostart`,
+//! `window-rules` and `animations`. Their values are callbacks and rule
+//! declarations, which the Lua host and the window-management crate own; this
+//! layer keeps them in the document, rewrites nothing inside them, and validates
+//! nothing inside them. Carrying them is not the same as accepting them: a
+//! consumer that cannot use a rule still refuses it, and that refusal happens
+//! where the meaning is known.
+
+use std::collections::BTreeMap;
+
+use crate::enums::Deprecation;
+use crate::fields::Parser;
+use crate::path::Path;
+use crate::problem::{Fault, Problem, Report};
+use crate::sections::general::{
+    Auth, Compositor, Cursor, LayerShell, Location, Monitors, Prompts, Xwayland, parse_auth, parse_compositor,
+    parse_cursor, parse_layer_shell, parse_location, parse_monitors, parse_prompts, parse_xwayland, section_table,
+};
+use crate::sections::input::{Input, parse_input};
+use crate::sections::protocols::{
+    FrameRenderers, InputSources, Protocols, parse_frame_renderers, parse_input_sources, parse_protocols,
+};
+use crate::sections::window::{
+    Gesture, WindowManagement, Workspace, parse_touchpad_gestures, parse_window_management, parse_workspaces,
+};
+use crate::value::Value;
+
+/// Every top-level key the document accepts.
+///
+/// The list is the recorded inventory in
+/// `tests/parity/contracts/config-keys.json`, which is generated from the C
+/// loader, so a key that exists today cannot be lost by accident. `shell` is
+/// absent on purpose: it is refused with an explanation instead of an
+/// unknown-key hint.
+pub const TOP_LEVEL_KEYS: &[&str] = &[
+    "animations",
+    "auth",
+    "autostart",
+    "compositor",
+    "cursor",
+    "frame-renderers",
+    "input",
+    "input-sources",
+    "keybindings",
+    "layer-shell",
+    "location",
+    "monitors",
+    "portals",
+    "prompts",
+    "protocols",
+    "shortcuts",
+    "touchpad-gestures",
+    "window-management",
+    "window-rules",
+    "workspaces",
+    "xwayland",
+];
+
+/// Sections this layer keeps but does not interpret.
+pub const CARRIED_SECTIONS: &[&str] = &["animations", "autostart", "keybindings", "shortcuts", "window-rules"];
+
+/// A validated configuration document.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Config {
+    /// `compositor`: what the compositor draws itself and how.
+    pub compositor: Option<Compositor>,
+    /// `cursor`: the cursor theme and size.
+    pub cursor: Option<Cursor>,
+    /// `frame-renderers`: the named frame renderer commands.
+    pub frame_renderers: Option<FrameRenderers>,
+    /// `input`: pointer, keyboard and tablet settings.
+    pub input: Option<Input>,
+    /// `input-sources`: the switchable layouts and input methods.
+    pub input_sources: Option<InputSources>,
+    /// `layer-shell`: how layer surfaces affect focus.
+    pub layer_shell: Option<LayerShell>,
+    /// `location`: the GeoClue policy.
+    pub location: Option<Location>,
+    /// `monitors`: preferences that apply to connected monitors.
+    pub monitors: Option<Monitors>,
+    /// `prompts`: whether Gnoblin serves passphrase prompts.
+    pub prompts: Option<Prompts>,
+    /// `auth`: whether Gnoblin is the polkit agent.
+    pub auth: Option<Auth>,
+    /// `protocols`: the protocol toggles.
+    pub protocols: Option<Protocols>,
+    /// `touchpad-gestures`: the gesture bindings, in declaration order.
+    pub touchpad_gestures: Vec<Gesture>,
+    /// `window-management`: stacking, focus and placement policy.
+    pub window_management: Option<WindowManagement>,
+    /// `workspaces`: the declared workspaces, in declaration order.
+    pub workspaces: Vec<Workspace>,
+    /// `xwayland`: how the X11 server behaves.
+    pub xwayland: Option<Xwayland>,
+    /// The accepted document, with deprecated spellings already resolved.
+    document: Value,
+    /// The deprecated spellings this document used, in the order they appeared.
+    deprecations: Vec<Deprecation>,
+}
+
+impl Config {
+    /// Validate a document tree, reporting every problem at once.
+    ///
+    /// The tree is taken by value and rewritten in place where a deprecated
+    /// spelling is accepted, so the config that comes back carries the canonical
+    /// spellings and [`Config::document`] can be stored as-is.
+    pub fn from_value(mut document: Value) -> Result<Config, Report> {
+        // A tree with a non-finite number or a branch past the depth limit is
+        // unusable before any section is read, and reading the sections first
+        // would bury the one problem that explains everything else (an infinite
+        // `speed` would also be reported as an out-of-range value).
+        let tree_problems = document.tree_problems();
+        if !tree_problems.is_empty() {
+            return Err(Report::new(tree_problems));
+        }
+        let mut out = Parser::new();
+        let mut config = Config::empty();
+        match &mut document {
+            Value::Map(entries) => {
+                let root = Path::root();
+                crate::fields::removed(
+                    entries,
+                    "shell",
+                    &root,
+                    &mut out,
+                    "configure the shell UI in the shell client, and use gnoblin.animation and window rules for compositor animations",
+                );
+                crate::fields::unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
+                config.compositor = section_table(entries, "compositor", &root, &mut out)
+                    .map(|table| parse_compositor(table, &root.key("compositor"), &mut out));
+                config.cursor = section_table(entries, "cursor", &root, &mut out)
+                    .map(|table| parse_cursor(table, &root.key("cursor"), &mut out));
+                config.frame_renderers = section_table(entries, "frame-renderers", &root, &mut out)
+                    .map(|table| parse_frame_renderers(table, &root.key("frame-renderers"), &mut out));
+                config.input = section_table(entries, "input", &root, &mut out)
+                    .map(|table| parse_input(table, &root.key("input"), &mut out));
+                config.input_sources = section_table(entries, "input-sources", &root, &mut out)
+                    .map(|table| parse_input_sources(table, &root.key("input-sources"), &mut out));
+                config.layer_shell = section_table(entries, "layer-shell", &root, &mut out)
+                    .map(|table| parse_layer_shell(table, &root.key("layer-shell"), &mut out));
+                config.location = section_table(entries, "location", &root, &mut out)
+                    .map(|table| parse_location(table, &root.key("location"), &mut out));
+                config.monitors = section_table(entries, "monitors", &root, &mut out)
+                    .map(|table| parse_monitors(table, &root.key("monitors"), &mut out));
+                config.prompts = section_table(entries, "prompts", &root, &mut out)
+                    .map(|table| parse_prompts(table, &root.key("prompts"), &mut out));
+                config.auth = section_table(entries, "auth", &root, &mut out)
+                    .map(|table| parse_auth(table, &root.key("auth"), &mut out));
+                config.protocols = section_table(entries, "protocols", &root, &mut out)
+                    .map(|table| parse_protocols(table, &root.key("protocols"), &mut out));
+                config.window_management = section_table(entries, "window-management", &root, &mut out)
+                    .map(|table| parse_window_management(table, &root.key("window-management"), &mut out));
+                config.xwayland = section_table(entries, "xwayland", &root, &mut out)
+                    .map(|table| parse_xwayland(table, &root.key("xwayland"), &mut out));
+                config.touchpad_gestures = if entries.contains_key("touchpad-gestures") {
+                    parse_touchpad_gestures(entries, &root, &mut out)
+                } else {
+                    Vec::new()
+                };
+                config.workspaces = if entries.contains_key("workspaces") {
+                    parse_workspaces(entries, &root, &mut out)
+                } else {
+                    Vec::new()
+                };
+                // A declared workspace list fixes the count, so a document that
+                // also asks for dynamic workspaces contradicts itself. The
+                // problem is anchored on the declaration, which is the newer of
+                // the two settings and the one a salvage can drop.
+                if entries.contains_key("workspaces")
+                    && config
+                        .window_management
+                        .as_ref()
+                        .is_some_and(|management| management.dynamic_workspaces.is_some())
+                {
+                    out.problem(
+                        &root.key("workspaces"),
+                        Fault::Conflict {
+                            other: root.key("window-management").key("dynamic-workspaces"),
+                        },
+                    );
+                }
+            }
+            other => out.problem(
+                &Path::root(),
+                Fault::WrongType {
+                    expected: "a table",
+                    found: other.kind(),
+                },
+            ),
+        }
+        let (problems, deprecations) = out.finish();
+        if problems.is_empty() {
+            config.document = document;
+            config.deprecations = deprecations;
+            Ok(config)
+        } else {
+            Err(Report::new(problems))
+        }
+    }
+
+    /// The accepted document, with deprecated spellings resolved.
+    ///
+    /// This is what the object model publishes and what the last-good store
+    /// writes, so a caller never has to reconstruct the document from the typed
+    /// sections.
+    pub fn document(&self) -> &Value {
+        &self.document
+    }
+
+    /// The deprecated spellings this document used.
+    ///
+    /// Empty for a document read back from the last-good store, because storing
+    /// resolves them.
+    pub fn deprecations(&self) -> &[Deprecation] {
+        &self.deprecations
+    }
+
+    /// The configuration with no sections set, used as the starting point while
+    /// a document is read and as the result of a salvage that kept nothing.
+    pub(crate) fn empty() -> Config {
+        Config {
+            compositor: None,
+            cursor: None,
+            frame_renderers: None,
+            input: None,
+            input_sources: None,
+            layer_shell: None,
+            location: None,
+            monitors: None,
+            prompts: None,
+            auth: None,
+            protocols: None,
+            touchpad_gestures: Vec::new(),
+            window_management: None,
+            workspaces: Vec::new(),
+            xwayland: None,
+            document: Value::Map(BTreeMap::new()),
+            deprecations: Vec::new(),
+        }
+    }
+
+    /// Whether the document set no section at all.
+    pub fn is_empty(&self) -> bool {
+        self.document.as_table().is_some_and(BTreeMap::is_empty)
+    }
+}
+
+/// The result of keeping what could be kept.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Salvaged {
+    /// The accepted document, with the sections that held a problem removed.
+    pub config: Config,
+    /// The problems that were reported for the removed sections, or `None` when
+    /// nothing had to be removed.
+    pub report: Option<Report>,
+}
+
+/// The most sections one salvage will drop before giving up.
+///
+/// A document cannot need more than one round per top-level key, so this is a
+/// safety net against a validation rule that keeps inventing problems, not a
+/// budget a real document can spend.
+const MAX_SALVAGE_ROUNDS: usize = 32;
+
+/// Keep the sections that validate and drop the ones that do not.
+///
+/// Login is forgiving in a way a reload is not: a broken section must not cost
+/// the user their cursor theme or their keyboard layout. The section is the unit
+/// because a section is what a merge replaces: keeping half of a section would
+/// leave a mix of two files' values that neither file asked for.
+///
+/// Dropping is reported, never silent: every problem from every round is in the
+/// [`Salvaged::report`], so the recovery panel can name what was ignored.
+pub fn salvage(mut document: Value) -> Salvaged {
+    let mut problems: Vec<Problem> = Vec::new();
+    for _ in 0..MAX_SALVAGE_ROUNDS {
+        match Config::from_value(document.clone()) {
+            Ok(config) => {
+                let report = (!problems.is_empty()).then(|| Report::new(problems));
+                return Salvaged { config, report };
+            }
+            Err(report) => {
+                let sections = report.sections();
+                problems.extend(report.problems().iter().cloned());
+                if sections.is_empty() {
+                    // Nothing inside the document could be blamed, so nothing
+                    // can be kept: the caller falls back to its own defaults.
+                    break;
+                }
+                if let Value::Map(entries) = &mut document {
+                    for section in sections {
+                        entries.remove(section);
+                    }
+                }
+            }
+        }
+    }
+    Salvaged {
+        config: Config::empty(),
+        report: Some(Report::new(problems)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_top_level_key_list_is_sorted_and_has_no_duplicates() {
+        let mut sorted: Vec<&str> = TOP_LEVEL_KEYS.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), TOP_LEVEL_KEYS.len(), "a key is listed twice");
+        assert!(
+            TOP_LEVEL_KEYS.windows(2).all(|pair| pair[0] < pair[1]),
+            "the key list is the accepted-values hint, so it is kept sorted"
+        );
+        assert!(!TOP_LEVEL_KEYS.contains(&"shell"), "shell is refused, not accepted");
+        for section in CARRIED_SECTIONS {
+            assert!(TOP_LEVEL_KEYS.contains(section), "{section} is carried but not known");
+        }
+    }
+
+    #[test]
+    fn an_empty_document_is_valid_and_empty() {
+        let config = Config::from_value(Value::Map(BTreeMap::new())).expect("empty document");
+        assert!(config.is_empty());
+        assert!(config.deprecations().is_empty());
+    }
+
+    #[test]
+    fn a_root_that_is_not_a_table_is_one_problem() {
+        let report = Config::from_value(Value::List(vec![])).expect_err("a list is not a document");
+        assert_eq!(report.problems().len(), 1);
+        assert_eq!(report.problems()[0].path, Path::root());
+    }
+}
