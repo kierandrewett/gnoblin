@@ -45,6 +45,8 @@ use tracing::{debug, info, warn};
 use crate::modal::{Modal, ModalEvent};
 use gnoblin_backend::render::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
+
+use crate::output_config::OutputConfigHost;
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
@@ -220,6 +222,8 @@ impl Server {
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+        let heads = crate::output_config::BackendOutputConfig::new(backend.as_mut(), state.output_positions()).heads();
+        state.publish_output_heads(heads);
         // The keyboard is configured before the socket is bound, so the first client that
         // connects already sees the keymap the document asked for.
         if let Some(keyboard) = &config.keyboard {
@@ -488,13 +492,15 @@ impl Server {
                 // this turn's frame is drawn.
                 state.poll_layouts();
                 let events = backend.dispatch(state);
-                if events.iter().any(is_output_change) {
+                let outputs_changed = events.iter().any(is_output_change);
+                if outputs_changed {
                     // A hotplug, a removal or a mode change: the whole layout is
                     // recomputed from the connected set, once, rather than patched
                     // per event.
                     state.sync_outputs(backend.outputs());
                     state.refresh_output_controls(&crate::output_control::BackendControl(backend.as_mut()));
                 }
+                sync_output_manager(state, backend.as_mut(), outputs_changed);
                 state.apply_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
                 crate::frame::render(backend.as_mut(), state, &frames, &control.screenshots);
                 // The frame just drawn produced buffer releases and frame callbacks;
@@ -957,6 +963,22 @@ fn bind(path: &Path) -> Result<UnixListener, StartupError> {
     let listener = UnixListener::bind(path).map_err(StartupError::Socket)?;
     listener.set_nonblocking(true).map_err(StartupError::Socket)?;
     Ok(listener)
+}
+
+/// Applies any `zwlr_output_configuration_v1` the clients queued this turn, then publishes
+/// the heads when the outputs changed or a configuration did.
+fn sync_output_manager(state: &mut State, backend: &mut dyn Backend<State>, outputs_changed: bool) {
+    let positions = state.output_positions();
+    let mut host = crate::output_config::BackendOutputConfig::new(backend, positions);
+    let applied = state.apply_output_configs(&mut host);
+    let heads = (applied || outputs_changed).then(|| host.heads());
+    drop(host);
+    if let Some(heads) = heads {
+        state.publish_output_heads(heads);
+    }
+    if applied {
+        state.sync_outputs(backend.outputs());
+    }
 }
 
 /// Whether a backend event changes the connected set or an output's geometry.

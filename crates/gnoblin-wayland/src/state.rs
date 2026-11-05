@@ -350,7 +350,6 @@ pub struct State {
     pub(crate) output_controls: OutputControlState,
     pub(crate) output_manager: ZwlrOutputManagementV1State,
     /// The `zwlr_output_manager_v1` global, present when the configuration offers it.
-    pub(crate) output_manager_global: Option<GlobalId>,
     /// Kept alive so `zwp_text_input_manager_v3` stays registered.
     #[allow(dead_code)]
     pub(crate) text_input_state: TextInputManagerState,
@@ -594,9 +593,9 @@ impl State {
         let power_global = Global::OutputPower
             .is_advertised(protocols)
             .then(|| crate::protocols::zwlr_output_power_management_v1::global(&display_handle, &access));
-        let output_manager_global = Global::OutputManagement
-            .is_advertised(protocols)
-            .then(|| crate::protocols::zwlr_output_management_v1::global(&display_handle, &access));
+        if Global::OutputManagement.is_advertised(protocols) {
+            crate::protocols::zwlr_output_management_v1::global(&display_handle, &access);
+        }
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
@@ -696,7 +695,6 @@ impl State {
             fifo_manager_state,
             output_controls: OutputControlState::new(gamma_global, power_global),
             output_manager,
-            output_manager_global,
             text_input_state,
             input_method_state,
             virtual_keyboard_state,

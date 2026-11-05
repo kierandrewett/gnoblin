@@ -141,24 +141,9 @@ impl ZwlrOutputManagementV1State {
         }
     }
 
-    /// Whether any configuration is waiting for the host.
-    pub(crate) fn has_pending(&self) -> bool {
-        !self.pending.is_empty()
-    }
-
     /// Takes the configurations waiting for the host, leaving none behind.
     pub(crate) fn take_pending(&mut self) -> Vec<PendingConfig> {
         std::mem::take(&mut self.pending)
-    }
-
-    /// The heads the host last published.
-    pub(crate) fn heads(&self) -> &[HeadInfo] {
-        &self.heads
-    }
-
-    /// The current configuration serial.
-    pub(crate) fn serial(&self) -> u32 {
-        self.serial
     }
 }
 
@@ -190,7 +175,8 @@ impl State {
     /// The host runs each one after the dispatch that queued it. A configuration whose serial
     /// is stale is `cancelled`; a head that vanished is `failed`; otherwise the host's answer
     /// is `succeeded` or `failed`.
-    pub(crate) fn apply_output_configs(&mut self, host: &mut dyn crate::output_config::OutputConfigHost) {
+    pub(crate) fn apply_output_configs(&mut self, host: &mut dyn crate::output_config::OutputConfigHost) -> bool {
+        let mut changed = false;
         for pending in self.output_manager.take_pending() {
             if !pending.object.is_alive() {
                 continue;
@@ -207,18 +193,17 @@ impl State {
                 continue;
             }
             match host.apply(&pending.requests, pending.test_only) {
-                Ok(()) => pending.object.succeeded(),
+                Ok(()) => {
+                    changed |= !pending.test_only;
+                    pending.object.succeeded();
+                }
                 Err(error) => {
                     debug!(%error, "[output-manager] the host refused the configuration");
                     pending.object.failed();
                 }
             }
         }
-    }
-
-    /// Whether the output manager is offered, which the composition root decides at start-up.
-    pub(crate) fn output_manager_started(&self) -> bool {
-        self.output_manager_global.is_some()
+        changed
     }
 }
 

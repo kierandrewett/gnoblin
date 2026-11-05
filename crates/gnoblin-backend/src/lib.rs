@@ -488,6 +488,12 @@ pub trait Backend<S: Host + 'static> {
     fn set_power(&mut self, output: OutputId, _on: bool) -> Result<(), BackendError> {
         Err(BackendError::Unsupported(output))
     }
+
+    /// Drive `output` at `mode` and `scale`. Backends that cannot re-mode a live output
+    /// refuse, which is the default.
+    fn configure_output(&mut self, output: OutputId, _mode: DisplayMode, _scale: Scale) -> Result<(), BackendError> {
+        Err(BackendError::Unsupported(output))
+    }
 }
 
 /// Which per-output controls a backend can honour.

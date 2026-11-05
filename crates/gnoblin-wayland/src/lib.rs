@@ -194,7 +194,7 @@ pub use observation::{
     ActivationDenial, LockObservation, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace, Observer,
     SessionSnapshot,
 };
-pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, NoOutputConfig, OutputConfigHost};
+pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
 pub use output_control::{NoOutputControl, OutputControl};
 pub use server::{
     Config, ControlHandle, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError,

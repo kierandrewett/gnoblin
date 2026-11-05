@@ -799,6 +799,10 @@ impl<S: Host + 'static> Backend<S> for Headless {
         locked(&self.control).power.insert(output, on);
         Ok(())
     }
+
+    fn configure_output(&mut self, output: OutputId, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
+        self.resize(output, mode, scale)
+    }
 }
 
 #[cfg(test)]
