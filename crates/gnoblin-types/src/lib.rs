@@ -31,6 +31,10 @@
 //!
 //! # Identities and monotonic values
 //!
+//! [`Orientation`] is how an output presents its mode (a panel can be mounted
+//! sideways), which the display configuration, the mode resolution and the IPC
+//! all name, so it is one type instead of three.
+//!
 //! [`WindowId`], [`OutputId`], [`WorkspaceId`], [`ObjectId`], [`OperationId`],
 //! [`RequestId`], [`SubscriptionId`] and [`OwnerId`] are opaque [`u64`] tokens.
 //! They are all [`u64`] because the object graph allocates unbounded counters
@@ -43,6 +47,7 @@ mod direction;
 mod error_code;
 mod geometry;
 mod ids;
+mod orientation;
 mod scale;
 mod tick;
 mod transform;
@@ -52,6 +57,7 @@ pub use direction::{Axis, Corner, Direction, Edge};
 pub use error_code::{ErrorCode, InvalidErrorCode, is_error_code};
 pub use geometry::{Insets, Point, PointF, Rect, RectF, Size, Vec3};
 pub use ids::{ObjectId, OperationId, OutputId, OwnerId, RequestId, SubscriptionId, WindowId, WorkspaceId};
+pub use orientation::Orientation;
 pub use scale::Scale;
 pub use tick::{Revision, Tick};
 pub use transform::{Transform, Unsupported3d, Unsupported3dField};

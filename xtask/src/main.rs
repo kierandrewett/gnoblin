@@ -1,8 +1,10 @@
-//! Workspace automation: dependency-rule checks over `cargo metadata`, and the
-//! code generation the schema drives.
+//! Workspace automation: dependency-rule checks over `cargo metadata`, the
+//! duplicate-type report over every crate's sources, and the code generation the
+//! schema drives.
 
 mod compat_report;
 mod deps;
+mod dupes;
 mod gen_proto;
 mod metadata;
 
@@ -16,6 +18,8 @@ subcommands:
   deps               check the workspace dependency rules from design/rust-compositor.md
   gen-proto          write the generated .proto text to target/gen-proto, to read
   compat-report      print every compat adapter's declared support matrix
+  dupes              list the structs and enums two crates declare twice
+  dupes --deny       the same report, failing on a hit not in xtask/dupes-allow.toml
   compat-report --json  the same report as JSON";
 
 fn main() -> ExitCode {
@@ -30,7 +34,9 @@ fn main() -> ExitCode {
         ("gen-proto", []) => gen_proto::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
-        ("deps" | "gen-proto" | "compat-report", _) => usage_error("unexpected argument"),
+        ("dupes", []) => dupes::run(false),
+        ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
+        ("deps" | "gen-proto" | "dupes" | "compat-report", _) => usage_error("unexpected argument"),
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
 }

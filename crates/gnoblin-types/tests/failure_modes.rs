@@ -200,3 +200,50 @@ fn a_point_outside_every_range_clamps_to_the_rectangle() {
     assert_eq!(bounds.clamp_inside(Rect::new(0, 0, 5, 5)), Rect::new(0, 0, 20, 20));
     assert_eq!(Rect::new(1, 1, 2, 2).clamp_inside(bounds), Rect::new(1, 1, 2, 2));
 }
+
+#[test]
+fn an_orientation_names_itself_and_swaps_only_on_quarter_turns() {
+    use gnoblin_types::Orientation;
+
+    let named: Vec<&str> = Orientation::ALL.iter().map(|orientation| orientation.name()).collect();
+    assert_eq!(
+        named,
+        [
+            "normal",
+            "90",
+            "180",
+            "270",
+            "flipped",
+            "flipped-90",
+            "flipped-180",
+            "flipped-270"
+        ]
+    );
+    for orientation in Orientation::ALL {
+        assert_eq!(Orientation::parse(orientation.name()), Some(orientation));
+        assert_eq!(orientation.to_string(), orientation.name());
+    }
+    assert_eq!(Orientation::parse("Rotate90"), None);
+    assert_eq!(Orientation::parse(""), None);
+    assert_eq!(Orientation::default(), Orientation::Normal);
+
+    // A quarter turn presents the mode's height horizontally; a half turn does
+    // not, and the flipped variants follow the rotation they carry.
+    for orientation in [
+        Orientation::Rotate90,
+        Orientation::Rotate270,
+        Orientation::Flipped90,
+        Orientation::Flipped270,
+    ] {
+        assert!(orientation.swaps_axes(), "{orientation:?}");
+    }
+    for orientation in [
+        Orientation::Normal,
+        Orientation::Rotate180,
+        Orientation::Flipped,
+        Orientation::Flipped180,
+    ] {
+        assert!(!orientation.swaps_axes(), "{orientation:?}");
+    }
+    assert_eq!(Orientation::ALL.iter().filter(|o| o.is_flipped()).count(), 4);
+}
