@@ -110,6 +110,7 @@
 
 mod access;
 mod frame;
+mod keyboard;
 mod observation;
 mod protocols;
 mod server;

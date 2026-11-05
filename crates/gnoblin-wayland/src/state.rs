@@ -10,12 +10,12 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use smithay::backend::input::{ButtonState, InputTime, KeyState};
+use smithay::backend::input::{ButtonState, InputTime};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::PopupManager;
-use smithay::input::keyboard::{FilterResult, KeyboardHandle, ModifiersState};
-use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
-use smithay::input::{Seat, SeatState};
+use smithay::input::keyboard::KeyboardHandle;
+use smithay::input::pointer::{ButtonEvent, CursorImageStatus, MotionEvent, RelativeMotionEvent};
+use smithay::input::{Seat, SeatState, pointer::PointerHandle};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Display;
@@ -24,8 +24,18 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
 use smithay::wayland::compositor::{CompositorState, SurfaceAttributes, with_states};
+use smithay::wayland::content_type::ContentTypeState;
+use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelListState;
+use smithay::wayland::fractional_scale::FractionalScaleManagerState;
+use smithay::wayland::idle_inhibit::IdleInhibitManagerState;
+use smithay::wayland::input_method::{InputMethodManagerState, PopupSurface};
+use smithay::wayland::keyboard_shortcuts_inhibit::{KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor};
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::pointer_constraints::PointerConstraintsState;
+use smithay::wayland::pointer_gestures::PointerGesturesState;
+use smithay::wayland::presentation::PresentationState;
+use smithay::wayland::relative_pointer::RelativePointerManagerState;
 use smithay::wayland::security_context::{SecurityContextListenerSource, SecurityContextState};
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::ext_data_control::DataControlState as ExtDataControlState;
@@ -36,7 +46,10 @@ use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData};
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
+use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::viewporter::ViewporterState;
+use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
@@ -46,21 +59,27 @@ use tracing::{debug, warn};
 use gnoblin_backend::render::{Composer, Content, OutputFrame};
 use gnoblin_backend::{Host, InputEvent};
 use gnoblin_config::Protocols;
+use gnoblin_input::Activity;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_types::{OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
+use crate::keyboard::KeyboardTables;
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::protocols::activation::Activation;
 use crate::protocols::blur_fade;
 use crate::protocols::capture::CaptureTables;
 use crate::protocols::foreign_toplevel::ForeignToplevels;
+use crate::protocols::idle_notify::IdleTables;
 use crate::protocols::layer_shell::Layers;
+use crate::protocols::pointer_constraints::ConstraintTables;
+use crate::protocols::presentation::PresentationTables;
 use crate::protocols::selection::Selections;
 use crate::protocols::session_host::SessionHostTables;
 use crate::protocols::session_lock::LockTables;
+use crate::protocols::tearing_control::TearingHint;
 use crate::protocols::window_frame::FrameTables;
 use crate::server::StartupError;
 
@@ -69,8 +88,8 @@ const DEFAULT_WORKSPACES: u32 = 1;
 
 /// The keyboard repeat settings a session starts with, in milliseconds and
 /// repeats per second: the values the configuration reference defaults to.
-const KEY_REPEAT_DELAY: i32 = 200;
-const KEY_REPEAT_RATE: i32 = 25;
+pub(crate) const KEY_REPEAT_DELAY: i32 = 200;
+pub(crate) const KEY_REPEAT_INTERVAL: i32 = 40;
 
 /// The offset between an evdev scan code and the key code `wl_keyboard.key` carries.
 ///
@@ -224,12 +243,64 @@ pub struct State {
     #[allow(dead_code)]
     pub(crate) security_context_state: SecurityContextState,
 
+    // The seat and its keyboard features. One field per protocol, as above.
+    /// Kept alive so `wp_fractional_scale_manager_v1` stays registered; the handler in
+    /// [`crate::protocols::fractional_scale`] answers its requests.
+    #[allow(dead_code)]
+    pub(crate) fractional_scale_state: FractionalScaleManagerState,
+    /// Kept alive so `wp_cursor_shape_manager_v1` stays registered.
+    #[allow(dead_code)]
+    pub(crate) cursor_shape_state: CursorShapeManagerState,
+    /// Kept alive so `zwp_relative_pointer_manager_v1` stays registered.
+    #[allow(dead_code)]
+    pub(crate) relative_pointer_state: RelativePointerManagerState,
+    /// Kept alive so `zwp_pointer_constraints_v1` stays registered; the handler in
+    /// [`crate::protocols::pointer_constraints`] decides which constraints are active.
+    #[allow(dead_code)]
+    pub(crate) pointer_constraints_state: PointerConstraintsState,
+    /// Kept alive so `zwp_pointer_gestures_v1` stays registered.
+    #[allow(dead_code)]
+    pub(crate) pointer_gestures_state: PointerGesturesState,
+    /// Kept alive so `zwp_idle_inhibit_manager_v1` stays registered; the handler in
+    /// [`crate::protocols::idle_inhibit`] records the inhibitors.
+    #[allow(dead_code)]
+    pub(crate) idle_inhibit_state: IdleInhibitManagerState,
+    /// Kept alive so `zwp_keyboard_shortcuts_inhibit_manager_v1` stays registered, and
+    /// read by the handler that decides whether a request may activate.
+    pub(crate) shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
+    /// Kept alive so `wp_presentation` stays registered.
+    #[allow(dead_code)]
+    pub(crate) presentation_state: PresentationState,
+    /// Kept alive so `wp_content_type_manager_v1` stays registered.
+    #[allow(dead_code)]
+    pub(crate) content_type_state: ContentTypeState,
+    /// Kept alive so `wp_single_pixel_buffer_manager_v1` stays registered.
+    #[allow(dead_code)]
+    pub(crate) single_pixel_buffer_state: SinglePixelBufferState,
+    /// Kept alive so `wp_tearing_control_manager_v1` stays registered; the handler in
+    /// [`crate::protocols::tearing_control`] records the hints.
+    #[allow(dead_code)]
+    pub(crate) tearing_control_global: GlobalId,
+    /// Kept alive so `ext_idle_notifier_v1` stays registered; the handler in
+    /// [`crate::protocols::idle_notify`] answers its notifications.
+    #[allow(dead_code)]
+    pub(crate) idle_notify_global: GlobalId,
+    /// Kept alive so `zwp_text_input_manager_v3` stays registered.
+    #[allow(dead_code)]
+    pub(crate) text_input_state: TextInputManagerState,
+    /// Kept alive so `zwp_input_method_manager_v2` stays registered.
+    #[allow(dead_code)]
+    pub(crate) input_method_state: InputMethodManagerState,
+    /// Kept alive so `zwp_virtual_keyboard_manager_v1` stays registered.
+    #[allow(dead_code)]
+    pub(crate) virtual_keyboard_state: VirtualKeyboardManagerState,
+
+    /// The seat the keyboard and pointer belong to, which is what the text-input and
+    /// shortcut-inhibit handles hang off.
+    pub(crate) seat: Seat<State>,
     /// Keyboard and pointer handles for the one seat this slice creates.
     pub(crate) keyboard: KeyboardHandle<State>,
     pub(crate) pointer: PointerHandle<State>,
-    /// The seat itself, which the clipboard needs to follow the keyboard focus.
-    pub(crate) seat: Seat<State>,
-
     /// What each connection is allowed to be, shared with the globals' filters.
     pub(crate) access: Arc<Access>,
     /// The layer surfaces and what they reserve.
@@ -249,6 +320,27 @@ pub struct State {
     /// The session's turn counter: the only clock the protocol side reads, so a token's
     /// lifetime is measured in the work the session did rather than in seconds.
     pub(crate) turn: Tick,
+
+    /// The seat's keyboard features: sources, layout memory and delivery order.
+    pub(crate) keyboard_tables: KeyboardTables,
+    /// The pointer constraints a client holds.
+    pub(crate) constraint_tables: ConstraintTables,
+    /// The idle notifications and inhibitors.
+    pub(crate) idle_tables: IdleTables,
+    /// The presentation feedback bookkeeping.
+    pub(crate) presentation_tables: PresentationTables,
+    /// The shortcut inhibitors the compositor granted, so it can revoke them.
+    pub(crate) shortcuts_held: Vec<KeyboardShortcutsInhibitor>,
+    /// The input method popups, so a renderer can draw one.
+    pub(crate) input_method_popups: Vec<PopupSurface>,
+    /// The last cursor image a client set.
+    pub(crate) cursor_image: CursorImageStatus,
+    /// The tearing hints clients set, keyed by surface.
+    pub(crate) tearing: Vec<(WlSurface, TearingHint)>,
+    /// The session clock, in milliseconds, which idle and the router read.
+    pub(crate) clock: Tick,
+    /// The input activity the idle state is derived from.
+    pub(crate) activity: Activity,
 
     /// The window management policy.
     ///
@@ -416,10 +508,29 @@ impl State {
             ],
         );
 
+        // The seat's protocols. Each global is created here and answered by its own
+        // module; the argument this list carries is the access policy for the globals
+        // that can act on the whole session.
+        let fractional_scale_state = crate::protocols::fractional_scale::global(&display_handle);
+        let cursor_shape_state = crate::protocols::cursor_shape::global(&display_handle);
+        let relative_pointer_state = crate::protocols::relative_pointer::global(&display_handle);
+        let pointer_constraints_state = crate::protocols::pointer_constraints::global(&display_handle);
+        let pointer_gestures_state = crate::protocols::pointer_gestures::global(&display_handle);
+        let idle_inhibit_state = crate::protocols::idle_inhibit::global(&display_handle);
+        let shortcuts_inhibit_state = crate::protocols::shortcuts_inhibit::global(&display_handle);
+        let presentation_state = crate::protocols::presentation::global(&display_handle);
+        let content_type_state = crate::protocols::content_type::global(&display_handle);
+        let single_pixel_buffer_state = crate::protocols::single_pixel_buffer::global(&display_handle);
+        let tearing_control_global = crate::protocols::tearing_control::global(&display_handle);
+        let idle_notify_global = crate::protocols::idle_notify::global(&display_handle, &access);
+        let text_input_state = crate::protocols::text_input::text_input_global(&display_handle);
+        let input_method_state = crate::protocols::text_input::input_method_global(&display_handle, &access);
+        let virtual_keyboard_state = crate::protocols::text_input::virtual_keyboard_global(&display_handle, &access);
+
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
         let keyboard = seat
-            .add_keyboard(Default::default(), KEY_REPEAT_DELAY, KEY_REPEAT_RATE)
+            .add_keyboard(Default::default(), KEY_REPEAT_DELAY, KEY_REPEAT_INTERVAL)
             .map_err(StartupError::Keyboard)?;
         let pointer = seat.add_pointer();
 
@@ -445,6 +556,21 @@ impl State {
             primary_selection_state,
             ext_data_control_state,
             wlr_data_control_state,
+            fractional_scale_state,
+            cursor_shape_state,
+            relative_pointer_state,
+            pointer_constraints_state,
+            pointer_gestures_state,
+            idle_inhibit_state,
+            shortcuts_inhibit_state,
+            presentation_state,
+            content_type_state,
+            single_pixel_buffer_state,
+            tearing_control_global,
+            idle_notify_global,
+            text_input_state,
+            input_method_state,
+            virtual_keyboard_state,
             security_context_state,
             keyboard,
             pointer,
@@ -456,6 +582,16 @@ impl State {
             selections: Selections::default(),
             pending_contexts: Vec::new(),
             turn: Tick::ZERO,
+            keyboard_tables: KeyboardTables::default(),
+            constraint_tables: ConstraintTables::default(),
+            idle_tables: IdleTables::default(),
+            presentation_tables: PresentationTables::default(),
+            shortcuts_held: Vec::new(),
+            input_method_popups: Vec::new(),
+            cursor_image: CursorImageStatus::default_named(),
+            tearing: Vec::new(),
+            clock: Tick::ZERO,
+            activity: Activity::new(),
             wm: Wm::new(options),
             windows: BTreeMap::new(),
             outputs: Vec::new(),
@@ -597,6 +733,96 @@ impl State {
             .iter()
             .find(|entry| entry.backend == output)
             .map(|entry| entry.policy)
+    }
+
+    /// The scale the output a surface is on draws it at.
+    ///
+    /// A surface with no output of its own takes the first output's scale, and a session
+    /// with no output at all answers 1: a client that is told nothing renders at the
+    /// smallest scale rather than at a scale nothing draws.
+    #[must_use]
+    pub(crate) fn surface_scale(&self, surface: &WlSurface) -> f64 {
+        let output_id = self
+            .window_of(surface)
+            .and_then(|window| self.wm.window(window))
+            .and_then(|window| window.output);
+        let entry = output_id
+            .and_then(|policy| self.outputs.iter().find(|entry| entry.policy == policy))
+            .or_else(|| self.outputs.first());
+        entry.map_or(1.0, |entry| entry.output.current_scale().fractional_scale())
+    }
+
+    /// Whether the pointer is currently over a surface.
+    #[must_use]
+    pub(crate) fn pointer_is_over(&self, surface: &WlSurface) -> bool {
+        self.pointer.current_focus().as_ref() == Some(surface)
+    }
+
+    /// Sends a relative motion vector to the surface the pointer is on.
+    ///
+    /// It is what a locked pointer reports and what an unlocked one adds to its position
+    /// report, so a client that reads vectors alone never has to difference positions.
+    pub(crate) fn send_relative_motion(&mut self, delta: SmithayPoint<f64, Logical>, time: InputTime) {
+        let Some(surface) = self.pointer.current_focus() else {
+            return;
+        };
+        let Some((_, origin)) = self.surface_under(self.pointer_position) else {
+            return;
+        };
+        let event = RelativeMotionEvent {
+            delta,
+            delta_unaccel: delta,
+            time,
+        };
+        let pointer = self.pointer.clone();
+        pointer.relative_motion(self, Some((surface, origin)), &event);
+    }
+
+    /// An output's Smithay object and the rectangle it occupies, for the frame path.
+    pub(crate) fn frame_target(&self, output: OutputId) -> Option<(Output, Rect)> {
+        self.outputs
+            .iter()
+            .find(|entry| entry.backend == output)
+            .map(|entry| (entry.output.clone(), entry.rect))
+    }
+
+    /// The surfaces a frame for `rect` drew, topmost last.
+    ///
+    /// It is what a presentation feedback may be answered for: a window that is not visible,
+    /// has no buffer or does not intersect the output was not drawn.
+    #[must_use]
+    pub(crate) fn drawn_surfaces(&self, rect: Rect) -> Vec<WlSurface> {
+        let active = self.wm.active_workspace();
+        let mut surfaces = Vec::new();
+        for window in self.wm.stack() {
+            let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
+                continue;
+            };
+            if !entry.mapped || !managed.is_visible(active) {
+                continue;
+            }
+            let geometry = managed.geometry;
+            let intersects = i64::from(geometry.x) < rect.right()
+                && i64::from(rect.x) < geometry.right()
+                && i64::from(geometry.y) < rect.bottom()
+                && i64::from(rect.y) < geometry.bottom();
+            if intersects && let Some(surface) = entry.surface.wl_surface() {
+                surfaces.push(surface);
+            }
+        }
+        surfaces
+    }
+
+    /// Applies what a raised cover changes outside the lock's own bookkeeping.
+    ///
+    /// A covered session must hold no client's pointer and no client's shortcuts: a pointer
+    /// lock that survived the cover would keep capturing the pointer for a window underneath
+    /// it, and a shortcut inhibitor would keep the keys the lock screen needs. Both are
+    /// released here, once, before the cover is presented.
+    pub(crate) fn cover_raised(&mut self) {
+        self.release_constraints();
+        self.revoke_shortcut_inhibitors();
+        self.clear_pointer_focus();
     }
 
     /// The display, taken out for the caller that drives a dispatch.
@@ -863,12 +1089,28 @@ impl State {
     /// The clipboard follows the keyboard: `wl_data_device` delivers a selection to the
     /// focused client and to nobody else, so a client that cannot be pasted into has no
     /// offer to paste from.
+    ///
+    /// Focus is four things at once, and they have to move together: the layout a window
+    /// remembers is stored against the window that is leaving, the text input has to hear
+    /// `leave` before `enter`, the seat's `wl_keyboard` moves, and the window arriving gets
+    /// the layout it remembers.
     pub(crate) fn set_keyboard_focus(&mut self, target: Option<WlSurface>) {
+        self.remember_layout();
+        {
+            use smithay::wayland::text_input::TextInputSeat;
+            let text_input = self.seat.text_input().clone();
+            text_input.leave();
+            text_input.set_focus(target.clone());
+            if target.is_some() {
+                text_input.enter();
+            }
+        }
         let serial = SERIAL_COUNTER.next_serial();
         let client = target.as_ref().and_then(|surface| surface.client());
         let keyboard = self.keyboard.clone();
-        keyboard.set_focus(self, target, serial);
+        keyboard.set_focus(self, target.clone(), serial);
         self.set_selection_focus(client.as_ref());
+        self.restore_layout(target.as_ref());
     }
 
     /// Moves the pointer to a layout position and gives it the focus it lands on.
@@ -1039,9 +1281,15 @@ impl State {
                 for output in &self.outputs {
                     output.output.leave(&wl_surface);
                 }
+                // A constraint the window's client held cannot outlive the surface it
+                // was created for.
+                self.constraint_tables.held.retain(|held| held.surface != wl_surface);
+                debug!(%window, surface = ?wl_surface.id(), "[window] closed");
             }
             self.composer.remove_window(window);
-            debug!(%window, "[window] closed");
+            // The layout a window remembered goes with it: a recycled identity must not
+            // inherit another window's source.
+            self.forget_layout(window);
         }
         // The sessions that captured the window go with it: nothing may serve the pixels
         // of a window that is no longer on screen, and each client hears `stopped`.
@@ -1564,18 +1812,31 @@ impl Host for State {
 
     fn input(&mut self, event: InputEvent) {
         let time = InputTime::now();
+        // Any input counts as activity: it is what ends an idle period and what the idle
+        // notifications are derived from. It is recorded before the event is routed, so a
+        // key a binding consumes still counts as the user being present.
+        self.record_activity();
         match event {
             InputEvent::PointerMotion { output, position } => {
                 let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
                     return;
                 };
-                self.move_pointer(
-                    SmithayPoint::from((
-                        f64::from(position.x + entry.rect.x),
-                        f64::from(position.y + entry.rect.y),
-                    )),
-                    time,
-                );
+                let position = SmithayPoint::from((
+                    f64::from(position.x + entry.rect.x),
+                    f64::from(position.y + entry.rect.y),
+                ));
+                let delta = position - self.pointer_position;
+                // A locked pointer does not move: its whole motion becomes a relative
+                // vector for the client that asked for the lock, and nothing else changes.
+                if self.locked_surface().is_some() {
+                    self.send_relative_motion(delta, time);
+                    return;
+                }
+                let position = self.confine(position);
+                self.move_pointer(position, time);
+                // The vector goes out with the position, so a client that only wants
+                // relative motion does not have to difference two positions.
+                self.send_relative_motion(delta, time);
             }
             InputEvent::PointerMotionRelative { dx, dy } => {
                 // A relative device states a delta rather than a position, which is what
@@ -1632,24 +1893,18 @@ impl Host for State {
                 );
             }
             InputEvent::Key { keycode, pressed } => {
-                let keyboard = self.keyboard.clone();
                 let serial = SERIAL_COUNTER.next_serial();
                 self.remember_input_serial(u32::from(serial));
-                let key_state = if pressed { KeyState::Pressed } else { KeyState::Released };
-                // The event states an evdev scan code, which is the number the kernel and
-                // the EI protocol call a key code; the keymap is indexed by the X11 keycode
-                // that `wl_keyboard.key` carries, which is the same number plus the eight
-                // the protocol reserves for the buttons it never uses. The translation
-                // belongs here and nowhere else: `gnoblin_backend::nested::input` removes
-                // the same eight from a host's `wl_keyboard.key` before the seat sees it.
-                keyboard.input::<(), _>(
-                    self,
-                    (keycode + KEY_CODE_OFFSET).into(),
-                    key_state,
-                    serial,
-                    time,
-                    |_, _modifiers: &ModifiersState, _keysym| FilterResult::Forward,
-                );
+                let state = if pressed {
+                    gnoblin_types::KeyState::Pressed
+                } else {
+                    gnoblin_types::KeyState::Released
+                };
+                // The whole delivery rule is in `dispatch_key`: the router decides whether
+                // the edge belongs to a grab, a binding or the client, and only a client
+                // edge reaches the seat. The evdev-to-X11 offset is applied there too, so
+                // a client's `wl_keyboard.key` is the code the protocol defines.
+                self.dispatch_key(keycode, state, serial, time);
             }
             // A scroll needs the axis source and the pointer's focus serial, which the
             // input slice adds; until then a scroll reaches the seat and stops here

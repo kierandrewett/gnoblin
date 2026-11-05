@@ -94,6 +94,14 @@ pub struct Config {
     pub observer: Option<Arc<dyn Observer>>,
     /// Which globals the session advertises (`gnoblin.configure.protocols`).
     pub protocols: Protocols,
+    /// The document's `input-sources`: the keyboard layouts the session can switch
+    /// between, and whether a window remembers its own.
+    ///
+    /// [`None`] leaves the seat's keymap alone, which is what the configuration reference
+    /// asks for a document that says nothing about layouts.
+    pub input_sources: Option<gnoblin_config::InputSources>,
+    /// The document's `input.keyboard`: repeat delay, repeat interval and XKB options.
+    pub keyboard: Option<gnoblin_config::Keyboard>,
 }
 
 impl Default for Config {
@@ -106,6 +114,8 @@ impl Default for Config {
             wm: WmOptions::default(),
             observer: None,
             protocols: Protocols::default(),
+            input_sources: None,
+            keyboard: None,
         }
     }
 }
@@ -170,7 +180,7 @@ impl Server {
         // `'static` and the display can stay in the state.
         let poll_fd = display.as_fd().try_clone_to_owned().map_err(StartupError::Io)?;
 
-        let state = State::new(
+        let mut state = State::new(
             display,
             backend.outputs(),
             &config.seat_name,
@@ -180,6 +190,14 @@ impl Server {
             config.observer,
             &config.protocols,
         )?;
+        // The keyboard is configured before the socket is bound, so the first client that
+        // connects already sees the keymap the document asked for.
+        if let Some(keyboard) = &config.keyboard {
+            state.apply_keyboard_settings(keyboard);
+        }
+        if let Some(sources) = &config.input_sources {
+            state.apply_input_sources(sources);
+        }
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
 
@@ -258,6 +276,17 @@ impl Server {
                                 // reads the observation on the strength of it sees what
                                 // the focus request did.
                                 let _ = reply.send(state.focus_window(window));
+                            }
+                            Command::Advance(milliseconds) => state.advance_clock(milliseconds),
+                            Command::SelectSource(index) => {
+                                if !state.select_input_source(index) {
+                                    warn!(index, "[keyboard] no such input source");
+                                }
+                            }
+                            Command::Bind { name, chord } => {
+                                if !state.add_binding(&name, &chord) {
+                                    warn!(name, chord, "[input] the binding was refused");
+                                }
                             }
                         }
                     }
@@ -344,7 +373,17 @@ impl Server {
             // can be watched from inside the turn that created it, and so the Xwayland
             // session can be ticked from the loop's own timeout.
             let handle = event_loop.handle();
+            let mut last_turn: Option<std::time::Instant> = None;
             event_loop.run(Duration::from_millis(100), &mut state, move |state| {
+                // The session clock follows the loop's real time, so idle fires without a
+                // caller having to advance it; a caller that advances it as well is jumping
+                // the same counter forwards.
+                let now = std::time::Instant::now();
+                if let Some(previous) = last_turn {
+                    let elapsed = now.duration_since(previous).as_millis();
+                    state.advance_clock(u64::try_from(elapsed).unwrap_or(u64::MAX));
+                }
+                last_turn = Some(now);
                 state.flush();
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.
@@ -498,6 +537,32 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).unwrap_or_default()
     }
 
+    /// Advances the session clock, in milliseconds.
+    ///
+    /// Idle is a function of this clock and of input activity, so a caller that advances it
+    /// drives idle deterministically. The loop advances it from real elapsed time as well,
+    /// so a session with no caller idles on its own; a test that must not depend on wall
+    /// time advances it instead.
+    pub fn advance(&self, milliseconds: u64) {
+        self.control.push(Command::Advance(milliseconds));
+    }
+
+    /// Selects a switchable keyboard layout by index, for the focused window.
+    pub fn select_input_source(&self, index: usize) {
+        self.control.push(Command::SelectSource(index));
+    }
+
+    /// Adds a key binding to the session's router.
+    ///
+    /// The chord is written the way the configuration writes it (`<Super>q`); a chord or
+    /// a name the grammar refuses is reported as a warning rather than silently dropped.
+    pub fn bind(&self, name: &str, chord: &str) {
+        self.control.push(Command::Bind {
+            name: name.to_owned(),
+            chord: chord.to_owned(),
+        });
+    }
+
     /// Takes a picture of what `output` currently shows.
     ///
     /// The request is answered by the frame hook at the end of the next iteration, so
@@ -595,6 +660,12 @@ enum Command {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<Option<WindowFrame>>,
     },
+    /// A tick of the session clock, in milliseconds.
+    Advance(u64),
+    /// A chosen keyboard layout.
+    SelectSource(usize),
+    /// A key binding, written as the configuration writes it.
+    Bind { name: String, chord: String },
 }
 
 /// The commands a control handle queued, and the ping that wakes the loop for them.

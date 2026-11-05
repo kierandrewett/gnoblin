@@ -84,6 +84,11 @@ pub enum Global {
     /// manager's own request to lock, log out or power off cannot be forged by an
     /// application on the ordinary socket.
     SessionHost,
+    /// `zwp_input_method_manager_v2`: an input method reads every keystroke in the
+    /// session and types into its focus.
+    InputMethod,
+    /// `zwp_virtual_keyboard_manager_v1`: a client that types into whatever has focus.
+    VirtualKeyboard,
 }
 
 impl Global {
@@ -106,6 +111,13 @@ impl Global {
             | Self::ImageCopyCapture
             | Self::WindowFrame
             | Self::SessionHost => true,
+            // The seat's privileged halves are how an input method and an on-screen
+            // keyboard are implemented: the method is a process the session runs, and the
+            // virtual keyboard is what an on-screen keyboard or an accessibility tool
+            // binds. An ordinary application must reach both, which is what the
+            // configuration documents for them, and a sandbox is still denied by
+            // [`decide`] because it is denied everything.
+            Self::InputMethod | Self::VirtualKeyboard => false,
         }
     }
 
@@ -122,6 +134,8 @@ impl Global {
             Self::ImageCopyCapture => "ext_image_copy_capture_manager_v1",
             Self::WindowFrame => "gnoblin_window_frame_manager_v1",
             Self::SessionHost => "gnoblin_session_host_v1",
+            Self::InputMethod => "zwp_input_method_manager_v2",
+            Self::VirtualKeyboard => "zwp_virtual_keyboard_manager_v1",
         }
     }
 
@@ -145,6 +159,10 @@ impl Global {
             Self::Screencopy => gnoblin_config::Protocol::WlrScreencopy,
             Self::ImageCopyCapture => gnoblin_config::Protocol::ExtImageCopyCapture,
             Self::WindowFrame | Self::SessionHost => return true,
+            // The schema has no switch for the seat's privileged halves: an input method
+            // and a virtual keyboard are always on offer to a connection that earned
+            // them, which is the roster's decision and not the document's.
+            Self::InputMethod | Self::VirtualKeyboard => return true,
         };
         protocols.toggles.get(&protocol).copied().unwrap_or(true)
     }
@@ -417,6 +435,8 @@ mod tests {
         Global::ImageCopyCapture,
         Global::WindowFrame,
         Global::SessionHost,
+        Global::InputMethod,
+        Global::VirtualKeyboard,
     ];
 
     #[test]
@@ -432,7 +452,7 @@ mod tests {
 
     #[test]
     fn an_unprivileged_client_sees_no_privileged_global() {
-        for global in ALL {
+        for global in ALL.iter().filter(|global| global.is_privileged()) {
             assert!(
                 !decide(ClientRole::Unprivileged, *global),
                 "an application must not see {}",

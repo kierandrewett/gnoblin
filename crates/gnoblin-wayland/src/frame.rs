@@ -221,6 +221,9 @@ pub fn render(
                 // read back here.
                 state.capture_frame(backend, output);
                 state.note_capture_damage(output, damage.as_slice());
+                // A client that asked for presentation feedback is answered after the
+                // frame reached the output, with its timestamp read now.
+                state.present_frame(output);
             }
         }
     }

@@ -281,6 +281,10 @@ impl State {
                 LockEffect::Cover { generation, subjects } => {
                     debug!(generation, ?subjects, "[lock] the cover is up");
                     self.lock_tables.cover_generation = generation;
+                    // Nothing a client captured survives the cover: a pointer lock and a
+                    // shortcut inhibitor are both claims on the session's input, and the
+                    // lock screen owns that input from here.
+                    self.cover_raised();
                 }
                 LockEffect::AwaitPresentation { generation, outputs } => {
                     debug!(generation, ?outputs, "[lock] waiting for a covering frame");
