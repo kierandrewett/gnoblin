@@ -16,9 +16,6 @@ gnoblin-types = { path = "../gnoblin-types" }
 # generated bindings and the API reference are built from. Nothing here knows a
 # wire format: encoding an observation is the client crate's job.
 gnoblin-schema = { path = "../gnoblin-schema" }
-# The identities, the tick, the revision and the shared value types: the graph
-# allocates and compares exactly the values the IPC and the client pass around.
-gnoblin-types.workspace = true
 
 [lints]
 workspace = true

@@ -583,3 +583,63 @@ left = "gnoblin-config::IdShape"
 right = "gnoblin-config-codegen::IdShape"
 kind = "same-name"
 reason = "the codegen parses a record map's key shape and the generated crate names the same four shapes at run time; merging them would make the generated document depend on its generator"
+
+[[allow]]
+left = "gnoblin-a11y::Config"
+right = "gnoblin-wayland::Config"
+kind = "same-name"
+reason = "the accessibility machines' settings versus the Wayland server's own settings (socket, seat); nothing is shared but the word"
+
+[[allow]]
+left = "gnoblin-a11y::Output"
+right = "gnoblin-backend::Output"
+kind = "same-name"
+reason = "an a11y output is the layout bounds the magnifier clamps into; a backend output is an opened DRM connector"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "gnoblin-lua::Pending"
+kind = "same-name"
+reason = "a held key press awaiting its slow-keys deadline versus a script's unanswered operation"
+
+[[allow]]
+left = "gnoblin-client::Server"
+right = "gnoblin-wayland::Server"
+kind = "same-name"
+reason = "the in-process loopback's server for the IPC versus the Wayland display server"
+
+[[allow]]
+left = "gnoblin-config::Config"
+right = "gnoblin-wayland::Config"
+kind = "same-name"
+reason = "the parsed configuration document versus the settings the Wayland server itself runs with"
+
+[[allow]]
+left = "gnoblin-config::Resolution"
+right = "gnoblin-lua::Resolution"
+kind = "same-name"
+reason = "which candidate configuration file won versus a resolved Lua module path"
+
+[[allow]]
+left = "gnoblin-config::Status"
+right = "gnoblin-lua::Status"
+kind = "same-name"
+reason = "the last-good snapshot's state versus a script's load status"
+
+[[allow]]
+left = "gnoblin-lua::Operation"
+right = "gnoblin-model::Operation"
+kind = "same-name"
+reason = "the handle a script holds for a call it made versus the graph's pending operation record"
+
+[[allow]]
+left = "gnoblin-lua::Subscription"
+right = "gnoblin-model::Subscription"
+kind = "same-name"
+reason = "a script's event subscription versus a subscription to the graph's observation stream"
+
+[[allow]]
+left = "gnoblin-lua::Ty"
+right = "gnoblin-model::Value"
+kind = "same-shape"
+reason = "a Lua type tag for a dynamically typed script value versus the graph's typed property value; the overlapping shape is the small variant set, not one type"
