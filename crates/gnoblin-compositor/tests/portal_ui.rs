@@ -3,6 +3,10 @@
 //!
 //! Nothing here is a mock: the compositor is a running session on its own sockets and every
 //! connection is a real `Wire` over a Unix stream.
+//!
+//! A request and a key travel on different connections, so nothing orders a key after its
+//! request. `admit` is the barrier: a test admits a dialog before it keys it. Each test owns
+//! its sockets and directory, so the tests run concurrently.
 
 mod support;
 
@@ -14,13 +18,6 @@ use gnoblin_client::wire::{PortalRequest, portal_cancel, portal_key, portal_ui, 
 use gnoblin_model::Fields;
 use gnoblin_proto::Envelope;
 use support::{Session, Wire};
-/// Each test starts its own compositor and Wayland loop inside this one process. Run
-/// concurrently, their startup and reply timing interfere and a reply misses its 5 s
-/// deadline, so the tests of this binary take turns.
-fn serial() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
 
 /// The consent interface a Screenshot request names; its dialog opens with Deny focused.
 const SCREENSHOT: &str = "Screenshot";
@@ -71,14 +68,28 @@ fn key(wire: &mut Wire, request_id: u64, name: &str) {
     let _ack = wire.receive();
 }
 
+/// Admits `request_id` on the requester's connection, so a key sent next lands on its dialog.
+///
+/// A second `portal.ui` for the same id is refused `request-taken` only after the first is
+/// held: one connection is read in order, so that refusal is the barrier.
+fn admit(portal: &mut Wire, request_id: u64) {
+    portal.send(&portal_ui(request_id, &consent(SCREENSHOT)));
+    portal.send(&portal_ui(request_id, &consent(SCREENSHOT)));
+    let refusal = receive_for(portal, request_id);
+    assert_eq!(
+        refusal.error_code(),
+        Some("request-taken"),
+        "the duplicate is refused because the first is held"
+    );
+}
+
 #[test]
 fn tab_then_enter_on_allow_is_accepted() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
     let mut portal = take(&mut ends, "portal");
     let mut input = take(&mut ends, "input");
 
-    portal.send(&portal_ui(1, &consent(SCREENSHOT)));
+    admit(&mut portal, 1);
     key(&mut input, 1, "tab");
     thread::sleep(ARM_DELAY);
     key(&mut input, 1, "enter");
@@ -90,12 +101,11 @@ fn tab_then_enter_on_allow_is_accepted() {
 
 #[test]
 fn enter_on_default_focus_is_cancelled_by_the_user() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
     let mut portal = take(&mut ends, "portal");
     let mut input = take(&mut ends, "input");
 
-    portal.send(&portal_ui(2, &consent(SCREENSHOT)));
+    admit(&mut portal, 2);
     thread::sleep(ARM_DELAY);
     key(&mut input, 2, "enter");
 
@@ -106,12 +116,11 @@ fn enter_on_default_focus_is_cancelled_by_the_user() {
 
 #[test]
 fn escape_cancels_at_any_time() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
     let mut portal = take(&mut ends, "portal");
     let mut input = take(&mut ends, "input");
 
-    portal.send(&portal_ui(3, &consent(SCREENSHOT)));
+    admit(&mut portal, 3);
     key(&mut input, 3, "escape");
 
     let reply = receive_for(&mut portal, 3);
@@ -121,7 +130,6 @@ fn escape_cancels_at_any_time() {
 
 #[test]
 fn portal_cancel_settles_the_request_for_its_requester() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal"]);
     let mut portal = take(&mut ends, "portal");
 
@@ -135,15 +143,14 @@ fn portal_cancel_settles_the_request_for_its_requester() {
 
 #[test]
 fn a_second_request_queues_and_is_served_after_the_first() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal", "input"]);
     let mut portal = take(&mut ends, "portal");
     let mut input = take(&mut ends, "input");
 
-    portal.send(&portal_ui(5, &consent(SCREENSHOT)));
-    // Requests and keys travel on different connections, so the second request must be
-    // admitted before the key that settles the first: a queued request has no reply to wait on.
-    portal.send(&portal_ui(6, &consent(SCREENSHOT)));
+    admit(&mut portal, 5);
+    // The second request queues behind the first. It is admitted before the key that settles
+    // the first, because a queued request has no reply to wait on.
+    admit(&mut portal, 6);
     thread::sleep(ARM_DELAY);
     key(&mut input, 5, "escape");
 
@@ -158,19 +165,20 @@ fn a_second_request_queues_and_is_served_after_the_first() {
 
 #[test]
 fn requester_disconnect_tears_the_dialog_down_and_late_keys_do_nothing() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal", "portal", "input"]);
     let mut first = take(&mut ends, "portal");
     let mut second = take(&mut ends, "portal");
     let mut input = take(&mut ends, "input");
 
-    first.send(&portal_ui(7, &consent(SCREENSHOT)));
+    admit(&mut first, 7);
     drop(first);
 
     // The departed requester's dialog is torn down, so a key for it must not reach a
     // reply to anyone. A fresh requester is still served by its own keys.
     key(&mut input, 7, "escape");
-    second.send(&portal_ui(8, &consent(SCREENSHOT)));
+    // Departure has no reply to wait on, so give the server's tick time to tear the dialog down.
+    thread::sleep(ARM_DELAY);
+    admit(&mut second, 8);
     key(&mut input, 8, "escape");
 
     let reply = receive_for(&mut second, 8);
@@ -180,7 +188,6 @@ fn requester_disconnect_tears_the_dialog_down_and_late_keys_do_nothing() {
 
 #[test]
 fn a_connection_without_the_portal_role_is_refused() {
-    let _serial = serial();
     let session = Session::start();
     let mut plain = session.wire();
     plain.set_read_timeout(REPLY_WAIT);
@@ -196,7 +203,6 @@ fn a_connection_without_the_portal_role_is_refused() {
 
 #[test]
 fn an_interface_without_a_screen_settles_as_unsupported_ui() {
-    let _serial = serial();
     let (session, mut ends) = Session::start_privileged(&["portal"]);
     let mut portal = take(&mut ends, "portal");
 
