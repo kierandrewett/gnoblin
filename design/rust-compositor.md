@@ -2472,14 +2472,16 @@ Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-por
 
 **Decided 2026-11-05: cursors come from an ordered chain of pure providers in `gnoblin-render`: Hyprcursor, the KDE/GNOME SVG layout and Xcursor. A built-in arrow is the last resort. This replaces the single Hyprcursor path.**
 
-Sourced context (found by Main on 2026-11-05 by web search; not re-fetched for this entry):
+Sourced context. Primary source: Mutter's NEWS file (https://github.com/GNOME/mutter/blob/main/NEWS), read directly on 2026-11-05 by Main.
 
-- GNOME 51 and Mutter 51 render SVG cursors. The theme layout is `cursors_scalable/<name>/metadata.json` plus SVG files, with symlinks for CSS names (`default`, `pointer`, `text`). KDE Plasma 6.2 and later use the same layout. Sources: https://newreleases.io/project/github/phisch/phinger-cursors/release/v2.2 and https://github.com/ful1e5/Bibata_Cursor/issues/188 (comment by kjozsa).
-- GNOME 51 searches only `~/.local/share/icons` and `/usr/share/icons` for `cursors_scalable`, not `~/.icons`. A theme without it falls back to Adwaita.
-- Mutter 51.rc NEWS: "Fix using hardware cursor for SVG cursors" (!5217). Mutter releases: "cursor implementations fall back to Xcursor" (!5352).
-- cursor-shape-v1 version 2 adds `dnd_ask` and `all_resize`. GNOME 51 expects a theme to supply both.
+- Mutter 51.beta: "Allow external cursor implementations" (Carlos, !5104). Cursor loading became pluggable upstream, which is the provider model this decision uses.
+- Mutter 51.rc: "Fix using hardware cursor for SVG cursors" (Michel, !5217). SVG cursors exist in Mutter 51 and go through the hardware cursor plane.
+- Mutter 51.1: "Allow cursor implementations to fall back to Xcursor" (Alessandro, !5352).
+- The NEWS file has no other SVG or scalable-cursor entry. Hyprcursor is not in Mutter upstream per this evidence.
+- Reported by theme authors, not verified in the Mutter source: the `cursors_scalable/<name>/metadata.json` layout, the lookup roots `~/.local/share/icons` and `/usr/share/icons` (not `~/.icons`), and the Adwaita fallback for themes without SVG. Sources: phinger-cursors v2.2 release notes (https://newreleases.io/project/github/phisch/phinger-cursors/release/v2.2) and Bibata_Cursor issue #188 (https://github.com/ful1e5/Bibata_Cursor/issues/188, comment by kjozsa).
+- cursor-shape-v1 version 2 adds `dnd_ask` and `all_resize`. Reported by theme authors as expected by GNOME 51; not verified.
 - [INFERENCE: unchecked] The `metadata.json` schema. Read it from the Mutter source or a real theme before implementing `kde-gnome-svg`.
-- Not claimed: that stock Mutter reads Hyprcursor. The evidence covers the SVG layout and the Xcursor fallback only.
+- Not claimed: that stock Mutter reads Hyprcursor. The primary evidence covers pluggable cursor implementations, SVG cursors and the Xcursor fallback only.
 
 - **Trait:** `gnoblin-render` defines `CursorProvider::lookup(theme, shape, size, scale, files) -> Lookup`. `files` is a loader over a fixed list of theme directories, passed in, so tests use an in-memory loader. The result is `Found(CursorImages)`, `Miss` (no such theme or shape) or `Failed(reason)` (a corrupt or oversized file). No provider touches the filesystem directly.
 - **Images:** `CursorImages { hotspot, frames }`. Each frame is a premultiplied ARGB8888 bitmap at the physical size, with `delay_ms`. A static shape has one frame. The hotspot is clamped into the image. A zero-size image is `Failed`.
