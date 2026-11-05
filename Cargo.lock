@@ -290,6 +290,8 @@ dependencies = [
  "gnoblin-types",
  "smithay",
  "tracing",
+ "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]
@@ -517,6 +519,7 @@ dependencies = [
  "gnoblin-backend",
  "gnoblin-lock",
  "gnoblin-output",
+ "gnoblin-render",
  "gnoblin-types",
  "gnoblin-wm",
  "smithay",

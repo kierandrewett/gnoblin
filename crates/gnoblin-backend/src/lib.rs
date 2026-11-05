@@ -12,6 +12,11 @@
 //! - **The backends themselves.** [`headless`] is the first one: no DRM, no GPU, no
 //!   session, a virtual output with a settable size. It is what CI and the
 //!   integration tests run, and it is the contract's reference implementation.
+//!   [`nested`] is the second: a Wayland *client* of a compositor that hosts the
+//!   session, with one `xdg_toplevel` per output, sized and scaled by the parent's
+//!   configure, drawn into shared memory and paced by the parent's frame
+//!   callbacks. It is how a signed-in session runs under bsm
+//!   (design/rust-compositor.md, "Hosting sessions").
 //! - **The render path they share.** [`render`] holds the frame description, the
 //!   Pixman renderer, the RGBA8 readback and the session scene that produces a
 //!   frame from the scene graph. It lives here for the same reason: this crate is
@@ -98,8 +103,13 @@
 //!     cover keeps waiting: `a_held_present_keeps_the_output_as_it_was`. A frame the
 //!     host described but the target could not draw is not presented either, so a lock
 //!     is not proven by it: `a_failed_cover_draw_does_not_prove_the_cover`.
+//! 13. **A nested session keeps drawing into a parent that has gone.** Every failure
+//!     of the parent connection, and every way a nested output can vanish, is in
+//!     [`nested`]'s own list, because that backend's failure modes are about the wire
+//!     rather than about the contract.
 
 pub mod headless;
+pub mod nested;
 pub mod render;
 
 use std::fmt;
@@ -211,8 +221,8 @@ pub trait Target {
 /// One input event a backend delivered.
 ///
 /// The set is the smallest one a seat can act on: where the pointer is, whether a
-/// button changed and whether a key changed. Axis, touch, tablet and gesture
-/// events arrive with the input slice, and they extend this enum rather than the
+/// button, a key or a scroll axis changed, and whether a touch point did. Tablet and
+/// gesture events arrive with the input slice and extend this enum rather than the
 /// trait.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputEvent {
@@ -239,6 +249,52 @@ pub enum InputEvent {
         /// Whether the key is now held.
         pressed: bool,
     },
+    /// A scroll axis moved.
+    ///
+    /// The value is in 1/120 of a step, the unit `REL_WHEEL_HI_RES` uses, so a
+    /// wheel notch is [`AXIS_STEP`](crate::nested::AXIS_STEP) and a touchpad's
+    /// fractional scroll is the same unit at a smaller value. Horizontal is
+    /// positive to the right, vertical positive downwards: the direction a
+    /// document moves, which is what `wl_pointer.axis` already states.
+    PointerAxis {
+        /// Horizontal movement in 1/120 of a step.
+        horizontal: i32,
+        /// Vertical movement in 1/120 of a step.
+        vertical: i32,
+    },
+    /// A touch point changed state.
+    ///
+    /// `slot` is the device's touch identity and stays the same for the whole
+    /// gesture, so a seat tracks one point per slot. `position` is the output-local
+    /// position of the point; a cancelled or lifted point reports the position it
+    /// was last at.
+    Touch {
+        /// The output the touch is on.
+        output: OutputId,
+        /// The device's touch identity.
+        slot: u32,
+        /// The position within that output.
+        position: Point,
+        /// What happened to the point.
+        phase: TouchPhase,
+    },
+}
+
+/// What happened to a touch point.
+///
+/// It is a separate enum rather than four [`InputEvent`] variants because a seat
+/// handles every phase the same way: it looks the slot up and applies the point.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TouchPhase {
+    /// The point went down.
+    Down,
+    /// The point moved while held.
+    Motion,
+    /// The point lifted.
+    Up,
+    /// The device or the compositor cancelled the gesture, so the point is gone
+    /// without an `Up`.
+    Cancel,
 }
 
 /// Where a backend's input comes from.
@@ -267,6 +323,15 @@ pub enum BackendEvent {
         /// The scale it composes at now.
         scale: Scale,
     },
+    /// The backend lost the connection to whatever drives it, so every output it
+    /// reported is gone and none can come back.
+    ///
+    /// It is a separate event from [`BackendEvent::OutputDisconnected`] because the
+    /// two mean different things to the session: an output can be unplugged and
+    /// replugged, while a nested session whose parent compositor died has nothing
+    /// left to draw on and must end. It is reported once, on the first dispatch
+    /// after the failure.
+    Disconnected,
 }
 
 /// What a backend needs from the compositor it drives.

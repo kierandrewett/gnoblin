@@ -375,7 +375,12 @@ fn bind(path: &Path) -> Result<UnixListener, StartupError> {
 fn is_output_change(event: &BackendEvent) -> bool {
     matches!(
         event,
-        BackendEvent::OutputConnected(_) | BackendEvent::OutputDisconnected(_) | BackendEvent::OutputResized { .. }
+        BackendEvent::OutputConnected(_)
+            | BackendEvent::OutputDisconnected(_)
+            | BackendEvent::OutputResized { .. }
+            // A backend that lost the thing driving it has no outputs left, so the
+            // layout is recomputed from an empty connected set.
+            | BackendEvent::Disconnected
     )
 }
 

@@ -48,3 +48,7 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
 tempfile = "3.23.0"
+# The colours a test's stand-in host describes its frame in. The engine's dependency
+# rule allows this hub edge and it is a dev-dependency of a test only: the crate
+# itself never names the scene.
+gnoblin-render = { path = "../gnoblin-render" }

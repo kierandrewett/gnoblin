@@ -76,6 +76,18 @@ impl FrameStats {
     }
 }
 
+/// The timestamp one frame is stamped with, in milliseconds since the first frame.
+///
+/// A frame callback's payload is a timestamp a client uses to work out its own drawing
+/// rate, so anything monotonic and millisecond-scaled serves. It is measured from this
+/// process's first frame rather than read from a clock the compositor would have to
+/// carry through every seam.
+fn frame_time() -> u32 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    u32::try_from(start.elapsed().as_millis()).unwrap_or(u32::MAX)
+}
+
 /// A screenshot request waiting for the loop.
 struct Shot {
     output: OutputId,
@@ -206,6 +218,13 @@ pub fn render(
         }
     }
     state.end_frame();
+    if drew {
+        // A client that asked for a frame callback gets one answer per frame it was
+        // shown, and an iteration that drew nothing showed nothing. Without this a
+        // client that paces itself by the callback — a nested session always does —
+        // would draw its first frame and wait for ever.
+        state.send_frame_callbacks(frame_time());
+    }
     stats
         .lock()
         .unwrap_or_else(PoisonError::into_inner)

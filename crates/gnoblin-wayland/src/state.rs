@@ -23,7 +23,7 @@ use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, SERIAL_COUNTER, Size as SmithaySize, Transform};
-use smithay::wayland::compositor::{CompositorState, with_states};
+use smithay::wayland::compositor::{CompositorState, SurfaceAttributes, with_states};
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::session_lock::SessionLockManagerState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
@@ -763,6 +763,36 @@ impl State {
         Some(self.wm.output(output)?.rect())
     }
 
+    /// Fires the frame callback every mapped window is waiting for.
+    ///
+    /// A client asks for a callback with `wl_surface.frame` and gets exactly one answer
+    /// per frame the compositor shows; anything that paces itself by that answer draws
+    /// one frame and then waits for ever without it. That is every well-behaved client,
+    /// and it is above all a nested session, whose whole output *is* one of these
+    /// surfaces: without this call a session on the nested backend would show its first
+    /// frame and then stall.
+    pub(crate) fn send_frame_callbacks(&self, time: u32) {
+        for entry in self.windows.values() {
+            // A window with no buffer has nothing on screen to have drawn, and Smithay's
+            // own helper refuses those for the same reason.
+            if !entry.mapped {
+                continue;
+            }
+            let surface = entry.surface.wl_surface().clone();
+            with_states(&surface, |states| {
+                for callback in states
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .current()
+                    .frame_callbacks
+                    .drain(..)
+                {
+                    callback.done(time);
+                }
+            });
+        }
+    }
+
     /// Ends the iteration the frame hook ran, dropping the damage it consumed.
     pub(crate) fn end_frame(&mut self) {
         self.composer.end_frame();
@@ -863,11 +893,18 @@ impl State {
         self.publish();
     }
 
-    /// The surface under a global position, topmost first.
+    /// The surface under a global position, topmost first, with the surface's own
+    /// origin in global logical coordinates.
     ///
     /// While the session is covered the lock answers instead: the only surface a
     /// pointer event may reach is the owner's lock surface, and a miss reaches nothing
     /// at all.
+    ///
+    /// The origin is what Smithay's pointer needs, not the position inside the surface:
+    /// its `MotionEvent` carries the global location and every `PointerTarget` makes it
+    /// surface-relative by subtracting this. Handing it the local position instead
+    /// makes every client's pointer coordinates relative to the wrong corner, which for
+    /// a window at the origin is a pointer that never moves.
     pub(crate) fn surface_under(
         &self,
         position: SmithayPoint<f64, Logical>,
@@ -889,9 +926,8 @@ impl State {
                 && position.x < geometry.right() as f64
                 && position.y < geometry.bottom() as f64;
             if inside {
-                let local =
-                    SmithayPoint::from((position.x - f64::from(geometry.x), position.y - f64::from(geometry.y)));
-                return Some((entry.surface.wl_surface().clone(), local));
+                let origin = SmithayPoint::from((f64::from(geometry.x), f64::from(geometry.y)));
+                return Some((entry.surface.wl_surface().clone(), origin));
             }
         }
         None
@@ -1022,6 +1058,13 @@ impl Host for State {
                     |_, _modifiers: &ModifiersState, _keysym| FilterResult::Forward,
                 );
             }
+            // A scroll needs the axis source and the pointer's focus serial, which the
+            // input slice adds; until then a scroll reaches the seat and stops here
+            // rather than scrolling a client by the wrong amount.
+            InputEvent::PointerAxis { .. } => {}
+            // A touch point needs a seat that tracks one point per slot per output,
+            // which is the input slice's; nothing is invented about it here.
+            InputEvent::Touch { .. } => {}
         }
     }
 }

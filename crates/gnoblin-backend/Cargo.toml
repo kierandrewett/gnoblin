@@ -28,3 +28,18 @@ gnoblin-render = { path = "../gnoblin-render" }
 # `[tag]` log lines for a refused frame or a client buffer that went away. Smithay
 # already brings `tracing` in, so this adds no crate to the graph.
 tracing = "0.1.37"
+# The nested backend is a Wayland *client* of the compositor that hosts the session,
+# so this crate depends on the client library as well as the server one Smithay
+# re-exports. It is the same version `gnoblin-wayland` tests its server with, so the
+# two sides of the wire cannot drift apart.
+#
+# The safe API is enough for a session to draw, so the crate keeps the workspace's
+# `unsafe_code = "forbid"`: a shared-memory buffer is filled through
+# `File::write_all_at` rather than an `mmap`, one copy per frame more than a real
+# client would make, and the reason `nested/mod.rs` states the dmabuf path as a
+# follow-up rather than a second code path here.
+wayland-client = "0.31.14"
+# The client side of `xdg_shell` and of the scale protocols. `staging` is the
+# feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
+# falls back to the integer scale of its `wl_output`.
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
