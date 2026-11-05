@@ -244,6 +244,8 @@ is built into the compositor. Gnoblin's docs use `example.login` as the neutral
 name. For example, bsm's greeter control is an extension that bsm ships; this
 plan has no other coupling to it.
 
+**One ABI.** Every extension speaks the same envelope (namespace, member, request id, flags, opaque payload) through one stock `extension` surface: `provide`, `call`, `event`, `provider-gone`, and the granted list in the handshake Grants frame. Stock crates hold no per-extension generated code, enums or modules. An extension's payload schema is read by its own generated code outside the stock tree, and by the Lua host's dynamic classes at load time (D21).
+
 **Loading.** The host configuration lists each extension in
 `gnoblin.configure.extensions`. Each entry has:
 
@@ -416,7 +418,7 @@ gnoblin/
   rust-toolchain.toml         pinned development toolchain
   justfile                    canonical task runner (build, check, parity, docs, package)
   crates/
-    gnoblin/                  the executable: role dispatch (guardian, compositor, runtime, services)
+    gnoblin/                  the executable: role dispatch (guardian, compositor, runtime, services); no extension role (D21)
     gnoblin-schema/           object types, properties, methods, signals, errors, `since` versions
     gnoblin-types/            shared primitives: geometry, scale, transform, identity, tick, version, error code
     gnoblin-proto/            wire codec, handshake, capabilities, versioning; client and server traits
@@ -1023,12 +1025,14 @@ failure-mode list that must be complete before isolated tests or code.
 ### Object model and IPC: `gnoblin-model`, `gnoblin-proto`, `gnoblin-client`, `gnoblinctl`
 
 - **Owns:** the object graph, revisions, property diffs, signals, `Operation`
-  handling, error codes, the handshake, IPC 0.2.0, client library and CLI.
+  handling, error codes, the handshake (with the Grants frame), the single
+  extension envelope and stock `extension` surface, IPC 0.2.0, client library and CLI.
 - **Replaces:** `src/control` publication and dispatch, the runtime packet
   protocol, `src/cli`.
 - **Done when:** the generated reference, `gnoblin.d.lua` and CLI come from the
   schema; the test-side mapping shows IPC 0.2.0 covers every recorded legacy IPC
   contract sample; Bingux runs on IPC 0.2.0.
+- **Extension ABI:** `gnoblin-proto` owns the generic envelope (namespace, member, request id, flags, opaque payload). `gnoblin-model` and `gnoblin-client` own the stock `extension` surface. No stock crate holds per-extension generated code (D21).
 
 ### Configuration and Lua: `gnoblin-config`, `gnoblin-lua`
 
@@ -1040,6 +1044,7 @@ failure-mode list that must be complete before isolated tests or code.
   deadlines.
 - **Replaces:** `src/config`, `src/config/lua`,
   `src/session/gnoblin-runtime-worker.c`.
+- **Extension classes:** `gnoblin-lua` builds the Lua classes for a loaded extension at load time from its schema file. It holds no compiled-in extension names (D21).
 - **Failure modes first:** a handler loops; a reload races a pending operation;
   salvage removes a key that changes lock or protocol policy; a saved last-good
   document is from an older schema; a callback throws.
@@ -2459,6 +2464,7 @@ All messages are Protocol Buffers (D16), versioned with the IPC schema (D3).
 - **`portal-ui`** (services to compositor, built-in UI): `request_id`, `interface`, `method`, `app_id` (set by services from attribution), `deadline_ms`, and `payload`, a typed union with one variant per interface: FileChooser `{mode, title, multiple, directories, filters, current_filter, current_folder, current_name, choices}`; AppChooser `{content_type, last_choice, filter_text}`; Print `{title, printers, copies, pages}`; Account `{reason, name, avatar_uri}`; Wallpaper `{uri, options}`; Background `{reason, autostart_requested}`; DynamicLauncher `{name, icon, desktop_file_id}`; ScreenCast `{source_types, cursor_mode, multiple}`; RemoteDesktop `{device_types}`; InputCapture `{capabilities}`; Screenshot `{interactive}`; PickColor `{}`; Secret `{app_id, purpose}`. Reply: `portal-ui-response`, the same outcome shape as `portal-call-reply`, with `result` typed per interface.
 - **`portal-provider-reply`** (process stdout, and the shell claim): the `portal-ui-response` shape, validated by the safety rules above.
 - **Reply validator:** `gnoblin-schema` provides `validate_reply(request, reply)`. It is pure and used by both services and the compositor, so the rules are checked in one place.
+- **Extensions:** `gnoblin-schema` holds the core schema and the generic extension loader only: namespace, member table, and the load-time validation rules. It has no per-extension types. An extension's schema file is read at load (D21).
 
 #### Failure modes
 
@@ -2579,18 +2585,21 @@ Reported by theme authors, unverified against Mutter's cursor-loader source: the
 - **Host boundary (D4, unchanged):** the kiosk configuration is Lua. The greeter UI is an ordinary client. bsm's manager owns PAM and logind through `bsm-helper`, and session launch. Lua config code never becomes an auth broker. Gnoblin handles no auth secret beyond the generic `sensitive`-frame redaction.
 - **Grants:** extensions are granted per connection. The handshake's mandatory Grants frame lists them (Option B).
 - **Lua:** `require("<namespace>")` resolves only extension namespaces that are loaded and granted to the host's connection, and host-registered loaders such as layouts.
+- **One ABI:** every extension uses one envelope (namespace, member, request id, flags, opaque payload) and one stock `extension` surface: `provide`, `call`, `event`, `provider-gone`, and the granted list in the handshake Grants frame. Stock crates (`gnoblin-proto`, `gnoblin-schema`, `gnoblin-client`, `gnoblin-lua`, the `gnoblin` binary) contain no per-extension generated code, enums or modules, and no `Role::Greeter` or `bsm_greeter` code. An extension's payload schema is used only by its own generated code outside the stock tree, and by the Lua host's dynamic classes built at load time.
 
 Failure modes:
 
-| Failure                                              | Outcome                                                                                                   |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Extension schema fails validation at load            | That extension is refused; the compositor starts without it; calls to its namespace fail `not-supported`. |
-| Extension provider disconnects                       | Calls fail `provider-gone` until it reconnects.                                                           |
-| Provider asks for a namespace not in host config     | Refused; no run-time registration.                                                                        |
-| Restricted socket calls a member not in its grants   | Refused by capability.                                                                                    |
-| Provider or Lua asks for PAM, logind or auth secrets | No such member; no secret reaches Lua or Gnoblin's IPC.                                                   |
-| Extension's bsm manager disconnects                  | Greeter cannot authenticate; no session starts; the protection cover stays.                               |
-| A frame carries a `secret` field                     | Flagged `sensitive`; logs and the parity recorder drop the payload without the extension schema.          |
+| Failure                                                            | Outcome                                                                                                   |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Extension schema fails validation at load                          | That extension is refused; the compositor starts without it; calls to its namespace fail `not-supported`. |
+| Extension provider disconnects                                     | Calls fail `provider-gone` until it reconnects.                                                           |
+| Provider asks for a namespace not in host config                   | Refused; no run-time registration.                                                                        |
+| Restricted socket calls a member not in its grants                 | Refused by capability.                                                                                    |
+| Provider or Lua asks for PAM, logind or auth secrets               | No such member; no secret reaches Lua or Gnoblin's IPC.                                                   |
+| Extension's bsm manager disconnects                                | Greeter cannot authenticate; no session starts; the protection cover stays.                               |
+| A frame carries a `secret` field                                   | Flagged `sensitive`; logs and the parity recorder drop the payload without the extension schema.          |
+| An extension payload fails its schema at call time                 | Call fails `invalid-payload`; the provider is not disconnected; no fallback to another path.              |
+| Stock crate built with a stock-tree check finds per-extension code | Build check fails: stock crates contain no per-extension generated code or enums (single ABI rule).       |
 
 ## Phase 0 checklist
 
