@@ -77,6 +77,7 @@ use gnoblin_wayland::{ControlHandle, Observer, SessionSnapshot};
 use tracing::{debug, info, warn};
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
+use super::portal::{MALFORMED, PortalService};
 use super::requests::{FrameDelivery, Requests};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
@@ -242,6 +243,7 @@ impl IpcServer {
             control,
             pending,
             requests: Requests::new(),
+            portal: PortalService::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
             start: Instant::now(),
@@ -605,6 +607,8 @@ struct Dispatcher {
     /// The request layer: the broker, the slot registry and the last accepted
     /// configuration.
     requests: Requests,
+    /// The portal UI: admitted requests, their owners, and the open dialog.
+    portal: PortalService,
     connections: BTreeMap<ClientId, Connection>,
     readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>>,
     /// When this process started serving, which is the origin of every request
@@ -626,6 +630,8 @@ impl Dispatcher {
                 Err(RecvTimeoutError::Timeout) => {
                     let now = self.now();
                     let expired = self.requests.tick(now);
+                    let replies = self.portal.tick(now);
+                    self.deliver_replies(replies);
                     self.publish_slots();
                     self.deliver(expired);
                     self.flush();
@@ -705,12 +711,81 @@ impl Dispatcher {
             wire::member::SLOT_RELEASE => self.release_slot(client, envelope),
             wire::member::CONFIG_COMMIT => self.commit(client, envelope),
             wire::member::CONFIG_CURRENT => self.configuration(client, envelope),
+            wire::member::PORTAL_UI => self.portal_ui(client, envelope),
+            wire::member::PORTAL_CANCEL => self.portal_cancel(client, envelope),
+            wire::member::PORTAL_KEY => self.portal_key(client, envelope),
             _ => self.refuse(
                 client,
                 envelope,
                 wire::code::UNKNOWN_MEMBER,
                 "this connection does not serve that member",
             ),
+        }
+    }
+
+    /// `portal.ui`: admit a request for the built-in dialog. A request the session
+    /// cannot take answers its verdict now; an admitted one answers when it settles.
+    fn portal_ui(&mut self, client: ClientId, envelope: &Envelope) {
+        let request = match wire::read_portal_ui(envelope.payload().unwrap_or(&[])) {
+            Ok(request) => request,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    MALFORMED,
+                    &format!("the portal request did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        let now = self.now();
+        match self.portal.submit(client, envelope.request_id, &request, now) {
+            Ok(replies) => self.deliver_replies(replies),
+            Err(refused) => self.refuse(client, envelope, refused.code, &refused.message),
+        }
+    }
+
+    /// `portal.cancel`: the connection withdraws the portal requests it holds. Each
+    /// withdrawn request settles `cancelled(user)` to the requester before the ack.
+    fn portal_cancel(&mut self, client: ClientId, envelope: &Envelope) {
+        match self.portal.cancel(client) {
+            Ok(replies) => {
+                self.deliver_replies(replies);
+                self.reply(client, envelope);
+            }
+            Err(refused) => self.refuse(client, envelope, refused.code, &refused.message),
+        }
+    }
+
+    /// `portal.key`: one key for the open portal dialog.
+    fn portal_key(&mut self, client: ClientId, envelope: &Envelope) {
+        let (key, repeat) = match wire::read_portal_key(envelope.payload().unwrap_or(&[])) {
+            Ok(key) => key,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    MALFORMED,
+                    &format!("the portal key did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        match self.portal.key(&key, repeat) {
+            Ok(replies) => {
+                self.reply(client, envelope);
+                self.deliver_replies(replies);
+            }
+            Err(refused) => self.refuse(client, envelope, refused.code, &refused.message),
+        }
+    }
+
+    /// Writes portal replies, each to the connection it is addressed to.
+    fn deliver_replies(&mut self, replies: Vec<(ClientId, Envelope)>) {
+        for (client, envelope) in replies {
+            if let Some(connection) = self.connections.get_mut(&client) {
+                connection.send(&envelope);
+            }
         }
     }
 
@@ -1149,6 +1224,8 @@ impl Dispatcher {
         }
         let departed = self.requests.departed(client);
         self.deliver(departed);
+        let replies = self.portal.departed(client);
+        self.deliver_replies(replies);
         let lost = self.extensions.provider_gone(client);
         self.deliver(lost);
         self.connections.insert(
@@ -1178,6 +1255,8 @@ impl Dispatcher {
         // for.
         let deliveries = self.requests.departed(client);
         self.deliver(deliveries);
+        let replies = self.portal.departed(client);
+        self.deliver_replies(replies);
         // A peer that is gone does not need its socket shut down; a peer that is still
         // there is told, so its reader returns instead of waiting for a next frame.
         let _ = connection.writer.shutdown(if shutdown {
@@ -1213,6 +1292,8 @@ fn required_capability(member: &str) -> Option<Capability> {
     match member {
         wire::member::OFFER => Some(Capability::OfferRequest),
         wire::member::CONFIG_COMMIT | wire::member::CONFIG_CURRENT => Some(Capability::CommitConfig),
+        wire::member::PORTAL_UI | wire::member::PORTAL_CANCEL => Some(Capability::PortalUi),
+        wire::member::PORTAL_KEY => Some(Capability::PortalInput),
         _ => None,
     }
 }

@@ -26,6 +26,7 @@
 
 mod extension;
 mod path;
+mod portal;
 mod privileged;
 mod requests;
 mod server;

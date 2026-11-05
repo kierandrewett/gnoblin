@@ -74,38 +74,21 @@ use super::negotiate::{Effect, Event, Negotiation, Provider};
 use super::outcome::{CancelReason, PortalError, Verdict};
 use super::queue::{Queue, Refusal};
 
-/// The dialog kind an interface is served with.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum UiKind {
-    Consent,
-    Files,
-    App,
-}
-
-/// The dialog kind `interface` is served with, or `None` when the built-in UI
-/// has no dialog for it.
-const fn ui_kind(interface: Interface) -> Option<UiKind> {
-    match interface {
-        Interface::ScreenCast | Interface::Screenshot | Interface::RemoteDesktop | Interface::InputCapture => {
-            Some(UiKind::Consent)
-        }
-        Interface::FileChooser => Some(UiKind::Files),
-        Interface::AppChooser => Some(UiKind::App),
-        _ => None,
-    }
-}
-
-const fn dialog_kind(dialog: &Dialog) -> UiKind {
-    match dialog {
-        Dialog::Consent(_) => UiKind::Consent,
-        Dialog::Files(_) => UiKind::Files,
-        Dialog::App(_) => UiKind::App,
-    }
+/// Whether the built-in UI serves `interface` with the dialog `dialog`.
+fn serves(interface: Interface, dialog: &Dialog) -> bool {
+    matches!(
+        (interface, dialog),
+        (
+            Interface::ScreenCast | Interface::Screenshot | Interface::RemoteDesktop | Interface::InputCapture,
+            Dialog::Consent(_),
+        ) | (Interface::FileChooser, Dialog::Files(_))
+            | (Interface::AppChooser, Dialog::App(_))
+    )
 }
 
 /// Whether a request was started now or waits behind the open dialog.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Submitted {
+pub enum SubmitOutcome {
     /// The dialog is open now.
     Started,
     /// Admitted; it opens when the requests ahead of it settle.
@@ -113,7 +96,7 @@ pub enum Submitted {
 }
 
 /// A request that has been admitted and is waiting for its turn.
-struct Pending {
+struct PortalPending {
     request: RequestId,
     interface: Interface,
     dialog: Dialog,
@@ -138,7 +121,7 @@ pub struct PortalUi {
     setup: Setup,
     now: Tick,
     active: Option<Active>,
-    pending: VecDeque<Pending>,
+    pending: VecDeque<PortalPending>,
     outcomes: Vec<(RequestId, Verdict)>,
 }
 
@@ -198,15 +181,15 @@ impl PortalUi {
         dialog: Dialog,
         timeout_ms: u64,
         now: Tick,
-    ) -> Result<Submitted, PortalError> {
-        if ui_kind(interface) != Some(dialog_kind(&dialog)) {
+    ) -> Result<SubmitOutcome, PortalError> {
+        if !serves(interface, &dialog) {
             return Err(PortalError::UnsupportedUi);
         }
         self.now = now;
         self.queue
             .admit(request, app_id, now, self.locked)
             .map_err(Refusal::error)?;
-        let pending = Pending {
+        let pending = PortalPending {
             request,
             interface,
             dialog,
@@ -214,10 +197,10 @@ impl PortalUi {
         };
         if self.active.is_some() {
             self.pending.push_back(pending);
-            return Ok(Submitted::Queued);
+            return Ok(SubmitOutcome::Queued);
         }
         self.open(pending);
-        Ok(Submitted::Started)
+        Ok(SubmitOutcome::Started)
     }
 
     /// Feeds one key press or repeat to the open dialog.
@@ -340,7 +323,7 @@ impl PortalUi {
 
     /// Starts `pending` now: its negotiation opens the built-in UI and the dialog
     /// is built at `self.now`.
-    fn open(&mut self, pending: Pending) {
+    fn open(&mut self, pending: PortalPending) {
         // The built-in provider's only effect is `OpenUi`, which the dialog
         // opened here already is, so the effects are not needed.
         let (negotiation, _) = Negotiation::start(
@@ -427,7 +410,7 @@ mod tests {
     }
 
     /// Submits a consent request for `app` at `now`; the caller checks whether it started or queued.
-    fn submit_consent(ui: &mut PortalUi, request: u64, app: &str, now: Tick) -> Submitted {
+    fn submit_consent(ui: &mut PortalUi, request: u64, app: &str, now: Tick) -> SubmitOutcome {
         ui.submit(
             id(request),
             app,
@@ -441,7 +424,7 @@ mod tests {
 
     /// Submits a consent request that must start at once.
     fn start_consent(ui: &mut PortalUi, request: u64, app: &str, now: Tick) {
-        assert_eq!(submit_consent(ui, request, app, now), Submitted::Started);
+        assert_eq!(submit_consent(ui, request, app, now), SubmitOutcome::Started);
     }
 
     /// Moves focus from Deny to Allow and presses Enter once the dialog is armed.
@@ -519,7 +502,7 @@ mod tests {
                 at(0),
             )
             .expect("admitted");
-        assert_eq!(queued, Submitted::Queued);
+        assert_eq!(queued, SubmitOutcome::Queued);
         assert_eq!(ui.waiting(), 1);
 
         ui.key(ScreenKey::Escape, false);
@@ -576,7 +559,10 @@ mod tests {
     fn requester_gone_closes_open_dialog_and_serves_next() {
         let mut ui = PortalUi::new(640, 480);
         start_consent(&mut ui, 1, "org.example.App", at(0));
-        assert_eq!(submit_consent(&mut ui, 2, "org.other.App", at(0)), Submitted::Queued);
+        assert_eq!(
+            submit_consent(&mut ui, 2, "org.other.App", at(0)),
+            SubmitOutcome::Queued
+        );
         assert!(ui.cancel(id(1)));
         assert_eq!(outcome_of(&mut ui, 1), Verdict::Cancelled(CancelReason::RequesterGone));
         assert_eq!(ui.active_request(), Some(id(2)));
@@ -586,7 +572,10 @@ mod tests {
     fn requester_gone_drops_queued_request_and_frees_its_slot() {
         let mut ui = PortalUi::new(640, 480);
         start_consent(&mut ui, 1, "org.example.App", at(0));
-        assert_eq!(submit_consent(&mut ui, 2, "org.example.App", at(0)), Submitted::Queued);
+        assert_eq!(
+            submit_consent(&mut ui, 2, "org.example.App", at(0)),
+            SubmitOutcome::Queued
+        );
         assert!(ui.cancel(id(2)));
         assert_eq!(outcome_of(&mut ui, 2), Verdict::Cancelled(CancelReason::RequesterGone));
         assert_eq!(ui.waiting(), 0);
@@ -597,7 +586,10 @@ mod tests {
     fn lock_settles_open_and_queued_requests_and_refuses_new_ones() {
         let mut ui = PortalUi::new(640, 480);
         start_consent(&mut ui, 1, "org.example.App", at(0));
-        assert_eq!(submit_consent(&mut ui, 2, "org.other.App", at(0)), Submitted::Queued);
+        assert_eq!(
+            submit_consent(&mut ui, 2, "org.other.App", at(0)),
+            SubmitOutcome::Queued
+        );
         ui.set_locked(true);
         let outcomes = ui.take_outcomes();
         assert!(outcomes.contains(&(id(1), Verdict::Error(PortalError::Locked))));
