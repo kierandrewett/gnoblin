@@ -42,6 +42,7 @@ members = [
     "crates/gnoblin-lua",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
+    "crates/gnoblin-portal-ui",
     "crates/gnoblin-parity",
     "crates/gnoblin-proto",
     "crates/gnoblin-render",
@@ -213,6 +214,9 @@ rustix = { version = "1.1.6", features = ["process"] }
 # codes. Every crate that names a rectangle or an output uses this crate instead
 # of declaring its own.
 gnoblin-types = { path = "crates/gnoblin-types" }
+gnoblin-schema = { path = "crates/gnoblin-schema" }
+# The pure portal negotiation and built-in portal UI state (D19). No drawing.
+gnoblin-portal-ui = { path = "crates/gnoblin-portal-ui" }
 # The WebAssembly runtime the module host embeds (design/rust-compositor.md, D6).
 # The component model is the host API's shape: a WIT package generated from the
 # schema, so a module links against the object model and a member that moved is a

@@ -1477,3 +1477,239 @@ left = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
 right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
 kind = "same-shape"
 reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+# gnoblin-portal-ui (D19) reuses generic state-machine names; each keeps its own meaning.
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-portal-ui::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-portal-ui::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-a11y::Key"
+right = "gnoblin-portal-ui::Key"
+kind = "same-name"
+reason = "a portal-ui Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-authority::Consent"
+right = "gnoblin-portal-ui::Consent"
+kind = "same-name"
+reason = "a portal-ui Consent is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-portal-ui::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-portal-ui::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-authority::Grant"
+right = "gnoblin-portal-ui::Grant"
+kind = "same-name"
+reason = "a portal-ui Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-backend::Stage"
+right = "gnoblin-portal-ui::Stage"
+kind = "same-name"
+reason = "a portal-ui Stage is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-capture::Refusal"
+right = "gnoblin-portal-ui::Refusal"
+kind = "same-name"
+reason = "a portal-ui Refusal is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-client::Event"
+right = "gnoblin-portal-ui::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-compat-core::Interface"
+right = "gnoblin-portal-ui::Interface"
+kind = "same-name"
+reason = "a portal-ui Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-compat-core::Refusal"
+right = "gnoblin-portal-ui::Refusal"
+kind = "same-name"
+reason = "a portal-ui Refusal is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-portal-ui::Admission"
+kind = "same-name"
+reason = "a portal-ui Admission is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Effect"
+right = "gnoblin-portal-ui::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-compat-gtk-shell1::Admission"
+right = "gnoblin-portal-ui::Admission"
+kind = "same-name"
+reason = "a portal-ui Admission is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-compat-mutter-x11-interop::Admission"
+right = "gnoblin-portal-ui::Admission"
+kind = "same-name"
+reason = "a portal-ui Admission is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-input::CancelReason"
+right = "gnoblin-portal-ui::CancelReason"
+kind = "same-name"
+reason = "a portal-ui CancelReason is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-input::Event"
+right = "gnoblin-portal-ui::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-input::Grant"
+right = "gnoblin-portal-ui::Grant"
+kind = "same-name"
+reason = "a portal-ui Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-input::Key"
+right = "gnoblin-portal-ui::Key"
+kind = "same-name"
+reason = "a portal-ui Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-input::Request"
+right = "gnoblin-portal-ui::Request"
+kind = "same-name"
+reason = "a portal-ui Request is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-lock::Effect"
+right = "gnoblin-portal-ui::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-lock::Event"
+right = "gnoblin-portal-ui::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-model::Provider"
+right = "gnoblin-portal-ui::Provider"
+kind = "same-name"
+reason = "a portal-ui Provider is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-output::Effect"
+right = "gnoblin-portal-ui::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-output::Event"
+right = "gnoblin-portal-ui::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-output::Verdict"
+right = "gnoblin-portal-ui::Verdict"
+kind = "same-name"
+reason = "a portal-ui Verdict is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-parity::Verdict"
+right = "gnoblin-portal-ui::Verdict"
+kind = "same-name"
+reason = "a portal-ui Verdict is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "a portal-ui Effect is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "a portal-ui Event is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Interface"
+right = "xdg-desktop-portal-gnoblin::Interface"
+kind = "same-name"
+reason = "a portal-ui Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Interface"
+right = "xtask::Interface"
+kind = "same-name"
+reason = "a portal-ui Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Key"
+right = "xdg-desktop-portal-gnoblin::Key"
+kind = "same-name"
+reason = "a portal-ui Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Refusal"
+right = "gnoblin-services::Refusal"
+kind = "same-name"
+reason = "a portal-ui Refusal is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-portal-ui::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
+kind = "same-name"
+reason = "a portal-ui Refusal is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+
+[[allow]]
+left = "gnoblin-authority::Answer"
+right = "gnoblin-portal-ui::ConsentFocus"
+kind = "same-shape"
+reason = "a portal-ui consent value and an authority value share a shape but answer different questions"
+
+[[allow]]
+left = "gnoblin-authority::Decision"
+right = "gnoblin-portal-ui::ConsentDecision"
+kind = "same-shape"
+reason = "a portal-ui consent value and an authority value share a shape but answer different questions"
