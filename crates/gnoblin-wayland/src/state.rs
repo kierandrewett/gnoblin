@@ -278,6 +278,10 @@ pub struct State {
     /// [`crate::protocols::ext_idle_notify_v1`] answers its notifications.
     #[allow(dead_code)]
     pub(crate) idle_notify_global: GlobalId,
+    /// Kept alive so `ext_background_effect_manager_v1` stays registered; the bind is
+    /// gated by the access roster in [`crate::protocols::ext_background_effect_v1`].
+    #[allow(dead_code)]
+    pub(crate) background_effect_global: GlobalId,
     /// Kept alive so `zwp_text_input_manager_v3` stays registered.
     #[allow(dead_code)]
     pub(crate) text_input_state: TextInputManagerState,
@@ -496,6 +500,7 @@ impl State {
 
         let foreign_toplevel_global =
             crate::protocols::zwlr_foreign_toplevel_management_v1::global(&display_handle, &access);
+        let background_effect_global = crate::protocols::ext_background_effect_v1::global(&display_handle, &access);
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
@@ -517,6 +522,7 @@ impl State {
                 (Global::ForeignToplevelManagement, foreign_toplevel_global),
                 (Global::DataControl, ext_data_control_state.global()),
                 (Global::WlrDataControl, wlr_data_control_state.global()),
+                (Global::BackgroundEffect, background_effect_global.clone()),
             ],
         );
 
@@ -581,6 +587,7 @@ impl State {
             single_pixel_buffer_state,
             tearing_control_global,
             idle_notify_global,
+            background_effect_global,
             text_input_state,
             input_method_state,
             virtual_keyboard_state,

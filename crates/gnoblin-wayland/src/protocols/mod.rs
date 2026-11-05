@@ -50,6 +50,7 @@
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
 
 pub mod capture_shared;
+pub mod ext_background_effect_v1;
 pub mod ext_data_control_v1;
 pub mod ext_foreign_toplevel_list_v1;
 pub mod ext_idle_notify_v1;

@@ -206,6 +206,7 @@ pub use state::State;
 pub use xwayland::XwaylandSession;
 
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
+pub use protocols::ext_background_effect_v1::ObservedBlurRect;
 pub use protocols::gnoblin_blur_fade_v1::Fade;
 pub use protocols::gnoblin_session_host_v1::{HostRequest, HostRequestKind, HostedSession, OutputHint, PowerAction};
 pub use protocols::gnoblin_window_frame_v1::{FrameAction, FrameRegion, WindowFrame};

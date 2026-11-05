@@ -89,6 +89,9 @@ pub enum Global {
     InputMethod,
     /// `zwp_virtual_keyboard_manager_v1`: a client that types into whatever has focus.
     VirtualKeyboard,
+    /// `ext_background_effect_manager_v1`: a client asks for a blur behind its own
+    /// surface. It reads nothing outside that surface, so every client may use it.
+    BackgroundEffect,
 }
 
 impl Global {
@@ -117,7 +120,7 @@ impl Global {
             // binds. An ordinary application must reach both, which is what the
             // configuration documents for them, and a sandbox is still denied by
             // [`decide`] because it is denied everything.
-            Self::InputMethod | Self::VirtualKeyboard => false,
+            Self::InputMethod | Self::VirtualKeyboard | Self::BackgroundEffect => false,
         }
     }
 
@@ -136,6 +139,7 @@ impl Global {
             Self::SessionHost => "gnoblin_session_host_v1",
             Self::InputMethod => "zwp_input_method_manager_v2",
             Self::VirtualKeyboard => "zwp_virtual_keyboard_manager_v1",
+            Self::BackgroundEffect => "ext_background_effect_manager_v1",
         }
     }
 
@@ -158,6 +162,7 @@ impl Global {
             Self::DataControl | Self::WlrDataControl => gnoblin_config::Protocol::ExtDataControl,
             Self::Screencopy => gnoblin_config::Protocol::WlrScreencopy,
             Self::ImageCopyCapture => gnoblin_config::Protocol::ExtImageCopyCapture,
+            Self::BackgroundEffect => gnoblin_config::Protocol::ExtBackgroundEffectV1,
             Self::WindowFrame | Self::SessionHost => return true,
             // The schema has no switch for the seat's privileged halves: an input method
             // and a virtual keyboard are always on offer to a connection that earned
@@ -443,6 +448,7 @@ mod tests {
         Global::SessionHost,
         Global::InputMethod,
         Global::VirtualKeyboard,
+        Global::BackgroundEffect,
     ];
 
     #[test]
@@ -506,7 +512,7 @@ mod tests {
         // about it is hidden from applications. The seat's two halves are the only globals
         // that opt out, and they do it because an input method and an on-screen keyboard
         // are how ordinary applications type in a language the keymap does not cover.
-        let unprivileged = [Global::InputMethod, Global::VirtualKeyboard];
+        let unprivileged = [Global::InputMethod, Global::VirtualKeyboard, Global::BackgroundEffect];
         for global in ALL {
             assert_eq!(
                 global.is_privileged(),

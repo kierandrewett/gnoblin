@@ -52,6 +52,7 @@ use gnoblin_wm::WmOptions;
 use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
+use crate::protocols::ext_background_effect_v1::ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
 use crate::protocols::gnoblin_blur_fade_v1::Fade;
 use crate::protocols::gnoblin_session_host_v1::{HostRequest, HostedSession};
@@ -295,6 +296,9 @@ impl Server {
                             }
                             Command::BlurFades { window, reply } => {
                                 let _ = reply.send(state.window_blur_fades(window));
+                            }
+                            Command::BlurRegion { window, reply } => {
+                                let _ = reply.send(state.window_blur_region(window));
                             }
                             Command::WindowFrame { window, reply } => {
                                 let _ = reply.send(state.window_frame(window));
@@ -568,6 +572,18 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// The committed blur region a window's surface has, as the renderer's blur pass
+    /// reads it.
+    ///
+    /// [`None`] means the window has no surface or its surface committed no region;
+    /// the inner [`None`] means the loop did not answer in time.
+    #[must_use]
+    pub fn blur_region(&self, window: WindowId) -> Option<Option<Vec<ObservedBlurRect>>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::BlurRegion { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Every hosted session request waiting for the manager.
     #[must_use]
     pub fn host_requests(&self) -> Vec<HostRequest> {
@@ -709,6 +725,11 @@ enum Command {
     BlurFades {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<Option<Vec<Fade>>>,
+    },
+    /// The committed blur region a window's surface has.
+    BlurRegion {
+        window: WindowId,
+        reply: std::sync::mpsc::SyncSender<Option<Vec<ObservedBlurRect>>>,
     },
 }
 
