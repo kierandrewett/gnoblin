@@ -254,7 +254,10 @@ pub(super) fn install<T: Transport + 'static>(
         if !extensions.is_loaded(namespace.name) || !granted.contains(namespace.name) {
             continue;
         }
-        let declared: Vec<&str> = extensions.classes(namespace.name).into_iter().flatten().collect();
+        let declared: Vec<&str> = extensions
+            .schema(namespace.name)
+            .map(|schema| schema.objects.iter().map(|object| object.name.as_str()).collect())
+            .unwrap_or_default();
         if !declared
             .iter()
             .all(|class| namespace.objects.iter().any(|spec| spec.name == *class))

@@ -25,7 +25,6 @@ const HOST_PUMP: Duration = Duration::from_millis(100);
 /// name the namespace it declares.
 const FIXTURE: &str = include_str!("../../gnoblin-schema/tests/fixtures/extensions/example-ext.toml");
 const NAMESPACE: &str = "example.ext";
-const CLASSES: &[&str] = &["probe", "counter"];
 
 /// The grant for the fixture's namespace, checked against the fixture so the two cannot
 /// drift apart.
@@ -86,9 +85,8 @@ fn require_error(mut client: Client<UnixTransport>, registry: &ExtensionRegistry
 
 fn loaded_fixture() -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::new();
-    registry
-        .register_extension(NAMESPACE, CLASSES)
-        .expect("the fixture registers");
+    let schema = gnoblin_schema::parse_schema("example-ext.toml", FIXTURE).expect("the fixture parses");
+    registry.register_extension(schema).expect("the fixture registers");
     registry
 }
 
