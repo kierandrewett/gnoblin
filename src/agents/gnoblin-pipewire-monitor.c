@@ -321,36 +321,75 @@ static void disconnect_pipewire(GnoblinPipewireMonitor* monitor) {
     monitor->loop = NULL;
 }
 
+/* Whether the PipeWire socket that pw_context_connect() would use is there (PIPEWIRE_REMOTE,
+ * default pipewire-0, in PIPEWIRE_RUNTIME_DIR or XDG_RUNTIME_DIR). Without it the connection fails,
+ * so the monitor creates nothing. */
+static gboolean pipewire_socket_present(void) {
+    const char* remote = g_getenv("PIPEWIRE_REMOTE");
+    if (!remote || !*remote)
+        remote = "pipewire-0";
+    if (g_path_is_absolute(remote))
+        return g_file_test(remote, G_FILE_TEST_EXISTS);
+    const char* dir = g_getenv("PIPEWIRE_RUNTIME_DIR");
+    if (!dir || !*dir)
+        dir = g_getenv("XDG_RUNTIME_DIR");
+    if (!dir || !*dir)
+        return TRUE; /* PipeWire looks elsewhere: let it try */
+    g_autofree char* path = g_build_filename(dir, remote, NULL);
+    return g_file_test(path, G_FILE_TEST_EXISTS);
+}
+
+/* A PipeWire thread that is stopped right after it was started can miss the stop and wait in epoll
+ * for ever, and then pthread_join() in the stop never returns: PipeWire 1.4 and newer run the stop
+ * on the calling thread, without a wakeup, while the new thread has not yet entered its loop
+ * (spa/plugins/support/loop.c, loop_queue_invoke, impl->thread == 0), and PipeWire 1.0 loses the
+ * stop of the data loop of a context that is destroyed right after it was made (pw_context_destroy,
+ * pw_data_loop_stop). The monitor did both every 2 s in a session without a PipeWire daemon: it
+ * made a context, started its thread, failed to connect and stopped again. Mutter's main thread
+ * then waited in pw_thread_loop_stop for ever (the graphical VM test of run 41964995167, one of 150
+ * sessions of a local loop on Alpine 3.24; a test program that does the same stalled in 9 of 12
+ * runs of 20000 or 30000 tries on Alpine 3.24, Fedora 45 and Ubuntu 24.04). Now the monitor creates
+ * nothing while the socket is missing, connects before it starts the thread, and waits until a
+ * started thread has entered its loop (the start signal, PipeWire 1.0 and newer), so a later stop
+ * wakes it. */
 static gboolean connect_pipewire(GnoblinPipewireMonitor* monitor) {
     g_atomic_int_set(&monitor->connection_lost, FALSE);
+    if (!pipewire_socket_present())
+        return FALSE;
     monitor->nodes = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, node_binding_free);
-    monitor->loop = pw_thread_loop_new("gnoblin-privacy-monitor", NULL);
+    struct spa_dict_item items[] = {SPA_DICT_ITEM_INIT("thread-loop.start-signal", "true")};
+    struct spa_dict props = SPA_DICT_INIT_ARRAY(items);
+    monitor->loop = pw_thread_loop_new("gnoblin-privacy-monitor", &props);
     if (!monitor->loop)
         goto fail;
     monitor->pw_context = pw_context_new(pw_thread_loop_get_loop(monitor->loop), NULL, 0);
     if (!monitor->pw_context)
         goto fail;
-    if (pw_thread_loop_start(monitor->loop) < 0)
+
+    /* The loop thread does not run yet, so these calls need no lock. */
+    monitor->core = pw_context_connect(monitor->pw_context, NULL, 0);
+    if (!monitor->core)
         goto fail;
-    monitor->loop_started = TRUE;
+    pw_core_add_listener(monitor->core, &monitor->core_listener, &core_events, monitor);
+    monitor->registry = pw_core_get_registry(monitor->core, PW_VERSION_REGISTRY, 0);
+    if (!monitor->registry)
+        goto fail;
+    pw_registry_add_listener(monitor->registry, &monitor->registry_listener, &registry_events,
+                             monitor);
+    monitor->initial_sync_seq = pw_core_sync(monitor->core, PW_ID_CORE, 0);
+    if (monitor->initial_sync_seq < 0)
+        g_atomic_int_set(&monitor->connection_lost, TRUE);
 
     pw_thread_loop_lock(monitor->loop);
-    monitor->core = pw_context_connect(monitor->pw_context, NULL, 0);
-    if (monitor->core) {
-        pw_core_add_listener(monitor->core, &monitor->core_listener, &core_events, monitor);
-        monitor->registry = pw_core_get_registry(monitor->core, PW_VERSION_REGISTRY, 0);
-    }
-    if (monitor->registry)
-        pw_registry_add_listener(monitor->registry, &monitor->registry_listener, &registry_events,
-                                 monitor);
-    if (monitor->registry)
-        monitor->initial_sync_seq = pw_core_sync(monitor->core, PW_ID_CORE, 0);
-    if (monitor->registry && monitor->initial_sync_seq < 0)
-        g_atomic_int_set(&monitor->connection_lost, TRUE);
-    pw_thread_loop_unlock(monitor->loop);
-
-    if (!monitor->core || !monitor->registry)
+    if (pw_thread_loop_start(monitor->loop) < 0) {
+        pw_thread_loop_unlock(monitor->loop);
         goto fail;
+    }
+    monitor->loop_started = TRUE;
+    /* The thread signals once it has entered the loop. It needs the lock for that, so the signal
+     * cannot come before this wait releases it. */
+    pw_thread_loop_wait(monitor->loop);
+    pw_thread_loop_unlock(monitor->loop);
     return TRUE;
 
 fail:

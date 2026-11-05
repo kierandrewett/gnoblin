@@ -178,7 +178,8 @@ How each check fails, and what the result names:
   Mutter for supervisor recovery"), because the runtime cannot come back. The excerpt is Gnoblin's lines from the
   test user's journal, then the session log. A failed `session` also keeps `session-screen.png` and
   `compositor-threads.txt`: each compositor thread's state, CPU time twice 2 s apart, wait channel and kernel stack,
-  and an `eu-stack` backtrace (elfutils is installed in the guest for it then, and only then). That tells a busy
+  and a `gdb` backtrace of every thread (gdb is installed in the guest for it then, and only then; on Alpine also
+  `musl-dbg` and `glib-dbg`, without which no frame past musl is named). That tells a busy
   compositor from one that waits, and on what. In run 41905248345 (openSUSE Tumbleweed aarch64, TCG) Mutter logged
   nothing after native control started, the Lua worker gave up waiting for its greeting after 10 s, and the
   supervisor could not suspend Mutter; the session never came up, and the harness waited the full 600 s. The arm64
@@ -209,6 +210,14 @@ the screenshot passed, then `pointer`, `keyboard` and `shutdown` failed: the cli
 said why. The same leg passed in runs 41835867674 to 41905248345, and the input devices were enumerated as in those
 runs (the client saw a seat with pointer and keyboard). With this evidence, the next such failure says whether the
 compositor stopped answering and where its threads are.
+
+The debugger's attach stops every thread, and a futex or epoll wait that it interrupts is restarted or returns. So the
+harness asks `gnoblinctl status` once more after the backtrace: "after the stack dump it answers (a lost wakeup)" means
+the compositor was waiting for a wakeup that never came. That is how the stall of runs 41905248345, 41918451629 and
+41964995167 was found: in a local loop of 150 sessions on Alpine 3.24 (KVM), one session stopped after the window
+mapped, with Mutter's main thread in `pthread_join` under `pw_thread_loop_stop`, called from the 2 s reconnect timer of
+the PipeWire privacy monitor, and the PipeWire loop thread waiting in `epoll_pwait`. The cause and the fix are in the
+comment above `connect_pipewire` in `src/agents/gnoblin-pipewire-monitor.c`.
 
 ### Proof that each check can fail
 
