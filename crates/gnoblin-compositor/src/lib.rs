@@ -278,7 +278,7 @@ impl Compositor {
             }
         }
         .map_err(Error::Wayland)?;
-        let layouts = layout::LayoutPlan::new(config.layouts);
+        let layouts = layout::WorkspaceLayouts::new(config.layouts);
         server.install_layouts(move |workspace| layouts.engine_for(workspace));
         let control = server.control();
         let observation = server.observation();

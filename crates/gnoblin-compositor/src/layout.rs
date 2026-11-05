@@ -121,14 +121,14 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 
 /// The resolved layout settings for the session's workspaces, with the Lua host that
 /// runs them. Built once, inside the thread that runs the compositor.
-pub struct LayoutPlan {
+pub struct WorkspaceLayouts {
     default: String,
     workspaces: BTreeMap<String, String>,
     host: Rc<RefCell<Host>>,
     failed: BTreeSet<String>,
 }
 
-impl LayoutPlan {
+impl WorkspaceLayouts {
     /// Loads every layout the settings name. A layout that cannot be loaded is named
     /// in a warning, and every workspace that asks for it floats.
     pub fn new(settings: LayoutSettings) -> Self {
@@ -222,5 +222,78 @@ impl LayoutEngine for FloatingEngine {
                 LayoutOutcome::Pending
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    use gnoblin_lua::layout::{Gaps, Host, HostConfig, LuaEngine};
+    use gnoblin_types::{OutputId, WindowId, WorkspaceId};
+    use gnoblin_wm::layout::{Job, LayoutEngine, LayoutOutput, LayoutWindow, Params, Slot};
+
+    use super::FloatingEngine;
+
+    /// The repository's shipped Lua layouts, which `gnoblin.layouts.floating` lives in.
+    fn shipped_modules() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/data/lua")
+    }
+
+    fn params() -> Params {
+        let output = LayoutOutput {
+            id: OutputId::new(1),
+            name: "TEST-1".to_owned(),
+            scale: gnoblin_types::Scale::default(),
+        };
+        let windows = [(1, 300.0, 200.0), (2, 120.0, 80.0), (3, 640.0, 480.0)]
+            .into_iter()
+            .map(|(id, width, height)| LayoutWindow {
+                id: WindowId::new(id),
+                width,
+                height,
+            })
+            .collect();
+        Params::new(output, 1280.0, 720.0, windows).expect("valid params")
+    }
+
+    /// Runs `engine` on `params` as an arrange and returns the layout the wm would apply.
+    fn arrange(engine: Box<dyn LayoutEngine>, params: &Params) -> gnoblin_wm::layout::Layout {
+        let mut slot = Slot::new(engine);
+        slot.submit(Job::Arrange(params.clone()));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            match slot.collect(deadline) {
+                gnoblin_wm::layout::Collected::Settled(layout) => return layout,
+                gnoblin_wm::layout::Collected::Pending => assert!(Instant::now() < deadline, "the arrange timed out"),
+                other => panic!("the arrange did not settle: {other:?}"),
+            }
+        }
+    }
+
+    /// The floating module is equivalent to the native `FloatingEngine`: both give the
+    /// same arrange reply (no placements, a float per window) and decline geometry
+    /// requests, so a floating workspace behaves the same with or without a Lua VM.
+    #[test]
+    fn native_floating_matches_the_shipped_floating_module() {
+        let params = params();
+        let host = Host::new(HostConfig::new(vec![shipped_modules()]));
+        let host = std::rc::Rc::new(std::cell::RefCell::new(host));
+        host.borrow_mut()
+            .register(
+                "floating",
+                "gnoblin.layouts.floating",
+                gnoblin_lua::layout::Data::Table(Default::default()),
+            )
+            .expect("the shipped floating module loads");
+        let lua = LuaEngine::new(host, "floating", WorkspaceId::new(1), Gaps::default());
+
+        let native = arrange(Box::new(FloatingEngine::default()), &params);
+        let shipped = arrange(Box::new(lua), &params);
+        assert_eq!(native.placements, shipped.placements);
+        assert_eq!(native.effects, shipped.effects);
+        assert!(native.placements.is_empty(), "floating places nothing");
+        assert_eq!(native.effects.len(), 3, "every tiled window floats");
     }
 }

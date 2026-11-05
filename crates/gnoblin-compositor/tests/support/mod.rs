@@ -441,6 +441,9 @@ pub struct Window {
 pub struct App {
     pub configures: u32,
     pub acks: u32,
+    /// The size of the last `xdg_toplevel.configure` each toplevel received, keyed by its
+    /// protocol id. A zero side means the client chooses that size.
+    pub sizes: std::collections::HashMap<u32, (i32, i32)>,
 }
 
 impl Client {
@@ -471,6 +474,11 @@ impl Client {
     /// Processes every event the session has sent.
     pub fn roundtrip(&mut self) {
         self.queue.roundtrip(&mut self.app).expect("a round trip");
+    }
+
+    /// The size of `window`'s last configure, or `None` when it has not been configured.
+    pub fn configured_size(&self, window: &Window) -> Option<(i32, i32)> {
+        self.app.sizes.get(&window.toplevel.id().protocol_id()).copied()
     }
 
     /// Creates a toplevel, asks for a configure and acknowledges it.
@@ -633,13 +641,16 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for App {
 
 impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
     fn event(
-        _: &mut Self,
-        _: &xdg_toplevel::XdgToplevel,
-        _: <xdg_toplevel::XdgToplevel as Proxy>::Event,
+        state: &mut Self,
+        toplevel: &xdg_toplevel::XdgToplevel,
+        event: <xdg_toplevel::XdgToplevel as Proxy>::Event,
         _: &(),
         _: &WaylandConnection,
         _: &QueueHandle<Self>,
     ) {
+        if let xdg_toplevel::Event::Configure { width, height, .. } = event {
+            state.sizes.insert(toplevel.id().protocol_id(), (width, height));
+        }
     }
 }
 
