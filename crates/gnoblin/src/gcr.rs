@@ -38,18 +38,18 @@ impl PromptOfferer for PromptHost {
 
 /// The gcr prompter as a linked agent of the services role.
 #[derive(Default)]
-pub struct Prompter {
+pub struct GcrPrompter {
     served: Option<(PromptService, std::thread::JoinHandle<()>)>,
 }
 
-impl Prompter {
+impl GcrPrompter {
     /// A prompter that has not started: it serves nothing until the role starts it.
-    pub fn new() -> Prompter {
-        Prompter::default()
+    pub fn new() -> GcrPrompter {
+        GcrPrompter::default()
     }
 }
 
-impl LinkedAgent for Prompter {
+impl LinkedAgent for GcrPrompter {
     fn start(&mut self, host: &Host, deadline: Tick) -> bool {
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,

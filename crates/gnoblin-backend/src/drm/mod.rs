@@ -24,7 +24,7 @@
 //! session can reach, and each is handled where it happens rather than surfaced as a frame
 //! error, because a display that goes away must not stop a session:
 //!
-//! 1. **A VT switch leaves DRM master held.** [`crate::session::SessionState`] turns the
+//! 1. **A VT switch leaves DRM master held.** [`crate::session::SeatState`] turns the
 //!    pause into one transition, the device is paused through Smithay, and no frame is
 //!    submitted until its resume: see `session`'s tests and [`Drm::render`].
 //! 2. **A resume repaints only part of the screen.** The resume bumps the session's
@@ -169,7 +169,7 @@ pub enum RawEvent {
         /// The device that produced it.
         device: u64,
         /// Which recognised gesture it is.
-        kind: GestureKind,
+        kind: RawGestureKind,
         /// Whether this is the first event of the gesture.
         begin: bool,
         /// Whether this is the last event of the gesture.
@@ -181,7 +181,7 @@ pub enum RawEvent {
 
 /// Which gesture a [`RawEvent::Gesture`] reports.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GestureKind {
+pub enum RawGestureKind {
     /// Two fingers swiping.
     Swipe,
     /// Two fingers pinching.

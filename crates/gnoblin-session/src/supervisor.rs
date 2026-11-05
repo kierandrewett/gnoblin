@@ -62,7 +62,7 @@ use rustix::io::FdFlags;
 use rustix::process::{Pid, Signal as ProcessSignal};
 
 use crate::effect::{Effect, Level};
-use crate::environment::{EnvTarget, Environment, Inherited};
+use crate::environment::{EnvTarget, Environment, InheritedEnvironment};
 use crate::event::{Event, EventKind, ExitStatus, ShutdownReason};
 use crate::guardian::{Guardian, Rules};
 use crate::ids::ChildId;
@@ -109,7 +109,7 @@ impl SupervisorConfig {
         let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_owned());
         let library_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
         let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_owned());
-        let inherited = Inherited {
+        let inherited = InheritedEnvironment {
             prefix: &prefix,
             path: &path,
             library_path: &library_path,

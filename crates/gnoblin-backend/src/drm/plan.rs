@@ -32,8 +32,8 @@
 //! # Failure modes first
 //!
 //! 1. **A mode the connector does not accept is committed.** [`plan`] refuses a mode that is
-//!    not in the connector's list ([`PlanError::UnsupportedMode`]) and a mode with no pixels
-//!    ([`PlanError::DegenerateMode`]) before anything is sent: `a_mode_the_connector_does_not_
+//!    not in the connector's list ([`LayoutPlanError::UnsupportedMode`]) and a mode with no pixels
+//!    ([`LayoutPlanError::DegenerateMode`]) before anything is sent: `a_mode_the_connector_does_not_
 //!    drive_is_refused` and `a_degenerate_mode_is_refused`.
 //! 2. **A gamma table is uploaded to a CRTC of another length.** The change carries a table
 //!    built for that connector's length, so a mismatch can only come from a driver that lied
@@ -269,7 +269,7 @@ impl Change {
 
 /// Why a plan was refused.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum PlanError {
+pub enum LayoutPlanError {
     /// The connector does not accept this mode.
     UnsupportedMode {
         /// The connector.
@@ -298,7 +298,7 @@ pub enum PlanError {
     },
 }
 
-impl std::fmt::Display for PlanError {
+impl std::fmt::Display for LayoutPlanError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnsupportedMode { connector, mode } => write!(formatter, "{connector} does not accept {mode:?}"),
@@ -311,7 +311,7 @@ impl std::fmt::Display for PlanError {
     }
 }
 
-impl std::error::Error for PlanError {}
+impl std::error::Error for LayoutPlanError {}
 
 /// The plan for one layout: every connector's target state and its operations.
 ///
@@ -319,14 +319,14 @@ impl std::error::Error for PlanError {}
 /// off rather than left as they were: an output nobody configured must not keep showing stale
 /// pixels from the previous layout.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Plan {
+pub struct LayoutPlan {
     /// One entry per connected connector that the layout names.
     pub changes: Vec<Change>,
     /// The connectors that should be dark, with the operations that get them there.
     pub disabled: Vec<Change>,
 }
 
-impl Plan {
+impl LayoutPlan {
     /// Every change, lit and dark, in connector order.
     pub fn all(&self) -> impl Iterator<Item = &Change> {
         self.changes.iter().chain(self.disabled.iter())
@@ -349,9 +349,14 @@ impl Plan {
 ///
 /// # Errors
 ///
-/// [`PlanError`] when a mode is not accepted, has no pixels, or when the gamma table cannot be
+/// [`LayoutPlanError`] when a mode is not accepted, has no pixels, or when the gamma table cannot be
 /// built for the connector's CRTC.
-pub fn plan(connectors: &[Connector], layout: &Layout, current: &Applied, tint: Tint) -> Result<Plan, PlanError> {
+pub fn plan(
+    connectors: &[Connector],
+    layout: &Layout,
+    current: &Applied,
+    tint: Tint,
+) -> Result<LayoutPlan, LayoutPlanError> {
     let mut changes = Vec::new();
     let mut disabled = Vec::new();
     for connector in connectors.iter().filter(|connector| connector.connected) {
@@ -360,13 +365,13 @@ pub fn plan(connectors: &[Connector], layout: &Layout, current: &Applied, tint: 
             Some(monitor) => {
                 let mode = monitor.mode;
                 if mode.width == 0 || mode.height == 0 {
-                    return Err(PlanError::DegenerateMode {
+                    return Err(LayoutPlanError::DegenerateMode {
                         connector: connector.name.clone(),
                         mode,
                     });
                 }
                 if !connector.modes.is_empty() && !connector.modes.contains(&mode) {
-                    return Err(PlanError::UnsupportedMode {
+                    return Err(LayoutPlanError::UnsupportedMode {
                         connector: connector.name.clone(),
                         mode,
                     });
@@ -387,7 +392,7 @@ pub fn plan(connectors: &[Connector], layout: &Layout, current: &Applied, tint: 
                 let mode = previous
                     .map(|state| state.mode)
                     .or_else(|| connector.preferred_mode())
-                    .ok_or_else(|| PlanError::NoModes {
+                    .ok_or_else(|| LayoutPlanError::NoModes {
                         connector: connector.name.clone(),
                     })?;
                 let scale = previous.map_or_else(|| Scale::integral(1), |state| state.scale);
@@ -411,16 +416,20 @@ pub fn plan(connectors: &[Connector], layout: &Layout, current: &Applied, tint: 
             disabled.push(change);
         }
     }
-    Ok(Plan { changes, disabled })
+    Ok(LayoutPlan { changes, disabled })
 }
 
 /// The operations that take one connector from `current` to `target`.
 ///
 /// # Errors
 ///
-/// [`PlanError`] when the gamma table cannot be built for the connector's CRTC, which is the
+/// [`LayoutPlanError`] when the gamma table cannot be built for the connector's CRTC, which is the
 /// one thing the pure layer can still refuse after a state is decided.
-pub fn ops(connector: &Connector, current: Option<&OutputState>, target: &OutputState) -> Result<Vec<Op>, PlanError> {
+pub fn ops(
+    connector: &Connector,
+    current: Option<&OutputState>,
+    target: &OutputState,
+) -> Result<Vec<Op>, LayoutPlanError> {
     let mut ops = Vec::new();
     let was = current.copied();
     let lighting = target.power == Power::On && was.is_none_or(|state| state.power == Power::Off);
@@ -484,7 +493,7 @@ impl Applied {
     }
 
     /// Records every change of a plan that the hardware accepted.
-    pub fn record_plan(&mut self, plan: &Plan) {
+    pub fn record_plan(&mut self, plan: &LayoutPlan) {
         for change in plan.all() {
             self.record(change);
         }
@@ -502,9 +511,9 @@ impl Applied {
     ///
     /// # Errors
     ///
-    /// [`PlanError`] when the gamma table cannot be built, which a restore of a state that was
+    /// [`LayoutPlanError`] when the gamma table cannot be built, which a restore of a state that was
     /// applied before cannot normally reach.
-    pub fn restore(&self, connector: &Connector, after: &OutputState) -> Result<Option<Vec<Op>>, PlanError> {
+    pub fn restore(&self, connector: &Connector, after: &OutputState) -> Result<Option<Vec<Op>>, LayoutPlanError> {
         let Some(before) = self.state(&connector.name) else {
             return Ok(None);
         };
@@ -558,7 +567,7 @@ mod tests {
         let connectors = [connector("DP-1", 1, &[FULL_HD])];
         let layout = layout_of(vec![monitor("DP-1", 1, FOUR_K, 0, false)]);
         let error = plan(&connectors, &layout, &Applied::new(), Tint::default()).expect_err("refused");
-        assert!(matches!(error, PlanError::UnsupportedMode { .. }), "{error}");
+        assert!(matches!(error, LayoutPlanError::UnsupportedMode { .. }), "{error}");
     }
 
     #[test]
@@ -566,7 +575,7 @@ mod tests {
         let connectors = [connector("DP-1", 1, &[DisplayMode::new(0, 1080, 60_000)])];
         let layout = layout_of(vec![monitor("DP-1", 1, DisplayMode::new(0, 1080, 60_000), 0, false)]);
         let error = plan(&connectors, &layout, &Applied::new(), Tint::default()).expect_err("refused");
-        assert!(matches!(error, PlanError::DegenerateMode { .. }), "{error}");
+        assert!(matches!(error, LayoutPlanError::DegenerateMode { .. }), "{error}");
     }
 
     #[test]

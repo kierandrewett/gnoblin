@@ -6,7 +6,7 @@ use gnoblin_types::{ClientId, Tick};
 
 use crate::denial::{Decision, Denial};
 use crate::effect::Effect;
-use crate::event::{Answer, Capability, Claimant, ContextRequest, Event, Gesture, LaunchOrigin};
+use crate::event::{Answer, Claimant, ContextRequest, Event, Gesture, LaunchOrigin, PortalCapability};
 use crate::ids::{GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// How many of each value the machine keeps before it refuses new ones.
@@ -74,7 +74,7 @@ struct Grant {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Pending {
     requester: RequesterId,
-    capability: Capability,
+    capability: PortalCapability,
     provider: ClientId,
     expires_at: Tick,
 }
@@ -93,7 +93,7 @@ pub struct Authority {
     spent: Vec<TokenId>,
     gestures: BTreeMap<GestureId, InputContext>,
     portal_ui: Option<ClientId>,
-    grants: BTreeMap<(RequesterId, Capability), Grant>,
+    grants: BTreeMap<(RequesterId, PortalCapability), Grant>,
     pending: BTreeMap<RequestId, Pending>,
     locked: bool,
 }
@@ -141,7 +141,7 @@ impl Authority {
 
     /// What a caller's grant has reached, for `gnoblinctl` and for tests.
     #[must_use]
-    pub fn consent(&self, requester: RequesterId, capability: Capability) -> Option<Consent> {
+    pub fn consent(&self, requester: RequesterId, capability: PortalCapability) -> Option<Consent> {
         self.grants.get(&(requester, capability)).map(|grant| grant.consent)
     }
 
@@ -160,7 +160,7 @@ impl Authority {
     /// every injected event, so it is a query, not an event: nothing about
     /// asking changes the answer.
     #[must_use]
-    pub fn gate(&self, now: Tick, requester: RequesterId, capability: Capability) -> Decision {
+    pub fn gate(&self, now: Tick, requester: RequesterId, capability: PortalCapability) -> Decision {
         if self.locked {
             // Consent survives a lock, frames and injected input do not.
             return Decision::Denied(Denial::Locked);
@@ -413,7 +413,7 @@ impl Authority {
         now: Tick,
         request: RequestId,
         requester: RequesterId,
-        capability: Capability,
+        capability: PortalCapability,
         lifetime: u64,
     ) -> Vec<Effect> {
         let answer = |decision: Decision| vec![Effect::Answer { request, decision }];
@@ -533,7 +533,7 @@ impl Authority {
         effects
     }
 
-    fn grant_used(&mut self, now: Tick, requester: RequesterId, capability: Capability) -> Vec<Effect> {
+    fn grant_used(&mut self, now: Tick, requester: RequesterId, capability: PortalCapability) -> Vec<Effect> {
         let decision = self.gate(now, requester, capability);
         vec![Effect::Gate {
             requester,
@@ -561,7 +561,7 @@ impl Authority {
     }
 
     /// Withdraw every waiting prompt for one grant, which a new request replaces.
-    fn withdraw_prompts(&mut self, requester: RequesterId, capability: Capability) -> Vec<Effect> {
+    fn withdraw_prompts(&mut self, requester: RequesterId, capability: PortalCapability) -> Vec<Effect> {
         let stale: Vec<RequestId> = self
             .pending
             .iter()

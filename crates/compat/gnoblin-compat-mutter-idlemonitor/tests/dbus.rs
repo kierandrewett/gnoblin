@@ -9,9 +9,9 @@ mod support;
 
 use futures_lite::StreamExt as _;
 use gnoblin_client::{Loopback, Server};
-use gnoblin_compat_core::{Mode, SupportMatrix};
+use gnoblin_compat_core::{CallerWatcher, Mode, SupportMatrix};
 use gnoblin_compat_mutter_idlemonitor::{
-    BUS_NAME, CallerWatcher, INTERFACE, IdleError, IdleLink, IdleMonitorService, MATRIX, PATH, export,
+    BUS_NAME, INTERFACE, IdleError, IdleLink, IdleMonitorService, MATRIX, PATH, export,
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};
 use support::bus::Bus;

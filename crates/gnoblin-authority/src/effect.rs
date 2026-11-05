@@ -3,7 +3,7 @@
 use gnoblin_types::{ClientId, Tick};
 
 use crate::denial::{Decision, Denial};
-use crate::event::{Capability, ContextRequest, GestureKind};
+use crate::event::{ContextRequest, GestureKind, PortalCapability};
 use crate::ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// One instruction, in the order it must happen.
@@ -89,7 +89,7 @@ pub enum Effect {
         request: RequestId,
         /// The capability it asks for, and the caller it is for, so the UI can
         /// say who is asking.
-        capability: Capability,
+        capability: PortalCapability,
         /// Who is asking.
         requester: RequesterId,
         /// The provider that must answer.
@@ -135,7 +135,7 @@ pub enum Effect {
         /// The caller.
         requester: RequesterId,
         /// The capability.
-        capability: Capability,
+        capability: PortalCapability,
         /// The answer.
         decision: Decision,
     },

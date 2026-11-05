@@ -12,7 +12,7 @@
 //! A [`Session`] is one portal session: the caller's bus name, the app id the request
 //! carried, which interface created it, and how far it has got. Sessions are separate
 //! from grants on purpose. A grant belongs to the *caller* and the *capability*
-//! (`gnoblin-authority` keys it by `(RequesterId, Capability)`, so a second session of
+//! (`gnoblin-authority` keys it by `(RequesterId, PortalCapability)`, so a second session of
 //! the same app is allowed by the answer the user already gave and asks nothing), and a
 //! session belongs to one request and ends when that request does. Two sessions of one
 //! app therefore share the grant and share nothing else: closing one leaves the other
@@ -75,7 +75,7 @@ use std::fmt;
 
 use futures_channel::oneshot;
 use gnoblin_authority::{Answer, Authority, Decision, Denial, Effect, Event, RequestId as PromptId, RequesterId};
-pub use gnoblin_authority::{Capability, Consent};
+pub use gnoblin_authority::{Consent, PortalCapability};
 use gnoblin_model::Value;
 use gnoblin_types::{ClientId, RequestId, Tick};
 
@@ -141,17 +141,17 @@ impl Interface {
     /// the authority has no capability that a shortcut binding or a clipboard transfer
     /// would be.
     #[must_use]
-    pub const fn capabilities(self) -> &'static [Capability] {
+    pub const fn capabilities(self) -> &'static [PortalCapability] {
         match self {
-            Self::ScreenCast | Self::Screenshot => &[Capability::Capture],
-            Self::RemoteDesktop | Self::InputCapture => &[Capability::Capture, Capability::InputInjection],
+            Self::ScreenCast | Self::Screenshot => &[PortalCapability::Capture],
+            Self::RemoteDesktop | Self::InputCapture => &[PortalCapability::Capture, PortalCapability::InputInjection],
             Self::GlobalShortcuts | Self::Inhibit => &[],
         }
     }
 
     /// Whether this interface can be asked for `capability`.
     #[must_use]
-    pub fn allows(self, capability: Capability) -> bool {
+    pub fn allows(self, capability: PortalCapability) -> bool {
         self.capabilities().contains(&capability)
     }
 }
@@ -239,7 +239,7 @@ pub struct NewSession {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Prompt {
     /// What is being asked for, so the provider can word the question.
-    pub capability: Capability,
+    pub capability: PortalCapability,
     /// Who is asking.
     pub app_id: String,
     /// The title the provider shows.
@@ -251,10 +251,10 @@ pub struct Prompt {
 impl Prompt {
     /// The prompt for one capability, worded from the interface and the app.
     #[must_use]
-    pub fn new(interface: Interface, requester: &Requester, capability: Capability) -> Prompt {
+    pub fn new(interface: Interface, requester: &Requester, capability: PortalCapability) -> Prompt {
         let what = match capability {
-            Capability::Capture => "share your screen",
-            Capability::InputInjection => "control your pointer and keyboard",
+            PortalCapability::Capture => "share your screen",
+            PortalCapability::InputInjection => "control your pointer and keyboard",
         };
         let app = if requester.app_id.is_empty() {
             "An unidentified application"
@@ -336,7 +336,7 @@ pub enum Refusal {
         /// The interface that was asked.
         interface: Interface,
         /// What it cannot ask for.
-        capability: Capability,
+        capability: PortalCapability,
     },
     /// The answer did not arrive for a request this guard offered.
     UnknownRequest {
@@ -440,7 +440,7 @@ struct Waiting {
     prompt: Option<PromptId>,
     bus_name: String,
     session: String,
-    capability: Option<Capability>,
+    capability: Option<PortalCapability>,
     provider: ClientId,
     deadline: Tick,
     wake: oneshot::Sender<Outcome>,
@@ -493,7 +493,7 @@ impl Guard {
 
     /// The grant state for one caller, app and capability, for a log line and a test.
     #[must_use]
-    pub fn consent(&self, bus_name: &str, app_id: &str, capability: Capability) -> Option<Consent> {
+    pub fn consent(&self, bus_name: &str, app_id: &str, capability: PortalCapability) -> Option<Consent> {
         let requester = self.requesters.get(&(bus_name.to_owned(), app_id.to_owned()))?;
         self.authority.consent(*requester, capability)
     }
@@ -633,7 +633,13 @@ impl Guard {
     /// when no provider claims the slot, and only an offer that exists is recorded in the
     /// authority. A grant that still stands answers without a prompt, because the user
     /// already answered for this caller and this capability.
-    pub fn ask(&mut self, now: Tick, bus_name: &str, path: &str, capability: Capability) -> Result<Pending, Refusal> {
+    pub fn ask(
+        &mut self,
+        now: Tick,
+        bus_name: &str,
+        path: &str,
+        capability: PortalCapability,
+    ) -> Result<Pending, Refusal> {
         let session = self.owned(bus_name, path)?.clone();
         if !session.interface.allows(capability) {
             return Err(Refusal::NotServed {
@@ -747,7 +753,7 @@ impl Guard {
         let prompt = Prompt {
             // The question is not about a capability. The field is the provider's
             // wording hint, so it names the interface that asked.
-            capability: Capability::Capture,
+            capability: PortalCapability::Capture,
             app_id: session.owner.app_id.clone(),
             title,
             message,

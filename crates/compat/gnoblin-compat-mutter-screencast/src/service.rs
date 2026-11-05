@@ -40,8 +40,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use gnoblin_compat_core::{Call as _, Gate, LockState, Mode, Refusal};
-use zbus::export::ordered_stream::OrderedStreamExt as _;
+use gnoblin_compat_core::{Call as _, CallerWatcher, Gate, LockState, Mode, Refusal};
 use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, ObjectPath, OwnedVariant, fdo};
@@ -101,7 +100,7 @@ struct StreamRecord {
 
 /// Everything the adapter keeps between calls.
 #[derive(Debug, Default)]
-struct State {
+struct ScreenCastState {
     sessions: BTreeMap<u32, SessionRecord>,
     streams: BTreeMap<u32, StreamRecord>,
     next_session: u32,
@@ -109,17 +108,17 @@ struct State {
 }
 
 /// The state the object server and the host share.
-struct Shared {
+struct ServiceShared {
     admission: ScreenCastAdmission,
     gate: Mutex<Gate>,
     lock: Mutex<LockState>,
     bridge: Box<dyn CaptureBridge>,
     emitter: Mutex<Option<Connection>>,
     exported: Mutex<bool>,
-    state: Mutex<State>,
+    state: Mutex<ScreenCastState>,
 }
 
-impl std::fmt::Debug for Shared {
+impl std::fmt::Debug for ServiceShared {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("ScreenCastShared")
@@ -137,7 +136,7 @@ impl std::fmt::Debug for Shared {
 /// The `ScreenCast` object: exportable, clonable and cheap.
 #[derive(Clone, Debug)]
 pub struct ScreenCastService {
-    shared: Arc<Shared>,
+    shared: Arc<ServiceShared>,
 }
 
 impl ScreenCastService {
@@ -160,14 +159,14 @@ impl ScreenCastService {
         bridge: Box<dyn CaptureBridge>,
     ) -> Result<ScreenCastService, gnoblin_compat_core::MatrixError> {
         Ok(ScreenCastService {
-            shared: Arc::new(Shared {
+            shared: Arc::new(ServiceShared {
                 admission: ScreenCastAdmission::load()?,
                 gate: Mutex::new(gate),
                 lock: Mutex::new(LockState::Unlocked),
                 bridge,
                 emitter: Mutex::new(None),
                 exported: Mutex::new(false),
-                state: Mutex::new(State::default()),
+                state: Mutex::new(ScreenCastState::default()),
             }),
         })
     }
@@ -345,7 +344,7 @@ impl ScreenCastService {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn state_lock(&self) -> MutexGuard<'_, State> {
+    fn state_lock(&self) -> MutexGuard<'_, ScreenCastState> {
         self.shared
             .state
             .lock()
@@ -487,14 +486,14 @@ impl ScreenCastService {
 /// One `org.gnome.Mutter.ScreenCast.Session` object.
 #[derive(Clone, Debug)]
 struct ScreenCastSession {
-    shared: Arc<Shared>,
+    shared: Arc<ServiceShared>,
     id: u32,
 }
 
 /// One `org.gnome.Mutter.ScreenCast.Stream` object.
 #[derive(Clone, Debug)]
 struct ScreenCastStream {
-    shared: Arc<Shared>,
+    shared: Arc<ServiceShared>,
     id: u32,
     session: u32,
     path: Arc<str>,
@@ -831,41 +830,6 @@ fn flag(properties: &HashMap<String, OwnedVariant>, name: &str) -> bool {
         properties.get(name).map(|value| &**value),
         Some(zbus::Variant::Bool(true))
     )
-}
-
-/// The caller-lifetime rule: a session ends with the bus connection that asked for it.
-///
-/// `org.freedesktop.DBus`'s `NameOwnerChanged` is the only notice a session bus gives
-/// when a peer goes away, so this reads it and answers the unique names that vanished.
-#[derive(Debug)]
-pub struct CallerWatcher {
-    stream: fdo::NameOwnerChangedStream,
-}
-
-impl CallerWatcher {
-    /// Subscribe to the bus's own ownership signal.
-    ///
-    /// # Errors
-    ///
-    /// The bus error from adding the match rule.
-    pub async fn new(connection: &Connection) -> zbus::Result<CallerWatcher> {
-        let bus = fdo::DBusProxy::new(connection).await?;
-        let stream = bus.receive_name_owner_changed().await?;
-        Ok(CallerWatcher { stream })
-    }
-
-    /// The next caller that left the bus, or `None` when the stream ends.
-    pub async fn next(&mut self) -> Option<String> {
-        while let Some(signal) = self.stream.next().await {
-            let Ok(args) = signal.args() else {
-                continue;
-            };
-            if args.new_owner().as_ref().is_none() {
-                return Some(args.name().to_string());
-            }
-        }
-        None
-    }
 }
 
 /// End the sessions of every caller that leaves the bus, until the stream ends.

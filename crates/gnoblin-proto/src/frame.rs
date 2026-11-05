@@ -190,7 +190,7 @@ mod tests {
 /// envelope are told apart by their first four bytes — [`MAGIC`] against a length prefix — so
 /// the two can share one stream without a length change to either.
 #[derive(Debug)]
-pub enum Frame {
+pub enum StreamFrame {
     /// A new session starts here.
     Handshake(crate::Handshake),
     /// One envelope of the session in progress.
@@ -204,7 +204,7 @@ pub enum Frame {
 /// # Errors
 ///
 /// The same refusals as [`read_frame`], plus a handshake of the wrong length.
-pub fn read_any(reader: &mut impl std::io::BufRead) -> Result<Option<Frame>, CodecError> {
+pub fn read_any(reader: &mut impl std::io::BufRead) -> Result<Option<StreamFrame>, CodecError> {
     let mut prefix = [0u8; LENGTH_PREFIX_LEN];
     let mut filled = 0;
     while filled < prefix.len() {
@@ -226,7 +226,7 @@ pub fn read_any(reader: &mut impl std::io::BufRead) -> Result<Option<Frame>, Cod
         let mut frame = [0u8; crate::HANDSHAKE_LEN];
         frame[..LENGTH_PREFIX_LEN].copy_from_slice(&prefix);
         frame[LENGTH_PREFIX_LEN..].copy_from_slice(&rest);
-        return crate::Handshake::decode(&frame).map(|handshake| Some(Frame::Handshake(handshake)));
+        return crate::Handshake::decode(&frame).map(|handshake| Some(StreamFrame::Handshake(handshake)));
     }
     let length = u32::from_be_bytes(prefix) as usize;
     if length > MAX_FRAME_LEN {
@@ -241,12 +241,12 @@ pub fn read_any(reader: &mut impl std::io::BufRead) -> Result<Option<Frame>, Cod
         }
     })?;
     use prost::Message as _;
-    Ok(Some(Frame::Envelope(crate::Envelope::decode(body.as_slice())?)))
+    Ok(Some(StreamFrame::Envelope(crate::Envelope::decode(body.as_slice())?)))
 }
 
 #[cfg(test)]
 mod any_tests {
-    use super::{Frame, read_any};
+    use super::{StreamFrame, read_any};
     use crate::{Envelope, Handshake, Version, write_frame};
 
     fn version() -> Version {
@@ -270,8 +270,8 @@ mod any_tests {
         let mut kinds = Vec::new();
         while let Some(frame) = read_any(&mut reader).expect("decodes") {
             kinds.push(match frame {
-                Frame::Handshake(handshake) => format!("{:?}", handshake.kind),
-                Frame::Envelope(envelope) => envelope.member,
+                StreamFrame::Handshake(handshake) => format!("{:?}", handshake.kind),
+                StreamFrame::Envelope(envelope) => envelope.member,
             });
         }
         assert_eq!(kinds, vec!["Hello", "object.subscribe", "Hello"]);

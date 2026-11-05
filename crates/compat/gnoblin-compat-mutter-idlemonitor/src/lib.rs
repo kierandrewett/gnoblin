@@ -26,7 +26,7 @@
 //!   is refused by the matrix because a caller that could reset the counter could hold the
 //!   session awake forever.
 //! - **Not a global watch list.** A watch belongs to the bus identity that added it and ends
-//!   with that connection ([`service::CallerWatcher`]), so one process cannot cancel
+//!   with that connection ([`gnoblin_compat_core::CallerWatcher`]), so one process cannot cancel
 //!   another's policy.
 //!
 //! # Running it
@@ -78,5 +78,5 @@ pub mod watches;
 pub use compat::{IdleMonitorAdmission, IdleMonitorCall, MATRIX, NAME, NAMES};
 pub use error::IdleError;
 pub use link::{IdleLink, IdleState};
-pub use service::{BUS_NAME, CallerWatcher, INTERFACE, IdleMonitorService, PATH, VERSION, export, watch_callers};
+pub use service::{BUS_NAME, INTERFACE, IdleMonitorService, PATH, VERSION, export, watch_callers};
 pub use watches::{Watch, WatchKind, Watches};

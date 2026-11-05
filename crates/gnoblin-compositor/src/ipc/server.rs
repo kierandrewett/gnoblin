@@ -425,16 +425,16 @@ fn serve_privileged(
             return;
         }
         let hello = match gnoblin_proto::read_any(&mut reader) {
-            Ok(Some(gnoblin_proto::Frame::Handshake(hello))) => hello,
+            Ok(Some(gnoblin_proto::StreamFrame::Handshake(hello))) => hello,
             // One frame into a session it is an ordinary request; before a handshake it is a
             // peer that skipped the protocol.
-            Ok(Some(gnoblin_proto::Frame::Envelope(envelope))) if live => {
+            Ok(Some(gnoblin_proto::StreamFrame::Envelope(envelope))) if live => {
                 if events.send(IpcEvent::Request { client, envelope }).is_err() {
                     return;
                 }
                 continue;
             }
-            Ok(Some(gnoblin_proto::Frame::Envelope(_))) => {
+            Ok(Some(gnoblin_proto::StreamFrame::Envelope(_))) => {
                 debug!("[ipc] a privileged connection sent a frame before its handshake");
                 return;
             }

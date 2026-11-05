@@ -74,6 +74,5 @@ pub use bridge::{BridgeError, CaptureBridge, CaptureHandle};
 pub use compat::{MATRIX, NAME, ScreenCastAdmission, ScreenCastCall};
 pub use error::ScreenCastError;
 pub use service::{
-    BUS_NAME, CallerWatcher, INTERFACE, PATH, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, VERSION, export,
-    watch_callers,
+    BUS_NAME, INTERFACE, PATH, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, VERSION, export, watch_callers,
 };

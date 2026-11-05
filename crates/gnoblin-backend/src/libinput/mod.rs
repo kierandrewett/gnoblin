@@ -54,11 +54,11 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
 use tracing::{debug, info, warn};
 
-use crate::drm::{GestureKind, RawEvent};
+use crate::drm::{RawEvent, RawGestureKind};
 use crate::{InputEvent, InputSource, TouchPhase};
 
 pub use map::{DeviceEvent, Mapper, Screen};
-pub use settings::{Accel, Applier, ButtonMap, Click, DeviceSettings, Kind, Scroll, Setting};
+pub use settings::{Accel, Applier, ButtonMap, Click, DeviceKind, DeviceSettings, Scroll, Setting};
 
 /// One event libinput produced, as Smithay's device-agnostic wrapper.
 type Queued = BackendEvent<LibinputInputBackend>;
@@ -93,7 +93,7 @@ pub struct Device {
     /// The name the device reports, such as `"SynPS/2 Synaptics TouchPad"`.
     pub name: String,
     /// The kind of device, which selects the configuration section.
-    pub kind: Kind,
+    pub kind: DeviceKind,
 }
 
 /// The seat's input source: libinput, its devices and the queue the contract drains.
@@ -258,7 +258,7 @@ impl Libinput {
     ///
     /// A device the seat has not announced has no number to name, so its gesture is dropped
     /// rather than attributed to another device.
-    fn gesture(&mut self, device: &libinput::Device, kind: GestureKind, begin: bool, end: bool, value: f64) {
+    fn gesture(&mut self, device: &libinput::Device, kind: RawGestureKind, begin: bool, end: bool, value: f64) {
         let sysname = device.sysname().to_string();
         let Some(known) = self.devices.iter().find(|known| known.sysname == sysname) else {
             warn!(sysname = %sysname, "[input] a gesture from a device that was never announced");
@@ -365,29 +365,29 @@ impl Libinput {
                 }
             }
             BackendEvent::GestureSwipeBegin { event } => {
-                self.gesture(&event.device(), GestureKind::Swipe, true, false, 0.0);
+                self.gesture(&event.device(), RawGestureKind::Swipe, true, false, 0.0);
             }
             BackendEvent::GestureSwipeUpdate { event } => {
                 let delta = event.delta();
-                self.gesture(&event.device(), GestureKind::Swipe, false, false, -delta.y);
+                self.gesture(&event.device(), RawGestureKind::Swipe, false, false, -delta.y);
             }
             BackendEvent::GestureSwipeEnd { event } => {
-                self.gesture(&event.device(), GestureKind::Swipe, false, true, 0.0);
+                self.gesture(&event.device(), RawGestureKind::Swipe, false, true, 0.0);
             }
             BackendEvent::GesturePinchBegin { event } => {
-                self.gesture(&event.device(), GestureKind::Pinch, true, false, 0.0);
+                self.gesture(&event.device(), RawGestureKind::Pinch, true, false, 0.0);
             }
             BackendEvent::GesturePinchUpdate { event } => {
-                self.gesture(&event.device(), GestureKind::Pinch, false, false, event.scale());
+                self.gesture(&event.device(), RawGestureKind::Pinch, false, false, event.scale());
             }
             BackendEvent::GesturePinchEnd { event } => {
-                self.gesture(&event.device(), GestureKind::Pinch, false, true, 0.0);
+                self.gesture(&event.device(), RawGestureKind::Pinch, false, true, 0.0);
             }
             BackendEvent::GestureHoldBegin { event } => {
-                self.gesture(&event.device(), GestureKind::Hold, true, false, 0.0);
+                self.gesture(&event.device(), RawGestureKind::Hold, true, false, 0.0);
             }
             BackendEvent::GestureHoldEnd { event } => {
-                self.gesture(&event.device(), GestureKind::Hold, false, true, 0.0);
+                self.gesture(&event.device(), RawGestureKind::Hold, false, true, 0.0);
             }
             // A touch frame is the boundary between two atomic updates, which the seat applies
             // in order anyway; a tablet tool is read by `gnoblin-input` from the raw channel,
@@ -441,16 +441,16 @@ fn axis<E: PointerAxisEvent<LibinputInputBackend>>(event: &E) -> (f64, f64) {
 /// touch capability is a touch screen, a device with a keyboard capability and no pointer
 /// capability is a keyboard, and anything else is a mouse.
 #[must_use]
-pub fn kind_of(device: &libinput::Device) -> Kind {
+pub fn kind_of(device: &libinput::Device) -> DeviceKind {
     if device.config_tap_finger_count() > 0 {
-        Kind::Touchpad
+        DeviceKind::Touchpad
     } else if device.has_capability(libinput::DeviceCapability::Touch) {
-        Kind::Touch
+        DeviceKind::Touch
     } else if device.has_capability(libinput::DeviceCapability::Keyboard)
         && !device.has_capability(libinput::DeviceCapability::Pointer)
     {
-        Kind::Keyboard
+        DeviceKind::Keyboard
     } else {
-        Kind::Mouse
+        DeviceKind::Mouse
     }
 }

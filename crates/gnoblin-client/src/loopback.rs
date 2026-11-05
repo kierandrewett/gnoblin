@@ -35,7 +35,7 @@ use crate::wire;
 /// One frame on the in-process link. A handshake and an envelope never share a
 /// queue position, exactly as on a socket.
 #[derive(Clone, Debug)]
-enum Frame {
+enum LinkFrame {
     Handshake(Handshake),
     Envelope(Envelope),
 }
@@ -43,8 +43,8 @@ enum Frame {
 /// One client connection's state.
 struct Link {
     owner: OwnerId,
-    inbound: VecDeque<Frame>,
-    outbound: VecDeque<Frame>,
+    inbound: VecDeque<LinkFrame>,
+    outbound: VecDeque<LinkFrame>,
     subscriptions: Vec<Subscription>,
     /// Correlation ids this link has used for the offers it was sent.
     next_offer: u64,
@@ -85,13 +85,13 @@ impl Inner {
 
     /// Run everything a client just sent, then hand it its frames.
     fn serve(&mut self, owner: OwnerId) {
-        let inbound: Vec<Frame> = match self.link(owner) {
+        let inbound: Vec<LinkFrame> = match self.link(owner) {
             Ok(link) => link.inbound.drain(..).collect(),
             Err(_) => return,
         };
         let mut out = Vec::new();
         for frame in inbound {
-            if let Frame::Envelope(envelope) = frame {
+            if let LinkFrame::Envelope(envelope) = frame {
                 self.handle(owner, &envelope, &mut out);
             }
         }
@@ -105,7 +105,7 @@ impl Inner {
     }
 
     /// Decode and answer one request.
-    fn handle(&mut self, owner: OwnerId, envelope: &Envelope, out: &mut Vec<Frame>) {
+    fn handle(&mut self, owner: OwnerId, envelope: &Envelope, out: &mut Vec<LinkFrame>) {
         if envelope.namespace != wire::NAMESPACE {
             out.push(refusal(
                 envelope,
@@ -121,7 +121,7 @@ impl Inner {
                     let subscription = self.graph.subscribe(filter);
                     // The snapshot is queued before the link starts forwarding
                     // diffs, which is the whole of the late-subscriber rule.
-                    out.push(Frame::Envelope(Envelope::reply(
+                    out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::SUBSCRIBE,
                         envelope.request_id,
@@ -139,7 +139,7 @@ impl Inner {
             },
             wire::member::CALL => match wire::read_call(payload) {
                 Ok((object, method, arguments)) => match self.graph.call(object, &method, arguments) {
-                    Ok(operation) => out.push(Frame::Envelope(Envelope::reply(
+                    Ok(operation) => out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::CALL,
                         envelope.request_id,
@@ -155,7 +155,7 @@ impl Inner {
             },
             wire::member::CLAIM => match wire::read_claim(payload) {
                 Ok(request) => match self.broker.claim(request, owner) {
-                    Ok(()) => out.push(Frame::Envelope(Envelope::reply(
+                    Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::CLAIM,
                         envelope.request_id,
@@ -171,7 +171,7 @@ impl Inner {
             },
             wire::member::DECLINE => match wire::read_decline(payload) {
                 Ok(request) => match self.broker.decline(request, owner) {
-                    Ok(()) => out.push(Frame::Envelope(Envelope::reply(
+                    Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::DECLINE,
                         envelope.request_id,
@@ -187,7 +187,7 @@ impl Inner {
             },
             wire::member::ANSWER => match wire::read_answer(payload) {
                 Ok((request, answer)) => match self.broker.answer(request, owner, answer) {
-                    Ok(()) => out.push(Frame::Envelope(Envelope::reply(
+                    Ok(()) => out.push(LinkFrame::Envelope(Envelope::reply(
                         wire::NAMESPACE,
                         wire::member::ANSWER,
                         envelope.request_id,
@@ -210,14 +210,14 @@ impl Inner {
     }
 
     /// Move every queued observation into one link's outbox.
-    fn flush_subscriptions(&mut self, owner: OwnerId, out: &mut Vec<Frame>) {
+    fn flush_subscriptions(&mut self, owner: OwnerId, out: &mut Vec<LinkFrame>) {
         let subscriptions = match self.link(owner) {
             Ok(link) => link.subscriptions.clone(),
             Err(_) => return,
         };
         for subscription in subscriptions {
             while let Some(observation) = self.graph.next(&subscription) {
-                out.push(Frame::Envelope(wire::observation(&observation)));
+                out.push(LinkFrame::Envelope(wire::observation(&observation)));
             }
         }
     }
@@ -229,7 +229,7 @@ impl Inner {
             let mut out = Vec::new();
             for subscription in subscriptions {
                 while let Some(observation) = self.graph.next(&subscription) {
-                    out.push(Frame::Envelope(wire::observation(&observation)));
+                    out.push(LinkFrame::Envelope(wire::observation(&observation)));
                 }
             }
             let link = &mut self.links[index];
@@ -262,7 +262,7 @@ impl Inner {
                     }
                     RequestEvent::Finished { request, outcome } => wire::finished(*request, outcome.into()),
                 };
-                self.links[index].outbound.push_back(Frame::Envelope(frame));
+                self.links[index].outbound.push_back(LinkFrame::Envelope(frame));
             }
         }
     }
@@ -277,8 +277,8 @@ fn refusal_code(error: &ModelError) -> &'static str {
 }
 
 /// An error frame answering a request.
-fn refusal(envelope: &Envelope, code: &str, message: &str) -> Frame {
-    Frame::Envelope(Envelope::error(
+fn refusal(envelope: &Envelope, code: &str, message: &str) -> LinkFrame {
+    LinkFrame::Envelope(Envelope::error(
         wire::NAMESPACE,
         envelope.member.clone(),
         envelope.request_id,
@@ -288,7 +288,7 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> Frame {
 }
 
 /// An error frame for a refused request transition.
-fn request_refusal(envelope: &Envelope, error: &RequestError) -> Frame {
+fn request_refusal(envelope: &Envelope, error: &RequestError) -> LinkFrame {
     let code = match error {
         RequestError::Taken { .. } | RequestError::NotOwner { .. } => wire::code::REQUEST_TAKEN,
         RequestError::Finished { .. } => wire::code::REQUEST_FINISHED,
@@ -462,16 +462,16 @@ impl crate::transport::Transport for Loopback {
             Err(_) => Handshake::refuse(version),
         };
         let link = inner.link(self.owner)?;
-        link.inbound.push_back(Frame::Handshake(*frame));
-        link.outbound.push_back(Frame::Handshake(reply));
+        link.inbound.push_back(LinkFrame::Handshake(*frame));
+        link.outbound.push_back(LinkFrame::Handshake(reply));
         Ok(())
     }
 
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {
         let mut inner = self.inner.borrow_mut();
         match inner.link(self.owner)?.outbound.pop_front() {
-            Some(Frame::Handshake(handshake)) => Ok(handshake),
-            Some(Frame::Envelope(_)) => Err(HandshakeError::NotAHandshake),
+            Some(LinkFrame::Handshake(handshake)) => Ok(handshake),
+            Some(LinkFrame::Envelope(_)) => Err(HandshakeError::NotAHandshake),
             None => Err(HandshakeError::Codec(disconnected())),
         }
     }
@@ -489,7 +489,7 @@ impl gnoblin_proto::Transport for Loopback {
         inner
             .link(self.owner)?
             .inbound
-            .push_back(Frame::Envelope(envelope.clone()));
+            .push_back(LinkFrame::Envelope(envelope.clone()));
         inner.serve(self.owner);
         Ok(())
     }
@@ -498,8 +498,8 @@ impl gnoblin_proto::Transport for Loopback {
         // The link never produces descriptors, so the caller's vector is left as it was.
         let mut inner = self.inner.borrow_mut();
         match inner.link(self.owner)?.outbound.pop_front() {
-            Some(Frame::Envelope(envelope)) => Ok(Some(envelope)),
-            Some(Frame::Handshake(_)) => Err(CodecError::Io(io::Error::new(
+            Some(LinkFrame::Envelope(envelope)) => Ok(Some(envelope)),
+            Some(LinkFrame::Handshake(_)) => Err(CodecError::Io(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "a handshake arrived after the connection started",
             ))),

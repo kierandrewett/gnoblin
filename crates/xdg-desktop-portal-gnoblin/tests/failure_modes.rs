@@ -7,7 +7,7 @@ use futures_channel::oneshot;
 use gnoblin_authority::Consent;
 use gnoblin_types::{ClientId, RequestId, Tick};
 use xdg_desktop_portal_gnoblin::consent::{
-    Capability, Guard, Host, Interface, NewSession, Offer, Outcome, Pending, Prompt, Refusal,
+    Guard, Host, Interface, NewSession, Offer, Outcome, Pending, PortalCapability, Prompt, Refusal,
 };
 
 const BUS: &str = ":1.42";
@@ -62,7 +62,7 @@ fn guard_with_session() -> Guard {
 
 fn ask(guard: &mut Guard, now: u64) -> (RequestId, oneshot::Receiver<Outcome>) {
     match guard
-        .ask(Tick::new(now), BUS, PATH, Capability::Capture)
+        .ask(Tick::new(now), BUS, PATH, PortalCapability::Capture)
         .expect("an asked session is not refused")
     {
         Pending::Asked { request, answered } => (request, answered),
@@ -85,7 +85,7 @@ fn allow_answer_grants_capability() {
         answered.try_recv().expect("the waiter is still live"),
         Some(Outcome::Granted)
     );
-    assert!(guard.consent(BUS, APP, Capability::Capture).is_some());
+    assert!(guard.consent(BUS, APP, PortalCapability::Capture).is_some());
 }
 
 /// A refusal is reported as the user's own cancel, and grants nothing.
@@ -102,7 +102,10 @@ fn refusal_grants_nothing() {
         answered.try_recv().expect("the waiter is still live"),
         Some(Outcome::Refused)
     );
-    assert_eq!(guard.consent(BUS, APP, Capability::Capture), Some(Consent::Refused));
+    assert_eq!(
+        guard.consent(BUS, APP, PortalCapability::Capture),
+        Some(Consent::Refused)
+    );
 }
 
 /// A prompt the user never answers expires at the guard's lifetime and grants nothing.
@@ -119,7 +122,7 @@ fn unanswered_prompt_expires() {
         Some(Outcome::Expired)
     );
     assert_eq!(guard.pending(), 0);
-    assert!(guard.consent(BUS, APP, Capability::Capture).is_none());
+    assert!(guard.consent(BUS, APP, PortalCapability::Capture).is_none());
 }
 
 /// A requester that vanishes while its prompt is up releases the prompt as `Left`.
@@ -149,7 +152,7 @@ fn provider_gone_releases_prompt() {
         answered.try_recv().expect("the waiter is still live"),
         Some(Outcome::ProviderGone)
     );
-    assert!(guard.consent(BUS, APP, Capability::Capture).is_none());
+    assert!(guard.consent(BUS, APP, PortalCapability::Capture).is_none());
 }
 
 /// Once granted, a second ask is answered from the grant and does not prompt again.
@@ -162,7 +165,7 @@ fn granted_capability_is_not_asked_twice() {
         .expect("answerable");
 
     let again = guard
-        .ask(Tick::new(20), BUS, PATH, Capability::Capture)
+        .ask(Tick::new(20), BUS, PATH, PortalCapability::Capture)
         .expect("not refused");
 
     assert!(matches!(again, Pending::AlreadyGranted));

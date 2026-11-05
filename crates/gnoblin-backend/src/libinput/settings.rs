@@ -44,7 +44,7 @@ use gnoblin_config::{AccelProfile, ClickMethod, Handedness, Inherit, Input, TapB
 /// It is libinput's capability set collapsed to the kinds the configuration has a section for,
 /// so one rule decides which section a device reads.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Kind {
+pub enum DeviceKind {
     /// A touchpad, which has every setting the configuration offers.
     Touchpad,
     /// A mouse: acceleration, handedness, scroll direction.
@@ -155,7 +155,7 @@ pub enum Setting {
 /// What a device is given, and how many of those settings it refused.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DeviceSettings {
-    kind: Option<Kind>,
+    kind: Option<DeviceKind>,
     settings: Vec<Setting>,
     refused: usize,
 }
@@ -167,10 +167,10 @@ impl DeviceSettings {
     /// empty list, which is the desired state: libinput's own defaults and whatever the system
     /// set stay in force.
     #[must_use]
-    pub fn from_config(input: Option<&Input>, kind: Kind) -> Self {
+    pub fn from_config(input: Option<&Input>, kind: DeviceKind) -> Self {
         let mut settings = Vec::new();
         match kind {
-            Kind::Touchpad => {
+            DeviceKind::Touchpad => {
                 if let Some(touchpad) = input.and_then(|input| input.touchpad.as_ref()) {
                     push(&mut settings, touchpad.accel_profile.as_ref(), |profile| {
                         Some(Setting::Acceleration(accel(profile, touchpad.accel_curve.as_ref())))
@@ -218,7 +218,7 @@ impl DeviceSettings {
                     });
                 }
             }
-            Kind::Mouse => {
+            DeviceKind::Mouse => {
                 if let Some(mouse) = input.and_then(|input| input.mouse.as_ref()) {
                     push(&mut settings, mouse.accel_profile.as_ref(), |profile| {
                         Some(Setting::Acceleration(accel(profile, mouse.accel_curve.as_ref())))
@@ -237,7 +237,7 @@ impl DeviceSettings {
                     });
                 }
             }
-            Kind::Trackball => {
+            DeviceKind::Trackball => {
                 if let Some(trackball) = input.and_then(|input| input.trackball.as_ref()) {
                     push(&mut settings, trackball.accel_profile.as_ref(), |profile| {
                         Some(Setting::Acceleration(device_accel(*profile)))
@@ -257,7 +257,7 @@ impl DeviceSettings {
                     );
                 }
             }
-            Kind::PointingStick => {
+            DeviceKind::PointingStick => {
                 if let Some(stick) = input.and_then(|input| input.pointing_stick.as_ref()) {
                     push(&mut settings, stick.accel_profile.as_ref(), |profile| {
                         Some(Setting::Acceleration(device_accel(*profile)))
@@ -272,7 +272,7 @@ impl DeviceSettings {
             }
             // A touch screen's calibration is the seat's, and a keyboard's repeat is the
             // keymap's: neither has a libinput setting in this configuration.
-            Kind::Touch | Kind::Keyboard => {}
+            DeviceKind::Touch | DeviceKind::Keyboard => {}
         }
         Self {
             kind: Some(kind),
@@ -289,7 +289,7 @@ impl DeviceSettings {
 
     /// The kind of device these settings are for.
     #[must_use]
-    pub fn kind(&self) -> Option<Kind> {
+    pub fn kind(&self) -> Option<DeviceKind> {
         self.kind
     }
 
@@ -498,7 +498,7 @@ mod tests {
             keyboard: None,
             ..Input::default()
         };
-        let settings = DeviceSettings::from_config(Some(&input), Kind::Mouse);
+        let settings = DeviceSettings::from_config(Some(&input), DeviceKind::Mouse);
         assert_eq!(settings.settings(), &[Setting::Speed(0.5)]);
     }
 
@@ -509,7 +509,7 @@ mod tests {
             tap_to_click: Some(Inherit::Value(true)),
             ..Touchpad::default()
         });
-        let settings = DeviceSettings::from_config(Some(&input), Kind::Touchpad);
+        let settings = DeviceSettings::from_config(Some(&input), DeviceKind::Touchpad);
         assert_eq!(settings.settings(), &[Setting::TapToClick(true)]);
     }
 
@@ -519,7 +519,7 @@ mod tests {
             accel_profile: Some(Inherit::Value(AccelProfile::Custom)),
             ..Touchpad::default()
         });
-        let settings = DeviceSettings::from_config(Some(&input), Kind::Touchpad);
+        let settings = DeviceSettings::from_config(Some(&input), DeviceKind::Touchpad);
         assert_eq!(settings.settings(), &[Setting::Acceleration(Accel::Adaptive)]);
 
         let with_curve = touchpad_input(Touchpad {
@@ -530,7 +530,7 @@ mod tests {
             })),
             ..Touchpad::default()
         });
-        let settings = DeviceSettings::from_config(Some(&with_curve), Kind::Touchpad);
+        let settings = DeviceSettings::from_config(Some(&with_curve), DeviceKind::Touchpad);
         assert_eq!(
             settings.settings(),
             &[Setting::Acceleration(Accel::Custom {
@@ -547,7 +547,7 @@ mod tests {
             ..Touchpad::default()
         });
         assert_eq!(
-            DeviceSettings::from_config(Some(&input), Kind::Touchpad).settings(),
+            DeviceSettings::from_config(Some(&input), DeviceKind::Touchpad).settings(),
             &[Setting::Speed(1.0)]
         );
         let input = touchpad_input(Touchpad {
@@ -555,7 +555,7 @@ mod tests {
             ..Touchpad::default()
         });
         assert_eq!(
-            DeviceSettings::from_config(Some(&input), Kind::Touchpad).settings(),
+            DeviceSettings::from_config(Some(&input), DeviceKind::Touchpad).settings(),
             &[Setting::Speed(0.0)]
         );
     }
@@ -567,7 +567,7 @@ mod tests {
             tap_to_click: Some(Inherit::Value(true)),
             ..Touchpad::default()
         });
-        let mut settings = DeviceSettings::from_config(Some(&input), Kind::Touchpad);
+        let mut settings = DeviceSettings::from_config(Some(&input), DeviceKind::Touchpad);
         let mut recorder = Recorder {
             seen: Vec::new(),
             refuse: vec!["natural-scroll".to_owned()],
@@ -591,14 +591,14 @@ mod tests {
             }),
             ..Input::default()
         };
-        let settings = DeviceSettings::from_config(Some(&input), Kind::Keyboard);
+        let settings = DeviceSettings::from_config(Some(&input), DeviceKind::Keyboard);
         assert!(settings.is_empty());
-        assert_eq!(settings.kind(), Some(Kind::Keyboard));
+        assert_eq!(settings.kind(), Some(DeviceKind::Keyboard));
     }
 
     #[test]
     fn a_configuration_with_no_input_section_gives_nothing() {
-        let settings = DeviceSettings::from_config(None, Kind::Touchpad);
+        let settings = DeviceSettings::from_config(None, DeviceKind::Touchpad);
         assert!(settings.is_empty());
     }
 
@@ -624,7 +624,7 @@ mod tests {
             two_finger_scrolling_enabled: Some(Inherit::Value(true)),
             click_method: Some(Inherit::Value(ClickMethod::Fingers)),
         };
-        let settings = DeviceSettings::from_config(Some(&touchpad_input(touchpad)), Kind::Touchpad);
+        let settings = DeviceSettings::from_config(Some(&touchpad_input(touchpad)), DeviceKind::Touchpad);
         let named: Vec<&str> = settings.settings().iter().map(name_of).collect();
         assert_eq!(
             named,

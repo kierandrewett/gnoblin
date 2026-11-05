@@ -6,8 +6,8 @@
 use gnoblin_types::{ClientId, Tick};
 
 use crate::{
-    Answer, AppId, Authority, Capability, Claimant, Consent, ContextRequest, Decision, Denial, Effect, Event, Gesture,
-    GestureId, LaunchOrigin, Limits, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
+    Answer, AppId, Authority, Claimant, Consent, ContextRequest, Decision, Denial, Effect, Event, Gesture, GestureId,
+    LaunchOrigin, Limits, PortalCapability, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
 };
 
 const LEADER: SessionLeader = SessionLeader::new(100);
@@ -99,13 +99,13 @@ fn prompting() -> Authority {
             Event::ConsentRequested {
                 request: REQUEST,
                 requester: REQUESTER,
-                capability: Capability::Capture,
+                capability: PortalCapability::Capture,
                 lifetime: LIFETIME,
             }
         ),
         vec![Effect::Prompt {
             request: REQUEST,
-            capability: Capability::Capture,
+            capability: PortalCapability::Capture,
             requester: REQUESTER,
             provider: SHELL,
         }]
@@ -491,7 +491,7 @@ fn capture_fails_closed_without_a_portal_ui_provider() {
             Event::ConsentRequested {
                 request: REQUEST,
                 requester: REQUESTER,
-                capability: Capability::Capture,
+                capability: PortalCapability::Capture,
                 lifetime: LIFETIME,
             }
         ),
@@ -501,7 +501,7 @@ fn capture_fails_closed_without_a_portal_ui_provider() {
         }]
     );
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -510,33 +510,39 @@ fn capture_fails_closed_without_a_portal_ui_provider() {
 fn a_grant_stops_while_the_session_is_locked() {
     let mut authority = prompting();
     allow(&mut authority);
-    assert_eq!(authority.gate(NOW, REQUESTER, Capability::Capture), Decision::Allowed);
+    assert_eq!(
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
+        Decision::Allowed
+    );
     assert_eq!(
         authority.apply(NOW, Event::LockChanged { active: true }),
         vec![Effect::Capture { allowed: false }]
     );
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::Locked)
     );
     // The consent still stands, so the stream resumes when the cover goes.
     authority.apply(NOW, Event::LockChanged { active: false });
-    assert_eq!(authority.gate(NOW, REQUESTER, Capability::Capture), Decision::Allowed);
+    assert_eq!(
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
+        Decision::Allowed
+    );
 }
 
 #[test]
 fn consent_pending_grants_nothing() {
     let authority = prompting();
     assert_eq!(
-        authority.consent(REQUESTER, Capability::Capture),
+        authority.consent(REQUESTER, PortalCapability::Capture),
         Some(Consent::Pending)
     );
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoConsent)
     );
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::InputInjection),
+        authority.gate(NOW, REQUESTER, PortalCapability::InputInjection),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -559,7 +565,7 @@ fn a_refused_consent_stays_refused() {
         }]
     );
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::Refused)
     );
     // Asking again while the refusal stands does not re-prompt the user.
@@ -569,7 +575,7 @@ fn a_refused_consent_stays_refused() {
             Event::ConsentRequested {
                 request: RequestId::new(2),
                 requester: REQUESTER,
-                capability: Capability::Capture,
+                capability: PortalCapability::Capture,
                 lifetime: LIFETIME,
             }
         ),
@@ -580,7 +586,7 @@ fn a_refused_consent_stays_refused() {
     );
     // It does end with its lifetime.
     assert_eq!(
-        authority.gate(NOW.saturating_add(LIFETIME), REQUESTER, Capability::Capture),
+        authority.gate(NOW.saturating_add(LIFETIME), REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -603,12 +609,15 @@ fn only_the_provider_answers() {
         }]
     );
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoConsent)
     );
     // The real provider can still answer.
     allow(&mut authority);
-    assert_eq!(authority.gate(NOW, REQUESTER, Capability::Capture), Decision::Allowed);
+    assert_eq!(
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
+        Decision::Allowed
+    );
 }
 
 #[test]
@@ -619,9 +628,9 @@ fn a_grant_ends_with_its_requester() {
         authority.apply(NOW, Event::RequesterGone { requester: REQUESTER }),
         vec![Effect::EndGrants { requester: REQUESTER }]
     );
-    assert_eq!(authority.consent(REQUESTER, Capability::Capture), None);
+    assert_eq!(authority.consent(REQUESTER, PortalCapability::Capture), None);
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -722,7 +731,7 @@ fn an_unanswered_prompt_expires_closed() {
         }]
     );
     assert_eq!(
-        authority.gate(NOW.saturating_add(LIFETIME), REQUESTER, Capability::Capture),
+        authority.gate(NOW.saturating_add(LIFETIME), REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -738,7 +747,7 @@ fn a_stale_prompt_cannot_end_a_newer_grant() {
             Event::ConsentRequested {
                 request: RequestId::new(2),
                 requester: REQUESTER,
-                capability: Capability::Capture,
+                capability: PortalCapability::Capture,
                 lifetime: LIFETIME,
             }
         ),
@@ -746,7 +755,7 @@ fn a_stale_prompt_cannot_end_a_newer_grant() {
             Effect::Dismiss { request: REQUEST },
             Effect::Prompt {
                 request: RequestId::new(2),
-                capability: Capability::Capture,
+                capability: PortalCapability::Capture,
                 requester: REQUESTER,
                 provider: SHELL,
             },
@@ -769,7 +778,7 @@ fn a_stale_prompt_cannot_end_a_newer_grant() {
         }]
     );
     assert_eq!(
-        authority.consent(REQUESTER, Capability::Capture),
+        authority.consent(REQUESTER, PortalCapability::Capture),
         Some(Consent::Pending)
     );
     assert_eq!(
@@ -786,7 +795,10 @@ fn a_stale_prompt_cannot_end_a_newer_grant() {
             decision: Decision::Allowed,
         }]
     );
-    assert_eq!(authority.gate(later, REQUESTER, Capability::Capture), Decision::Allowed);
+    assert_eq!(
+        authority.gate(later, REQUESTER, PortalCapability::Capture),
+        Decision::Allowed
+    );
 }
 
 #[test]
@@ -804,7 +816,7 @@ fn releasing_portal_ui_refuses_waiting_prompts() {
     );
     assert_eq!(authority.provider(), None);
     assert_eq!(
-        authority.gate(NOW, REQUESTER, Capability::Capture),
+        authority.gate(NOW, REQUESTER, PortalCapability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
     // A late answer to the withdrawn prompt is ignored, not granted.

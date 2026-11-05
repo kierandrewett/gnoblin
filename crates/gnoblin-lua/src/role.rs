@@ -113,7 +113,7 @@ impl std::error::Error for RoleError {
 ///
 /// `env` and `paths` are passed in so a test drives the shipped role over a socketpair and
 /// a configuration directory of its own, without a process-global environment.
-pub struct Role {
+pub struct RoleRunner {
     /// The environment to read the inherited descriptors from.
     pub env: Environment,
     /// Where the configuration lives.
@@ -122,11 +122,11 @@ pub struct Role {
     pub limits: Limits,
 }
 
-impl Role {
+impl RoleRunner {
     /// The role as the process finds it: the real environment, the real search path and
     /// the default sandbox budgets.
-    pub fn from_environment() -> Role {
-        Role {
+    pub fn from_environment() -> RoleRunner {
+        RoleRunner {
             env: Box::new(|name| std::env::var(name).ok()),
             paths: SearchPaths::from_env(),
             limits: Limits::default(),

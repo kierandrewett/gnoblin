@@ -228,7 +228,7 @@ pub struct WindowFrame {
 }
 
 /// One window's frame.
-struct Frame {
+struct FrameRecord {
     /// The protocol object, which is also how a configure is sent.
     object: GnoblinWindowFrameV1,
     /// The surface the renderer attached, once it has.
@@ -255,7 +255,7 @@ struct Frame {
     pressed: bool,
 }
 
-impl Frame {
+impl FrameRecord {
     /// The body of what the compositor can ask about a frame.
     fn report(&self) -> WindowFrame {
         WindowFrame {
@@ -276,7 +276,7 @@ pub(crate) struct FrameTables {
     /// Every bound manager, by connection.
     managers: HashMap<WaylandClientId, GnoblinWindowFrameManagerV1>,
     /// Every frame, by window.
-    frames: BTreeMap<WindowId, Frame>,
+    frames: BTreeMap<WindowId, FrameRecord>,
 }
 
 impl FrameTables {
@@ -497,7 +497,7 @@ impl Dispatch2<GnoblinWindowFrameV1, State> for FrameObject {
 }
 
 /// Tells a renderer its frame is over, once.
-fn close(frame: &Frame) {
+fn close(frame: &FrameRecord) {
     if frame.closed {
         return;
     }
@@ -510,7 +510,7 @@ impl State {
     /// What a window's frame is doing, for the compositor and for a test.
     #[must_use]
     pub fn window_frame(&self, window: WindowId) -> Option<WindowFrame> {
-        self.frame_tables.frames.get(&window).map(Frame::report)
+        self.frame_tables.frames.get(&window).map(FrameRecord::report)
     }
 
     /// Tells a renderer which of its regions the pointer is over.
@@ -746,7 +746,7 @@ impl State {
         };
         manager.frame(&object);
         debug!(%window, serial, ?size, "[frame] a frame was offered");
-        let entry = Frame {
+        let entry = FrameRecord {
             object,
             surface: None,
             serial,

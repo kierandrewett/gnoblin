@@ -542,7 +542,7 @@ pub async fn await_consent(
     handle: &str,
     bus_name: &str,
     path: &str,
-    capability: gnoblin_authority::Capability,
+    capability: gnoblin_authority::PortalCapability,
 ) -> Result<Outcome, fdo::Error> {
     let pending = {
         let mut shared = portal.lock();

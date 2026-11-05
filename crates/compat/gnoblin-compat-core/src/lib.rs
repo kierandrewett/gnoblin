@@ -18,9 +18,10 @@
 //!   a target hears them. They live here because two compat crates publish the
 //!   same values and a compat crate never depends on another.
 //!
-//! There is no D-Bus, no Smithay, no socket, no clock and no compositor here: a
-//! call and a gate are plain data, so [`Adapter::serve`] is a pure function of
-//! both and the same inputs always answer the same way.
+//! [`CallerWatcher`] is the one D-Bus helper: the caller-lifetime rule, that a watch or
+//! session ends with the bus connection that asked for it. Nothing else here touches a
+//! bus, a socket, a clock or a compositor: a call and a gate are plain data, so
+//! [`Adapter::serve`] is a pure function of both and the same inputs always answer the same way.
 //!
 //! # What an adapter crate does
 //!
@@ -80,12 +81,14 @@
 #![forbid(unsafe_code)]
 
 mod adapter;
+mod caller;
 mod matrix;
 mod mode;
 mod refusal;
 mod settings;
 
 pub use adapter::{Adapter, Call, Gate, Upstream};
+pub use caller::CallerWatcher;
 pub use matrix::{Builder, Interface, InterfaceBuilder, Kind, MatrixError, Member, Support, SupportMatrix};
 pub use mode::{CallerContext, Decision, LockState, Mode, OperationClass, Sandbox, allow};
 pub use refusal::{Refusal, Rule};

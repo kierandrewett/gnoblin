@@ -224,7 +224,7 @@ pub enum ProtectionEffect {
 
 /// What one client has proven so far.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Entry {
+struct ClientProof {
     /// Hidden, proven, or neither.
     state: ProtectionState,
     /// The generation this protection was asked for with.
@@ -248,7 +248,7 @@ pub struct Protection {
     /// The current output layout.
     outputs: BTreeSet<OutputId>,
     /// Every client that is not visible, in identifier order.
-    clients: BTreeMap<ClientId, Entry>,
+    clients: BTreeMap<ClientId, ClientProof>,
 }
 
 impl Default for Protection {
@@ -358,7 +358,7 @@ impl Protection {
         let generation = self.generation;
         self.clients.insert(
             client,
-            Entry {
+            ClientProof {
                 state: ProtectionState::Covering,
                 generation,
                 presented: BTreeSet::new(),

@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use gnoblin_types::{ClientId, Tick};
 
 use crate::{
-    Answer, AppId, Authority, Capability, Claimant, ContextRequest, Decision, Denial, Effect, Event, Gesture,
-    GestureId, GestureKind, LaunchOrigin, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
+    Answer, AppId, Authority, Claimant, ContextRequest, Decision, Denial, Effect, Event, Gesture, GestureId,
+    GestureKind, LaunchOrigin, PortalCapability, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
 };
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
@@ -63,11 +63,11 @@ impl Rng {
         RequestId::new(1 + self.below(3))
     }
 
-    fn capability(&mut self) -> Capability {
+    fn capability(&mut self) -> PortalCapability {
         if self.below(2) == 0 {
-            Capability::Capture
+            PortalCapability::Capture
         } else {
-            Capability::InputInjection
+            PortalCapability::InputInjection
         }
     }
 
@@ -205,7 +205,7 @@ fn invariants_hold_over_random_sequences() {
             }
 
             for requester in [RequesterId::new(1), RequesterId::new(2)] {
-                for capability in [Capability::Capture, Capability::InputInjection] {
+                for capability in [PortalCapability::Capture, PortalCapability::InputInjection] {
                     let decision = authority.gate(now, requester, capability);
                     if authority.locked() {
                         assert_eq!(

@@ -1,7 +1,7 @@
 //! `org.freedesktop.impl.portal.RemoteDesktop` and `InputCapture`.
 //!
-//! Both inject input, so both ask for [`Capability::Capture`] and
-//! [`Capability::InputInjection`], and both deliver the injected input over EIS: the app
+//! Both inject input, so both ask for [`PortalCapability::Capture`] and
+//! [`PortalCapability::InputInjection`], and both deliver the injected input over EIS: the app
 //! connects a libei session with `ConnectToEIS` and speaks the protocol on the descriptor,
 //! so the older `Notify*` members are refused with a sentence naming EIS rather than
 //! implemented as a second path that would disagree with the first.
@@ -27,7 +27,7 @@ use zbus::{Connection, ObjectPath, fdo};
 
 use super::capture::{CURSOR_EMBEDDED, Options, recorded_uint, sandboxed, uint};
 use super::{Portal, Reply, await_consent, export_request, export_session, refused, remove, sender, unsupported};
-use crate::consent::{Capability, Interface, NewSession, Outcome, State};
+use crate::consent::{Interface, NewSession, Outcome, PortalCapability, State};
 
 /// `types` bit: a keyboard.
 pub const DEVICE_KEYBOARD: u32 = 1;
@@ -167,14 +167,15 @@ impl RemoteDesktop {
         // Both capabilities, capture first: a user who allows control but not viewing has
         // not answered the question that matters, and the second question is the narrower
         // one.
-        let mut outcome = await_consent(&self.portal, handle.as_str(), &caller, &path, Capability::Capture).await?;
+        let mut outcome =
+            await_consent(&self.portal, handle.as_str(), &caller, &path, PortalCapability::Capture).await?;
         if outcome.granted() {
             outcome = await_consent(
                 &self.portal,
                 handle.as_str(),
                 &caller,
                 &path,
-                Capability::InputInjection,
+                PortalCapability::InputInjection,
             )
             .await?;
         }
@@ -405,7 +406,7 @@ impl RemoteDesktop {
 /// that asks, and a descriptor handed out from here would be a grant nobody gave.
 fn grant_live(shared: &mut super::Shared, caller: &str, path: &str) -> fdo::Result<()> {
     let now = shared.now();
-    match shared.guard.ask(now, caller, path, Capability::InputInjection) {
+    match shared.guard.ask(now, caller, path, PortalCapability::InputInjection) {
         Ok(crate::consent::Pending::AlreadyGranted) => Ok(()),
         Ok(crate::consent::Pending::Asked { answered, .. }) => {
             // The waiting entry is dropped with the receiver; its deadline expires it.
@@ -534,7 +535,7 @@ impl InputCapture {
             handle.as_str(),
             &caller,
             &path,
-            Capability::InputInjection,
+            PortalCapability::InputInjection,
         )
         .await;
         let reply = match outcome {
@@ -648,7 +649,7 @@ impl InputCapture {
         {
             let mut shared = self.portal.lock();
             let now = shared.now();
-            match shared.guard.ask(now, &caller, &path, Capability::InputInjection) {
+            match shared.guard.ask(now, &caller, &path, PortalCapability::InputInjection) {
                 Ok(crate::consent::Pending::AlreadyGranted) => {}
                 Ok(crate::consent::Pending::Asked { .. }) => return Ok((2, BTreeMap::new())),
                 Err(refusal) => return Err(refused(refusal)),

@@ -674,23 +674,6 @@ right = "gnoblin-xwayland::Status"
 kind = "same-name"
 reason = "a script's load status versus where an Xwayland instance is in its start and restart cycle"
 
-[[allow]]
-left = "gnoblin-compositor::Config"
-right = "gnoblin-wayland::Config"
-kind = "same-name"
-reason = "the composition root's Config is what this process was started with (backend, sockets, stop handle) and holds a gnoblin_wayland::Config as one field: the containing and the contained type sit one inside the other by design"
-
-[[allow]]
-left = "gnoblin-compositor::Config"
-right = "gnoblin-config::Config"
-kind = "same-name"
-reason = "the session configuration document a role reads versus the invocation of this process; the document describes the session, not the backend, sockets or supervisor handle it is started with"
-
-[[allow]]
-left = "gnoblin-a11y::Config"
-right = "gnoblin-compositor::Config"
-kind = "same-name"
-reason = "the accessibility settings a state machine holds versus the process invocation of the composition root; neither crate names the other"
 # The services role and the gcr prompter adapter (crates/gnoblin-services,
 # crates/compat/gnoblin-compat-gnome-keyring-prompter). Every entry is a homonym:
 # the words are each crate's own domain vocabulary and the types cannot be
@@ -833,75 +816,15 @@ right = "gnoblin-services::Finished"
 kind = "same-shape"
 reason = "one request that ended with a decision: the two crates' decisions are different types, so the records are separate vocabulary rather than one type"
 
-[[allow]]
-left = "gnoblin-parity::CommandTarget"
-right = "gnoblin-services::UnknownSlot"
-kind = "same-shape"
-reason = "a slot name that did not parse versus a parity command target; the only shared shape is a name string"
-
 # The pairs below were found once the module host landed and every crate had a
 # schema to serve. Each is a homonym: the name is the obvious word for two
 # different things, and the two types are in different processes or different
 # layers, so neither can stand in for the other.
 [[allow]]
-left = "gnoblin-a11y::Published"
-right = "gnoblin-wayland::Published"
-kind = "same-name"
-reason = "the accessibility state the settings bridges publish versus one toplevel's snapshot the compositor is about to publish; the first is a policy result and the second is protocol bookkeeping, and the fields share nothing"
-
-[[allow]]
-left = "gnoblin-lock::Published"
-right = "gnoblin-wayland::Published"
-kind = "same-name"
-reason = "the lock state observers see versus one toplevel's pre-publication snapshot; a lock state is a decision the session publishes and the other is the protocol layer's own record"
-
-[[allow]]
-left = "gnoblin-backend::Record"
-right = "gnoblin-wayland::Record"
-kind = "same-name"
-reason = "a nested backend's per-output protocol state versus the session's roster entry for one connection; both are private bookkeeping in different crates and only the word is shared"
-
-[[allow]]
-left = "gnoblin-input::Target"
-right = "gnoblin-wayland::Target"
-kind = "same-name"
-reason = "where an input event goes (an active grab, a chord binding or the client) versus the selection kind a source serves (clipboard or primary); the two enums have no case in common"
-
-[[allow]]
-left = "gnoblin-output::Edge"
-right = "gnoblin-wayland::Edge"
-kind = "same-name"
-reason = "a placement side of a monitor, named Above and Below so a layout reads the way a person arranges screens, versus the side of an output a layer surface's exclusive zone lies along"
-
-[[allow]]
-left = "gnoblin-types::Edge"
-right = "gnoblin-wayland::Edge"
-kind = "same-name"
-reason = "one side of a rectangle in logical pixels versus a layer-shell exclusive zone's edge; the protocol spells the same four words and neither type can be passed where the other is expected"
-
-[[allow]]
-left = "gnoblin::Role"
-right = "gnoblin-wayland::Role"
-kind = "same-name"
-reason = "a role of the process model the plan names (guardian, compositor, runtime) versus what a Wayland connection has earned (unprivileged, trusted, privileged)"
-
-[[allow]]
 left = "gnoblin-session::Level"
 right = "gnoblin-wasm::Level"
 kind = "same-name"
 reason = "both name how urgent a log line is, and the two spellings differ (`Warn` against `Warning`); one copy belongs in gnoblin-types and moving the session's copy is that crate's change, so the duplication is recorded here instead of being hidden by a rename"
-
-[[allow]]
-left = "gnoblin-wayland::Entry"
-right = "gnoblinctl::Entry"
-kind = "same-name"
-reason = "one toplevel's publication record versus one object in the generated command tree"
-
-[[allow]]
-left = "gnoblin-wayland::Handle"
-right = "gnoblin-xwayland::Handle"
-kind = "same-name"
-reason = "one wlr foreign-toplevel handle object with the manager that made it versus a cloneable handle to a supervised Xwayland session"
 
 # Capture's own vocabulary. Each of these names is the natural word in its own
 # domain and says something different from the crate it collides with: a capture
@@ -915,12 +838,6 @@ left = "gnoblin-backend::Table"
 right = "gnoblin-capture::Table"
 kind = "same-name"
 reason = "a capture session table holds open capture sessions; the backend's table records a nested session's objects"
-
-[[allow]]
-left = "gnoblin-capture::Frame"
-right = "gnoblin-client::Frame"
-kind = "same-name"
-reason = "a capture frame is a single-use claim on one copy into a client buffer; an IPC frame is a wire message"
 
 [[allow]]
 left = "gnoblin-capture::Refusal"
@@ -1049,12 +966,6 @@ kind = "same-name"
 reason = "the backend's is a rendered surface with a buffer; the Wayland extension's is what a redirect learns about the surface it named (a window, or gone)"
 
 [[allow]]
-left = "gnoblin-compat-gtk-dconf-settings::Action"
-right = "gnoblinctl::Action"
-kind = "same-name"
-reason = "one is a key the dconf layer writes; the other is a command line invocation"
-
-[[allow]]
 left = "gnoblin-compat-gtk-shell1::Screening"
 right = "gnoblin-compat-mutter-x11-interop::Screening"
 kind = "same-name"
@@ -1133,22 +1044,10 @@ kind = "same-shape"
 reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
 
 [[allow]]
-left = "gnoblin-compat-core::Refusal"
-right = "gnoblin-compositor::Refusal"
-kind = "same-name"
-reason = "a compat refusal says why an adapter refused an upstream call, with the rule id a report quotes; the compositor's refusal is an IPC error frame's answer to a member the schema does not serve"
-
-[[allow]]
 left = "gnoblin-lua::Host"
 right = "gnoblin-services::Host"
 kind = "same-name"
 reason = "the services role's inherited IPC host versus the script runtime's object host"
-
-[[allow]]
-left = "gnoblin-lua::Role"
-right = "gnoblin-services::Role"
-kind = "same-name"
-reason = "how the services role runs (its environment, deadline and buses) versus a script's role configuration"
 
 [[allow]]
 left = "gnoblin-lua::RoleError"
@@ -1162,3 +1061,419 @@ right = "gnoblin-services::Role"
 kind = "same-name"
 reason = "the session binary's role versus the services role's own settings"
 
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
+
+[[allow]]
+left = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
+
+[[allow]]
+left = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's Admission applies the frame's support matrix to its own Call enum; the shape is the frame's, and the type stays per adapter so a refusal names its adapter"
+
+[[allow]]
+left = "gnoblin-model::UnknownSlot"
+right = "gnoblin-parity::CommandTarget"
+kind = "same-shape"
+reason = "a slot name the model could not read versus a parity target that runs a step's program; both hold one name string and nothing else, and that string is all they share"
+
+[[allow]]
+left = "gnoblin-backend::PhysicalExtent"
+right = "gnoblin-types::Size"
+kind = "same-shape"
+reason = "a connector's panel size in millimetres versus a logical pixel size; both are a width and a height, and the units differ, so the shared shape is all they have in common"
+
+[[allow]]
+left = "gnoblin-backend::Power"
+right = "gnoblin-compat-core::Switch"
+kind = "same-shape"
+reason = "a connector's DPMS state (lit or dark) versus a publish toggle an application sets; both are an on/off pair and nothing else"
+
+[[allow]]
+left = "gnoblin-client::LinkFrame"
+right = "gnoblin-proto::StreamFrame"
+kind = "same-shape"
+reason = "the in-process loopback link's handshake or envelope versus the wire codec's stream frame; the loopback never serialises, so the two enums share a shape and nothing else"
+
+[[allow]]
+left = "gnoblin-a11y::Key"
+right = "xdg-desktop-portal-gnoblin::Key"
+kind = "same-name"
+reason = "a11y's Key is one key press or release the compositor saw; the portal's Key is one published settings key, the schema property and the name toolkits look up"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "a11y's Pending is a slow-keys press held until its delay elapses; the portal's Pending is what Guard::ask could do, a consent outcome"
+
+[[allow]]
+left = "gnoblin-authority::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "authority's Pending is a consent prompt waiting for the provider; the portal's Pending is what Guard::ask could do"
+
+[[allow]]
+left = "gnoblin-backend::Change"
+right = "xdg-desktop-portal-gnoblin::Change"
+kind = "same-name"
+reason = "backend's Change is one connector's part of a plan, its target state and operations; the portal's Change is one thing a settings subscriber is told"
+
+[[allow]]
+left = "gnoblin-backend::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
+kind = "same-name"
+reason = "backend's Command is an X11 request the compositor sends and the policy cannot; the portal's Command is one thing its connection thread has to do"
+
+[[allow]]
+left = "gnoblin-backend::Outcome"
+right = "xdg-desktop-portal-gnoblin::Outcome"
+kind = "same-name"
+reason = "backend's Outcome is what the compositor does with one X11 event; the portal's Outcome is how a consent question ended"
+
+[[allow]]
+left = "gnoblin-backend::Setting"
+right = "xdg-desktop-portal-gnoblin::Setting"
+kind = "same-name"
+reason = "backend's libinput Setting is one device setting in libinput's configuration terms; the portal's Setting is one published setting"
+
+[[allow]]
+left = "gnoblin-backend::Setting"
+right = "xdg-desktop-portal-gnoblin::Setting"
+kind = "same-name"
+reason = "backend's X11 Setting is one XSETTINGS value; the portal's Setting is one published setting"
+
+[[allow]]
+left = "gnoblin-backend::Table"
+right = "xdg-desktop-portal-gnoblin::Table"
+kind = "same-name"
+reason = "backend's Table is the parent-facing state of every nested output plus the seat; the portal's Table holds the published values"
+
+[[allow]]
+left = "gnoblin-capture::Outcome"
+right = "xdg-desktop-portal-gnoblin::Outcome"
+kind = "same-name"
+reason = "capture's Outcome is the answer to a capture or a request; the portal's Outcome is how a consent question ended"
+
+[[allow]]
+left = "gnoblin-capture::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
+kind = "same-name"
+reason = "capture's Refusal is why a request or a frame produced nothing; the portal's Refusal is why something was refused before it could wait for an answer"
+
+[[allow]]
+left = "gnoblin-capture::Session"
+right = "xdg-desktop-portal-gnoblin::Session"
+kind = "same-name"
+reason = "capture's Session is one capture session's state; the portal's Session is one portal session"
+
+[[allow]]
+left = "gnoblin-capture::Table"
+right = "xdg-desktop-portal-gnoblin::Table"
+kind = "same-name"
+reason = "capture's Table is every capture session the compositor has open; the portal's Table holds the published values"
+
+[[allow]]
+left = "gnoblin-compat-core::Interface"
+right = "xdg-desktop-portal-gnoblin::Interface"
+kind = "same-name"
+reason = "compat-core's Interface is one upstream interface and every member an adapter declares for it; the portal's Interface names which portal interface a session belongs to"
+
+[[allow]]
+left = "gnoblin-compat-core::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
+kind = "same-name"
+reason = "compat-core's Refusal is one refused call; the portal's Refusal is why something was refused before it could wait for an answer"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "the keyring prompter's Pending is one prompt waiting for an answer; the portal's Pending is what Guard::ask could do"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Prompt"
+right = "xdg-desktop-portal-gnoblin::Prompt"
+kind = "same-name"
+reason = "the keyring prompter's Prompt is one gcr prompt as the caller described it with gcr's properties; the portal's Prompt is a prompt for the portal.ui provider"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Unavailable"
+right = "xdg-desktop-portal-gnoblin::Unavailable"
+kind = "same-name"
+reason = "the keyring prompter's Unavailable is why a prompt could not be started, answered or finished; the portal's Unavailable is why a compositor call could not be made"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Waiting"
+right = "xdg-desktop-portal-gnoblin::Waiting"
+kind = "same-name"
+reason = "the keyring prompter's Waiting is the live half of one waiting request, kept out of Pending; the portal's Waiting is one prompt waiting for the provider"
+
+[[allow]]
+left = "gnoblin-compositor::Offer"
+right = "xdg-desktop-portal-gnoblin::Offer"
+kind = "same-name"
+reason = "compositor's Offer is one request live in the IPC broker; the portal's Offer is what a request layer offered"
+
+[[allow]]
+left = "gnoblin-config::Setting"
+right = "xdg-desktop-portal-gnoblin::Setting"
+kind = "same-name"
+reason = "config's Setting is one declared setting; the portal's Setting is one published setting"
+
+[[allow]]
+left = "gnoblin-input::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
+kind = "same-name"
+reason = "input's Command is one EI request as the state machine sees it; the portal's Command is one thing its connection thread has to do"
+
+[[allow]]
+left = "gnoblin-input::Key"
+right = "xdg-desktop-portal-gnoblin::Key"
+kind = "same-name"
+reason = "input's Key is the key part of a chord; the portal's Key is one published settings key, the schema property and the name toolkits look up"
+
+[[allow]]
+left = "gnoblin-input::Stream"
+right = "xdg-desktop-portal-gnoblin::Stream"
+kind = "same-name"
+reason = "input's Stream is a recognised gesture in progress; the portal's Stream is one stream the compositor opened"
+
+[[allow]]
+left = "gnoblin-input::Waiting"
+right = "xdg-desktop-portal-gnoblin::Waiting"
+kind = "same-name"
+reason = "input's Waiting is one waiting request; the portal's Waiting is one prompt waiting for the provider"
+
+[[allow]]
+left = "gnoblin-lock::State"
+right = "xdg-desktop-portal-gnoblin::State"
+kind = "same-name"
+reason = "lock's State is where the session lock controller is; the portal's State is how far one portal session has got"
+
+[[allow]]
+left = "gnoblin-lua::Guard"
+right = "xdg-desktop-portal-gnoblin::Guard"
+kind = "same-name"
+reason = "lua's Guard is the budgets one entry into Lua consumes, shared between host and hook; the portal's Guard is the session table and the grants behind it"
+
+[[allow]]
+left = "gnoblin-lua::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "lua's Pending is what the host knows about one operation it called; the portal's Pending is what Guard::ask could do"
+
+[[allow]]
+left = "gnoblin-lua::Shared"
+right = "xdg-desktop-portal-gnoblin::Shared"
+kind = "same-name"
+reason = "lua's Shared is the host state shared with the Lua closures its bindings install; the portal's Shared is everything its served objects share"
+
+[[allow]]
+left = "gnoblin-services::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
+kind = "same-name"
+reason = "services' Pending is one agent request waiting for its answer; the portal's Pending is what Guard::ask could do"
+
+[[allow]]
+left = "gnoblin-services::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
+kind = "same-name"
+reason = "services' Refusal is why a request could not be started, answered or finished; the portal's Refusal is why something was refused before it could wait for an answer"
+
+[[allow]]
+left = "gnoblin-wayland::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
+kind = "same-name"
+reason = "wayland's Command is one command a control handle queued for the event loop; the portal's Command is one thing its connection thread has to do"
+
+[[allow]]
+left = "gnoblin-wayland::State"
+right = "xdg-desktop-portal-gnoblin::State"
+kind = "same-name"
+reason = "wayland's State is the compositor state every protocol handler receives; the portal's State is how far one portal session has got"
+
+[[allow]]
+left = "gnoblin-xwayland::Handle"
+right = "xdg-desktop-portal-gnoblin::Handle"
+kind = "same-name"
+reason = "xwayland's Handle is the compositor's half of a session; the portal's Handle is one request handle's live meaning, so Request.Close can end what the handler waits on"
+
+[[allow]]
+left = "gnoblin-xwayland::Settings"
+right = "xdg-desktop-portal-gnoblin::Settings"
+kind = "same-name"
+reason = "xwayland's Settings are the X11 settings a session starts with; the portal's Settings is one served Settings object"
+
+[[allow]]
+left = "xdg-desktop-portal-gnoblin::Interface"
+right = "xtask::Interface"
+kind = "same-name"
+reason = "the portal's Interface names which portal interface a session belongs to; xtask's Interface is a private struct with no doc comment, used for its compat report rows"
+
+[[allow]]
+left = "gnoblin-compat-mutter-screencast::BridgeError"
+right = "xdg-desktop-portal-gnoblin::Unavailable"
+kind = "same-shape"
+reason = "the screencast bridge's BridgeError is why the compositor did not open or close a session; the portal's Unavailable is why a compositor call could not be made; the shape coincides and the failures differ"
+
+[[allow]]
+left = "gnoblin-compat-core::CallerWatcher"
+right = "xdg-desktop-portal-gnoblin::Owners"
+kind = "same-shape"
+reason = "both wrap the bus's NameOwnerChanged stream to end a gone caller's grants or sessions; the portal may not link a compat adapter, and gnoblin-compat-core is a compat crate, so the portal keeps its own copy until the rule is moved to a non-compat shared crate"
+
+# Each compat adapter's `Admission` holds its own declaration and gate. The struct shape is
+# the frame's and so coincides across adapters; the names belong to each adapter.
+
+[[allow]]
+left = "gnoblin-proto::Capabilities"
+right = "gnoblin-xwayland::Capabilities"
+kind = "same-name"
+reason = "a connection's held capability set versus one Xwayland binary's feature record read from its help text; the name is shared, the values are not"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+right = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+right = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+right = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+right = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+right = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-clipboard::ClipboardAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+right = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+right = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+right = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-inputcapture::InputCaptureAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
+
+[[allow]]
+left = "gnoblin-compat-mutter-remotedesktop::RemoteDesktopAdmission"
+right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
+kind = "same-shape"
+reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"

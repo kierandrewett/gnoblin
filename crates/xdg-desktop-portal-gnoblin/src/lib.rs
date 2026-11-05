@@ -66,7 +66,7 @@ pub mod iface;
 pub mod settings;
 
 pub use backends::{Backends, CaptureBackend, ClipboardBackend, EisBackend, InhibitBackend, ShortcutsBackend};
-pub use consent::{Capability, Consent, Guard, Host, Interface, Outcome, Refusal, Session, State};
+pub use consent::{Consent, Guard, Host, Interface, Outcome, PortalCapability, Refusal, Session, State};
 pub use host::{IpcHost, IpcLoop};
 pub use iface::{BUS_NAME, PATH, Portal};
 pub use settings::{Change, Setting, Table};

@@ -160,7 +160,7 @@ fn guardian() -> Result<(), Exit> {
 /// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
-    match gnoblin_lua::Role::from_environment().run(never_stopped) {
+    match gnoblin_lua::RoleRunner::from_environment().run(never_stopped) {
         Ok(()) => Ok(()),
         Err(error) => {
             eprintln!("gnoblin: runtime: {error}");
@@ -171,7 +171,7 @@ fn runtime() -> Result<(), Exit> {
 
 /// Runs the services role: the D-Bus agents, until the session ends.
 fn services() -> Result<(), Exit> {
-    let linked: Vec<Box<dyn gnoblin_services::LinkedAgent>> = vec![Box::new(gcr::Prompter::new())];
+    let linked: Vec<Box<dyn gnoblin_services::LinkedAgent>> = vec![Box::new(gcr::GcrPrompter::new())];
     match gnoblin_services::Role::from_environment().run(never_stopped, linked) {
         Ok(()) => Ok(()),
         Err(error) => {

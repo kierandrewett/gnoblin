@@ -7,7 +7,7 @@
 //! [`Event`].
 
 use crate::effect::{Effect, Level};
-use crate::environment::{EnvTarget, Environment, EnvironmentRules, Inherited};
+use crate::environment::{EnvTarget, Environment, EnvironmentRules, InheritedEnvironment};
 use crate::event::{Event, EventKind, ExitStatus, ShutdownReason, Signal};
 use crate::ids::ChildId;
 use crate::plan::{ChildKind, ChildSpec, Plan, Restart};
@@ -32,7 +32,7 @@ pub struct Rules {
 impl Rules {
     /// The rules the C session applies today.
     #[must_use]
-    pub fn standard(inherited: &Inherited<'_>) -> Self {
+    pub fn standard(inherited: &InheritedEnvironment<'_>) -> Self {
         Self {
             stop_grace: secs(2),
             safe_mode_after: 3,

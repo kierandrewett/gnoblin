@@ -120,7 +120,7 @@ mod tests;
 mod time;
 
 pub use effect::{Effect, Level};
-pub use environment::{EnvTarget, Environment, EnvironmentRules, Inherited};
+pub use environment::{EnvTarget, Environment, EnvironmentRules, InheritedEnvironment};
 pub use event::{Event, EventKind, ExitStatus, ShutdownReason, Signal};
 pub use guardian::{Guardian, Rules};
 pub use ids::ChildId;

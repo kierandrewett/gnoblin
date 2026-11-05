@@ -55,7 +55,7 @@ use crate::source::{CaptureSource, Copied};
 /// client.
 #[derive(Debug, PartialEq, Eq)]
 #[must_use = "a claim that is neither captured nor cancelled leaves its buffer marked as in use"]
-pub struct Frame {
+pub struct FrameClaim {
     /// The session the claim belongs to.
     session: SessionId,
     /// The buffer the copy will write into.
@@ -68,7 +68,7 @@ pub struct Frame {
     used: bool,
 }
 
-impl Frame {
+impl FrameClaim {
     /// The session the claim belongs to.
     #[must_use]
     pub const fn session(&self) -> SessionId {
@@ -254,7 +254,7 @@ impl Table {
     /// [`Refusal::Stopped`] for a stopped session and [`Refusal::Busy`] when the
     /// session already has a claim out for this tick — which is what a client that
     /// re-attaches a buffer it is still reading gets.
-    pub fn request(&mut self, session: SessionId, buffer: BufferId, tick: Tick) -> Result<Frame, Refusal> {
+    pub fn request(&mut self, session: SessionId, buffer: BufferId, tick: Tick) -> Result<FrameClaim, Refusal> {
         let Some(entry) = self.sessions.get_mut(&session) else {
             return Err(Refusal::Closed);
         };
@@ -274,7 +274,7 @@ impl Table {
         let sequence = entry.frames.saturating_add(1);
         entry.claim = Some((buffer, sequence));
         entry.claim_tick = Some(tick);
-        Ok(Frame {
+        Ok(FrameClaim {
             session,
             buffer,
             sequence,
@@ -290,7 +290,7 @@ impl Table {
     /// session was opened.
     pub fn capture(
         &mut self,
-        frame: &mut Frame,
+        frame: &mut FrameClaim,
         tick: Tick,
         capture: Capture,
         source: &mut dyn CaptureSource,
@@ -350,7 +350,7 @@ impl Table {
 
     /// Gives up a claim without copying: the client destroyed its frame object, or
     /// the loop decided not to service it this tick.
-    pub fn cancel(&mut self, frame: &mut Frame) {
+    pub fn cancel(&mut self, frame: &mut FrameClaim) {
         if frame.used {
             return;
         }

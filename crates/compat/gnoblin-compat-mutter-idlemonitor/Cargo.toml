@@ -10,7 +10,6 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-futures-lite.workspace = true
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-client = { path = "../../gnoblin-client" }
 gnoblin-model = { path = "../../gnoblin-model" }
@@ -18,5 +17,6 @@ zbus.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+futures-lite.workspace = true
 gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-schema = { path = "../../gnoblin-schema" }

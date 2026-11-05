@@ -373,7 +373,7 @@ impl InputSource for HeadlessInput {
 /// The list is drained by [`Backend::dispatch`], so every request takes the same path
 /// a device event does and the compositor sees only its [`BackendEvent`]s.
 #[derive(Debug, Default)]
-struct Requests {
+struct HeadlessRequests {
     /// The presentation state the caller last set, if it set one.
     present: Option<bool>,
     /// Outputs to connect, with the connector, mode and scale to connect them at.
@@ -389,7 +389,7 @@ struct Requests {
 /// session runs.
 #[derive(Clone, Debug)]
 pub struct HeadlessHandle {
-    requests: Arc<Mutex<Requests>>,
+    requests: Arc<Mutex<HeadlessRequests>>,
 }
 
 impl HeadlessHandle {
@@ -425,7 +425,7 @@ impl HeadlessHandle {
     }
 
     /// The request queue, locked for writing.
-    fn requests(&self) -> MutexGuard<'_, Requests> {
+    fn requests(&self) -> MutexGuard<'_, HeadlessRequests> {
         self.requests.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -445,7 +445,7 @@ pub struct Headless {
     /// nothing.
     frame: OutputFrame,
     /// The requests a [`HeadlessHandle`] queued, and the shared queue itself.
-    requests: Arc<Mutex<Requests>>,
+    requests: Arc<Mutex<HeadlessRequests>>,
     /// Whether [`Backend::render`] presents the frame it drew.
     presenting: bool,
     /// The next output identity. A counter, not the table length, so a hotplug after an
@@ -512,7 +512,7 @@ impl Headless {
             pending: Vec::new(),
             input: HeadlessInput::default(),
             frame: OutputFrame::new(),
-            requests: Arc::new(Mutex::new(Requests::default())),
+            requests: Arc::new(Mutex::new(HeadlessRequests::default())),
             presenting: true,
             next_output: 0,
             renderer: HeadlessRenderer::default(),

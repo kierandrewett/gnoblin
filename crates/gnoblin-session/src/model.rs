@@ -6,8 +6,8 @@
 //! seed alone.
 
 use crate::{
-    ChildId, ChildState, Effect, Event, EventKind, ExitStatus, Guardian, Inherited, Plan, Rules, SessionState,
-    ShutdownReason, Signal, Tick,
+    ChildId, ChildState, Effect, Event, EventKind, ExitStatus, Guardian, InheritedEnvironment, Plan, Rules,
+    SessionState, ShutdownReason, Signal, Tick,
 };
 
 const COMPOSITOR: ChildId = ChildId::new(1);
@@ -45,7 +45,7 @@ fn plan() -> Plan {
 }
 
 fn rules() -> Rules {
-    Rules::standard(&Inherited {
+    Rules::standard(&InheritedEnvironment {
         prefix: "/opt/gnoblin",
         path: "/usr/bin",
         library_path: "/opt/gnoblin/lib64",

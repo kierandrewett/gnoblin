@@ -9,7 +9,7 @@
 //! - [`Seat`] is the glue: it opens the session, opens and closes devices through it, and
 //!   turns the library's event source into a queue the backend drains. Nothing here
 //!   decides anything.
-//! - [`SessionState`] is the decision: which transitions a pause and a resume event mean
+//! - [`SeatState`] is the decision: which transitions a pause and a resume event mean
 //!   once repeats and duplicates are taken into account. It reads no clock, owns no
 //!   descriptor and touches no device, so it is unit-tested on a machine with no seat at
 //!   all.
@@ -22,7 +22,7 @@
 //! a screen that is already correct, which is a visible flash. The rules the plan states
 //! are therefore state transitions, and the ones that matter are:
 //!
-//! 1. **A pause stops frames.** [`SessionState::submits`] is false from the pause until
+//! 1. **A pause stops frames.** [`SeatState::submits`] is false from the pause until
 //!    the resume, and the backend presents nothing in between (a page flip against a
 //!    master we no longer hold fails, and committing to a device another VT owns is
 //!    exactly what libseat exists to prevent).
@@ -44,7 +44,7 @@
 //! 3. **A resume is reported without a new generation**, so the backend repaints only the
 //!    damage it had and leaves stale pixels beside it:
 //!    `a_resume_bumps_the_generation_and_damages_everything`.
-//! 4. **A frame is submitted while the seat is gone.** [`SessionState::submits`] is false
+//! 4. **A frame is submitted while the seat is gone.** [`SeatState::submits`] is false
 //!    for the whole pause: `no_frame_is_submitted_from_a_pause_until_its_resume`.
 //! 5. **A pause and resume pair that arrive twice deliver two generations**, which would
 //!    make the second redraw pointless: `a_pause_and_resume_pair_advances_one_generation`.
@@ -68,7 +68,7 @@ use tracing::{debug, warn};
 
 /// Whether this process is the one driving the seat's devices.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Activity {
+pub enum SeatActivity {
     /// The seat is ours: devices are open and frames may be submitted.
     Active,
     /// Another VT or another session owns the seat: devices are released and no frame may
@@ -100,23 +100,23 @@ pub enum Transition {
 /// It owns no device and reads no clock, so the whole pause/resume protocol of the plan is
 /// decided here and tested on a machine with no seat.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SessionState {
-    activity: Activity,
+pub struct SeatState {
+    activity: SeatActivity,
     generation: u64,
 }
 
-impl Default for SessionState {
+impl Default for SeatState {
     /// A session starts active: `libseat` hands the devices over when the session opens,
     /// and the first activation event describes the state we are already in.
     fn default() -> Self {
         Self {
-            activity: Activity::Active,
+            activity: SeatActivity::Active,
             generation: 0,
         }
     }
 }
 
-impl SessionState {
+impl SeatState {
     /// The state a session that was never paused starts in.
     #[must_use]
     pub fn new() -> Self {
@@ -125,14 +125,14 @@ impl SessionState {
 
     /// Whether this process currently drives the seat.
     #[must_use]
-    pub fn activity(self) -> Activity {
+    pub fn activity(self) -> SeatActivity {
         self.activity
     }
 
     /// Whether the backend may submit frames.
     #[must_use]
     pub fn submits(self) -> bool {
-        self.activity == Activity::Active
+        self.activity == SeatActivity::Active
     }
 
     /// The redraw epoch, incremented by every resume.
@@ -146,10 +146,10 @@ impl SessionState {
     /// A pause for a session that is already paused is [`Transition::None`]: the device was
     /// released by the first event, and releasing it twice is an error the hardware reports.
     pub fn paused(&mut self) -> Transition {
-        if self.activity == Activity::Paused {
+        if self.activity == SeatActivity::Paused {
             return Transition::None;
         }
-        self.activity = Activity::Paused;
+        self.activity = SeatActivity::Paused;
         Transition::Pause
     }
 
@@ -159,10 +159,10 @@ impl SessionState {
     /// are already enabled with the intended modes, and re-enabling them is a visible
     /// flash for nothing.
     pub fn resumed(&mut self) -> Transition {
-        if self.activity == Activity::Active {
+        if self.activity == SeatActivity::Active {
             return Transition::None;
         }
-        self.activity = Activity::Active;
+        self.activity = SeatActivity::Active;
         self.generation = self.generation.saturating_add(1);
         Transition::Resume {
             generation: self.generation,
@@ -350,8 +350,8 @@ mod tests {
 
     #[test]
     fn a_fresh_session_is_active_and_submits() {
-        let state = SessionState::new();
-        assert_eq!(state.activity(), Activity::Active);
+        let state = SeatState::new();
+        assert_eq!(state.activity(), SeatActivity::Active);
         assert!(state.submits());
         assert_eq!(state.generation(), 0);
     }
@@ -360,17 +360,17 @@ mod tests {
     fn a_repeated_pause_does_nothing() {
         // Releasing DRM master twice is an error the kernel reports, so the second pause of
         // one switch must not reach the device.
-        let mut state = SessionState::new();
+        let mut state = SeatState::new();
         assert_eq!(state.paused(), Transition::Pause);
         assert_eq!(state.paused(), Transition::None);
-        assert_eq!(state.activity(), Activity::Paused);
+        assert_eq!(state.activity(), SeatActivity::Paused);
     }
 
     #[test]
     fn the_first_activation_changes_nothing() {
         // libseat activates the session it just opened; every output is already enabled at
         // the intended mode, so re-enabling them here would be a flash for no change.
-        let mut state = SessionState::new();
+        let mut state = SeatState::new();
         assert_eq!(state.resumed(), Transition::None);
         assert_eq!(state.generation(), 0);
     }
@@ -379,7 +379,7 @@ mod tests {
     fn a_resume_bumps_the_generation_and_damages_everything() {
         // A resume is a new redraw epoch: the backend keys "that output is stale" off the
         // generation, so two resumes must never share one.
-        let mut state = SessionState::new();
+        let mut state = SeatState::new();
         state.paused();
         assert_eq!(state.resumed(), Transition::Resume { generation: 1 });
         state.paused();
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn no_frame_is_submitted_from_a_pause_until_its_resume() {
-        let mut state = SessionState::new();
+        let mut state = SeatState::new();
         assert!(state.submits());
         state.paused();
         assert!(!state.submits());
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn a_pause_and_resume_pair_advances_one_generation() {
-        let mut state = SessionState::new();
+        let mut state = SeatState::new();
         state.paused();
         state.paused();
         state.resumed();

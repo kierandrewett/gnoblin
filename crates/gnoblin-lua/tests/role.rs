@@ -17,11 +17,11 @@
 //! is the peer's copy of the protocol rather than the role.
 
 use gnoblin_config::SearchPaths;
-use gnoblin_lua::{Limits, Role};
+use gnoblin_lua::{Limits, RoleRunner};
 
 #[test]
 fn the_role_refuses_without_a_privileged_connection() {
-    let role = Role {
+    let role = RoleRunner {
         env: Box::new(|_| None),
         paths: SearchPaths {
             home: None,

@@ -12,6 +12,10 @@ publish.workspace = true
 # side uses serde_json: the renderers write the bytes themselves, so the
 # checked-in manifest is exactly what the frame would write.
 serde_json.workspace = true
+# `CallerWatcher` is the one D-Bus helper: it reads the bus's `NameOwnerChanged` to end a
+# caller's watches and sessions when the caller leaves.
+futures-lite.workspace = true
+zbus.workspace = true
 
 [lints]
 workspace = true

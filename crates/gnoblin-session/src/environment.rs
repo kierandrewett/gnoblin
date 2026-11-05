@@ -73,7 +73,7 @@ pub enum EnvTarget {
 /// from. Passing them in keeps the rules pure data: the caller reads its
 /// environment, the guardian decides what the session gets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Inherited<'a> {
+pub struct InheritedEnvironment<'a> {
     /// The installation prefix the guardian runs from, usually the parent of
     /// its own `bin` directory.
     pub prefix: &'a str,
@@ -113,7 +113,7 @@ pub struct EnvironmentRules {
 impl EnvironmentRules {
     /// The rules the C session applies today, rebuilt from the inherited values.
     #[must_use]
-    pub fn standard(inherited: &Inherited<'_>) -> Self {
+    pub fn standard(inherited: &InheritedEnvironment<'_>) -> Self {
         let prefix = inherited.prefix.trim_end_matches('/');
         let mut session = Environment::new();
         session

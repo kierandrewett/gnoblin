@@ -16,10 +16,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures_lite::future;
-use gnoblin_compat_core::{Mode, Support, SupportMatrix};
+use gnoblin_compat_core::{CallerWatcher, Mode, Support, SupportMatrix};
 use gnoblin_compat_mutter_screencast::{
-    BUS_NAME, CallerWatcher, INTERFACE, MATRIX, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, export,
-    watch_callers,
+    BUS_NAME, INTERFACE, MATRIX, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, export, watch_callers,
 };
 use support::SharedHost;
 use support::bus::Bus;

@@ -1,6 +1,6 @@
 //! `org.freedesktop.impl.portal.Screenshot` and `ScreenCast`.
 //!
-//! Both read frames, so both ask for [`Capability::Capture`] and nothing else. What
+//! Both read frames, so both ask for [`PortalCapability::Capture`] and nothing else. What
 //! differs is the lifetime: a screenshot is one frame inside one call, and its session is
 //! the audit row the call leaves behind; a screen cast is a session the frontend starts,
 //! configures and closes, and its streams end with it.
@@ -33,7 +33,7 @@ use zbus::{Connection, ObjectPath, fdo};
 
 use super::{Portal, Reply, await_consent, export_request, refused, remove, sender, unsupported, variant};
 use crate::backends::{ScreenshotOptions, StreamRequest};
-use crate::consent::{Capability, Interface, NewSession, Outcome};
+use crate::consent::{Interface, NewSession, Outcome, PortalCapability};
 
 /// `types` bit: an existing monitor.
 pub const SOURCE_MONITOR: u32 = 1;
@@ -104,7 +104,7 @@ impl Screenshot {
                 })
                 .map_err(refused)?;
         }
-        let outcome = await_consent(&self.portal, &path, &caller, &path, Capability::Capture).await;
+        let outcome = await_consent(&self.portal, &path, &caller, &path, PortalCapability::Capture).await;
         let reply = match outcome {
             Ok(Outcome::Granted) => {
                 let options = ScreenshotOptions {
@@ -171,7 +171,7 @@ impl Screenshot {
                 })
                 .map_err(refused)?;
         }
-        let outcome = await_consent(&self.portal, &path, &caller, &path, Capability::Capture).await;
+        let outcome = await_consent(&self.portal, &path, &caller, &path, PortalCapability::Capture).await;
         let reply = match outcome {
             Ok(Outcome::Granted) => {
                 let _ = parent_window;
@@ -318,7 +318,7 @@ impl ScreenCast {
         export_request(&self.portal, handle.as_str()).await?;
         let _ = parent_window;
         let _ = options;
-        let outcome = await_consent(&self.portal, handle.as_str(), &caller, &path, Capability::Capture).await;
+        let outcome = await_consent(&self.portal, handle.as_str(), &caller, &path, PortalCapability::Capture).await;
         let reply = match outcome {
             Ok(Outcome::Granted) => {
                 let request = {

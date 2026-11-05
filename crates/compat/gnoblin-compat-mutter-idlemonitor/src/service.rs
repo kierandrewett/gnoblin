@@ -34,8 +34,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use futures_lite::StreamExt as _;
-use gnoblin_compat_core::{Gate, LockState, Mode, Refusal};
+use gnoblin_compat_core::{CallerWatcher, Gate, LockState, Mode, Refusal};
 use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 
@@ -288,49 +287,6 @@ impl IdleMonitorService {
     /// A watch reached its condition.
     #[zbus(signal)]
     async fn watch_fired(emitter: &SignalEmitter<'_>, id: u32) -> zbus::Result<()>;
-}
-
-/// The caller-lifetime rule: a watch ends with the bus connection that asked for it.
-///
-/// `org.freedesktop.DBus`'s `NameOwnerChanged` is the only notice a session bus gives when a
-/// peer goes away, so this reads it and answers the unique names that vanished. It is a
-/// value rather than a spawned task because the crate has no executor of its own: a host
-/// runs [`watch_callers`] beside the connection's service loop, and a test drives one
-/// event at a time.
-#[derive(Debug)]
-pub struct CallerWatcher {
-    stream: fdo::NameOwnerChangedStream,
-}
-
-impl CallerWatcher {
-    /// Subscribe to the bus's own ownership signal.
-    ///
-    /// # Errors
-    ///
-    /// The bus error from adding the match rule.
-    pub async fn new(connection: &Connection) -> zbus::Result<CallerWatcher> {
-        let bus = fdo::DBusProxy::new(connection).await?;
-        let stream = bus.receive_name_owner_changed().await?;
-        Ok(CallerWatcher { stream })
-    }
-
-    /// The next caller that left the bus, or `None` when the stream ends.
-    ///
-    /// A name that changed *owner* is not a departure and is skipped: a well-known name
-    /// moving between two processes is not the caller's unique name ending.
-    pub async fn next(&mut self) -> Option<String> {
-        while let Some(signal) = self.stream.next().await {
-            let Ok(args) = signal.args() else {
-                continue;
-            };
-            // The owner arguments are strings on the wire and the bus spells "nobody" as the
-            // empty one, which zbus models as an absent value.
-            if args.new_owner().as_ref().is_none() {
-                return Some(args.name().to_string());
-            }
-        }
-        None
-    }
 }
 
 /// Remove the watches of every caller that leaves the bus, until the stream ends.

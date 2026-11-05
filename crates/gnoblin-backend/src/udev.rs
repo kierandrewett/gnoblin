@@ -59,13 +59,13 @@ use tracing::{debug, info, warn};
 
 /// The environment variable that names the card node to drive.
 ///
-/// It is [`Environment::device`] that reads it; see the module documentation for what it
+/// It is [`DeviceOverrideSource::device`] that reads it; see the module documentation for what it
 /// means.
 pub const DEVICE_ENV: &str = "GNOBLIN_DRM_DEVICE";
 
 /// What a `/dev/dri` node can be used for.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum NodeKind {
+pub enum DrmNodeKind {
     /// A card node: it can modeset, which is what a compositor needs.
     Card,
     /// A render node: allocation and rendering only, no modesetting and no master.
@@ -74,18 +74,18 @@ pub enum NodeKind {
 
 /// A DRM node as the machine describes it.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Node {
+pub struct DrmNode {
     /// The node's path, such as `/dev/dri/card0`.
     pub path: PathBuf,
     /// What the node can be used for.
-    pub kind: NodeKind,
+    pub kind: DrmNodeKind,
     /// Whether the firmware marked this GPU as the one the machine booted on.
     pub boot_vga: bool,
     /// The kernel driver's name, when sysfs names one.
     pub driver: Option<String>,
 }
 
-impl Node {
+impl DrmNode {
     /// A node described by its path, read from what sysfs says about it.
     ///
     /// A node whose attributes cannot be read is still a node: `boot_vga` is an optional
@@ -97,9 +97,9 @@ impl Node {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
         let kind = if name.starts_with("render") {
-            NodeKind::Render
+            DrmNodeKind::Render
         } else {
-            NodeKind::Card
+            DrmNodeKind::Card
         };
         let device = Path::new("/sys/class/drm").join(&name).join("device");
         Self {
@@ -115,7 +115,7 @@ impl Node {
     /// Whether this node can drive a display.
     #[must_use]
     pub fn is_card(&self) -> bool {
-        self.kind == NodeKind::Card
+        self.kind == DrmNodeKind::Card
     }
 }
 
@@ -139,12 +139,12 @@ fn driver(device: &Path) -> Option<String> {
 /// It is a value rather than a bare `std::env::var` call so that a test can exercise both
 /// the rule and the session's behaviour with no environment mutation.
 #[derive(Clone, Debug, Default)]
-pub struct Environment {
+pub struct DeviceOverrideSource {
     /// The text of `GNOBLIN_DRM_DEVICE`, or [`None`] when it is unset or empty.
     pub device: Option<PathBuf>,
 }
 
-impl Environment {
+impl DeviceOverrideSource {
     /// The environment this process was started in.
     #[must_use]
     pub fn read() -> Self {
@@ -193,7 +193,7 @@ impl std::error::Error for ChoiceError {}
 ///
 /// [`ChoiceError`] when an override names a node that is absent or unusable, and
 /// [`ChoiceError::NoGpu`] when the machine has no card node.
-pub fn primary(nodes: &[Node], environment: &Environment) -> Result<PathBuf, ChoiceError> {
+pub fn primary(nodes: &[DrmNode], environment: &DeviceOverrideSource) -> Result<PathBuf, ChoiceError> {
     if let Some(requested) = &environment.device {
         let Some(node) = nodes.iter().find(|node| node.path == *requested) else {
             return Err(ChoiceError::Missing(requested.display().to_string()));
@@ -203,7 +203,7 @@ pub fn primary(nodes: &[Node], environment: &Environment) -> Result<PathBuf, Cho
         }
         return Ok(node.path.clone());
     }
-    let mut cards: Vec<&Node> = nodes.iter().filter(|node| node.is_card()).collect();
+    let mut cards: Vec<&DrmNode> = nodes.iter().filter(|node| node.is_card()).collect();
     cards.sort_by(|left, right| left.path.cmp(&right.path));
     if let Some(boot) = cards.iter().find(|node| node.boot_vga) {
         return Ok(boot.path.clone());
@@ -229,7 +229,7 @@ pub enum DeviceChange {
 #[derive(Clone, Debug)]
 pub struct Devices {
     primary: PathBuf,
-    known: Vec<Node>,
+    known: Vec<DrmNode>,
 }
 
 impl Devices {
@@ -239,7 +239,7 @@ impl Devices {
     ///
     /// [`ChoiceError`] when no primary can be chosen; the caller reports it and does not
     /// start a hardware session.
-    pub fn new(mut nodes: Vec<Node>, environment: &Environment) -> Result<Self, ChoiceError> {
+    pub fn new(mut nodes: Vec<DrmNode>, environment: &DeviceOverrideSource) -> Result<Self, ChoiceError> {
         let primary = primary(&nodes, environment)?;
         nodes.sort_by(|left, right| left.path.cmp(&right.path));
         Ok(Self { primary, known: nodes })
@@ -259,19 +259,19 @@ impl Devices {
 
     /// Every known node, primary first then by path.
     #[must_use]
-    pub fn all(&self) -> &[Node] {
+    pub fn all(&self) -> &[DrmNode] {
         &self.known
     }
 
     /// The GPUs that are not being driven, for a log line and the diagnostics report.
-    pub fn additional(&self) -> impl Iterator<Item = &Node> {
+    pub fn additional(&self) -> impl Iterator<Item = &DrmNode> {
         self.known
             .iter()
             .filter(|node| node.is_card() && node.path != self.primary)
     }
 
     /// A node appeared.
-    pub fn added(&mut self, node: Node) -> DeviceChange {
+    pub fn added(&mut self, node: DrmNode) -> DeviceChange {
         if !node.is_card() {
             return DeviceChange::Ignored;
         }
@@ -316,7 +316,7 @@ pub enum DiscoveryEvent {
 /// What the monitor and the backend share: the path behind each device number, and the
 /// events the backend has not drained yet.
 #[derive(Default)]
-struct Shared {
+struct MonitorShared {
     /// The node path udev last reported for a device number.
     paths: std::collections::HashMap<u64, PathBuf>,
     /// Events waiting for [`Discovery::take_events`].
@@ -329,7 +329,7 @@ struct Shared {
 /// what keeps the hotplug rules testable.
 pub struct Discovery {
     udev: Option<UdevBackend>,
-    shared: std::sync::Arc<std::sync::Mutex<Shared>>,
+    shared: std::sync::Arc<std::sync::Mutex<MonitorShared>>,
 }
 
 impl std::fmt::Debug for Discovery {
@@ -351,7 +351,7 @@ impl Discovery {
     pub fn new(seat: &str) -> std::io::Result<Self> {
         Ok(Self {
             udev: Some(UdevBackend::new(seat)?),
-            shared: std::sync::Arc::new(std::sync::Mutex::new(Shared::default())),
+            shared: std::sync::Arc::new(std::sync::Mutex::new(MonitorShared::default())),
         })
     }
 
@@ -359,7 +359,7 @@ impl Discovery {
     ///
     /// The numbers are remembered so that a later removal, which the monitor reports by
     /// number alone, can be turned back into the path the backend knows.
-    pub fn snapshot(&self) -> Vec<Node> {
+    pub fn snapshot(&self) -> Vec<DrmNode> {
         let Some(udev) = &self.udev else {
             return Vec::new();
         };
@@ -367,7 +367,7 @@ impl Discovery {
         udev.device_list()
             .map(|(number, path)| {
                 shared.paths.insert(number, path.to_owned());
-                Node::read(path)
+                DrmNode::read(path)
             })
             .collect()
     }
@@ -416,19 +416,19 @@ impl Discovery {
 mod tests {
     use super::*;
 
-    fn card(name: &str, boot_vga: bool) -> Node {
-        Node {
+    fn card(name: &str, boot_vga: bool) -> DrmNode {
+        DrmNode {
             path: PathBuf::from(format!("/dev/dri/{name}")),
-            kind: NodeKind::Card,
+            kind: DrmNodeKind::Card,
             boot_vga,
             driver: Some("i915".to_owned()),
         }
     }
 
-    fn render() -> Node {
-        Node {
+    fn render() -> DrmNode {
+        DrmNode {
             path: PathBuf::from("/dev/dri/renderD128"),
-            kind: NodeKind::Render,
+            kind: DrmNodeKind::Render,
             boot_vga: false,
             driver: Some("i915".to_owned()),
         }
@@ -438,7 +438,7 @@ mod tests {
     fn the_boot_gpu_wins_over_the_first_node() {
         let nodes = vec![card("card1", false), card("card0", true)];
         assert_eq!(
-            primary(&nodes, &Environment::default()),
+            primary(&nodes, &DeviceOverrideSource::default()),
             Ok(PathBuf::from("/dev/dri/card0"))
         );
     }
@@ -449,7 +449,7 @@ mod tests {
         // cannot.
         let nodes = vec![card("card2", false), card("card0", false), card("card1", false)];
         assert_eq!(
-            primary(&nodes, &Environment::default()),
+            primary(&nodes, &DeviceOverrideSource::default()),
             Ok(PathBuf::from("/dev/dri/card0"))
         );
     }
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn a_missing_override_is_refused() {
         let nodes = vec![card("card0", true)];
-        let environment = Environment {
+        let environment = DeviceOverrideSource {
             device: Some(PathBuf::from("/dev/dri/card7")),
         };
         assert_eq!(
@@ -469,7 +469,7 @@ mod tests {
     #[test]
     fn an_override_on_a_render_node_is_refused() {
         let nodes = vec![card("card0", true), render()];
-        let environment = Environment {
+        let environment = DeviceOverrideSource {
             device: Some(PathBuf::from("/dev/dri/renderD128")),
         };
         assert_eq!(
@@ -481,7 +481,7 @@ mod tests {
     #[test]
     fn an_override_wins_over_the_boot_gpu() {
         let nodes = vec![card("card0", true), card("card1", false)];
-        let environment = Environment {
+        let environment = DeviceOverrideSource {
             device: Some(PathBuf::from("/dev/dri/card1")),
         };
         assert_eq!(primary(&nodes, &environment), Ok(PathBuf::from("/dev/dri/card1")));
@@ -489,14 +489,20 @@ mod tests {
 
     #[test]
     fn a_machine_with_no_card_node_has_no_primary() {
-        assert_eq!(primary(&[render()], &Environment::default()), Err(ChoiceError::NoGpu));
-        assert_eq!(primary(&[], &Environment::default()), Err(ChoiceError::NoGpu));
+        assert_eq!(
+            primary(&[render()], &DeviceOverrideSource::default()),
+            Err(ChoiceError::NoGpu)
+        );
+        assert_eq!(primary(&[], &DeviceOverrideSource::default()), Err(ChoiceError::NoGpu));
     }
 
     #[test]
     fn removing_the_primary_ends_the_backend_and_no_other_does() {
-        let mut devices = Devices::new(vec![card("card0", true), card("card1", false)], &Environment::default())
-            .expect("a machine with two GPUs has a primary");
+        let mut devices = Devices::new(
+            vec![card("card0", true), card("card1", false)],
+            &DeviceOverrideSource::default(),
+        )
+        .expect("a machine with two GPUs has a primary");
         assert_eq!(devices.removed(Path::new("/dev/dri/card1")), DeviceChange::Recorded);
         assert_eq!(devices.removed(Path::new("/dev/dri/renderD128")), DeviceChange::Ignored);
         assert_eq!(devices.removed(Path::new("/dev/dri/card0")), DeviceChange::PrimaryLost);
@@ -505,7 +511,7 @@ mod tests {
     #[test]
     fn an_added_gpu_never_becomes_the_primary() {
         let mut devices =
-            Devices::new(vec![card("card1", false)], &Environment::default()).expect("one GPU is a primary");
+            Devices::new(vec![card("card1", false)], &DeviceOverrideSource::default()).expect("one GPU is a primary");
         assert_eq!(devices.primary(), Path::new("/dev/dri/card1"));
         assert_eq!(devices.added(card("card0", true)), DeviceChange::Recorded);
         assert_eq!(devices.primary(), Path::new("/dev/dri/card1"));
@@ -515,7 +521,7 @@ mod tests {
 
     #[test]
     fn a_render_node_is_not_a_gpu_this_session_drives() {
-        let mut devices = Devices::new(vec![card("card0", true)], &Environment::default()).expect("one GPU");
+        let mut devices = Devices::new(vec![card("card0", true)], &DeviceOverrideSource::default()).expect("one GPU");
         assert_eq!(devices.added(render()), DeviceChange::Ignored);
         assert_eq!(devices.all().len(), 1);
     }

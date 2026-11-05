@@ -66,7 +66,7 @@ pub enum Event {
         /// The caller, named by the portal from peer credentials.
         requester: RequesterId,
         /// What it asks for.
-        capability: Capability,
+        capability: PortalCapability,
         /// How long the consent prompt stays open.
         lifetime: u64,
     },
@@ -89,7 +89,7 @@ pub enum Event {
         /// The caller.
         requester: RequesterId,
         /// What it is using.
-        capability: Capability,
+        capability: PortalCapability,
     },
     /// The session lock became active or stopped being active.
     LockChanged {
@@ -187,14 +187,14 @@ pub enum GestureKind {
 
 /// What a portal caller may be granted.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Capability {
+pub enum PortalCapability {
     /// Read frames of the session.
     Capture,
     /// Inject input into the session.
     InputInjection,
 }
 
-impl Capability {
+impl PortalCapability {
     /// A stable lower-case name for logs, events and tests.
     #[must_use]
     pub const fn as_str(self) -> &'static str {

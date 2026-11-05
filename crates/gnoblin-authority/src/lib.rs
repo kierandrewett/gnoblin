@@ -97,5 +97,5 @@ mod tests;
 pub use authority::{Authority, Consent, Limits};
 pub use denial::{Decision, Denial};
 pub use effect::Effect;
-pub use event::{Answer, Capability, Claimant, ContextRequest, Event, Gesture, GestureKind, LaunchOrigin};
+pub use event::{Answer, Claimant, ContextRequest, Event, Gesture, GestureKind, LaunchOrigin, PortalCapability};
 pub use ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};

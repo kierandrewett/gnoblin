@@ -9,8 +9,8 @@
 use crate::recovery::ConfigStatus;
 use crate::time::secs;
 use crate::{
-    Backoff, ChildId, ChildState, EnvTarget, Environment, Event, EventKind, ExitStatus, Guardian, Inherited, Level,
-    Plan, Recovery, Restart, Rules, SessionState, ShutdownReason, Signal, StopReason, Tick,
+    Backoff, ChildId, ChildState, EnvTarget, Environment, Event, EventKind, ExitStatus, Guardian, InheritedEnvironment,
+    Level, Plan, Recovery, Restart, Rules, SessionState, ShutdownReason, Signal, StopReason, Tick,
 };
 
 const COMPOSITOR: ChildId = ChildId::new(1);
@@ -22,8 +22,8 @@ const SECOND_APP: ChildId = ChildId::new(6);
 
 const PREFIX: &str = "/opt/gnoblin";
 
-fn inherited() -> Inherited<'static> {
-    Inherited {
+fn inherited() -> InheritedEnvironment<'static> {
+    InheritedEnvironment {
         prefix: PREFIX,
         path: "/usr/local/bin:/usr/bin",
         library_path: "/opt/gnoblin/lib64",

@@ -52,7 +52,7 @@
 //! - `gnoblin.objects` and `gnoblin.extensions`: the generated bindings, one name
 //!   per schema member, with `gnoblin.d.lua` from the same schema.
 //! - [`Host::pump`]: the only thing that runs a handler, on the caller's ticks.
-//! - [`Role`]: the runtime role as a process — adopt the privileged connection, load and
+//! - [`RoleRunner`]: the runtime role as a process — adopt the privileged connection, load and
 //!   commit the configuration, then serve the handlers until the guardian stops it. It is
 //!   what `gnoblin --role runtime` runs.
 //!
@@ -125,5 +125,5 @@ pub use error::{HostError, ScriptError};
 pub use gnoblin_client::Environment;
 pub use host::{Host, MAX_LOADS, PumpReport, RunReport};
 
-pub use role::{Role, RoleError};
+pub use role::{RoleError, RoleRunner};
 pub use sandbox::Limits;
