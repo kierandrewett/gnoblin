@@ -6,5 +6,31 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# The Lua VM (D10): Lua 5.5, vendored, so the runtime links one Lua on every
+# distribution target.
+mlua.workspace = true
+# The runtime is an IPC client, not part of the compositor (D1): it reaches the
+# object graph through the same client `gnoblinctl` and the shells use.
+gnoblin-client = { path = "../gnoblin-client" }
+# `gnoblin.configure` produces the configuration layer's own value tree and hands
+# it to its validation, so the host owns no second document model.
+gnoblin-config = { path = "../gnoblin-config" }
+# The bindings speak the object model's vocabulary: identities, values,
+# observations, operations and ticks.
+gnoblin-model = { path = "../gnoblin-model" }
+
+[build-dependencies]
+# The Lua tables and `gnoblin.d.lua` are generated from the schema, so a schema
+# member is the only way to add one.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+[dev-dependencies]
+# The tests drive the host through the in-process loopback against a real graph
+# built from the checked-in schema, and re-derive the expected bindings from it.
+gnoblin-client = { path = "../gnoblin-client" }
+gnoblin-proto = { path = "../gnoblin-proto" }
+gnoblin-schema = { path = "../gnoblin-schema" }
+
 [lints]
 workspace = true
