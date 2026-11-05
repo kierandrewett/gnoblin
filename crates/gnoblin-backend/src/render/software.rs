@@ -30,6 +30,12 @@
 //! - **Damage** is the only region repainted. Every draw is clipped to the
 //!   intersection of the frame's damage and the layer, so an unchanged pixel is
 //!   never touched and a move cannot leave stale pixels behind.
+//! - **Corner radius and effect passes are not drawn here.** Pixman has no shader, so
+//!   a rounded corner, a shadow, a backdrop blur and a user shader are the GLES
+//!   renderer's work (D12: GLES now, Pixman for software). This path draws the
+//!   rectangle and leaves the properties it cannot honour alone instead of faking
+//!   them, which is what makes the two renderers comparable on the properties both
+//!   implement (placement, opacity, tint, damage).
 //!
 //! # Failure modes
 //!
@@ -59,11 +65,12 @@ use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as Physic
 use tracing::warn;
 
 use gnoblin_render::Color;
-use gnoblin_types::{Rect, Scale, Size};
+use gnoblin_types::{Scale, Size};
 
 use crate::render::RenderError;
 use crate::render::frame::{Layer, OutputFrame, Surface};
 use crate::render::image::Image;
+use crate::render::physical_rect;
 
 /// The colour format of the offscreen buffer.
 ///
@@ -262,7 +269,7 @@ impl Software {
             }
             match layer {
                 Layer::Solid(solid) => pixman_frame
-                    .draw_solid(dst, clipped, colour(solid.colour))
+                    .draw_solid(dst, clipped, colour(tinted(solid.colour, solid.tint)))
                     .map_err(failed)?,
                 Layer::Surface(surface) => {
                     let Some(Some(texture)) = textures.get(index) else {
@@ -280,7 +287,7 @@ impl Software {
             layer_damage(damage, dst, clipped);
             if !clipped.is_empty() {
                 pixman_frame
-                    .draw_solid(dst, clipped, colour(cursor.colour))
+                    .draw_solid(dst, clipped, colour(tinted(cursor.colour, cursor.tint)))
                     .map_err(failed)?;
             }
         }
@@ -411,26 +418,6 @@ fn source(surface: &Surface) -> Rectangle<f64, BufferCoords> {
     )
 }
 
-/// A logical rectangle in physical pixels.
-///
-/// Both edges are converted and rounded rather than the origin and the extent, so
-/// two rectangles that share an edge still share it after scaling: rounding the
-/// extent on its own would leave a one-pixel gap that nothing ever repaints.
-fn physical_rect(rect: Rect, scale: Scale) -> Rectangle<i32, Physical> {
-    if scale.is_identity() {
-        return Rectangle::new((rect.x, rect.y).into(), (rect.width as i32, rect.height as i32).into());
-    }
-    let ratio = scale.as_f64();
-    let left = (f64::from(rect.x) * ratio).round() as i32;
-    let top = (f64::from(rect.y) * ratio).round() as i32;
-    let right = (rect.right() as f64 * ratio).round() as i32;
-    let bottom = (rect.bottom() as f64 * ratio).round() as i32;
-    Rectangle::new(
-        (left, top).into(),
-        ((right - left).max(0), (bottom - top).max(0)).into(),
-    )
-}
-
 /// A scene colour as the renderer's colour type, premultiplied.
 ///
 /// Pixman's solid fill takes premultiplied components: an unpremultiplied colour
@@ -448,6 +435,21 @@ fn colour(colour: Color) -> Color32F {
     )
 }
 
+/// A straight colour multiplied by a layer's tint.
+///
+/// The tint is the same property a surface has, so a solid is tinted the same way: each
+/// channel scaled, alpha scaled too, in straight space before the colour is premultiplied.
+/// The GPU path's solid shader does exactly this, which is what makes the two comparable on
+/// the property.
+fn tinted(colour: Color, tint: Color) -> Color {
+    Color::new(
+        colour.r.clamp(0.0, 1.0) * tint.r.clamp(0.0, 1.0),
+        colour.g.clamp(0.0, 1.0) * tint.g.clamp(0.0, 1.0),
+        colour.b.clamp(0.0, 1.0) * tint.b.clamp(0.0, 1.0),
+        colour.a.clamp(0.0, 1.0) * tint.a.clamp(0.0, 1.0),
+    )
+}
+
 /// The one render failure for a pixman error, logged where it happens.
 fn failed(error: impl std::fmt::Debug) -> RenderError {
     warn!(?error, "[render] the software renderer refused an operation");
@@ -458,12 +460,13 @@ fn failed(error: impl std::fmt::Debug) -> RenderError {
 mod tests {
     use super::*;
     use crate::render::Solid;
+    use gnoblin_types::Rect;
 
     fn frame_with(background: Color, rect: Rect, colour: Color) -> OutputFrame {
         let mut frame = OutputFrame::new();
         frame.set_background(background);
         frame.push_damage(rect);
-        frame.push_layer(Layer::Solid(Solid { dst: rect, colour }));
+        frame.push_layer(Layer::Solid(Solid::new(rect, colour)));
         frame
     }
 
@@ -574,14 +577,14 @@ mod tests {
         let mut software = Software::new(Size::new(16, 16)).expect("a software renderer");
         let mut frame = OutputFrame::new();
         frame.push_damage(Rect::new(0, 0, 16, 16));
-        frame.push_layer(Layer::Solid(Solid {
-            dst: Rect::new(0, 0, 16, 16),
-            colour: Color::from_rgba8(0, 0, 255, 255),
-        }));
-        frame.set_cursor(Some(Solid {
-            dst: Rect::new(2, 2, 4, 4),
-            colour: Color::from_rgba8(255, 255, 255, 255),
-        }));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 16, 16),
+            Color::from_rgba8(0, 0, 255, 255),
+        )));
+        frame.set_cursor(Some(Solid::new(
+            Rect::new(2, 2, 4, 4),
+            Color::from_rgba8(255, 255, 255, 255),
+        )));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
         let image = software.screenshot().expect("a readback");
         assert_eq!(
@@ -602,10 +605,10 @@ mod tests {
         let mut frame = OutputFrame::new();
         frame.set_background(Color::from_rgba8(0, 0, 0, 255));
         frame.push_damage(Rect::new(0, 0, 8, 8));
-        frame.push_layer(Layer::Solid(Solid {
-            dst: Rect::new(0, 0, 8, 8),
-            colour: Color::from_rgba8(255, 255, 255, 128),
-        }));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 8, 8),
+            Color::from_rgba8(255, 255, 255, 128),
+        )));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
         let image = software.screenshot().expect("a readback");
         let [red, green, blue, alpha] = image.colour_at(4, 4).expect("a pixel");

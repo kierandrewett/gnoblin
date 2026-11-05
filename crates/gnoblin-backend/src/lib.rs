@@ -47,16 +47,22 @@
 //!   accumulated once and consumed per output: taking it per output would clear the
 //!   other outputs' damage and leave them stale.
 //!
-//! # The one `unsafe` block
+//! # Where this crate has to use unsafe
 //!
-//! Everything here uses the safe API except [`render::shm`], which turns Smithay's
-//! mapping of a client's `wl_shm` pool into a slice so a captured frame can be written
-//! into it. That is the only way to write a client's pixels in Rust without a GPU, and
-//! it is confined to one module with a `SAFETY:` comment on the block and the
-//! length and bounds checked first. The crate therefore restates the workspace's
-//! lint levels with `unsafe_code = "deny"`; the DRM backend — which must call libseat,
-//! libdrm and GBM — will add its own named shim module when it lands, as `Cargo.toml`
-//! at the workspace root describes.
+//! The workspace forbids `unsafe`, and this crate opts out with the table `Cargo.toml`
+//! records, for two reasons:
+//!
+//! - **A client's pixels are a mapping.** Turning Smithay's view of a `wl_shm` pool into a
+//!   slice is an `mmap`-shaped operation, and it lives in one module (`render/shm.rs`).
+//! - **A GLES context cannot be created safely.** Smithay's `EGLDisplay::new`,
+//!   `EGLContext::new` and `GlowRenderer::new` are `unsafe` because Smithay cannot check
+//!   that a native display is valid or that a context is not in use on another thread, and
+//!   `glow`'s calls are `unsafe` because a GL call changes process-wide state. The context
+//!   lives in [`render::gles::egl`] and every `glow` call in `render/gles/gl.rs`.
+//!
+//! Each of those modules opens with `#[allow(unsafe_code)]` and a `SAFETY:` comment per
+//! block, and nothing else in the crate contains `unsafe`. A session that draws with the
+//! software path reaches neither the EGL shim nor the GL one.
 //!
 //! # Failure modes first
 //!

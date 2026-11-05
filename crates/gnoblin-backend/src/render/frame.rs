@@ -29,11 +29,25 @@
 //!    a zero-area damage rectangle and a non-finite opacity are dropped by
 //!    [`OutputFrame::push_layer`] and [`OutputFrame::push_damage`] instead of dividing by zero
 //!    inside pixman: `render::software::tests::a_degenerate_layer_draws_nothing`.
+//! 4. **A corner radius a shader cannot use reaches it.** A radius that is negative or
+//!    not finite is dropped with the layer, the same way a non-finite opacity is, so a
+//!    signed distance field never sees one: `tests::an_unusable_corner_radius_is_dropped`.
+//!
+//! # What a layer carries besides its pixels
+//!
+//! A layer names the visual properties the scene's [`VisualTransform`] and effect chain
+//! hold: opacity, tint, corner radius and the passes of [`Effects`]. A renderer that
+//! cannot draw a pass ignores it (the software path does: see
+//! [`render::software`](crate::render::software)), and the GPU path draws it. Keeping
+//! them in one description is what lets the two paths be compared pixel for pixel on
+//! the properties they both implement.
+//!
+//! [`VisualTransform`]: gnoblin_render::VisualTransform
 
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
-use gnoblin_render::Color;
+use gnoblin_render::{Color, Effects};
 use gnoblin_types::{Rect, RectF};
 
 /// One thing a frame paints.
@@ -70,15 +84,55 @@ pub struct Surface {
     pub opacity: f32,
     /// Multiplicative colour, white for none.
     pub tint: Color,
+    /// Corner radius in logical pixels, 0 for square corners.
+    ///
+    /// It comes from the node's [`VisualTransform`](gnoblin_render::VisualTransform) and
+    /// is a *clip*: the renderer draws the corner as background, the same way a rounded
+    /// window reveals what is behind it.
+    pub corner_radius: f32,
+    /// The effect chain drawn with the layer, in application order.
+    ///
+    /// The passes are the scene's own [`Effects`], so the values a shader reads here are
+    /// the values the script that set them was checked against.
+    pub effects: Effects,
 }
 
 /// A solid rectangle on the output.
-#[derive(Clone, Copy, Debug)]
+///
+/// It is not `Copy` because it can carry an effect chain, which owns its passes.
+#[derive(Clone, Debug)]
 pub struct Solid {
     /// Where it lands, in the output's logical space.
     pub dst: Rect,
     /// Its colour, alpha included.
     pub colour: Color,
+    /// Multiplicative colour, white for none.
+    ///
+    /// A solid carries a tint for the same reason a surface does: a script that dims a
+    /// window dims whatever the window is made of, and the frame description should not
+    /// have two rules for one property.
+    pub tint: Color,
+    /// Corner radius in logical pixels, 0 for square corners.
+    pub corner_radius: f32,
+    /// The effect chain drawn with the rectangle, in application order.
+    pub effects: Effects,
+}
+
+impl Solid {
+    /// A rectangle of one colour with square corners and no effects.
+    ///
+    /// This is the shape the desktop background, an overlay flash and the built-in
+    /// pointer have, and the one every caller means unless it says otherwise.
+    #[must_use]
+    pub fn new(dst: Rect, colour: Color) -> Self {
+        Self {
+            dst,
+            colour,
+            tint: Color::WHITE,
+            corner_radius: 0.0,
+            effects: Effects::new(),
+        }
+    }
 }
 
 /// The frame an output draws.
@@ -165,8 +219,10 @@ impl OutputFrame {
     /// Adds a layer on top of the ones already described.
     ///
     /// A degenerate layer is dropped rather than drawn: a zero extent has nothing
-    /// to show and a non-finite opacity would reach the blend as a division by
-    /// zero.
+    /// to show, a non-finite opacity would reach the blend as a division by zero, and a
+    /// corner radius of `NaN` would reach a signed distance field as one. The effect
+    /// chain itself needs no re-check here: [`Effects`] validates a pass as it is
+    /// pushed, so an invalid pass cannot be inside a layer.
     pub fn push_layer(&mut self, layer: Layer) {
         match &layer {
             Layer::Surface(surface) => {
@@ -179,9 +235,20 @@ impl OutputFrame {
                 if !(0.0..=1.0).contains(&surface.opacity) || !surface.tint.is_finite() {
                     return;
                 }
+                if !surface.corner_radius.is_finite() || surface.corner_radius < 0.0 {
+                    return;
+                }
             }
             Layer::Solid(solid) => {
-                if solid.dst.is_empty() || !solid.colour.is_finite() || solid.colour.a <= 0.0 {
+                if solid.dst.is_empty() || !solid.colour.is_finite() || !solid.tint.is_finite() {
+                    return;
+                }
+                // A transparent rectangle is nothing to draw — unless it carries effects,
+                // which is how a layer that only *blurs what is behind it* is stated.
+                if solid.colour.a <= 0.0 && solid.effects.is_empty() {
+                    return;
+                }
+                if !solid.corner_radius.is_finite() || solid.corner_radius < 0.0 {
                     return;
                 }
             }
@@ -202,7 +269,8 @@ impl OutputFrame {
 
     /// Sets the cursor.
     pub fn set_cursor(&mut self, cursor: Option<Solid>) {
-        self.cursor = cursor.filter(|solid| !solid.dst.is_empty() && solid.colour.is_finite());
+        self.cursor =
+            cursor.filter(|solid| !solid.dst.is_empty() && solid.colour.is_finite() && solid.tint.is_finite());
     }
 }
 
@@ -213,18 +281,12 @@ mod tests {
     #[test]
     fn a_degenerate_layer_draws_nothing() {
         let mut frame = OutputFrame::new();
-        frame.push_layer(Layer::Solid(Solid {
-            dst: Rect::new(0, 0, 0, 10),
-            colour: Color::WHITE,
-        }));
-        frame.push_layer(Layer::Solid(Solid {
-            dst: Rect::new(0, 0, 0, 10),
-            colour: Color::TRANSPARENT,
-        }));
-        frame.push_layer(Layer::Solid(Solid {
-            dst: Rect::new(0, 0, 10, 10),
-            colour: Color::new(0.0, 0.0, 0.0, f32::NAN),
-        }));
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 0, 10), Color::WHITE)));
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 0, 10), Color::TRANSPARENT)));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 10, 10),
+            Color::new(0.0, 0.0, 0.0, f32::NAN),
+        )));
         assert!(frame.layers().is_empty(), "nothing to draw, nothing described");
     }
 
@@ -242,10 +304,7 @@ mod tests {
     fn clearing_a_frame_keeps_its_allocation_and_drops_the_description() {
         let mut frame = OutputFrame::new();
         frame.set_background(Color::from_rgba8(1, 2, 3, 255));
-        frame.push_layer(Layer::Solid(Solid {
-            dst: Rect::new(0, 0, 4, 4),
-            colour: Color::WHITE,
-        }));
+        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 4, 4), Color::WHITE)));
         frame.push_damage(Rect::new(0, 0, 4, 4));
         let capacity = frame.layers.capacity();
         frame.clear();
@@ -253,6 +312,26 @@ mod tests {
         assert!(frame.cursor().is_none());
         assert_eq!(frame.background(), Color::BLACK, "the default background is back");
         assert_eq!(frame.layers.capacity(), capacity, "the allocation is reused");
+    }
+
+    #[test]
+    fn an_unusable_corner_radius_is_dropped() {
+        // A corner radius reaches a signed distance field, which turns a NaN into a
+        // coverage of NaN and a whole layer of garbage; a negative one rounds the
+        // wrong way. Both are refused with the layer.
+        let mut frame = OutputFrame::new();
+        let mut solid = Solid::new(Rect::new(0, 0, 8, 8), Color::WHITE);
+        solid.corner_radius = f32::NAN;
+        frame.push_layer(Layer::Solid(solid));
+        let mut solid = Solid::new(Rect::new(0, 0, 8, 8), Color::WHITE);
+        solid.corner_radius = -2.0;
+        frame.push_layer(Layer::Solid(solid));
+        assert!(frame.layers().is_empty(), "neither radius is drawable");
+
+        let mut solid = Solid::new(Rect::new(0, 0, 8, 8), Color::WHITE);
+        solid.corner_radius = 3.0;
+        frame.push_layer(Layer::Solid(solid));
+        assert_eq!(frame.layers().len(), 1, "a radius a corner can hold is drawn");
     }
 
     #[test]

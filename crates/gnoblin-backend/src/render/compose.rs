@@ -91,6 +91,8 @@ struct WindowNode {
     geometry: Rect,
     /// Its visual transform, kept across node recreation.
     transform: VisualTransform,
+    /// Its effect chain, kept for the same reason and pushed to the node.
+    effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
     visible: bool,
     /// The client's content, when it has committed one.
@@ -207,6 +209,7 @@ impl Composer {
                 node: None,
                 geometry,
                 transform: VisualTransform::IDENTITY,
+                effects: Effects::new(),
                 visible: true,
                 content: None,
                 buffer: None,
@@ -280,6 +283,41 @@ impl Composer {
             return;
         }
         entry.transform.tint = tint;
+        self.sync(window, true);
+    }
+
+    /// Sets a window's corner radius, in logical pixels.
+    ///
+    /// The radius is the scene's own property (`VisualTransform::corner_radius`), so a
+    /// tween can animate it and the frame carries it to whichever renderer draws the
+    /// window. A negative or non-finite radius is ignored rather than clamped: a corner
+    /// the caller cannot express is a caller bug, and drawing a square window would
+    /// hide it.
+    pub fn set_window_corner_radius(&mut self, window: WindowId, radius: f32) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if !radius.is_finite() || radius < 0.0 || entry.transform.corner_radius == radius {
+            return;
+        }
+        entry.transform.corner_radius = radius;
+        self.sync(window, true);
+    }
+
+    /// Replaces a window's effect chain.
+    ///
+    /// The chain is the scene's own [`Effects`], already validated pass by pass, so the
+    /// values a GPU shader reads are the values the script that set them was checked
+    /// against. The old and new chain damage nothing on their own: the chain only draws
+    /// inside or around the window, which [`Composer::sync`] re-damages.
+    pub fn set_window_effects(&mut self, window: WindowId, effects: Effects) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if entry.effects == effects {
+            return;
+        }
+        entry.effects = effects;
         self.sync(window, true);
     }
 
@@ -404,6 +442,8 @@ impl Composer {
                 transform: content.transform,
                 opacity: entry.transform.opacity,
                 tint: entry.transform.tint,
+                corner_radius: entry.transform.corner_radius,
+                effects: entry.effects.clone(),
             }));
         }
         !frame.is_empty()
@@ -440,6 +480,9 @@ impl Composer {
                 if self.scene.z_order(node) != Some(z_order) {
                     let _ = self.scene.set_z_order(node, z_order);
                 }
+                if self.scene.effects(node) != Some(&entry.effects) {
+                    let _ = self.scene.set_effects(node, entry.effects.clone());
+                }
             }
             existing => {
                 // The content changed size, or there was no node yet: the node is
@@ -455,7 +498,7 @@ impl Composer {
                     z_order,
                     bounds,
                     transform,
-                    effects: Effects::new(),
+                    effects: entry.effects.clone(),
                     kind: NodeKind::Visual,
                 };
                 if self.scene.insert(id, spec).is_ok()

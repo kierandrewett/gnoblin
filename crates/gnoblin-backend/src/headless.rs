@@ -14,6 +14,14 @@
 //! The virtual output's size is settable, which is how a test drives a mode change
 //! and how the parity harness will run a session at a fixed size.
 //!
+//! ## Choosing the renderer
+//!
+//! [`HeadlessConfig`] selects the renderer a headless output draws with: [`HeadlessTarget`]'s
+//! [`Software`] path, which is the default and the reference, or the [`Gles`] path, which is
+//! the same frame drawn on a surfaceless GLES context (D12's GPU half). The default is
+//! chosen by [`HeadlessRenderer::default`], so a session that says nothing about rendering
+//! gets the software path, and a test that compares the two asks for one of each.
+//!
 //! ## Driving a backend the session owns
 //!
 //! Once a session owns its backend a caller cannot reach it any more, so a test that
@@ -46,7 +54,7 @@ use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::DisplayMode;
 
-use crate::render::{Image, OutputFrame, RenderError, Software};
+use crate::render::{Gles, Image, OutputFrame, RenderError, Software};
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 
 /// The size a fresh headless session starts at.
@@ -62,6 +70,116 @@ pub const DEFAULT_MODE: DisplayMode = DisplayMode::new(1024, 768, 60_000);
 /// configuration document can address it and a log line reads like a session.
 pub const DEFAULT_CONNECTOR: &str = "HEADLESS-1";
 
+/// Which renderer a headless output draws with.
+///
+/// The software path is the reference: it needs no GPU, no EGL and no session, which is what
+/// makes it the default. The GLES path is the same [`OutputFrame`] drawn on a surfaceless
+/// GLES context, and it exists here so a session and a test can choose it without a DRM or
+/// nested backend.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum HeadlessRenderer {
+    /// Smithay's Pixman renderer: pixels with no GPU.
+    #[default]
+    Software,
+    /// Smithay's GLES renderer on a surfaceless EGL context: effects and user shaders.
+    Gles,
+}
+
+impl HeadlessRenderer {
+    /// The renderer's name, for a log line and a startup report.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Software => "software",
+            Self::Gles => "gles",
+        }
+    }
+
+    /// A renderer of this kind with a target of `physical` pixels.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unavailable`] when this machine cannot create the renderer at all —
+    /// for the GLES path, no EGL library, no surfaceless platform or no GLES 3 context.
+    fn build(self, physical: Size) -> Result<TargetRenderer, RenderError> {
+        match self {
+            Self::Software => Software::new(physical).map(TargetRenderer::Software),
+            Self::Gles => Gles::new(physical).map(|gles| TargetRenderer::Gles(Box::new(gles))),
+        }
+    }
+}
+
+/// What a headless session starts with.
+///
+/// It is a value rather than a set of arguments so a caller that will grow properties — a
+/// target scale, a connector name — keeps one name for "how this session starts" and one
+/// place to add them.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct HeadlessConfig {
+    /// The renderer every output draws with.
+    pub renderer: HeadlessRenderer,
+}
+
+impl HeadlessConfig {
+    /// The default configuration: one virtual output on the software path.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The same configuration on the GLES path.
+    #[must_use]
+    pub fn gles() -> Self {
+        Self {
+            renderer: HeadlessRenderer::Gles,
+        }
+    }
+}
+
+/// The renderer one virtual output draws with.
+///
+/// It is an enum rather than a `Box<dyn ...>` because the two answers are fixed at build
+/// time and the target's own methods stay visible to a test: `screenshot` on a
+/// [`HeadlessTarget`] reads whichever one is installed. The GLES variant is much larger than
+/// the software one, which is why the whole thing is boxed: a target is created once per
+/// output, so a second allocation there costs nothing a frame feels.
+enum TargetRenderer {
+    /// Pixman, into an offscreen image buffer.
+    Software(Software),
+    /// GLES, into a texture on a surfaceless context.
+    ///
+    /// Boxed because a GLES renderer owns a context and four programs and is several times
+    /// the size of a pixman one; without the box every target in the session would reserve
+    /// the larger size.
+    Gles(Box<Gles>),
+}
+
+impl TargetRenderer {
+    /// Draws a frame, repainting only its damage.
+    fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
+        match self {
+            Self::Software(software) => software.draw(frame, scale),
+            Self::Gles(gles) => gles.draw(frame, scale),
+        }
+    }
+
+    /// Reads the frame back.
+    fn screenshot(&mut self) -> Result<Image, RenderError> {
+        match self {
+            Self::Software(software) => software.screenshot(),
+            Self::Gles(gles) => gles.screenshot(),
+        }
+    }
+
+    /// Replaces the buffer with one of the given size.
+    fn resize(&mut self, physical: Size) -> Result<(), RenderError> {
+        match self {
+            Self::Software(software) => software.resize(physical),
+            Self::Gles(gles) => gles.resize(physical),
+        }
+    }
+}
+
 /// A virtual output: an offscreen buffer, its damage and its present count.
 ///
 /// The damage it keeps is clipped to its own extent, so a test can prove that a
@@ -75,7 +193,7 @@ pub struct HeadlessTarget {
     scale: Scale,
     presents: u64,
     damage: Vec<Rect>,
-    software: Software,
+    renderer: Box<TargetRenderer>,
 }
 
 impl std::fmt::Debug for HeadlessTarget {
@@ -87,6 +205,7 @@ impl std::fmt::Debug for HeadlessTarget {
             .field("scale", &self.scale)
             .field("presents", &self.presents)
             .field("damage", &self.damage)
+            .field("renderer", &self.renderer())
             .finish_non_exhaustive()
     }
 }
@@ -99,6 +218,17 @@ impl HeadlessTarget {
     /// [`RenderError`] when the size covers no pixels or the software renderer
     /// cannot be created, which means the session cannot draw at all.
     pub fn new(mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
+        Self::with_renderer(HeadlessRenderer::Software, mode, scale)
+    }
+
+    /// A target of the given mode and scale, drawn by the given renderer.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Degenerate`] when the mode covers no pixels, and
+    /// [`RenderError::Unavailable`] when the renderer cannot be created on this machine —
+    /// which for [`HeadlessRenderer::Gles`] means no surfaceless EGL context.
+    pub fn with_renderer(renderer: HeadlessRenderer, mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
         let physical = Size::new(mode.width, mode.height);
         let size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
         Ok(Self {
@@ -107,8 +237,30 @@ impl HeadlessTarget {
             scale,
             presents: 0,
             damage: Vec::new(),
-            software: Software::new(physical)?,
+            renderer: Box::new(renderer.build(physical)?),
         })
+    }
+
+    /// The renderer this target draws with.
+    #[must_use]
+    pub fn renderer(&self) -> &'static str {
+        match *self.renderer {
+            TargetRenderer::Software(_) => "software",
+            TargetRenderer::Gles(_) => "gles",
+        }
+    }
+
+    /// The GLES renderer, when this target draws with one.
+    ///
+    /// A test that wants the draw counter or a shader error reaches the renderer through
+    /// this; the software path answers [`None`], because a question about a device has no
+    /// answer without one.
+    #[must_use]
+    pub fn gles(&mut self) -> Option<&mut Gles> {
+        match &mut *self.renderer {
+            TargetRenderer::Software(_) => None,
+            TargetRenderer::Gles(gles) => Some(gles.as_mut()),
+        }
     }
 
     /// How many frames the target was asked to present.
@@ -135,7 +287,7 @@ impl HeadlessTarget {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn screenshot(&mut self) -> Result<Image, RenderError> {
-        self.software.screenshot()
+        self.renderer.screenshot()
     }
 
     /// The target's whole extent as a rectangle, for clipping.
@@ -145,7 +297,7 @@ impl HeadlessTarget {
 
     /// Replaces the target's extent and buffer after a mode change.
     fn resize(&mut self, mode: DisplayMode, scale: Scale) -> Result<(), RenderError> {
-        self.software.resize(Size::new(mode.width, mode.height))?;
+        self.renderer.resize(Size::new(mode.width, mode.height))?;
         self.physical = Size::new(mode.width, mode.height);
         self.size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
         self.scale = scale;
@@ -164,7 +316,7 @@ impl Target for HeadlessTarget {
     }
 
     fn draw(&mut self, frame: &OutputFrame) -> Result<(), RenderError> {
-        self.software.draw(frame, self.scale)
+        self.renderer.draw(frame, self.scale)
     }
 
     fn present(&mut self, damage: &[Rect]) -> Present {
@@ -299,6 +451,8 @@ pub struct Headless {
     /// The next output identity. A counter, not the table length, so a hotplug after an
     /// unplug cannot name an output that already exists.
     next_output: u64,
+    /// The renderer every output this backend connects draws with.
+    renderer: HeadlessRenderer,
 }
 
 impl std::fmt::Debug for Headless {
@@ -328,9 +482,21 @@ impl Headless {
     /// so a backend that cannot is not a session that can limp along.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_config(HeadlessConfig::default()).expect("a headless session with a software renderer")
+    }
+
+    /// A backend with one virtual output, drawn by the renderer `config` selects.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unavailable`] when the selected renderer cannot be created on this
+    /// machine: [`HeadlessRenderer::Gles`] asks for a surfaceless EGL context, and a headless
+    /// session that cannot draw is better refused here than left to fail on its first frame.
+    pub fn with_config(config: HeadlessConfig) -> Result<Self, RenderError> {
         let mut backend = Self::empty();
+        backend.renderer = config.renderer;
         backend.push_output(DEFAULT_CONNECTOR, DEFAULT_MODE, Scale::integral(1));
-        backend
+        Ok(backend)
     }
 
     /// A backend with no outputs.
@@ -349,6 +515,7 @@ impl Headless {
             requests: Arc::new(Mutex::new(Requests::default())),
             presenting: true,
             next_output: 0,
+            renderer: HeadlessRenderer::default(),
         }
     }
 
@@ -365,8 +532,9 @@ impl Headless {
     ///
     /// # Panics
     ///
-    /// Panics if `mode` covers no pixels, or if the output's offscreen buffer cannot
-    /// be created. The constructor is for callers that have a size to hand; a runtime
+    /// Panics if `mode` covers no pixels, or if the backend's renderer cannot create an
+    /// offscreen buffer for it. A renderer this machine cannot create at all is refused by
+    /// [`Headless::with_config`], so this panic means the allocation failed. The constructor is for callers that have a size to hand; a runtime
     /// request goes through [`Self::resize`], which reports the same problems as a
     /// [`BackendError`].
     pub fn push_output(&mut self, connector: &str, mode: DisplayMode, scale: Scale) {
@@ -377,7 +545,8 @@ impl Headless {
         let id = OutputId::new(self.next_output);
         self.next_output = self.next_output.saturating_add(1);
         let output = Output::new(id, connector, mode, scale);
-        let target = HeadlessTarget::new(mode, scale).expect("a virtual output with a software renderer");
+        let target = HeadlessTarget::with_renderer(self.renderer, mode, scale)
+            .expect("a virtual output whose renderer this machine can create");
         self.outputs.push(output.clone());
         self.targets.push(target);
         self.pending.push(BackendEvent::OutputConnected(output));
@@ -587,10 +756,10 @@ mod tests {
             }
             frame.set_background(gnoblin_render::Color::BLACK);
             frame.push_damage(Rect::new(0, 0, 4, 4));
-            frame.push_layer(Layer::Solid(Solid {
-                dst: Rect::new(0, 0, 4, 4),
-                colour: gnoblin_render::Color::from_rgba8(255, 0, 0, 255),
-            }));
+            frame.push_layer(Layer::Solid(Solid::new(
+                Rect::new(0, 0, 4, 4),
+                gnoblin_render::Color::from_rgba8(255, 0, 0, 255),
+            )));
             true
         }
 
@@ -735,6 +904,37 @@ mod tests {
             image.colour_at(1, 1),
             Some([255, 0, 0, 255]),
             "the frame the host described is in the buffer"
+        );
+    }
+
+    #[test]
+    fn a_headless_session_can_draw_with_the_gles_renderer() {
+        // The renderer is a configuration choice, and the two paths must be
+        // interchangeable: the same host frame, the same probe, the same pixel.
+        let Ok(mut backend) = Headless::with_config(HeadlessConfig::gles()) else {
+            println!("skipping the GLES headless test: no surfaceless EGL context on this machine");
+            return;
+        };
+        assert_eq!(
+            HeadlessRenderer::default(),
+            HeadlessRenderer::Software,
+            "the default stays software"
+        );
+        let output = backend.outputs[0].id;
+        let mut host = changing();
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        let image = backend.screenshot(output).expect("a readback");
+        assert_eq!(
+            image.colour_at(1, 1),
+            Some([255, 0, 0, 255]),
+            "the GLES path draws the same frame the software path does"
+        );
+        let target = backend.target_of(output).expect("the output has a target");
+        assert_eq!(target.renderer(), "gles");
+        assert_eq!(
+            target.presents(),
+            1,
+            "a headless target reports no present, whichever renderer drew"
         );
     }
 

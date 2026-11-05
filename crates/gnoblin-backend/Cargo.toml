@@ -6,11 +6,20 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# The workspace table forbids `unsafe` outright, which cannot be lifted. This crate
-# needs one `unsafe` block that turns Smithay's mapping of a client's `wl_shm` pool
-# into a slice (`render/shm.rs`, the only writer of client pixels), so it restates the
-# workspace's levels with `deny` and confines the exemption to that module, exactly as
-# `Cargo.toml` at the workspace root describes.
+# The workspace table forbids `unsafe` outright, which cannot be lifted, and this crate
+# needs two things it does not offer:
+#
+# - one block that turns Smithay's mapping of a client's `wl_shm` pool into a slice
+#   (`render/shm.rs`, the only writer of client pixels);
+# - the EGL and GL calls a GLES context and its draws are made of. Smithay's
+#   `EGLDisplay::new` and `GlowRenderer::new` are `unsafe` because it cannot check a native
+#   display or that a context is idle on another thread, and `glow`'s calls are `unsafe`
+#   because a GL call changes process-wide state.
+#
+# So the crate restates the workspace's levels with `deny` and confines the exemption to
+# named FFI shim modules, each opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment
+# per block: `render/shm.rs`, `render/gles/egl.rs` and `render/gles/gl.rs`. Nothing else in
+# the crate may contain `unsafe`, and a session on the software path reaches none of them.
 [lints.rust]
 unsafe_code = "deny"
 
@@ -41,11 +50,11 @@ tracing = "0.1.37"
 # re-exports. It is the same version `gnoblin-wayland` tests its server with, so the
 # two sides of the wire cannot drift apart.
 #
-# The safe API is enough for a session to draw, so the crate keeps the workspace's
-# `unsafe_code = "forbid"`: a shared-memory buffer is filled through
-# `File::write_all_at` rather than an `mmap`, one copy per frame more than a real
-# client would make, and the reason `nested/mod.rs` states the dmabuf path as a
-# follow-up rather than a second code path here.
+# The client side needs no `unsafe`: a shared-memory buffer is filled through
+# `File::write_all_at` rather than an `mmap`, one copy per frame more than a real client
+# would make, which is why `nested/mod.rs` states the dmabuf path as a follow-up rather
+# than a second code path here. The crate's `unsafe` opt-out (see the `[lints]` table) is
+# for the GLES renderer's EGL and GL calls, not for this backend.
 wayland-client = "0.31.14"
 # The client side of `xdg_shell` and of the scale protocols. `staging` is the
 # feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
@@ -57,3 +66,13 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 # the alternative was a second event enum in this crate and a translation in each
 # direction.
 gnoblin-wm = { path = "../gnoblin-wm" }
+# The GLES renderer's shader compiler (D12): effect and user shaders are written
+# once in WGSL, `naga` validates them and emits the GLSL ES 3.10 the GLES backend
+# links through `glow`. A refused shader is reported with its line and disables only
+# its own effect, so `naga` never decides whether a frame is drawn.
+naga.workspace = true
+# The safe OpenGL ES API layered over Smithay's GLES context by its
+# `renderer_glow` feature. Every draw the GLES renderer makes goes through it, so
+# no `gl::` call is written here by hand and the only `unsafe` in the crate is the
+# EGL bootstrap in `render/gles/egl.rs`.
+glow.workspace = true

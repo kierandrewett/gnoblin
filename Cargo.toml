@@ -107,6 +107,17 @@ prost = "0.14.4"
 prost-build = "0.14.4"
 prost-types = "0.14.4"
 protox = "0.10.0"
+# The shader compiler of D12: every effect and user shader is written once in
+# WGSL and compiled per backend with `naga` (the validator and translator wgpu
+# uses). `wgsl-in` parses the source the shader guide documents and `glsl-out`
+# emits the GLSL ES 3.10 the GLES backend links; the Vulkan backend will take the
+# same module to SPIR-V. Validation is part of the crate, so no feature selects
+# it. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
+# The safe OpenGL ES API Smithay's `renderer_glow` feature is built on. The same
+# 0.16 the pinned Smithay revision depends on, so the two cannot resolve to
+# different contexts.
+glow = "0.16"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.140"
 # The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).
@@ -127,7 +138,14 @@ toml = "1.2.0"
 # not in a member because D12's software path is the reference renderer: it links
 # the system `pixman-1` and turns `#[cfg]`s on in Smithay's own modules, both of
 # which must look the same for the whole workspace.
-smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman"] }
+#
+# `renderer_gl` and `renderer_glow` are here for the same reason, one step later:
+# D12's GPU path is Smithay's GLES renderer (`renderer_gl`, which is the EGL and
+# GLES bindings) with `glow` on top (`renderer_glow`, which hands the same
+# context to a safe `glow::Context`). `renderer_gl` pulls no display or DRM
+# backend in by itself, so a session that never asks for a GLES renderer pays for
+# the bindings and nothing else.
+smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman", "renderer_gl", "renderer_glow"] }
 # The Lua VM the script runtime embeds (design/rust-compositor.md, D10). Lua 5.5
 # is vendored and compiled by the build so the runtime links one Lua version on
 # every distribution target instead of whatever the distribution ships. Only
