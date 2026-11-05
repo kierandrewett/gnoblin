@@ -74,6 +74,7 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, WindowKind, WindowSpec, Wm, 
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
+use crate::modal::{Modal, ModalEvent};
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::output_control::OutputControlState;
 use crate::protocols::capture_shared::CaptureTables;
@@ -442,6 +443,10 @@ pub struct State {
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
     pub(crate) composer: Composer,
+    /// The modal overlay, if one is set; it takes input from the clients while it stands.
+    pub(crate) modal: Option<Modal>,
+    /// The modal events queued since the last take, in the order they arrived.
+    pub(crate) modal_events: Vec<ModalEvent>,
     /// The reason each workspace's last layout run failed, until its next placement.
     pub(crate) layout_failures: BTreeMap<WorkspaceId, &'static str>,
     /// The layout control the compositor installed, which builds engines and holds the
@@ -716,6 +721,8 @@ impl State {
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             composer: Composer::new(),
+            modal: None,
+            modal_events: Vec::new(),
             layout_failures: BTreeMap::new(),
             layouts: None,
             last_frame: None,
@@ -1953,6 +1960,58 @@ impl State {
         }
     }
 
+    /// Queues the modal events an input edge becomes while a modal is set. Returns
+    /// `false` for an edge that is not a modal event, which then routes as usual.
+    fn route_to_modal(&mut self, event: &InputEvent) -> bool {
+        match *event {
+            InputEvent::Key { keycode, pressed } => {
+                let state = if pressed {
+                    gnoblin_types::KeyState::Pressed
+                } else {
+                    gnoblin_types::KeyState::Released
+                };
+                self.modal_events.push(ModalEvent::Key { keycode, state });
+            }
+            InputEvent::PointerButton { button, pressed } => {
+                let state = if pressed {
+                    gnoblin_types::KeyState::Pressed
+                } else {
+                    gnoblin_types::KeyState::Released
+                };
+                self.modal_events.push(ModalEvent::PointerButton {
+                    x: self.pointer_position.x,
+                    y: self.pointer_position.y,
+                    button,
+                    state,
+                });
+            }
+            InputEvent::PointerMotion { .. }
+            | InputEvent::PointerMotionRelative { .. }
+            | InputEvent::PointerLeave
+            | InputEvent::PointerAxis { .. }
+            | InputEvent::Touch { .. } => {}
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => return false,
+        }
+        true
+    }
+
+    /// Sets or clears the modal and damages the outputs it covers, so the change is drawn.
+    pub(crate) fn set_modal(&mut self, modal: Option<Modal>) {
+        for output in [self.modal.as_ref(), modal.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(Modal::output)
+        {
+            self.composer.damage_output(output);
+        }
+        self.modal = modal;
+    }
+
+    /// Takes the modal events queued since the last take.
+    pub(crate) fn take_modal_events(&mut self) -> Vec<ModalEvent> {
+        std::mem::take(&mut self.modal_events)
+    }
+
     pub(crate) fn frame_damage(&self, output: OutputId) -> Option<&[Rect]> {
         match &self.last_frame {
             Some((described, damage)) if *described == output => Some(damage),
@@ -2250,6 +2309,14 @@ impl Host for State {
             // a frame queued before the cover worthless.
             self.protection_generation = Some(self.session_host.protection.generation());
         }
+        // The modal overlay is set on the output it covers and cleared everywhere else, so
+        // a cleared or moved modal leaves no stale overlay behind.
+        frame.set_overlay(
+            self.modal
+                .as_ref()
+                .filter(|modal| modal.output() == output)
+                .map(|modal| modal.overlay().clone()),
+        );
         changed
     }
 
@@ -2259,6 +2326,11 @@ impl Host for State {
         // notifications are derived from. It is recorded before the event is routed, so a
         // key a binding consumes still counts as the user being present.
         self.record_activity();
+        // While a modal is set it takes the keys and pointer buttons, and the clients
+        // see none of them; the rest of the input is dropped for the same reason.
+        if self.modal.is_some() && self.route_to_modal(&event) {
+            return;
+        }
         match event {
             InputEvent::PointerMotion { output, position } => {
                 let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {

@@ -42,6 +42,7 @@ use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::InitError;
 use tracing::{debug, info, warn};
 
+use crate::modal::{Modal, ModalEvent};
 use gnoblin_backend::render::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_config::Protocols;
@@ -344,6 +345,10 @@ impl Server {
                                 if !state.select_input_source(index) {
                                     warn!(index, "[keyboard] no such input source");
                                 }
+                            }
+                            Command::SetModal(modal) => state.set_modal(modal),
+                            Command::ModalEvents { reply } => {
+                                let _ = reply.send(state.take_modal_events());
                             }
                             Command::Bind { name, chord } => {
                                 if !state.add_binding(&name, &chord) {
@@ -737,6 +742,23 @@ impl ControlHandle {
         });
     }
 
+    /// Sets the modal overlay, or clears it with `None`.
+    ///
+    /// While a modal is set no key or pointer button reaches a client; each one is
+    /// queued as a [`ModalEvent`] for [`ControlHandle::modal_events`] instead.
+    pub fn set_modal(&self, modal: Option<Modal>) {
+        self.control.push(Command::SetModal(modal));
+    }
+
+    /// The modal events queued since the last call, or `None` when the loop did not
+    /// answer in time.
+    #[must_use]
+    pub fn modal_events(&self) -> Option<Vec<ModalEvent>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::ModalEvents { reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Takes a picture of what `output` currently shows.
     ///
     /// The request is answered by the frame hook at the end of the next iteration, so
@@ -885,6 +907,12 @@ enum Command {
     BlurRegion {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<Option<Vec<ExtBackgroundEffectV1ObservedBlurRect>>>,
+    },
+    /// Set or clear the modal overlay, which takes input from the clients.
+    SetModal(Option<Modal>),
+    /// Every modal event queued since the last take, and the channel its answer goes back on.
+    ModalEvents {
+        reply: std::sync::mpsc::SyncSender<Vec<ModalEvent>>,
     },
 }
 

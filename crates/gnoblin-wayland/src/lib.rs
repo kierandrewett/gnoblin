@@ -179,6 +179,7 @@
 mod access;
 mod frame;
 mod keyboard;
+mod modal;
 mod observation;
 mod output_control;
 mod protocols;
@@ -187,6 +188,7 @@ mod state;
 mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
+pub use modal::{Modal, ModalEvent};
 pub use observation::{
     ActivationDenial, LockObservation, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace, Observer,
     SessionSnapshot,

@@ -27,8 +27,11 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
+use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
-use gnoblin_wayland::{Config, ControlHandle, LayoutControl, LoopError, ObservedWindow, Server, SessionSnapshot};
+use gnoblin_wayland::{
+    Config, ControlHandle, LayoutControl, LoopError, Modal, ModalEvent, ObservedWindow, Server, SessionSnapshot,
+};
 use gnoblin_wm::layout::{
     Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
 };
@@ -171,6 +174,8 @@ struct App {
     popup_configures: u32,
     /// Whether the server dismissed a popup.
     popup_done: bool,
+    /// How many key edges the keyboard delivered.
+    keys: u32,
 }
 
 /// A real Wayland client for one connection.
@@ -660,8 +665,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_keyboard::Event::Enter { .. } = event {
-            state.keyboard_enters += 1;
+        match event {
+            wl_keyboard::Event::Enter { .. } => state.keyboard_enters += 1,
+            wl_keyboard::Event::Key { .. } => state.keys += 1,
+            _ => {}
         }
     }
 }
@@ -1145,4 +1152,56 @@ fn reduced_motion_moves_a_placement_at_once() {
         vec![100, 200],
         "with reduced motion no intermediate position is drawn"
     );
+}
+#[test]
+fn a_modal_takes_the_keys_from_the_client_until_it_is_cleared() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.map_window("org.gnoblin.Test", "Modal");
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+
+        let output = session.windows().outputs().first().copied().expect("an output");
+        let image = Image::new(gnoblin_types::Size { width: 2, height: 2 }, 8, vec![0; 16]).expect("a 2x2 image");
+        let overlay = Overlay::new(Rect::from_size(gnoblin_types::Size { width: 2, height: 2 }), &image)
+            .expect("a non-empty overlay");
+        session.control.set_modal(Some(Modal::new(output, overlay)));
+
+        session.control.inject_input(InputEvent::Key {
+            keycode: 30,
+            pressed: true,
+        });
+        assert_eq!(
+            session.control.modal_events(),
+            Some(vec![ModalEvent::Key {
+                keycode: 30,
+                state: gnoblin_types::KeyState::Pressed,
+            }]),
+            "the modal queued the key instead of the client"
+        );
+        client.roundtrip();
+        assert_eq!(client.state.keys, 0, "the client received no key while the modal stood");
+
+        session.control.set_modal(None);
+        session.control.inject_input(InputEvent::Key {
+            keycode: 30,
+            pressed: true,
+        });
+        let deadline = Instant::now() + TIMEOUT;
+        while client.state.keys == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "the client never received the key after the modal"
+            );
+            client.roundtrip();
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            session.control.modal_events(),
+            Some(Vec::new()),
+            "no modal event after clearing"
+        );
+
+        client.destroy(window);
+    });
 }
