@@ -145,7 +145,27 @@ toml = "1.2.0"
 # context to a safe `glow::Context`). `renderer_gl` pulls no display or DRM
 # backend in by itself, so a session that never asks for a GLES renderer pays for
 # the bindings and nothing else.
-smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop", "renderer_pixman", "renderer_gl", "renderer_glow"] }
+#
+# The hardware backend is the second step: `backend_drm` (the KMS device and
+# surface), `backend_gbm` (buffer allocation for scan-out), `backend_udev` (device
+# discovery and hotplug), `backend_session_libseat` (device access through the
+# seat) and `backend_libinput` (the seat's input devices) are what
+# `crates/gnoblin-backend/src/drm` and `src/libinput` are made of. They are named
+# here rather than in one member's manifest for the reason this table exists: a
+# feature chosen per member would let two members resolve Smithay's `input`, `drm`
+# and `gbm` crates to different builds of the same C library.
+smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = [
+    "wayland_frontend",
+    "desktop",
+    "renderer_pixman",
+    "renderer_gl",
+    "renderer_glow",
+    "backend_drm",
+    "backend_gbm",
+    "backend_udev",
+    "backend_session_libseat",
+    "backend_libinput",
+] }
 # Wayland server and code generation, for the protocols Gnoblin owns or vendors.
 #
 # `smithay` re-exports `wayland_server`, so a crate that already names Smithay takes

@@ -30,8 +30,11 @@ all = { level = "deny", priority = -1 }
 # The event-loop handle the backend contract registers its sources with, and the
 # library the DRM and nested backends will drive. Pinned workspace-wide (D7) with the
 # `renderer_pixman` feature, which is the software path of the Frame card and the
-# reference renderer the headless backend uses. No backend feature is added here, so
-# this crate pulls in no DRM, libinput or X11 code of its own.
+# reference renderer the headless backend uses. The hardware features (`backend_drm`,
+# `backend_gbm`, `backend_udev`, `backend_session_libseat`, `backend_libinput`) come
+# with the workspace pin too, because they are choices the whole workspace has to make
+# together; the modules that use them are `drm`, `session`, `udev` and `libinput`, and
+# every other backend here links no DRM code at all.
 smithay.workspace = true
 # Outputs, events and targets are stated in the shared primitives.
 gnoblin-types.workspace = true
@@ -42,6 +45,11 @@ gnoblin-output = { path = "../gnoblin-output" }
 # damage. This crate is the one place the engine's crates may meet, so the scene sits
 # on this side of the contract and `gnoblin-wayland` never names it.
 gnoblin-render = { path = "../gnoblin-render" }
+# The `input` section the libinput devices are configured from: acceleration profile,
+# natural scroll, tap-to-click and the rest. The types are the generated document's,
+# not copies, so a key that the configuration accepts and the driver does not know
+# cannot exist. It is a foundation crate, so this direction is the allowed one.
+gnoblin-config = { path = "../gnoblin-config" }
 # `[tag]` log lines for a refused frame or a client buffer that went away. Smithay
 # already brings `tracing` in, so this adds no crate to the graph.
 tracing = "0.1.37"

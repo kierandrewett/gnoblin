@@ -121,9 +121,13 @@
 //!     [`nested`]'s own list, because that backend's failure modes are about the wire
 //!     rather than about the contract.
 
+pub mod drm;
 pub mod headless;
+pub mod libinput;
 pub mod nested;
 pub mod render;
+pub mod session;
+pub mod udev;
 pub mod x11;
 
 use std::fmt;
