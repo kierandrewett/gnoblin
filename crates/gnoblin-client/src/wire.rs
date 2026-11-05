@@ -785,6 +785,32 @@ mod tests {
     }
 
     #[test]
+    fn an_answer_frame_is_flagged_and_redacted_by_the_schema() {
+        // The schema marks `request.answer` secret, so the generated table flags
+        // every frame that carries an answer and redaction drops its bytes. This is
+        // the property that keeps a prompt answer out of a log or a frame dump, and
+        // it holds because this layer names the member the schema declares.
+        let frame = answer(6, RequestId::new(2), &Answer::Answered(b"hunter2".to_vec()));
+        assert!(
+            frame.is_sensitive(),
+            "an answer carries secret material and must be flagged"
+        );
+        assert_eq!(
+            frame.redact().payload().map(<[u8]>::to_vec),
+            Some(Vec::new()),
+            "redaction keeps the routing fields and drops the answer"
+        );
+    }
+
+    #[test]
+    fn a_claim_frame_is_not_flagged() {
+        // The other half of the rule: claiming names a request and nothing else, so
+        // a dump of it is useful for debugging.
+        assert!(!claim(1, RequestId::new(2)).is_sensitive());
+        assert!(!offer(1, RequestId::new(2), Tick::new(500)).is_sensitive());
+    }
+
+    #[test]
     fn a_request_answer_is_flagged_sensitive_and_redacts() {
         // The failure mode: a prompt's password travels in an answer, the layer is
         // not an object member, and nothing flags the frame, so a log or the parity
