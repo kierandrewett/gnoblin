@@ -29,29 +29,29 @@ pub fn graph() -> Graph {
     Graph::new(catalog)
 }
 
-/// The properties of one `output` object.
+/// The properties of one `output` object: a 1920x1080 panel with a 1280x720 mode too.
 pub fn output_properties(name: &str, scale: f64, primary: bool) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("name".to_owned(), Value::Text(name.to_owned()));
-    properties.insert("make".to_owned(), Value::Text("Gnoblin".to_owned()));
-    properties.insert("model".to_owned(), Value::Text("Test Panel".to_owned()));
-    properties.insert(
-        "modes".to_owned(),
-        Value::List(vec![
-            Value::Text("1920x1080@60.000".to_owned()),
-            Value::Text("1280x720@60.000".to_owned()),
-        ]),
-    );
-    properties.insert("mode".to_owned(), Value::Text("1920x1080@60.000".to_owned()));
-    properties.insert("scale".to_owned(), Value::Double(scale));
-    properties.insert("transform".to_owned(), Value::Uint(0));
-    properties.insert("primary".to_owned(), Value::Bool(primary));
-    properties.insert("enabled".to_owned(), Value::Bool(true));
-    properties.insert("x".to_owned(), Value::Int(0));
-    properties.insert("y".to_owned(), Value::Int(0));
-    properties.insert("width".to_owned(), Value::Uint(1920));
-    properties.insert("height".to_owned(), Value::Uint(1080));
-    properties
+    gnoblin_testkit::object_fields(
+        "output",
+        &[
+            ("name", Value::Text(name.to_owned())),
+            ("make", Value::Text("Gnoblin".to_owned())),
+            ("model", Value::Text("Test Panel".to_owned())),
+            (
+                "modes",
+                Value::List(vec![
+                    Value::Text("1920x1080@60.000".to_owned()),
+                    Value::Text("1280x720@60.000".to_owned()),
+                ]),
+            ),
+            ("mode", Value::Text("1920x1080@60.000".to_owned())),
+            ("scale", Value::Double(scale)),
+            ("primary", Value::Bool(primary)),
+            ("enabled", Value::Bool(true)),
+            ("width", Value::Uint(1920)),
+            ("height", Value::Uint(1080)),
+        ],
+    )
 }
 
 /// The properties of the `lock` object: the session is not locked.

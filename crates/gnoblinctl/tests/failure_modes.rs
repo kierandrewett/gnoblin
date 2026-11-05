@@ -50,21 +50,13 @@ fn catalog() -> Catalog {
 }
 
 fn window_properties(title: &str) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), Value::Uint(1));
-    properties.insert("title".to_owned(), Value::Text(title.to_owned()));
-    properties.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
-    properties.insert("focused".to_owned(), Value::Bool(false));
-    // The frame rectangle the compositor publishes as four numbers.
-    properties.insert("x".to_owned(), Value::Int(0));
-    properties.insert("y".to_owned(), Value::Int(0));
-    properties.insert("width".to_owned(), Value::Uint(800));
-    properties.insert("height".to_owned(), Value::Uint(600));
-    properties.insert("icon".to_owned(), Value::Text(String::new()));
-    properties.insert("tag".to_owned(), Value::Text(String::new()));
-    properties.insert("modal".to_owned(), Value::Bool(false));
-    properties.insert("floating".to_owned(), Value::Bool(false));
-    properties
+    gnoblin_testkit::window_fields(&[
+        ("id", Value::Uint(1)),
+        ("title", Value::Text(title.to_owned())),
+        ("app_id", Value::Text("org.example.App".to_owned())),
+        ("width", Value::Uint(800)),
+        ("height", Value::Uint(600)),
+    ])
 }
 
 /// One step the fixture server takes when the client has nothing to read.

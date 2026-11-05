@@ -28,20 +28,13 @@ fn graph() -> Graph {
 }
 
 fn window_properties(title: &str) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), Value::Uint(1));
-    properties.insert(TITLE.to_owned(), Value::Text(title.to_owned()));
-    properties.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
-    properties.insert("focused".to_owned(), Value::Bool(false));
-    properties.insert("x".to_owned(), Value::Int(0));
-    properties.insert("y".to_owned(), Value::Int(0));
-    properties.insert("width".to_owned(), Value::Uint(200));
-    properties.insert("height".to_owned(), Value::Uint(150));
-    properties.insert("icon".to_owned(), Value::Text(String::new()));
-    properties.insert("tag".to_owned(), Value::Text(String::new()));
-    properties.insert("modal".to_owned(), Value::Bool(false));
-    properties.insert("floating".to_owned(), Value::Bool(false));
-    properties
+    gnoblin_testkit::window_fields(&[
+        ("id", Value::Uint(1)),
+        (TITLE, Value::Text(title.to_owned())),
+        ("app_id", Value::Text("org.example.App".to_owned())),
+        ("width", Value::Uint(200)),
+        ("height", Value::Uint(150)),
+    ])
 }
 
 fn open_window(server: &mut Server, title: &str) -> ObjectId {

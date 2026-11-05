@@ -20,3 +20,4 @@ tracing.workspace = true
 futures-lite.workspace = true
 gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-schema = { path = "../../gnoblin-schema" }
+gnoblin-testkit = { path = "../../gnoblin-testkit" }

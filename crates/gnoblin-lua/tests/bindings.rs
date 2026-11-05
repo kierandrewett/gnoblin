@@ -281,24 +281,13 @@ fn an_extension_namespace_is_a_required_module() {
 /// A host connected to a server with one live window, for the read test below.
 fn window_pair() -> (Server, Host<Loopback>, ObjectId) {
     let mut server = Server::new(Graph::new(catalog()), VERSION);
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), gnoblin_model::Value::Uint(1));
-    properties.insert("title".to_owned(), gnoblin_model::Value::Text("a window".to_owned()));
-    properties.insert(
-        "app_id".to_owned(),
-        gnoblin_model::Value::Text("org.example.App".to_owned()),
-    );
-    properties.insert("focused".to_owned(), gnoblin_model::Value::Bool(false));
-    // The identity strings the schema requires at creation; empty when none is set.
-    properties.insert("icon".to_owned(), gnoblin_model::Value::Text(String::new()));
-    properties.insert("tag".to_owned(), gnoblin_model::Value::Text(String::new()));
-    properties.insert("modal".to_owned(), gnoblin_model::Value::Bool(false));
-    properties.insert("floating".to_owned(), gnoblin_model::Value::Bool(false));
-    // The frame rectangle the schema requires at creation.
-    properties.insert("x".to_owned(), gnoblin_model::Value::Int(0));
-    properties.insert("y".to_owned(), gnoblin_model::Value::Int(0));
-    properties.insert("width".to_owned(), gnoblin_model::Value::Uint(800));
-    properties.insert("height".to_owned(), gnoblin_model::Value::Uint(600));
+    let properties = gnoblin_testkit::window_fields(&[
+        ("id", gnoblin_model::Value::Uint(1)),
+        ("title", gnoblin_model::Value::Text("a window".to_owned())),
+        ("app_id", gnoblin_model::Value::Text("org.example.App".to_owned())),
+        ("width", gnoblin_model::Value::Uint(800)),
+        ("height", gnoblin_model::Value::Uint(600)),
+    ]);
     let window = server
         .create(TypeKey::gnoblin("window"), properties)
         .expect("the window type is in the schema");

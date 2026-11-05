@@ -49,6 +49,8 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # The tests drive the host through the in-process loopback against a real graph
 # built from the checked-in schema, and re-derive the expected bindings from it.
 gnoblin-client = { path = "../gnoblin-client" }
+# The window fixture builds a window's full property set from the schema.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
 # The role test serves a real socketpair and a real client, so the shipped role is
 # exercised rather than a copy of its loop.
 tempfile = "3.23.0"

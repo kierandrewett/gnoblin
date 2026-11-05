@@ -13,7 +13,9 @@
 pub mod clock;
 pub mod recorder;
 pub mod runtime;
+pub mod window;
 
 pub use clock::Clock;
 pub use recorder::Recorder;
 pub use runtime::RuntimeDir;
+pub use window::{object_fields, window_fields};

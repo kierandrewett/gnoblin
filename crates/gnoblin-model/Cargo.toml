@@ -17,5 +17,9 @@ gnoblin-types = { path = "../gnoblin-types" }
 # wire format: encoding an observation is the client crate's job.
 gnoblin-schema = { path = "../gnoblin-schema" }
 
+[dev-dependencies]
+# The window fixture builds a window's full property set from the schema.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
+
 [lints]
 workspace = true

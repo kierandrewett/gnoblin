@@ -1130,6 +1130,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-testkit",
 ]
 
 [[package]]
@@ -1178,6 +1179,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-testkit",
  "tracing",
  "zbus",
 ]
@@ -1238,6 +1240,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-testkit",
  "tracing",
  "zbus",
 ]
@@ -1407,6 +1410,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-testkit",
  "gnoblin-types",
  "gnoblin-wm",
  "mlua",
@@ -1427,6 +1431,7 @@ name = "gnoblin-model"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
+ "gnoblin-testkit",
  "gnoblin-types",
 ]
 
@@ -1504,6 +1509,8 @@ dependencies = [
 name = "gnoblin-testkit"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-model",
+ "gnoblin-schema",
  "serde_json",
 ]
 
@@ -1518,6 +1525,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-model",
  "gnoblin-schema",
+ "gnoblin-testkit",
  "gnoblin-types",
  "wasmtime",
  "wat",
@@ -1581,6 +1589,7 @@ dependencies = [
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
+ "gnoblin-testkit",
  "prost",
  "serde_json",
 ]

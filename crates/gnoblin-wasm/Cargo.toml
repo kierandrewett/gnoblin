@@ -30,6 +30,8 @@ wat = "1.263.0"
 # The schema, so the generated WIT is compared with the tree's schema and not with a
 # copy of it.
 gnoblin-schema = { path = "../gnoblin-schema" }
+# The window fixture builds a window's full property set from the schema.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
 # The generated WIT is checked against the schema with the same parser
 # `wit-component` uses to compile a module, so "it parses" means "wasmtime and
 # `wasm-tools` accept it".

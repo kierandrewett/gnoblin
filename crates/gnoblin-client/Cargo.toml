@@ -19,6 +19,8 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 # The tests build a graph from the checked-in schema, so the loopback pair is
 # exercised against the real contract rather than a fixture.
 gnoblin-schema = { path = "../gnoblin-schema" }
+# The window fixture builds a window's full property set from the schema.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
 
 # The workspace's lint table with one deliberate difference: `unsafe_code` is `deny`
 # rather than `forbid`.

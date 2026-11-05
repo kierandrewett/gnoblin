@@ -25,18 +25,13 @@ fn graph() -> Graph {
 }
 
 fn window_properties(title: &str) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), Value::Uint(1));
-    properties.insert(TITLE.to_owned(), Value::Text(title.to_owned()));
-    properties.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
-    properties.insert("focused".to_owned(), Value::Bool(false));
-    // The frame rectangle the compositor publishes as four numbers; the schema
-    // requires it at creation, so every test helper supplies it.
-    properties.insert("x".to_owned(), Value::Int(0));
-    properties.insert("y".to_owned(), Value::Int(0));
-    properties.insert("width".to_owned(), Value::Uint(800));
-    properties.insert("height".to_owned(), Value::Uint(600));
-    properties
+    gnoblin_testkit::window_fields(&[
+        ("id", Value::Uint(1)),
+        (TITLE, Value::Text(title.to_owned())),
+        ("app_id", Value::Text("org.example.App".to_owned())),
+        ("width", Value::Uint(800)),
+        ("height", Value::Uint(600)),
+    ])
 }
 
 fn open_window(graph: &mut Graph, title: &str) -> ObjectId {

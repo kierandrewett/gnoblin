@@ -88,22 +88,13 @@ fn pair_with(limits: Limits) -> (Server, Host<Loopback>) {
 }
 
 fn window_properties(title: &str) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), ModelValue::Uint(1));
-    properties.insert("title".to_owned(), ModelValue::Text(title.to_owned()));
-    properties.insert("app_id".to_owned(), ModelValue::Text("org.example.App".to_owned()));
-    properties.insert("focused".to_owned(), ModelValue::Bool(false));
-    properties.insert("icon".to_owned(), ModelValue::Text(String::new()));
-    properties.insert("tag".to_owned(), ModelValue::Text(String::new()));
-    properties.insert("modal".to_owned(), ModelValue::Bool(false));
-    properties.insert("floating".to_owned(), ModelValue::Bool(false));
-    // The frame rectangle the compositor publishes as four numbers; the schema
-    // requires it at creation, so every test helper supplies it.
-    properties.insert("x".to_owned(), ModelValue::Int(0));
-    properties.insert("y".to_owned(), ModelValue::Int(0));
-    properties.insert("width".to_owned(), ModelValue::Uint(800));
-    properties.insert("height".to_owned(), ModelValue::Uint(600));
-    properties
+    gnoblin_testkit::window_fields(&[
+        ("id", ModelValue::Uint(1)),
+        ("title", ModelValue::Text(title.to_owned())),
+        ("app_id", ModelValue::Text("org.example.App".to_owned())),
+        ("width", ModelValue::Uint(800)),
+        ("height", ModelValue::Uint(600)),
+    ])
 }
 
 fn open_window(server: &mut Server, title: &str) -> ObjectId {

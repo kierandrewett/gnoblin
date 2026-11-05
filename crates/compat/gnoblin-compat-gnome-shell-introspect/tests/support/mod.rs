@@ -30,38 +30,33 @@ pub fn graph() -> Graph {
 
 /// The properties of one `window` object.
 pub fn window_properties(id: u64, title: &str, app_id: &str) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("id".to_owned(), Value::Uint(id));
-    properties.insert("title".to_owned(), Value::Text(title.to_owned()));
-    properties.insert("app_id".to_owned(), Value::Text(app_id.to_owned()));
-    properties.insert("focused".to_owned(), Value::Bool(false));
-    properties.insert("x".to_owned(), Value::Int(0));
-    properties.insert("y".to_owned(), Value::Int(0));
-    properties.insert("width".to_owned(), Value::Uint(800));
-    properties.insert("height".to_owned(), Value::Uint(600));
-    properties
+    gnoblin_testkit::window_fields(&[
+        ("id", Value::Uint(id)),
+        ("title", Value::Text(title.to_owned())),
+        ("app_id", Value::Text(app_id.to_owned())),
+        ("width", Value::Uint(800)),
+        ("height", Value::Uint(600)),
+    ])
 }
 
 /// The properties of one `output` object: a 1920x1080 panel at the origin.
 pub fn output_properties(name: &str, width: u32, height: u32, enabled: bool) -> Fields {
-    let mut properties = Fields::new();
-    properties.insert("name".to_owned(), Value::Text(name.to_owned()));
-    properties.insert("make".to_owned(), Value::Text("Gnoblin".to_owned()));
-    properties.insert("model".to_owned(), Value::Text("Test Panel".to_owned()));
-    properties.insert(
-        "modes".to_owned(),
-        Value::List(vec![Value::Text(format!("{width}x{height}@60.000"))]),
-    );
-    properties.insert("mode".to_owned(), Value::Text(format!("{width}x{height}@60.000")));
-    properties.insert("scale".to_owned(), Value::Double(1.0));
-    properties.insert("transform".to_owned(), Value::Uint(0));
-    properties.insert("primary".to_owned(), Value::Bool(true));
-    properties.insert("enabled".to_owned(), Value::Bool(enabled));
-    properties.insert("x".to_owned(), Value::Int(0));
-    properties.insert("y".to_owned(), Value::Int(0));
-    properties.insert("width".to_owned(), Value::Uint(u64::from(width)));
-    properties.insert("height".to_owned(), Value::Uint(u64::from(height)));
-    properties
+    let mode = format!("{width}x{height}@60.000");
+    gnoblin_testkit::object_fields(
+        "output",
+        &[
+            ("name", Value::Text(name.to_owned())),
+            ("make", Value::Text("Gnoblin".to_owned())),
+            ("model", Value::Text("Test Panel".to_owned())),
+            ("modes", Value::List(vec![Value::Text(mode.clone())])),
+            ("mode", Value::Text(mode)),
+            ("scale", Value::Double(1.0)),
+            ("primary", Value::Bool(true)),
+            ("enabled", Value::Bool(enabled)),
+            ("width", Value::Uint(u64::from(width))),
+            ("height", Value::Uint(u64::from(height))),
+        ],
+    )
 }
 
 /// The properties of the `lock` object, unlocked.
