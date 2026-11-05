@@ -726,6 +726,68 @@ fn an_unanswered_prompt_expires_closed() {
 }
 
 #[test]
+fn a_stale_prompt_cannot_end_a_newer_grant() {
+    let mut authority = prompting();
+    // The first prompt expires unanswered and a second request replaces it.
+    let later = NOW.after(LIFETIME);
+    assert_eq!(
+        authority.apply(
+            later,
+            Event::ConsentRequested {
+                request: RequestId::new(2),
+                requester: REQUESTER,
+                capability: Capability::Capture,
+                lifetime: LIFETIME,
+            }
+        ),
+        vec![
+            Effect::Dismiss { request: REQUEST },
+            Effect::Prompt {
+                request: RequestId::new(2),
+                capability: Capability::Capture,
+                requester: REQUESTER,
+                provider: SHELL,
+            },
+        ]
+    );
+    // The withdrawn prompt no longer exists, so a late answer cannot grant
+    // anything and cannot reach the newer grant either.
+    assert_eq!(
+        authority.apply(
+            later,
+            Event::ConsentAnswered {
+                request: REQUEST,
+                from: SHELL,
+                answer: Answer::Allow,
+            }
+        ),
+        vec![Effect::Ignored {
+            request: REQUEST,
+            from: SHELL,
+        }]
+    );
+    assert_eq!(
+        authority.consent(REQUESTER, Capability::Capture),
+        Some(Consent::Pending)
+    );
+    assert_eq!(
+        authority.apply(
+            later,
+            Event::ConsentAnswered {
+                request: RequestId::new(2),
+                from: SHELL,
+                answer: Answer::Allow,
+            }
+        ),
+        vec![Effect::Answer {
+            request: RequestId::new(2),
+            decision: Decision::Allowed,
+        }]
+    );
+    assert_eq!(authority.gate(later, REQUESTER, Capability::Capture), Decision::Allowed);
+}
+
+#[test]
 fn releasing_portal_ui_refuses_waiting_prompts() {
     let mut authority = prompting();
     assert_eq!(

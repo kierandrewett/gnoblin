@@ -436,6 +436,9 @@ impl Authority {
         if self.pending.len() >= self.limits.requests {
             return answer(Decision::Denied(Denial::AtCapacity));
         }
+        // A previous prompt for the same grant may have been abandoned. It can
+        // never be answered into this new grant, so withdraw it first.
+        let mut effects = self.withdraw_prompts(requester, capability);
         let expires_at = now.after(lifetime);
         self.grants.insert(
             (requester, capability),
@@ -453,12 +456,13 @@ impl Authority {
                 expires_at,
             },
         );
-        vec![Effect::Prompt {
+        effects.push(Effect::Prompt {
             request,
             capability,
             requester,
             provider,
-        }]
+        });
+        effects
     }
 
     fn consent_answered(&mut self, now: Tick, request: RequestId, from: ClientId, answer: Answer) -> Vec<Effect> {
@@ -466,7 +470,16 @@ impl Authority {
             return vec![Effect::Ignored { request, from }];
         };
         if now >= pending.expires_at {
-            self.grants.remove(&(pending.requester, pending.capability));
+            // Only the grant this prompt created, never a newer one that a later
+            // request replaced it with.
+            let key = (pending.requester, pending.capability);
+            if self
+                .grants
+                .get(&key)
+                .is_some_and(|grant| grant.expires_at == pending.expires_at)
+            {
+                self.grants.remove(&key);
+            }
             return vec![Effect::Answer {
                 request,
                 decision: Decision::Denied(Denial::ConsentExpired),
@@ -541,6 +554,22 @@ impl Authority {
             for gesture in gestures {
                 effects.push(Effect::EndContext { gesture });
             }
+        }
+        effects
+    }
+
+    /// Withdraw every waiting prompt for one grant, which a new request replaces.
+    fn withdraw_prompts(&mut self, requester: RequesterId, capability: Capability) -> Vec<Effect> {
+        let stale: Vec<RequestId> = self
+            .pending
+            .iter()
+            .filter(|(_, pending)| pending.requester == requester && pending.capability == capability)
+            .map(|(request, _)| *request)
+            .collect();
+        let mut effects = Vec::new();
+        for request in stale {
+            self.pending.remove(&request);
+            effects.push(Effect::Dismiss { request });
         }
         effects
     }
