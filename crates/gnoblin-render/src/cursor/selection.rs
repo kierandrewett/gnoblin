@@ -133,7 +133,7 @@ pub fn select_cursor(
 /// `Scale` is an exact fraction of physical pixels per logical pixel, so the
 /// multiplication and the half-up rounding stay in integers. The result is at
 /// least one pixel: a cursor that loads at zero is not a cursor.
-fn physical_size(logical: u16, scale: Scale) -> u32 {
+pub(super) fn physical_size(logical: u16, scale: Scale) -> u32 {
     let numerator = u64::from(logical) * u64::from(scale.numerator());
     let denominator = u64::from(scale.denominator());
     let rounded = (numerator + denominator / 2) / denominator;
