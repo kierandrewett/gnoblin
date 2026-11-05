@@ -286,14 +286,23 @@ impl Libinput {
                     kind,
                 };
                 debug!(name = %record.name, ?kind, "[input] a device arrived");
+                produced.push(InputEvent::DeviceAdded { id: record.id, kind });
                 self.next = self.next.saturating_add(1);
                 self.devices.push(record);
             }
             BackendEvent::DeviceRemoved { device } => {
                 let sysname = device.sysname().to_owned();
+                let id = self
+                    .devices
+                    .iter()
+                    .find(|known| known.sysname == sysname)
+                    .map(|known| known.id);
                 self.devices.retain(|known| known.sysname != sysname);
                 info!(sysname = %sysname, "[input] a device went away");
                 produced.extend(self.mapper.cancel());
+                if let Some(id) = id {
+                    produced.push(InputEvent::DeviceRemoved { id });
+                }
             }
             BackendEvent::Keyboard { event } => produced.extend(self.mapper.event(DeviceEvent::Key {
                 code: event.key_code().raw().saturating_sub(8),

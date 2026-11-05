@@ -2203,6 +2203,9 @@ impl Host for State {
             // A touch point needs a seat that tracks one point per slot per output,
             // which is the input slice's; nothing is invented about it here.
             InputEvent::Touch { .. } => {}
+            // A device joining or leaving changes no focus or pointer state; the seat only
+            // needs the release a removal sends for the buttons and touches it held.
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
         }
     }
 }

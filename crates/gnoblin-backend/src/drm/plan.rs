@@ -521,6 +521,51 @@ impl Applied {
     }
 }
 
+/// What the kernel reports about one connector now, to compare with what the session knows.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Seen {
+    /// The connector's name, as [`Connector::name`] states it.
+    pub name: String,
+    /// Whether the kernel reports a monitor on it.
+    pub connected: bool,
+    /// The timings the monitor offers now.
+    pub modes: Vec<DisplayMode>,
+}
+
+/// What changed on one connector since the session last looked.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Hotplug {
+    /// A monitor went away from a connector the session was driving.
+    Unplugged(String),
+    /// A monitor appeared on a connector that had none.
+    Plugged(String),
+    /// A connected connector now offers different timings. A live output is not re-planned
+    /// yet, so this is refused by name rather than applied.
+    ModesChanged(String),
+}
+
+/// The hotplug changes between what the session knows and what the kernel reports now.
+///
+/// A connector missing from `now` counts as unplugged. A connector the session never listed is
+/// ignored: the connector list is fixed when the GPU opens, so a new connector is a new
+/// enumeration rather than a hotplug.
+#[must_use]
+pub fn hotplug(known: &[Connector], now: &[Seen]) -> Vec<Hotplug> {
+    let mut changes = Vec::new();
+    for connector in known {
+        let seen = now.iter().find(|seen| seen.name == connector.name);
+        match (connector.connected, seen.map(|seen| seen.connected)) {
+            (true, Some(false) | None) => changes.push(Hotplug::Unplugged(connector.name.clone())),
+            (false, Some(true)) => changes.push(Hotplug::Plugged(connector.name.clone())),
+            (true, Some(true)) if seen.is_some_and(|seen| seen.modes != connector.modes) => {
+                changes.push(Hotplug::ModesChanged(connector.name.clone()));
+            }
+            _ => {}
+        }
+    }
+    changes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -815,5 +860,54 @@ mod tests {
             LogicalMonitor::derived_size(&monitor("DP-1", 1, FULL_HD, 0, false)),
             Size::new(1920, 1080)
         );
+    }
+
+    fn seen(name: &str, connected: bool, modes: &[DisplayMode]) -> Seen {
+        Seen {
+            name: name.to_owned(),
+            connected,
+            modes: modes.to_vec(),
+        }
+    }
+
+    #[test]
+    fn an_unplugged_monitor_is_reported_by_connector_name() {
+        let connectors = [connector("DP-1", 1, &[FULL_HD])];
+        assert_eq!(
+            hotplug(&connectors, &[seen("DP-1", false, &[])]),
+            vec![Hotplug::Unplugged("DP-1".to_owned())]
+        );
+    }
+
+    #[test]
+    fn a_connector_missing_from_the_probe_counts_as_unplugged() {
+        let connectors = [connector("DP-1", 1, &[FULL_HD])];
+        assert_eq!(hotplug(&connectors, &[]), vec![Hotplug::Unplugged("DP-1".to_owned())]);
+    }
+
+    #[test]
+    fn a_monitor_appearing_on_an_empty_connector_is_plugged() {
+        let mut empty = connector("DP-2", 2, &[]);
+        empty.connected = false;
+        assert_eq!(
+            hotplug(&[empty], &[seen("DP-2", true, &[FULL_HD])]),
+            vec![Hotplug::Plugged("DP-2".to_owned())]
+        );
+    }
+
+    #[test]
+    fn a_connector_whose_timings_changed_is_refused_by_name() {
+        let connectors = [connector("DP-1", 1, &[FULL_HD])];
+        assert_eq!(
+            hotplug(&connectors, &[seen("DP-1", true, &[FOUR_K])]),
+            vec![Hotplug::ModesChanged("DP-1".to_owned())]
+        );
+    }
+
+    #[test]
+    fn an_unchanged_probe_and_an_unknown_connector_report_nothing() {
+        let connectors = [connector("DP-1", 1, &[FULL_HD])];
+        let now = [seen("DP-1", true, &[FULL_HD]), seen("DP-9", true, &[FOUR_K])];
+        assert!(hotplug(&connectors, &now).is_empty());
     }
 }

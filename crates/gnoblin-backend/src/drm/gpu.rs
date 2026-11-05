@@ -31,9 +31,11 @@ use smithay::utils::{Buffer, DeviceFd, Physical, Rectangle, Size, Transform};
 
 use crate::drm::DrmError;
 use crate::drm::gamma::{GammaError, GammaRamp, crtc_length};
-use crate::drm::plan::{Applied, Change, Connector, LayoutPlan, Op, OutputState, PhysicalExtent, Power};
+use crate::drm::plan::{
+    Applied, Change, Connector, Hotplug, LayoutPlan, Op, OutputState, PhysicalExtent, Power, Seen, hotplug,
+};
 use crate::session::Seat;
-use crate::udev::{DeviceOverrideSource, Devices, Discovery};
+use crate::udev::{DeviceChange, DeviceOverrideSource, Devices, Discovery, DiscoveryEvent, DrmNode};
 
 /// Why a plan could not be applied, and what it took to put the connectors back.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -244,6 +246,8 @@ pub fn display_mode(mode: &Mode) -> DisplayMode {
 /// One connector's kernel side: its handle, its CRTC and surface, and the timings it offers.
 struct Port {
     connector: Connector,
+    /// The connector's handle, which a re-read of the connector needs.
+    handle: connector::Handle,
     crtc: Option<crtc::Handle>,
     /// Each timing the connector offers, with the kernel mode it is and the plan's view of it.
     modes: Vec<(DisplayMode, Mode)>,
@@ -315,6 +319,39 @@ impl Kms for Hardware {
     }
 }
 
+/// The primary GPU went away, so nothing on this session can be driven any more.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceLost {
+    /// The node that was removed, such as `/dev/dri/card0`.
+    pub node: PathBuf,
+}
+
+impl fmt::Display for DeviceLost {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "the primary GPU {} was removed", self.node.display())
+    }
+}
+
+impl std::error::Error for DeviceLost {}
+
+/// One thing [`Gpu::sync_hardware`] found changed since it last looked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HardwareChange {
+    /// A connector gained a monitor and is driven now.
+    OutputAdded(OutputId),
+    /// A connector lost its monitor, so its output is gone.
+    OutputRemoved(OutputId),
+    /// The primary GPU was removed.
+    DeviceLost(DeviceLost),
+    /// A change that cannot be applied safely. The connector is left as it was.
+    Refused {
+        /// The connector the change was for.
+        connector: String,
+        /// Why it was refused.
+        reason: String,
+    },
+}
+
 /// An opened GPU: the seat that lent its node, the device, and the record of what was applied.
 pub struct Gpu {
     hardware: Hardware,
@@ -323,6 +360,13 @@ pub struct Gpu {
     /// [`Gpu::take_flips`] drains it.
     flips: Arc<Mutex<VecDeque<crtc::Handle>>>,
     applied: Applied,
+    /// The udev monitor that reports the device and its connectors changing. Drained by
+    /// [`Gpu::sync_hardware`].
+    discovery: Discovery,
+    /// The GPUs this session knows about, and which one it drives.
+    devices: Devices,
+    /// Set once the primary GPU has gone. Nothing is driven after it.
+    device_lost: Option<DeviceLost>,
     /// Declared last so the device drops before the seat that lent its node.
     seat: Seat,
 }
@@ -357,8 +401,6 @@ impl Gpu {
         let discovery = Discovery::new(seat.name()).map_err(|error| DrmError::Discovery(error.to_string()))?;
         let devices = Devices::new(discovery.snapshot(), &DeviceOverrideSource::read()).map_err(DrmError::NoGpu)?;
         let node: PathBuf = devices.primary().to_path_buf();
-        drop(devices);
-        drop(discovery);
 
         let fd = seat.open_device(&node).map_err(DrmError::Session)?;
         let (mut device, notifier) = DrmDevice::new(DrmDeviceFd::new(DeviceFd::from(fd)), true)
@@ -370,12 +412,130 @@ impl Gpu {
             notifier: Some(notifier),
             flips: Arc::new(Mutex::new(VecDeque::new())),
             applied: Applied::new(),
+            discovery,
+            devices,
+            device_lost: None,
         })
     }
 
     /// Every connector the GPU has, connected or not, in the order the kernel lists them.
     pub fn outputs(&self) -> impl Iterator<Item = &Connector> {
         self.hardware.ports.iter().map(|port| &port.connector)
+    }
+
+    /// The primary GPU's removal, once it has happened.
+    #[must_use]
+    pub fn device_lost(&self) -> Option<&DeviceLost> {
+        self.device_lost.as_ref()
+    }
+
+    /// Applies what the udev monitor reported since the last call and says what it changed.
+    ///
+    /// A connector that gained or lost its monitor is brought up or taken down in place, and the
+    /// returned changes say so. A change that cannot be applied safely is refused by name and the
+    /// connector is left as it was. Losing the primary GPU is sticky: from then on this returns
+    /// nothing, and [`Gpu::device_lost`] names the node.
+    pub fn sync_hardware(&mut self) -> Vec<HardwareChange> {
+        let mut changes = Vec::new();
+        if self.device_lost.is_some() {
+            return changes;
+        }
+        for event in self.discovery.take_events() {
+            match event {
+                DiscoveryEvent::Added(path) => {
+                    self.devices.added(DrmNode::read(&path));
+                }
+                DiscoveryEvent::Removed(path) => {
+                    if self.devices.removed(&path) == DeviceChange::PrimaryLost {
+                        let lost = DeviceLost { node: path };
+                        changes.push(HardwareChange::DeviceLost(lost.clone()));
+                        self.device_lost = Some(lost);
+                        break;
+                    }
+                }
+                DiscoveryEvent::Changed(path) => {
+                    if self.devices.is_primary(&path) {
+                        self.reprobe(&mut changes);
+                    }
+                }
+            }
+        }
+        changes
+    }
+
+    /// Re-reads every connector the GPU drives and applies what changed since the last look.
+    ///
+    /// When the kernel cannot be read the whole pass is skipped: an unreadable connector would
+    /// otherwise look unplugged.
+    fn reprobe(&mut self, changes: &mut Vec<HardwareChange>) {
+        let Hardware { device, ports } = &mut self.hardware;
+        let resources = match device.resource_handles() {
+            Ok(resources) => resources,
+            Err(error) => {
+                tracing::warn!(%error, "[drm] the GPU's resources could not be re-read; the change is skipped");
+                return;
+            }
+        };
+        let mut infos = Vec::with_capacity(ports.len());
+        for port in ports.iter() {
+            match device.get_connector(port.handle, true) {
+                Ok(info) => infos.push(info),
+                Err(error) => {
+                    tracing::warn!(connector = %port.connector.name, %error, "[drm] the connector could not be re-read; the change is skipped");
+                    return;
+                }
+            }
+        }
+        let known: Vec<Connector> = ports.iter().map(|port| port.connector.clone()).collect();
+        let seen: Vec<Seen> = infos
+            .iter()
+            .zip(ports.iter())
+            .map(|(info, port)| Seen {
+                name: port.connector.name.clone(),
+                connected: matches!(info.state(), connector::State::Connected),
+                modes: info.modes().iter().map(display_mode).collect(),
+            })
+            .collect();
+        for change in hotplug(&known, &seen) {
+            match change {
+                Hotplug::Unplugged(name) => {
+                    let Some(port) = ports.iter_mut().find(|port| port.connector.name == name) else {
+                        continue;
+                    };
+                    port.connector.connected = false;
+                    port.connector.vrr = VrrSupport::Unsupported;
+                    port.connector.gamma_length = 0;
+                    port.crtc = None;
+                    port.surface = None;
+                    self.applied.forget(&name);
+                    changes.push(HardwareChange::OutputRemoved(port.connector.id));
+                }
+                Hotplug::Plugged(name) => {
+                    let Some(index) = ports.iter().position(|port| port.connector.name == name) else {
+                        continue;
+                    };
+                    let taken: Vec<crtc::Handle> = ports.iter().filter_map(|port| port.crtc).collect();
+                    let id = ports[index].connector.id;
+                    let handle = ports[index].handle;
+                    let info = &infos[index];
+                    let mut port = port_of(device, handle, info, id);
+                    match bring_up_port(&mut port, device, &resources, info, &taken) {
+                        Ok(()) => {
+                            ports[index] = port;
+                            changes.push(HardwareChange::OutputAdded(id));
+                        }
+                        Err(reason) => changes.push(HardwareChange::Refused {
+                            connector: name,
+                            reason,
+                        }),
+                    }
+                }
+                Hotplug::ModesChanged(name) => changes.push(HardwareChange::Refused {
+                    connector: name,
+                    reason: "its modes changed while it is driven, and a live output is not re-planned yet".to_owned(),
+                }),
+            }
+        }
     }
 
     /// The seat that lent the GPU's node. It must outlive the device: dropping it revokes the node.
@@ -392,6 +552,7 @@ impl Gpu {
     /// The loop refuses one of the sources.
     pub fn register<S: 'static>(&mut self, loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
         self.seat.register(loop_handle)?;
+        self.discovery.register(loop_handle)?;
         let Some(notifier) = self.notifier.take() else {
             return Ok(());
         };
@@ -557,6 +718,54 @@ impl Gpu {
     }
 }
 
+/// The name a person sees the connector by, such as `DP-1`.
+fn connector_name(info: &connector::Info) -> String {
+    format!("{}-{}", info.interface().as_str(), info.interface_id())
+}
+
+/// Describes one connector the kernel reports, as a port nothing drives yet.
+fn port_of(device: &DrmDevice, handle: connector::Handle, info: &connector::Info, id: OutputId) -> Port {
+    let offered: Vec<(DisplayMode, Mode)> = info.modes().iter().map(|mode| (display_mode(mode), *mode)).collect();
+    Port {
+        handle,
+        connector: Connector {
+            id,
+            name: connector_name(info),
+            connected: false,
+            edid: read_edid(device, handle),
+            modes: offered.iter().map(|(mode, _)| *mode).collect(),
+            physical: info
+                .size()
+                .map_or_else(PhysicalExtent::default, |(width, height)| PhysicalExtent {
+                    width,
+                    height,
+                }),
+            vrr: VrrSupport::Unsupported,
+            gamma_length: 0,
+        },
+        crtc: None,
+        modes: offered,
+        surface: None,
+    }
+}
+
+/// Brings a described connector up on a free CRTC, recording its CRTC, surface and capabilities.
+fn bring_up_port(
+    port: &mut Port,
+    device: &mut DrmDevice,
+    resources: &ResourceHandles,
+    info: &connector::Info,
+    taken: &[crtc::Handle],
+) -> Result<(), String> {
+    let up = bring_up(device, resources, info, taken)?;
+    port.connector.connected = true;
+    port.connector.vrr = up.vrr;
+    port.connector.gamma_length = up.gamma_length;
+    port.crtc = Some(up.crtc);
+    port.surface = Some(up.surface);
+    Ok(())
+}
+
 /// Describes every connector and brings each connected one up on a CRTC of its own.
 fn enumerate(device: &mut DrmDevice) -> Result<Vec<Port>, String> {
     let resources = device
@@ -568,40 +777,14 @@ fn enumerate(device: &mut DrmDevice) -> Result<Vec<Port>, String> {
         let info = device
             .get_connector(handle, false)
             .map_err(|error| format!("connector {handle:?} could not be read: {error}"))?;
-        let name = format!("{}-{}", info.interface().as_str(), info.interface_id());
-        let offered: Vec<(DisplayMode, Mode)> = info.modes().iter().map(|mode| (display_mode(mode), *mode)).collect();
-        let id = u64::try_from(ports.len() + 1).unwrap_or(u64::MAX);
-        let mut port = Port {
-            connector: Connector {
-                id: OutputId::new(id),
-                name: name.clone(),
-                connected: false,
-                edid: read_edid(device, handle),
-                modes: offered.iter().map(|(mode, _)| *mode).collect(),
-                physical: info
-                    .size()
-                    .map_or_else(PhysicalExtent::default, |(width, height)| PhysicalExtent {
-                        width,
-                        height,
-                    }),
-                vrr: VrrSupport::Unsupported,
-                gamma_length: 0,
-            },
-            crtc: None,
-            modes: offered,
-            surface: None,
-        };
+        let id = OutputId::new(u64::try_from(ports.len() + 1).unwrap_or(u64::MAX));
+        let mut port = port_of(device, handle, &info, id);
         if matches!(info.state(), connector::State::Connected) {
-            match bring_up(device, &resources, &info, &taken) {
-                Ok(up) => {
-                    port.connector.connected = true;
-                    port.connector.vrr = up.vrr;
-                    port.connector.gamma_length = up.gamma_length;
-                    port.crtc = Some(up.crtc);
-                    port.surface = Some(up.surface);
-                    taken.push(up.crtc);
+            match bring_up_port(&mut port, device, &resources, &info, &taken) {
+                Ok(()) => taken.extend(port.crtc),
+                Err(reason) => {
+                    tracing::warn!(connector = %port.connector.name, %reason, "[drm] the connector stays disconnected");
                 }
-                Err(reason) => tracing::warn!(connector = %name, %reason, "[drm] the connector stays disconnected"),
             }
         }
         ports.push(port);

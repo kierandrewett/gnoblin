@@ -205,12 +205,7 @@ impl Drm {
         let outputs: Vec<Output> = gpu
             .outputs()
             .filter(|connector| connector.connected)
-            .filter_map(|connector| {
-                let descriptor = connector.descriptor();
-                let mode = *descriptor.modes.first()?;
-                let scale = descriptor.scales.first().copied().unwrap_or(Scale::integral(1));
-                Some(Output::new(connector.id, connector.name.clone(), mode, scale))
-            })
+            .filter_map(output_of)
             .collect();
         let channels = outputs
             .iter()
@@ -288,6 +283,55 @@ impl Drm {
         self.buffers.clear();
         if let Input::Live(libinput) = &mut self.input {
             libinput.resume();
+        }
+    }
+
+    /// The primary GPU's removal, once it has happened.
+    #[must_use]
+    pub fn device_lost(&self) -> Option<&gpu::DeviceLost> {
+        self.gpu.device_lost()
+    }
+
+    /// Applies one hardware change to the outputs and their presenters, and says what the
+    /// compositor is told.
+    ///
+    /// A refused change is logged by name and leaves the output as it was. Losing the primary GPU
+    /// is reported as [`BackendEvent::Disconnected`], and the host decides what that means.
+    fn apply_hardware(&mut self, change: gpu::HardwareChange) -> Vec<BackendEvent> {
+        match change {
+            gpu::HardwareChange::OutputRemoved(id) => {
+                self.outputs.retain(|output| output.id != id);
+                self.channels.retain(|channel| channel.id != id);
+                self.buffers.remove(&id);
+                vec![BackendEvent::OutputDisconnected(id)]
+            }
+            gpu::HardwareChange::OutputAdded(id) => {
+                let output = self
+                    .gpu
+                    .outputs()
+                    .find(|connector| connector.id == id)
+                    .and_then(output_of);
+                let crtc = self.gpu.crtc_of(id);
+                let (Some(output), Some(crtc)) = (output, crtc) else {
+                    warn!(output = %id, "[drm] an added output has no mode or CRTC and is not presented");
+                    return Vec::new();
+                };
+                self.outputs.push(output.clone());
+                self.channels.push(OutputPresenter {
+                    id,
+                    crtc,
+                    presenter: Presenter::new(),
+                });
+                vec![BackendEvent::OutputConnected(output)]
+            }
+            gpu::HardwareChange::DeviceLost(lost) => {
+                warn!(%lost, "[drm] the primary GPU is gone; the backend reports it disconnected");
+                vec![BackendEvent::Disconnected]
+            }
+            gpu::HardwareChange::Refused { connector, reason } => {
+                warn!(%connector, %reason, "[drm] a hotplug change was refused");
+                Vec::new()
+            }
         }
     }
 }
@@ -413,13 +457,25 @@ impl<S: Host + 'static> Backend<S> for Drm {
                 SeatEvent::Activated => self.resume(),
             }
         }
+        let mut events = Vec::new();
+        for change in self.gpu.sync_hardware() {
+            events.extend(self.apply_hardware(change));
+        }
         let crtcs = self.gpu.take_flips();
         complete_flips(&mut self.channels, &crtcs);
         if let Input::Live(libinput) = &mut self.input {
             libinput.pump();
         }
-        Vec::new()
+        events
     }
+}
+
+/// The output a connected connector is presented as, or [`None`] when it offers no mode to drive.
+fn output_of(connector: &plan::Connector) -> Option<Output> {
+    let descriptor = connector.descriptor();
+    let mode = *descriptor.modes.first()?;
+    let scale = descriptor.scales.first().copied().unwrap_or(Scale::integral(1));
+    Some(Output::new(connector.id, connector.name.clone(), mode, scale))
 }
 
 /// The backend error a gamma or power change is reported as.

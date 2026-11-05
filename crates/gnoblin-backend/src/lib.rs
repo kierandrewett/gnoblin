@@ -309,6 +309,24 @@ pub enum InputEvent {
         /// What happened to the point.
         phase: TouchPhase,
     },
+    /// A device joined the seat.
+    ///
+    /// `id` is the backend's own number for the device; a later [`InputEvent::DeviceRemoved`]
+    /// names the same number. `kind` is the collapsed kind the configuration reads.
+    DeviceAdded {
+        /// The backend's number for the device.
+        id: u64,
+        /// The kind of device.
+        kind: crate::libinput::DeviceKind,
+    },
+    /// A device left the seat.
+    ///
+    /// Any button or touch point it held was released by events sent before this one, so the
+    /// seat holds nothing for it once this arrives.
+    DeviceRemoved {
+        /// The backend's number for the device, as the matching [`InputEvent::DeviceAdded`] stated.
+        id: u64,
+    },
 }
 
 /// What happened to a touch point.

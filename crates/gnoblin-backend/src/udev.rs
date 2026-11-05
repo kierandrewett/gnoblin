@@ -311,6 +311,8 @@ pub enum DiscoveryEvent {
     Added(PathBuf),
     /// A node at this path was removed.
     Removed(PathBuf),
+    /// A node at this path changed: a connector was plugged or unplugged, or its modes changed.
+    Changed(PathBuf),
 }
 
 /// What the monitor and the backend share: the path behind each device number, and the
@@ -395,9 +397,12 @@ impl Discovery {
                         Some(path) => DiscoveryEvent::Removed(path),
                         None => return,
                     },
-                    // A change is a driver re-reading a node that is already known; the
-                    // connector state of that device is read from its own events.
-                    UdevEvent::Changed { .. } => return,
+                    // A change is a driver re-reading a node that is already known: a connector
+                    // was plugged, unplugged or changed its modes.
+                    UdevEvent::Changed { device_id } => match shared.paths.get(&device_id) {
+                        Some(path) => DiscoveryEvent::Changed(path.clone()),
+                        None => return,
+                    },
                 };
                 shared.events.push(reported);
             })
@@ -441,6 +446,18 @@ mod tests {
             primary(&nodes, &DeviceOverrideSource::default()),
             Ok(PathBuf::from("/dev/dri/card0"))
         );
+    }
+
+    #[test]
+    fn only_the_primary_going_away_is_fatal() {
+        let mut devices = Devices::new(
+            vec![card("card0", true), card("card1", false)],
+            &DeviceOverrideSource::default(),
+        )
+        .expect("a primary exists");
+        assert!(devices.is_primary(Path::new("/dev/dri/card0")));
+        assert_eq!(devices.removed(Path::new("/dev/dri/card1")), DeviceChange::Recorded);
+        assert_eq!(devices.removed(Path::new("/dev/dri/card0")), DeviceChange::PrimaryLost);
     }
 
     #[test]
