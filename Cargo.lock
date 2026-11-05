@@ -68,6 +68,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
+name = "async-io"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "456b8a8feb6f42d237746d4b3e9a178494627745c3c56c6ea55d92ba50d026fc"
+dependencies = [
+ "autocfg",
+ "cfg-if",
+ "concurrent-queue",
+ "futures-io",
+ "futures-lite",
+ "parking",
+ "polling",
+ "rustix",
+ "slab",
+ "windows-sys",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3521,6 +3539,20 @@ checksum = "acf4d1bc32aa46eec18caa634ec3cf4c05bfa151f12b93b510b15190f69a1ca8"
 [[package]]
 name = "xdg-desktop-portal-gnoblin"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "async-io",
+ "futures-channel",
+ "futures-lite",
+ "gnoblin-authority",
+ "gnoblin-capture",
+ "gnoblin-client",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "gnoblin-types",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "xkbcommon"

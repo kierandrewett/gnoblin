@@ -249,6 +249,8 @@ zbus = "6.2.1"
 # A small async facade: `StreamExt` for the effect channel and `join`/`yield_now` for
 # the tests that run a served connection and its caller on one thread.
 futures-lite = "2.6.1"
+# The timer that ticks consent deadlines, and the name-owner watch's wakeups.
+async-io = "2"
 # One-shot channels and queues between a handler and the loop that performs its
 # effects.
 futures-channel = "0.3.31"

@@ -8,3 +8,37 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+# The consent core is `gnoblin-authority`'s grant model, not a second copy of it: the
+# portal does not decide what a grant is, it only asks for one and reads the answer.
+gnoblin-authority = { path = "../gnoblin-authority" }
+# A stream the compositor opens is a `gnoblin-capture` session, and the target it
+# captures is `gnoblin-capture`'s identity, so the seam names that crate's types rather
+# than inventing an output or window number of its own.
+gnoblin-capture = { path = "../gnoblin-capture" }
+# The portal is an IPC client: it offers a `portal.ui` request through the privileged
+# connection the services role gives it, and reads the one answer.
+gnoblin-client = { path = "../gnoblin-client" }
+# The value a D-Bus vardict carries and the observation the settings object publishes
+# are `gnoblin-model`'s, so a setting is one type from the graph to the wire.
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-types = { path = "../gnoblin-types" }
+# The IPC version the handshake advertises is the schema's, and the wire crate is where
+# both sides of a handshake read it from.
+gnoblin-proto = { path = "../gnoblin-proto" }
+# One blocking wait per consent prompt: the D-Bus call waits on a one-shot channel while
+# the IPC loop, on another thread, delivers the answer.
+futures-channel.workspace = true
+# The service loop drives the effect channel and the name-owner watch.
+futures-lite.workspace = true
+async-io.workspace = true
+# Every refusal, expiry and grant is logged once, and never with a secret: the portal
+# carries none.
+tracing.workspace = true
+# The backend's own bus name and its interfaces.
+zbus.workspace = true
+
+[dev-dependencies]
+# The checked-in schema the test graph is built from.
+gnoblin-schema = { path = "../gnoblin-schema" }
