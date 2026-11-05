@@ -507,6 +507,18 @@ kind = "same-name"
 reason = "authority names the input that created a trusted context (a pointer button, a key press, a touch); the input router names a recognised multi-touch gesture (swipe, pinch)"
 
 [[allow]]
+left = "gnoblin-backend::Output"
+right = "gnoblin-wm::Output"
+kind = "same-name"
+reason = "a backend output is what the engine drives (connector, mode, scale) and has no position; the window manager's output is where windows are placed, plus the space panels reserve on it"
+
+[[allow]]
+left = "gnoblin-lock::State"
+right = "gnoblin-wayland::State"
+kind = "same-name"
+reason = "the locker's state is where the session lock controller is (unlocked, locking, locked, cover failed); the wayland state is the compositor object every protocol handler receives"
+
+[[allow]]
 left = "gnoblin-schema::Signal"
 right = "gnoblin-session::Signal"
 kind = "same-name"
