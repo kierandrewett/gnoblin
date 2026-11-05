@@ -28,56 +28,28 @@
 
 use std::collections::BTreeMap;
 
-use crate::enums::Deprecation;
-use crate::fields::Parser;
+use crate::engine::{Parser, removed, section_table, unknown_keys};
+use crate::generated::{
+    Auth, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Location, Monitors, Prompts,
+    Protocols, WindowManagement, Workspace, Xwayland, parse_auth, parse_compositor, parse_cursor,
+    parse_frame_renderers, parse_input, parse_input_sources, parse_layer_shell, parse_location, parse_monitors,
+    parse_prompts, parse_protocols, parse_touchpad_gestures, parse_window_management, parse_workspaces, parse_xwayland,
+};
+use crate::model::Deprecation;
 use crate::path::Path;
 use crate::problem::{Fault, Problem, Report};
-use crate::sections::general::{
-    Auth, Compositor, Cursor, LayerShell, Location, Monitors, Prompts, Xwayland, parse_auth, parse_compositor,
-    parse_cursor, parse_layer_shell, parse_location, parse_monitors, parse_prompts, parse_xwayland, section_table,
-};
-use crate::sections::input::{Input, parse_input};
-use crate::sections::protocols::{
-    FrameRenderers, InputSources, Protocols, parse_frame_renderers, parse_input_sources, parse_protocols,
-};
-use crate::sections::window::{
-    Gesture, WindowManagement, Workspace, parse_touchpad_gestures, parse_window_management, parse_workspaces,
-};
 use crate::value::Value;
 
-/// Every top-level key the document accepts.
+/// Every top-level key the document accepts, generated from the schema.
 ///
-/// The list is the recorded inventory in
-/// `tests/parity/contracts/config-keys.json`, which is generated from the C
-/// loader, so a key that exists today cannot be lost by accident. `shell` is
+/// The generated list is compared against the recorded inventory in
+/// `tests/parity/contracts/config-keys.json` by `tests/contract.rs`. `shell` is
 /// absent on purpose: it is refused with an explanation instead of an
 /// unknown-key hint.
-pub const TOP_LEVEL_KEYS: &[&str] = &[
-    "animations",
-    "auth",
-    "autostart",
-    "compositor",
-    "cursor",
-    "frame-renderers",
-    "input",
-    "input-sources",
-    "keybindings",
-    "layer-shell",
-    "location",
-    "monitors",
-    "portals",
-    "prompts",
-    "protocols",
-    "shortcuts",
-    "touchpad-gestures",
-    "window-management",
-    "window-rules",
-    "workspaces",
-    "xwayland",
-];
+pub use crate::generated::TOP_LEVEL_KEYS;
 
-/// Sections this layer keeps but does not interpret.
-pub const CARRIED_SECTIONS: &[&str] = &["animations", "autostart", "keybindings", "shortcuts", "window-rules"];
+/// Sections this layer keeps but does not interpret, generated from the schema.
+pub use crate::generated::CARRIED_SECTIONS;
 
 /// A validated configuration document.
 #[derive(Clone, Debug, PartialEq)]
@@ -138,14 +110,14 @@ impl Config {
         match &mut document {
             Value::Map(entries) => {
                 let root = Path::root();
-                crate::fields::removed(
+                removed(
                     entries,
                     "shell",
                     &root,
                     &mut out,
                     "configure the shell UI in the shell client, and use gnoblin.animation and window rules for compositor animations",
                 );
-                crate::fields::unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
+                unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
                 config.compositor = section_table(entries, "compositor", &root, &mut out)
                     .map(|table| parse_compositor(table, &root.key("compositor"), &mut out));
                 config.cursor = section_table(entries, "cursor", &root, &mut out)
@@ -172,15 +144,13 @@ impl Config {
                     .map(|table| parse_window_management(table, &root.key("window-management"), &mut out));
                 config.xwayland = section_table(entries, "xwayland", &root, &mut out)
                     .map(|table| parse_xwayland(table, &root.key("xwayland"), &mut out));
-                config.touchpad_gestures = if entries.contains_key("touchpad-gestures") {
-                    parse_touchpad_gestures(entries, &root, &mut out)
-                } else {
-                    Vec::new()
+                config.touchpad_gestures = match entries.get_mut("touchpad-gestures") {
+                    Some(value) => parse_touchpad_gestures(value, &root.key("touchpad-gestures"), &mut out).gestures,
+                    None => Vec::new(),
                 };
-                config.workspaces = if entries.contains_key("workspaces") {
-                    parse_workspaces(entries, &root, &mut out)
-                } else {
-                    Vec::new()
+                config.workspaces = match entries.get_mut("workspaces") {
+                    Some(value) => parse_workspaces(value, &root.key("workspaces"), &mut out).workspaces,
+                    None => Vec::new(),
                 };
                 // A declared workspace list fixes the count, so a document that
                 // also asks for dynamic workspaces contradicts itself. The

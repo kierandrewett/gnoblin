@@ -60,7 +60,7 @@ fn a_later_list_replaces_an_earlier_one_instead_of_appending() {
     let ids: Vec<&str> = config
         .workspaces
         .iter()
-        .map(|workspace| workspace.id.as_str())
+        .map(|workspace| workspace.id.as_deref().unwrap_or_default())
         .collect();
     assert_eq!(
         ids,

@@ -52,3 +52,6 @@ infra/site/.svelte-kit/
 /crates/gnoblin-proto/proto/*.proto
 !/crates/gnoblin-proto/proto/envelope.proto
 /crates/gnoblin-proto/src/sensitive.rs
+
+# Generated configuration reference, Lua stubs and settings catalogue.
+crates/gnoblin-config/generated/

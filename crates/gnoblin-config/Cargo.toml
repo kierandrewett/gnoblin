@@ -12,12 +12,17 @@ publish.workspace = true
 # rather than written as a tagged tree.
 serde_json.workspace = true
 
+[build-dependencies]
+# The generator is the same library `cargo xtask gen-config` calls, so the build
+# and the developer command cannot produce different documents.
+gnoblin-config-codegen = { path = "../gnoblin-config-codegen" }
+
 [dev-dependencies]
 # A private temporary directory for the store tests, and nothing else: the
 # validation core takes its input as an argument precisely so it needs no fixture.
-# A path dependency rather than a workspace one, so adding this crate's tests does
-# not rewrite the shared dependency table.
 gnoblin-testkit = { path = "../gnoblin-testkit" }
+# The contract test reads the recorded key inventory generated from the C loader.
+serde_json.workspace = true
 
 [lints]
 workspace = true

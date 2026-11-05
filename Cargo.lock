@@ -196,8 +196,18 @@ version = "0.2.0-alpha.0"
 name = "gnoblin-config"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-config-codegen",
  "gnoblin-testkit",
  "serde_json",
+]
+
+[[package]]
+name = "gnoblin-config-codegen"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

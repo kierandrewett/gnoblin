@@ -45,13 +45,13 @@ fn the_typed_values_are_available_without_reparsing() {
     assert_eq!(cursor.size, Some(24));
     let workspaces = &config.workspaces;
     assert_eq!(workspaces.len(), 2);
-    assert_eq!(workspaces[0].id, "main");
-    assert_eq!(workspaces[1].name, "Chat");
+    assert_eq!(workspaces[0].id.as_deref(), Some("main"));
+    assert_eq!(workspaces[1].name.as_deref(), Some("Chat"));
     let protocols = config.protocols.as_ref().expect("protocols");
     assert_eq!(protocols.toggles.len(), 1);
     let gesture = &config.touchpad_gestures[0];
-    assert_eq!(gesture.when, GestureWhen::Unlocked, "when defaults to unlocked");
-    assert_eq!(gesture.threshold, 48.0, "a swipe threshold defaults to 48");
+    assert_eq!(gesture.when, Some(GestureWhen::Unlocked), "when defaults to unlocked");
+    assert_eq!(gesture.threshold, Some(48.0), "a swipe threshold defaults to 48");
     let mouse = config
         .input
         .as_ref()

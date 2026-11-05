@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-config-codegen"
+description = "Generates gnoblin-config's typed document, validators, reference tables and Lua stubs from schema/config.toml."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
