@@ -230,7 +230,7 @@ value.
 
 `answer`'s value field is marked `secret`. A frame's member is the schema's
 qualified member path, `<object>.<member>` — `request.answer`, or
-`example.login.answer` for an extension — so the generated sensitive table
+`example.ext.answer` for an extension — so the generated sensitive table
 names it, and the envelope constructors flag and redact the frame without
 knowing which members are secret.
 
@@ -240,16 +240,18 @@ Gnoblin has one generic extension mechanism. An extension is a namespace of
 members that a privileged connection provides on the IPC. Extensions are out of
 tree: each ships its own schema file and provider, and the host configuration
 loads it into Gnoblin. The stock tree contains no extension, and no extension
-is built into the compositor. Gnoblin's docs use `example.login` as the neutral
-name. For example, bsm's greeter control is an extension that bsm ships; this
-plan has no other coupling to it.
+is built into the compositor. Gnoblin's docs use `example.ext` as the neutral
+name. Bingux ships its greeter control as an extension from its own repository;
+this plan has no other coupling to it. An IPC namespace is one power among
+several that an extension package can declare; D22 defines the general case
+(manifest, grants, isolation tiers and supervision).
 
 **One ABI.** Every extension speaks the same envelope (namespace, member, request id, flags, opaque payload) through one stock `extension` surface: `provide`, `call`, `event`, `provider-gone`, and the granted list in the handshake Grants frame. Stock crates hold no per-extension generated code, enums or modules. An extension's payload schema is read by its own generated code outside the stock tree, and by the Lua host's dynamic classes at load time (D21).
 
 **Loading.** The host configuration lists each extension in
 `gnoblin.configure.extensions`. Each entry has:
 
-- `namespace`: the namespace, such as `example.login`. It must be unique and
+- `namespace`: the namespace, such as `example.ext`. It must be unique and
   must not be a core namespace.
 - `schema`: the path to the schema file, shipped by the extension's package.
 - `provider`: the privileged connection role allowed to provide the namespace.
@@ -424,12 +426,12 @@ gnoblin/
     gnoblin-proto/            wire codec, handshake, capabilities, versioning; client and server traits
     gnoblin-client/           Rust client library (gnoblinctl, runtime, services, portal, tests, Bingux)
     gnoblin-model/            live object graph, revisions, property diffs, subscriptions
-    gnoblin-config/           configuration document, validation, merge, salvage, last-good store (no Lua)
+    gnoblin-config/           configuration document, validation, merge, salvage, last-good store, extension manifest parse and hash check (D22) (no Lua)
     gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
     gnoblin-wm/               pure window management policy and the layout module (no Smithay types)
     gnoblin-lock/             pure session lock and protection cover state machine
-    gnoblin-authority/        pure attribution, activation and grant rules
-    gnoblin-wayland/          Smithay protocol handlers, one module per protocol
+    gnoblin-authority/        pure attribution, activation and capability grant rules (D22)
+    gnoblin-wayland/          Smithay protocol handlers, one module per protocol; dynamic globals from provider XML at run time (D22)
     gnoblin-render/           scene graph, effects, user shaders, animation and tween player, damage
     gnoblin-input/            libinput settings, xkb, chords, gestures, input policy routing, IME, EIS server
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
@@ -457,10 +459,10 @@ gnoblin/
       gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
       gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem
-    gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens (uses gnoblin-lua-sandbox)
+    gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; extension Lua modules (D22); uses gnoblin-lua-sandbox
     gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset, shared by gnoblin-lua and gnoblin-layout-lua
-    gnoblin-layout-lua/       Lua layout host: worker thread, generations, abandon-and-replace backstop, module loader (the compositor's in-process VM)
-    gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6)
+    gnoblin-layout-lua/       Lua layout host: worker thread, generations, abandon-and-replace backstop, module loader (D17)
+    gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6); WASM extension tier (D22)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
     gnoblin-services/         D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit, idle
     gnoblin-diag/             recovery and console overlay (see D5)
@@ -526,7 +528,9 @@ edge, so a violation names the edge and the rule:
   `gnoblin-render`, engine crates do not depend on each other, except through
   traits in `gnoblin-backend` and types in `gnoblin-model`.
 - `gnoblin-lua` depends on `gnoblin-client`, not on compositor crates. The
-  runtime is a client.
+  runtime is a client. Its `layout` module is the one exception: it may name
+  `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox` (see the layout edges
+  rule below), so a Lua layout runs in the host process and nowhere else.
 - `gnoblin-services`, every `gnoblin-compat-*` D-Bus crate and
   `xdg-desktop-portal-gnoblin` depend on `gnoblin-client` and `zbus`, not on
   compositor crates.
@@ -549,7 +553,7 @@ edge, so a violation names the edge and the rule:
   does not depend on Smithay, so `gnoblin-input` and `gnoblin-render` call it
   and its tests run without a session.
 - `gnoblin-testkit` and `gnoblin-parity` are development dependencies only.
-- `gnoblin-wm` depends on `gnoblin-types` alone, and holds the layout module (`gnoblin_wm::layout`). `gnoblin-layout-lua` depends on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-lua-sandbox` depends on `mlua` alone. Only `gnoblin-compositor` may name `gnoblin-layout-lua`; `gnoblin-lua` may name `gnoblin-lua-sandbox`, never `gnoblin-layout-lua`.
+- `gnoblin-wm` depends on `gnoblin-types` alone, and holds the layout module (`gnoblin_wm::layout`). `gnoblin-layout-lua` depends on `gnoblin-wm`, `gnoblin-types` and `gnoblin-lua-sandbox`. `gnoblin-lua-sandbox` depends on `mlua` alone. Only `gnoblin-compositor` may name `gnoblin-layout-lua`; `gnoblin-lua` may name `gnoblin-lua-sandbox`, never `gnoblin-layout-lua`. `gnoblin-wasm` may name `gnoblin-wm` (`layout` module only) for WASM layouts (D22).
 
 These rules are what makes concurrent work safe: a lane can change a crate
 without breaking another lane, provided the shared types do not change.
@@ -1020,6 +1024,10 @@ failure-mode list that must be complete before isolated tests or code.
 - **Failure modes first:** a token is reused; a context outlives its gesture; a
   child process inherits authority it should not; a client claims another's app
   ID to get focus.
+- **Extension grants (D22):** the pure grant check and its never-grantable list
+  live here. A capability is granted only when host configuration lists it for
+  that extension. Lock embargo, session-lock bypass, authority and launch
+  attribution forging, and secret-marked frames are never grantable.
 
 ### Object model and IPC: `gnoblin-model`, `gnoblin-proto`, `gnoblin-client`, `gnoblinctl`
 
@@ -1044,6 +1052,12 @@ failure-mode list that must be complete before isolated tests or code.
 - **Replaces:** `src/config`, `src/config/lua`,
   `src/session/gnoblin-runtime-worker.c`.
 - **Extension classes:** `gnoblin-lua` builds the Lua classes for a loaded extension at load time from its schema file. It holds no compiled-in extension names (D21).
+- **Layout host (D17):** a module of this crate, not a separate crate. It owns the
+  worker thread, generations and the abandon-and-replace backstop for Lua
+  layouts, and implements the `gnoblin-wm::layout` trait.
+- **Depends on:** `gnoblin-lua-sandbox` (VM construction and limits), `gnoblin-wm`
+  (`layout` module only), `gnoblin-types`, `gnoblin-schema`. The layout module
+  is the only part allowed to name `gnoblin-wm`; see the dependency rules.
 - **Failure modes first:** a handler loops; a reload races a pending operation;
   salvage removes a key that changes lock or protocol policy; a saved last-good
   document is from an older schema; a callback throws.
@@ -1054,7 +1068,10 @@ failure-mode list that must be complete before isolated tests or code.
 ### Protocol handlers: `gnoblin-wayland`
 
 - **Owns:** one module per protocol, per-client access policy, protocol gating
-  from configuration.
+  from configuration. A `dynamic` module creates globals from protocol
+  descriptors that an extension package declares, at run time (D22). It is
+  Proposed and prototype-gated. It does not use the in-binary `Extension` trait,
+  which is the compat-adapter seam only.
 - **Replaces:** `src/protocols/*`, `30-layer-shell`, `30-screencopy`,
   `40-gnoblin-protocols`, `59-frame-callback-queue`, `80-xdg-resource-lifetime`,
   `81-pointer-constraints`.
@@ -1115,6 +1132,9 @@ failure-mode list that must be complete before isolated tests or code.
 - **Owns:** the guardian, autostart, logind and systemd integration, the
   built-in providers (see "Optional components and compatibility"), ScreenSaver
   and idle names, inhibit, portal negotiation and process providers (D19).
+- **Extension providers (D22):** supervises out-of-process extension providers:
+  start, restart policy, restricted socket and process-group kill on overrun.
+  The failure modes are in D22. Tests use a fake provider binary.
 - **Portal relay:** `xdg-desktop-portal-gnoblin` is an optional package that
   serves the `org.freedesktop.impl.portal.*` names and speaks `portal-call` to
   services. Nothing depends on it. Removing it makes `xdg-desktop-portal` fall
@@ -1558,30 +1578,31 @@ own window geometry through messages, and placements are 3D. The renderer's
 Kieran has not yet confirmed the revision.
 Each section below records the choice, its consequences, and the options considered.
 
-| ID  | Question                     | Decision                                                                                                                                                         |
-| --- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1  | Where scripts run            | **Decided:** separate process                                                                                                                                    |
-| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                                                                 |
-| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                                                            |
-| D4  | How bsm hosts sessions       | **Decided** (amended by D21): bsm becomes a Gnoblin; greeter control is an out-of-tree extension                                                                 |
-| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                                                      |
-| D6  | Native plugins               | **Decided:** WASM modules                                                                                                                                        |
-| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                 |
-| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                                                             |
-| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                                                                 |
-| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                                                                            |
-| D11 | Distribution target set      | **Decided:** full list, classified                                                                                                                               |
-| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                                                              |
-| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                                                                       |
-| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers                                             |
-| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                                                                      |
-| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                                                                   |
-| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                                                            |
-| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback                                                      |
-| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                     |
-| D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                  |
-| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104 |
-| D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                    |
+| ID  | Question                     | Decision                                                                                                                                                                                                                        |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Where scripts run            | **Decided:** separate process                                                                                                                                                                                                   |
+| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                                                                                                                                |
+| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                                                                                                                           |
+| D4  | How bsm hosts sessions       | **Decided** (amended by D21): bsm becomes a Gnoblin; greeter control is an out-of-tree extension                                                                                                                                |
+| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                                                                                                                     |
+| D6  | Native plugins               | **Decided:** WASM modules                                                                                                                                                                                                       |
+| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                                                                                                                                |
+| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                                                                                                                            |
+| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                                                                                                                                |
+| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                                                                                                                                           |
+| D11 | Distribution target set      | **Decided:** full list, classified                                                                                                                                                                                              |
+| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                                                                                                                             |
+| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                                                                                                                                      |
+| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers                                                                                                            |
+| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                                                                                                                                     |
+| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                                                                                                                                  |
+| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                                                                                                                           |
+| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback                                                                                                                     |
+| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                                                                                    |
+| D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                                                                                 |
+| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
+| D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
+| D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
 
 ### D1: where scripts run
 
@@ -1681,7 +1702,9 @@ for portal requests when no handler is configured (D19); it never supplies porta
   epochs do not bound time spent inside host calls, so every host call is
   asynchronous or has its own deadline.
 - Proposed timing: after the object model is stable (phase 4 or later). Lane CFG
-  owns the host API; a new crate `gnoblin-wasm` holds the runtime.
+  owns the host API; the crate `gnoblin-wasm` holds the runtime. D22 makes WASM
+  one isolation tier of the general extension system; its host API is the
+  extension host API.
 
 - **Compiled-in modules only, at first:** safe and reviewed. No out-of-tree
   native code.
@@ -2295,8 +2318,8 @@ layout, and an output with none uses `floating`.
 harness keeps its placement, stacking and focus scenarios against the Mutter
 reference, unchanged. Tiling, scrolling, 3D and Lua layouts have no Mutter
 equivalent. They are a new feature, not a divergence, so they do not go in
-`tests/parity/divergences.toml`. Their tests are host tests in
-`gnoblin-layout-lua` for the failure modes above, and table-driven tests of each
+`tests/parity/divergences.toml`. Their tests are host tests in the `gnoblin-lua`
+layout module for the failure modes above, and table-driven tests of each
 shipped module through the host, checking no overlap, containment in the area
 where the module promises it, determinism, zero and one window, and add and
 remove, plus a deadline, memory and bad-return test per host. Expected outputs
@@ -2578,8 +2601,8 @@ Reported by theme authors, unverified against Mutter's cursor-loader source: the
 
 **Decided 2026-11-05: the stock Gnoblin tree has no bsm or greeter code. bsm's greeter control is an out-of-tree extension, loaded into Gnoblin by host configuration. The extension mechanism stays generic.**
 
-- **Stock tree:** no bsm or greeter schema, role, Lua name or crate. The `greeter` role and `crates/gnoblin-schema/schema/bsm-greeter.toml` are not part of Gnoblin. Docs and test fixtures use neutral names such as `example.login`.
-- **Generic mechanism:** the IPC extensions section above. Host configuration lists each extension (namespace, schema path, provider role, granted restricted sockets). Nothing registers names at run time. The schema is validated at load. A failing load refuses that extension only, and the compositor starts without it.
+- **Stock tree:** no bsm or greeter schema, role, Lua name or crate. The `greeter` role and `crates/gnoblin-schema/schema/bsm-greeter.toml` are not part of Gnoblin. Docs and test fixtures use neutral names such as `example.ext`.
+- **Generic mechanism:** the IPC extensions section above, generalised by D22. Host configuration lists each extension (namespace, schema path, provider role, granted restricted sockets). Nothing registers names at run time. The schema is validated at load. A failing load refuses that extension only, and the compositor starts without it. IPC namespaces are one power among several in D22.
 - **bsm ships:** the `bsm.greeter` schema, its provider, and the host kiosk configuration. Gnoblin's docs mention bsm's greeter only in this informational note, with no coupling.
 - **Host boundary (D4, unchanged):** the kiosk configuration is Lua. The greeter UI is an ordinary client. bsm's manager owns PAM and logind through `bsm-helper`, and session launch. Lua config code never becomes an auth broker. Gnoblin handles no auth secret beyond the generic `sensitive`-frame redaction.
 - **Grants:** extensions are granted per connection. The handshake's mandatory Grants frame lists them (Option B).
@@ -2599,6 +2622,233 @@ Failure modes:
 | A frame carries a `secret` field                                   | Flagged `sensitive`; logs and the parity recorder drop the payload without the extension schema.          |
 | An extension payload fails its schema at call time                 | Call fails `invalid-payload`; the provider is not disconnected; no fallback to another path.              |
 | Stock crate built with a stock-tree check finds per-extension code | Build check fails: stock crates contain no per-extension generated code or enums (single ABI rule).       |
+
+### D22: general extension system
+
+**Decided 2026-11-05: an extension is a package that host configuration loads. Its manifest declares the powers it contains and the capabilities it wants. Host configuration grants a subset of those capabilities. Each power runs in one isolation tier. The IPC namespace of D21 becomes one power among several.**
+
+Each item is marked **Decided**, **Proposed** or **Rejected**. A Proposed power is refused with a named reason until its gate passes: a prototype, or a named prerequisite.
+
+#### Options considered
+
+| Option                                        | What it is                                                                   | Trade-off                                                                                                                                         |
+| --------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. IPC namespaces only (D21 alone)            | Extensions provide namespaces on the IPC and nothing else.                   | Small and already specified. Cannot add layouts, hooks, render passes, Wayland globals or providers without a new decision each time.             |
+| B. Package with manifest, capabilities, tiers | One package format. Each power is declared, granted and isolated separately. | More to specify and test. One grant model covers every power, so review has one shape. **Chosen.**                                                |
+| C. In-process native plugins                  | Load `dylib`s into the compositor.                                           | Fastest and most powerful. A fault ends the session, and Rust has no stable ABI (D6). **Rejected** for third parties.                             |
+| D. Lua for everything                         | One language, one sandbox.                                                   | Cheap to host. No OS isolation, and a wedged Lua call in the compositor VM costs a worker (D17). Lua is the default user power, not the only one. |
+
+Open within B: the default tier for compiled-module powers, WASM or process. See "Open decisions".
+
+#### Package and manifest
+
+An extension is a directory holding `extension.toml` and the files it names. `gnoblin-config` parses the manifest, and parsing executes nothing.
+
+```toml
+id = "example.ext"            # package id, unique; host configuration names it
+version = "1.2.0"             # full MAJOR.MINOR.PATCH of the package
+gnoblin = ">=0.2.0, <0.3.0"   # Gnoblin versions the package supports
+
+[powers.ipc]                  # (a) IPC namespace, D21 rules
+namespace = "example.ext"
+schema = "ext.toml"
+provider = "example"          # privileged connection role that provides it
+
+[powers.lua]                  # (c) Lua modules, loaded with the sandbox
+modules = ["example.ext.ui"]
+
+[powers.wasm]                 # (d) WASM module
+module = "layouts.wasm"
+wit = "gnoblin:ext@0.2.0"
+
+[powers.process]              # (e) supervised provider process
+command = ["example-provider", "--socket", "{socket}"]
+restart = "on-failure"
+max_restarts = 3
+
+[powers.wayland]              # (b) Proposed: refused until the prototype passes
+protocols = ["example_ext_v1.xml"]
+
+[powers.hooks]                # (f) hooks; each names an entry in the package
+window_rules = ["rules"]
+layouts = ["grid"]            # registered by name (D17)
+bindings = ["keys"]
+config = "config.toml"        # settings under gnoblin.configure.<namespace>
+# cursor (D20), portal (D19) and passes (render.pass) entries follow the same shape.
+
+[capabilities]                # what the package asks for; host configuration grants a subset
+requests = ["ipc.provide:example.ext", "window.read", "spawn"]
+```
+
+- A power the manifest does not declare is absent, and its code is never loaded.
+- (g) Anything else the stock object model exposes is reached through `model.<object>.<member>` capabilities, one per member the schema lists. An extension sees a member only when a grant names it. Every object-model member can be offered this way, with no new mechanism.
+
+#### Capabilities
+
+Every power is a named capability. None is granted by default. A capability the manifest requests and the host does not grant is not fatal to the package: the power that needs it is absent, with reason `capability-not-granted`, and the other powers load. A capability on the never-grantable list below is refused at parse, and the whole package is refused with `capability-forbidden`.
+
+| Capability                          | Lets the extension                                                            | Status                                                            |
+| ----------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `ipc.provide:<ns>`                  | provide one namespace listed in host configuration                            | Decided (D21)                                                     |
+| `ipc.call:<ns>/<object>`            | call members of a namespace or a core object                                  | Decided (D21)                                                     |
+| `layout.register:<name>`            | register a layout by name (D17)                                               | Decided in principle; WASM layouts Proposed                       |
+| `portal.provide:<iface>`            | serve a portal interface (D19)                                                | Decided in principle                                              |
+| `cursor.provide`                    | serve cursor themes (D20)                                                     | Deferred: D20 defines no extension cursor provider                |
+| `config.schema`                     | add settings under `gnoblin.configure.<namespace>`                            | Decided                                                           |
+| `model.<object>.<member>`           | read, write or observe one stock object member, as the schema marks it        | Decided in principle; per-member list comes from the schema       |
+| `window.read`                       | read identity, title, app id, geometry and state of windows                   | Proposed                                                          |
+| `window.write`                      | change window state through `gnoblin-wm` commands                             | Proposed; refused while locked                                    |
+| `input.observe`                     | receive input events read-only, under the EIS rules                           | Proposed; policy in `gnoblin-input`                               |
+| `input.inject`                      | send synthetic input, per device                                              | Proposed; refused while locked                                    |
+| `render.pass`                       | add a GLES shader pass with a uniform schema                                  | Proposed; prerequisite: a render-pass API in `gnoblin-render`     |
+| `capture`                           | read screen content                                                           | Proposed; refused while locked; capture embargo in `gnoblin-lock` |
+| `wayland.global:<iface>`            | serve a dynamic Wayland global (below)                                        | Proposed; gated by prototype                                      |
+| `wayland.client-policy`             | narrow which clients see the package's globals; never widen                   | Proposed; gated by prototype                                      |
+| `spawn`                             | start a child process in its own unit; attribution set by `gnoblin-authority` | Proposed                                                          |
+| `fs.read:<path>`, `fs.write:<path>` | access one exact path; no globs                                               | Proposed                                                          |
+| `net`                               | network                                                                       | No grant form exists in 0.2.0                                     |
+
+Never grantable. Refused in the manifest and in host configuration:
+
+- `lock.*`: the lock state, the cover, the input and capture embargo, and any session-lock bypass or unlock.
+- `authority.*`: activation tokens, launch attribution, session leadership and trusted input contexts. A package cannot make a launch or a focus trusted.
+- `secret.read`: any frame marked `sensitive` (D21), and any PAM, logind or auth payload.
+- `session.privileged`: PAM, logind and seat privileges. These stay with the host's manager (D21).
+
+Lock rule. While the session is not unlocked (`gnoblin-lock`), every capability marked "refused while locked" returns `session-locked`. `window.read` and IPC calls keep working, so the lock surface still functions.
+
+Enforcement. The pure grant check and the never-grantable list live in `gnoblin-authority`, next to scoped grants. Each tier calls that check at its own boundary: IPC dispatch, the Lua `require` and host functions, WASM host imports, the process envelope, and Wayland dispatch.
+
+#### Isolation tiers
+
+| Tier                    | Isolation                                                                                                    | Honest cost                                                                                   | Fault behaviour                                                                                                                                                                          | Status                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Out-of-process provider | Separate process, supervised by `gnoblin-session`, restricted socket. The only tier with OS-level isolation. | One IPC hop per call.                                                                         | Crash: callers get `provider-gone`; restart per policy; disabled after `max_restarts` (`provider-crashed`). Overrun: the call fails `timeout`; repeated overruns kill the process group. | Envelope Decided (D21); supervision Proposed                                                                          |
+| WASM module             | `wasmtime`; memory cap; fuel and epoch deadlines; host API from WIT.                                         | Instantiation and copies across the boundary. Host calls are not pre-empted (see WASM rules). | Trap or deadline: that power unloads (`trap`, `deadline`). A wedged worker is abandoned and replaced.                                                                                    | Proposed. Prerequisite: wasmtime limits API confirmed at the pinned version (D6)                                      |
+| Lua module              | Sandboxed VM (`gnoblin-lua-sandbox`); instruction hook and memory limits.                                    | Cheapest. Layouts and hooks run in the compositor VM.                                         | Error or limit: that module disabled (`lua-error`, `memory`). A wedged layout: D17 abandon-and-replace.                                                                                  | Decided (D17); default for user powers                                                                                |
+| In-process native Rust  | `dylib` loaded into the compositor.                                                                          | Fastest; no stable ABI; full power.                                                           | A fault ends the session.                                                                                                                                                                | **Rejected** for third parties in 0.2.0 (D6). Adapters linked into the binary by the distribution are not extensions. |
+
+Honest costs. Instruction and memory limits do not bound a C call the Lua VM makes (D17, blocking calls). Epochs and fuel bound a WASM guest's time but not a host call's time. Only the process tier keeps a crash or memory fault out of the compositor. A package that touches secrets, or runs on the frame path, belongs in the process or WASM tier with the rules below, not in Lua.
+
+Naming. The `Extension` trait in `crates/gnoblin-wayland/src/protocols/extension.rs` is the in-binary seam for compat adapters. It is not a D22 extension package and does not use the D21 envelope. The name stays, and docs say "compat adapter" when they mean it.
+
+#### WASM tier rules
+
+Decided in principle. Gated by the prototype, like the rest of the WASM tier.
+
+- Each extension instance runs on its own worker thread. The compositor never calls guest code on the frame thread.
+- The compositor submits work with a generation and collects the reply with a deadline, the same shape as the layout engine trait (D17). A hook's collect waits at most the frame deadline; any other call waits at most its own call deadline. A miss returns the power's declared default, and a late reply with a stale generation is discarded.
+- Two limits apply to every guest call. wasmtime epoch interruption pre-empts guest code at a deadline, and fuel bounds total work. Memory is capped per instance.
+- Host calls are the one place where neither epochs nor fuel bounds time. Each host function is asynchronous or does bounded work. A host function that waits on the compositor (an IPC round trip, a file read) runs on the worker against its own deadline and returns an error on expiry. No host call blocks the frame thread. [INFERENCE: confirm async host function support at the pinned wasmtime version.]
+- Hot-path hooks (per-frame, per-input) run with a tight budget, starting at 1 ms [INFERENCE]. Three consecutive overruns drop the hook, reported as `hook-dropped`.
+- A wedged worker (no return past the hard limit) is abandoned and replaced, as D17 does for Lua. Leaked threads are counted. After three leaked workers in one session, the WASM tier is disabled and its powers report `tier-wedged`.
+- WASM layouts. The WIT world exports `arrange(ctx) -> placements`, `request(ctx, req)` returning `handled` or `declined`, `on-added`, `on-removed`, `command`, and an options schema. It uses the same snapshot, reply and validator as Lua layouts, and the same deadline. A WASM layout registers by name in the same registry as Lua layouts (`gnoblin-wm::layout`). A trap disables that layout only. A Lua and a WASM layout with one name are refused, unless host configuration names the winner. Lua remains the default for layouts.
+
+#### Wayland dynamic globals
+
+Proposed. Blocking gate: until the prototype passes, a manifest with `[powers.wayland]` is refused with `wayland-powers-unvalidated`. The prototype must show that a runtime-built interface is accepted by `wayland-backend`, that a client binds and completes a request round trip, that `wayland-info` lists the global, and that provider death removes it cleanly. Known obstacle: `wayland-backend`'s interface type is `&'static`, so each loaded XML needs its descriptors leaked or interned once per load, and a reload that changes an XML is refused. This is unvalidated.
+
+Path from XML to global:
+
+1. **Load.** The XML is parsed, not compiled. Interface names begin with the package namespace (for example `ext_example_ext_v1`) and do not collide with `wl_*`, `xdg_*`, `gnoblin_*` or another loaded package. Versions are declared.
+2. **Descriptors.** Built from the parsed XML at load, before the event loop. That is the one moment a global can appear with no client racing it, the registration rule in `protocols/extension.rs`.
+3. **Global.** One per granted interface. Its version is the lower of the XML version and the version the grant allows. Clients bind lower versions as usual.
+4. **Dispatch.** One generic handler decodes each request by its descriptor, checks argument types and enum ranges, and forwards `(namespace, member, object id, request id, payload)` to the provider. Events come back and are encoded by descriptor.
+5. **Access.** The per-client access roster in `gnoblin-wayland` decides which clients may bind. A restricted (`security_context`) client sees no extension global unless the roster allows it. `wayland.client-policy` can narrow the roster and never widen it.
+6. **Caps,** per client and per extension. Starting values [INFERENCE], set by the prototype: 256 live objects; 64 KiB per message; 4 fds per message; 10 000 requests per second. Over a cap the client gets `wl_display.error` with code `implementation`, naming the extension.
+7. **Fds.** Allowed only for arguments the XML declares as `fd`. The compositor passes them to the provider over the provider's Unix socket with `SCM_RIGHTS`. It never reads, maps or logs fd content, and it refuses any fd on a `sensitive` frame.
+8. **Provider death.** Every global is removed with `wl_registry.global_remove`. A live object gets the XML's destroy event if the XML declares one. Otherwise its client gets `wl_display.error` with code `implementation` and the message `extension <id> gone`, and is disconnected by default (open decision). Objects, fds and pending requests are freed on removal.
+9. **Built-in re-expression.** The window-frame, blur-fade and session-host protocols could later move from compiled bindings into built-in extension manifests. Their XML and wire stay the same, and `wayland-info` and wlcs results must not change. This needs steps 1 to 8 to pass first. `gnoblin_session_host_v1` stays stock (D21).
+
+#### Lifecycle
+
+- **Discovery.** Only directories listed in `gnoblin.configure.extension_dirs` are searched, one level deep, for `extension.toml`. There is no `$PATH` search, no XDG data-directory scan and no environment-driven search.
+- **Trust.** Host configuration lists each package with its exact `id`, a `hash` and its grants. `hash` is SHA-256 over the manifest and every file it names. A missing hash refuses the package. Signatures are an open decision; 0.2.0 checks hashes only.
+- **Load order.** Configuration order, adjusted so a package loads after the packages it `requires`. A cycle is refused. A duplicate id or namespace refuses the later package in configuration order.
+- **Enable and disable at run time.** `gnoblinctl extension enable|disable <id>` changes that package's `enabled` in the live document and runs the config reload path: validate, merge, last-good store. It does not edit the host configuration file, so a restart returns to the file's value. Persisting the change is an open decision.
+- **Versioning.** The `gnoblin` range is checked against the running version (`gnoblin-version` refusal). The package version is full `MAJOR.MINOR.PATCH`. The IPC `since` rules apply to any namespace it provides.
+- **Packaging.** Extensions ship as their own packages, from whoever owns them. A stock package contains no extension. The stock build check (D21) rejects extension code in stock crates.
+- **gnoblinctl.** `extension list` (id, version, state, granted powers); `extension info <id>` (manifest, requested against granted, refusal reason, hash); `extension enable <id>`; `extension disable <id>`.
+
+Configuration surface:
+
+```lua
+gnoblin.configure.extension_dirs = { "/usr/share/gnoblin/extensions" }
+gnoblin.configure.extensions = {
+  { id = "example.ext", hash = "sha256:…", enabled = true,
+    grants = { "ipc.provide:example.ext", "window.read" } },
+}
+-- gnoblin.configure.<namespace>: settings the package's config schema declares
+```
+
+#### Failure modes
+
+| Failure                                                 | Outcome                                                                                                |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Manifest fails to parse, or has an unknown key          | Package refused `manifest-invalid`. Nothing from it loads.                                             |
+| Hash missing or wrong                                   | Package refused `hash-mismatch`.                                                                       |
+| `gnoblin` range excludes the running version            | Package refused `gnoblin-version`.                                                                     |
+| Requested capability not granted                        | That power is absent (`capability-not-granted`); the rest loads.                                       |
+| Never-grantable capability requested or granted         | Package refused `capability-forbidden` at parse.                                                       |
+| Two packages claim one id or namespace                  | The later one in configuration order is refused `duplicate`.                                           |
+| Schema or XML fails validation                          | That power is refused; the rest loads. For IPC, D21 applies.                                           |
+| Process provider crashes                                | Callers get `provider-gone`; restart per policy; disabled after `max_restarts` (`provider-crashed`).   |
+| Process provider misses a call deadline                 | Call fails `timeout`; repeated overruns kill the process group.                                        |
+| WASM trap or deadline                                   | That power unloads (`trap` or `deadline`). A wedged worker is abandoned and replaced.                  |
+| Three WASM workers leaked in one session                | WASM tier disabled; its powers report `tier-wedged`.                                                   |
+| Hot-path hook overruns three times in a row             | Hook dropped (`hook-dropped`).                                                                         |
+| Lua module errors or exceeds its memory limit           | That module is disabled (`lua-error` or `memory`).                                                     |
+| Lua layout wedged                                       | D17 abandon-and-replace.                                                                               |
+| Lua and WASM layouts share one name                     | Refused unless host configuration names the winner.                                                    |
+| Provider dies while it holds Wayland globals            | Globals removed; live objects get the destroy event or `wl_display.error`, then disconnect by default. |
+| Wayland client exceeds a cap                            | `wl_display.error` with code `implementation`, naming the extension.                                   |
+| `window.write` or `input.inject` requested while locked | Refused `session-locked`.                                                                              |
+| Reload drops a grant                                    | That power unloads on that reload; the rest stays.                                                     |
+| Package tries to forge lock state or launch attribution | Not reachable: never-grantable.                                                                        |
+
+#### Crate placement
+
+No new crate. Each piece goes to a crate that already owns the same concern.
+
+| Piece                                                    | Crate                                              | Reason                                                                                        |
+| -------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Manifest parse, hash check, host extension list          | `gnoblin-config`                                   | Configuration document; no Lua                                                                |
+| Grant rules, never-grantable list                        | `gnoblin-authority`                                | Scoped grants already live there; pure                                                        |
+| Process supervision                                      | `gnoblin-session`                                  | The guardian owns supervision                                                                 |
+| WASM host, WIT, workers, WASM layout adapter             | `gnoblin-wasm`                                     | The D6 crate; names `gnoblin-schema`, `gnoblin-types` and `gnoblin-wm` (`layout` module only) |
+| Lua extension modules                                    | `gnoblin-lua`                                      | Lua host for extension modules (D22)                                                          |
+| In-process Lua layout host                               | `gnoblin-layout-lua`                               | Worker, generations, abandon-and-replace backstop (D17)                                       |
+| Dynamic Wayland globals                                  | `gnoblin-wayland` (`dynamic` module)               | Protocol handlers and the per-client roster                                                   |
+| Layout trait, value types, registry, validator, fallback | `gnoblin-wm::layout`                               | Pure policy (D17)                                                                             |
+| IPC envelope and stock extension surface                 | `gnoblin-proto`, `gnoblin-model`, `gnoblin-client` | D21                                                                                           |
+| Commands                                                 | `gnoblinctl`                                       | Command-line client                                                                           |
+
+#### Testing and verification plan (not run)
+
+- Parser: golden manifests; unknown keys; semver and range; hash; the never-grantable list. In `gnoblin-config`.
+- Grant model: table tests in `gnoblin-authority` for every capability against every lock state.
+- Process supervision: crash, hang, restart storm and process-group kill, using a fake provider binary in fixtures. In `gnoblin-session`.
+- WASM: trap, fuel exhaustion, epoch deadline, memory cap, slow host call, wedged-worker replacement, dropped hot hook. In `gnoblin-wasm`.
+- Lua: the D17 failure-mode tests, plus `require` of granted namespaces only.
+- Wayland (prototype, then full suite): `wayland-info` diff with the package loaded; bind and round trip; provider death; restricted client; per-client caps; fd cap; bad XML; wlcs for the descriptor path.
+- End to end: one neutral fixture package (`example.*`) per tier under `tests/fixtures/extensions/`. The compositor stays alive through every failure in the table above, and `gnoblinctl extension list` reports each named reason.
+- Stock check: no extension code in stock crates.
+
+#### Parity and ledger
+
+New feature. Mutter has no equivalent, so there is no divergence ledger entry. Re-expressing the Gnoblin-owned protocols (step 9) is judged by the existing parity tests, not a new one. The extension system is one new-scope ledger entry, with size unscheduled. This document does not estimate it.
+
+#### Open decisions for Kieran
+
+1. Security review of dynamic Wayland globals (the generic decoder, fd passing and per-client caps) before the prototype may ship.
+2. The capability list. Confirm the names and the granularity, and whether `model.<object>.<member>` is one capability per member or per object.
+3. Default tier for compiled-module powers: WASM or process. Recommendation: process for providers, WASM for modules, Lua for user config and hooks.
+4. In-process native plugins: never, or later behind a stable C ABI. Recommendation: never for third parties.
+5. Trust root: hashes only, or signatures, and who signs.
+6. On provider death, disconnect Wayland clients by default, or leave inert objects that error on each request.
+7. Run-time enable and disable: session-only, or persisted to the host configuration.
+8. Cursor providers (D20) are deferred, so the extension cursor power waits for that decision.
+9. Whether `gnoblin.configure.extension_dirs` may name user directories or only system ones.
 
 ## Phase 0 checklist
 
