@@ -451,6 +451,7 @@ gnoblin/
     gnoblin-diag/             recovery and console overlay (see D5)
     gnoblinctl/               command line client (binary)
     xdg-desktop-portal-gnoblin/  portal backend (binary)
+    gnoblin-portal-ui/           portal UI state: queue, consent, picker logic, no drawing (D19)
     gnoblin-testkit/          in-process fixture, test clients, input injection, observation recorder
     gnoblin-parity/           scenario runner, targets (Mutter reference, Rust candidate), normaliser, reports
     xtask/                    code generation: d.lua, API docs, schema dump, compatibility report
@@ -513,6 +514,9 @@ edge, so a violation names the edge and the rule:
 - `gnoblin-services`, every `gnoblin-compat-*` D-Bus crate and
   `xdg-desktop-portal-gnoblin` depend on `gnoblin-client` and `zbus`, not on
   compositor crates.
+- `gnoblin-portal-ui` depends on `gnoblin-types` and `gnoblin-schema` only.
+  `gnoblin-diag` depends on `gnoblin-portal-ui` and draws it. `xdg-desktop-portal-gnoblin`
+  depends on neither: it speaks `portal.ui` over the privileged IPC.
 - A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client` and its
   own transport:
     - `zbus` for D-Bus names;
@@ -1053,7 +1057,7 @@ failure-mode list that must be complete before isolated tests or code.
 - **Owns:** the scene graph with window visual transforms (opacity, scale,
   rotation, offset), effects as GLES passes, user shaders with a uniform schema,
   the animation and tween player, cursor themes, frame export taps, the recovery
-  overlay.
+  overlay, and the egui fallback UI for portal requests (D19).
 - **Layouts are 3D-first; the renderer draws 2D today.** Every layout placement is a full 3D transform, and 2D is the special case `z = 0` with an orthographic camera. The renderer's ability to draw depth, a perspective camera and 3D hit testing is a separate decision, D18. Until D18 lands, the renderer refuses any non-2D transform or perspective camera with the named `unsupported-3d` error. That refusal is a temporary renderer state, not a layout restriction.
 - **Damage:** the rule for 3D damage is written in D18.
 - Nothing in the IPC, the schema or the damage model assumes a flat plane.
@@ -1094,6 +1098,15 @@ failure-mode list that must be complete before isolated tests or code.
   `org.gnoblin.SessionIdle`, `org.freedesktop.impl.portal.desktop.gnoblin`,
   agent names. A nested session asks its host for logout and power through
   `gnoblin_session_host_v1` and never calls logind itself.
+
+### gnoblin-portal-ui: pure portal UI state
+
+- **Owns:** the typed `portal-ui` request and response model for each interface,
+  the request queue (first in first out, eight waiting), consent state and its
+  timeout, FileChooser path and filter logic, AppChooser filtering, Print
+  printer and page checks. No drawing and no D-Bus.
+- **Replaces:** nothing; new in 0.2.0 (D19).
+- **Depends on:** `gnoblin-types` and `gnoblin-schema` only.
 
 ### Compatibility crates: `compat/`
 
@@ -1230,16 +1243,16 @@ trusted caller identity or permission authority: the portal backend and the
 compositor keep those, validate every answer against its request, and cancel the
 request when the caller goes away.
 
-| Slot             | Contract                                   | Default provider          | Taken over by        |
-| ---------------- | ------------------------------------------ | ------------------------- | -------------------- |
-| `auth.polkit`    | polkit agent, answered as a `Request`      | services role             | shell                |
-| `prompt.secret`  | passphrase or confirm `Request`            | none; prompts fail closed | shell                |
-| `location.agent` | `org.freedesktop.GeoClue2.Agent`           | services role             | shell                |
-| `lock.locker`    | `ext-session-lock-v1` client, lock request | none; lock fails closed   | shell or locker      |
-| `idle.policy`    | idle watches, ScreenSaver names            | services role             | shell or config      |
-| `portal.ui`      | consent, pickers and access dialogs        | none; fails closed (D14)  | shell                |
-| `notifications`  | `org.freedesktop.Notifications`            | none                      | shell                |
-| `a11y.keyboard`  | `org.freedesktop.a11y.KeyboardMonitor`     | compositor, built in      | none; always Gnoblin |
+| Slot             | Contract                                   | Default provider                                          | Taken over by        |
+| ---------------- | ------------------------------------------ | --------------------------------------------------------- | -------------------- |
+| `auth.polkit`    | polkit agent, answered as a `Request`      | services role                                             | shell                |
+| `prompt.secret`  | passphrase or confirm `Request`            | none; prompts fail closed                                 | shell                |
+| `location.agent` | `org.freedesktop.GeoClue2.Agent`           | services role                                             | shell                |
+| `lock.locker`    | `ext-session-lock-v1` client, lock request | none; lock fails closed                                   | shell or locker      |
+| `idle.policy`    | idle watches, ScreenSaver names            | services role                                             | shell or config      |
+| `portal.ui`      | UI step for portal requests (handler, D19) | egui fallback if unset; else a claimant; else fail closed | shell or built in    |
+| `notifications`  | `org.freedesktop.Notifications`            | none                                                      | shell                |
+| `a11y.keyboard`  | `org.freedesktop.a11y.KeyboardMonitor`     | compositor, built in                                      | none; always Gnoblin |
 
 The session object lists each slot with its provider and state, so a shell,
 `gnoblinctl` and the recovery overlay can show what is missing. This replaces
@@ -1263,18 +1276,22 @@ out.
 
 ### Portals
 
-The portal backend splits by what an interface needs:
+The portal backend has one job per interface: the behaviour belongs to the portal
+crate, the compositor IPC, or a system service. The UI step is separate. Every
+interface and its contract is in D19, table "Interfaces and their contracts".
 
-- **Compositor-bound:** ScreenCast, Screenshot, RemoteDesktop, InputCapture,
-  GlobalShortcuts, Clipboard, Settings, Inhibit. `xdg-desktop-portal-gnoblin`
-  implements these, in Rust and with no toolkit. Every choice the user makes is
-  a `Request` for the `portal.ui` slot.
-- **Toolkit-bound:** FileChooser, AppChooser, Print, Account, Email,
-  Notification, Wallpaper, Lockdown. Gnoblin does not implement these. Routing
-  sends them to `gtk`, `gnome`, `kde` or the shell's backend.
+- **Compositor-bound:** ScreenCast, Screenshot (and its colour pick), RemoteDesktop,
+  InputCapture, GlobalShortcuts, Clipboard, Settings, Inhibit, Wallpaper, Background.
+  The compositor provides the capability.
+- **Portal-served:** FileChooser, AppChooser, Print, Account, Email, Notification,
+  Lockdown, DynamicLauncher. The portal crate provides the behaviour through system
+  services (CUPS, `mailto:`, the notification owner, passwd).
+- **Not served:** Secret (no store rule), OpenURI and Trash. These stay on `gtk;*`.
 
-`gnoblin.configure.portals` keeps the per-interface routing. The default route
-is `gnoblin` for compositor-bound interfaces and `gtk;*` for the rest.
+`gnoblin.configure.portal_routing` keeps the per-interface routing. Each routed
+interface lists `gnoblin` first, then `gtk;*` as the fallback where Gnoblin does not
+implement it. `gnoblin.configure.portals.<Interface>` is the UI handler, not routing
+(D19).
 
 The portal's capture and input backend is a trait with two implementations. In
 phase 1 it uses `org.gnome.Mutter.ScreenCast`, `RemoteDesktop` and
@@ -1492,26 +1509,27 @@ own window geometry through messages, and placements are 3D. The renderer's
 Kieran has not yet confirmed the revision.
 Each section below records the choice, its consequences, and the options considered.
 
-| ID  | Question                     | Decision                                                                                                     |
-| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| D1  | Where scripts run            | **Decided:** separate process                                                                                |
-| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                             |
-| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                        |
-| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                           |
-| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                  |
-| D6  | Native plugins               | **Decided:** WASM modules                                                                                    |
-| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                             |
-| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                         |
-| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                             |
-| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                        |
-| D11 | Distribution target set      | **Decided:** full list, classified                                                                           |
-| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                          |
-| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                   |
-| D14 | Portal UI without a shell    | **Decided:** fail closed                                                                                     |
-| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                               |
-| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                        |
-| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback  |
-| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then |
+| ID  | Question                     | Decision                                                                                                             |
+| --- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| D1  | Where scripts run            | **Decided:** separate process                                                                                        |
+| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                     |
+| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                |
+| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                                   |
+| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                          |
+| D6  | Native plugins               | **Decided:** WASM modules                                                                                            |
+| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                     |
+| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                 |
+| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                     |
+| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                                |
+| D11 | Distribution target set      | **Decided:** full list, classified                                                                                   |
+| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                  |
+| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                           |
+| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers |
+| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                          |
+| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                       |
+| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                |
+| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback          |
+| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then         |
 
 ### D1: where scripts run
 
@@ -1578,8 +1596,8 @@ dropped: they existed only because Mutter cannot run as a Wayland client.
 
 **Decided 2026-11-04: egui overlay in the compositor.** `gnoblin-diag` replaces
 the ImGui recovery, console and debug panels. The console still evaluates Lua in
-the runtime process, never in the compositor. It does not draw portal consent
-(D14 fails closed instead).
+the runtime process, never in the compositor. It also supplies the egui fallback UI
+for portal requests when no handler is configured (D19); it never supplies portal behaviour.
 
 - **egui overlay in the compositor:** works when no shell runs; pure Rust. UI
   code runs inside the compositor.
@@ -1755,9 +1773,10 @@ Capture adapters ship only after these parity scenarios pass:
 
 ### D14: portal UI when no shell claims it
 
-**Decided 2026-11-04: fail closed.** Without a shell that claims `portal.ui`,
-screen sharing and remote desktop requests are refused with an error that names
-the missing provider.
+**Superseded in part by D19 (2026-11-05).** Kieran's direction replaces fail-closed
+for pickers and dialogs: an unset handler falls back to the egui UI in the compositor.
+Consent for capture and input is the one place the fallback is a deliberate decision;
+see D19, "Consent in the fallback".
 
 - **Fail closed:** no screen sharing or remote desktop without a shell that
   claims `portal.ui`. Simplest and safest.
@@ -2233,6 +2252,169 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 - **Validation:** non-finite or singular transforms are refused at the layout boundary, before the renderer sees them.
 - **Verification:** screenshot parity of 2D scenes before and after the depth pass; property tests that a point inside a placed window's projected quad hits it and a point outside does not, under a random transform; a host test that a perspective camera refuses in the damage path until the tighter rule exists.
 - **Ledger:** new 0.2.0 scope, recorded in the ledger, not a divergence from Mutter.
+
+### D19: portal fallback UI and full portal coverage
+
+**Decided 2026-11-05, on Kieran's direction. A deliberate deviation from the plan:** Gnoblin serves every portal endpoint `portals.conf` routes, plus the other `org.freedesktop.impl.portal.*` backends a desktop needs. Where an interface needs a UI step, the compositor shows a basic egui fallback, but only when no handler is configured. This replaces D14's fail-closed rule for pickers and dialogs. Consent for capture and input keeps its own rule (see "Consent in the fallback").
+
+#### Handler rule
+
+`gnoblin.configure.portals.<Interface> = <handler>` names the UI handler for one interface. A handler is a provider name that claims `portal.ui`, or `"builtin"` for the egui fallback. A UI step resolves in this order:
+
+1. `"builtin"`: the egui fallback draws it.
+2. A provider name: the request goes to that provider. If it is not connected, the request fails with `handler-unavailable`. It never falls back to egui, because the user named a handler.
+3. Unset: a provider that claims `portal.ui` serves it if one exists. Otherwise the egui fallback serves it, if the interface is in the fallback set (every interface with a UI step in the table below). Otherwise the request fails closed with `not-supported`.
+
+Secret is not in the fallback set, because Gnoblin cannot serve it (see its row).
+
+#### Interfaces and their contracts
+
+Routing: every interface Gnoblin serves routes `gnoblin;gtk;*` in `portals.conf`, so an installed `gtk` backend still answers if Gnoblin's is absent. Secret, OpenURI and Trash stay on `gtk;*`. Versions are the `xdg-desktop-portal` interface versions [INFERENCE: check the installed `xdg-desktop-portal` headers at implementation].
+
+| Interface                        | D-Bus contract (version)                               | Behaviour provider                                                        | UI step                      |
+| -------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------- |
+| ScreenCast                       | `org.freedesktop.impl.portal.ScreenCast` (5)           | compositor capture sessions over IPC (`gnoblin-capture`)                  | yes: consent and source pick |
+| Screenshot                       | `org.freedesktop.impl.portal.Screenshot` (2)           | compositor capture over IPC                                               | yes: consent                 |
+| Screenshot, `PickColor`          | method of `org.freedesktop.impl.portal.Screenshot` (2) | compositor reads one pixel of the composed frame                          | yes: pick overlay            |
+| RemoteDesktop                    | `org.freedesktop.impl.portal.RemoteDesktop` (2)        | compositor input sessions (EIS) over IPC                                  | yes: consent and devices     |
+| InputCapture                     | `org.freedesktop.impl.portal.InputCapture` (1)         | compositor input barriers over IPC                                        | yes: consent                 |
+| GlobalShortcuts                  | `org.freedesktop.impl.portal.GlobalShortcuts` (1)      | compositor binding over IPC                                               | no                           |
+| Clipboard                        | `org.freedesktop.impl.portal.Clipboard` (1)            | compositor selection over IPC                                             | no                           |
+| Settings                         | `org.freedesktop.impl.portal.Settings` (2)             | compositor settings object (D15)                                          | no                           |
+| Inhibit                          | `org.freedesktop.impl.portal.Inhibit` (3)              | compositor inhibit and idle policy over IPC                               | no                           |
+| FileChooser                      | `org.freedesktop.impl.portal.FileChooser` (4)          | portal crate: file access, document-portal export                         | yes: open, save, folder      |
+| AppChooser                       | `org.freedesktop.impl.portal.AppChooser` (1)           | portal crate: `.desktop` entries and `mimeapps.list`                      | yes: list                    |
+| Print                            | `org.freedesktop.impl.portal.Print` (1)                | portal crate: CUPS through `lp`, or print-to-PDF file                     | yes: printer and copies      |
+| Account                          | `org.freedesktop.impl.portal.Account` (1)              | portal crate: passwd GECOS and `~/.face`                                  | yes: confirm                 |
+| Email                            | `org.freedesktop.impl.portal.Email` (2)                | portal crate: `xdg-open mailto:` with the composed URI                    | no                           |
+| Notification                     | `org.freedesktop.impl.portal.Notification` (1)         | portal crate forwards to the owner of `org.freedesktop.Notifications`     | no                           |
+| Wallpaper                        | `org.freedesktop.impl.portal.Wallpaper` (1)            | compositor background object over IPC                                     | yes: confirm                 |
+| Lockdown                         | `org.freedesktop.impl.portal.Lockdown` (1)             | portal crate reads `gnoblin.configure.lockdown`                           | no                           |
+| DynamicLauncher                  | `org.freedesktop.impl.portal.DynamicLauncher` (1)      | portal crate writes a `.desktop` file under `$XDG_DATA_HOME/applications` | yes: confirm                 |
+| Background (new to portals.conf) | `org.freedesktop.impl.portal.Background` (1)           | portal crate records a session-only grant                                 | yes: confirm                 |
+| Secret                           | `org.freedesktop.impl.portal.Secret` (1)               | none in Gnoblin                                                           | not served                   |
+| OpenURI, Trash                   | `org.freedesktop.impl.portal.OpenURI`, `Trash`         | none in Gnoblin; not routed                                               | not served, unchanged        |
+
+Secret is a deliberate gap. Its contract returns a per-application secret that must persist across sessions, and Gnoblin stores no secrets and depends on no keyring (see "Providers and slots"). It stays on `gtk;*`. Kieran has not decided whether to accept a store for it; this is a conflict with the plan, reported below.
+
+#### What each UI step does and does not do
+
+The fallback supplies UI only. The behaviour is always the provider in the table.
+
+| Interface                               | The fallback does                                                                                                                  | The fallback does not                                                            |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| FileChooser                             | open, save, folder; filters; single or multiple select; path bar; directory list; current folder; overwrite confirm                | thumbnails, search, bookmarks, hidden-file toggle, drag and drop, rename, delete |
+| AppChooser                              | list with a filter; "remember choice" (the portal crate writes `mimeapps.list`)                                                    | add or edit applications; browse for an executable                               |
+| Print                                   | printer from `lpstat`, or print-to-PDF file; copies; page range. Without CUPS only print-to-PDF is offered, and the dialog says so | paper size, duplex, preview, driver or printer settings                          |
+| Account                                 | confirm sharing name and avatar                                                                                                    | edit name or avatar; choose an online account                                    |
+| Email                                   | nothing: the composed `mailto:` goes to the default handler                                                                        | compose UI, attachments, address book                                            |
+| Notification                            | nothing: the owner of `org.freedesktop.Notifications` draws the toast (a shell, mako, swaync). With no owner the request fails     | draw toasts; Gnoblin owns no notification daemon                                 |
+| Wallpaper                               | confirm "set wallpaper to this file?", then set the compositor background                                                          | picker, slideshow, per-output wallpapers                                         |
+| Lockdown                                | nothing: values come from `gnoblin.configure.lockdown`                                                                             | edit values                                                                      |
+| Background                              | confirm "let this app run in the background?"; the grant lasts for the session                                                     | autostart: `EnableAutostart` returns an error and writes no file                 |
+| DynamicLauncher                         | confirm installing the launcher; the portal crate writes the `.desktop` file                                                       | icon editing                                                                     |
+| ScreenCast, RemoteDesktop, InputCapture | consent, then a source or device choice; each request is a fresh consent                                                           | persistent per-app permission; "remember" for capture or input                   |
+| Screenshot                              | consent; full screen or an interactive region                                                                                      | annotate, save dialog, delay                                                     |
+| PickColor                               | full-screen pick overlay: a click picks the pixel's colour; Escape cancels. Same consent rules as Screenshot                       | magnifier, palette, pick history                                                 |
+
+Settings, Clipboard, GlobalShortcuts and Inhibit have no UI step and are already served.
+
+#### Consent in the fallback
+
+**Decision:** the egui fallback may serve capture and input consent (ScreenCast, Screenshot, RemoteDesktop, InputCapture) under every condition below:
+
+- It is drawn in the compositor's top layer, above every client surface, so a client cannot draw over it.
+- While it is up, pointer and keyboard input go only to the dialog through the compositor's grab. No client receives those events, so a client cannot press Allow.
+- The requester is shown as the app id the compositor attributes to the caller. The app's own name text is never used.
+- Deny is the default focus. Allow needs a deliberate activation: a pointer press and release on Allow, or Enter on a focused Allow. Key repeat does not count. Allow ignores activation for 500 ms after the dialog appears (proposed), so a click already in progress cannot accept it.
+- There is no "remember" for capture or input.
+- It is refused while the session is locked (the lock embargo).
+- The answer is a typed response, and the portal validates it against the request it sent, as for any provider.
+
+**Why this is safe:** the answer comes from compositor code that no client can draw over or inject input into, and it is bound to one request with one attributed requester.
+
+**Trade-off against D14:** D14 kept consent UI out of the compositor, so a fault in UI code could not reach the session. D19 accepts a larger trusted base: the fallback is compositor code, and a panic in it ends the session. D5 already runs egui in-process, so this adds code to an existing failure domain, not a new one. D14's separate-client option still works: a shell or fallback client that claims `portal.ui` replaces the built-in (rule 3 above). Kieran has not chosen between the built-in and a separate client for consent; the default here is the built-in, as he asked.
+
+#### Request and response schema (`gnoblin-schema`)
+
+A new request kind, `portal-ui`, is added to the `Request` claim on the `portal.ui` slot. The portal crate sends it over the privileged IPC; the portal crate never names an egui or drawing type. It is versioned with the IPC schema (D3) and encoded as Protocol Buffers (D16).
+
+`portal-ui` request fields:
+
+| Field           | Type               | Meaning                                                                                       |
+| --------------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| `request_id`    | string             | opaque, chosen by the portal crate, echoed in the response                                    |
+| `interface`     | enum               | one interface from the table with a UI step                                                   |
+| `method`        | enum per interface | for example `OpenFile`, `SaveFile`, `ChooseApplication`, `PreparePrint`, `Start`, `PickColor` |
+| `app_id`        | string             | compositor-attributed id of the caller; never self-reported                                   |
+| `parent_window` | string, optional   | the portal `parent_window` (`wayland:<handle>` or `x11:<id>`); used for the title only        |
+| `payload`       | typed union        | one variant per interface, below                                                              |
+
+`payload` variants:
+
+- `FileChooser`: `mode` (open, save, folder), `title`, `multiple`, `directories`, `filters` (each `name`, `globs`, `mimes`), `current_filter`, `current_folder`, `current_name`, `choices`.
+- `AppChooser`: `content_type`, `last_choice`, `filter_text`.
+- `Print`: `title`, `printers` (each `name`, `is_default`; empty means print-to-PDF only), `copies`, `pages`.
+- `Account`: `reason`, `name`, `avatar_uri`.
+- `Wallpaper`: `uri`, `options`.
+- `Background`: `reason`, `autostart_requested`.
+- `DynamicLauncher`: `name`, `icon`, `desktop_file_id`.
+- `ScreenCast`: `source_types`, `cursor_mode`, `multiple`.
+- `RemoteDesktop`: `device_types`.
+- `InputCapture`: `capabilities`.
+- `Screenshot`: `interactive`.
+- `PickColor`: no fields.
+
+`portal-ui-response` carries `request_id` and one outcome:
+
+- `accepted { result }`, `result` typed per interface: FileChooser `{uris, current_filter}`; AppChooser `{desktop_file_id, remember}`; Print `{printer, copies, pages}`; Account, Wallpaper, Background, DynamicLauncher `{allowed}`; ScreenCast and RemoteDesktop `{selected sources or devices}`; InputCapture `{zones}`; Screenshot `{allowed, region}`; PickColor `{rgb}`.
+- `cancelled { reason }`, `reason` is `user` or `timeout`.
+- `error { code, message }`, `code` is `no-ui`, `locked`, `busy`, `handler-unavailable` or `not-supported`.
+
+The portal crate maps the outcome to the portal response code: accepted `0`, cancelled `1`, error `2`.
+
+#### Cancellation and failure modes
+
+| Event                                                                      | Result                                                                                                      |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Requester disconnects (the portal crate's IPC drops)                       | the dialog closes; no response is sent; a queued entry for it is removed                                    |
+| User cancels (Cancel or Escape)                                            | `cancelled { user }`, portal code `1`                                                                       |
+| Timeout (120 s, proposed)                                                  | `cancelled { timeout }`, portal code `1`; for consent this is a denial                                      |
+| Lock engaged while the dialog is open                                      | the dialog closes; `error { locked }`, portal code `2`                                                      |
+| UI requested while locked                                                  | refused at once: `error { locked }`, portal code `2`; no dialog                                             |
+| Second request while one is open                                           | queued, first in first out; shown when the first closes; a queued request whose requester leaves is dropped |
+| Queue full (eight waiting, proposed)                                       | `error { busy }`, portal code `2`                                                                           |
+| Headless, or no GPU renderer                                               | fallback unavailable: `error { no-ui }`, portal code `2`; consent refused, with the missing renderer named  |
+| Named handler not connected                                                | `error { handler-unavailable }`, portal code `2`; no egui fallback                                          |
+| Unset handler, no `portal.ui` claimant, interface outside the fallback set | `error { not-supported }`, portal code `2`                                                                  |
+
+Keyboard: Tab moves focus in order; Enter activates the focused default; Escape cancels (`cancelled { user }`). The egui tree is exposed through AccessKit, as D5 requires. Motion: transitions are skipped when the Settings reduced-motion value is set (D15). Theme: the fallback draws only the accent colour and font size from `gnoblin.configure.portal_ui`.
+
+#### Config surface
+
+```lua
+gnoblin.configure.portals.FileChooser = "builtin"   -- or a provider name
+gnoblin.configure.portal_ui = { accent = "#3584e4", font_size = 14 }
+```
+
+Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts).
+
+#### Crate placement
+
+- `gnoblin-portal-ui`: pure state, depends on `gnoblin-types` and `gnoblin-schema` only.
+- `gnoblin-diag`: draws it with egui, depends on `gnoblin-portal-ui`.
+- `xdg-desktop-portal-gnoblin`: depends on `gnoblin-client` and `zbus`; names neither crate. It sends `portal.ui` requests and receives typed responses.
+
+#### Parity and ledger
+
+Mutter's portal setup delegates these toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger.
+
+#### Conflicts with the plan
+
+- **Phase 1 gate** (the line "FileChooser and Email route to `gtk`"): superseded by D19; those routes become `gnoblin;gtk;*`. Not edited here.
+- **Config key:** `gnoblin.configure.portals` is the plan's routing key, and D19 uses it for the handler. D19 moves routing to `gnoblin.configure.portal_routing`. Kieran needs to confirm.
+- **Secret:** the no-store rule means Secret cannot be served; it stays on `gtk;*` until Kieran decides on a store.
+- **`portals.conf`:** not edited by this decision. The implementation lane changes the routes and adds Background.
 
 ## Phase 0 checklist
 
