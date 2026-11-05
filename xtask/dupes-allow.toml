@@ -403,3 +403,159 @@ left = "gnoblin-render::Rng"
 right = "gnoblin-session::Rng"
 kind = "same-name"
 reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-a11y::Config"
+right = "gnoblin-config::Config"
+kind = "same-name"
+reason = "the configuration document a session declares and the runtime state a state machine applies are two layers"
+
+[[allow]]
+left = "gnoblin-a11y::BounceKeys"
+right = "gnoblin-config::BounceKeys"
+kind = "same-name"
+reason = "the configuration node and the state machine that runs it share a name by design"
+
+[[allow]]
+left = "gnoblin-a11y::SlowKeys"
+right = "gnoblin-config::SlowKeys"
+kind = "same-name"
+reason = "the configuration node and the state machine that runs it share a name by design"
+
+[[allow]]
+left = "gnoblin-a11y::StickyKeys"
+right = "gnoblin-config::StickyKeys"
+kind = "same-name"
+reason = "the configuration node and the state machine that runs it share a name by design"
+
+[[allow]]
+left = "gnoblin-a11y::MouseKeys"
+right = "gnoblin-config::MouseKeys"
+kind = "same-name"
+reason = "the configuration node and the state machine that runs it share a name by design"
+
+[[allow]]
+left = "gnoblin-a11y::Monitors"
+right = "gnoblin-config::Monitors"
+kind = "same-name"
+reason = "the configuration node and the state machine that runs it share a name by design"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "gnoblin-authority::Pending"
+kind = "same-name"
+reason = "each state machine keeps its own pending set; the name is shared, the work is not"
+
+[[allow]]
+left = "gnoblin-a11y::Published"
+right = "gnoblin-lock::Published"
+kind = "same-name"
+reason = "each state machine publishes its own state; the name is shared, the state is not"
+
+[[allow]]
+left = "gnoblin-authority::Decision"
+right = "gnoblin-compat-core::Decision"
+kind = "same-name"
+reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
+
+[[allow]]
+left = "gnoblin-authority::Decision"
+right = "gnoblin-input::Decision"
+kind = "same-name"
+reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
+
+[[allow]]
+left = "gnoblin-compat-core::Decision"
+right = "gnoblin-input::Decision"
+kind = "same-name"
+reason = "each decision type answers its own question: whether a prompt may be shown, whether an adapter may act, and where an input event is routed"
+
+[[allow]]
+left = "gnoblin-compat-core::Rule"
+right = "gnoblin-wm::Rule"
+kind = "same-name"
+reason = "a declared compatibility support rule and a window rule share a word and nothing else"
+
+[[allow]]
+left = "gnoblin-compat-core::Interface"
+right = "xtask::Interface"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-compat-core::Kind"
+right = "xtask::Kind"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-compat-core::Member"
+right = "xtask::Member"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-compat-core::Rule"
+right = "xtask::Rule"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-wm::Rule"
+right = "xtask::Rule"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-model::Graph"
+right = "xtask::Graph"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-render::Hit"
+right = "xtask::Hit"
+kind = "same-name"
+reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
+
+[[allow]]
+left = "gnoblin-config::InputSource"
+right = "gnoblin-lock::InputSource"
+kind = "same-name"
+reason = "the configuration's declaration of an input source and the lock's runtime source are two layers"
+
+[[allow]]
+left = "gnoblin-config::Problem"
+right = "gnoblin-input::Problem"
+kind = "same-name"
+reason = "a configuration validation problem is not an input policy problem"
+
+[[allow]]
+left = "gnoblin-config::Report"
+right = "gnoblin-parity::Report"
+kind = "same-name"
+reason = "a configuration validation report is not a parity report"
+
+[[allow]]
+left = "gnoblin-lock::Observed"
+right = "gnoblin-session::Observed"
+kind = "same-name"
+reason = "each state machine's record of what it observed is its own"
+
+[[allow]]
+left = "gnoblin-schema::Signal"
+right = "gnoblin-session::Signal"
+kind = "same-name"
+reason = "an object-model signal is not a process signal"
+
+[[allow]]
+left = "gnoblin-a11y::ButtonAction"
+right = "gnoblin-input::Trigger"
+kind = "same-shape"
+reason = "a mouse-key action and an input trigger carry the same pressing vocabulary and mean different things"
+
+[[allow]]
+left = "gnoblin-input::WhenError"
+right = "gnoblin-types::InvalidErrorCode"
+kind = "same-shape"
+reason = "a gesture's timing refusal and a rejected error-code string both carry one text field; they are unrelated failures"
