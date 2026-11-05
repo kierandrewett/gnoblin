@@ -625,6 +625,7 @@ mod tests {
                 "session",
                 "settings",
                 "window",
+                "workspace",
             ]
         );
     }

@@ -293,6 +293,7 @@ fn window_pair() -> (Server, Host<Loopback>, ObjectId) {
     properties.insert("icon".to_owned(), gnoblin_model::Value::Text(String::new()));
     properties.insert("tag".to_owned(), gnoblin_model::Value::Text(String::new()));
     properties.insert("modal".to_owned(), gnoblin_model::Value::Bool(false));
+    properties.insert("floating".to_owned(), gnoblin_model::Value::Bool(false));
     // The frame rectangle the schema requires at creation.
     properties.insert("x".to_owned(), gnoblin_model::Value::Int(0));
     properties.insert("y".to_owned(), gnoblin_model::Value::Int(0));

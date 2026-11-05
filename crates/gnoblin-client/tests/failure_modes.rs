@@ -40,6 +40,7 @@ fn window_properties(title: &str) -> Fields {
     properties.insert("icon".to_owned(), Value::Text(String::new()));
     properties.insert("tag".to_owned(), Value::Text(String::new()));
     properties.insert("modal".to_owned(), Value::Bool(false));
+    properties.insert("floating".to_owned(), Value::Bool(false));
     properties
 }
 

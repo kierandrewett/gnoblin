@@ -96,6 +96,7 @@ fn window_properties(title: &str) -> Fields {
     properties.insert("icon".to_owned(), ModelValue::Text(String::new()));
     properties.insert("tag".to_owned(), ModelValue::Text(String::new()));
     properties.insert("modal".to_owned(), ModelValue::Bool(false));
+    properties.insert("floating".to_owned(), ModelValue::Bool(false));
     // The frame rectangle the compositor publishes as four numbers; the schema
     // requires it at creation, so every test helper supplies it.
     properties.insert("x".to_owned(), ModelValue::Int(0));

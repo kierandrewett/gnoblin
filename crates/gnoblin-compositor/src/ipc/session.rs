@@ -68,6 +68,8 @@ mod member {
     pub const ICON: &str = "icon";
     pub const TAG: &str = "tag";
     pub const MODAL: &str = "modal";
+    /// The `window` object's floating property.
+    pub const FLOATING: &str = "floating";
 }
 
 /// What the graph last published for one window.
@@ -80,6 +82,7 @@ struct PublishedWindow {
     icon: String,
     tag: String,
     modal: bool,
+    floating: bool,
     geometry: Rect,
 }
 
@@ -200,6 +203,7 @@ impl SessionSync {
                         icon,
                         tag,
                         modal: window.modal,
+                        floating: window.floating,
                         geometry: window.geometry,
                     },
                 );
@@ -226,6 +230,9 @@ impl SessionSync {
             if previous.modal != window.modal {
                 self.graph.set(object, member::MODAL, Value::Bool(window.modal))?;
             }
+            if previous.floating != window.floating {
+                self.graph.set(object, member::FLOATING, Value::Bool(window.floating))?;
+            }
             if previous.geometry != window.geometry {
                 self.set_geometry(object, window.geometry)?;
             }
@@ -239,6 +246,7 @@ impl SessionSync {
                     icon,
                     tag,
                     modal: window.modal,
+                    floating: window.floating,
                     geometry: window.geometry,
                 },
             );
@@ -355,6 +363,7 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
             Value::Text(observed.tag.clone().unwrap_or_default()),
         ),
         (member::MODAL.to_owned(), Value::Bool(observed.modal)),
+        (member::FLOATING.to_owned(), Value::Bool(observed.floating)),
     ])
 }
 
@@ -387,6 +396,7 @@ mod tests {
             icon_buffer_count: 0,
             tag: None,
             modal: false,
+            floating: false,
             transient_for: None,
         }
     }

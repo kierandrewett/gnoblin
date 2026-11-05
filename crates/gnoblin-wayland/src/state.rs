@@ -1900,6 +1900,7 @@ impl State {
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),
                     modal: window.kind == WindowKind::Modal,
+                    floating: window.state.floating,
                     transient_for: window.transient_for,
                 },
             );

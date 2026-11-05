@@ -1,0 +1,88 @@
+# The `workspace` object: one workspace the window manager arranges. Its `layout`
+# is the layout the workspace runs, and the methods change it or ask the running
+# layout for a command. Settable members are methods: the wire has no property
+# write, so `set_layout` is the one write path and `layout` reads its result.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "workspace"
+since = "0.2.0"
+
+# The workspace's identity, stable for its lifetime.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+
+# The layout the workspace runs now: its own override when one was set, otherwise
+# its output's default (`output.layout`), otherwise `floating`.
+[[object.property]]
+name = "layout"
+type = "string"
+since = "0.2.0"
+
+# Set the workspace's own layout to one of the shipped or registered names. The
+# engine is replaced and its state is kept per layout name. An unknown name fails
+# with `unknown-layout`; the completion is the operation's one outcome.
+[[object.method]]
+name = "set_layout"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+# Send a command to the layout the workspace runs. The layout answers with the
+# placements the command produces. `refused` means the layout does not know the
+# command; `unknown-layout` means the workspace has no layout to ask.
+[[object.method]]
+name = "layout_command"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+# The command's parameters as a JSON object, `{}` when it takes none.
+[[object.method.param]]
+name = "params"
+type = "string"
+since = "0.2.0"
+
+# The workspace's layout changed: a new name was set, or its output's default moved.
+[[object.signal]]
+name = "layout_changed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "layout"
+type = "string"
+since = "0.2.0"
+
+# A layout run failed, and the workspace runs floating until one succeeds. `reason`
+# is one of `deadline`, `memory`, `error`, `refused-reply`, `vm-wedged`, `vm-down`,
+# `missing-module`, `invalid-params`.
+[[object.signal]]
+name = "layout_failed"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "layout"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "reason"
+type = "string"
+since = "0.2.0"
+
+[[error]]
+name = "refused"
+since = "0.2.0"
+
+[[error]]
+name = "unknown-layout"
+since = "0.2.0"

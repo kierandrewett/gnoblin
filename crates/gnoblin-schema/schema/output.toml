@@ -158,3 +158,22 @@ since = "0.2.0"
 [[object.signal]]
 name = "closed"
 since = "0.2.0"
+
+# The layout a workspace on this output runs when the workspace has no override of
+# its own. `floating` when unset. Reads the output's default; `set_layout` writes it.
+[[object.property]]
+name = "layout"
+type = "string"
+since = "0.2.0"
+
+# Set this output's default layout. Workspaces with no override of their own move to
+# it; the engines of workspaces that have one keep running. An unknown name fails
+# with `unknown-layout`.
+[[object.method]]
+name = "set_layout"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
