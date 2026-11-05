@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use super::LayoutReason;
 use gnoblin_lua_sandbox::{self as sandbox, Guard, Limits, Profile};
-use gnoblin_wm::layout::Reply;
+use gnoblin_wm::layout::{Arg, Reply};
 use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
 
 use super::data::Data;
@@ -39,6 +39,9 @@ pub(crate) enum LayoutCall {
     Arrange,
     /// One geometry request: `on_request(ctx)`, which answers for the whole tiled set.
     Request,
+    /// A named command: `command[name](ctx, args)`, which answers for the whole tiled set.
+    /// A layout without that command declines.
+    Command { name: String, args: BTreeMap<String, Arg> },
 }
 
 /// One layout as the VM holds it.
@@ -129,7 +132,8 @@ impl Vm {
             None => Reply::Declined,
             Some(handler) => {
                 self.guard.begin(&self.limits);
-                let value = invoke(&handler, call, &ctx).map_err(|error| self.fault(error, LayoutReason::Error))?;
+                let value =
+                    invoke(&handler, call, &ctx, &self.lua).map_err(|error| self.fault(error, LayoutReason::Error))?;
                 reply::read(&value).map_err(|error| self.fault(error, LayoutReason::Error))?
             }
         };
@@ -232,6 +236,10 @@ fn handler(layout: &LuaValue, call: &LayoutCall) -> mlua::Result<Option<Function
         LuaValue::Table(table) => match call {
             LayoutCall::Arrange => table.get::<Option<Function>>("arrange"),
             LayoutCall::Request => first(table, &["on_request"]),
+            LayoutCall::Command { name, .. } => match table.get::<Option<Table>>("command")? {
+                Some(commands) => commands.get::<Option<Function>>(name.as_str()),
+                None => Ok(None),
+            },
         },
         other => Err(runtime(format!(
             "the layout is a {}, not a function or table",
@@ -249,10 +257,21 @@ fn first(table: &Table, keys: &[&str]) -> mlua::Result<Option<Function>> {
     Ok(None)
 }
 
-fn invoke(handler: &Function, call: &LayoutCall, ctx: &Table) -> mlua::Result<LuaValue> {
+fn invoke(handler: &Function, call: &LayoutCall, ctx: &Table, lua: &Lua) -> mlua::Result<LuaValue> {
     let ctx = ctx.clone();
     match call {
         LayoutCall::Arrange | LayoutCall::Request => handler.call::<LuaValue>((ctx,)),
+        LayoutCall::Command { args, .. } => {
+            let table = lua.create_table()?;
+            for (key, value) in args {
+                match value {
+                    Arg::Number(number) => table.set(key.as_str(), *number)?,
+                    Arg::Text(text) => table.set(key.as_str(), text.as_str())?,
+                    Arg::Bool(flag) => table.set(key.as_str(), *flag)?,
+                }
+            }
+            handler.call::<LuaValue>((ctx, table))
+        }
     }
 }
 

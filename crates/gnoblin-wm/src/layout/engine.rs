@@ -15,6 +15,7 @@
 //! workspace, and it discards any result whose generation is no longer the one
 //! it asked for.
 
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use super::error::LayoutFailure;
@@ -60,16 +61,39 @@ pub enum Job {
     Arrange(Params),
     /// One geometry request, which must apply atomically with its reply.
     Request(Request),
+    /// A named command the layout answers for the whole tiled set. A layout that
+    /// does not know `command.name` declines.
+    Command(Params, Command),
 }
 
 impl Job {
     /// The parameters the run is validated against.
     pub const fn params(&self) -> &Params {
         match self {
-            Self::Arrange(params) => params,
+            Self::Arrange(params) | Self::Command(params, _) => params,
             Self::Request(request) => &request.params,
         }
     }
+}
+
+/// A command a client sends to the layout of a workspace, with its arguments.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Command {
+    /// The command's name in the layout's command table.
+    pub name: String,
+    /// The arguments, by name.
+    pub args: BTreeMap<String, Arg>,
+}
+
+/// One argument of a [`Command`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum Arg {
+    /// A number.
+    Number(f64),
+    /// A string.
+    Text(String),
+    /// A boolean.
+    Bool(bool),
 }
 
 /// What [`LayoutEngine::collect`] found.
@@ -117,7 +141,7 @@ pub enum Collected {
 struct InFlight {
     ticket: Ticket,
     params: Params,
-    request: bool,
+    declinable: bool,
 }
 
 /// One workspace's engine, with the bookkeeping that keeps stale results out.
@@ -139,14 +163,14 @@ impl Slot {
 
     /// Starts `job`, superseding any run still in flight.
     pub fn submit(&mut self, job: Job) {
-        let request = matches!(job, Job::Request(_));
+        let declinable = matches!(job, Job::Request(_) | Job::Command(..));
         let params = job.params().clone();
         let generation = self.next_generation();
         let ticket = self.engine.submit(job, generation);
         self.in_flight = Some(InFlight {
             ticket,
             params,
-            request,
+            declinable,
         });
     }
 
@@ -155,6 +179,13 @@ impl Slot {
     /// rather than replaced by the fallback, so the caller can apply its own logic.
     pub fn submit_request(&mut self, request: Request) {
         self.submit(Job::Request(request));
+    }
+
+    /// Starts a named command, superseding any run still in flight. A
+    /// [`Reply::Declined`] is reported as [`Collected::Declined`]: the layout does
+    /// not know the command.
+    pub fn submit_command(&mut self, params: Params, command: Command) {
+        self.submit(Job::Command(params, command));
     }
 
     /// Drops the run in flight, so that its result is never reported.
@@ -185,7 +216,7 @@ impl Slot {
                     return Collected::Idle;
                 };
                 match result {
-                    Ok(Reply::Declined) if in_flight.request => Collected::Declined,
+                    Ok(Reply::Declined) if in_flight.declinable => Collected::Declined,
                     result => match result.and_then(|reply| settle(&in_flight.params, reply)) {
                         Ok(layout) => Collected::Settled(layout),
                         Err(failure) => Collected::Failed(failure),

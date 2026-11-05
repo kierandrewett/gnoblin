@@ -60,6 +60,7 @@ impl LayoutEngine for MasterStack {
     fn submit(&mut self, job: Job, generation: Generation) -> Ticket {
         let reply = match job {
             Job::Arrange(_) | Job::Request(_) if self.decline => Reply::Declined,
+            Job::Command(..) => Reply::Declined,
             Job::Arrange(params) => Reply::Handled(Handled {
                 placements: master_stack(&params),
                 camera: Camera::Orthographic,

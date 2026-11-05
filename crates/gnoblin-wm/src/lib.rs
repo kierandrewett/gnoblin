@@ -116,4 +116,4 @@ pub use placement::PlacementMode;
 pub use rules::{Match, Pattern, Rule, RuleAction, WorkspaceSelector};
 pub use snapping::SnapZone;
 pub use window::{Window, WindowKind, WindowState};
-pub use wm::{Broken, Wm, WmOptions};
+pub use wm::{Broken, CommandError, Wm, WmOptions};

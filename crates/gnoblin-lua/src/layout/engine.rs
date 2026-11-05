@@ -103,6 +103,10 @@ impl LayoutEngine for LuaEngine {
         let call = match &job {
             Job::Arrange(_) => LayoutCall::Arrange,
             Job::Request(_) => LayoutCall::Request,
+            Job::Command(_, command) => LayoutCall::Command {
+                name: command.name.clone(),
+                args: command.args.clone(),
+            },
         };
         let snapshot = self.snapshot(job.params());
         let started = self.host.borrow_mut().start(&self.layout, call, &snapshot);

@@ -11,7 +11,7 @@ use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
 use crate::geometry::clamp_to_i32;
-use crate::layout::{Layout, LayoutEffect, LayoutEngine, RequestKind};
+use crate::layout::{Command, Layout, LayoutEffect, LayoutEngine, RequestKind};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::rules::{Rule, RuleAction};
@@ -100,6 +100,15 @@ fn layer_of(state: WindowState) -> StackLayer {
 /// Each variant names the property that failed and the window or workspace that
 /// made it fail, because the only consumer is a test or a debug assertion and the
 /// message has to be enough to find the event that broke it.
+/// Why a layout command was not sent to a layout.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CommandError {
+    /// The workspace has no layout engine.
+    UnknownLayout,
+    /// The layout does not know the command's name.
+    Refused,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Broken {
     /// A workspace is declared but none is active.
@@ -1339,6 +1348,37 @@ impl Wm {
     pub fn rebuild_all_layouts(&mut self) -> Vec<Effect> {
         self.layouts.forget_all();
         self.sync_layouts()
+    }
+
+    /// Sends a named command to `workspace`'s layout and applies the arrangement
+    /// it returns, waiting until `deadline`. A failed run is reported as
+    /// [`Effect::LayoutFailed`], as a failed arrangement is. Returns
+    /// [`CommandError::UnknownLayout`] when the workspace has no layout engine and
+    /// [`CommandError::Refused`] when the layout does not know `name`.
+    pub fn layout_command(
+        &mut self,
+        workspace: WorkspaceId,
+        command: Command,
+        deadline: Instant,
+    ) -> Result<Vec<Effect>, CommandError> {
+        let (windows, outputs) = (&self.windows, &self.outputs);
+        let verdict = self.layouts.command(workspace, command, deadline, |output| {
+            arrange::tiled_params(workspace, output, windows, outputs)
+        });
+        match verdict {
+            arrange::CommandVerdict::Handled(layout) => Ok(self.apply_layout(workspace, layout)),
+            arrange::CommandVerdict::Failed(failure) => Ok(vec![Effect::LayoutFailed {
+                workspace,
+                reason: failure.reason(),
+            }]),
+            arrange::CommandVerdict::InvalidParams => Ok(vec![Effect::LayoutFailed {
+                workspace,
+                reason: "invalid-params",
+            }]),
+            arrange::CommandVerdict::Idle => Ok(Vec::new()),
+            arrange::CommandVerdict::Declined => Err(CommandError::Refused),
+            arrange::CommandVerdict::NoLayout => Err(CommandError::UnknownLayout),
+        }
     }
 
     /// Submits a run for every workspace whose tiled input changed since its last

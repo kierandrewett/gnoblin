@@ -51,8 +51,8 @@ use gnoblin_types::{OutputId, RectF, WindowId, WorkspaceId};
 
 use crate::effect::Effect;
 use crate::layout::{
-    Collected, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutput, LayoutWindow, Params, ParamsError, Placement,
-    Request, RequestKind, Slot, Transform3,
+    Collected, Command, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutput, LayoutWindow, Params, ParamsError,
+    Placement, Request, RequestKind, Slot, Transform3,
 };
 use crate::output::Output;
 use crate::window::{Window, WindowState};
@@ -100,6 +100,23 @@ pub(crate) enum RequestVerdict {
     Failed(LayoutFailure),
     /// The workspace's tiled input cannot be used.
     InvalidParams,
+}
+
+/// How a named command was answered.
+pub(crate) enum CommandVerdict {
+    /// The layout answered; its placements are in force.
+    Handled(Layout),
+    /// The layout failed, timed out or its reply was refused; the last good
+    /// placements stay.
+    Failed(LayoutFailure),
+    /// The layout does not know the command.
+    Declined,
+    /// The workspace's tiled input cannot be used.
+    InvalidParams,
+    /// Nothing is tiled on the workspace, so there is nothing to re-arrange.
+    Idle,
+    /// The workspace has no layout engine.
+    NoLayout,
 }
 
 /// The rectangle a placement occupies, or `None` when its transform is a raw matrix.
@@ -311,6 +328,45 @@ impl Layouts {
     /// placed it.
     pub(crate) fn placed(&self, workspace: WorkspaceId, window: WindowId) -> Option<RectF> {
         self.by_workspace.get(&workspace)?.placed.get(&window).copied()
+    }
+
+    /// Sends `command` to `workspace`'s engine and waits until `deadline`. A
+    /// handled command's placements are remembered like an arrangement's, so the
+    /// next submit compares against them.
+    pub(crate) fn command(
+        &mut self,
+        workspace: WorkspaceId,
+        command: Command,
+        deadline: Instant,
+        wanted: impl Fn(Option<OutputId>) -> Result<Option<Params>, ParamsError>,
+    ) -> CommandVerdict {
+        let Some(layout) = self.by_workspace.get_mut(&workspace) else {
+            return CommandVerdict::NoLayout;
+        };
+        let params = match wanted(layout.output) {
+            Ok(Some(params)) => params,
+            Ok(None) => return CommandVerdict::Idle,
+            Err(_) => return CommandVerdict::InvalidParams,
+        };
+        layout.slot.submit_command(params.clone(), command);
+        match layout.slot.collect(deadline) {
+            Collected::Settled(settled) => {
+                layout.submitted = Some(params);
+                layout.remember(&settled);
+                CommandVerdict::Handled(settled)
+            }
+            Collected::Failed(failure) => {
+                layout.submitted = Some(params);
+                CommandVerdict::Failed(failure)
+            }
+            Collected::Declined => CommandVerdict::Declined,
+            Collected::Idle => CommandVerdict::Idle,
+            Collected::Pending => {
+                layout.slot.cancel();
+                layout.submitted = Some(params);
+                CommandVerdict::Failed(LayoutFailure::Timeout)
+            }
+        }
     }
 
     /// Offers one geometry request to `workspace`'s engine and waits until

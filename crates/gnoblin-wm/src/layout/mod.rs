@@ -14,7 +14,7 @@ mod placement;
 mod settle;
 mod transform;
 
-pub use engine::{Collected, Generation, Job, LayoutEngine, LayoutOutcome, Slot, Ticket};
+pub use engine::{Arg, Collected, Command, Generation, Job, LayoutEngine, LayoutOutcome, Slot, Ticket};
 
 pub use error::{LayoutFailure, ParamsError, REFUSED_CODE, ReplyError, Subject};
 pub use fallback::fallback;

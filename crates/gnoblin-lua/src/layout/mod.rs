@@ -38,12 +38,45 @@ mod require;
 mod snapshot;
 mod worker;
 
+use std::collections::BTreeMap;
+
+use gnoblin_wm::layout::Arg;
 use mlua::{Lua, Table};
 
 pub use data::{Data, DataError, LayoutKey};
 pub use engine::LuaEngine;
 pub use host::{Host, HostConfig, HostFailure, WedgeHook, default_prefix, installed_module_dir};
 pub use snapshot::{Gaps, LayoutRequest, LayoutSnapshot, SizeHints, SnapshotWindow};
+
+/// The arguments of a layout command, from the JSON object a client sends as `params`.
+/// Each value must be a number, a string or a boolean; an empty text is no arguments.
+///
+/// # Errors
+/// A message naming what is wrong when the text is not a JSON object of scalars.
+pub fn command_arguments(json: &str) -> Result<BTreeMap<String, Arg>, String> {
+    if json.trim().is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|error| format!("params: {error}"))?;
+    let serde_json::Value::Object(map) = value else {
+        return Err("params must be a JSON object".to_owned());
+    };
+    map.into_iter()
+        .map(|(key, value)| {
+            let arg = match value {
+                serde_json::Value::Number(number) => Arg::Number(
+                    number
+                        .as_f64()
+                        .ok_or_else(|| format!("params.{key} is not a finite number"))?,
+                ),
+                serde_json::Value::String(text) => Arg::Text(text),
+                serde_json::Value::Bool(flag) => Arg::Bool(flag),
+                _ => return Err(format!("params.{key} must be a number, a string or a boolean")),
+            };
+            Ok((key, arg))
+        })
+        .collect()
+}
 
 /// Why a layout did not produce a placement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
