@@ -1,5 +1,7 @@
 //! What a provider or the built-in UI returns, and what the caller finally gets.
 
+use gnoblin_portal_ui::Grant;
+
 /// The result a provider or the built-in UI returns for one request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {
@@ -60,26 +62,4 @@ impl PortalError {
             Self::UnknownApp => "unknown-app",
         }
     }
-}
-
-/// What the user granted. A reply can grant no more than the request asked
-/// (checked by [`crate::validate_reply`]).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Grant {
-    /// Consent given (Screenshot, Wallpaper, Background, Secret first use, ...).
-    Allowed,
-    /// FileChooser: the chosen paths and the filter index in effect.
-    Files { paths: Vec<String>, filter: usize },
-    /// AppChooser: the offered desktop file id, and whether to remember it.
-    App { desktop_file_id: String, remember: bool },
-    /// Print: copies and an inclusive page range.
-    Print {
-        copies: u32,
-        first_page: u32,
-        last_page: u32,
-    },
-    /// ScreenCast: the cursor mode and the source count granted.
-    Capture { cursor_mode: u32, sources: u32 },
-    /// RemoteDesktop: the device types granted (bitmask).
-    Devices { device_types: u32 },
 }

@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-portal-broker"
+description = "Portal negotiation: per-request provider fallback, the built-in UI request queue, provider reply validation and outcomes. No drawing, no D-Bus."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-portal-ui.workspace = true
+gnoblin-schema.workspace = true
+gnoblin-types.workspace = true
+
+[lints]
+workspace = true

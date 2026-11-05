@@ -44,6 +44,7 @@ members = [
     "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-model",
     "crates/gnoblin-output",
+    "crates/gnoblin-portal-broker",
     "crates/gnoblin-portal-ui",
     "crates/gnoblin-parity",
     "crates/gnoblin-proto",
@@ -217,8 +218,10 @@ rustix = { version = "1.1.6", features = ["process"] }
 # of declaring its own.
 gnoblin-types = { path = "crates/gnoblin-types" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
-# The pure portal negotiation and built-in portal UI state (D19). No drawing.
+# The pure portal UI models for the egui dialogs (D19). No negotiation, no drawing.
 gnoblin-portal-ui = { path = "crates/gnoblin-portal-ui" }
+# Portal negotiation, the UI request queue and reply validation (D19). Core logic, not the relay.
+gnoblin-portal-broker = { path = "crates/gnoblin-portal-broker" }
 # The WebAssembly runtime the module host embeds (design/rust-compositor.md, D6).
 # The component model is the host API's shape: a WIT package generated from the
 # schema, so a module links against the object model and a member that moved is a

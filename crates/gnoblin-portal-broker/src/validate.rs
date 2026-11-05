@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use crate::outcome::Grant;
+use gnoblin_portal_ui::Grant;
 
 /// The request side of a validation: what the caller asked for.
 #[derive(Clone, Debug, PartialEq, Eq)]

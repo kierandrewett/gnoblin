@@ -1,4 +1,4 @@
-//! The portal interfaces Gnoblin serves and their negotiation contract (D19 table).
+//! The portal interfaces Gnoblin serves (D19 table) and the typed payloads the built-in dialogs render and fill.
 
 use std::fmt;
 
@@ -109,35 +109,26 @@ impl Interface {
             .find(|interface| interface.name() == name)
             .ok_or_else(|| UnknownInterface(name.to_owned()))
     }
+}
 
-    /// `true` when a repeated or abandoned request has no effect at the provider,
-    /// so a timeout may fall back to the built-in UI (D19 `idempotent` column).
-    #[must_use]
-    pub const fn idempotent(self) -> bool {
-        matches!(
-            self,
-            Self::Screenshot | Self::PickColor | Self::Settings | Self::FileChooser | Self::Lockdown
-        )
-    }
-
-    /// `true` when the built-in UI has a step for this interface (D19 "UI step").
-    #[must_use]
-    pub const fn has_ui_step(self) -> bool {
-        matches!(
-            self,
-            Self::ScreenCast
-                | Self::Screenshot
-                | Self::PickColor
-                | Self::RemoteDesktop
-                | Self::InputCapture
-                | Self::FileChooser
-                | Self::AppChooser
-                | Self::Print
-                | Self::Account
-                | Self::Wallpaper
-                | Self::DynamicLauncher
-                | Self::Background
-                | Self::Secret
-        )
-    }
+/// What the user granted. The dialogs fill it; the broker checks it against the
+/// request (`gnoblin_portal_broker::validate_reply`) before it can reach a caller.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Grant {
+    /// Consent given (Screenshot, Wallpaper, Background, Secret first use, ...).
+    Allowed,
+    /// FileChooser: the chosen paths and the filter index in effect.
+    Files { paths: Vec<String>, filter: usize },
+    /// AppChooser: the offered desktop file id, and whether to remember it.
+    App { desktop_file_id: String, remember: bool },
+    /// Print: copies and an inclusive page range.
+    Print {
+        copies: u32,
+        first_page: u32,
+        last_page: u32,
+    },
+    /// ScreenCast: the cursor mode and the source count granted.
+    Capture { cursor_mode: u32, sources: u32 },
+    /// RemoteDesktop: the device types granted (bitmask).
+    Devices { device_types: u32 },
 }

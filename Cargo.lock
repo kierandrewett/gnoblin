@@ -935,6 +935,9 @@ name = "gnoblin"
 version = "0.2.0-alpha.0"
 dependencies = [
  "clap",
+ "futures-lite",
+ "gnoblin-compat-core",
+ "gnoblin-compat-gnome-keyring-prompter",
  "gnoblin-compositor",
  "gnoblin-lua",
  "gnoblin-services",
@@ -942,6 +945,8 @@ dependencies = [
  "gnoblinctl",
  "rustix 1.1.6",
  "tempfile",
+ "tracing",
+ "zbus",
 ]
 
 [[package]]
@@ -1084,6 +1089,9 @@ dependencies = [
 [[package]]
 name = "gnoblin-compat-mutter-clipboard"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-displayconfig"
@@ -1116,6 +1124,9 @@ dependencies = [
 [[package]]
 name = "gnoblin-compat-mutter-inputcapture"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-inputmapping"
@@ -1124,6 +1135,9 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compat-mutter-remotedesktop"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-compat-core",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-screencast"
@@ -1232,6 +1246,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-layout"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
+
+[[package]]
 name = "gnoblin-lock"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1244,6 +1265,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-client",
  "gnoblin-config",
+ "gnoblin-lua-sandbox",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
@@ -1252,6 +1274,13 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
+]
+
+[[package]]
+name = "gnoblin-lua-sandbox"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "mlua",
 ]
 
 [[package]]
@@ -1276,6 +1305,23 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+]
+
+[[package]]
+name = "gnoblin-portal-broker"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-portal-ui",
+ "gnoblin-schema",
+ "gnoblin-types",
+]
+
+[[package]]
+name = "gnoblin-portal-ui"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-schema",
+ "gnoblin-types",
 ]
 
 [[package]]
@@ -1313,8 +1359,6 @@ dependencies = [
  "futures-channel",
  "futures-lite",
  "gnoblin-client",
- "gnoblin-compat-core",
- "gnoblin-compat-gnome-keyring-prompter",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",

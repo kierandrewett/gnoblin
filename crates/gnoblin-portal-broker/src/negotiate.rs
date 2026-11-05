@@ -5,10 +5,51 @@
 //! services role or the compositor must carry out. The first terminal outcome
 //! wins; after it, every event is ignored.
 
+use gnoblin_portal_ui::Interface;
 use gnoblin_types::{RequestId, Tick};
 
-use crate::interface::Interface;
 use crate::outcome::{CancelReason, PortalError, Verdict};
+
+/// The D19 negotiation contract for an interface: which ones a timeout may fall
+/// back from, and which the built-in UI can serve.
+pub trait InterfaceContract: Copy {
+    /// `true` when a repeated or abandoned request has no effect at the provider,
+    /// so a timeout may fall back to the built-in UI (D19 `idempotent` column).
+    #[must_use]
+    fn idempotent(self) -> bool;
+
+    /// `true` when the built-in UI has a step for this interface (D19 "UI step").
+    #[must_use]
+    fn has_ui_step(self) -> bool;
+}
+
+impl InterfaceContract for Interface {
+    fn idempotent(self) -> bool {
+        matches!(
+            self,
+            Self::Screenshot | Self::PickColor | Self::Settings | Self::FileChooser | Self::Lockdown
+        )
+    }
+
+    fn has_ui_step(self) -> bool {
+        matches!(
+            self,
+            Self::ScreenCast
+                | Self::Screenshot
+                | Self::PickColor
+                | Self::RemoteDesktop
+                | Self::InputCapture
+                | Self::FileChooser
+                | Self::AppChooser
+                | Self::Print
+                | Self::Account
+                | Self::Wallpaper
+                | Self::DynamicLauncher
+                | Self::Background
+                | Self::Secret
+        )
+    }
+}
 
 /// Who serves the request first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
