@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::geometry::{Point, Rect, Zoom};
+use crate::geometry::{Point, Rect, Scale};
 use crate::ids::{KeyCode, Keysym, OutputId, OwnerId};
 use crate::{
     A11y, BounceKeysConfig, Config, Effect, Event, Follow, Key, KeyDecision, Keystroke, MagnifierConfig, Mode,
@@ -101,11 +101,11 @@ impl Model {
                 } else {
                     Mode::FullScreen
                 },
-                zoom: Zoom::new(match self.rng.below(3) {
-                    0 => 1000,
-                    1 => 2000,
-                    _ => 5000,
-                }),
+                zoom: match self.rng.below(3) {
+                    0 => Scale::integral(1),
+                    1 => Scale::integral(2),
+                    _ => Scale::integral(5),
+                },
                 follow: match self.rng.below(3) {
                     0 => Follow::Focus,
                     1 => Follow::Caret,
@@ -257,7 +257,7 @@ fn invariants(
         };
         *checks += 1;
         assert!(
-            view.source.within(output.bounds),
+            view.source.is_inside(output.bounds),
             "seed {seed} step {step}: the view {}x{} at {},{} is outside {}x{} at {},{}",
             view.source.width,
             view.source.height,

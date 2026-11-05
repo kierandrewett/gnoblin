@@ -5,7 +5,7 @@
 //! compositor could type a key it must not, hand a grabbed key to the client, or
 //! show an area outside the output.
 
-use crate::geometry::{Point, Rect, Zoom};
+use crate::geometry::{Point, Rect, Scale};
 use crate::ids::{KeyCode, Keysym, OutputId, OwnerId};
 use crate::{
     A11y, Appearance, BounceKeysConfig, ButtonAction, Config, Effect, Event, Follow, Key, KeyDecision, KeyRouting,
@@ -97,7 +97,7 @@ fn magnifier_config(follow: Follow) -> Config {
         magnifier: MagnifierConfig {
             enabled: true,
             mode: Mode::FullScreen,
-            zoom: Zoom::X2,
+            zoom: Scale::integral(2),
             follow,
         },
         ..Config::default()
@@ -622,7 +622,7 @@ fn a_locked_magnifier_stays_on_its_output() {
     assert!(!effects.iter().any(|effect| matches!(effect, Effect::Magnifier(_))));
     let view = machine.view().expect("a view");
     assert_eq!(view.output, OutputId::new(1));
-    assert!(view.source.within(Rect::new(0, 0, 1920, 1080)));
+    assert!(view.source.is_inside(Rect::new(0, 0, 1920, 1080)));
 }
 
 // 29. The magnifier's view escapes its output at an edge.
@@ -639,7 +639,7 @@ fn the_view_is_clamped_inside_the_output() {
     });
     let view = view_of(&effects);
     assert_eq!(view.source, Rect::new(960, 540, 960, 540));
-    assert!(view.source.within(Rect::new(0, 0, 1920, 1080)));
+    assert!(view.source.is_inside(Rect::new(0, 0, 1920, 1080)));
 }
 
 // 30. The magnifier keeps a view of an output that is gone.
@@ -657,7 +657,7 @@ fn a_removed_output_moves_the_view() {
 
     let view = view_of(&effects);
     assert_eq!(view.output, OutputId::new(1));
-    assert!(view.source.within(Rect::new(0, 0, 1920, 1080)));
+    assert!(view.source.is_inside(Rect::new(0, 0, 1920, 1080)));
 }
 
 // 31. A follow source that is not configured moves the view.

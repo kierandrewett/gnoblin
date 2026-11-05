@@ -8,7 +8,7 @@
 //! this crate; its settings are the ones `gnoblin-render` needs and nothing
 //! else.
 
-use crate::geometry::Zoom;
+use crate::geometry::Scale;
 
 /// Everything under `accessibility`, plus the magnifier.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -121,8 +121,8 @@ pub struct MagnifierConfig {
     /// Whether the renderer paints the source rectangle over the whole output
     /// or in a lens at its own position.
     pub mode: Mode,
-    /// The zoom factor.
-    pub zoom: Zoom,
+    /// The zoom factor, clamped to 1x..=32x when the magnifier applies it.
+    pub zoom: Scale,
     /// What the view follows. Only this source moves it, so a magnifier set to
     /// follow the caret does not jump when the mouse moves.
     pub follow: Follow,
@@ -134,7 +134,7 @@ impl Default for MagnifierConfig {
         Self {
             enabled: false,
             mode: Mode::FullScreen,
-            zoom: Zoom::X2,
+            zoom: Scale::integral(2),
             follow: Follow::Pointer,
         }
     }

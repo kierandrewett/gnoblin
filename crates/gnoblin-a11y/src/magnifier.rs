@@ -1,13 +1,19 @@
 //! The magnifier model: which area of which output is shown, and nothing else.
 //!
 //! The magnifier is a source rectangle into one output. Every path below ends in
-//! [`Rect::magnified`], which clamps the rectangle inside the output, so no
-//! reachable state describes a pixel that is not on that output. A locked
+//! [`magnified`], which clamps the rectangle inside the output, so no reachable
+//! state describes a pixel that is not on that output. A locked
 //! session pins the output for the same reason: following the pointer onto a
 //! neighbour would show that neighbour's area instead of the lock screen.
 
-use crate::geometry::Point;
+use crate::geometry::{Point, Scale, magnified};
 use crate::{Follow, MagnifierConfig, Output, View};
+
+/// The smallest zoom the magnifier accepts: the whole output.
+const MIN_ZOOM: Scale = Scale::integral(1);
+
+/// The largest zoom the magnifier accepts.
+const MAX_ZOOM: Scale = Scale::integral(32);
 
 /// The magnifier's state: the layout, the follow anchor and the view.
 pub struct Magnifier {
@@ -21,12 +27,20 @@ pub struct Magnifier {
     locked: bool,
 }
 
+/// Keeps the configured zoom inside the range the view geometry is built for.
+fn clamp(config: MagnifierConfig) -> MagnifierConfig {
+    MagnifierConfig {
+        zoom: config.zoom.clamp(MIN_ZOOM, MAX_ZOOM),
+        ..config
+    }
+}
+
 impl Magnifier {
     /// A magnifier for this configuration.
     #[must_use]
     pub fn new(config: MagnifierConfig) -> Self {
         Self {
-            config,
+            config: clamp(config),
             layout: Vec::new(),
             view: None,
             anchor: None,
@@ -36,7 +50,7 @@ impl Magnifier {
 
     /// Applies a configuration change and reports whether the view changed.
     pub fn configure(&mut self, config: MagnifierConfig) -> bool {
-        self.config = config;
+        self.config = clamp(config);
         self.recompute()
     }
 
@@ -84,7 +98,7 @@ impl Magnifier {
         let output = self.output()?;
         Some(View {
             output: output.id,
-            source: output.bounds.magnified(self.anchor_point(output), self.config.zoom),
+            source: magnified(output.bounds, self.anchor_point(output), self.config.zoom),
             zoom: self.config.zoom,
             mode: self.config.mode,
         })
@@ -116,7 +130,7 @@ impl Magnifier {
     fn anchor_point(&self, output: &Output) -> Point {
         let anchor = self.anchor.unwrap_or_else(|| output.bounds.centre());
         if self.locked {
-            output.bounds.clamp(anchor)
+            output.bounds.clamp_point(anchor)
         } else {
             anchor
         }

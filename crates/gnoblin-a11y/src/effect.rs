@@ -4,7 +4,7 @@
 //! always: a swallow before a delivery, a pointer move before the tick that
 //! re-arms the motion loop, and one publish last.
 
-use crate::geometry::{Rect, Zoom};
+use crate::geometry::{Rect, Scale};
 use crate::ids::{OutputId, OwnerId};
 use crate::{Key, Mode, Modifiers, Sticky};
 
@@ -122,7 +122,7 @@ pub struct View {
     /// The area of that output that is magnified.
     pub source: Rect,
     /// The factor applied to it.
-    pub zoom: Zoom,
+    pub zoom: Scale,
     /// How the renderer paints it.
     pub mode: Mode,
 }

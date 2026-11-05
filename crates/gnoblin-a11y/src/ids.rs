@@ -1,8 +1,16 @@
 //! The identifiers the machines key their tables by.
 //!
+//! [`OutputId`] and [`OwnerId`] are `gnoblin-types`' shared identities,
+//! re-exported here so a consumer of this crate names one path for them.
+//! [`KeyCode`] and [`Keysym`] are not identities: one is a hardware key number
+//! and the other an XKB symbol, both of which `gnoblin-input` produces and only
+//! this crate's own machines consume.
+//!
 //! Nothing here allocates an identifier or reads a clock: every keycode,
 //! keysym, owner and output comes from the compositor, which is what makes
 //! [`crate::A11y::apply`] replayable from an event log.
+
+pub use gnoblin_types::{OutputId, OwnerId};
 
 /// A hardware keycode, as libinput and XKB report it.
 ///
@@ -43,51 +51,6 @@ impl Keysym {
     }
 
     /// The raw keysym, for the monitor's copy of a grab list.
-    #[must_use]
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
-
-/// A keyboard-monitor consumer: one assistive technology connection.
-///
-/// The C tree watches the D-Bus sender name and drops the grabber when the name
-/// vanishes. The compositor has the same identity as a connection id, so the
-/// table is keyed by it and [`crate::Event::MonitorDropped`] is the only way an
-/// owner leaves.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct OwnerId(u64);
-
-impl OwnerId {
-    /// Wraps the compositor's stable connection index.
-    #[must_use]
-    pub const fn new(raw: u64) -> Self {
-        Self(raw)
-    }
-
-    /// The raw index, for logs and test assertions.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-}
-
-/// An output, as the compositor names it.
-///
-/// The magnifier publishes which output its view belongs to, because the render
-/// path needs it and because a locked session must be able to prove the view
-/// never left that output.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct OutputId(u32);
-
-impl OutputId {
-    /// Wraps the compositor's stable output index.
-    #[must_use]
-    pub const fn new(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// The raw index, for logs and test assertions.
     #[must_use]
     pub const fn get(self) -> u32 {
         self.0
