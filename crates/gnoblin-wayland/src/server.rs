@@ -303,6 +303,13 @@ impl Server {
                             Command::WindowFrame { window, reply } => {
                                 let _ = reply.send(state.window_frame(window));
                             }
+                            Command::DrawnNode { window, reply } => {
+                                let _ = reply.send(state.drawn_node(window));
+                            }
+                            Command::LayoutFailure { workspace, reply } => {
+                                let _ = reply.send(state.layout_failure(workspace));
+                            }
+                            Command::ReducedMotion(reduced) => state.set_reduced_motion(reduced),
                             Command::Focus { window, reply } => {
                                 // The answer is sent after the publish, so a caller that
                                 // reads the observation on the strength of it sees what
@@ -379,6 +386,17 @@ impl Server {
         self.state.access().promise(pid, role);
     }
 
+    /// Installs the layout engines, one per workspace, that arrange the windows.
+    ///
+    /// Called by the composition root before the loop runs. A layout that is never
+    /// installed leaves the window manager tiling nothing.
+    pub fn install_layouts(
+        &mut self,
+        factory: impl FnMut(gnoblin_types::WorkspaceId) -> Box<dyn gnoblin_wm::layout::LayoutEngine> + 'static,
+    ) {
+        self.state.install_layouts(factory);
+    }
+
     /// Runs until the loop is stopped.
     ///
     /// Each iteration flushes the clients, takes the backend's input and state
@@ -413,7 +431,9 @@ impl Server {
                 let now = std::time::Instant::now();
                 if let Some(previous) = last_turn {
                     let elapsed = now.duration_since(previous).as_millis();
-                    state.advance_clock(u64::try_from(elapsed).unwrap_or(u64::MAX));
+                    let milliseconds = u64::try_from(elapsed).unwrap_or(u64::MAX);
+                    state.advance_clock(milliseconds);
+                    state.advance_motion(u32::try_from(elapsed).unwrap_or(u32::MAX));
                 }
                 last_turn = Some(now);
                 state.flush();
@@ -439,6 +459,9 @@ impl Server {
                         warn!(?error, "[access] a sandbox listener could not be watched");
                     }
                 }
+                // A layout run that finished since the last turn places its windows before
+                // this turn's frame is drawn.
+                state.poll_layouts();
                 let events = backend.dispatch(state);
                 if events.iter().any(is_output_change) {
                     // A hotplug, a removal or a mode change: the whole layout is
@@ -559,6 +582,28 @@ impl ControlHandle {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowFrame { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// The matrix and projected bounds a window's node is drawn with, or `None` when it is
+    /// not drawn.
+    #[must_use]
+    pub fn drawn_node(&self, window: WindowId) -> Option<Option<(gnoblin_backend::render::Mat4, Rect)>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::DrawnNode { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// The reason a workspace's last layout run failed, or `None` when it has none on record.
+    #[must_use]
+    pub fn layout_failure(&self, workspace: gnoblin_types::WorkspaceId) -> Option<Option<&'static str>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::LayoutFailure { workspace, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Sets whether window property changes land at once instead of animating.
+    pub fn set_reduced_motion(&self, reduced: bool) {
+        self.control.push(Command::ReducedMotion(reduced));
     }
 
     /// The fade metadata a window's surface committed, as a renderer reads it.
@@ -715,6 +760,18 @@ enum Command {
         window: WindowId,
         reply: std::sync::mpsc::SyncSender<Option<WindowFrame>>,
     },
+    /// The matrix and projected bounds a window's node is drawn with, read from the scene.
+    DrawnNode {
+        window: WindowId,
+        reply: std::sync::mpsc::SyncSender<Option<(gnoblin_backend::render::Mat4, Rect)>>,
+    },
+    /// The reason a workspace's last layout run failed.
+    LayoutFailure {
+        workspace: gnoblin_types::WorkspaceId,
+        reply: std::sync::mpsc::SyncSender<Option<&'static str>>,
+    },
+    /// Whether window property changes land at once instead of animating.
+    ReducedMotion(bool),
     /// A tick of the session clock, in milliseconds.
     Advance(u64),
     /// A chosen keyboard layout.

@@ -61,10 +61,16 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 use tracing::debug;
 
-use gnoblin_render::{Color, Damage, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, Scene, VisualTransform};
+use gnoblin_render::{
+    Color, Damage, Easing, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, Scene, TrackId, TrackSpec,
+    TrackStart, TweenPlayer, VisualProperty, VisualTransform,
+};
 use gnoblin_types::{OutputId, Rect, RectF, Size, Vec3, WindowId};
 
 use crate::render::frame::{Layer, Model, OutputFrame, Surface};
+
+/// How long a placement, move or other visual change takes to reach its target.
+const MOTION_MS: u32 = 200;
 
 /// A window's committed content: the crop to draw and its logical size.
 ///
@@ -114,6 +120,12 @@ pub struct Composer {
     /// The damage of the iteration being drawn, taken once by
     /// [`Composer::begin_frame`] and consumed output by output.
     damage: Option<Damage>,
+    /// Animations of window properties, driven by [`Composer::advance_motion`].
+    motion: TweenPlayer,
+    /// The live track for each window property, so a retarget can supersede it.
+    tracks: BTreeMap<(WindowId, VisualProperty), TrackId>,
+    /// When set, a change lands at once instead of being animated.
+    reduced_motion: bool,
 }
 
 impl Default for Composer {
@@ -133,6 +145,9 @@ impl Composer {
             background: Color::BLACK,
             next_node: 1,
             damage: None,
+            motion: TweenPlayer::new(),
+            tracks: BTreeMap::new(),
+            reduced_motion: false,
         }
     }
 
@@ -224,6 +239,7 @@ impl Composer {
         let Some(entry) = self.windows.remove(&window) else {
             return;
         };
+        self.cancel_tracks(window);
         if let Some(node) = entry.node {
             let _ = self.scene.remove(node);
         }
@@ -334,6 +350,53 @@ impl Composer {
         }
         entry.transform.base.rotation_degrees.z = degrees;
         self.sync(window, true);
+    }
+
+    /// Places a window's frame and base transform together: its rotation, scale and depth
+    /// offset. A window already drawn tweens from where it is to the new placement; a new
+    /// window takes it at once.
+    ///
+    /// The x and y offset always come from `geometry`, so the base transform's offset is
+    /// only its depth.
+    pub fn place_window_animated(&mut self, window: WindowId, geometry: Rect, base: gnoblin_types::Transform) {
+        if !self.windows.contains_key(&window) {
+            self.insert_window(window, geometry);
+        }
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.geometry = geometry;
+        entry.transform.base = base;
+        self.sync_animated(window);
+    }
+
+    /// Sets whether property changes land at once (`true`) or are animated (`false`).
+    ///
+    /// It applies to changes started after the call; a track already running finishes.
+    pub fn set_reduced_motion(&mut self, reduced: bool) {
+        self.reduced_motion = reduced;
+    }
+
+    /// Advances every running animation by `elapsed_ms` and forgets the ones that ended.
+    pub fn advance_motion(&mut self, elapsed_ms: u32) {
+        self.motion.advance(&mut self.scene, elapsed_ms);
+        for end in self.motion.take_ended() {
+            self.tracks.retain(|_, track| *track != end.track);
+        }
+    }
+
+    /// A window's node's world matrix, as the scene currently holds it, or `None` when it is not drawn.
+    #[must_use]
+    pub fn window_matrix(&self, window: WindowId) -> Option<Mat4> {
+        let node = self.windows.get(&window)?.node?;
+        self.scene.world_matrix(node)
+    }
+
+    /// A window's node's bounds projected to the output plane, or `None` when it is not drawn.
+    #[must_use]
+    pub fn window_projected_bounds(&self, window: WindowId) -> Option<Rect> {
+        let node = self.windows.get(&window)?.node?;
+        self.scene.absolute_bounds(node)
     }
 
     /// Replaces a window's content, or clears it when the client unmaps.
@@ -479,21 +542,95 @@ impl Composer {
         })
     }
 
-    /// Makes a window's node match its state.
+    /// The transform a window's node should reach: its base transform placed at its geometry.
+    fn target(entry: &WindowNode) -> VisualTransform {
+        let mut transform = entry.transform;
+        transform.base.offset = Vec3::new(
+            f64::from(entry.geometry.x),
+            f64::from(entry.geometry.y),
+            transform.base.offset.z,
+        );
+        transform
+    }
+
+    /// Starts an animation towards each property's target that differs from the node's value,
+    /// when `animate` is set and motion is not reduced. A property starts from its current
+    /// value, so a superseded animation continues from where it is. Otherwise the target is
+    /// written at once.
+    fn retarget(&mut self, window: WindowId, animate: bool) {
+        let Some(entry) = self.windows.get(&window) else {
+            return;
+        };
+        let Some(node) = entry.node else {
+            return;
+        };
+        let target = Self::target(entry);
+        for property in VisualProperty::ALL {
+            if property == VisualProperty::Scale {
+                continue;
+            }
+            let value = property.get(&target);
+            self.cancel_track(window, property);
+            if self.scene.property(node, property).ok() == Some(value) {
+                continue;
+            }
+            if !animate || self.reduced_motion {
+                let _ = self.scene.set_property(node, property, value);
+                continue;
+            }
+            let spec = TrackSpec {
+                from: TrackStart::Current,
+                duration_ms: MOTION_MS,
+                easing: Easing::EaseOutCubic,
+                ..TrackSpec::new(node, property, value)
+            };
+            if let Ok(track) = self.motion.start(&mut self.scene, spec) {
+                self.tracks.insert((window, property), track);
+            }
+        }
+    }
+
+    /// Cancels a window property's animation, leaving the value where it is.
+    fn cancel_track(&mut self, window: WindowId, property: VisualProperty) {
+        if let Some(track) = self.tracks.remove(&(window, property)) {
+            let _ = self.motion.cancel(track);
+        }
+    }
+
+    /// Cancels every animation of a window.
+    fn cancel_tracks(&mut self, window: WindowId) {
+        let keys: Vec<(WindowId, VisualProperty)> = self.tracks.keys().filter(|key| key.0 == window).copied().collect();
+        for (owner, property) in keys {
+            self.cancel_track(owner, property);
+        }
+    }
+
+    /// Makes a window's node match its state, landing every change at once.
     ///
     /// `force` re-damages the node even when nothing it holds changed, which is what
     /// a commit means: the buffer handle is the same, its pixels are not.
     fn sync(&mut self, window: WindowId, force: bool) {
+        self.sync_with(window, force, false);
+    }
+
+    /// Makes a window's node match its state, animating its transform towards a placement.
+    fn sync_animated(&mut self, window: WindowId) {
+        self.sync_with(window, false, true);
+    }
+
+    /// The body of [`Self::sync`]: `animate` tweens the transform rather than landing it.
+    fn sync_with(&mut self, window: WindowId, force: bool, animate: bool) {
         let Some(entry) = self.windows.get(&window) else {
             return;
         };
         let content = if entry.visible { entry.content } else { None };
         let node = entry.node;
+        let transform = Self::target(entry);
+        let effects = entry.effects.clone();
         let z_order = self.z_order(window);
-        let mut transform = entry.transform;
-        transform.base.offset = Vec3::new(f64::from(entry.geometry.x), f64::from(entry.geometry.y), 0.0);
         let Some(content) = content else {
             if let Some(node) = node {
+                self.cancel_tracks(window);
                 let _ = self.scene.remove(node);
             }
             if let Some(entry) = self.windows.get_mut(&window) {
@@ -504,21 +641,23 @@ impl Composer {
         let bounds = Rect::from_size(content.size);
         match node {
             Some(node) if self.scene.bounds(node) == Some(bounds) => {
-                if force || self.scene.transform(node) != Some(&transform) {
-                    let _ = self.scene.set_transform(node, transform);
+                if force && let Some(current) = self.scene.transform(node).copied() {
+                    let _ = self.scene.set_transform(node, current);
                 }
                 if self.scene.z_order(node) != Some(z_order) {
                     let _ = self.scene.set_z_order(node, z_order);
                 }
-                if self.scene.effects(node) != Some(&entry.effects) {
-                    let _ = self.scene.set_effects(node, entry.effects.clone());
+                if self.scene.effects(node) != Some(&effects) {
+                    let _ = self.scene.set_effects(node, effects.clone());
                 }
+                self.retarget(window, animate);
             }
             existing => {
                 // The content changed size, or there was no node yet: the node is
                 // replaced so its bounds are the content's, and both the old and the
-                // new rectangle are damaged.
+                // new rectangle are damaged. A new node takes its target at once.
                 if let Some(node) = existing {
+                    self.cancel_tracks(window);
                     let _ = self.scene.remove(node);
                 }
                 let id = NodeId::new(self.next_node);
@@ -528,7 +667,7 @@ impl Composer {
                     z_order,
                     bounds,
                     transform,
-                    effects: entry.effects.clone(),
+                    effects,
                     kind: NodeKind::Visual,
                 };
                 if self.scene.insert(id, spec).is_ok()

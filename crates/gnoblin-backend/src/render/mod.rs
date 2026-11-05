@@ -51,7 +51,7 @@ pub use compose::{Composer, Content};
 // graph does not know about names the same type the renderer does.
 pub use frame::{Layer, OutputFrame, Solid, Surface};
 pub use gles::Gles;
-pub use gnoblin_render::Color;
+pub use gnoblin_render::{Color, Mat4};
 pub use image::Image;
 pub use shm::copy_into as copy_into_shm;
 pub use software::Software;

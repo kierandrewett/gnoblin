@@ -9,6 +9,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use smithay::backend::input::{ButtonState, InputTime};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
@@ -56,13 +57,14 @@ use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
 use tracing::{debug, warn};
 
-use gnoblin_backend::render::{Composer, Content, OutputFrame};
+use gnoblin_backend::render::{Composer, Content, Mat4, OutputFrame};
 use gnoblin_backend::{Host, InputEvent};
 use gnoblin_config::Protocols;
 use gnoblin_input::Activity;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
-use gnoblin_types::{OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
+use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
@@ -378,6 +380,8 @@ pub struct State {
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
     pub(crate) composer: Composer,
+    /// The reason each workspace's last layout run failed, until its next placement.
+    pub(crate) layout_failures: BTreeMap<WorkspaceId, &'static str>,
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     last_frame: Option<(OutputId, Vec<Rect>)>,
@@ -414,6 +418,9 @@ pub struct State {
     /// state can drift from this one.
     observer: Option<Arc<dyn Observer>>,
 }
+
+/// How long one loop turn may wait for a layout run that is still in flight.
+const LAYOUT_FRAME_BUDGET: Duration = Duration::from_millis(4);
 
 impl State {
     /// Builds the state, its globals and its outputs.
@@ -622,6 +629,7 @@ impl State {
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             composer: Composer::new(),
+            layout_failures: BTreeMap::new(),
             last_frame: None,
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
@@ -955,6 +963,12 @@ impl State {
             rect: policy_rect,
         });
         self.apply(effects);
+        let identified = self.wm.apply(Event::OutputIdentified {
+            output: policy,
+            name: output.connector.clone(),
+            scale: Scale::new(1, 1),
+        });
+        self.apply(identified);
         self.composer.set_output(output.id, rect);
         debug!(connector = %output.connector, ?rect, "[output] connected");
         self.outputs.push(OutputEntry {
@@ -1022,9 +1036,9 @@ impl State {
                     warn!(%window, rule, ?reason, "[rules] rule did not apply")
                 }
                 Effect::Rejected { reason } => debug!(?reason, "[wm] the event changed nothing"),
-                // The compositor does not map placements to the 3D scene yet; the wiring lane owns that.
-                Effect::PlacementTarget { .. } => {}
-                Effect::LayoutFailed { workspace, reason } => debug!(%workspace, reason, "[layout] failed"),
+                // A settled layout places its window: its transform reaches the scene whole.
+                Effect::PlacementTarget { workspace, placement } => self.place_tiled(workspace, placement),
+                Effect::LayoutFailed { workspace, reason } => self.layout_failed(workspace, reason),
             }
         }
     }
@@ -1455,6 +1469,101 @@ impl State {
             effects.extend(self.wm.apply(event));
         }
         self.apply(effects);
+    }
+
+    /// Installs the factory that makes one layout engine per workspace and submits
+    /// every workspace's arrangement.
+    pub(crate) fn install_layouts(&mut self, factory: impl FnMut(WorkspaceId) -> Box<dyn LayoutEngine> + 'static) {
+        let effects = self.wm.set_layout_engines(factory);
+        self.apply(effects);
+    }
+
+    /// Lets the window manager collect the layout runs that finished and applies the
+    /// placements they settle on.
+    ///
+    /// The server calls this once per loop turn. Without it an installed layout never
+    /// settles, and the tiling events the window manager holds back for it are never
+    /// applied.
+    pub(crate) fn poll_layouts(&mut self) {
+        let deadline = Instant::now() + LAYOUT_FRAME_BUDGET;
+        let effects = self.wm.apply(Event::Frame { deadline });
+        if !effects.is_empty() {
+            self.apply(effects);
+            self.publish();
+        }
+    }
+
+    /// Applies one tiled placement from a settled layout run.
+    ///
+    /// The window is configured to the placement's size. Its position is the geometry's
+    /// origin in the composer; the transform's depth offset, rotation and scale ride in the
+    /// node's base transform, so a 3D placement reaches the scene whole.
+    ///
+    /// A matrix transform is refused: the scene takes a decomposed transform only.
+    fn place_tiled(&mut self, workspace: WorkspaceId, placement: Placement) {
+        let window = placement.window;
+        let Transform3::Trs {
+            position,
+            rotation_degrees,
+            scale,
+        } = placement.transform
+        else {
+            warn!(%window, %workspace, "[layout] a matrix placement is refused: unsupported-transform");
+            return;
+        };
+        // A window closed since the run was submitted has nothing left to place.
+        let Some(state) = self.wm.window(window).map(|entry| entry.state) else {
+            return;
+        };
+        // A placement from a settled run means the workspace's layout works again.
+        self.layout_failures.remove(&workspace);
+        let geometry = Rect::new(
+            position.x.round() as i32,
+            position.y.round() as i32,
+            placement.width.round() as u32,
+            placement.height.round() as u32,
+        );
+        let base = gnoblin_types::Transform {
+            offset: Vec3::new(0.0, 0.0, position.z),
+            rotation_degrees,
+            scale,
+            depth: 0.0,
+        };
+        self.composer.place_window_animated(window, geometry, base);
+        self.composer.set_window_visible(window, placement.visible);
+        self.composer.set_window_opacity(window, placement.opacity as f32);
+        self.configure(window, geometry, state);
+    }
+
+    /// Records that a workspace's layout run failed. The window manager already runs that
+    /// workspace floating; the reason is kept for the compositor to report.
+    fn layout_failed(&mut self, workspace: WorkspaceId, reason: &'static str) {
+        warn!(%workspace, reason, "[layout] failed; the workspace runs floating");
+        self.layout_failures.insert(workspace, reason);
+    }
+
+    /// The reason a workspace's layout last failed, or `None` when it has no failure on record.
+    pub(crate) fn layout_failure(&self, workspace: WorkspaceId) -> Option<&'static str> {
+        self.layout_failures.get(&workspace).copied()
+    }
+
+    /// The matrix a window's node is drawn with and its projected bounds, or `None` when it
+    /// is not drawn.
+    pub(crate) fn drawn_node(&self, window: WindowId) -> Option<(Mat4, Rect)> {
+        Some((
+            self.composer.window_matrix(window)?,
+            self.composer.window_projected_bounds(window)?,
+        ))
+    }
+
+    /// Sets whether property changes land at once, see [`Composer::set_reduced_motion`].
+    pub(crate) fn set_reduced_motion(&mut self, reduced: bool) {
+        self.composer.set_reduced_motion(reduced);
+    }
+
+    /// Advances the window animations by the real time one loop turn took.
+    pub(crate) fn advance_motion(&mut self, elapsed_ms: u32) {
+        self.composer.advance_motion(elapsed_ms);
     }
 
     /// The policy identity of the window owning a surface.

@@ -26,8 +26,11 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
-use gnoblin_types::Point;
+use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
 use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
+use gnoblin_wm::layout::{
+    Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
+};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
@@ -749,4 +752,367 @@ impl Dispatch<xdg_popup::XdgPopup, ()> for App {
             _ => {}
         }
     }
+}
+
+/// The arrangement the test engine answers with. The test changes it between
+/// runs to move, tilt or fail the placements.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Shape {
+    /// The first window takes the left half; the rest share the right half.
+    Master,
+    /// Every window is flat at `(100, 100)`, 300 by 200.
+    Flat,
+    /// The flat rectangle, rotated 40 degrees about Y and lifted 200 units in depth.
+    Tilt,
+    /// Every window is flat at `(100 * count, 0)`, 300 by 200: a placement moves
+    /// whenever a window is added.
+    Shift,
+    /// The engine raises an error on every run.
+    Fail,
+}
+
+/// The shape the engines read, shared with the test.
+type SharedShape = Arc<Mutex<Shape>>;
+
+/// A test-local engine implementing the layout contract. Every run is ready at once.
+struct ScriptedEngine {
+    shape: SharedShape,
+    ready: Option<(gnoblin_wm::layout::Generation, Result<Reply, LayoutFailure>)>,
+}
+
+impl ScriptedEngine {
+    fn arrange(shape: Shape, params: &Params) -> Result<Reply, LayoutFailure> {
+        let windows = params.windows();
+        let placements = match shape {
+            Shape::Fail => return Err(LayoutFailure::Error),
+            Shape::Master => {
+                let (width, height) = (params.output_width(), params.output_height());
+                let half = width / 2.0;
+                let Some((master, stack)) = windows.split_first() else {
+                    return Ok(Reply::Handled(Handled {
+                        placements: Vec::new(),
+                        camera: Camera::Orthographic,
+                        effects: Vec::new(),
+                    }));
+                };
+                let mut placements = vec![Placement::rect(master.id, 0.0, 0.0, half, height)];
+                let slot = height / stack.len().max(1) as f64;
+                for (index, window) in stack.iter().enumerate() {
+                    placements.push(Placement::rect(window.id, half, slot * index as f64, half, slot));
+                }
+                placements
+            }
+            Shape::Flat => windows
+                .iter()
+                .map(|window| Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0))
+                .collect(),
+            Shape::Tilt => windows
+                .iter()
+                .map(|window| Placement {
+                    transform: Transform3::Trs {
+                        position: Vec3::new(100.0, 100.0, 200.0),
+                        rotation_degrees: Vec3::new(0.0, 40.0, 0.0),
+                        scale: Vec3::new(1.0, 1.0, 1.0),
+                    },
+                    ..Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0)
+                })
+                .collect(),
+            Shape::Shift => {
+                let x = 100.0 * windows.len() as f64;
+                windows
+                    .iter()
+                    .map(|window| Placement::rect(window.id, x, 0.0, 300.0, 200.0))
+                    .collect()
+            }
+        };
+        Ok(Reply::Handled(Handled {
+            placements,
+            camera: Camera::Orthographic,
+            effects: Vec::new(),
+        }))
+    }
+}
+
+impl LayoutEngine for ScriptedEngine {
+    fn submit(&mut self, job: Job, generation: gnoblin_wm::layout::Generation) -> gnoblin_wm::layout::Ticket {
+        let shape = *self.shape.lock().expect("the shape lock");
+        let result = match job {
+            Job::Arrange(params) | Job::Request(gnoblin_wm::layout::Request { params, .. }) => {
+                Self::arrange(shape, &params)
+            }
+        };
+        self.ready = Some((generation, result));
+        gnoblin_wm::layout::Ticket::new(generation)
+    }
+
+    fn collect(&mut self, generation: gnoblin_wm::layout::Generation, _deadline: Instant) -> LayoutOutcome {
+        match self.ready.take() {
+            Some((ready, result)) if ready == generation => LayoutOutcome::Ready { generation, result },
+            other => {
+                self.ready = other;
+                LayoutOutcome::Pending
+            }
+        }
+    }
+}
+
+/// Installs one engine per workspace, all reading `shape`, and returns the
+/// workspaces the factory was asked for.
+fn install_scripted(session: &mut Session, shape: SharedShape) -> Arc<Mutex<Vec<WorkspaceId>>> {
+    let made = Arc::new(Mutex::new(Vec::new()));
+    let record = Arc::clone(&made);
+    session.server.install_layouts(move |workspace| {
+        record.lock().expect("the workspace lock").push(workspace);
+        Box::new(ScriptedEngine {
+            shape: Arc::clone(&shape),
+            ready: None,
+        })
+    });
+    made
+}
+
+/// Processes the client's events until its toplevel is configured to `size`.
+fn settle_size(client: &mut Client, size: (i32, i32)) {
+    let deadline = Instant::now() + TIMEOUT;
+    while (client.state.width, client.state.height) != size {
+        assert!(
+            Instant::now() < deadline,
+            "the client never received the configure {size:?}; last {:?}",
+            (client.state.width, client.state.height)
+        );
+        thread::sleep(Duration::from_millis(5));
+        client.roundtrip();
+    }
+}
+
+/// Attaches a buffer of exactly the size the server configured, so the drawn node
+/// has the placement's bounds.
+fn draw_configured(client: &mut Client, window: &Window) {
+    client.roundtrip();
+    let (width, height) = (client.state.width, client.state.height);
+    client.attach_buffer(window, width, height);
+}
+
+/// The window the session observes under `title`.
+fn window_id(session: &Handle, title: &str) -> WindowId {
+    session.windows().titled(title).expect("the window is observed").id
+}
+
+/// The bounds a window is drawn at, once it is drawn.
+fn drawn(session: &Handle, window: WindowId) -> (gnoblin_backend::render::Mat4, Rect) {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        if let Some(Some(node)) = session.control.drawn_node(window) {
+            return node;
+        }
+        assert!(Instant::now() < deadline, "the window {window:?} is never drawn");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_master_stack_places_three_real_clients_at_their_configured_sizes() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Master));
+    let _made = install_scripted(&mut session, shape);
+    session.run(|session| {
+        let (screen_w, screen_h) = headless_screen();
+        let (half, height) = (screen_w / 2, screen_h);
+        let mut first = Client::connect(session.socket());
+        let mut second = Client::connect(session.socket());
+        let mut third = Client::connect(session.socket());
+        let w1 = first.create_window("org.gnoblin.Master", "Master");
+        let w2 = second.create_window("org.gnoblin.Stack", "Upper");
+        let w3 = third.create_window("org.gnoblin.Stack", "Lower");
+
+        // The master is the first window; the stack is the other two in creation order.
+        settle_size(&mut first, (half, height));
+        settle_size(&mut second, (half, height / 2));
+        settle_size(&mut third, (half, height / 2));
+        draw_configured(&mut first, &w1);
+        draw_configured(&mut second, &w2);
+        draw_configured(&mut third, &w3);
+
+        let master = window_id(session, "Master");
+        let upper = window_id(session, "Upper");
+        let lower = window_id(session, "Lower");
+        assert_eq!(drawn(session, master).1, Rect::new(0, 0, half as u32, height as u32));
+        assert_eq!(
+            drawn(session, upper).1,
+            Rect::new(half, 0, half as u32, (height / 2) as u32)
+        );
+        assert_eq!(
+            drawn(session, lower).1,
+            Rect::new(half, height / 2, half as u32, (height / 2) as u32)
+        );
+    });
+}
+
+/// Maps one window under `shape` and returns the matrix and projected bounds it is drawn with.
+fn draw_single(shape: Shape) -> (gnoblin_backend::render::Mat4, Rect) {
+    let mut session = Session::start(Headless::new());
+    let shared: SharedShape = Arc::new(Mutex::new(shape));
+    let _made = install_scripted(&mut session, shared);
+    let outcome = Arc::new(Mutex::new(None));
+    let record = Arc::clone(&outcome);
+    session.run(move |session| {
+        let mut client = Client::connect(session.socket());
+        let window = client.create_window("org.gnoblin.Single", "Single");
+        settle_size(&mut client, (300, 200));
+        draw_configured(&mut client, &window);
+        let id = window_id(session, "Single");
+        *record.lock().expect("the outcome lock") = Some(drawn(session, id));
+    });
+    let result = outcome.lock().expect("the outcome lock").take();
+    result.expect("the body recorded the drawn node")
+}
+
+#[test]
+fn a_rotated_z_offset_placement_reaches_the_renderer_as_a_3d_matrix() {
+    let (flat_matrix, flat_bounds) = draw_single(Shape::Flat);
+    let (tilt_matrix, tilt_bounds) = draw_single(Shape::Tilt);
+
+    assert_eq!(
+        flat_bounds,
+        Rect::new(100, 100, 300, 200),
+        "the flat placement is drawn where it was placed"
+    );
+    // A rotation about Y puts a non-zero entry in the x/z cross terms; the flat matrix has none.
+    let rotated = |m: &gnoblin_backend::render::Mat4| m.m[0][2].abs() > 1e-6 || m.m[2][0].abs() > 1e-6;
+    assert!(
+        !rotated(&flat_matrix),
+        "the flat placement has no rotation: {:?}",
+        flat_matrix.m
+    );
+    assert!(
+        rotated(&tilt_matrix),
+        "the rotated placement's node matrix is not flat: {:?}",
+        tilt_matrix.m
+    );
+    assert_ne!(
+        tilt_matrix.m, flat_matrix.m,
+        "the 3D placement changes the matrix the renderer draws with"
+    );
+    assert_ne!(
+        tilt_bounds, flat_bounds,
+        "the projected bounds differ from the flat placement"
+    );
+    assert!(
+        tilt_bounds.width < flat_bounds.width,
+        "a 40 degree turn about Y narrows the projected width: {tilt_bounds:?} against {flat_bounds:?}"
+    );
+}
+
+#[test]
+fn a_failing_engine_leaves_the_workspace_floating_and_reports_the_error() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Fail));
+    let made = install_scripted(&mut session, shape);
+    session.run(move |session| {
+        let mut client = Client::connect(session.socket());
+        let _window = client.map_window("org.gnoblin.Floating", "Floating");
+        let id = window_id(session, "Floating");
+        let deadline = Instant::now() + TIMEOUT;
+        let workspace = loop {
+            if let Some(workspace) = made.lock().expect("the workspace lock").first().copied() {
+                break workspace;
+            }
+            assert!(Instant::now() < deadline, "no layout engine was asked for a workspace");
+            thread::sleep(Duration::from_millis(5));
+        };
+        while session.control.layout_failure(workspace) != Some(Some("error")) {
+            assert!(
+                Instant::now() < deadline,
+                "the failed run is never recorded: {:?}",
+                session.control.layout_failure(workspace)
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        // Nothing was placed, so the window is still managed, mapped and visible.
+        let snapshot = session.windows();
+        let observed = snapshot.window(id).expect("the window is still managed");
+        assert!(
+            observed.mapped && observed.visible,
+            "the floating window stays mapped and visible"
+        );
+    });
+}
+
+/// Records the first window's drawn x into `seen` when it changes, and returns it.
+fn sample_x(session: &Handle, window: WindowId, seen: &mut Vec<i32>) -> i32 {
+    let x = drawn(session, window).1.x;
+    if seen.last() != Some(&x) {
+        seen.push(x);
+    }
+    x
+}
+
+/// One window at 100 under `Shift`; a second window maps, which moves the first to 200.
+/// Returns every distinct x the first window is drawn at, from 100 to the settled place.
+fn shift_samples(reduced: bool) -> Vec<i32> {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Shift));
+    let _made = install_scripted(&mut session, shape);
+    session.handle.control.set_reduced_motion(reduced);
+    let samples = Arc::new(Mutex::new(Vec::new()));
+    let record = Arc::clone(&samples);
+    session.run(move |session| {
+        let mut first = Client::connect(session.socket());
+        let w1 = first.create_window("org.gnoblin.Shift", "First");
+        settle_size(&mut first, (300, 200));
+        draw_configured(&mut first, &w1);
+        let id = window_id(session, "First");
+
+        // Wait for the first placement to land before the second window exists.
+        let deadline = Instant::now() + TIMEOUT;
+        while drawn(session, id).1.x != 100 {
+            assert!(Instant::now() < deadline, "the first window never reaches 100");
+            thread::sleep(Duration::from_millis(2));
+        }
+        let mut seen = vec![100];
+
+        let mut second = Client::connect(session.socket());
+        let w2 = second.create_window("org.gnoblin.Shift", "Second");
+        settle_size(&mut second, (300, 200));
+        draw_configured(&mut second, &w2);
+
+        let deadline = Instant::now() + TIMEOUT;
+        while sample_x(session, id, &mut seen) != 200 {
+            assert!(
+                Instant::now() < deadline,
+                "the first window never reaches 200: {seen:?}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+        // Let any tween finish, then take the value it settled on.
+        thread::sleep(Duration::from_millis(400));
+        sample_x(session, id, &mut seen);
+        *record.lock().expect("the samples lock") = seen;
+    });
+    samples.lock().expect("the samples lock").clone()
+}
+
+#[test]
+fn a_moved_placement_tweens_from_where_the_window_is_drawn() {
+    let seen = shift_samples(false);
+    assert_eq!(seen.first(), Some(&100), "the window starts at its old place: {seen:?}");
+    assert_eq!(seen.last(), Some(&200), "the tween ends at the target: {seen:?}");
+    assert!(
+        seen.windows(2).all(|pair| pair[0] <= pair[1]),
+        "the tween moves one way from the old place to the new: {seen:?}"
+    );
+    assert!(
+        seen.iter().any(|x| (101..200).contains(x)),
+        "the window is drawn between the old and new place while the tween runs: {seen:?}"
+    );
+}
+
+#[test]
+fn reduced_motion_moves_a_placement_at_once() {
+    let seen = shift_samples(true);
+    assert_eq!(
+        seen,
+        vec![100, 200],
+        "with reduced motion no intermediate position is drawn"
+    );
 }
