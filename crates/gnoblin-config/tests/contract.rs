@@ -34,6 +34,19 @@ fn the_document_accepts_exactly_the_recorded_top_level_keys() {
     );
 }
 
+/// Protocols the rewrite added, which the C reference cannot list.
+///
+/// `tests/parity/contracts/config-keys.json` is generated from the C tree, so it
+/// records what the C build advertises. A protocol the Rust compositor exposes
+/// because a rewrite lane added it belongs here, with the release that added it
+/// and why, so the difference between the two lists is a reviewed decision in one
+/// place rather than a loosened assertion.
+const REWRITE_ONLY_PROTOCOLS: &[(&str, &str, &str)] = &[(
+    "ext-image-copy-capture",
+    "0.2.0",
+    "ext-image-copy-capture-v1, added by the capture lane; the C tree only has wlr-screencopy",
+)];
+
 #[test]
 fn the_protocol_enum_matches_the_recorded_enumeration() {
     let inventory = inventory();
@@ -48,5 +61,37 @@ fn the_protocol_enum_matches_the_recorded_enumeration() {
         .iter()
         .map(|value| value.as_str().expect("a name"))
         .collect();
-    assert_eq!(Protocol::VARIANT_TEXTS, recorded);
+
+    // The recorded list comes from the C tree, so it cannot know a protocol the
+    // rewrite added. The rule is therefore: the Rust enum is the C reference
+    // enumeration plus a reviewed list of rewrite-only protocols, and nothing
+    // else. A Rust name that is neither is a protocol nobody reviewed, and a C
+    // name missing from Rust is a setting this build silently dropped.
+    for (name, since, reason) in REWRITE_ONLY_PROTOCOLS {
+        assert!(
+            !recorded.contains(name),
+            "{name} is in the C reference, so it is not rewrite-only"
+        );
+        assert!(
+            !since.is_empty() && since.split('.').count() == 3,
+            "{name} names no x.y.z release"
+        );
+        assert!(!reason.is_empty(), "{name} has no reason");
+    }
+    let mut expected: BTreeSet<&str> = recorded.iter().copied().collect();
+    for (name, _, _) in REWRITE_ONLY_PROTOCOLS {
+        let added = expected.insert(name);
+        assert!(added, "{name} is listed twice as a rewrite-only protocol");
+    }
+    let ours: BTreeSet<&str> = Protocol::VARIANT_TEXTS.iter().copied().collect();
+    let unreviewed: Vec<&&str> = ours.difference(&expected).collect();
+    assert!(
+        unreviewed.is_empty(),
+        "protocols the C reference does not have and no review lists: {unreviewed:?}"
+    );
+    let missing: Vec<&&str> = expected.difference(&ours).collect();
+    assert!(
+        missing.is_empty(),
+        "protocols the C reference has that Rust lost: {missing:?}"
+    );
 }
