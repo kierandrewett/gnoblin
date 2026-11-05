@@ -183,9 +183,11 @@ struct App {
     keyboard_enters: u32,
     keyboard_leaves: u32,
     keys: u32,
-    /// How many times the pointer entered and moved.
+    /// How many times the pointer entered and moved, and where it last was.
     pointer_enters: u32,
     pointer_motions: u32,
+    pointer_x: f64,
+    pointer_y: f64,
     pointer_buttons: u32,
     /// The lock objects that received `locked`, in arrival order.
     locked: Vec<ObjectId>,
@@ -544,6 +546,14 @@ fn a_covered_client_receives_no_input() {
             locker_state.pointer_enters >= 1,
             "the lock surface received the pointer"
         );
+        // The pointer's second element is the surface's origin, so the client sees the
+        // position inside its own surface. The only output is at the origin, so a
+        // corner-valued origin would show up as (0, 0) here.
+        assert_eq!(
+            (locker_state.pointer_x, locker_state.pointer_y),
+            (f64::from(centre(geometry).x), f64::from(centre(geometry).y)),
+            "the lock surface saw the position inside itself, not the corner"
+        );
 
         let observation = session.wait_for(|observation| observation.lock_state() == LockState::Locked);
         assert!(
@@ -898,8 +908,22 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter { .. } => state.pointer_enters += 1,
-            wl_pointer::Event::Motion { .. } => state.pointer_motions += 1,
+            wl_pointer::Event::Enter {
+                surface_x, surface_y, ..
+            } => {
+                state.pointer_enters += 1;
+                // The enter carries the first position, and it is the one a focus change
+                // produces: a `motion` only follows a later move.
+                state.pointer_x = surface_x;
+                state.pointer_y = surface_y;
+            }
+            wl_pointer::Event::Motion {
+                surface_x, surface_y, ..
+            } => {
+                state.pointer_motions += 1;
+                state.pointer_x = surface_x;
+                state.pointer_y = surface_y;
+            }
             wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
             _ => {}
         }

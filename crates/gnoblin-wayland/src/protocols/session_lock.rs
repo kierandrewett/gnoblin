@@ -457,9 +457,13 @@ impl State {
             .surfaces
             .iter()
             .find(|entry| entry.locker == owner && entry.output == output && entry.mapped)?;
+        // The second element is the surface's origin in global coordinates, not the
+        // position inside it: every `PointerTarget` subtracts it from the global
+        // position, so returning the output's origin is what makes the locker see
+        // surface-local coordinates.
         let rect = self.output_rect(output)?;
-        let local = Point::from((position.x - f64::from(rect.x), position.y - f64::from(rect.y)));
-        Some((surface.surface.wl_surface().clone(), local))
+        let origin = Point::from((f64::from(rect.x), f64::from(rect.y)));
+        Some((surface.surface.wl_surface().clone(), origin))
     }
 
     /// Moves keyboard focus to where the lock allows it, or to nothing.
