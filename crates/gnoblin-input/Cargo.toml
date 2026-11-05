@@ -6,5 +6,9 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# The shared primitives: the tick counter, the request identity and the edge names.
+gnoblin-types.workspace = true
+
 [lints]
 workspace = true

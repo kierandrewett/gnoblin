@@ -204,6 +204,9 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-input"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-lock"

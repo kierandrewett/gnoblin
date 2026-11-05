@@ -27,7 +27,7 @@
 
 use std::collections::VecDeque;
 
-use crate::tick::Tick;
+use gnoblin_types::{RequestId, Tick};
 
 /// How many requests may wait at once, matching the C tree's bounded queue.
 ///
@@ -43,32 +43,6 @@ pub enum Decision {
     Forward,
     /// Withhold the event from its normal target.
     Consume,
-}
-
-/// The identity of a queued request.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RequestId(u64);
-
-impl RequestId {
-    /// An identity decoded from the script protocol.
-    ///
-    /// The reply arrives over the wire carrying the id the request was sent with, so the
-    /// mechanism layer has to rebuild one. An id this queue never issued is answered with
-    /// [`Reply::Unknown`], so decoding cannot forge a decision that applies.
-    pub const fn from_raw(raw: u64) -> Self {
-        Self(raw)
-    }
-
-    /// The raw number, for correlation with the script protocol.
-    pub const fn raw(self) -> u64 {
-        self.0
-    }
-}
-
-impl std::fmt::Display for RequestId {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "request:{}", self.0)
-    }
 }
 
 /// What submitting an event did.
@@ -179,7 +153,7 @@ impl PolicyQueue {
             self.stats.bypassed += 1;
             return Submitted::Bypassed;
         }
-        let id = RequestId(self.next_id);
+        let id = RequestId::new(self.next_id);
         self.next_id += 1;
         let deadline = now.saturating_add(budget);
         self.waiting.push_back(Waiting { id, deadline });
@@ -210,7 +184,7 @@ impl PolicyQueue {
     /// Apply a decision.
     pub fn reply(&mut self, id: RequestId, decision: Decision) -> Reply {
         let Some(index) = self.waiting.iter().position(|waiting| waiting.id == id) else {
-            if id.raw() < self.next_id {
+            if id.get() < self.next_id {
                 self.stats.late += 1;
                 return Reply::Late { id };
             }
@@ -256,7 +230,7 @@ impl PolicyQueue {
 #[cfg(test)]
 mod tests {
     use super::{Decision, MAX_PENDING, PolicyQueue, Reply, Submitted};
-    use crate::tick::Tick;
+    use gnoblin_types::Tick;
 
     #[test]
     fn a_decision_in_time_applies() {
@@ -351,7 +325,7 @@ mod tests {
         let Submitted::Queued { id, .. } = queue.submit(Tick::new(1), 5) else {
             panic!("queued");
         };
-        let forged = super::RequestId(id.raw() + 9);
+        let forged = super::RequestId::new(id.get() + 9);
         assert_eq!(queue.reply(forged, Decision::Forward), Reply::Unknown { id: forged });
         assert_eq!(queue.pending(), 1, "the real request is untouched");
     }

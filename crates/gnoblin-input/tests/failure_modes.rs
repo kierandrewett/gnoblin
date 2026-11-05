@@ -515,7 +515,7 @@ fn a_reload_retires_requests_before_their_replies() {
     assert_eq!(queue.stats().applied, 0);
     assert_eq!(queue.stats().late, 2);
     // A reply for a request this session never issued is not a late one.
-    let forged = RequestId::from_raw(9_000);
+    let forged = RequestId::new(9_000);
     assert!(matches!(queue.reply(forged, Decision::Forward), Reply::Unknown { .. }));
 }
 

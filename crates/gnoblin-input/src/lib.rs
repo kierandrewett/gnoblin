@@ -87,20 +87,19 @@ pub mod idle;
 pub mod name;
 pub mod policy;
 pub mod router;
-pub mod tick;
 
 pub use binding::{Binding, BindingId, BindingTable, Conflict, Insertion, Trigger};
 pub use chord::{Chord, ChordKind, Key, KeyCode, Keysym, Keysyms, Modifiers, ParseError, Symbol};
 pub use gesture::{
-    CancelReason, Contact, ContactPhase, Edge, EdgeBand, GestureConfig, GestureEvent, GestureKind, GesturePath,
-    GesturePhase, Recogniser,
+    CancelReason, Contact, ContactPhase, EdgeBand, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase,
+    Recogniser,
 };
 pub use gesture_router::{
     Context, GestureAction, GestureBinding, GestureError, GestureRoute, GestureRouter, GestureSpec, GestureStats,
     PinchDirection, When,
 };
+pub use gnoblin_types::{Edge, RequestId, Tick};
 pub use idle::Activity;
 pub use name::{Name, NameError};
-pub use policy::{Decision, Expired, MAX_PENDING, PolicyQueue, PolicyStats, Reply, RequestId, Submitted};
+pub use policy::{Decision, Expired, MAX_PENDING, PolicyQueue, PolicyStats, Reply, Submitted};
 pub use router::{Event, GrabId, Phase, Routed, Router, Scope, ShortcutInhibit, Stats, Target};
-pub use tick::Tick;

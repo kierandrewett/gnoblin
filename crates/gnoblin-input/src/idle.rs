@@ -10,7 +10,7 @@
 //! last activity backwards, because doing so would make the session look busier than it
 //! was and delay idle forever.
 
-use crate::tick::Tick;
+use gnoblin_types::Tick;
 
 /// Input activity since the session started.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -58,7 +58,7 @@ impl Activity {
     pub const fn idle_ticks(&self, now: Tick) -> u64 {
         match self.last {
             Some(last) => now.since(last),
-            None => now.raw(),
+            None => now.get(),
         }
     }
 
@@ -74,7 +74,7 @@ impl Activity {
 #[cfg(test)]
 mod tests {
     use super::Activity;
-    use crate::tick::Tick;
+    use gnoblin_types::Tick;
 
     #[test]
     fn a_fresh_session_is_idle_from_the_start() {

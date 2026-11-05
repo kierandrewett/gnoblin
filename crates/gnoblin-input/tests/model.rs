@@ -362,7 +362,7 @@ impl Model {
             0 => {
                 if let Submitted::Queued { id, deadline } = self.policy.submit(tick, 1 + rng.below(5)) {
                     assert!(deadline >= tick);
-                    self.waiting.push(id.raw());
+                    self.waiting.push(id.get());
                 }
             }
             1 => {
@@ -370,7 +370,7 @@ impl Model {
                     let position = self
                         .waiting
                         .iter()
-                        .position(|raw| *raw == expired.id.raw())
+                        .position(|raw| *raw == expired.id.get())
                         .expect("an expired request was waiting");
                     assert_eq!(position, 0, "retirement starts with the oldest request");
                     self.waiting.remove(0);
@@ -378,7 +378,7 @@ impl Model {
             }
             2 => {
                 if let Some(raw) = self.waiting.first().copied() {
-                    let id = RequestId::from_raw(raw);
+                    let id = RequestId::new(raw);
                     let reply = self.policy.reply(id, Decision::Consume);
                     assert_eq!(
                         reply,
@@ -392,12 +392,12 @@ impl Model {
             }
             _ => {
                 let retired = self.policy.retire_all();
-                let order: Vec<u64> = retired.iter().map(|id| id.raw()).collect();
+                let order: Vec<u64> = retired.iter().map(|id| id.get()).collect();
                 assert_eq!(order, self.waiting, "a reload retires in submission order");
                 self.waiting.clear();
                 // A retired request cannot be decided again.
                 for raw in &order {
-                    let id = RequestId::from_raw(*raw);
+                    let id = RequestId::new(*raw);
                     assert_eq!(self.policy.reply(id, Decision::Forward), Reply::Late { id });
                 }
             }

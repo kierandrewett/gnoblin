@@ -54,7 +54,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::tick::Tick;
+use gnoblin_types::{Edge, Tick};
 
 /// The fewest contacts a gesture needs.
 pub const MIN_FINGERS: u8 = 2;
@@ -120,31 +120,6 @@ impl GestureKind {
         match self {
             Self::Swipe => "swipe",
             Self::Pinch => "pinch",
-        }
-    }
-}
-
-/// The touchpad edge a swipe started at.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Edge {
-    /// The near edge, where the thumb rests.
-    Bottom,
-    /// The far edge.
-    Top,
-    /// The left edge.
-    Left,
-    /// The right edge.
-    Right,
-}
-
-impl Edge {
-    /// The name a shell event uses for this edge.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Bottom => "bottom",
-            Self::Top => "top",
-            Self::Left => "left",
-            Self::Right => "right",
         }
     }
 }
@@ -848,7 +823,7 @@ mod tests {
         CancelReason, Contact, ContactPhase, Edge, EdgeBand, GestureConfig, GestureEvent, GestureKind, GesturePhase,
         Recogniser, path_matches,
     };
-    use crate::tick::Tick;
+    use gnoblin_types::Tick;
 
     fn at(slot: u8, phase: ContactPhase, x: f64, y: f64) -> Contact {
         Contact { slot, phase, x, y }
@@ -1024,7 +999,6 @@ mod tests {
                 .expect("begin")
         };
         assert_eq!(begin.edge(), Some(Edge::Right));
-        assert_eq!(Edge::Right.as_str(), "right");
     }
 
     #[test]

@@ -648,7 +648,7 @@ mod tests {
     };
     use crate::gesture::{GestureEvent, GestureKind, GesturePath};
     use crate::name::Name;
-    use crate::tick::Tick;
+    use gnoblin_types::Tick;
 
     fn swipe(name: &str, fingers: u8, path: Vec<(f64, f64)>, when: When, action: GestureAction) -> GestureSpec {
         GestureSpec {
