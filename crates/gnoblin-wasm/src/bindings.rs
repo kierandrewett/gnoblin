@@ -52,6 +52,7 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.idle": ObjectRep,
         "gnoblin:ipc/gnoblin.lock": ObjectRep,
         "gnoblin:ipc/gnoblin.output": ObjectRep,
+        "gnoblin:ipc/gnoblin.settings": ObjectRep,
         "gnoblin:ipc/bsm-greeter.operation": ObjectRep,
         "gnoblin:ipc/bsm-greeter.greeter": ObjectRep,
     },
@@ -382,6 +383,13 @@ mod gnoblin_objects {
 
         fn output_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             Ok(match self.open(id, "output") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn settings_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "settings") {
                 Ok(handle) => Ok(handle),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
@@ -804,6 +812,104 @@ mod gnoblin_objects {
             arguments.insert("enabled".to_owned(), Value::Bool(enabled));
             arguments.insert("mode".to_owned(), Value::Text(mode));
             self.method(object, "output", "apply", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostSettings for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn color_scheme(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "color_scheme"))
+        }
+
+        fn accent_red(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "accent_red"))
+        }
+
+        fn accent_green(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "accent_green"))
+        }
+
+        fn accent_blue(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "accent_blue"))
+        }
+
+        fn contrast(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "contrast"))
+        }
+
+        fn reduced_motion(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "reduced_motion"))
+        }
+
+        fn gtk_theme(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "gtk_theme"))
+        }
+
+        fn icon_theme(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "icon_theme"))
+        }
+
+        fn cursor_theme(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "cursor_theme"))
+        }
+
+        fn cursor_size(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "cursor_size"))
+        }
+
+        fn font_name(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "font_name"))
+        }
+
+        fn document_font_name(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "document_font_name"))
+        }
+
+        fn monospace_font_name(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "monospace_font_name"))
+        }
+
+        fn text_scaling_factor(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "text_scaling_factor"))
+        }
+
+        fn button_layout(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "button_layout"))
+        }
+
+        fn enable_animations(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "enable_animations"))
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
