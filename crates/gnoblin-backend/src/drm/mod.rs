@@ -42,13 +42,16 @@
 pub mod gamma;
 pub mod gpu;
 pub mod plan;
+pub mod present;
 
 use std::fmt;
 use std::io;
 
 use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
+use smithay::reexports::drm::control::crtc;
 
+use crate::drm::present::{OutputPresenter, Presenter, complete_flips};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
 use crate::render::Image;
@@ -102,6 +105,8 @@ pub struct Drm {
     gpu: gpu::Gpu,
     /// The connected connectors, one output each, in the order the kernel lists them.
     outputs: Vec<Output>,
+    /// Each connected output's presenter, keyed by the CRTC that scans it out.
+    channels: Vec<OutputPresenter<crtc::Handle, OutputId>>,
     input: Input,
     /// Whether the seat is ours, which decides whether the device may be used.
     seat: SeatState,
@@ -185,7 +190,7 @@ impl Drm {
     /// headless backend instead; it is not a frame error.
     pub fn open(seat_name: &str) -> Result<Self, DrmError> {
         let gpu = gpu::Gpu::open(seat_name)?;
-        let outputs = gpu
+        let outputs: Vec<Output> = gpu
             .outputs()
             .filter(|connector| connector.connected)
             .filter_map(|connector| {
@@ -193,6 +198,17 @@ impl Drm {
                 let mode = *descriptor.modes.first()?;
                 let scale = descriptor.scales.first().copied().unwrap_or(Scale::integral(1));
                 Some(Output::new(connector.id, connector.name.clone(), mode, scale))
+            })
+            .collect();
+        let channels = outputs
+            .iter()
+            .filter_map(|output| {
+                let crtc = gpu.crtc_of(output.id)?;
+                Some(OutputPresenter {
+                    id: output.id,
+                    crtc,
+                    presenter: Presenter::new(),
+                })
             })
             .collect();
         let input = match Libinput::open(gpu.seat().libseat()) {
@@ -207,6 +223,7 @@ impl Drm {
         Ok(Self {
             gpu,
             outputs,
+            channels,
             input,
             seat: SeatState::new(),
         })
@@ -237,17 +254,21 @@ impl Drm {
         }
     }
 
-    /// The seat is ours again: take the device back and deliver input again.
+    /// The seat is ours again: take the device back, reset every output's swapchain so it redraws
+    /// in full, and deliver input again.
     ///
-    /// Presenting the outputs after a resume is not built yet (see [`Backend::render`]), so the
-    /// resume restores the device and the input only. A failure to take the device back is logged;
-    /// the input is delivered regardless, because the seat is ours either way.
+    /// Drawing the outputs is not built yet (see [`Backend::render`]), so the swapchains are reset
+    /// and marked dirty for the frame path that will draw them. A failure to take the device back is
+    /// logged; the swapchains and the input are reset regardless, because the seat is ours either way.
     fn resume(&mut self) {
         let Transition::Resume { .. } = self.seat.resumed() else {
             return;
         };
         if let Err(error) = self.gpu.activate() {
             tracing::error!(%error, "[drm] the device could not be re-activated after the seat returned");
+        }
+        for channel in &mut self.channels {
+            channel.presenter.resume();
         }
         if let Input::Live(libinput) = &mut self.input {
             libinput.resume();
@@ -304,6 +325,8 @@ impl<S: Host + 'static> Backend<S> for Drm {
                 SeatEvent::Activated => self.resume(),
             }
         }
+        let crtcs = self.gpu.take_flips();
+        complete_flips(&mut self.channels, &crtcs);
         if let Input::Live(libinput) = &mut self.input {
             libinput.pump();
         }

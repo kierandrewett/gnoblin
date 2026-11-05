@@ -12,13 +12,15 @@
 //! plane, which is the render path that comes after this slice. A power-off is committed at
 //! once, because [`DrmSurface::clear`] is itself a commit.
 
+use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use gnoblin_output::{DisplayMode, Edid, VrrSupport};
 use gnoblin_types::{Orientation, OutputId};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmSurface, VrrSupport as KernelVrr};
+use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmSurface, VrrSupport as KernelVrr};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::{
     Device as ControlDevice, Mode, ModeTypeFlags, ResourceHandles, connector, crtc,
@@ -234,6 +236,9 @@ impl Kms for Hardware {
 pub struct Gpu {
     hardware: Hardware,
     notifier: Option<DrmDeviceNotifier>,
+    /// The CRTCs whose page flips completed, oldest first. The notifier fills it and
+    /// [`Gpu::take_flips`] drains it.
+    flips: Arc<Mutex<VecDeque<crtc::Handle>>>,
     applied: Applied,
     /// Declared last so the device drops before the seat that lent its node.
     seat: Seat,
@@ -280,6 +285,7 @@ impl Gpu {
             seat,
             hardware: Hardware { device, ports },
             notifier: Some(notifier),
+            flips: Arc::new(Mutex::new(VecDeque::new())),
             applied: Applied::new(),
         })
     }
@@ -296,13 +302,29 @@ impl Gpu {
     }
 
     /// Registers the seat's event source with the loop, so VT switches reach
-    /// [`Seat::take_events`].
+    /// [`Seat::take_events`], and the device's notifier, so page flips reach [`Gpu::take_flips`].
     ///
     /// # Errors
     ///
-    /// The loop refuses the source.
+    /// The loop refuses one of the sources.
     pub fn register<S: 'static>(&mut self, loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
-        self.seat.register(loop_handle)
+        self.seat.register(loop_handle)?;
+        let Some(notifier) = self.notifier.take() else {
+            return Ok(());
+        };
+        let flips = Arc::clone(&self.flips);
+        loop_handle
+            .insert_source(notifier, move |event, _, _data| match event {
+                DrmEvent::VBlank(crtc) => {
+                    let mut queue = flips.lock().unwrap_or_else(|error| error.into_inner());
+                    queue.push_back(crtc);
+                }
+                DrmEvent::Error(error) => {
+                    tracing::warn!(%error, "[drm] the device reported an error on its event queue");
+                }
+            })
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        Ok(())
     }
 
     /// Releases DRM master for a VT switch away. Smithay's pause cannot fail.
@@ -323,11 +345,20 @@ impl Gpu {
             .map_err(|error| DrmError::Device(error.to_string()))
     }
 
-    /// Takes the notifier that reports the device's page flips and VBlanks, for the event loop.
-    ///
-    /// [`None`] after the first call.
-    pub fn take_notifier(&mut self) -> Option<DrmDeviceNotifier> {
-        self.notifier.take()
+    /// The CRTCs whose page flips completed since the last call, oldest first.
+    pub fn take_flips(&self) -> Vec<crtc::Handle> {
+        let mut queue = self.flips.lock().unwrap_or_else(|error| error.into_inner());
+        queue.drain(..).collect()
+    }
+
+    /// The CRTC that scans out `output`, which is how a flip completion names its output.
+    #[must_use]
+    pub fn crtc_of(&self, output: OutputId) -> Option<crtc::Handle> {
+        self.hardware
+            .ports
+            .iter()
+            .find(|port| port.connector.id == output)
+            .and_then(|port| port.crtc)
     }
 
     /// Applies a plan to the hardware, rolling back on the first refusal.
