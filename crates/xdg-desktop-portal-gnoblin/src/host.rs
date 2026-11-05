@@ -198,9 +198,10 @@ impl<T: Transport> IpcLoop<T> {
                 Ok(Event::Model(observation)) => {
                     futures_lite::future::block_on(portal.observe(&observation));
                 }
-                Ok(Event::RequestOffered { .. }) => {
+                Ok(Event::RequestOffered { .. } | Event::Extension { .. }) => {
                     // A request this connection could claim is not its business: the portal
-                    // offers, it does not draw.
+                    // offers, it does not draw. An extension event goes only to the
+                    // connections granted that extension, and the portal is granted none.
                 }
                 Err(ClientError::Idle) => {}
                 Err(error) => {

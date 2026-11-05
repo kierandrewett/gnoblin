@@ -609,6 +609,7 @@ fn observation(event: gnoblin_client::Event) -> Option<Observation> {
         gnoblin_client::Event::Model(observation) => Some(observation),
         gnoblin_client::Event::RequestOffered { .. }
         | gnoblin_client::Event::RequestAnswered { .. }
-        | gnoblin_client::Event::RequestFinished { .. } => None,
+        | gnoblin_client::Event::RequestFinished { .. }
+        | gnoblin_client::Event::Extension { .. } => None,
     }
 }
