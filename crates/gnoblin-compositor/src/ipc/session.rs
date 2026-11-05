@@ -36,11 +36,12 @@
 //!    `the_session_object_names_the_version_this_process_serves`.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
 use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
-use gnoblin_wayland::SessionSnapshot;
+use gnoblin_wayland::{ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot};
 use tracing::error;
 
 /// The property and member names this module writes, as the schema spells them.
@@ -205,62 +206,65 @@ impl SessionSync {
     ///
     /// [`ModelError`] when the schema refuses a write this module makes. Nothing is
     /// half-applied: the graph validates before it publishes, so a refused property
-    /// leaves every subscriber's view whole.
-    pub fn apply(&mut self, snapshot: &SessionSnapshot) -> Result<(), ModelError> {
+    /// Applies a snapshot: creates, changes and closes objects to match it.
+    ///
+    /// Every object is published independently. A refused write is recorded against
+    /// the object's kind and id and the rest of the snapshot still publishes, so one
+    /// bad object cannot hide the others. The error lists every failure.
+    ///
+    /// # Errors
+    ///
+    /// [`PublishError`] when the schema refuses a write this module makes, naming each
+    /// object that could not be published.
+    pub fn apply(&mut self, snapshot: &SessionSnapshot) -> Result<(), PublishError> {
         self.raise_bell(snapshot.bells());
+        let mut failures = Vec::new();
+        self.apply_windows(snapshot, &mut failures);
+        self.apply_outputs(snapshot, &mut failures);
+        self.apply_workspaces(snapshot, &mut failures);
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(PublishError { failures })
+        }
+    }
+
+    /// Creates, changes and closes window objects to match the snapshot.
+    fn apply_windows(&mut self, snapshot: &SessionSnapshot, failures: &mut Vec<PublishFailure>) {
         let focus = snapshot.focus();
         let mut seen = BTreeSet::new();
         for window in snapshot.windows() {
             seen.insert(window.id);
-            let focused = focus == Some(window.id);
-            let icon = window.icon_name.clone().unwrap_or_default();
-            let tag = window.tag.clone().unwrap_or_default();
-            let Some(previous) = self.windows.get(&window.id).cloned() else {
-                let properties = window_properties(window.id, window);
-                let object = self.graph.create(TypeKey::gnoblin("window"), properties)?;
-                self.windows.insert(
-                    window.id,
-                    PublishedWindow {
-                        object,
-                        title: window.title.clone(),
-                        app_id: window.app_id.clone(),
-                        focused,
-                        icon,
-                        tag,
-                        modal: window.modal,
-                        floating: window.floating,
-                        geometry: window.geometry,
-                    },
-                );
-                continue;
-            };
-            let object = previous.object;
-            if previous.title != window.title {
-                self.graph
-                    .set(object, member::TITLE, Value::Text(window.title.clone()))?;
+            if let Err(error) = self.publish_window(window, focus) {
+                failures.push(PublishFailure::new("window", window.id.get(), error));
             }
-            if previous.app_id != window.app_id {
-                self.graph
-                    .set(object, member::APP_ID, Value::Text(window.app_id.clone()))?;
+        }
+        let lost: Vec<WindowId> = self
+            .windows
+            .keys()
+            .filter(|window| !seen.contains(window))
+            .copied()
+            .collect();
+        for window in lost {
+            if let Some(published) = self.windows.remove(&window) {
+                // The object's own end is the one event. The schema also declares a
+                // `closed` signal, and it is deliberately not raised as well: a
+                // subscriber would learn the same thing twice.
+                if let Err(error) = self.graph.close(published.object) {
+                    failures.push(PublishFailure::new("window", window.get(), error));
+                }
             }
-            if previous.focused != focused {
-                self.graph.set(object, member::FOCUSED, Value::Bool(focused))?;
-            }
-            if previous.icon != icon {
-                self.graph.set(object, member::ICON, Value::Text(icon.clone()))?;
-            }
-            if previous.tag != tag {
-                self.graph.set(object, member::TAG, Value::Text(tag.clone()))?;
-            }
-            if previous.modal != window.modal {
-                self.graph.set(object, member::MODAL, Value::Bool(window.modal))?;
-            }
-            if previous.floating != window.floating {
-                self.graph.set(object, member::FLOATING, Value::Bool(window.floating))?;
-            }
-            if previous.geometry != window.geometry {
-                self.set_geometry(object, window.geometry)?;
-            }
+        }
+    }
+
+    /// Creates or updates one window object.
+    fn publish_window(&mut self, window: &ObservedWindow, focus: Option<WindowId>) -> Result<(), ModelError> {
+        let focused = focus == Some(window.id);
+        let icon = window.icon_name.clone().unwrap_or_default();
+        let tag = window.tag.clone().unwrap_or_default();
+        let Some(previous) = self.windows.get(&window.id).cloned() else {
+            let properties = window_properties(window.id, window);
+            let object = self.graph.create(TypeKey::gnoblin("window"), properties)?;
             self.windows.insert(
                 window.id,
                 PublishedWindow {
@@ -275,66 +279,101 @@ impl SessionSync {
                     geometry: window.geometry,
                 },
             );
+            return Ok(());
+        };
+        let object = previous.object;
+        if previous.title != window.title {
+            self.graph
+                .set(object, member::TITLE, Value::Text(window.title.clone()))?;
         }
-        let lost: Vec<WindowId> = self
-            .windows
-            .keys()
-            .filter(|window| !seen.contains(window))
-            .copied()
-            .collect();
-        for window in lost {
-            if let Some(published) = self.windows.remove(&window) {
-                // The object's own end is the one event. The schema also declares a
-                // `closed` signal, and it is deliberately not raised as well: a
-                // subscriber would learn the same thing twice.
-                self.graph.close(published.object)?;
-            }
+        if previous.app_id != window.app_id {
+            self.graph
+                .set(object, member::APP_ID, Value::Text(window.app_id.clone()))?;
         }
-        self.apply_outputs(snapshot)?;
-        self.apply_workspaces(snapshot)?;
+        if previous.focused != focused {
+            self.graph.set(object, member::FOCUSED, Value::Bool(focused))?;
+        }
+        if previous.icon != icon {
+            self.graph.set(object, member::ICON, Value::Text(icon.clone()))?;
+        }
+        if previous.tag != tag {
+            self.graph.set(object, member::TAG, Value::Text(tag.clone()))?;
+        }
+        if previous.modal != window.modal {
+            self.graph.set(object, member::MODAL, Value::Bool(window.modal))?;
+        }
+        if previous.floating != window.floating {
+            self.graph.set(object, member::FLOATING, Value::Bool(window.floating))?;
+        }
+        if previous.geometry != window.geometry {
+            self.set_geometry(object, window.geometry)?;
+        }
+        self.windows.insert(
+            window.id,
+            PublishedWindow {
+                object,
+                title: window.title.clone(),
+                app_id: window.app_id.clone(),
+                focused,
+                icon,
+                tag,
+                modal: window.modal,
+                floating: window.floating,
+                geometry: window.geometry,
+            },
+        );
         Ok(())
     }
 
     /// Creates, changes and closes `output` objects to match the snapshot.
-    fn apply_outputs(&mut self, snapshot: &SessionSnapshot) -> Result<(), ModelError> {
+    fn apply_outputs(&mut self, snapshot: &SessionSnapshot, failures: &mut Vec<PublishFailure>) {
         let mut seen = BTreeSet::new();
         for output in snapshot.output_layouts() {
             seen.insert(output.id);
-            let Some(previous) = self.outputs.get(&output.id).cloned() else {
-                let properties = Fields::from([
-                    (member::NAME.to_owned(), Value::Text(output.name.clone())),
-                    (member::LAYOUT.to_owned(), Value::Text(output.layout.clone())),
-                ]);
-                let object = self.graph.create(TypeKey::gnoblin("output"), properties)?;
-                self.outputs.insert(
-                    output.id,
-                    PublishedOutput {
-                        object,
-                        name: output.name.clone(),
-                        layout: output.layout.clone(),
-                    },
-                );
-                continue;
-            };
-            if previous.layout != output.layout {
-                self.graph
-                    .set(previous.object, member::LAYOUT, Value::Text(output.layout.clone()))?;
+            if let Err(error) = self.publish_output(output) {
+                failures.push(PublishFailure::new("output", output.id.get(), error));
             }
-            self.outputs.insert(
-                output.id,
-                PublishedOutput {
-                    layout: output.layout.clone(),
-                    name: output.name.clone(),
-                    ..previous
-                },
-            );
         }
         let lost: Vec<OutputId> = self.outputs.keys().filter(|id| !seen.contains(id)).copied().collect();
         for id in lost {
             if let Some(published) = self.outputs.remove(&id) {
-                self.graph.close(published.object)?;
+                if let Err(error) = self.graph.close(published.object) {
+                    failures.push(PublishFailure::new("output", id.get(), error));
+                }
             }
         }
+    }
+
+    /// Creates or updates one output object.
+    fn publish_output(&mut self, output: &ObservedOutput) -> Result<(), ModelError> {
+        let Some(previous) = self.outputs.get(&output.id).cloned() else {
+            let properties = Fields::from([
+                (member::NAME.to_owned(), Value::Text(output.name.clone())),
+                (member::LAYOUT.to_owned(), Value::Text(output.layout.clone())),
+            ]);
+            let object = self.graph.create(TypeKey::gnoblin("output"), properties)?;
+            self.outputs.insert(
+                output.id,
+                PublishedOutput {
+                    object,
+                    name: output.name.clone(),
+                    layout: output.layout.clone(),
+                },
+            );
+            return Ok(());
+        };
+        if previous.layout != output.layout {
+            self.graph
+                .set(previous.object, member::LAYOUT, Value::Text(output.layout.clone()))?;
+        }
+        self.outputs.insert(
+            output.id,
+            PublishedOutput {
+                layout: output.layout.clone(),
+                name: output.name.clone(),
+                ..previous
+            },
+        );
         Ok(())
     }
 
@@ -343,38 +382,44 @@ impl SessionSync {
     ///
     /// A failure is raised once when it first appears; a workspace that stops failing
     /// (its layout was replaced) simply publishes its layout again.
-    fn apply_workspaces(&mut self, snapshot: &SessionSnapshot) -> Result<(), ModelError> {
-        let failures: BTreeMap<WorkspaceId, &'static str> = snapshot.layout_failures().iter().copied().collect();
+    fn apply_workspaces(&mut self, snapshot: &SessionSnapshot, failures: &mut Vec<PublishFailure>) {
+        let layout_failures: BTreeMap<WorkspaceId, &'static str> = snapshot.layout_failures().iter().copied().collect();
         let mut seen = BTreeSet::new();
         for workspace in snapshot.workspaces() {
             seen.insert(workspace.id);
-            let failure = failures.get(&workspace.id).copied();
-            let Some(previous) = self.workspaces.get(&workspace.id).cloned() else {
-                let properties = Fields::from([
-                    (member::ID.to_owned(), Value::Uint(workspace.id.get())),
-                    (member::LAYOUT.to_owned(), Value::Text(workspace.layout.clone())),
-                ]);
-                let object = self.graph.create(TypeKey::gnoblin("workspace"), properties)?;
-                if let Some(reason) = failure {
-                    self.raise_failed(object, &workspace.layout, reason)?;
-                }
-                self.workspaces.insert(
-                    workspace.id,
-                    PublishedWorkspace {
-                        object,
-                        layout: workspace.layout.clone(),
-                        failure,
-                    },
-                );
-                continue;
-            };
-            let object = previous.object;
-            if previous.layout != workspace.layout {
-                self.graph
-                    .set(object, member::LAYOUT, Value::Text(workspace.layout.clone()))?;
-                self.raise_changed(object, &workspace.layout)?;
+            let failure = layout_failures.get(&workspace.id).copied();
+            if let Err(error) = self.publish_workspace(workspace, failure) {
+                failures.push(PublishFailure::new("workspace", workspace.id.get(), error));
             }
-            if let Some(reason) = failure.filter(|reason| previous.failure != Some(*reason)) {
+        }
+        let lost: Vec<WorkspaceId> = self
+            .workspaces
+            .keys()
+            .filter(|id| !seen.contains(id))
+            .copied()
+            .collect();
+        for id in lost {
+            if let Some(published) = self.workspaces.remove(&id) {
+                if let Err(error) = self.graph.close(published.object) {
+                    failures.push(PublishFailure::new("workspace", id.get(), error));
+                }
+            }
+        }
+    }
+
+    /// Creates or updates one workspace object and raises its layout signals.
+    fn publish_workspace(
+        &mut self,
+        workspace: &ObservedWorkspace,
+        failure: Option<&'static str>,
+    ) -> Result<(), ModelError> {
+        let Some(previous) = self.workspaces.get(&workspace.id).cloned() else {
+            let properties = Fields::from([
+                (member::ID.to_owned(), Value::Uint(workspace.id.get())),
+                (member::LAYOUT.to_owned(), Value::Text(workspace.layout.clone())),
+            ]);
+            let object = self.graph.create(TypeKey::gnoblin("workspace"), properties)?;
+            if let Some(reason) = failure {
                 self.raise_failed(object, &workspace.layout, reason)?;
             }
             self.workspaces.insert(
@@ -385,21 +430,27 @@ impl SessionSync {
                     failure,
                 },
             );
+            return Ok(());
+        };
+        let object = previous.object;
+        if previous.layout != workspace.layout {
+            self.graph
+                .set(object, member::LAYOUT, Value::Text(workspace.layout.clone()))?;
+            self.raise_changed(object, &workspace.layout)?;
         }
-        let lost: Vec<WorkspaceId> = self
-            .workspaces
-            .keys()
-            .filter(|id| !seen.contains(id))
-            .copied()
-            .collect();
-        for id in lost {
-            if let Some(published) = self.workspaces.remove(&id) {
-                self.graph.close(published.object)?;
-            }
+        if let Some(reason) = failure.filter(|reason| previous.failure != Some(*reason)) {
+            self.raise_failed(object, &workspace.layout, reason)?;
         }
+        self.workspaces.insert(
+            workspace.id,
+            PublishedWorkspace {
+                object,
+                layout: workspace.layout.clone(),
+                failure,
+            },
+        );
         Ok(())
     }
-
     /// Raises `layout_changed` on a workspace object.
     fn raise_changed(&mut self, object: ObjectId, layout: &str) -> Result<(), ModelError> {
         let fields = Fields::from([(member::LAYOUT.to_owned(), Value::Text(layout.to_owned()))]);
@@ -786,5 +837,110 @@ mod tests {
         assert_eq!(window, WindowId::new(7));
         assert_eq!(store.window_of(object), Some(WindowId::new(7)));
         assert_eq!(store.window_of(store.session()), None, "the session is not a window");
+    }
+
+    #[test]
+    fn a_refused_write_names_its_object_and_does_not_hide_the_others() {
+        let mut store = store();
+        store
+            .apply(&snapshot(
+                vec![
+                    window(7, "one", true, Rect::default()),
+                    window(8, "two", false, Rect::default()),
+                ],
+                Some(WindowId::new(7)),
+            ))
+            .expect("applied");
+        // Close window 7's object behind the store's back, so its next write is refused.
+        let broken = store.windows.get(&WindowId::new(7)).expect("published").object;
+        store.graph_mut().close(broken).expect("closed");
+
+        let error = store
+            .apply(&snapshot(
+                vec![
+                    window(7, "renamed", true, Rect::default()),
+                    window(8, "renamed too", false, Rect::default()),
+                ],
+                Some(WindowId::new(7)),
+            ))
+            .expect_err("the closed object refuses its write");
+        let failures = error.failures();
+        assert_eq!(failures.len(), 1, "only the broken object fails: {error}");
+        assert_eq!(failures[0].kind(), "window");
+        assert_eq!(failures[0].id(), 7, "the failure names the object that refused");
+        assert!(
+            error.to_string().starts_with("window 7:"),
+            "the message names it: {error}"
+        );
+
+        // The healthy window still published its change.
+        let healthy = store.windows.get(&WindowId::new(8)).expect("still published");
+        assert_eq!(healthy.title, "renamed too", "one refusal must not hide the rest");
+    }
+}
+
+/// Every object the last `apply` could not publish, with the object's kind and id.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PublishError {
+    failures: Vec<PublishFailure>,
+}
+
+impl PublishError {
+    /// The failures, in the order the snapshot reached them.
+    #[must_use]
+    pub fn failures(&self) -> &[PublishFailure] {
+        &self.failures
+    }
+}
+
+impl fmt::Display for PublishError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, failure) in self.failures.iter().enumerate() {
+            if index > 0 {
+                f.write_str("; ")?;
+            }
+            write!(f, "{failure}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for PublishError {}
+
+/// One object that failed to publish.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PublishFailure {
+    kind: &'static str,
+    id: u64,
+    error: ModelError,
+}
+
+impl PublishFailure {
+    fn new(kind: &'static str, id: u64, error: ModelError) -> Self {
+        Self { kind, id, error }
+    }
+
+    /// The kind of object that failed: `window`, `output` or `workspace`.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        self.kind
+    }
+
+    /// The id of the object that failed, as the snapshot names it.
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// The model's reason for refusing the write.
+    #[must_use]
+    pub fn error(&self) -> &ModelError {
+        &self.error
+    }
+}
+
+impl fmt::Display for PublishFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}: {}", self.kind, self.id, self.error)
     }
 }

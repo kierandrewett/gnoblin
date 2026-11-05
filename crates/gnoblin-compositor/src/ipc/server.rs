@@ -1103,6 +1103,9 @@ impl Dispatcher {
             (Some(ty), _, Some(workspace), _) if ty == "workspace" && method == "set_layout" => {
                 self.set_workspace_layout(client, envelope, object, &method, &arguments, workspace);
             }
+            (Some(ty), _, Some(workspace), _) if ty == "workspace" && method == "layout_command" => {
+                self.layout_command_call(client, envelope, object, &method, &arguments, workspace);
+            }
             (Some(ty), _, _, Some((_, name))) if ty == "output" && method == "set_layout" => {
                 self.set_output_layout(client, envelope, object, &method, &arguments, &name);
             }
@@ -1251,6 +1254,50 @@ impl Dispatcher {
         self.finish_layout(object, &operation, answered);
     }
 
+    /// Serves `workspace.layout_command`: the named command runs in the workspace's
+    /// layout and its placements are applied. An unknown command is `refused`; a
+    /// workspace without a layout is `unknown-layout`; `params` must be a JSON object.
+    fn layout_command_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        workspace: WorkspaceId,
+    ) {
+        let Some(name) = text_argument(arguments, "name") else {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::UNKNOWN_MEMBER,
+                "layout_command takes a text `name`",
+            );
+            return;
+        };
+        let params = text_argument(arguments, "params").unwrap_or_default();
+        let args = match gnoblin_lua::layout::command_arguments(&params) {
+            Ok(args) => args,
+            Err(message) => {
+                self.refuse(client, envelope, wire::code::UNKNOWN_MEMBER, &message);
+                return;
+            }
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let command = gnoblin_wm::layout::Command { name, args };
+        let answered = self.control.layout_command(workspace, command);
+        self.sync();
+        self.finish_layout(object, &operation, answered);
+    }
+
     /// Serves `output.set_layout`: the output's default layout is replaced.
     fn set_output_layout(
         &mut self,
@@ -1360,7 +1407,14 @@ impl Dispatcher {
             Err(poisoned) => poisoned.into_inner().clone(),
         };
         if let Err(error) = self.store.apply(&snapshot) {
-            warn!(%error, "[ipc] the object graph refused a session snapshot");
+            for failure in error.failures() {
+                warn!(
+                    kind = failure.kind(),
+                    id = failure.id(),
+                    error = %failure.error(),
+                    "[ipc] the object graph refused an object in a session snapshot"
+                );
+            }
         }
     }
 

@@ -275,7 +275,7 @@ impl LayoutEngine for FloatingEngine {
                     .map(|window| LayoutEffect::Float { window: window.id })
                     .collect(),
             }),
-            Job::Request(_) => Reply::Declined,
+            Job::Request(_) | Job::Command(..) => Reply::Declined,
         };
         self.ready = Some((generation, Ok(reply)));
         Ticket::new(generation)
