@@ -915,6 +915,17 @@ failure-mode list that must be complete before isolated tests or code.
   rotation, offset), effects as GLES passes, user shaders with a uniform schema,
   the animation and tween player, cursor themes, frame export taps, the recovery
   overlay.
+- **3D-ready, 2D today:** the scene model reserves room for depth now, so it can
+  grow without a rewrite.
+    - Every node carries a full 3D transform (a 4x4 matrix, or position,
+      rotation and scale in three axes) and a `z` depth.
+    - A node's parent can be a 3D space: a volume with a camera and a
+      perspective setting. Hit testing goes through the inverse transform.
+    - Today only 2D values are accepted: `z` is 0, rotation is about the z axis,
+      the camera is orthographic, and drawing is in painter's order. Any other
+      value is refused with a named `unsupported-3d` error.
+    - Nothing in the IPC, the schema or the damage model assumes a flat plane,
+      so enabling depth later adds capabilities and changes no released member.
 - **Session owner:** capture and remote-desktop sessions are compositor objects.
   `gnoblin-capture` owns their PipeWire streams and `gnoblin-input` owns their
   EIS contexts. The portal and the `gnoblin-compat-screencast` and
@@ -1547,6 +1558,17 @@ Options considered: Vulkan first with a GLES fallback (most modern; co-owns an
 early upstream renderer), an own wgpu renderer (dmabuf, sync and scanout need
 unsafe `wgpu-hal` escape hatches), and GLES only (simplest; limits HDR and
 effects).
+
+Depth is the reason the renderer API takes a transform and a camera, not a
+rectangle.
+
+- **GPU:** a 3D pass needs a depth buffer, which GLES 3.1 and Vulkan both
+  provide.
+- **First user:** VR and XR use, such as Bingux VR. The 3D scene sits beside the
+  2D desktop as a space and does not replace it.
+- **Damage:** in 3D it is the projected bounds of a dirty node. A node under a
+  perspective camera falls back to full damage on its output until a tighter
+  rule is measured.
 
 ### D13: adapter default set
 
