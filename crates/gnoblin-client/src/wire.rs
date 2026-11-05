@@ -189,6 +189,23 @@ pub fn call(request_id: u64, object: ObjectId, method: &str, arguments: &Fields)
     Envelope::request(NAMESPACE, member::CALL, request_id, writer.finish())
 }
 
+/// Encode an extension payload. Extensions use the same value codec as the core
+/// members, so a provider and a grantee share one encoding for their fields.
+pub fn encode_fields(fields: &Fields) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.fields(fields);
+    writer.finish()
+}
+
+/// Decode an extension payload written by [`encode_fields`]. Trailing bytes are a
+/// refusal, as for any other payload.
+pub fn decode_fields(payload: &[u8]) -> Result<Fields, WireError> {
+    let mut reader = Reader::new(payload);
+    let fields = reader.fields()?;
+    reader.done()?;
+    Ok(fields)
+}
+
 /// A request claiming an offered request.
 pub fn claim(request_id: u64, request: RequestId) -> Envelope {
     let mut writer = Writer::new();
