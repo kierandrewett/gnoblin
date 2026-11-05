@@ -2,9 +2,9 @@
 //! exists to provide.
 
 use gnoblin_output::{
-    Align, Edge, Edid, EdidError, Effect, Event, Layout, LayoutConfig, LayoutError, Mode, ModelOptions, OutputConfig,
-    OutputDescriptor, OutputModel, Phase, PhysicalSize, Placement, Rejection, RollbackReason, TransactionToken,
-    Verdict, VrrSupport, compute,
+    Align, DisplayMode, Edge, Edid, EdidError, Effect, Event, Layout, LayoutConfig, LayoutError, ModelOptions,
+    OutputConfig, OutputDescriptor, OutputModel, Phase, PhysicalSize, Placement, Rejection, RollbackReason,
+    TransactionToken, Verdict, VrrSupport, compute,
 };
 use gnoblin_types::{Orientation, OutputId, Rect, Scale};
 
@@ -26,12 +26,12 @@ fn name(connector: &str) -> String {
     connector.to_owned()
 }
 
-fn full_hd() -> Mode {
-    Mode::new(1920, 1080, 60_000)
+fn full_hd() -> DisplayMode {
+    DisplayMode::new(1920, 1080, 60_000)
 }
 
-fn qhd() -> Mode {
-    Mode::new(2560, 1440, 60_000)
+fn qhd() -> DisplayMode {
+    DisplayMode::new(2560, 1440, 60_000)
 }
 
 /// A 1920x1080 panel that offers the scales the tests change between.

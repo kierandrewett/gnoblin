@@ -3,7 +3,7 @@
 use gnoblin_types::{OutputId, Scale};
 
 use crate::edid::Edid;
-use crate::mode::Mode;
+use crate::mode::DisplayMode;
 use crate::physical::PhysicalSize;
 
 /// Whether the connector can vary its refresh rate with the content.
@@ -48,7 +48,7 @@ pub struct OutputDescriptor {
     /// The panel's physical extent, zero where unknown.
     pub physical: PhysicalSize,
     /// Every mode the connector accepts, in preference order.
-    pub modes: Vec<Mode>,
+    pub modes: Vec<DisplayMode>,
     /// Every scale the session is willing to drive this output at.
     pub scales: Vec<Scale>,
     /// Whether the connector can vary its refresh rate.
@@ -62,7 +62,7 @@ impl OutputDescriptor {
     /// has not been asked about scaling can always be driven unscaled, and an
     /// empty list would make every configuration invalid.
     #[must_use]
-    pub fn new(id: OutputId, connector: impl Into<String>, modes: Vec<Mode>) -> Self {
+    pub fn new(id: OutputId, connector: impl Into<String>, modes: Vec<DisplayMode>) -> Self {
         Self {
             id,
             connector: connector.into(),
@@ -103,7 +103,7 @@ impl OutputDescriptor {
     /// The backend lists modes in preference order, so the first entry is the
     /// monitor's own preferred timing and the one a fresh output should use.
     #[must_use]
-    pub fn preferred_mode(&self) -> Option<Mode> {
+    pub fn preferred_mode(&self) -> Option<DisplayMode> {
         self.modes.first().copied()
     }
 
@@ -113,7 +113,7 @@ impl OutputDescriptor {
     /// not be satisfied by a 59.94 Hz mode, which would present judder the caller
     /// did not ask for.
     #[must_use]
-    pub fn supports_mode(&self, mode: Mode) -> bool {
+    pub fn supports_mode(&self, mode: DisplayMode) -> bool {
         self.modes.contains(&mode)
     }
 
@@ -174,7 +174,10 @@ mod tests {
         let mut output = OutputDescriptor::new(
             OutputId::new(1),
             "DP-1",
-            vec![Mode::new(2560, 1440, 60_000), Mode::new(1920, 1080, 60_000)],
+            vec![
+                DisplayMode::new(2560, 1440, 60_000),
+                DisplayMode::new(1920, 1080, 60_000),
+            ],
         );
         output.scales = scales;
         output
@@ -184,15 +187,15 @@ mod tests {
     fn the_preferred_mode_is_the_first_the_backend_listed() {
         assert_eq!(
             descriptor(vec![Scale::integral(1)]).preferred_mode(),
-            Some(Mode::new(2560, 1440, 60_000))
+            Some(DisplayMode::new(2560, 1440, 60_000))
         );
     }
 
     #[test]
     fn a_mode_matches_only_at_the_same_refresh_rate() {
         let output = descriptor(vec![Scale::integral(1)]);
-        assert!(output.supports_mode(Mode::new(1920, 1080, 60_000)));
-        assert!(!output.supports_mode(Mode::new(1920, 1080, 59_940)));
+        assert!(output.supports_mode(DisplayMode::new(1920, 1080, 60_000)));
+        assert!(!output.supports_mode(DisplayMode::new(1920, 1080, 59_940)));
     }
 
     #[test]

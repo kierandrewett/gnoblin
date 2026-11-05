@@ -10,7 +10,7 @@ use gnoblin_types::{Orientation, Scale, Size};
 /// a float, which would make mode equality depend on binary rounding. A mode is
 /// a property of one connector, so it is not a shared primitive.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct Mode {
+pub struct DisplayMode {
     /// Active horizontal pixels, before rotation.
     pub width: u32,
     /// Active vertical pixels, before rotation.
@@ -19,7 +19,7 @@ pub struct Mode {
     pub refresh_mhz: u32,
 }
 
-impl Mode {
+impl DisplayMode {
     /// A mode described in physical pixels and millihertz.
     #[must_use]
     pub const fn new(width: u32, height: u32, refresh_mhz: u32) -> Self {
@@ -61,7 +61,7 @@ impl Mode {
 mod tests {
     use super::*;
 
-    const FULL_HD: Mode = Mode::new(1920, 1080, 60_000);
+    const FULL_HD: DisplayMode = DisplayMode::new(1920, 1080, 60_000);
 
     #[test]
     fn a_quarter_turn_makes_the_logical_monitor_portrait() {

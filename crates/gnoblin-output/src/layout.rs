@@ -9,7 +9,7 @@
 
 use gnoblin_types::{Orientation, OutputId, Rect, Scale, Size};
 
-use crate::mode::Mode;
+use crate::mode::DisplayMode;
 
 /// Which side of its anchor an output is placed against.
 ///
@@ -81,7 +81,7 @@ pub struct OutputConfig {
     /// Whether the output takes part in the layout at all.
     pub enabled: bool,
     /// The mode to drive, or `None` for the preferred one.
-    pub mode: Option<Mode>,
+    pub mode: Option<DisplayMode>,
     /// The scale to compose at, or `None` for the supported scale closest to 1.
     pub scale: Option<Scale>,
     /// The rotation or reflection to present. The public output record reports it
@@ -213,7 +213,7 @@ pub struct LogicalMonitor {
     /// Whether the group was granted a variable refresh rate.
     pub vrr: bool,
     /// The mode every member drives.
-    pub mode: Mode,
+    pub mode: DisplayMode,
     /// Every output that shows this monitor, as graph tokens, in connector order:
     /// the first entry is the output the monitor is named after.
     pub members: Vec<OutputId>,

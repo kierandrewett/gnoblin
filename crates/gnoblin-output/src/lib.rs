@@ -115,7 +115,7 @@ pub use edid::{Edid, EdidError};
 pub use effect::{Effect, Rejection, RollbackReason};
 pub use engine::{LayoutError, compute};
 pub use layout::{Align, Edge, Layout, LayoutConfig, LogicalMonitor, OutputConfig, Placement};
-pub use mode::Mode;
+pub use mode::DisplayMode;
 pub use model::{Broken, Event, ModelOptions, OutputModel};
 pub use output::{OutputDescriptor, VrrSupport};
 pub use physical::PhysicalSize;

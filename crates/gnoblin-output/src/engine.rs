@@ -3,7 +3,7 @@
 use gnoblin_types::{Orientation, Rect, Scale, Size};
 
 use crate::layout::{Align, Edge, Layout, LayoutConfig, LogicalMonitor, OutputConfig, Placement, clamp_to_i32};
-use crate::mode::Mode;
+use crate::mode::DisplayMode;
 use crate::output::{OutputDescriptor, VrrSupport};
 
 /// Why a configuration could not become a layout.
@@ -24,7 +24,7 @@ pub enum LayoutError {
         /// The connector.
         output: String,
         /// The refused mode.
-        mode: Mode,
+        mode: DisplayMode,
     },
     /// The requested scale is not one the session offers for this output.
     ScaleNotSupported {
@@ -77,7 +77,7 @@ pub enum LayoutError {
 struct Source<'a> {
     entry: &'a OutputConfig,
     descriptor: &'a OutputDescriptor,
-    mode: Mode,
+    mode: DisplayMode,
     scale: Scale,
     size: Size,
     rect: Option<Rect>,

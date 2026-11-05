@@ -19,8 +19,8 @@
 //! - a rollback restores the layout that was in force when the proposal arrived.
 
 use gnoblin_output::{
-    Align, Edge, Effect, Event, Layout, LayoutConfig, Mode, ModelOptions, OutputConfig, OutputDescriptor, OutputModel,
-    Phase, Placement, TransactionToken, Verdict, VrrSupport,
+    Align, DisplayMode, Edge, Effect, Event, Layout, LayoutConfig, ModelOptions, OutputConfig, OutputDescriptor,
+    OutputModel, Phase, Placement, TransactionToken, Verdict, VrrSupport,
 };
 use gnoblin_types::{Orientation, OutputId, Scale};
 
@@ -77,16 +77,16 @@ impl Rng {
     }
 }
 
-fn full_hd() -> Mode {
-    Mode::new(1920, 1080, 60_000)
+fn full_hd() -> DisplayMode {
+    DisplayMode::new(1920, 1080, 60_000)
 }
 
-fn qhd() -> Mode {
-    Mode::new(2560, 1440, 60_000)
+fn qhd() -> DisplayMode {
+    DisplayMode::new(2560, 1440, 60_000)
 }
 
-fn small() -> Mode {
-    Mode::new(1280, 720, 59_940)
+fn small() -> DisplayMode {
+    DisplayMode::new(1280, 720, 59_940)
 }
 
 /// A connector with a random mode list and scale list, so configurations hit both

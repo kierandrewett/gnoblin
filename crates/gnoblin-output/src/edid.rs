@@ -1,6 +1,6 @@
 //! The EDID base block: identity, physical size and the preferred mode.
 
-use crate::mode::Mode;
+use crate::mode::DisplayMode;
 use crate::physical::PhysicalSize;
 
 /// The length of an EDID base block.
@@ -47,7 +47,7 @@ pub struct Edid {
     /// The monitor name descriptor, when the block carries one.
     pub name: Option<String>,
     /// The first detailed timing, which is the monitor's preferred mode.
-    pub preferred_mode: Option<Mode>,
+    pub preferred_mode: Option<DisplayMode>,
 }
 
 impl Edid {
@@ -149,7 +149,7 @@ fn monitor_name(bytes: &[u8]) -> Option<String> {
 /// The refresh rate comes from the pixel clock and the total blanking, both of
 /// which the descriptor carries, so 59.94 Hz stays 59.94 Hz instead of being
 /// rounded to 60 and selecting a different mode than the monitor prefers.
-fn detailed_timing(descriptor: &[u8]) -> Option<Mode> {
+fn detailed_timing(descriptor: &[u8]) -> Option<DisplayMode> {
     let pixel_clock_10khz = u32::from(u16::from_le_bytes([descriptor[0], descriptor[1]]));
     if pixel_clock_10khz == 0 {
         return None;
@@ -166,7 +166,7 @@ fn detailed_timing(descriptor: &[u8]) -> Option<Mode> {
     // Pixel clock is in 10 kHz units, and millihertz is a thousandth of a hertz.
     let numerator = u64::from(pixel_clock_10khz) * 10_000 * 1_000;
     let refresh_mhz = numerator / (horizontal_total * vertical_total);
-    Some(Mode::new(
+    Some(DisplayMode::new(
         horizontal_active,
         vertical_active,
         u32::try_from(refresh_mhz).unwrap_or(u32::MAX),
@@ -191,7 +191,7 @@ mod tests {
         let descriptor = [
             0x02, 0x3A, 0x80, 0x18, 0x71, 0x38, 0x2D, 0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
-        assert_eq!(detailed_timing(&descriptor), Some(Mode::new(1920, 1080, 60_000)));
+        assert_eq!(detailed_timing(&descriptor), Some(DisplayMode::new(1920, 1080, 60_000)));
         assert_eq!(detailed_timing(&[0; 18]), None);
     }
 
