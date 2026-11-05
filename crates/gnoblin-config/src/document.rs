@@ -18,8 +18,8 @@
 //! document saved by this version never needs the "an older Gnoblin wrote this"
 //! check the C core performs on load.
 //!
-//! Five sections are *carried*: `keybindings`, `shortcuts`, `autostart`,
-//! `window-rules` and `animations`. Their values are callbacks and rule
+//! Seven sections are *carried*: `extensions`, `keybindings`, `portals`,
+//! `shortcuts`, `autostart`, `window-rules` and `animations`. Their values are callbacks and rule
 //! declarations, which the Lua host and the window-management crate own; this
 //! layer keeps them in the document, rewrites nothing inside them, and validates
 //! nothing inside them. Carrying them is not the same as accepting them: a

@@ -50,11 +50,12 @@
 //!     names a current spelling, and the hooks the schema lists are the hooks that
 //!     exist.
 //!
-//! Five sections are carried but not interpreted: `keybindings`, `shortcuts`,
-//! `autostart`, `window-rules` and `animations`.
+//! Seven sections are carried but not interpreted: `extensions`, `keybindings`,
+//! `portals`, `shortcuts`, `autostart`, `window-rules` and `animations`.
 
 pub mod document;
 pub mod engine;
+pub mod extensions;
 pub mod hooks;
 pub mod last_good;
 pub mod locate;

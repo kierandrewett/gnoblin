@@ -23,16 +23,39 @@ fn inventory() -> serde_json::Value {
 fn the_document_accepts_exactly_the_recorded_top_level_keys() {
     let inventory = inventory();
     let entries = inventory["entries"].as_array().expect("entries");
-    let recorded: BTreeSet<&str> = entries
+    let mut recorded: BTreeSet<&str> = entries
         .iter()
         .map(|entry| entry["key"].as_str().expect("a key"))
         .collect();
+    for (key, since, reason) in REWRITE_ONLY_KEYS {
+        assert!(
+            !recorded.contains(key),
+            "{key} is in the C reference, so it is not rewrite-only"
+        );
+        assert!(
+            !since.is_empty() && since.split('.').count() == 3,
+            "{key} names no x.y.z release"
+        );
+        assert!(!reason.is_empty(), "{key} has no reason");
+        recorded.insert(*key);
+    }
     let ours: BTreeSet<&str> = TOP_LEVEL_KEYS.iter().copied().collect();
     assert_eq!(
         ours, recorded,
         "every recorded top-level key is accepted, and nothing else"
     );
 }
+
+/// Top-level keys the rewrite added, which the C reference cannot list.
+///
+/// `config-keys.json` records what the C build accepts. `extensions` is the host
+/// configuration of IPC extensions (rust-compositor.md, "IPC extensions"), which the
+/// C core never had, so it is listed here with the release that added it.
+const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[(
+    "extensions",
+    "0.2.0",
+    "the IPC extension section of host configuration, loaded by gnoblin_config::extensions",
+)];
 
 /// Protocols the rewrite added, which the C reference cannot list.
 ///

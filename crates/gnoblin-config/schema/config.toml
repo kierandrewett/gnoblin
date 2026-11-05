@@ -1876,6 +1876,11 @@ doc = "Programs Gnoblin starts with the session."
 carried = true
 
 [[section]]
+key = "extensions"
+doc = "IPC extensions loaded from host configuration: namespace, schema, provider and grants."
+carried = true
+
+[[section]]
 key = "keybindings"
 doc = "Lua callbacks and Mutter action overrides by binding name."
 carried = true
