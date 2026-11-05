@@ -670,7 +670,7 @@ mod tests {
             Observation::Finished {
                 operation: OperationId::new(3),
                 object: ObjectId::new(1),
-                outcome: OperationOutcome::Failed(ErrorCode::object_gone()),
+                outcome: OperationOutcome::Failed(ErrorCode::parse("object-gone").expect("kebab-case")),
                 revision: Revision::new(11),
             },
             Observation::Finished {

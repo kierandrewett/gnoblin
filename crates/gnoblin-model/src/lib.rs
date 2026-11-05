@@ -16,6 +16,10 @@
 //! holds exactly the graph's state. `tests/model.rs` checks that equality over
 //! random sequences.
 //!
+//! The shared primitives are `gnoblin-types`' and are re-exported here: an
+//! identity, a revision, a tick and an error code are the same values the engine,
+//! the client and the engine crates name, so this crate declares none of its own.
+//!
 //! Nothing here does I/O, reads a clock, spawns a task or allocates a channel.
 //! Every call takes its input as an argument, including a request's deadline
 //! ([`Tick`]) and the current tick that expires it, so a test replays any
@@ -76,20 +80,19 @@
 
 mod error;
 mod graph;
-mod ids;
 mod object;
 mod operation;
 mod request;
-mod revision;
 mod types;
 mod value;
 
-pub use error::{ErrorCode, ModelError, RequestError};
+pub use error::{ModelError, RequestError};
 pub use graph::{Filter, Graph, ObjectView, Observation, Snapshot, Subscription};
-pub use ids::{ObjectId, OperationId, OwnerId, RequestId, SubscriptionId};
 pub use object::Object;
 pub use operation::{Operation, OperationOutcome};
-pub use request::{Answer, RequestBroker, RequestCompletion, RequestEvent, RequestOutcome, RequestState, Tick};
-pub use revision::Revision;
+pub use request::{Answer, RequestBroker, RequestCompletion, RequestEvent, RequestOutcome, RequestState};
 pub use types::TypeKey;
 pub use value::{Fields, Value};
+
+// The shared primitives, re-exported so a caller of the graph names one crate.
+pub use gnoblin_types::{ErrorCode, ObjectId, OperationId, OwnerId, RequestId, Revision, SubscriptionId, Tick};

@@ -1,7 +1,6 @@
 //! A method call's handle.
 
-use crate::error::ErrorCode;
-use crate::ids::{ObjectId, OperationId};
+use gnoblin_types::{ErrorCode, ObjectId, OperationId};
 
 /// What a method call returns: a pending operation and the object it was called on.
 ///

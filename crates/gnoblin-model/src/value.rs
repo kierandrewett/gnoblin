@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use gnoblin_schema::Type;
 
-use crate::ids::ObjectId;
+use gnoblin_types::ObjectId;
 
 /// One typed value: a property, a signal field or a method argument.
 ///

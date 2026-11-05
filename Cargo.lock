@@ -234,6 +234,7 @@ name = "gnoblin-model"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
+ "gnoblin-types",
 ]
 
 [[package]]

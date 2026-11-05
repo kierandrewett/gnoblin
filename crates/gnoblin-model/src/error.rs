@@ -7,48 +7,9 @@ use std::fmt;
 
 use gnoblin_schema::Type;
 
-use crate::ids::{ObjectId, OperationId, OwnerId, RequestId};
 use crate::types::TypeKey;
 use crate::value::Value;
-
-/// A kebab-case error code, as the schema declares them and the wire carries them.
-///
-/// Codes are open-ended on purpose: an older peer reports one it has never heard
-/// of rather than dropping the failure, so this type validates the shape
-/// ([`gnoblin_schema::is_error_code`]) and not membership in a schema.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ErrorCode(String);
-
-impl ErrorCode {
-    /// The code the graph reports for an operation whose object ended first.
-    ///
-    /// It is not in the schema because it is not a member's answer: the operation
-    /// never reached a method, and the client learns the object ended from the
-    /// `closed` observation either way.
-    pub fn object_gone() -> ErrorCode {
-        ErrorCode("object-gone".to_owned())
-    }
-
-    /// Validate a kebab-case code.
-    pub fn parse(text: &str) -> Option<ErrorCode> {
-        if gnoblin_schema::is_error_code(text) {
-            Some(ErrorCode(text.to_owned()))
-        } else {
-            None
-        }
-    }
-
-    /// The code as text, which is what the envelope carries.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for ErrorCode {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
+use gnoblin_types::{ObjectId, OperationId, OwnerId, RequestId};
 
 /// Why the graph refused a read, a write or a call.
 #[derive(Clone, Debug, PartialEq)]
@@ -83,6 +44,12 @@ pub enum ModelError {
     UnexpectedField { signal: String, field: String },
     /// The operation is not pending: never issued, or already completed.
     UnknownOperation { operation: OperationId },
+    /// A code this crate builds itself did not satisfy the kebab rule.
+    ///
+    /// Unreachable: every literal is written out in this crate and a test pins
+    /// them. It exists because validation returns an `Option` and the graph has no
+    /// panic path, so an impossible failure still has a shape.
+    InvalidErrorCode { text: String },
 }
 
 impl fmt::Display for ModelError {
@@ -131,6 +98,10 @@ impl fmt::Display for ModelError {
                     "{operation} is not pending; it was never issued or has completed"
                 )
             }
+            ModelError::InvalidErrorCode { text } => write!(
+                formatter,
+                "`{text}` is not a kebab-case error code, which is a bug in this crate"
+            ),
         }
     }
 }

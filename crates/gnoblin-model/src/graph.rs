@@ -11,11 +11,11 @@ use std::collections::{BTreeMap, VecDeque};
 
 use gnoblin_schema::{Catalog, Type};
 
-use crate::error::{ErrorCode, ModelError};
-use crate::ids::{ObjectId, OperationId, SubscriptionId};
+use gnoblin_types::{ErrorCode, ObjectId, OperationId, Revision, SubscriptionId};
+
+use crate::error::ModelError;
 use crate::object::Object;
 use crate::operation::{Operation, OperationOutcome};
-use crate::revision::Revision;
 use crate::types::{TypeKey, Types};
 use crate::value::{Fields, Value};
 
@@ -465,7 +465,7 @@ impl Graph {
             .map(|operation| operation.id())
             .collect();
         for operation in pending {
-            self.complete(operation, OperationOutcome::Failed(ErrorCode::object_gone()))?;
+            self.complete(operation, OperationOutcome::Failed(object_gone()?))?;
         }
         self.objects.remove(&object);
         let revision = self.bump();
@@ -619,4 +619,15 @@ impl Graph {
             }
         }
     }
+}
+
+/// The code the graph reports for an operation whose object ended first.
+///
+/// `object-gone` is a literal that satisfies the kebab rule, so validation cannot
+/// fail; the failure is reported as a [`ModelError`] rather than a panic because
+/// the graph has no panic path, and a test pins the literal.
+fn object_gone() -> Result<ErrorCode, ModelError> {
+    ErrorCode::parse("object-gone").ok_or_else(|| ModelError::InvalidErrorCode {
+        text: "object-gone".to_owned(),
+    })
 }

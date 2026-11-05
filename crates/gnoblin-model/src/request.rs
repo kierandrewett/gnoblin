@@ -27,8 +27,9 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use gnoblin_types::{OwnerId, RequestId, Tick};
+
 use crate::error::RequestError;
-use crate::ids::{OwnerId, RequestId};
 
 /// How many finished requests the broker remembers.
 ///
@@ -38,30 +39,6 @@ use crate::ids::{OwnerId, RequestId};
 /// that has fallen out of the buffer is refused as unknown, which is still a
 /// refusal: forgetting never reopens a request.
 pub const REMEMBERED_FINISHED: usize = 256;
-
-/// A point on the caller's monotonic clock, in milliseconds.
-///
-/// The broker never reads a clock: the compositor passes the tick it already has
-/// and a test passes a literal, so a timeout is reproducible.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Tick(u64);
-
-impl Tick {
-    /// A tick value.
-    pub const fn new(raw: u64) -> Tick {
-        Tick(raw)
-    }
-
-    /// The raw milliseconds.
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-
-    /// A deadline this long after this tick, saturating rather than wrapping.
-    pub const fn saturating_add(self, milliseconds: u64) -> Tick {
-        Tick(self.0.saturating_add(milliseconds))
-    }
-}
 
 /// What the owning provider answered.
 #[derive(Clone, Debug, PartialEq, Eq)]

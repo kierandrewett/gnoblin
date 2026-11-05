@@ -1,10 +1,9 @@
 //! One live object.
 
 use crate::graph::ObjectView;
-use crate::ids::ObjectId;
-use crate::revision::Revision;
 use crate::types::TypeKey;
 use crate::value::{Fields, Value};
+use gnoblin_types::{ObjectId, Revision};
 
 /// One live object: its identity, its type, its typed property values and the
 /// revision at which it last changed.

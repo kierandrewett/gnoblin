@@ -7,6 +7,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The identities, revision, tick and error code are shared primitives: gnoblin-types
+# owns them so the graph, an engine crate and a client name the same token rather
+# than each declaring a look-alike.
+gnoblin-types = { path = "../gnoblin-types" }
 # The graph's vocabulary — object types, typed members and error codes — is the
 # schema's, so every write is validated against exactly the contract the IPC, the
 # generated bindings and the API reference are built from. Nothing here knows a
