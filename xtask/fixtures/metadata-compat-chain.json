@@ -1,10 +1,10 @@
 {
   "packages": [
     {
-      "name": "gnoblin-compat-screencast",
+      "name": "gnoblin-compat-mutter-screencast",
       "dependencies": [
         {
-          "name": "gnoblin-compat-clipboard",
+          "name": "gnoblin-compat-mutter-clipboard",
           "kind": null
         },
         {
@@ -14,7 +14,7 @@
       ]
     },
     {
-      "name": "gnoblin-compat-clipboard",
+      "name": "gnoblin-compat-mutter-clipboard",
       "dependencies": [
         {
           "name": "gnoblin-compat-core",

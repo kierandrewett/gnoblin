@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-compat-mutter-idlemonitor"
+description = "org.gnome.Mutter.IdleMonitor adapter."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -395,24 +395,24 @@ gnoblin/
     gnoblin-xwayland/         Xwayland startup and window management
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
-      gnoblin-compat-core/        shared adapter frame: support matrix, mode gate, sandbox refusal, D-Bus helpers
-      gnoblin-compat-screencast/  org.gnome.Mutter.ScreenCast
-      gnoblin-compat-remotedesktop/  org.gnome.Mutter.RemoteDesktop
-      gnoblin-compat-inputcapture/   org.gnome.Mutter.InputCapture
-      gnoblin-compat-clipboard/   org.gnome.Mutter.Clipboard
-      gnoblin-compat-displayconfig/  org.gnome.Mutter.DisplayConfig
-      gnoblin-compat-idlemonitor/ org.gnome.Mutter.IdleMonitor
-      gnoblin-compat-shell-introspect/  org.gnome.Shell.Introspect
-      gnoblin-compat-shell-screenshot/  org.gnome.Shell.Screenshot
-      gnoblin-compat-sessionmanager/  org.gnome.SessionManager
-      gnoblin-compat-gcr-prompter/  org.gnome.keyring.SystemPrompter and PrivatePrompter, for gcr callers
-      gnoblin-compat-inputmapping/   org.gnome.Mutter.InputMapping (later)
-      gnoblin-compat-servicechannel/ org.gnome.Mutter.ServiceChannel (later)
-      gnoblin-compat-x11-interop/    mutter_x11_interop Wayland redirect (later)
-      gnoblin-compat-gtk-shell/   gtk_shell1 Wayland redirect (compositor side)
-      gnoblin-compat-gtk-settings/  dconf layer for GTK (D15)
-      gnoblin-compat-qt-settings/   QT_QPA_PLATFORMTHEME for Qt (D15)
-      gnoblin-compat-xsettings/     XSETTINGS for X11 apps on the XWM connection (D15)
+      gnoblin-compat-core/                shared adapter frame: support matrix, mode gate, sandbox refusal, D-Bus helpers
+      gnoblin-compat-mutter-screencast/   org.gnome.Mutter.ScreenCast
+      gnoblin-compat-mutter-remotedesktop/  org.gnome.Mutter.RemoteDesktop
+      gnoblin-compat-mutter-inputcapture/  org.gnome.Mutter.InputCapture
+      gnoblin-compat-mutter-clipboard/    org.gnome.Mutter.Clipboard
+      gnoblin-compat-mutter-displayconfig/  org.gnome.Mutter.DisplayConfig
+      gnoblin-compat-mutter-idlemonitor/  org.gnome.Mutter.IdleMonitor
+      gnoblin-compat-mutter-inputmapping/  org.gnome.Mutter.InputMapping (later)
+      gnoblin-compat-mutter-servicechannel/  org.gnome.Mutter.ServiceChannel (later)
+      gnoblin-compat-mutter-x11-interop/  mutter_x11_interop Wayland redirect (later)
+      gnoblin-compat-gnome-shell-introspect/  org.gnome.Shell.Introspect
+      gnoblin-compat-gnome-shell-screenshot/  org.gnome.Shell.Screenshot
+      gnoblin-compat-gnome-session-manager/  org.gnome.SessionManager
+      gnoblin-compat-gnome-keyring-prompter/  org.gnome.keyring.SystemPrompter and PrivatePrompter, for gcr callers
+      gnoblin-compat-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
+      gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
+      gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
+      gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem
     gnoblin-lua/              Lua host: sandbox, loader, generated bindings, operations, timers, tweens
     gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6)
@@ -452,8 +452,8 @@ CI enforces these with a dependency check over `cargo metadata`:
   own transport:
     - `zbus` for D-Bus names;
     - the `gnoblin-wayland` extension trait for the Wayland redirects
-      (`gnoblin-compat-gtk-shell`, `gnoblin-compat-x11-interop`);
-    - the `gnoblin-xwayland` extension trait for `gnoblin-compat-xsettings`.
+      (`gnoblin-compat-gtk-shell1`, `gnoblin-compat-mutter-x11-interop`);
+    - the `gnoblin-xwayland` extension trait for `gnoblin-compat-x11-xsettings`.
 - No compat crate depends on another, and nothing outside `compat/` depends on a
   compat crate except the binary that links it.
 - `gnoblin-a11y` holds pure state machines and the keyboard-monitor logic. It
@@ -928,8 +928,8 @@ failure-mode list that must be complete before isolated tests or code.
       so enabling depth later adds capabilities and changes no released member.
 - **Session owner:** capture and remote-desktop sessions are compositor objects.
   `gnoblin-capture` owns their PipeWire streams and `gnoblin-input` owns their
-  EIS contexts. The portal and the `gnoblin-compat-screencast` and
-  `gnoblin-compat-remotedesktop` crates are clients: they open and close
+  EIS contexts. The portal and the `gnoblin-compat-mutter-screencast` and
+  `gnoblin-compat-mutter-remotedesktop` crates are clients: they open and close
   sessions through the IPC. A session ends when the client that opened it
   disconnects, so a crashed adapter cannot leave a stream running.
 - **Replaces:** `src/compositor/effects`, `src/compositor/plugin`,
@@ -966,6 +966,12 @@ failure-mode list that must be complete before isolated tests or code.
 
 ### Compatibility crates: `compat/`
 
+A crate is named `gnoblin-compat-<vendor>-<interface>`, so the name says whose
+interface it adapts. The vendor is one of mutter, gnome-shell, gnome-session,
+gnome-keyring, gtk, qt or x11. For example, gnoblin-compat-mutter-screencast
+adapts org.gnome.Mutter.ScreenCast, and gnoblin-compat-x11-xsettings serves
+XSETTINGS. The directory name equals the crate name.
+
 - **Layout:** one crate per compatibility path (the tree under "Project
   structure"), all built on `gnoblin-compat-core`. A path is one GNOME, Mutter
   or toolkit-specific name or protocol, so its mess stays in one crate and can
@@ -992,16 +998,16 @@ failure-mode list that must be complete before isolated tests or code.
 
 Accessibility is its own lane, not a side effect of input and rendering.
 
-| Area                     | What Gnoblin provides                                                                      | Where                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: key watches and grabs                     | compositor, logic in `gnoblin-a11y`      |
-| Keyboard accessibility   | Sticky, slow, bounce and mouse keys; repeat settings                                       | `gnoblin-a11y` logic, `gnoblin-input`    |
-| Magnifier                | Full-screen and lens zoom that follows focus, caret and pointer                            | `gnoblin-a11y` state, `gnoblin-render`   |
-| Colour filters           | Invert, greyscale, colour-blindness filters, high-contrast cursor                          | `gnoblin-render` passes                  |
-| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15)      | `gnoblin-render`, settings publish       |
-| Visual bell              | Screen or window flash for `xdg_system_bell`                                               | `gnoblin-render`                         |
-| Accessible recovery UI   | The egui overlay (D5) exposes an AT-SPI tree through AccessKit [INFERENCE: check on Linux] | `gnoblin-diag`                           |
-| Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                     | object model, `gnoblin-compat-gtk-shell` |
+| Area                     | What Gnoblin provides                                                                      | Where                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: key watches and grabs                     | compositor, logic in `gnoblin-a11y`       |
+| Keyboard accessibility   | Sticky, slow, bounce and mouse keys; repeat settings                                       | `gnoblin-a11y` logic, `gnoblin-input`     |
+| Magnifier                | Full-screen and lens zoom that follows focus, caret and pointer                            | `gnoblin-a11y` state, `gnoblin-render`    |
+| Colour filters           | Invert, greyscale, colour-blindness filters, high-contrast cursor                          | `gnoblin-render` passes                   |
+| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15)      | `gnoblin-render`, settings publish        |
+| Visual bell              | Screen or window flash for `xdg_system_bell`                                               | `gnoblin-render`                          |
+| Accessible recovery UI   | The egui overlay (D5) exposes an AT-SPI tree through AccessKit [INFERENCE: check on Linux] | `gnoblin-diag`                            |
+| Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                     | object model, `gnoblin-compat-gtk-shell1` |
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
@@ -1021,7 +1027,7 @@ Accessibility is its own lane, not a side effect of input and rendering.
 
 - **Owns:** Xwayland process, X11 window management for a floating desktop, the
   `xwayland` configuration keys, and an extension trait that lets
-  `gnoblin-compat-xsettings` use the XWM's X connection.
+  `gnoblin-compat-x11-xsettings` use the XWM's X connection.
 - **Depends on:** D2.
 
 ## Rethinking current approaches
@@ -1113,11 +1119,11 @@ Gnoblin does not store secrets and does not depend on any keyring. The
 `prompt.secret` slot only shows a passphrase or confirm prompt and returns the
 answer. Programs reach it through an adapter:
 
-| Caller                                   | How it reaches `prompt.secret`                     | Without the adapter                  |
-| ---------------------------------------- | -------------------------------------------------- | ------------------------------------ |
-| gnome-keyring, `pinentry-gnome3` (gcr)   | `gnoblin-compat-gcr-prompter` serves the gcr names | GNOME's `gcr-prompter`, if installed |
-| KeePassXC, KWallet, oo7 (Secret Service) | none; they draw their own unlock prompt            | unchanged                            |
-| GPG with `pinentry-qt`, `-gtk`, `-tty`   | none; pinentry draws its own prompt                | unchanged                            |
+| Caller                                   | How it reaches `prompt.secret`                               | Without the adapter                  |
+| ---------------------------------------- | ------------------------------------------------------------ | ------------------------------------ |
+| gnome-keyring, `pinentry-gnome3` (gcr)   | `gnoblin-compat-gnome-keyring-prompter` serves the gcr names | GNOME's `gcr-prompter`, if installed |
+| KeePassXC, KWallet, oo7 (Secret Service) | none; they draw their own unlock prompt                      | unchanged                            |
+| GPG with `pinentry-qt`, `-gtk`, `-tty`   | none; pinentry draws its own prompt                          | unchanged                            |
 
 The gcr adapter speaks the prompter's D-Bus interface through `zbus`, so Gnoblin
 no longer links `gcr-4` [INFERENCE: check that the interface is stable enough to
@@ -1625,10 +1631,10 @@ the missing provider.
       layout.
     - `qt`: the session sets `QT_QPA_PLATFORMTHEME=xdgdesktopportal`, so Qt
       reads what it can from the portal. No Qt config files are written.
-    - `xsettings`: XSETTINGS for X11 apps, served by `gnoblin-compat-xsettings`
-      on the in-tree XWM's connection (D2). Turning a target off leaves those
-      apps on their own settings. Writes from GNOME Settings are never read
-      back.
+    - `xsettings`: XSETTINGS for X11 apps, served by
+      `gnoblin-compat-x11-xsettings` on the in-tree XWM's connection (D2).
+      Turning a target off leaves those apps on their own settings. Writes from
+      GNOME Settings are never read back.
 
 - **Night Light owner:** the services role sets colour temperature on outputs
   through the IPC, or an external `wlr-gamma-control` client (gammastep,
