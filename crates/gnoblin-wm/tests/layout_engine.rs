@@ -7,10 +7,10 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use gnoblin_types::WindowId;
+use gnoblin_types::{Rect, WindowId};
 use gnoblin_wm::layout::{
     Camera, Collected, Generation, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutWindow, Origin,
-    Params, Placement, Reply, ReplyError, Slot, Ticket,
+    Params, Placement, Reply, ReplyError, Request, RequestKind, Slot, Ticket,
 };
 
 fn win(id: u64) -> WindowId {
@@ -195,4 +195,75 @@ fn a_newer_submit_supersedes_the_run_in_flight() {
         panic!("expected a settled layout");
     };
     assert_eq!(layout.placements.len(), 2);
+}
+
+fn request(ids: &[u64], kind: RequestKind) -> Request {
+    Request {
+        params: params(ids),
+        kind,
+    }
+}
+
+#[test]
+fn a_handled_request_settles_with_its_placements() {
+    let reply = handled(vec![Placement::rect(win(1), 0.0, 0.0, 100.0, 50.0)]);
+    let mut slot = slot(vec![Answer::Now(Ok(reply))]);
+    slot.submit_request(request(&[1], RequestKind::Place { window: win(1) }));
+    let Collected::Settled(layout) = slot.collect(Instant::now()) else {
+        panic!("expected a settled request");
+    };
+    assert_eq!(layout.origin, Origin::Reply);
+    assert_eq!(layout.placements.len(), 1);
+}
+
+#[test]
+fn a_declined_request_is_reported_not_replaced_by_the_fallback() {
+    let mut slot = slot(vec![Answer::Now(Ok(Reply::Declined))]);
+    slot.submit_request(request(&[1, 2], RequestKind::Place { window: win(2) }));
+    assert_eq!(slot.collect(Instant::now()), Collected::Declined);
+}
+
+#[test]
+fn a_request_error_is_reported_with_its_reason() {
+    let mut slot = slot(vec![Answer::Now(Err(LayoutFailure::Error))]);
+    slot.submit_request(request(&[1], RequestKind::Place { window: win(1) }));
+    let Collected::Failed(failure) = slot.collect(Instant::now()) else {
+        panic!("expected a failure");
+    };
+    assert_eq!(failure.reason(), "error");
+}
+
+#[test]
+fn a_pending_request_waits_for_its_answer() {
+    let mut slot = slot(vec![Answer::Hang, Answer::Now(Ok(Reply::Declined))]);
+    slot.submit_request(request(&[1], RequestKind::Place { window: win(1) }));
+    assert_eq!(slot.collect(Instant::now()), Collected::Pending);
+    assert_eq!(slot.collect(Instant::now()), Collected::Declined);
+}
+
+#[test]
+fn a_stale_request_answer_is_discarded() {
+    let stale = handled(vec![Placement::rect(win(1), 0.0, 0.0, 1.0, 1.0)]);
+    let mut slot = slot(vec![Answer::Stale(Ok(stale)), Answer::Now(Ok(Reply::Declined))]);
+    slot.submit_request(request(&[1], RequestKind::Place { window: win(1) }));
+    slot.submit_request(request(
+        &[1],
+        RequestKind::Move {
+            window: win(1),
+            geometry: Rect::new(0, 0, 100, 50),
+        },
+    ));
+    assert_eq!(slot.collect(Instant::now()), Collected::Pending);
+    assert_eq!(slot.collect(Instant::now()), Collected::Declined);
+}
+
+#[test]
+fn a_request_reply_for_an_unknown_window_is_refused() {
+    let reply = handled(vec![Placement::rect(win(9), 0.0, 0.0, 1.0, 1.0)]);
+    let mut slot = slot(vec![Answer::Now(Ok(reply))]);
+    slot.submit_request(request(&[1], RequestKind::Place { window: win(1) }));
+    let Collected::Failed(failure) = slot.collect(Instant::now()) else {
+        panic!("expected a refused request reply");
+    };
+    assert_eq!(failure, LayoutFailure::InvalidReply(ReplyError::UnknownWindow(win(9))));
 }

@@ -18,6 +18,8 @@ pub use engine::{Collected, Generation, Job, LayoutEngine, LayoutOutcome, Slot, 
 
 pub use error::{LayoutFailure, ParamsError, REFUSED_CODE, ReplyError, Subject};
 pub use fallback::fallback;
-pub use placement::{Camera, Handled, LayoutEffect, LayoutWindow, Origin, Params, Placement, Reply, Request};
+pub use placement::{
+    Camera, Handled, LayoutEffect, LayoutWindow, Origin, Params, Placement, Reply, Request, RequestKind,
+};
 pub use settle::{Layout, settle};
 pub use transform::{BOUND, Matrix4, Transform3};

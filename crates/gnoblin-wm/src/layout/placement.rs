@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use gnoblin_types::WindowId;
+use gnoblin_types::{Rect, WindowId};
 
 use super::error::ParamsError;
 use super::transform::{BOUND, Transform3};
@@ -171,11 +171,36 @@ pub enum Reply {
     Declined,
 }
 
-/// One request to a layout: the validated parameters for a run.
+/// One geometry change the layout is asked to answer before it is applied.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RequestKind {
+    /// A window joins tiling on the workspace.
+    Place {
+        /// The window that joins tiling.
+        window: WindowId,
+    },
+    /// A tiled window is asked for a new geometry.
+    Move {
+        /// The tiled window that moves or resizes.
+        window: WindowId,
+        /// The requested rectangle.
+        geometry: Rect,
+    },
+    /// A window leaves tiling (maximised, fullscreen, snapped or floating).
+    Leave {
+        /// The window that leaves tiling.
+        window: WindowId,
+    },
+}
+
+/// One request to a layout: the validated parameters for the change, as they
+/// stand once the change has been applied.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
-    /// The output and tiled windows the layout must answer for.
+    /// The output and tiled windows the layout must answer for after the change.
     pub params: Params,
+    /// The change being offered.
+    pub kind: RequestKind,
 }
 
 /// Which source produced a [`super::Layout`].

@@ -8,11 +8,11 @@
 
 use std::time::{Duration, Instant};
 
-use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
+use gnoblin_types::{Direction, OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Camera, Generation, Handled, Job, LayoutEngine, LayoutOutcome, Params, Placement, Reply, Ticket,
 };
-use gnoblin_wm::{Effect, Event, WindowSpec, Wm, WmOptions};
+use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
 
@@ -59,13 +59,17 @@ struct MasterStack {
 impl LayoutEngine for MasterStack {
     fn submit(&mut self, job: Job, generation: Generation) -> Ticket {
         let reply = match job {
-            Job::Arrange(_) if self.decline => Reply::Declined,
+            Job::Arrange(_) | Job::Request(_) if self.decline => Reply::Declined,
             Job::Arrange(params) => Reply::Handled(Handled {
                 placements: master_stack(&params),
                 camera: Camera::Orthographic,
                 effects: Vec::new(),
             }),
-            Job::Request(_) => Reply::Declined,
+            Job::Request(request) => Reply::Handled(Handled {
+                placements: master_stack(&request.params),
+                camera: Camera::Orthographic,
+                effects: Vec::new(),
+            }),
         };
         self.pending = PENDING_COLLECTS;
         self.ready = Some((generation, reply));
@@ -196,13 +200,17 @@ fn master_stack_follows_the_wm_through_a_session() {
     );
     assert!(failures(&effects).is_empty());
 
-    // Set position: the window is configured at once, and the arrangement re-runs
-    // against its new size.
+    // Set position is a geometry request on a tiled window, so it waits for the
+    // next frame. The first collect is pending, so the request falls through to
+    // the floating logic and window 2 is configured at its new rectangle. The
+    // arrangement then re-runs against the new size.
     let moved = Rect::new(100, 100, 500, 400);
     let effects = wm.apply(Event::MoveResize {
         window: win(2),
         geometry: moved,
     });
+    assert!(effects.is_empty(), "a tiled geometry request waits for the frame");
+    let effects = frame(&mut wm);
     assert_eq!(configured(&effects, win(2)), Some(moved));
     assert_eq!(
         targets(&settle(&mut wm)),
@@ -315,4 +323,35 @@ fn without_an_engine_the_wm_places_nothing() {
     assert!(targets(&effects).is_empty());
     assert!(failures(&effects).is_empty());
     assert!(wm.check_invariants().is_ok());
+}
+
+#[test]
+fn directional_focus_follows_the_placed_rectangles() {
+    let mut wm = wm_with_engines(false);
+    open(&mut wm, 1);
+    open(&mut wm, 2);
+    open(&mut wm, 3);
+    settle(&mut wm);
+
+    // Opening a window does not focus it, so focus the stack window first.
+    wm.apply(Event::ActivationRequested {
+        window: win(2),
+        decision: ActivationDecision::Allow,
+    });
+    assert_eq!(wm.focused(), Some(win(2)));
+    // The master is the only window left of the stack, so Left lands on it.
+    wm.apply(Event::FocusDirection {
+        direction: Direction::Left,
+    });
+    assert_eq!(wm.focused(), Some(win(1)));
+    // Nothing lies further left of the master, so focus stays put.
+    wm.apply(Event::FocusDirection {
+        direction: Direction::Left,
+    });
+    assert_eq!(wm.focused(), Some(win(1)));
+    // Right from the master lands in the stack, not back on the master.
+    wm.apply(Event::FocusDirection {
+        direction: Direction::Right,
+    });
+    assert!(matches!(wm.focused(), Some(id) if id == win(2) || id == win(3)));
 }

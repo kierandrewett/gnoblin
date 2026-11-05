@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use gnoblin_types::{Insets, OutputId, Rect, Size, WindowId, WorkspaceId};
+use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
 
 use crate::activation::ActivationDecision;
 use crate::arrange::{self, Layouts};
@@ -11,7 +11,7 @@ use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
 use crate::geometry::clamp_to_i32;
-use crate::layout::{LayoutEffect, LayoutEngine};
+use crate::layout::{Layout, LayoutEffect, LayoutEngine, RequestKind};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::rules::{Rule, RuleAction};
@@ -192,6 +192,10 @@ pub struct Wm {
     history: Vec<WindowId>,
     rules: Vec<Rule>,
     layouts: Layouts,
+    /// Events held back until the next [`Event::Frame`] because a layout is
+    /// installed and the event either changes tiling or follows one that does.
+    /// They are applied in arrival order so that layouts see every tiling change.
+    deferred: Vec<Event>,
 }
 
 impl Wm {
@@ -224,9 +228,21 @@ impl Wm {
     /// same manager state and the same event always produce the same effects, and
     /// nothing in this crate reads a clock or a random source.
     pub fn apply(&mut self, event: Event) -> Vec<Effect> {
-        let mut effects = self.apply_event(event);
-        effects.extend(self.sync_layouts());
-        effects
+        if !self.layouts.is_enabled() {
+            let mut effects = self.apply_event(event);
+            effects.extend(self.sync_layouts());
+            return effects;
+        }
+        if let Event::Frame { deadline } = event {
+            return self.collect_layouts(deadline);
+        }
+        if self.deferred.is_empty() && !changes_tiling(&event) {
+            let mut effects = self.apply_event(event);
+            effects.extend(self.sync_layouts());
+            return effects;
+        }
+        self.deferred.push(event);
+        Vec::new()
     }
 
     fn apply_event(&mut self, event: Event) -> Vec<Effect> {
@@ -275,6 +291,7 @@ impl Wm {
             Event::SetFloating { window, floating } => self.set_floating(window, floating),
             Event::Unsnap { window } => self.unsnap(window),
             Event::MoveResize { window, geometry } => self.move_resize(window, geometry),
+            Event::FocusDirection { direction } => self.focus_direction(direction),
         }
     }
 
@@ -1224,32 +1241,20 @@ impl Wm {
             })
     }
 
-    /// Collects the runs that finished before `deadline`. A settled `Float` takes a
-    /// window out of tiling only while it is still tiled on that workspace;
-    /// placements follow as [`Effect::PlacementTarget`] and failures as
+    /// Applies the tiling changes queued since the last frame, syncs the layouts,
+    /// and applies the runs that finished before `deadline`. A settled `Float`
+    /// takes a window out of tiling only while it is still tiled on that
+    /// workspace; placements follow as [`Effect::PlacementTarget`] and failures as
     /// [`Effect::LayoutFailed`].
     fn collect_layouts(&mut self, deadline: Instant) -> Vec<Effect> {
         let mut effects = Vec::new();
+        for event in std::mem::take(&mut self.deferred) {
+            effects.extend(self.apply_queued(event, deadline));
+        }
+        effects.extend(self.sync_layouts());
         for (workspace, outcome) in self.layouts.collect(deadline) {
             match outcome {
-                Ok(layout) => {
-                    for effect in layout.effects {
-                        let LayoutEffect::Float { window } = effect;
-                        let tiled_here = self
-                            .windows
-                            .get(&window)
-                            .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state));
-                        if tiled_here {
-                            effects.extend(self.set_floating(window, true));
-                        }
-                    }
-                    effects.extend(
-                        layout
-                            .placements
-                            .into_iter()
-                            .map(|placement| Effect::PlacementTarget { workspace, placement }),
-                    );
-                }
+                Ok(layout) => effects.extend(self.apply_layout(workspace, layout)),
                 Err(failure) => effects.push(Effect::LayoutFailed {
                     workspace,
                     reason: failure.reason(),
@@ -1258,6 +1263,174 @@ impl Wm {
         }
         effects
     }
+
+    /// Applies one queued event. Every workspace whose tiled set it changed is
+    /// offered the change as a request; a handled request replaces the window's own
+    /// geometry with the layout's placement, and a refused one leaves the floating
+    /// logic in force.
+    fn apply_queued(&mut self, event: Event, deadline: Instant) -> Vec<Effect> {
+        let before = self.tiling_state();
+        let mut effects = self.apply_event(event);
+        let kinds = request_kinds(&before, &self.tiling_state());
+        for (workspace, kind) in kinds {
+            let (windows, outputs) = (&self.windows, &self.outputs);
+            let verdict = self.layouts.offer(workspace, kind, deadline, |output| {
+                arrange::tiled_params(workspace, output, windows, outputs)
+            });
+            match verdict {
+                arrange::RequestVerdict::Handled(layout) => {
+                    let placed = &self.layouts;
+                    effects.retain(|effect| {
+                        !matches!(effect, Effect::Configure { window, .. } if placed.placed(workspace, *window).is_some())
+                    });
+                    effects.extend(self.apply_layout(workspace, layout));
+                }
+                arrange::RequestVerdict::Failed(failure) => effects.push(Effect::LayoutFailed {
+                    workspace,
+                    reason: failure.reason(),
+                }),
+                arrange::RequestVerdict::InvalidParams => effects.push(Effect::LayoutFailed {
+                    workspace,
+                    reason: "invalid-params",
+                }),
+                arrange::RequestVerdict::Fallthrough => {}
+            }
+        }
+        effects
+    }
+
+    /// Floats the windows a layout took out of tiling, and reports its placements.
+    fn apply_layout(&mut self, workspace: WorkspaceId, layout: Layout) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        for effect in layout.effects {
+            let LayoutEffect::Float { window } = effect;
+            let tiled_here = self
+                .windows
+                .get(&window)
+                .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state));
+            if tiled_here {
+                effects.extend(self.set_floating(window, true));
+            }
+        }
+        effects.extend(
+            layout
+                .placements
+                .into_iter()
+                .map(|placement| Effect::PlacementTarget { workspace, placement }),
+        );
+        effects
+    }
+
+    /// The tiled windows and the workspace and rectangle each is tiled at.
+    fn tiling_state(&self) -> TiledState {
+        self.windows
+            .iter()
+            .filter(|(_, window)| arrange::is_tiled(&window.state))
+            .map(|(&id, window)| (id, (window.workspace, window.geometry)))
+            .collect()
+    }
+
+    /// Moves focus to the nearest visible window in `direction` from the focused
+    /// one, judged by placement rectangles. Nothing moves when nothing is focused
+    /// or no window lies that way.
+    fn focus_direction(&mut self, direction: Direction) -> Vec<Effect> {
+        let Some(from) = self.focus else {
+            return Vec::new();
+        };
+        let Some(origin) = self.focus_rect(from) else {
+            return Vec::new();
+        };
+        let (ox, oy) = center(origin);
+        let active = self.active_workspace;
+        let mut best: Option<(f64, WindowId)> = None;
+        for (&id, window) in &self.windows {
+            if id == from || !window.is_visible(active) {
+                continue;
+            }
+            let Some(rect) = self.focus_rect(id) else {
+                continue;
+            };
+            let (cx, cy) = center(rect);
+            let (ahead, aside) = match direction {
+                Direction::Left => (ox - cx, (cy - oy).abs()),
+                Direction::Right => (cx - ox, (cy - oy).abs()),
+                Direction::Up => (oy - cy, (cx - ox).abs()),
+                Direction::Down => (cy - oy, (cx - ox).abs()),
+            };
+            if ahead <= 0.0 {
+                continue;
+            }
+            let score = ahead + 2.0 * aside;
+            if best.is_none_or(|(current, _)| score < current) {
+                best = Some((score, id));
+            }
+        }
+        match best {
+            Some((_, id)) => self.activation(id, ActivationDecision::Allow),
+            None => Vec::new(),
+        }
+    }
+
+    /// The rectangle focus navigation measures `id` by: its placement when its
+    /// layout placed it, otherwise its geometry.
+    fn focus_rect(&self, id: WindowId) -> Option<RectF> {
+        let window = self.windows.get(&id)?;
+        Some(
+            self.layouts
+                .placed(window.workspace, id)
+                .unwrap_or_else(|| window.geometry.to_f64()),
+        )
+    }
+}
+
+/// The tiled windows of a state: each window's workspace and rectangle.
+type TiledState = BTreeMap<WindowId, (WorkspaceId, Rect)>;
+
+/// The center of a rectangle.
+fn center(rect: RectF) -> (f64, f64) {
+    (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0)
+}
+
+/// Whether `event` can change which windows are tiled, or where they are.
+fn changes_tiling(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::WindowOpened(_)
+            | Event::WindowClosed { .. }
+            | Event::Minimise { .. }
+            | Event::Unminimise { .. }
+            | Event::SetFloating { .. }
+            | Event::MoveResize { .. }
+            | Event::ToggleMaximise { .. }
+            | Event::ToggleFullscreen { .. }
+            | Event::SnapRequested { .. }
+            | Event::Unsnap { .. }
+    )
+}
+
+/// The requests a change to the tiled set owes each workspace's layout. A window
+/// that joined tiling is placed, one that left is left, and one that moved or
+/// resized is moved. A window that changed workspace leaves the old one and joins
+/// the new one.
+fn request_kinds(before: &TiledState, after: &TiledState) -> Vec<(WorkspaceId, RequestKind)> {
+    let mut kinds = Vec::new();
+    for (&window, &(workspace, rect)) in before {
+        match after.get(&window) {
+            None => kinds.push((workspace, RequestKind::Leave { window })),
+            Some(&(now, _)) if now != workspace => {
+                kinds.push((workspace, RequestKind::Leave { window }));
+                kinds.push((now, RequestKind::Place { window }));
+            }
+            Some(&(_, now)) if now != rect => kinds.push((workspace, RequestKind::Move { window, geometry: now })),
+            Some(_) => {}
+        }
+    }
+    for (&window, &(workspace, _)) in after {
+        if !before.contains_key(&window) {
+            kinds.push((workspace, RequestKind::Place { window }));
+        }
+    }
+    kinds
 }
 
 #[cfg(test)]

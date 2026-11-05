@@ -118,6 +118,8 @@ pub enum Event {
     SetFloating { window: WindowId, floating: bool },
     /// A drag or resize produced this candidate rectangle.
     MoveResize { window: WindowId, geometry: Rect },
+    /// Move focus to the nearest visible window in a direction from the focused one.
+    FocusDirection { direction: gnoblin_types::Direction },
 }
 
 /// Why an event changed nothing.

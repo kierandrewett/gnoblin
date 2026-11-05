@@ -110,11 +110,14 @@ pub enum Collected {
     Settled(Layout),
     /// The latest run failed, or its reply was refused.
     Failed(LayoutFailure),
+    /// The latest run was a geometry request and the layout declined it.
+    Declined,
 }
 
 struct InFlight {
     ticket: Ticket,
     params: Params,
+    request: bool,
 }
 
 /// One workspace's engine, with the bookkeeping that keeps stale results out.
@@ -136,11 +139,33 @@ impl Slot {
 
     /// Starts `job`, superseding any run still in flight.
     pub fn submit(&mut self, job: Job) {
+        let request = matches!(job, Job::Request(_));
+        let params = job.params().clone();
+        let generation = self.next_generation();
+        let ticket = self.engine.submit(job, generation);
+        self.in_flight = Some(InFlight {
+            ticket,
+            params,
+            request,
+        });
+    }
+
+    /// Starts a geometry request, superseding any run still in flight. A
+    /// [`Reply::Declined`] to a request is reported as [`Collected::Declined`]
+    /// rather than replaced by the fallback, so the caller can apply its own logic.
+    pub fn submit_request(&mut self, request: Request) {
+        self.submit(Job::Request(request));
+    }
+
+    /// Drops the run in flight, so that its result is never reported.
+    pub fn cancel(&mut self) {
+        self.in_flight = None;
+    }
+
+    fn next_generation(&mut self) -> Generation {
         let generation = self.latest.map_or(Generation::FIRST, Generation::next);
         self.latest = Some(generation);
-        let params = job.params().clone();
-        let ticket = self.engine.submit(job, generation);
-        self.in_flight = Some(InFlight { ticket, params });
+        generation
     }
 
     /// Collects the in-flight run if it is ready before `deadline`.
@@ -159,9 +184,12 @@ impl Slot {
                 let Some(in_flight) = self.in_flight.take() else {
                     return Collected::Idle;
                 };
-                match result.and_then(|reply| settle(&in_flight.params, reply)) {
-                    Ok(layout) => Collected::Settled(layout),
-                    Err(failure) => Collected::Failed(failure),
+                match result {
+                    Ok(Reply::Declined) if in_flight.request => Collected::Declined,
+                    result => match result.and_then(|reply| settle(&in_flight.params, reply)) {
+                        Ok(layout) => Collected::Settled(layout),
+                        Err(failure) => Collected::Failed(failure),
+                    },
                 }
             }
         }

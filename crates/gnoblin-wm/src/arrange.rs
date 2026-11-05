@@ -47,10 +47,13 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::Instant;
 
-use gnoblin_types::{OutputId, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, RectF, WindowId, WorkspaceId};
 
 use crate::effect::Effect;
-use crate::layout::{Collected, Job, Layout, LayoutEngine, LayoutFailure, LayoutWindow, Params, ParamsError, Slot};
+use crate::layout::{
+    Collected, Job, Layout, LayoutEngine, LayoutFailure, LayoutWindow, Params, ParamsError, Placement, Request,
+    RequestKind, Slot, Transform3,
+};
 use crate::output::Output;
 use crate::window::{Window, WindowState};
 
@@ -71,11 +74,51 @@ struct WorkspaceLayout {
     /// The parameters of the latest submitted run, `None` when nothing is tiled or
     /// the input was refused.
     submitted: Option<Params>,
+    /// Where the last good placements put each window, for directional focus.
+    /// Empty when nothing is tiled or the layout has no placements.
+    placed: BTreeMap<WindowId, RectF>,
 }
 
 /// Whether a window takes part in tiling.
 pub(crate) fn is_tiled(state: &WindowState) -> bool {
     !state.floating && !state.minimised && !state.fullscreen && !state.maximised && state.snapped.is_none()
+}
+
+/// How a geometry request was answered.
+pub(crate) enum RequestVerdict {
+    /// The layout answered; its placements are in force.
+    Handled(Layout),
+    /// The layout declined or did not answer in time, or nothing is tiled on the
+    /// workspace; the built-in logic applies.
+    Fallthrough,
+    /// The layout failed or its reply was refused; the last good placements stay.
+    Failed(LayoutFailure),
+    /// The workspace's tiled input cannot be used.
+    InvalidParams,
+}
+
+/// The rectangle a placement occupies, or `None` when its transform is a raw matrix.
+fn placed_rect(placement: &Placement) -> Option<RectF> {
+    match placement.transform {
+        Transform3::Trs { position, .. } => Some(RectF {
+            x: position.x,
+            y: position.y,
+            width: placement.width,
+            height: placement.height,
+        }),
+        Transform3::Matrix(_) => None,
+    }
+}
+
+impl WorkspaceLayout {
+    /// Keeps the rectangles of a settled layout's placements.
+    fn remember(&mut self, layout: &Layout) {
+        self.placed = layout
+            .placements
+            .iter()
+            .filter_map(|placement| placed_rect(placement).map(|rect| (placement.window, rect)))
+            .collect();
+    }
 }
 
 /// The parameters a workspace's layout needs right now, or `None` when there is
@@ -149,6 +192,7 @@ impl Layouts {
                 output: first_output,
                 slot: Slot::new(factory()),
                 submitted: None,
+                placed: BTreeMap::new(),
             });
         }
         let mut effects = Vec::new();
@@ -156,6 +200,7 @@ impl Layouts {
             let params = match wanted(*id, layout.output) {
                 Ok(params) => params,
                 Err(_) => {
+                    layout.placed.clear();
                     if layout.submitted.take().is_some() {
                         effects.push(Effect::LayoutFailed {
                             workspace: *id,
@@ -173,7 +218,10 @@ impl Layouts {
                     layout.slot.submit(Job::Arrange(params.clone()));
                     layout.submitted = Some(params);
                 }
-                None => layout.submitted = None,
+                None => {
+                    layout.submitted = None;
+                    layout.placed.clear();
+                }
             }
         }
         effects
@@ -185,9 +233,10 @@ impl Layouts {
         let mut finished = Vec::new();
         for (id, layout) in &mut self.by_workspace {
             match layout.slot.collect(deadline) {
-                Collected::Idle | Collected::Pending => {}
+                Collected::Idle | Collected::Pending | Collected::Declined => {}
                 Collected::Settled(settled) => {
                     if layout.submitted.is_some() {
+                        layout.remember(&settled);
                         finished.push((*id, Ok(settled)));
                     }
                 }
@@ -217,6 +266,64 @@ impl Layouts {
             .filter(|entry| entry.output == Some(removed))
         {
             entry.output = survivor;
+        }
+    }
+
+    /// The last good placed rectangle of `window` on `workspace`, if the layout
+    /// placed it.
+    pub(crate) fn placed(&self, workspace: WorkspaceId, window: WindowId) -> Option<RectF> {
+        self.by_workspace.get(&workspace)?.placed.get(&window).copied()
+    }
+
+    /// Offers one geometry request to `workspace`'s engine and waits until
+    /// `deadline`. `wanted` gives the tiled input on the workspace's output after
+    /// the change, as [`Layouts::sync`] does.
+    pub(crate) fn offer(
+        &mut self,
+        workspace: WorkspaceId,
+        kind: RequestKind,
+        deadline: Instant,
+        wanted: impl Fn(Option<OutputId>) -> Result<Option<Params>, ParamsError>,
+    ) -> RequestVerdict {
+        let Some(layout) = self.by_workspace.get_mut(&workspace) else {
+            return RequestVerdict::Fallthrough;
+        };
+        let params = match wanted(layout.output) {
+            Ok(Some(params)) => params,
+            Ok(None) => {
+                layout.submitted = None;
+                layout.placed.clear();
+                return RequestVerdict::Fallthrough;
+            }
+            Err(_) => {
+                layout.submitted = None;
+                layout.placed.clear();
+                return RequestVerdict::InvalidParams;
+            }
+        };
+        layout.slot.submit_request(Request {
+            params: params.clone(),
+            kind,
+        });
+        match layout.slot.collect(deadline) {
+            Collected::Settled(settled) => {
+                layout.submitted = Some(params);
+                layout.remember(&settled);
+                RequestVerdict::Handled(settled)
+            }
+            Collected::Failed(failure) => {
+                layout.submitted = Some(params);
+                RequestVerdict::Failed(failure)
+            }
+            Collected::Declined | Collected::Idle => {
+                layout.submitted = None;
+                RequestVerdict::Fallthrough
+            }
+            Collected::Pending => {
+                layout.slot.cancel();
+                layout.submitted = None;
+                RequestVerdict::Fallthrough
+            }
         }
     }
 }
