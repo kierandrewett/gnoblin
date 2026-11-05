@@ -118,6 +118,12 @@ impl XdgShellHandler for State {
         self.toplevel_destroyed(&surface);
     }
 
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(window) = self.window_of(surface.wl_surface()) {
+            self.sync_window_role(window);
+        }
+    }
+
     fn popup_destroyed(&mut self, surface: PopupSurface) {
         trace!(surface = ?surface.wl_surface().id(), "[xdg] popup destroyed");
     }

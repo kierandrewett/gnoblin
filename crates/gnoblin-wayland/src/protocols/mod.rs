@@ -48,6 +48,12 @@
 //! | [`wp_viewporter`] | `wp_viewporter` | creates the global; Smithay validates a viewport on commit |
 //! | [`gnoblin_window_frame_v1`] | `gnoblin_window_frame_manager_v1` | frames a decoration renderer draws, their configures, regions and errors |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
+//! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | implemented, not advertised: the composer has one opacity per window, so a factor would be accepted and not drawn |
+//! | [`wp_fifo_v1`] | `wp_fifo_manager_v1` | a client's commits are shown in order; barriers are released on each frame tick |
+//! | [`xdg_dialog_v1`] | `xdg_wm_dialog_v1` | a modal child takes focus from its parent and the parent's focus is redirected to it until unset; the window manager floats the dialog above its parent |
+//! | [`xdg_foreign_v2`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
+//! | [`xdg_toplevel_icon_v1`] | `xdg_toplevel_icon_manager_v1` | the icon's name and buffer count are stored per window and exposed in the session snapshot; not drawn |
+//! | [`xdg_toplevel_tag_v1`] | `xdg_toplevel_tag_manager_v1` | the tag is stored per window and exposed in the session snapshot; placement does not read it |
 
 pub mod capture_shared;
 pub mod ext_background_effect_v1;
@@ -72,8 +78,10 @@ pub mod wl_seat;
 pub mod wl_shm;
 pub mod wlr_data_control_unstable_v1;
 pub mod wlr_layer_shell_unstable_v1;
+pub mod wp_alpha_modifier_v1;
 pub mod wp_content_type_v1;
 pub mod wp_cursor_shape_v1;
+pub mod wp_fifo_v1;
 pub mod wp_fractional_scale_v1;
 pub mod wp_presentation;
 pub mod wp_security_context_v1;
@@ -82,7 +90,11 @@ pub mod wp_tearing_control_v1;
 pub mod wp_viewporter;
 pub mod xdg_activation_v1;
 pub mod xdg_decoration_unstable_v1;
+pub mod xdg_dialog_v1;
+pub mod xdg_foreign_v2;
 pub mod xdg_shell;
+pub mod xdg_toplevel_icon_v1;
+pub mod xdg_toplevel_tag_v1;
 pub mod zwlr_foreign_toplevel_management_v1;
 pub mod zwlr_screencopy_manager_v1;
 pub mod zwp_idle_inhibit_v1;

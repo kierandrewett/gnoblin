@@ -55,6 +55,24 @@ name = "height"
 type = "uint"
 since = "0.2.0"
 
+# The icon name the client set with `xdg-toplevel-icon-v1`; empty when none is set.
+[[object.property]]
+name = "icon"
+type = "string"
+since = "0.2.0"
+
+# The tag the client set with `xdg-toplevel-tag-v1`; empty when none is set.
+[[object.property]]
+name = "tag"
+type = "string"
+since = "0.2.0"
+
+# Whether the window is a modal dialog. A modal blocks its parent: focus on the parent is redirected to it.
+[[object.property]]
+name = "modal"
+type = "bool"
+since = "0.2.0"
+
 # Ask the compositor to focus the window. Focus policy decides whether it does;
 # the result arrives as a change to the `focused` property.
 [[object.method]]

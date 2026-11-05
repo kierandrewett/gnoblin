@@ -28,6 +28,17 @@ pub struct ObservedWindow {
     pub focused: bool,
     /// The window's frame rectangle in global logical coordinates.
     pub geometry: Rect,
+    /// The icon name the client set with `xdg-toplevel-icon-v1`, if any.
+    pub icon_name: Option<String>,
+    /// How many icon buffers the client attached with `xdg-toplevel-icon-v1`.
+    pub icon_buffer_count: usize,
+    /// The tag the client set with `xdg-toplevel-tag-v1`, if any.
+    pub tag: Option<String>,
+    /// Whether the window is a modal dialog: a parented toplevel that asked to be modal.
+    /// The window manager enforces it: while the window is open its parent cannot take focus.
+    pub modal: bool,
+    /// The window this one is a transient of, set by `xdg-foreign` or the client's parent.
+    pub transient_for: Option<WindowId>,
 }
 
 /// One layer surface, as the server last saw it.

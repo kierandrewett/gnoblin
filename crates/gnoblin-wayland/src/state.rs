@@ -45,6 +45,7 @@ use smithay::wayland::selection::wlr_data_control::DataControlState as WlrDataCo
 use smithay::wayland::session_lock::SessionLockManagerState;
 use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
+use smithay::wayland::shell::xdg::dialog::{ToplevelDialogHint, XdgDialogState};
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData};
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::single_pixel_buffer::SinglePixelBufferState;
@@ -52,6 +53,9 @@ use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
+use smithay::wayland::xdg_foreign::XdgForeignState;
+use smithay::wayland::xdg_toplevel_icon::{ToplevelIconCachedState, XdgToplevelIconManager};
+use smithay::wayland::xdg_toplevel_tag::{XdgToplevelTagManager, XdgToplevelTagSurfaceData};
 use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
@@ -65,7 +69,7 @@ use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
-use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
+use gnoblin_wm::{ActivationDecision, Effect, Event, WindowKind, WindowSpec, Wm, WmOptions};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
@@ -139,6 +143,12 @@ pub(crate) struct WindowEntry {
     pub(crate) app_id: String,
     /// The title the client last sent.
     pub(crate) title: String,
+    /// The toplevel icon name the client set, if any (`xdg-toplevel-icon-v1`).
+    pub(crate) icon_name: Option<String>,
+    /// How many icon buffers the client attached (`xdg-toplevel-icon-v1`).
+    pub(crate) icon_buffer_count: usize,
+    /// The toplevel tag the client set (`xdg-toplevel-tag-v1`), if any.
+    pub(crate) tag: Option<String>,
 }
 
 impl WindowEntry {
@@ -152,6 +162,9 @@ impl WindowEntry {
             mapped: true,
             app_id: String::new(),
             title: String::new(),
+            icon_name: None,
+            icon_buffer_count: 0,
+            tag: None,
         }
     }
 }
@@ -276,6 +289,25 @@ pub struct State {
     /// [`crate::protocols::wp_tearing_control_v1`] records the hints.
     #[allow(dead_code)]
     pub(crate) tearing_control_global: GlobalId,
+    /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the handler is in
+    /// [`crate::protocols::xdg_foreign_v2`].
+    pub(crate) xdg_foreign_state: XdgForeignState,
+    /// Kept alive so `xdg_wm_dialog_v1` stays registered; the handler is in
+    /// [`crate::protocols::xdg_dialog_v1`].
+    #[allow(dead_code)]
+    pub(crate) xdg_dialog_state: XdgDialogState,
+    /// Kept alive so `xdg_toplevel_icon_manager_v1` stays registered; the handler is in
+    /// [`crate::protocols::xdg_toplevel_icon_v1`].
+    #[allow(dead_code)]
+    pub(crate) xdg_toplevel_icon_manager: XdgToplevelIconManager,
+    /// Kept alive so `xdg_toplevel_tag_manager_v1` stays registered; the handler is in
+    /// [`crate::protocols::xdg_toplevel_tag_v1`].
+    #[allow(dead_code)]
+    pub(crate) xdg_toplevel_tag_manager: XdgToplevelTagManager,
+    /// Kept alive so `wp_fifo_manager_v1` stays registered; its barriers are released by
+    /// [`crate::protocols::wp_fifo_v1`] on each frame tick.
+    #[allow(dead_code)]
+    pub(crate) fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
     /// Kept alive so `ext_idle_notifier_v1` stays registered; the handler in
     /// [`crate::protocols::ext_idle_notify_v1`] answers its notifications.
     #[allow(dead_code)]
@@ -548,6 +580,11 @@ impl State {
         let single_pixel_buffer_state = crate::protocols::wp_single_pixel_buffer_v1::global(&display_handle);
         let tearing_control_global = crate::protocols::wp_tearing_control_v1::global(&display_handle);
         let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
+        let xdg_foreign_state = crate::protocols::xdg_foreign_v2::global(&display_handle);
+        let xdg_dialog_state = crate::protocols::xdg_dialog_v1::global(&display_handle);
+        let xdg_toplevel_icon_manager = crate::protocols::xdg_toplevel_icon_v1::global(&display_handle);
+        let xdg_toplevel_tag_manager = crate::protocols::xdg_toplevel_tag_v1::global(&display_handle);
+        let fifo_manager_state = crate::protocols::wp_fifo_v1::global(&display_handle);
         let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
         let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
         let virtual_keyboard_state =
@@ -595,6 +632,11 @@ impl State {
             tearing_control_global,
             idle_notify_global,
             background_effect_global,
+            xdg_foreign_state,
+            xdg_dialog_state,
+            xdg_toplevel_icon_manager,
+            xdg_toplevel_tag_manager,
+            fifo_manager_state,
             text_input_state,
             input_method_state,
             virtual_keyboard_state,
@@ -1305,6 +1347,9 @@ impl State {
                 mapped: false,
                 app_id: String::new(),
                 title: String::new(),
+                icon_name: None,
+                icon_buffer_count: 0,
+                tag: None,
             },
         );
         // The window is placed now and takes focus when it first maps; the
@@ -1400,6 +1445,24 @@ impl State {
                 initial_configure = Some(toplevel.clone());
             }
         }
+        // The icon and tag are read from the surface on each commit: a client sets them
+        // as cached surface state, so the commit is where a change becomes visible.
+        let (icon_name, icon_buffer_count, tag) = with_states(surface, |states| {
+            let mut icon = states.cached_state.get::<ToplevelIconCachedState>();
+            let icon = icon.current();
+            let tag = states
+                .data_map
+                .get::<XdgToplevelTagSurfaceData>()
+                .and_then(|data| data.tag())
+                .map(|tag| tag.to_string());
+            (icon.icon_name().map(str::to_owned), icon.buffers().len(), tag)
+        });
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.icon_name = icon_name;
+            entry.icon_buffer_count = icon_buffer_count;
+            entry.tag = tag;
+        }
+        self.sync_window_role(window);
         if let Some(surface) = initial_configure {
             // The client's first commit is answered with the initial configure,
             // carrying whatever the window manager wrote to the pending state.
@@ -1564,6 +1627,46 @@ impl State {
     /// Advances the window animations by the real time one loop turn took.
     pub(crate) fn advance_motion(&mut self, elapsed_ms: u32) {
         self.composer.advance_motion(elapsed_ms);
+    }
+
+    /// Feeds a window's role to the window manager when it changed.
+    ///
+    /// The parent a client names through `xdg-foreign` or `set_parent`, and the dialog
+    /// hint `xdg-dialog` sets, are both kept by smithay on the toplevel's role. The
+    /// window manager learns them through [`Event::WindowRoleChanged`], and only when
+    /// its record differs, so an unchanged commit does nothing.
+    pub(crate) fn sync_window_role(&mut self, window: WindowId) {
+        let Some(toplevel) = self.windows.get(&window).and_then(|entry| entry.surface.toplevel()) else {
+            return;
+        };
+        let parent = toplevel.parent();
+        let hint = with_states(toplevel.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .map(|data| data.lock().expect("the attributes lock is never poisoned").dialog_hint)
+                .unwrap_or_default()
+        });
+        let transient_for = parent.as_ref().and_then(|parent| self.window_of(parent));
+        // xdg_toplevel.set_parent makes a window transient, so any parented toplevel is a
+        // dialog unless it asked to be modal; a parentless toplevel is normal whatever hint it sent.
+        let kind = match (transient_for, hint) {
+            (Some(_), ToplevelDialogHint::Modal) => WindowKind::Modal,
+            (Some(_), _) => WindowKind::Dialog,
+            (None, _) => WindowKind::Normal,
+        };
+        let Some(current) = self.wm.window(window) else {
+            return;
+        };
+        if current.kind == kind && current.transient_for == transient_for {
+            return;
+        }
+        self.apply_events(vec![Event::WindowRoleChanged {
+            window,
+            kind,
+            transient_for,
+        }]);
+        self.publish();
     }
 
     /// The policy identity of the window owning a surface.
@@ -1766,7 +1869,8 @@ impl State {
             ..SessionSnapshot::default()
         };
         for window in self.wm.windows() {
-            let mapped = self.windows.get(&window.id).is_some_and(|entry| entry.mapped);
+            let entry = self.windows.get(&window.id);
+            let mapped = entry.is_some_and(|entry| entry.mapped);
             snapshot.windows.insert(
                 window.id,
                 ObservedWindow {
@@ -1777,6 +1881,11 @@ impl State {
                     visible: window.is_visible(active),
                     focused: focused == Some(window.id),
                     geometry: window.geometry,
+                    icon_name: entry.and_then(|entry| entry.icon_name.clone()),
+                    icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
+                    tag: entry.and_then(|entry| entry.tag.clone()),
+                    modal: window.kind == WindowKind::Modal,
+                    transient_for: window.transient_for,
                 },
             );
         }

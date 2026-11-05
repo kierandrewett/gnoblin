@@ -69,7 +69,9 @@ mod tests {
             .objects(&namespace)
             .find(|object| object.name == "window")
             .expect("the schema declares window");
-        for name in ["id", "title", "app_id", "focused", "x", "y", "width", "height"] {
+        for name in [
+            "id", "title", "app_id", "focused", "x", "y", "width", "height", "icon", "tag", "modal",
+        ] {
             assert!(
                 window.properties.iter().any(|property| property.name == name),
                 "`window` declares no property `{name}`"

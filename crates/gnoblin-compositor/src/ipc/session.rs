@@ -65,6 +65,9 @@ mod member {
     pub const Y: &str = "y";
     pub const WIDTH: &str = "width";
     pub const HEIGHT: &str = "height";
+    pub const ICON: &str = "icon";
+    pub const TAG: &str = "tag";
+    pub const MODAL: &str = "modal";
 }
 
 /// What the graph last published for one window.
@@ -74,6 +77,9 @@ struct PublishedWindow {
     title: String,
     app_id: String,
     focused: bool,
+    icon: String,
+    tag: String,
+    modal: bool,
     geometry: Rect,
 }
 
@@ -179,6 +185,8 @@ impl SessionSync {
         for window in snapshot.windows() {
             seen.insert(window.id);
             let focused = focus == Some(window.id);
+            let icon = window.icon_name.clone().unwrap_or_default();
+            let tag = window.tag.clone().unwrap_or_default();
             let Some(previous) = self.windows.get(&window.id).cloned() else {
                 let properties = window_properties(window.id, window);
                 let object = self.graph.create(TypeKey::gnoblin("window"), properties)?;
@@ -189,6 +197,9 @@ impl SessionSync {
                         title: window.title.clone(),
                         app_id: window.app_id.clone(),
                         focused,
+                        icon,
+                        tag,
+                        modal: window.modal,
                         geometry: window.geometry,
                     },
                 );
@@ -206,6 +217,15 @@ impl SessionSync {
             if previous.focused != focused {
                 self.graph.set(object, member::FOCUSED, Value::Bool(focused))?;
             }
+            if previous.icon != icon {
+                self.graph.set(object, member::ICON, Value::Text(icon.clone()))?;
+            }
+            if previous.tag != tag {
+                self.graph.set(object, member::TAG, Value::Text(tag.clone()))?;
+            }
+            if previous.modal != window.modal {
+                self.graph.set(object, member::MODAL, Value::Bool(window.modal))?;
+            }
             if previous.geometry != window.geometry {
                 self.set_geometry(object, window.geometry)?;
             }
@@ -216,6 +236,9 @@ impl SessionSync {
                     title: window.title.clone(),
                     app_id: window.app_id.clone(),
                     focused,
+                    icon,
+                    tag,
+                    modal: window.modal,
                     geometry: window.geometry,
                 },
             );
@@ -323,6 +346,15 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
             member::HEIGHT.to_owned(),
             Value::Uint(u64::from(observed.geometry.height)),
         ),
+        (
+            member::ICON.to_owned(),
+            Value::Text(observed.icon_name.clone().unwrap_or_default()),
+        ),
+        (
+            member::TAG.to_owned(),
+            Value::Text(observed.tag.clone().unwrap_or_default()),
+        ),
+        (member::MODAL.to_owned(), Value::Bool(observed.modal)),
     ])
 }
 
@@ -351,6 +383,11 @@ mod tests {
             visible: true,
             focused,
             geometry,
+            icon_name: None,
+            icon_buffer_count: 0,
+            tag: None,
+            modal: false,
+            transient_for: None,
         }
     }
 

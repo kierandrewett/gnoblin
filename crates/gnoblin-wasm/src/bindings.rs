@@ -428,6 +428,20 @@ mod gnoblin_objects {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.boolean(object, "focused"))
         }
+        fn icon(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "icon"))
+        }
+
+        fn tag(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "tag"))
+        }
+
+        fn modal(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "modal"))
+        }
 
         fn x(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<i64> {
             let object = self.object(&handle).expect("a handle this store issued");

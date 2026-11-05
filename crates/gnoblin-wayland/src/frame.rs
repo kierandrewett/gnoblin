@@ -234,6 +234,9 @@ pub fn render(
         // client that paces itself by the callback — a nested session always does —
         // would draw its first frame and wait for ever.
         state.send_frame_callbacks(frame_time());
+        // A fifo barrier is released on the same tick: the commit it holds is shown on the
+        // frame that answers its frame callback, so the next commit may follow.
+        state.release_fifo_barriers();
     }
     stats
         .lock()
