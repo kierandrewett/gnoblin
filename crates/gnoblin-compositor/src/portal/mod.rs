@@ -14,9 +14,11 @@
 mod negotiate;
 mod outcome;
 mod queue;
+mod ui;
 mod validate;
 
 pub use negotiate::{Effect, Event, InterfaceContract, Negotiation, Provider, Stage};
 pub use outcome::{CancelReason, PortalError, Verdict};
 pub use queue::{Admission, Queue, Refusal};
+pub use ui::{PortalUi, Submitted};
 pub use validate::{Deviation, Request, validate_reply};
