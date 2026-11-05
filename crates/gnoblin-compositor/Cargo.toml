@@ -13,6 +13,9 @@ workspace = true
 # The Wayland engine this process runs: the protocol handlers, the seat, the window
 # manager glue and the frame hook.
 gnoblin-wayland = { path = "../gnoblin-wayland" }
+gnoblin-wm = { path = "../gnoblin-wm" }
+# The Lua host that runs the layout modules.
+gnoblin-lua = { path = "../gnoblin-lua" }
 # The backend trait and the backends this build selects between: headless, nested in
 # a parent compositor, and the DRM refusal until the DRM backend lands.
 gnoblin-backend = { path = "../gnoblin-backend" }
@@ -57,6 +60,3 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 gnoblinctl = { path = "../gnoblinctl" }
 # A temporary directory for the two sockets, so a test run touches no shared path.
 tempfile = "3.23.0"
-# The Lua host the grants end-to-end test drives: a granted socket feeds its
-# `require` gate, the same way the runtime role does.
-gnoblin-lua = { path = "../gnoblin-lua" }

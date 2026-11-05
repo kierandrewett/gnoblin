@@ -112,6 +112,7 @@ fn compositor() -> Result<(), Exit> {
     };
     // A refused extension is logged and left out; the session starts either way.
     gnoblin_compositor::configure_from_environment(&mut config);
+    gnoblin_compositor::configure_layouts_from_environment(&mut config);
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {

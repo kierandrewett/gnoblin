@@ -84,6 +84,7 @@
 mod backend;
 mod extensions;
 mod ipc;
+mod layout;
 pub mod portal;
 mod schema;
 
@@ -99,6 +100,10 @@ pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Observer, SessionSnapshot};
 pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync};
+pub use layout::{
+    LayoutSettings, configure_from_environment as configure_layouts_from_environment,
+    configure_from_store as configure_layouts_from_store,
+};
 pub use schema::catalog;
 
 use gnoblin_backend::nested::NestedError;
@@ -139,6 +144,9 @@ pub struct SessionConfig {
     /// A namespace is routed to its provider connection and granted to the privileged
     /// connections that list it. An extension that fails to load is absent from this list.
     pub extensions: Vec<ipc::ExtensionRoute>,
+    /// The `layout` section: which layout each workspace runs. The default floats every
+    /// workspace; [`configure_layouts_from_store`] fills it from the accepted document.
+    pub layouts: LayoutSettings,
 }
 
 /// A handle that stops a running session from another thread.
@@ -259,7 +267,7 @@ impl Compositor {
             observer: Some(observer),
             ..config.wayland
         };
-        let server = match config.xwayland {
+        let mut server = match config.xwayland {
             // No X11: the server has no X server, no grab manager and no process.
             None => Server::new(backend, wayland),
             Some(settings) => {
@@ -270,6 +278,8 @@ impl Compositor {
             }
         }
         .map_err(Error::Wayland)?;
+        let layouts = layout::LayoutPlan::new(config.layouts);
+        server.install_layouts(move |workspace| layouts.engine_for(workspace));
         let control = server.control();
         let observation = server.observation();
         let ipc = ipc::IpcServer::start(
