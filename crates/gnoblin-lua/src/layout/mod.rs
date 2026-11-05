@@ -42,7 +42,7 @@ use mlua::{Lua, Table};
 
 pub use data::{Data, DataError, LayoutKey};
 pub use engine::LuaEngine;
-pub use host::{Host, HostConfig, HostFailure, WedgeHook};
+pub use host::{Host, HostConfig, HostFailure, WedgeHook, default_prefix, installed_module_dir};
 pub use snapshot::{Gaps, LayoutRequest, LayoutSnapshot, OutputInfo, SizeHints, SnapshotWindow};
 
 /// Why a layout did not produce a placement.
