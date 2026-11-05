@@ -21,12 +21,14 @@
 - The graphical VM test tries an image download, an index and a checksum file again after a connection error, a
   time-out or HTTP 403, 429 or 5xx (after 5 s and 15 s, with the reason printed). A refusal from download.opensuse.org
   failed the `image` check of openSUSE Tumbleweed aarch64 at once. HTTP 404 still fails at once.
-
-- The `s3` back end of `pkgrepo publish` no longer uses `aws s3 sync` for package files and removals. The sync uploaded
-  and deleted every arch package (and pacman database file) that has a `.sig` beside it in the same run, so a nightly
-  rewrote them all and could leave some deleted: two copies of an architecture-independent package were missing from
-  `arch/x86_64` after nightly 41984281147. The back end now lists the bucket, uploads package files that are missing or
-  have another size, and deletes only keys that are not in the tree, after all uploads, printing each one.
+- The `s3` back end of `pkgrepo publish` no longer uses `aws s3 sync` for package files and removals. Nightly
+  41984281147 uploaded and deleted every arch package (and pacman database file) that has a `.sig` beside it in the
+  same run, and two copies of an architecture-independent package were left missing from `arch/x86_64`. The cause is
+  inferred: `aws-cli/2.23.6` does this against an S3 server that lists `name.sig` before `name` (reproduced locally), but
+  it was not reproduced against the real bucket. The back end now lists the bucket once, uploads every package file
+  whose sha256 differs from the published manifest without asking the bucket, uploads the others when missing or when
+  their size or single-part md5 differs, and only afterwards deletes keys that are not in the tree. That sequence is safe
+  whatever the listing order. Each upload and delete is printed.
 
 ### Changed
 

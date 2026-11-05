@@ -11,6 +11,7 @@ The default is a dry run that prints the plan. --apply is the only way anything 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -212,8 +213,9 @@ def plan_rsync(
 # --- S3 and compatible stores (Cloudflare R2, MinIO) -------------------------------------------------------------------
 
 
-def _bucket_objects(bucket: str, prefix: str) -> dict[str, int]:
-    """Key -> size of every object under the prefix, from one ListObjectsV2 listing (the CLI pages through it).
+def _bucket_objects(bucket: str, prefix: str) -> dict[str, tuple[int, str]]:
+    """Key -> (size, ETag without quotes) of every object under the prefix, from one ListObjectsV2 listing (the CLI
+    pages through it).
 
     The syncs of `aws s3 sync` compare two sorted listings and cannot be trusted on a store that orders keys differently
     from the CLI: see plan_s3. A dictionary of the listing does not depend on the order.
@@ -226,7 +228,23 @@ def _bucket_objects(bucket: str, prefix: str) -> dict[str, int]:
     if not out or out == "null":
         return {}
     contents = json.loads(out).get("Contents") or []
-    return {item["Key"]: int(item["Size"]) for item in contents if not item["Key"].endswith("/")}
+    return {
+        item["Key"]: (int(item["Size"]), str(item.get("ETag", "")).strip('"'))
+        for item in contents
+        if not item["Key"].endswith("/")
+    }
+
+
+def _same_object(path: Path, size: int, etag: str) -> bool:
+    """Whether the bucket's object can be the file. The size must match. The ETag of a single-part upload is the md5
+    of the object, and then it must match too, which finds an object of the right size with other bytes. A multipart
+    or encrypted object has another kind of ETag; for it only the size counts. Nothing here decides whether a file that
+    the manifest says changed is uploaded: those are uploaded without asking the bucket."""
+    if path.stat().st_size != size:
+        return False
+    if len(etag) == 32 and "-" not in etag and all(c in "0123456789abcdef" for c in etag.lower()):
+        return hashlib.md5(path.read_bytes(), usedforsecurity=False).hexdigest() == etag.lower()
+    return True
 
 
 def plan_s3(
@@ -262,28 +280,30 @@ def plan_s3(
 
     # Package files and removals do not use `aws s3 sync`. It walks the local tree and the bucket listing in step and
     # decides from the order of the keys. The log of nightly 41984281147 shows every arch package and every pacman
-    # database file that has a `.sig` beside it uploaded and deleted in the same sync, and not the `.sig` files, which
-    # is what the comparison does when the two listings order `name` and `name.sig` differently (the bucket's listing
-    # puts `name.sig` first). Both operations ran in no fixed order, so every nightly rewrote every arch package and
-    # could leave some deleted: two copies of an any package disappeared from arch/x86_64 this way. The steps below
-    # compare the listing as a dictionary, upload what is missing or has another size, and delete only keys that are
-    # not in the tree, after every upload. Each upload and delete is printed.
-    def tree_keys() -> dict[str, int]:
-        return {key_prefix + relative: (root / relative).stat().st_size for relative in tree_files(root, scope)}
+    # database file that has a `.sig` beside it uploaded and deleted in the same sync, and not the `.sig` files. That
+    # is what the comparison does when the two listings order `name` and `name.sig` differently, and that is the
+    # inferred cause: it was not reproduced against the real CLI and bucket. The steps below are safe whatever the
+    # cause, because every upload happens before any delete and only keys that are not in the tree are deleted. They
+    # compare the listing as a dictionary and upload what is missing or whose size or (single-part) md5 differs. Files
+    # whose sha256 differs from the published manifest are uploaded above without asking the bucket. Each upload and
+    # delete is printed.
+    def tree_keys() -> set[str]:
+        return {key_prefix + relative for relative in tree_files(root, scope)}
 
-    def bucket_objects() -> dict[str, int]:
+    def bucket_objects() -> dict[str, tuple[int, str]]:
         return _bucket_objects(bucket, f"{key_prefix}{scope}/")
+
+    uploaded = set(changed)  # new, or another sha256 than the published manifest says: uploaded above, unasked
 
     def upload_missing_packages() -> None:
         remote = bucket_objects()
         for relative in tree_files(root, scope):
-            if not is_package_file(relative):
+            if not is_package_file(relative) or relative in uploaded:
                 continue
             key = key_prefix + relative
-            size = (root / relative).stat().st_size
-            if remote.get(key) == size:
+            if key in remote and _same_object(root / relative, *remote[key]):
                 continue
-            why = "missing" if key not in remote else f"the bucket has {remote[key]} bytes, the tree {size}"
+            why = "missing" if key not in remote else "the bucket's object has another size or md5"
             print(f"upload {key} ({why})", flush=True)
             run(["aws", "s3", "cp", "--only-show-errors", str(root / relative), f"{base}/{relative}"])
 
