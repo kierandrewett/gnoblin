@@ -25,8 +25,14 @@
 //! | `object.signalled`            | compositor| revision, object, signal, fields                  |
 //! | `object.closed`               | compositor| revision, object                                  |
 //! | `operation.finished`          | compositor| revision, operation, object, outcome              |
-//! | `request.offered`             | compositor| request, deadline, as a request frame             |
+//! | `request.offer`               | privileged| slot, title, message, timeout                      |
+//! | `request.offered`             | compositor| request, deadline, slot, title, message            |
+//! | `request.answered`            | compositor| request, answer (flagged sensitive)                |
 //! | `request.finished`            | compositor| request, completion                               |
+//! | `slot.claim`                  | client    | slot, provider                                    |
+//! | `slot.release`                | client    | slot                                              |
+//! | `config.commit`               | privileged| document bytes                                    |
+//! | `config.current`              | privileged| nothing; the last accepted revision and document  |
 //!
 //! Every observation payload starts with its revision, so the client can enforce
 //! the same ordering rule the graph does and never has to infer it.
@@ -37,8 +43,8 @@
 //! keeps an older client working.
 
 use gnoblin_model::{
-    ErrorCode, Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, RequestCompletion,
-    RequestId, Revision, Snapshot, Tick, TypeKey, Value,
+    ErrorCode, Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, Provider,
+    RequestCompletion, RequestId, Revision, Snapshot, Tick, TypeKey, Value,
 };
 use gnoblin_proto::Envelope;
 
@@ -75,6 +81,17 @@ pub mod member {
     pub const REQUEST_OFFERED: &str = "request.offered";
     /// Compositor to client: a request ended.
     pub const REQUEST_FINISHED: &str = "request.finished";
+    /// Privileged client to compositor: offer a request to the slot that owns it.
+    pub const OFFER: &str = "request.offer";
+    /// Client to compositor: claim a slot, so offers for it come to this
+    /// connection.
+    pub const SLOT_CLAIM: &str = "slot.claim";
+    /// Client to compositor: release a slot this connection claimed.
+    pub const SLOT_RELEASE: &str = "slot.release";
+    /// Privileged client to compositor: commit a configuration document.
+    pub const CONFIG_COMMIT: &str = "config.commit";
+    /// Privileged client to compositor: the last document the compositor accepted.
+    pub const CONFIG_CURRENT: &str = "config.current";
 }
 
 /// The error codes this layer reports in an error frame.
@@ -89,6 +106,19 @@ pub mod code {
     pub const OBJECT_UNKNOWN: &str = "object-unknown";
     /// The member is not one this layer serves.
     pub const UNKNOWN_MEMBER: &str = gnoblin_proto::UNKNOWN_MEMBER;
+    /// This connection does not hold the capability the member needs.
+    ///
+    /// A member a privileged connection serves is answered with this rather than
+    /// `unknown-member` when an ordinary connection calls it: the member exists, and
+    /// the caller is what is missing.
+    pub const DENIED: &str = "denied";
+    /// The slot name is not one this build has.
+    pub const UNKNOWN_SLOT: &str = "unknown-slot";
+    /// No provider claims the slot, so the request was not offered.
+    ///
+    /// Fail closed: a request nobody will answer ends here instead of waiting out its
+    /// deadline on the host that needed the decision.
+    pub const NO_PROVIDER: &str = "no-provider";
 }
 
 /// One decoded frame from the compositor.
@@ -96,12 +126,28 @@ pub mod code {
 pub enum Incoming {
     /// A change to the object graph.
     Observation(Observation),
-    /// A request this client may claim.
+    /// A request this client may claim, with what the host that offered it says the
+    /// provider has to show.
     Offered {
         /// The request.
         request: RequestId,
         /// When it fails if nobody claims and answers it.
         deadline: Tick,
+        /// The slot the request was offered to.
+        slot: String,
+        /// The title the provider shows.
+        title: String,
+        /// The sentence the provider shows.
+        message: String,
+    },
+    /// The answer to a request this connection offered. Only the host that offered
+    /// the request ever receives this, and the frame is flagged sensitive because it
+    /// carries what the user typed.
+    Answered {
+        /// The request.
+        request: RequestId,
+        /// The provider's answer, in the slot's own encoding.
+        answer: Vec<u8>,
     },
     /// A request ended. The outcome carries no answer value: only the host that
     /// offered the request reads that.
@@ -167,11 +213,68 @@ pub fn decline(request_id: u64, request: RequestId) -> Envelope {
 /// An offer, sent as a request frame so it carries a correlation id and looks to
 /// the client like the request it is. The client does not answer it: it claims
 /// through [`claim`] and answers through [`answer`].
-pub fn offer(request_id: u64, request: RequestId, deadline: Tick) -> Envelope {
+///
+/// The proposition travels with the offer because the schema's `request` object
+/// carries only the identity and the deadline, and a provider that had to ask what a
+/// request is about would need a second round trip before it could draw anything.
+pub fn offer(request_id: u64, request: RequestId, deadline: Tick, slot: &str, title: &str, message: &str) -> Envelope {
     let mut writer = Writer::new();
     writer.u64(request.get());
     writer.u64(deadline.get());
+    writer.text(slot);
+    writer.text(title);
+    writer.text(message);
     Envelope::request(NAMESPACE, member::REQUEST_OFFERED, request_id, writer.finish())
+}
+
+/// The answer to a request, sent to the connection that offered it.
+///
+/// It travels as an *event* on the schema's `request.answer` member, so the generated
+/// sensitivity table flags it and [`Envelope::redact`] drops the bytes: an answer is
+/// the one frame on this layer that carries a password, and no host has to remember
+/// that to log it safely.
+pub fn answered(request: RequestId, answer: &[u8]) -> Envelope {
+    let mut writer = Writer::new();
+    writer.u64(request.get());
+    writer.bytes(answer);
+    Envelope::event(NAMESPACE, member::ANSWER, writer.finish())
+}
+
+/// A request offering a request to the slot that owns it. Privileged.
+pub fn request_offer(request_id: u64, slot: &str, title: &str, message: &str, timeout_ms: u64) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(slot);
+    writer.text(title);
+    writer.text(message);
+    writer.u64(timeout_ms);
+    Envelope::request(NAMESPACE, member::OFFER, request_id, writer.finish())
+}
+
+/// A request claiming a slot.
+pub fn slot_claim(request_id: u64, slot: &str, provider: Provider) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(slot);
+    writer.text(provider.as_str());
+    Envelope::request(NAMESPACE, member::SLOT_CLAIM, request_id, writer.finish())
+}
+
+/// A request releasing a slot this connection claimed.
+pub fn slot_release(request_id: u64, slot: &str) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(slot);
+    Envelope::request(NAMESPACE, member::SLOT_RELEASE, request_id, writer.finish())
+}
+
+/// A request committing a configuration document. Privileged.
+pub fn config_commit(request_id: u64, document: &[u8]) -> Envelope {
+    let mut writer = Writer::new();
+    writer.bytes(document);
+    Envelope::request(NAMESPACE, member::CONFIG_COMMIT, request_id, writer.finish())
+}
+
+/// A request for the last document the compositor accepted. Privileged.
+pub fn config_current(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::CONFIG_CURRENT, request_id, Vec::new())
 }
 
 /// The end of a request, as a subscriber may learn it.
@@ -318,6 +421,68 @@ pub fn read_decline(payload: &[u8]) -> Result<RequestId, WireError> {
     Ok(request)
 }
 
+/// Decode a `request.offer` request. Privileged.
+pub fn read_offer(payload: &[u8]) -> Result<(String, String, String, u64), WireError> {
+    let mut reader = Reader::new(payload);
+    let slot = reader.text()?;
+    let title = reader.text()?;
+    let message = reader.text()?;
+    let timeout = reader.u64()?;
+    reader.done()?;
+    Ok((slot, title, message, timeout))
+}
+
+/// Decode a `slot.claim` request.
+pub fn read_slot_claim(payload: &[u8]) -> Result<(String, Provider), WireError> {
+    let mut reader = Reader::new(payload);
+    let slot = reader.text()?;
+    let provider = Provider::parse(&reader.text()?).ok_or(WireError::Code)?;
+    reader.done()?;
+    Ok((slot, provider))
+}
+
+/// Decode a `slot.release` request.
+pub fn read_slot_release(payload: &[u8]) -> Result<String, WireError> {
+    let mut reader = Reader::new(payload);
+    let slot = reader.text()?;
+    reader.done()?;
+    Ok(slot)
+}
+
+/// Decode a `config.commit` request: the document, as the runtime encoded it.
+pub fn read_config_commit(payload: &[u8]) -> Result<Vec<u8>, WireError> {
+    let mut reader = Reader::new(payload);
+    let document = reader.bytes()?;
+    reader.done()?;
+    Ok(document)
+}
+
+/// Decode the revision a `config.commit` reply names.
+pub fn read_revision(payload: &[u8]) -> Result<u64, WireError> {
+    let mut reader = Reader::new(payload);
+    let revision = reader.u64()?;
+    reader.done()?;
+    Ok(revision)
+}
+
+/// Decode the `config.current` reply: the revision and the document, or zeros for
+/// "nothing accepted yet".
+pub fn read_configuration(payload: &[u8]) -> Result<(u64, Vec<u8>), WireError> {
+    let mut reader = Reader::new(payload);
+    let revision = reader.u64()?;
+    let document = reader.bytes()?;
+    reader.done()?;
+    Ok((revision, document))
+}
+
+/// Encode the `config.current` reply.
+pub fn configuration_payload(revision: u64, document: &[u8]) -> Vec<u8> {
+    let mut writer = Writer::new();
+    writer.u64(revision);
+    writer.bytes(document);
+    writer.finish()
+}
+
 /// Decode one frame from the compositor.
 ///
 /// `Ok(None)` is a member this build does not use, which is dropped rather than
@@ -396,8 +561,24 @@ pub fn decode(envelope: &Envelope) -> Result<Option<Incoming>, WireError> {
             let mut reader = Reader::new(payload);
             let request = RequestId::new(reader.u64()?);
             let deadline = Tick::new(reader.u64()?);
+            let slot = reader.text()?;
+            let title = reader.text()?;
+            let message = reader.text()?;
             reader.done()?;
-            Incoming::Offered { request, deadline }
+            Incoming::Offered {
+                request,
+                deadline,
+                slot,
+                title,
+                message,
+            }
+        }
+        member::ANSWER => {
+            let mut reader = Reader::new(payload);
+            let request = RequestId::new(reader.u64()?);
+            let answer = reader.bytes()?;
+            reader.done()?;
+            Incoming::Answered { request, answer }
         }
         member::REQUEST_FINISHED => {
             let mut reader = Reader::new(payload);
@@ -785,12 +966,22 @@ mod tests {
 
     #[test]
     fn an_offer_and_a_finish_round_trip() {
-        let frame = offer(1, RequestId::new(2), Tick::new(500));
+        let frame = offer(
+            1,
+            RequestId::new(2),
+            Tick::new(500),
+            "auth.polkit",
+            "Authentication required",
+            "Authenticate to run /usr/bin/mount",
+        );
         assert_eq!(
             decode(&frame).expect("decodes"),
             Some(Incoming::Offered {
                 request: RequestId::new(2),
-                deadline: Tick::new(500)
+                deadline: Tick::new(500),
+                slot: "auth.polkit".to_owned(),
+                title: "Authentication required".to_owned(),
+                message: "Authenticate to run /usr/bin/mount".to_owned(),
             })
         );
         let frame = finished(RequestId::new(2), RequestCompletion::TimedOut);
@@ -799,6 +990,77 @@ mod tests {
             Some(Incoming::Finished {
                 request: RequestId::new(2),
                 completion: RequestCompletion::TimedOut
+            })
+        );
+    }
+
+    #[test]
+    fn the_offer_request_round_trips_its_proposition() {
+        let frame = request_offer(1, "auth.polkit", "Title", "Message", 30_000);
+        assert_eq!(
+            read_offer(frame.payload().expect("payload")),
+            Ok((
+                "auth.polkit".to_owned(),
+                "Title".to_owned(),
+                "Message".to_owned(),
+                30_000
+            ))
+        );
+        assert!(
+            !frame.is_sensitive(),
+            "a proposition is what the provider draws, not a secret"
+        );
+    }
+
+    #[test]
+    fn a_slot_claim_and_a_release_round_trip() {
+        let frame = slot_claim(1, "auth.polkit", Provider::Shell);
+        assert_eq!(
+            read_slot_claim(frame.payload().expect("payload")),
+            Ok(("auth.polkit".to_owned(), Provider::Shell))
+        );
+        let frame = slot_claim(2, "prompt.secret", Provider::Services);
+        assert_eq!(
+            read_slot_claim(frame.payload().expect("payload")),
+            Ok(("prompt.secret".to_owned(), Provider::Services))
+        );
+        let frame = slot_release(3, "auth.polkit");
+        assert_eq!(
+            read_slot_release(frame.payload().expect("payload")),
+            Ok("auth.polkit".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_configuration_commit_and_its_answer_round_trip() {
+        let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
+        let frame = config_commit(1, &document);
+        assert_eq!(
+            read_config_commit(frame.payload().expect("payload")),
+            Ok(document.clone())
+        );
+        assert!(!frame.is_sensitive(), "a configuration document is not a secret");
+
+        let payload = configuration_payload(7, &document);
+        assert_eq!(read_configuration(&payload), Ok((7, document)));
+        assert_eq!(read_configuration(&configuration_payload(0, &[])), Ok((0, Vec::new())));
+    }
+
+    #[test]
+    fn an_answer_to_an_offered_request_is_flagged_and_redacts() {
+        // The failure this prevents: the answer to a prompt travels back to the host
+        // that offered it on a member the schema does not mark secret, so a log or
+        // `gnoblinctl ipc dump` keeps the passphrase.
+        const SECRET: &[u8] = b"hunter2";
+        let frame = answered(RequestId::new(2), SECRET);
+        assert_eq!(frame.member, member::ANSWER);
+        assert!(frame.is_sensitive(), "the schema marks the answer field secret");
+        assert_eq!(frame.redact().payload().map(<[u8]>::to_vec), Some(Vec::new()));
+        assert_eq!(
+            decode(&frame).expect("decodes"),
+            Some(Incoming::Answered {
+                request: RequestId::new(2),
+                answer: SECRET.to_vec()
             })
         );
     }
@@ -861,7 +1123,7 @@ mod tests {
         // The other half of the rule: claiming names a request and nothing else, so
         // a dump of it is useful for debugging.
         assert!(!claim(1, RequestId::new(2)).is_sensitive());
-        assert!(!offer(1, RequestId::new(2), Tick::new(500)).is_sensitive());
+        assert!(!offer(1, RequestId::new(2), Tick::new(500), "auth.polkit", "t", "m").is_sensitive());
     }
 
     #[test]

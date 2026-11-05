@@ -27,7 +27,10 @@
 //!    every declared property, so a subscriber never sees a half-built window, and a
 //!    schema that gained a required property fails here rather than silently
 //!    publishing nothing: `a_new_window_carries_every_declared_property`.
-//! 4. **The session object is created without the version it serves.** The version
+//! 4. **A publication writes a property the schema does not declare.** The graph refuses
+//!    it, so a slot the plan gained without a matching schema property fails here rather
+//!    than publishing nothing: see [`SessionSync::publish_session`].
+//! 5. **The session object is created without the version it serves.** The version
 //!    is the schema's namespace version, which is the IPC version, and a graph that
 //!    refused it is a `ModelError` rather than a session that claims nothing:
 //!    `the_session_object_names_the_version_this_process_serves`.
@@ -88,7 +91,11 @@ impl SessionSync {
     /// disagree.
     pub fn new(catalog: Catalog, version: Version) -> Result<SessionSync, ModelError> {
         let mut graph = Graph::new(catalog);
-        let properties = Fields::from([(member::VERSION.to_owned(), Value::Text(version.to_string()))]);
+        // The schema declares one property per slot, so the object cannot be created without
+        // them: the plan's default providers are what a session publishes before anyone claims
+        // anything, which is also what makes "nobody provides this slot yet" readable.
+        let mut properties = Fields::from([(member::VERSION.to_owned(), Value::Text(version.to_string()))]);
+        properties.extend(gnoblin_model::Slots::new().fields());
         let session = graph.create(TypeKey::gnoblin("session"), properties)?;
         Ok(SessionSync {
             graph,
@@ -106,6 +113,24 @@ impl SessionSync {
         if let Err(error) = self.graph.signal(self.session, member::READY, Fields::new()) {
             error!(%error, "[ipc] the session object declares no ready signal");
         }
+    }
+
+    /// Writes the session properties `fields` names.
+    ///
+    /// The `session` object is the one object this process creates, so its properties are
+    /// written here rather than by a snapshot: the slot registry changes when a
+    /// connection claims a slot, which no snapshot knows about. A property the schema
+    /// does not declare is refused by the graph, so a publication cannot invent one.
+    ///
+    /// # Errors
+    ///
+    /// [`ModelError`] when the schema does not declare a property or the value's type
+    /// is wrong, which means a publication and the schema disagree.
+    pub fn publish_session(&mut self, fields: &Fields) -> Result<(), ModelError> {
+        for (property, value) in fields {
+            self.graph.set(self.session, property, value.clone())?;
+        }
+        Ok(())
     }
 
     /// Applies a snapshot: creates, changes and closes objects to match it.

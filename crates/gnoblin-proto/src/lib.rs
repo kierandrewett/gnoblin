@@ -20,17 +20,29 @@
 //! The first frame on a connection is not an envelope at all but a fixed-layout
 //! [`Handshake`], so a version mismatch is always reportable. Descriptors travel
 //! beside a frame through the [`Transport`] seam.
+//!
+//! The handshake also carries the [`Capabilities`] a connection holds
+//! (design/rust-compositor.md, "One IPC"), and [`privilege`] names the inherited
+//! descriptors those capabilities arrive on. Both are here rather than in the
+//! compositor because they are the contract between two IPC peers: the guardian
+//! creates the descriptor, the compositor grants the capability, and the runtime and
+//! services role read both. [`report`] is the one-line channel a role child reports its
+//! readiness and its configuration commits on.
 
+mod capability;
 mod envelope;
 mod error;
 mod frame;
 mod generated;
 mod handshake;
+pub mod privilege;
 #[cfg(test)]
 mod proto_tags;
+pub mod report;
 mod transport;
 mod version;
 
+pub use capability::{Capabilities, Capability};
 pub use envelope::{FLAG_SENSITIVE, UNKNOWN_MEMBER};
 pub use error::CodecError;
 pub use frame::{LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
@@ -47,3 +59,43 @@ pub use version::{Mismatch, accepts, check};
 /// Re-exported so a client crate needs one import for the version it was built
 /// against, rather than depending on `gnoblin-schema` for it.
 pub use gnoblin_types::Version;
+
+/// The IPC version this build advertises, from the schema's `gnoblin` namespace.
+///
+/// Design/rust-compositor.md, "Versioning": the IPC version is exactly the Gnoblin
+/// version, so the schema is where it comes from and this is the one place it is compiled
+/// in. The compositor serves it, and every client sends it in the handshake.
+pub const IPC_VERSION: (u32, u32, u32) = parse_version(env!("GNOBLIN_IPC_VERSION"));
+
+/// Read the build script's `major.minor.patch`, which it took from the schema.
+///
+/// A `const fn` rather than a runtime parse so a bad version is a build error rather than
+/// a panic on the first handshake.
+const fn parse_version(text: &str) -> (u32, u32, u32) {
+    let bytes = text.as_bytes();
+    let mut parts = [0u32; 3];
+    let mut part = 0;
+    let mut index = 0;
+    let mut seen_digit = false;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'.' {
+            part += 1;
+            seen_digit = false;
+        } else if byte.is_ascii_digit() && part < 3 {
+            parts[part] = parts[part] * 10 + (byte - b'0') as u32;
+            seen_digit = true;
+        } else {
+            // An empty part or a character a version cannot hold: zero it so the
+            // mismatch is reported by the handshake rather than hiding here.
+            parts = [0; 3];
+            seen_digit = false;
+            break;
+        }
+        index += 1;
+    }
+    if !seen_digit {
+        parts = [0; 3];
+    }
+    (parts[0], parts[1], parts[2])
+}

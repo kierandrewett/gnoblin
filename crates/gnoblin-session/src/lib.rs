@@ -6,11 +6,12 @@
 //! services role, the greeter and the autostart applications are children it
 //! starts, watches and stops.
 //!
-//! It is pure logic. There is no process here to spawn, no socket to signal, no
-//! timer, no file and no D-Bus call: `gnoblin` performs the [`Effect`]s
-//! [`Guardian::apply`] returns, and tells the guardian what happened through
-//! [`Event`]s. The guardian holds no clock either, because every event carries
-//! its own time, so one event sequence always produces one effect sequence.
+//! The state machine is pure logic: [`Guardian::apply`] spawns no process, signals no
+//! socket, reads no clock and writes no file, and every [`Event`] carries its own time, so
+//! one event sequence always produces one effect sequence. [`supervisor`] is the other half
+//! — the module that performs the [`Effect`]s, reads the children's reports and turns the
+//! session manager's signals into events — and it is the only place in the crate that
+//! touches the operating system. `gnoblin` calls it for the guardian role.
 //!
 //! # What it guarantees
 //!
@@ -113,6 +114,7 @@ mod model;
 mod plan;
 mod recovery;
 mod state;
+pub mod supervisor;
 #[cfg(test)]
 mod tests;
 mod time;
@@ -125,4 +127,5 @@ pub use ids::ChildId;
 pub use plan::{Backoff, ChildKind, ChildSpec, DEFAULT_READY_WITHIN, Plan, PlanError, Restart};
 pub use recovery::{ConfigRecovery, ConfigStatus, Recovery};
 pub use state::{ChildState, ChildStatus, SessionState, StopReason};
+pub use supervisor::{Config as SupervisorConfig, Error as SupervisorError, TEST_FAST_VARIABLE, run as run_guardian};
 pub use time::Tick;

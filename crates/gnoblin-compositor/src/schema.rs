@@ -34,7 +34,7 @@ pub fn catalog() -> Result<Catalog, SchemaError> {
 mod tests {
     use gnoblin_schema::Namespace;
 
-    use super::{FILES, IPC_VERSION, catalog};
+    use super::{FILES, catalog};
 
     #[test]
     fn the_embedded_schema_is_the_one_the_build_validated() {
@@ -45,8 +45,8 @@ mod tests {
             .expect("the schema declares the IPC version");
         assert_eq!(
             (version.major, version.minor, version.patch),
-            IPC_VERSION,
-            "the version the build script recorded is the catalog's"
+            gnoblin_proto::IPC_VERSION,
+            "the version the wire advertises is the catalog's"
         );
     }
 

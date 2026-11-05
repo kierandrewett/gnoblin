@@ -259,6 +259,21 @@ impl RequestBroker {
         held.len()
     }
 
+    /// Finish a request whose host gave up on it, and report whether it was live.
+    ///
+    /// A host that goes away while its request is still waiting is the case
+    /// [`RequestBroker::release`] does not cover: nothing claimed the request, so no
+    /// owner can release it. Ending it as [`RequestOutcome::Ended`] is what keeps a
+    /// provider from holding a prompt for a caller that no longer exists, and it is the
+    /// outcome a provider already reports as "the request went away".
+    pub fn abandon(&mut self, request: RequestId) -> bool {
+        if !self.live.contains_key(&request) {
+            return false;
+        }
+        self.finish(request, RequestOutcome::Ended);
+        true
+    }
+
     /// The state of one request: live, finished or gone from the broker's memory.
     pub fn state(&self, request: RequestId) -> Option<RequestState> {
         if let Some(live) = self.live.get(&request) {

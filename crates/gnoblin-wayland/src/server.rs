@@ -57,6 +57,13 @@ use crate::protocols::session_host::{HostRequest, HostedSession};
 use crate::protocols::window_frame::WindowFrame;
 use crate::state::State;
 
+/// The file a session binds when no socket path is configured.
+///
+/// The name is also the display name a client puts in `WAYLAND_DISPLAY`, which is why it is
+/// public: the guardian publishes that variable to every later child, and a second spelling
+/// here would be a session nothing can connect to.
+pub const DEFAULT_SOCKET_NAME: &str = "gnoblin-wayland.sock";
+
 /// How long [`ControlHandle::focus`] waits for the loop's answer.
 ///
 /// A focus request is applied in the loop's next turn, so the wait is a scheduling
@@ -749,7 +756,7 @@ fn accept_clients(listener: &UnixListener, state: &mut State, role: ClientRole) 
 /// The socket a session listens on when the caller names none.
 fn default_socket_path() -> PathBuf {
     let directory = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
-    directory.join("gnoblin-wayland.sock")
+    directory.join(DEFAULT_SOCKET_NAME)
 }
 
 /// Why a session could not start.

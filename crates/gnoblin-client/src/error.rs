@@ -144,6 +144,13 @@ pub enum ClientError {
         /// Human-readable detail. Never carries a secret.
         message: String,
     },
+    /// The connection had nothing to read before its read timeout.
+    ///
+    /// Not a failure: a caller that set a read timeout on the socket is asking whether
+    /// a frame has arrived, and this is the answer "not yet". It is reported here
+    /// rather than through the transport because only the client knows whether an
+    /// outstanding reply makes the wait a real one.
+    Idle,
     /// The peer sent a payload this build could not decode.
     Protocol {
         /// The member whose payload failed.
@@ -158,6 +165,7 @@ impl fmt::Display for ClientError {
         match self {
             ClientError::Codec(error) => write!(formatter, "{error}"),
             ClientError::Disconnected => formatter.write_str("the compositor closed the connection"),
+            ClientError::Idle => formatter.write_str("the connection had nothing to deliver yet"),
             ClientError::Refused { member, code, message } => {
                 write!(formatter, "`{member}` was refused with `{code}`: {message}")
             }

@@ -426,6 +426,33 @@ fn a_request_times_out_fail_closed() {
 }
 
 #[test]
+fn a_request_whose_host_gave_up_is_finished_once() {
+    // The failure this prevents: the services role offers a prompt, the connection that
+    // needs the decision goes away before anyone claims it, and the provider holds a
+    // prompt nobody will ever answer until its deadline. An abandoned request ends
+    // immediately, and ending it twice emits nothing the second time.
+    let mut broker = RequestBroker::new();
+    let request = broker.offer(Tick::new(10));
+    assert_eq!(broker.events().len(), 1, "the offer");
+
+    assert!(broker.abandon(request), "a live request is finished");
+    let events = broker.events();
+    assert_eq!(
+        events,
+        vec![RequestEvent::Finished {
+            request,
+            outcome: RequestOutcome::Ended
+        }]
+    );
+    assert!(!broker.abandon(request), "a finished request is not reopened");
+    assert!(broker.events().is_empty(), "and emits nothing");
+    assert_eq!(
+        broker.state(request),
+        Some(RequestState::Finished(RequestOutcome::Ended))
+    );
+}
+
+#[test]
 fn a_departed_owner_finishes_its_requests() {
     let mut broker = RequestBroker::new();
     let first = broker.offer(Tick::new(10));

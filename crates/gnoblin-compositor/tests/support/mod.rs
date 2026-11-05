@@ -66,6 +66,51 @@ impl Session {
         Session::start_with(None)
     }
 
+    /// Starts a session that was handed one privileged connection per role, and returns
+    /// the ends the roles would hold.
+    ///
+    /// The pair is the guardian's, exactly as `design/rust-compositor.md`'s process model
+    /// describes it: this test makes it because this test is the guardian.
+    pub fn start_privileged(roles: &[&str]) -> (Session, Vec<(String, UnixStream)>) {
+        let directory = private_directory();
+        let ipc = directory.path().join("ipc.sock");
+        let wayland = directory.path().join("wayland.sock");
+        let mut privileged = Vec::new();
+        let mut ends = Vec::new();
+        for role in roles {
+            let (compositor_end, role_end) = UnixStream::pair().expect("a socket pair");
+            privileged.push(gnoblin_compositor::Privileged {
+                role: (*role).to_owned(),
+                stream: compositor_end,
+            });
+            ends.push(((*role).to_owned(), role_end));
+        }
+        let stop = StopHandle::new();
+        let config = Config {
+            ipc_socket: Some(ipc.clone()),
+            stop: Some(stop.clone()),
+            wayland: gnoblin_wayland::Config {
+                socket_path: Some(wayland.clone()),
+                ..gnoblin_wayland::Config::default()
+            },
+            privileged,
+            ..Config::default()
+        };
+        let thread = std::thread::Builder::new()
+            .name("compositor".to_owned())
+            .spawn(move || Compositor::run(config))
+            .expect("the session thread");
+        let mut session = Session {
+            directory,
+            ipc,
+            wayland,
+            stop,
+            thread: Some(thread),
+        };
+        session.wait_until_listening();
+        (session, ends)
+    }
+
     /// Starts a session that serves `ipc` instead of the directory's default.
     pub fn start_with(ipc: Option<PathBuf>) -> Session {
         let directory = private_directory();

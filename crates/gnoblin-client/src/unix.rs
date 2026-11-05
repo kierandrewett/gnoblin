@@ -92,6 +92,18 @@ impl UnixTransport {
         UnixTransport::from_stream(UnixStream::connect(path)?)
     }
 
+    /// Set the deadline one read waits for, which is how a role pumps on a clock.
+    ///
+    /// A read that times out is [`crate::ClientError::Idle`]: nothing has arrived yet, and
+    /// the caller wanted a chance to do something else.
+    ///
+    /// # Errors
+    ///
+    /// The socket's refusal, which on a Unix stream is only a closed connection.
+    pub fn read_timeout(&self, timeout: Option<std::time::Duration>) -> io::Result<()> {
+        self.reader.get_ref().set_read_timeout(timeout)
+    }
+
     /// Take a stream that is already connected.
     ///
     /// A server accepts one of these from its listener; a test uses it for the
@@ -164,7 +176,7 @@ impl Transport for UnixTransport {
 mod tests {
     use std::os::fd::AsFd;
 
-    use gnoblin_proto::{CodecError, Envelope, HANDSHAKE_LEN, Handshake, Kind, Version, write_frame};
+    use gnoblin_proto::{CodecError, Envelope, HANDSHAKE_LEN, Handshake, Kind, Transport as _, Version, write_frame};
 
     use super::{DEFAULT_SOCKET, RUNTIME_VARIABLE, SOCKET_VARIABLE, UnixTransport, socket_path};
     use crate::transport::Transport as _;

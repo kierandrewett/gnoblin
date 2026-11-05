@@ -10,7 +10,6 @@
 //! message a supervisor logs and the list a later lane works from are the same list.
 
 use clap::{Arg, ArgMatches, Command};
-use gnoblin_session::Plan;
 
 /// One role of `design/rust-compositor.md`'s process model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,8 +70,9 @@ pub fn command() -> Command {
                 .default_value("guardian")
                 .value_parser(Role::ALL.map(Role::name))
                 .help(
-                    "The role this process plays. `compositor` runs the Wayland session in the foreground; \
-                     `runtime`, `services` and `greeter` are roles this build does not serve yet.",
+                    "The role this process plays. The default, `guardian`, supervises the session; \
+                     `compositor` runs it in the foreground; `runtime` serves the scripts and `services` \
+                     the D-Bus agents; `greeter` is a role this build does not serve yet.",
                 ),
         )
 }
@@ -117,25 +117,9 @@ pub fn from_matches(matches: &ArgMatches) -> Result<Role, String> {
 /// What a role this build does not serve would run.
 pub fn not_implemented(role: Role) -> Vec<String> {
     match role {
-        Role::Guardian => guardian_needs(),
-        Role::Compositor => vec!["this build runs the compositor; the refusal is a bug".to_owned()],
-        Role::Runtime => vec![
-            "the Lua host of `gnoblin-lua`: the configuration loader, the event handlers, the \
-             request handlers and the timers, which this build does not carry"
-                .to_owned(),
-            "a privileged IPC connection the guardian hands down as an inherited descriptor \
-             (`design/rust-compositor.md`, \"Process model\"), which the guardian does not \
-             create yet"
-                .to_owned(),
-        ],
-        Role::Services => vec![
-            "the D-Bus agents of `gnoblin-services`: polkit and GeoClue agents, `prompt.secret`, \
-             the PipeWire privacy monitor, `org.freedesktop.ScreenSaver`, idle and inhibit"
-                .to_owned(),
-            "the same inherited-descriptor connection the runtime uses, so a request is offered \
-             to exactly one privileged client"
-                .to_owned(),
-        ],
+        Role::Guardian | Role::Compositor | Role::Runtime | Role::Services => {
+            vec!["this build runs the role; the refusal is a bug".to_owned()]
+        }
         Role::Greeter => vec![
             "the IPC extension namespace `bsm.greeter`, which design/rust-compositor.md's \"IPC \
              extensions\" describes and this build does not implement"
@@ -147,62 +131,9 @@ pub fn not_implemented(role: Role) -> Vec<String> {
     }
 }
 
-/// What the guardian needs that `gnoblin-session` does not carry.
-///
-/// The crate is the guardian's whole policy as a pure state machine — a plan of
-/// children, events in, effects out — and the missing half is the process supervisor
-/// that performs the effects. The list is built from a real plan, so it names the
-/// children a session starts today rather than describing them in prose.
-pub fn guardian_needs() -> Vec<String> {
-    let mut needs = Vec::new();
-    match Plan::standard(false, Vec::new()) {
-        Ok(plan) => {
-            let children: Vec<&str> = plan.children().iter().map(|child| child.name.as_str()).collect();
-            needs.push(format!(
-                "a supervisor loop driving `gnoblin_session::Guardian::apply` over the standard plan \
-                 ({}), performing the effects it returns in order",
-                children.join(", ")
-            ));
-        }
-        Err(error) => needs.push(format!(
-            "the standard session plan `gnoblin-session` describes: {error}"
-        )),
-    }
-    needs.push(
-        "a process spawner: `Effect::Spawn` names a child, a generation and the complete \
-         environment, and the child must start in its own process group so a stop reaches its \
-         helpers"
-            .to_owned(),
-    );
-    needs.push(
-        "readiness detection per child: the compositor's is its Wayland and IPC sockets, the \
-         runtime's and services' is the connection they open, and each has a deadline \
-         `gnoblin-session` reports as a missed `Ready`"
-            .to_owned(),
-    );
-    needs.push(
-        "signal plumbing: `Effect::Signal` and `Effect::Kill` name a child's group, and the \
-         session manager's own SIGTERM has to become an `Event`"
-            .to_owned(),
-    );
-    needs.push(
-        "`Effect::ExportEnv` and `gnoblin_session::EnvironmentRules`: the compositor's published \
-         display variables are exported before the next child is spawned and validated against \
-         the rules"
-            .to_owned(),
-    );
-    needs.push(
-        "a clock and a log sink: every `Event` carries its own `gnoblin_session::Tick`, so the loop \
-         needs a timer, and every `Effect::Log` line needs a destination; `Effect::SetRecovery` \
-         needs the recovery state on disk"
-            .to_owned(),
-    );
-    needs
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Role, command, from_matches, guardian_needs, not_implemented, version_line};
+    use super::{Role, command, from_matches, not_implemented, version_line};
 
     #[test]
     fn every_role_round_trips_through_its_name() {
@@ -249,31 +180,25 @@ mod tests {
     }
 
     #[test]
-    fn the_guardian_names_the_plan_it_would_supervise() {
-        let needs = guardian_needs();
-        assert!(needs.len() > 1, "several pieces are missing, not one: {needs:#?}");
-        assert!(
-            needs[0].contains("compositor"),
-            "the plan it would supervise is named: {}",
-            needs[0]
-        );
-        assert!(
-            needs[0].contains("services") && needs[0].contains("runtime"),
-            "every child of the standard plan is named: {}",
-            needs[0]
-        );
+    fn the_guardian_supervises_the_standard_plan() {
+        // Built from the real plan, so this is the list a session starts today rather than a
+        // description of it. The guardian role itself is `gnoblin-session`'s supervisor.
+        let plan = gnoblin_session::Plan::standard(false, Vec::new()).expect("the standard plan");
+        let children: Vec<&str> = plan.children().iter().map(|child| child.name.as_str()).collect();
+        for child in ["compositor", "services", "runtime"] {
+            assert!(
+                children.contains(&child),
+                "`{child}` is in the standard plan: {children:?}"
+            );
+        }
     }
 
     #[test]
     fn every_unimplemented_role_says_what_it_would_run() {
-        for role in [Role::Runtime, Role::Services, Role::Greeter] {
-            let needs = not_implemented(role);
-            assert!(!needs.is_empty(), "`{}` names what it needs", role.name());
-            assert!(
-                needs.iter().all(|need| !need.is_empty()),
-                "`{}` has an empty entry",
-                role.name()
-            );
-        }
+        // The greeter is the only one left, and a refusal without a reason would be a
+        // supervisor's dead end.
+        let needs = not_implemented(Role::Greeter);
+        assert!(!needs.is_empty(), "the greeter names what it needs");
+        assert!(needs.iter().all(|need| !need.is_empty()));
     }
 }

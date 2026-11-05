@@ -25,12 +25,15 @@
 //! real socket.
 
 mod path;
+mod privileged;
+mod requests;
 mod server;
 mod session;
 
 use std::path::PathBuf;
 
 pub use path::SocketPath;
+pub use privileged::Privileged;
 pub(crate) use server::IpcServer;
 pub use session::SessionSync;
 

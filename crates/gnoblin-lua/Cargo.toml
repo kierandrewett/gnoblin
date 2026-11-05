@@ -19,6 +19,17 @@ gnoblin-config = { path = "../gnoblin-config" }
 # The bindings speak the object model's vocabulary: identities, values,
 # observations, operations and ticks.
 gnoblin-model = { path = "../gnoblin-model" }
+# The document a commit carries is the configuration tree as JSON, which is the encoding the
+# configuration layer already uses for its stored last-good file.
+serde_json.workspace = true
+# The primitives the role loop names: the tick it pumps on.
+gnoblin-types.workspace = true
+# The version the handshake advertises, which is the schema's and therefore the
+# compositor's. The runtime role is the second IPC peer in the workspace, and it has to
+# speak the same version rule as the compositor without depending on it.
+gnoblin-proto = { path = "../gnoblin-proto" }
+# A `[role]` log line per configuration commit, refused commit and failed handler.
+tracing.workspace = true
 
 [build-dependencies]
 # The Lua tables and `gnoblin.d.lua` are generated from the schema, so a schema
@@ -29,8 +40,10 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # The tests drive the host through the in-process loopback against a real graph
 # built from the checked-in schema, and re-derive the expected bindings from it.
 gnoblin-client = { path = "../gnoblin-client" }
-gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-schema = { path = "../gnoblin-schema" }
+# The role test serves a real socketpair and a real client, so the shipped role is
+# exercised rather than a copy of its loop.
+tempfile = "3.23.0"
 
 [lints]
 workspace = true

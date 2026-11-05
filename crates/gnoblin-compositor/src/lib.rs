@@ -77,9 +77,9 @@
 //! - a new IPC member is one arm of the IPC server's dispatch (a private module:
 //!   `src/ipc/server.rs`), or a schema member plus a generated client;
 //! - a snapshot consumer is a second [`gnoblin_wayland::Observer`];
-//! - requests (prompts, polkit, GeoClue) are the [`gnoblin_model::RequestBroker`]
-//!   the dispatch already refuses for, so offering one is adding the offer, not a
-//!   second vocabulary.
+//! - requests (prompts, polkit, GeoClue) are the [`gnoblin_model::RequestBroker`] the
+//!   dispatcher owns: a privileged connection offers one, the slot registry routes it to
+//!   the connection that provides the slot, and both sides learn its one completion.
 
 mod backend;
 mod ipc;
@@ -95,14 +95,17 @@ use tracing::info;
 pub use backend::Backend;
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Observer, SessionSnapshot};
-pub use ipc::{IpcError, SessionSync};
+pub use ipc::{IpcError, Privileged, SessionSync};
 pub use schema::catalog;
 
 use gnoblin_model::ModelError;
 use gnoblin_schema::SchemaError;
 
 /// How a compositor session is configured.
-#[derive(Clone, Debug, Default)]
+///
+/// Not `Clone`: a session's configuration owns the privileged connections it was handed,
+/// and duplicating a descriptor would give two owners of one socket.
+#[derive(Debug, Default)]
 pub struct Config {
     /// The backend the session drives.
     pub backend: Backend,
@@ -115,6 +118,13 @@ pub struct Config {
     pub ipc_socket: Option<PathBuf>,
     /// A handle a supervisor or a test stops the session with.
     pub stop: Option<StopHandle>,
+    /// The privileged connections this process was handed.
+    ///
+    /// The guardian creates one socketpair per privileged child and passes this
+    /// process the other end; [`ipc::Privileged::from_environment`] reads them, and the
+    /// binary role calls it. A test builds them itself, so a privileged connection can
+    /// be driven without a supervisor.
+    pub privileged: Vec<ipc::Privileged>,
 }
 
 /// A handle that stops a running session from another thread.
@@ -177,7 +187,7 @@ impl StopHandle {
 /// the release it becomes.
 #[must_use]
 pub fn version() -> Version {
-    let (major, minor, patch) = schema::IPC_VERSION;
+    let (major, minor, patch) = gnoblin_proto::IPC_VERSION;
     Version::new(major, minor, patch)
 }
 
@@ -217,6 +227,17 @@ impl Compositor {
         let (observer, pending) = ipc::wake(events.clone());
         store.ready();
 
+        // The display name a client puts in `WAYLAND_DISPLAY` is the Wayland socket's file
+        // name, and it has to be read before the configuration is moved into the server.
+        let display_name = config
+            .wayland
+            .socket_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map_or_else(
+                || gnoblin_wayland::DEFAULT_SOCKET_NAME.to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
         let backend = config.backend.build();
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
@@ -225,11 +246,29 @@ impl Compositor {
         let server = Server::new(backend, wayland).map_err(Error::Wayland)?;
         let control = server.control();
         let observation = server.observation();
-        let ipc = ipc::IpcServer::start(prepared, store, events, received, pending, observation, control.clone())
-            .map_err(Error::Ipc)?;
+        let ipc = ipc::IpcServer::start(
+            prepared,
+            store,
+            events,
+            received,
+            pending,
+            observation,
+            control.clone(),
+            config.privileged,
+        )
+        .map_err(Error::Ipc)?;
 
+        // The guardian waits for this report before it starts anything else: the session's
+        // later children need the display, and the plan ends the session when a required
+        // variable is missing.
+        let mut reporter = gnoblin_client::Reporter::new(|name| std::env::var(name).ok());
+        reporter.ready(&[
+            ("WAYLAND_DISPLAY".to_owned(), display_name.clone()),
+            ("GNOBLIN_IPC_SOCKET".to_owned(), path.display().to_string()),
+        ]);
         info!(
             socket = %path.display(),
+            display = %display_name,
             version = %version,
             backend = config.backend.name(),
             "[compositor] serving"

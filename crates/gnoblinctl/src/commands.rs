@@ -161,8 +161,10 @@ fn watch<T: Transport>(
                 printed += 1;
             }
             // A request is offered to every subscriber and answered by one, which is
-            // not a change to the objects this command was asked about.
-            Event::RequestOffered { .. } | Event::RequestFinished { .. } => {}
+            // not a change to the objects this command was asked about. An answer only
+            // ever reaches the connection that offered the request, so `gnoblinctl`
+            // never sees one.
+            Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
         }
     }
 }
@@ -209,6 +211,7 @@ impl Failure {
                     "the compositor closed the connection".to_owned(),
                 ),
                 ClientError::Codec(error) => ("io".to_owned(), error.to_string()),
+                ClientError::Idle => ("idle".to_owned(), "the compositor had nothing to deliver".to_owned()),
                 ClientError::Protocol { member, reason } => ("protocol".to_owned(), format!("`{member}`: {reason}")),
             },
             Failure::Io(error) => ("io".to_owned(), error.to_string()),

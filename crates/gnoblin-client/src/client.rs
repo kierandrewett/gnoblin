@@ -25,9 +25,10 @@ use std::collections::VecDeque;
 use std::os::fd::OwnedFd;
 
 use gnoblin_model::{
-    Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, RequestCompletion, RequestId, Snapshot, Tick,
+    Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, Provider, RequestCompletion, RequestId,
+    Snapshot, Tick,
 };
-use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, Mismatch, Version};
+use gnoblin_proto::{Capabilities, Envelope, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
 use crate::error::{ClientError, ConnectError, HandshakeError, WireError};
 use crate::transport::Transport;
@@ -44,6 +45,21 @@ pub enum Event {
         request: RequestId,
         /// When it fails if nobody claims and answers it.
         deadline: Tick,
+        /// The slot the request was offered to.
+        slot: String,
+        /// The title the provider shows.
+        title: String,
+        /// The sentence the provider shows.
+        message: String,
+    },
+    /// The answer to a request this client offered. Only the host that offered the
+    /// request receives it, and the frame it arrived in is flagged sensitive.
+    RequestAnswered {
+        /// The request.
+        request: RequestId,
+        /// The provider's answer, in the slot's own encoding. The bytes may be a
+        /// passphrase, so nothing here logs them.
+        answer: Vec<u8>,
     },
     /// A request ended. The completion carries no answer value, because an answer
     /// may be secret and only the host that offered the request reads it.
@@ -60,6 +76,7 @@ pub enum Event {
 pub struct Client<T: Transport> {
     transport: T,
     version: Version,
+    capabilities: Capabilities,
     next_request: u64,
     inbox: VecDeque<Event>,
     descriptors: Vec<OwnedFd>,
@@ -80,6 +97,9 @@ impl<T: Transport> Client<T> {
                 Ok(Client {
                     transport,
                     version: answer.version,
+                    // What the compositor granted travels on the accept frame; a
+                    // refusal carried none, so an ordinary connection holds nothing.
+                    capabilities: answer.capabilities,
                     next_request: 1,
                     inbox: VecDeque::new(),
                     descriptors: Vec::new(),
@@ -100,6 +120,17 @@ impl<T: Transport> Client<T> {
     /// negotiated.
     pub fn version(&self) -> Version {
         self.version
+    }
+
+    /// The capabilities this connection was granted.
+    ///
+    /// It is the compositor's decision, read from the handshake, and it is empty for
+    /// every connection that reached the ordinary socket. A client uses it to report
+    /// what it can do rather than to check itself: the compositor refuses a member a
+    /// connection does not hold the capability for, so a client that guessed wrong
+    /// learns it from that refusal.
+    pub fn capabilities(&self) -> Capabilities {
+        self.capabilities
     }
 
     /// Take any descriptors that arrived beside frames.
@@ -212,6 +243,95 @@ impl<T: Transport> Client<T> {
         Ok(())
     }
 
+    /// Offer a request to the slot that owns it, and learn its identity.
+    ///
+    /// Privileged: the compositor answers [`crate::code::DENIED`] when this connection
+    /// does not hold `offer-request`. A slot nobody provides is refused with
+    /// [`crate::code::NO_PROVIDER`] naming the slot, which is the difference between a
+    /// prompt that cannot be drawn and a prompt that never gets answered.
+    ///
+    /// `timeout` is how long the offer stands before the compositor fails it as timed
+    /// out; the deadline the provider receives is the compositor's own tick.
+    pub fn offer(
+        &mut self,
+        slot: &str,
+        title: &str,
+        message: &str,
+        timeout: std::time::Duration,
+    ) -> Result<RequestId, ClientError> {
+        let timeout = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let correlation = self.next_id();
+        let frame = wire::request_offer(correlation, slot, title, message, timeout);
+        self.send(&frame)?;
+        let payload = self.await_reply(correlation)?;
+        let request = wire::read_revision(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::OFFER.to_owned(),
+            reason,
+        })?;
+        Ok(RequestId::new(request))
+    }
+
+    /// Claim a slot, so offers for it are sent to this connection.
+    ///
+    /// A shell claims the slots it draws; the services role claims the ones it
+    /// provides by default. A second shell is refused with the holder named, and the
+    /// services role cannot take a slot back while a shell holds it.
+    pub fn claim_slot(&mut self, slot: &str, provider: Provider) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::slot_claim(correlation, slot, provider);
+        self.send(&frame)?;
+        let _ = self.await_reply(correlation)?;
+        Ok(())
+    }
+
+    /// Release a slot this connection claimed.
+    pub fn release_slot(&mut self, slot: &str) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::slot_release(correlation, slot);
+        self.send(&frame)?;
+        let _ = self.await_reply(correlation)?;
+        Ok(())
+    }
+
+    /// Commit a configuration document, returning the revision the compositor
+    /// assigned.
+    ///
+    /// Privileged: the compositor answers [`crate::code::DENIED`] when this connection
+    /// does not hold `commit-config`. The document is opaque to the compositor, which
+    /// holds the last accepted one for as long as it runs: that is what makes a
+    /// runtime restart cost nothing but the reload.
+    pub fn commit_config(&mut self, document: &[u8]) -> Result<u64, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::config_commit(correlation, document);
+        self.send(&frame)?;
+        let payload = self.await_reply(correlation)?;
+        wire::read_revision(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::CONFIG_COMMIT.to_owned(),
+            reason,
+        })
+    }
+
+    /// The last configuration the compositor accepted, or `None` when it has accepted
+    /// none.
+    ///
+    /// Privileged like [`Client::commit_config`], because the document is the user's
+    /// configuration rather than public session state.
+    pub fn configuration(&mut self) -> Result<Option<(u64, Vec<u8>)>, ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::config_current(correlation);
+        self.send(&frame)?;
+        let payload = self.await_reply(correlation)?;
+        let (revision, document) = wire::read_configuration(&payload).map_err(|reason| ClientError::Protocol {
+            member: wire::member::CONFIG_CURRENT.to_owned(),
+            reason,
+        })?;
+        Ok(if revision == 0 {
+            None
+        } else {
+            Some((revision, document))
+        })
+    }
+
     /// Give the connection back, for a caller that owns the socket.
     pub fn into_inner(self) -> T {
         self.transport
@@ -223,6 +343,11 @@ impl<T: Transport> Client<T> {
     }
 
     /// Take one frame from the transport.
+    ///
+    /// A read that timed out is [`ClientError::Idle`] rather than a failure: a caller
+    /// that set a read timeout on the socket is asking "is there a frame yet", and the
+    /// answer "not yet" is what lets a role pump handlers and check its own signals in
+    /// one loop.
     fn receive(&mut self) -> Result<Envelope, ClientError> {
         let mut descriptors = Vec::new();
         let outcome = self.transport.receive(&mut descriptors);
@@ -230,6 +355,7 @@ impl<T: Transport> Client<T> {
         match outcome {
             Ok(Some(envelope)) => Ok(envelope),
             Ok(None) => Err(ClientError::Disconnected),
+            Err(error) if idle(&error) => Err(ClientError::Idle),
             Err(error) => Err(ClientError::Codec(error)),
         }
     }
@@ -237,7 +363,11 @@ impl<T: Transport> Client<T> {
     /// Read until the reply to `request` arrives, queueing events on the way.
     fn await_reply(&mut self, request: u64) -> Result<Vec<u8>, ClientError> {
         loop {
-            let envelope = self.receive()?;
+            // A reply is owed, so an idle read means "not yet" and the wait continues.
+            let envelope = match self.receive() {
+                Err(ClientError::Idle) => continue,
+                other => other?,
+            };
             // Only a reply or an error can answer this request. An offer the
             // compositor sent in the other direction may happen to carry the same
             // correlation id, and it is delivered as the event it is.
@@ -269,8 +399,23 @@ impl<T: Transport> Client<T> {
         match decoded {
             None => {}
             Some(wire::Incoming::Observation(observation)) => self.inbox.push_back(Event::Model(observation)),
-            Some(wire::Incoming::Offered { request, deadline }) => {
-                self.inbox.push_back(Event::RequestOffered { request, deadline });
+            Some(wire::Incoming::Offered {
+                request,
+                deadline,
+                slot,
+                title,
+                message,
+            }) => {
+                self.inbox.push_back(Event::RequestOffered {
+                    request,
+                    deadline,
+                    slot,
+                    title,
+                    message,
+                });
+            }
+            Some(wire::Incoming::Answered { request, answer }) => {
+                self.inbox.push_back(Event::RequestAnswered { request, answer });
             }
             Some(wire::Incoming::Finished { request, completion }) => {
                 self.inbox.push_back(Event::RequestFinished { request, completion });
@@ -284,5 +429,15 @@ impl<T: Transport> Client<T> {
         let id = self.next_request;
         self.next_request += 1;
         id
+    }
+}
+
+/// Whether a codec error is a read that had nothing to give yet.
+fn idle(error: &gnoblin_proto::CodecError) -> bool {
+    match error {
+        gnoblin_proto::CodecError::Io(io) => {
+            matches!(io.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut)
+        }
+        _ => false,
     }
 }

@@ -106,8 +106,12 @@ const CLIENT_SIDE: &[&str] = &[
     "xdg-desktop-portal-gnoblin",
 ];
 
-/// The one binary that links the compat adapters.
-const COMPAT_HOST: &str = "gnoblin";
+/// The processes that link the compat adapters.
+///
+/// The session binary serves them, and so does the services role: design/rust-compositor.md's
+/// process table puts "passphrase prompts (`prompt.secret`)" in `gnoblin --role services`, so
+/// the prompter adapter is that role's to serve. Nothing else may name one.
+const COMPAT_HOSTS: &[&str] = &["gnoblin", "gnoblin-services"];
 
 /// What the session binary itself may depend on.
 ///
@@ -115,10 +119,19 @@ const COMPAT_HOST: &str = "gnoblin";
 /// composition root and "the only crate that knows every subsystem", and the binary is
 /// the supervisor that starts one role per process. A binary that named an engine or a
 /// policy crate directly would be a second composition root: two places deciding which
-/// backend runs, which IPC server serves and how a snapshot becomes an object. So the
-/// binary reaches the session only through the composition root and the guardian, and
-/// the compat adapters it serves are the one exception the plan states.
-const BINARY_ROOTS: &[&str] = &["gnoblin-compositor", "gnoblin-session"];
+/// backend runs, which IPC server serves and how a snapshot becomes an object.
+///
+/// The three others are role entry points, named because the binary is what runs a role:
+/// `gnoblin-session` for the guardian, and `gnoblin-lua` and `gnoblin-services` for the two
+/// roles the guardian starts. Each is the top of its own process, so an edge to it decides
+/// nothing the composition root decides — the compositor, the engine and the policy crates
+/// stay out of reach either way.
+const BINARY_ROOTS: &[&str] = &[
+    "gnoblin-compositor",
+    "gnoblin-session",
+    "gnoblin-lua",
+    "gnoblin-services",
+];
 
 /// The shared compat frame every compat crate depends on.
 const COMPAT_CORE: &str = "gnoblin-compat-core";
@@ -352,14 +365,19 @@ fn compat_isolation(package: &Package, dep: &Dep) -> Option<String> {
     None
 }
 
-/// Nothing outside `compat/` links a compat adapter except the binary that
-/// serves them.
+/// Nothing outside `compat/` links a compat adapter except the processes that
+/// serve them.
 fn compat_host(package: &Package, dep: &Dep) -> Option<String> {
-    if !is_compat(&dep.name) || is_compat(&package.name) || package.name == COMPAT_HOST {
+    if !is_compat(&dep.name) || is_compat(&package.name) || COMPAT_HOSTS.contains(&package.name.as_str()) {
         return None;
     }
     Some(format!(
-        "only the `{COMPAT_HOST}` binary links a compat adapter, so the adapters cannot leak into a library"
+        "only {} link a compat adapter, so the adapters cannot leak into a library",
+        COMPAT_HOSTS
+            .iter()
+            .map(|host| format!("`{host}`"))
+            .collect::<Vec<_>>()
+            .join(" and ")
     ))
 }
 
@@ -398,7 +416,7 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
 /// the engine directly to prove what the binary does with it, and that edge cannot
 /// ship.
 fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
-    if package.name != COMPAT_HOST || dep.kind == DepKind::Dev {
+    if !COMPAT_HOSTS.contains(&package.name.as_str()) || dep.kind == DepKind::Dev {
         return None;
     }
     if BINARY_ROOTS.contains(&dep.name.as_str()) || is_compat(&dep.name) {

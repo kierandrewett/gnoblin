@@ -226,6 +226,10 @@ mod tests {
                 title: "editor".to_owned(),
                 app_id: "code".to_owned(),
                 focused: true,
+                x: 0,
+                y: 0,
+                width: 200,
+                height: 150,
             },
         );
         assert!(!envelope.is_sensitive());

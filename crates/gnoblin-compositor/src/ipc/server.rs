@@ -49,25 +49,35 @@
 //!    subscriptions and closes its writer, so an identity it will never use again is
 //!    not queued forever, and the connection that dies is the one case failure mode 1
 //!    covers.
+//! 7. **A client that is not privileged calls a privileged member.** The capability
+//!    gate answers `denied` before the member is looked at, so a plain socket
+//!    connection can neither offer a request nor commit a configuration:
+//!    `tests/privilege.rs::a_socket_client_cannot_use_a_privileged_member`.
+//! 8. **An offer is routed to a connection that never answers.** The slot decides, a
+//!    slot with no provider is refused with `no-provider`, and both sides of a request
+//!    always learn its one completion:
+//!    `src/ipc/requests.rs`'s own tests.
 
 use std::collections::BTreeMap;
 use std::io;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::str::FromStr as _;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gnoblin_client::wire;
-use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription};
-use gnoblin_proto::{Envelope, Handshake, HandshakeKind, read_frame, write_frame};
+use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
+use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, Version};
 use gnoblin_wayland::{ControlHandle, Observer, SessionSnapshot};
 use tracing::{debug, info, warn};
 
-use super::{IpcError, SessionSync, SocketPath};
+use super::requests::{Delivery, Requests};
+use super::{IpcError, Privileged, SessionSync, SocketPath};
 
 /// How long a new connection gets to send its handshake.
 ///
@@ -81,10 +91,26 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// reading must cost its own connection and not the session.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How often the dispatcher looks at its own clock.
+///
+/// The dispatcher is the only owner of the request layer's deadlines, and it is woken
+/// by a channel rather than by a timer, so this is the resolution at which a request
+/// times out. It is also the only thing that happens on an idle session: one deadline
+/// check per tick and no writes.
+const DEADLINE_TICK: Duration = Duration::from_millis(50);
+
 /// One thing the IPC server has to do, in the order it arrived.
 pub(crate) enum IpcEvent {
     /// A client finished the handshake and may be served.
-    Accepted { client: ClientId, writer: UnixStream },
+    Accepted {
+        /// Which connection it is.
+        client: ClientId,
+        /// The writing half the dispatcher writes frames to.
+        writer: UnixStream,
+        /// What the compositor granted it. A connection accepted from the socket holds
+        /// nothing; a privileged one holds what its role grants.
+        capabilities: Capabilities,
+    },
     /// One frame a client sent.
     Request { client: ClientId, envelope: Envelope },
     /// A client's connection ended, cleanly or otherwise.
@@ -150,6 +176,7 @@ impl IpcServer {
     ///
     /// [`IpcError::Bind`] when the socket cannot be bound or its mode cannot be set,
     /// and [`IpcError::Io`] when a thread cannot be created.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         prepared: SocketPath,
         store: SessionSync,
@@ -158,6 +185,7 @@ impl IpcServer {
         pending: Arc<AtomicBool>,
         observation: Arc<Mutex<SessionSnapshot>>,
         control: ControlHandle,
+        privileged: Vec<Privileged>,
     ) -> Result<IpcServer, IpcError> {
         let path = prepared.path().to_path_buf();
         let listener = UnixListener::bind(&path).map_err(|source| IpcError::Bind {
@@ -176,10 +204,33 @@ impl IpcServer {
             observation,
             control,
             pending,
+            requests: Requests::new(),
             connections: BTreeMap::new(),
             readers: Arc::clone(&readers),
+            start: Instant::now(),
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
+        // The privileged connections are already connected — the guardian made the pair
+        // — so they are served like a client that has arrived, with the capabilities
+        // their role grants. A failure to serve one is reported and the session runs:
+        // losing the runtime's connection must not take the desktop down.
+        for connection in privileged {
+            let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
+            let grants = super::privileged::grants(&connection.role);
+            let served = events.clone();
+            let mut handles = lock(&readers);
+            match std::thread::Builder::new()
+                .name(format!("gnoblin-ipc-{}", client.get()))
+                .spawn(move || serve(connection.stream, client, version, served, grants))
+            {
+                Ok(handle) => {
+                    handles.insert(client, handle);
+                }
+                Err(error) => {
+                    warn!(role = %connection.role, %error, "[ipc] a privileged connection could not be served")
+                }
+            }
+        }
         let acceptor = spawn(
             "gnoblin-ipc-accept",
             {
@@ -251,7 +302,7 @@ fn accept_loop(
         let mut handles = lock(&readers);
         match std::thread::Builder::new()
             .name(format!("gnoblin-ipc-{}", client.get()))
-            .spawn(move || serve(stream, client, version, served))
+            .spawn(move || serve(stream, client, version, served, Capabilities::NONE))
         {
             Ok(handle) => {
                 handles.insert(client, handle);
@@ -262,7 +313,11 @@ fn accept_loop(
 }
 
 /// Serves one client: the handshake, then its frames, until the socket ends.
-fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<IpcEvent>) {
+///
+/// `capabilities` is what this connection was granted before it said anything, which is
+/// what the compositor answers the handshake with: a connection accepted from the
+/// socket is granted nothing, and only the ends the guardian passed can carry more.
+fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<IpcEvent>, capabilities: Capabilities) {
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
         Err(error) => {
@@ -280,7 +335,7 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
         None => return,
     };
     let answer = match gnoblin_proto::check(version, hello.version) {
-        Ok(()) => Handshake::accept(version),
+        Ok(()) => Handshake::grant(version, capabilities),
         Err(mismatch) => {
             // The refusal names this compositor's version, so the client can name both
             // and say which side to upgrade.
@@ -302,7 +357,14 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
         debug!(%error, "[ipc] a connection could not be given a write deadline");
         return;
     }
-    if events.send(IpcEvent::Accepted { client, writer }).is_err() {
+    if events
+        .send(IpcEvent::Accepted {
+            client,
+            writer,
+            capabilities,
+        })
+        .is_err()
+    {
         return;
     }
     loop {
@@ -361,6 +423,9 @@ fn write_handshake(writer: &UnixStream, handshake: &Handshake) -> io::Result<()>
 /// What the dispatcher holds for one client.
 struct Connection {
     writer: UnixStream,
+    /// What this connection may do beyond reading the graph. Empty for every
+    /// connection that reached the socket.
+    capabilities: Capabilities,
     subscriptions: Vec<Subscription>,
     /// Set once a write fails, so the connection is dropped after this turn instead
     /// of being written to again.
@@ -386,25 +451,47 @@ struct Dispatcher {
     observation: Arc<Mutex<SessionSnapshot>>,
     control: ControlHandle,
     pending: Arc<AtomicBool>,
+    /// The request layer: the broker, the slot registry and the last accepted
+    /// configuration.
+    requests: Requests,
     connections: BTreeMap<ClientId, Connection>,
     readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>>,
+    /// When this process started serving, which is the origin of every request
+    /// deadline it measures. The compositor is the only party that needs a clock here:
+    /// the broker takes its tick as an argument, so the model stays replayable.
+    start: Instant,
 }
 
 impl Dispatcher {
     /// Serves events until the server is told to stop.
     fn run(mut self, events: Receiver<IpcEvent>) {
         loop {
-            let event = match events.recv() {
+            let event = match events.recv_timeout(DEADLINE_TICK) {
                 Ok(event) => event,
+                // A request that nobody answered within its deadline ends here, so the
+                // session never holds a prompt past the time its host asked for.
+                Err(RecvTimeoutError::Timeout) => {
+                    let now = self.now();
+                    let expired = self.requests.tick(now);
+                    self.publish_slots();
+                    self.deliver(expired);
+                    self.flush();
+                    continue;
+                }
                 // Every sender is gone: nothing can ask for anything any more.
-                Err(_) => break,
+                Err(RecvTimeoutError::Disconnected) => break,
             };
             match event {
-                IpcEvent::Accepted { client, writer } => {
+                IpcEvent::Accepted {
+                    client,
+                    writer,
+                    capabilities,
+                } => {
                     self.connections.insert(
                         client,
                         Connection {
                             writer,
+                            capabilities,
                             subscriptions: Vec::new(),
                             broken: false,
                         },
@@ -436,24 +523,293 @@ impl Dispatcher {
             );
             return;
         }
+        // The gate is before the member is looked at: a member this connection may not
+        // call is `denied` whether or not this build serves it, so a client learns what
+        // it is missing rather than that the member does not exist.
+        if let Some(required) = required_capability(&envelope.member)
+            && !self.capabilities(client).contains(required)
+        {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::DENIED,
+                &format!(
+                    "`{}` needs the `{required}` capability, which this connection does not hold",
+                    envelope.member
+                ),
+            );
+            return;
+        }
         match envelope.member.as_str() {
             wire::member::SUBSCRIBE => self.subscribe(client, envelope),
             wire::member::CALL => self.call(client, envelope),
-            wire::member::CLAIM | wire::member::ANSWER => self.refuse(
-                client,
-                envelope,
-                wire::code::REQUEST_UNKNOWN,
-                // Requests are offered by the host that needs them, and this slice
-                // offers none: prompts, polkit and GeoClue arrive with the services
-                // role, and until then a claim names a request nobody has.
-                "this build offers no requests",
-            ),
+            wire::member::CLAIM => self.claim_request(client, envelope),
+            wire::member::ANSWER => self.answer(client, envelope),
+            wire::member::DECLINE => self.decline(client, envelope),
+            wire::member::OFFER => self.offer(client, envelope),
+            wire::member::SLOT_CLAIM => self.claim_slot(client, envelope),
+            wire::member::SLOT_RELEASE => self.release_slot(client, envelope),
+            wire::member::CONFIG_COMMIT => self.commit(client, envelope),
+            wire::member::CONFIG_CURRENT => self.configuration(client, envelope),
             _ => self.refuse(
                 client,
                 envelope,
                 wire::code::UNKNOWN_MEMBER,
                 "this connection does not serve that member",
             ),
+        }
+    }
+
+    /// What this connection was granted.
+    fn capabilities(&self, client: ClientId) -> Capabilities {
+        self.connections
+            .get(&client)
+            .map_or(Capabilities::NONE, |connection| connection.capabilities)
+    }
+
+    /// The layer's clock, in the tick the model measures deadlines in.
+    fn now(&self) -> Tick {
+        Tick::new(u64::try_from(self.start.elapsed().as_millis()).unwrap_or(u64::MAX))
+    }
+
+    /// Write every frame the request layer produced, in order.
+    fn deliver(&mut self, deliveries: Vec<Delivery>) {
+        for delivery in deliveries {
+            if let Some(connection) = self.connections.get_mut(&delivery.client) {
+                connection.send(&delivery.envelope);
+            }
+        }
+    }
+
+    /// Publish the slot registry when a claim changed it.
+    ///
+    /// The properties are the schema's `session.slot_*`, and they are written only when
+    /// the value changed: `Graph::set` publishes a diff for every write, so a repeat
+    /// would wake every subscriber for nothing.
+    fn publish_slots(&mut self) {
+        let Some(fields) = self.requests.publication() else {
+            return;
+        };
+        if let Err(error) = self.store.publish_session(&fields) {
+            warn!(%error, "[ipc] the object graph refused a slot publication");
+        }
+    }
+
+    /// `request.claim`: one owner takes an offered request.
+    fn claim_request(&mut self, client: ClientId, envelope: &Envelope) {
+        let request = match wire::read_claim(envelope.payload().unwrap_or(&[])) {
+            Ok(request) => request,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the claim payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        match self.requests.claim_request(client, request) {
+            Ok(deliveries) => {
+                self.reply(client, envelope);
+                self.deliver(deliveries);
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code, &refusal.message),
+        }
+    }
+
+    /// `request.answer`: the provider decided, and here is what it decided.
+    fn answer(&mut self, client: ClientId, envelope: &Envelope) {
+        let (request, answer) = match wire::read_answer(envelope.payload().unwrap_or(&[])) {
+            Ok(answer) => answer,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the answer payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        match self.requests.answer(client, request, answer) {
+            Ok(deliveries) => {
+                self.reply(client, envelope);
+                self.deliver(deliveries);
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code, &refusal.message),
+        }
+    }
+
+    /// `request.decline`: the provider will not answer, which is its own outcome.
+    fn decline(&mut self, client: ClientId, envelope: &Envelope) {
+        let request = match wire::read_decline(envelope.payload().unwrap_or(&[])) {
+            Ok(request) => request,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the decline payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        match self.requests.decline(client, request) {
+            Ok(deliveries) => {
+                self.reply(client, envelope);
+                self.deliver(deliveries);
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code, &refusal.message),
+        }
+    }
+
+    /// `request.offer`: a privileged host asks a provider to decide something.
+    fn offer(&mut self, client: ClientId, envelope: &Envelope) {
+        let (slot, title, message, timeout) = match wire::read_offer(envelope.payload().unwrap_or(&[])) {
+            Ok(offer) => offer,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the offer payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        let deadline = self.now().saturating_add(timeout);
+        match self.requests.offer(client, &slot, &title, &message, deadline) {
+            Ok((request, deliveries)) => {
+                let request = request.get();
+                if let Some(connection) = self.connections.get_mut(&client) {
+                    connection.send(&Envelope::reply(
+                        wire::NAMESPACE,
+                        wire::member::OFFER,
+                        envelope.request_id,
+                        request.to_be_bytes().to_vec(),
+                    ));
+                }
+                self.deliver(deliveries);
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code, &refusal.message),
+        }
+    }
+
+    /// `slot.claim`: a shell takes a slot over, or the services role publishes its own.
+    fn claim_slot(&mut self, client: ClientId, envelope: &Envelope) {
+        let (slot, provider) = match wire::read_slot_claim(envelope.payload().unwrap_or(&[])) {
+            Ok(claim) => claim,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the slot claim payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        let slot = match gnoblin_model::Slot::from_str(&slot) {
+            Ok(slot) => slot,
+            Err(error) => {
+                self.refuse(client, envelope, wire::code::UNKNOWN_SLOT, &error.to_string());
+                return;
+            }
+        };
+        match self.requests.claim_slot(client, slot, provider) {
+            Ok(deliveries) => {
+                self.reply(client, envelope);
+                self.deliver(deliveries);
+                self.publish_slots();
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code, &refusal.message),
+        }
+    }
+
+    /// `slot.release`: the claiming connection gives a slot back.
+    fn release_slot(&mut self, client: ClientId, envelope: &Envelope) {
+        let name = match wire::read_slot_release(envelope.payload().unwrap_or(&[])) {
+            Ok(name) => name,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the slot release payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        let slot = match gnoblin_model::Slot::from_str(&name) {
+            Ok(slot) => slot,
+            Err(error) => {
+                self.refuse(client, envelope, wire::code::UNKNOWN_SLOT, &error.to_string());
+                return;
+            }
+        };
+        match self.requests.release_slot(client, slot) {
+            Ok(deliveries) => {
+                self.reply(client, envelope);
+                self.deliver(deliveries);
+                self.publish_slots();
+            }
+            Err(refusal) => self.refuse(client, envelope, refusal.code, &refusal.message),
+        }
+    }
+
+    /// `config.commit`: the runtime committed a validated document.
+    fn commit(&mut self, client: ClientId, envelope: &Envelope) {
+        let document = match wire::read_config_commit(envelope.payload().unwrap_or(&[])) {
+            Ok(document) => document,
+            Err(reason) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    &format!("the configuration payload did not decode: {reason}"),
+                );
+                return;
+            }
+        };
+        let revision = self.requests.commit(document);
+        info!(
+            revision,
+            "[ipc] the runtime committed a configuration document; it stays in force until the next one"
+        );
+        if let Some(connection) = self.connections.get_mut(&client) {
+            connection.send(&Envelope::reply(
+                wire::NAMESPACE,
+                wire::member::CONFIG_COMMIT,
+                envelope.request_id,
+                revision.to_be_bytes().to_vec(),
+            ));
+        }
+    }
+
+    /// `config.current`: the last document this process accepted.
+    fn configuration(&mut self, client: ClientId, envelope: &Envelope) {
+        let (revision, document) = self.requests.configuration();
+        let payload = wire::configuration_payload(revision, document);
+        if let Some(connection) = self.connections.get_mut(&client) {
+            connection.send(&Envelope::reply(
+                wire::NAMESPACE,
+                wire::member::CONFIG_CURRENT,
+                envelope.request_id,
+                payload,
+            ));
+        }
+    }
+
+    /// Answer a member that succeeded and has nothing to carry.
+    fn reply(&mut self, client: ClientId, envelope: &Envelope) {
+        if let Some(connection) = self.connections.get_mut(&client) {
+            connection.send(&Envelope::reply(
+                wire::NAMESPACE,
+                envelope.member.clone(),
+                envelope.request_id,
+                Vec::new(),
+            ));
         }
     }
 
@@ -631,6 +987,11 @@ impl Dispatcher {
         for subscription in connection.subscriptions {
             self.store.unsubscribe(subscription.id());
         }
+        // What the connection held and offered ends with it: a request whose owner is
+        // gone is nobody's to answer, and one whose host is gone is nobody's to wait
+        // for.
+        let deliveries = self.requests.departed(client);
+        self.deliver(deliveries);
         // A peer that is gone does not need its socket shut down; a peer that is still
         // there is told, so its reader returns instead of waiting for a next frame.
         let _ = connection.writer.shutdown(if shutdown {
@@ -656,6 +1017,18 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> Envelope {
         code,
         message,
     )
+}
+
+/// The capability a member needs, or `None` when every connection may call it.
+///
+/// This is the one table the gate reads, so a privileged member cannot be served
+/// without its capability by omission: the arm that adds a member adds it here.
+fn required_capability(member: &str) -> Option<Capability> {
+    match member {
+        wire::member::OFFER => Some(Capability::OfferRequest),
+        wire::member::CONFIG_COMMIT | wire::member::CONFIG_CURRENT => Some(Capability::CommitConfig),
+        _ => None,
+    }
 }
 
 /// The wire code a model refusal reports.

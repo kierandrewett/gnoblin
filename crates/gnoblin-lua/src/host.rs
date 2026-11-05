@@ -269,6 +269,15 @@ impl<T: Transport + 'static> Host<T> {
         })
     }
 
+    /// The connection, for a role that has a privileged member to send.
+    ///
+    /// A host owns the connection for the mirror, so the one caller that needs to commit a
+    /// document reaches it here rather than constructing a second client on the same
+    /// socket, which would interleave two frame streams.
+    pub fn client_mut(&self) -> std::cell::RefMut<'_, Client<T>> {
+        std::cell::RefMut::map(self.shared.borrow_mut(), |shared| &mut shared.client)
+    }
+
     /// The budgets this host runs under.
     pub fn limits(&self) -> Limits {
         self.limits
@@ -365,7 +374,9 @@ impl<T: Transport + 'static> Host<T> {
             let next = self.shared.borrow_mut().client.next_event();
             match next {
                 Ok(event) => self.dispatch(event, &mut handlers),
-                Err(ClientError::Disconnected) => return Ok(()),
+                // Nothing queued, or the connection ended: either way the drain is
+                // finished and the document is evaluated against the graph as it is.
+                Err(ClientError::Disconnected | ClientError::Idle) => return Ok(()),
                 Err(error) => return Err(HostError::Client(error)),
             }
         }
@@ -413,7 +424,7 @@ impl<T: Transport + 'static> Host<T> {
                     events += 1;
                     self.dispatch(event, &mut handlers);
                 }
-                Err(ClientError::Disconnected) => break,
+                Err(ClientError::Disconnected | ClientError::Idle) => break,
                 Err(error) => return Err(HostError::Client(error)),
             }
         }
@@ -464,7 +475,10 @@ impl<T: Transport + 'static> Host<T> {
             // The runtime offers no requests in this slice: prompts are a later
             // lane, and a request nobody answers fails closed at its deadline in
             // the broker.
-            Event::RequestOffered { .. } | Event::RequestFinished { .. } => {}
+            // The runtime offers no requests in this slice, and it offers none it
+            // would have to answer: prompts and input policy are later lanes, and a
+            // request nobody answers fails closed at its deadline in the broker.
+            Event::RequestOffered { .. } | Event::RequestAnswered { .. } | Event::RequestFinished { .. } => {}
         }
     }
 

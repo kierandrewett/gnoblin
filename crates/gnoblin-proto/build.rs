@@ -30,6 +30,9 @@ use prost::Message as _;
 /// The schema directory, relative to this crate.
 const SCHEMA_DIR: &str = "../gnoblin-schema/schema";
 
+/// The namespace whose version is the IPC version, which is exactly the Gnoblin version.
+const OWN_NAMESPACE: &str = "gnoblin";
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -66,6 +69,17 @@ fn run() -> Result<(), String> {
         fs::write(&path, text).map_err(|error| format!("cannot write {}: {error}", path.display()))?;
         sources.push(path);
     }
+    // The version every IPC peer advertises is the schema's, and the handshake is what
+    // compares it. It is emitted here, once, because this is the crate that already reads
+    // the schema and the crate both sides of a handshake depend on; a literal in each role
+    // would be a second place to forget to bump.
+    let namespace = gnoblin_schema::Namespace::parse(OWN_NAMESPACE)
+        .map_err(|reason| format!("namespace `{OWN_NAMESPACE}`: {reason}"))?;
+    let version = catalog.version(&namespace).ok_or_else(|| {
+        format!("the schema declares no `{OWN_NAMESPACE}` namespace, so there is no IPC version to advertise")
+    })?;
+    println!("cargo:rustc-env=GNOBLIN_IPC_VERSION={version}");
+
     let sensitive = out_dir.join("sensitive.rs");
     fs::write(&sensitive, gnoblin_schema::proto::sensitive_table(&catalog))
         .map_err(|error| format!("cannot write {}: {error}", sensitive.display()))?;

@@ -16,6 +16,7 @@
 //!   depends on which numbers a particular sequence happened to use.
 
 use std::cell::{Ref, RefCell};
+use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::io;
 use std::os::fd::{BorrowedFd, OwnedFd};
@@ -65,6 +66,10 @@ impl Link {
 struct Inner {
     graph: Graph,
     broker: RequestBroker,
+    /// What each offered request is about, so the offer frame carries the
+    /// proposition. The broker owns the state machine and deliberately knows nothing
+    /// about what a request means.
+    propositions: BTreeMap<RequestId, (String, String, String)>,
     version: Version,
     next_owner: u64,
     links: Vec<Link>,
@@ -248,7 +253,12 @@ impl Inner {
                     RequestEvent::Offered { request, deadline } => {
                         let correlation = self.links[index].next_offer;
                         self.links[index].next_offer += 1;
-                        wire::offer(correlation, *request, *deadline)
+                        let (slot, title, message) = self
+                            .propositions
+                            .get(request)
+                            .cloned()
+                            .unwrap_or_else(|| (String::new(), String::new(), String::new()));
+                        wire::offer(correlation, *request, *deadline, &slot, &title, &message)
                     }
                     RequestEvent::Finished { request, outcome } => wire::finished(*request, outcome.into()),
                 };
@@ -314,6 +324,7 @@ impl Server {
             inner: Rc::new(RefCell::new(Inner {
                 graph,
                 broker: RequestBroker::new(),
+                propositions: BTreeMap::new(),
                 version,
                 next_owner: 1,
                 links: Vec::new(),
@@ -393,9 +404,12 @@ impl Server {
     }
 
     /// Offer a request that fails at `deadline`, announcing it to every client.
-    pub fn offer(&mut self, deadline: Tick) -> RequestId {
+    pub fn offer(&mut self, slot: &str, title: &str, message: &str, deadline: Tick) -> RequestId {
         let mut inner = self.inner.borrow_mut();
         let request = inner.broker.offer(deadline);
+        inner
+            .propositions
+            .insert(request, (slot.to_owned(), title.to_owned(), message.to_owned()));
         inner.broadcast_requests();
         request
     }

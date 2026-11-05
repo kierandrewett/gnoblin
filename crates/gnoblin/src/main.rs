@@ -8,11 +8,14 @@
 //!
 //! | role                  | what this build does                                              |
 //! | --------------------- | ----------------------------------------------------------------- |
+//! | none (the guardian)   | supervises the session: starts, restarts and stops every child      |
 //! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
-//! | `--role runtime`      | refused: exit 78, with what it would run                           |
-//! | `--role services`     | refused: exit 78, with what it would run                           |
+//! | `--role runtime`      | runs the Lua host: loads the configuration and serves its handlers |
+//! | `--role services`     | runs the D-Bus agents: polkit, the passphrase prompter and slots   |
 //! | `--role greeter`      | refused: exit 78, with what it would run                           |
-//! | none (the guardian)   | refused: exit 78, with what `gnoblin-session` still needs          |
+//!
+//! The guardian is the default because that is the process a session manager starts: it is
+//! the one that lives for the login, and every other role is a child of it.
 //!
 //! Exit 78 is `EX_CONFIG` from `sysexits.h`: the invocation is well formed and the
 //! process cannot do what it was asked on this build, which a supervisor must
@@ -20,13 +23,14 @@
 //! supervisor that treats 78 as a crash loops forever on a build that will never
 //! serve the role.
 //!
-//! # Why the guardian is not here yet
+//! # Why the guardian's supervisor is in `gnoblin-session`
 //!
-//! `gnoblin-session` holds the guardian's whole policy as a pure state machine: a
-//! [`gnoblin_session::Plan`] of children, [`gnoblin_session::Event`]s in, and
-//! [`gnoblin_session::Effect`]s out. Performing those effects is the missing half, and
-//! it is a process supervisor rather than a line of dispatch — see
-//! [`role::guardian_needs`] for the list this binary prints.
+//! `gnoblin-session` holds the guardian's policy as a pure state machine — a plan of
+//! children, events in, effects out — and its `supervisor` module performs those effects.
+//! The split is deliberate: the policy is replayable and tested without a process, and the
+//! one module that spawns, signals and reads descriptors is named as such. This binary
+//! calls it, because the process that starts the other processes is the one that names
+//! them.
 //!
 //! # Failure modes first
 //!
@@ -98,22 +102,89 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
 fn dispatch(role: role::Role) -> Result<(), Exit> {
     match role {
         role::Role::Compositor => compositor(),
-        role::Role::Guardian => Err(refuse("guardian", &role::guardian_needs())),
-        role::Role::Runtime | role::Role::Services | role::Role::Greeter => {
-            Err(refuse(role.name(), &role::not_implemented(role)))
-        }
+        role::Role::Guardian => guardian(),
+        role::Role::Runtime => runtime(),
+        role::Role::Services => services(),
+        role::Role::Greeter => Err(refuse(role.name(), &role::not_implemented(role))),
     }
 }
 
 /// Runs the compositor in the foreground.
 fn compositor() -> Result<(), Exit> {
-    match gnoblin_compositor::Compositor::run(gnoblin_compositor::Config::default()) {
+    // The guardian hands this process one end of a pair per privileged child. A pair that
+    // cannot be adopted is a refusal rather than a session without it: the child at the
+    // other end would talk into a socket nobody reads.
+    let privileged = match gnoblin_compositor::Privileged::from_environment() {
+        Ok(privileged) => privileged,
+        Err(error) => {
+            eprintln!("gnoblin: compositor: {error}");
+            return Err(Exit(1));
+        }
+    };
+    let config = gnoblin_compositor::Config {
+        privileged,
+        ..gnoblin_compositor::Config::default()
+    };
+    match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {
             eprintln!("gnoblin: compositor: {error}");
             Err(Exit(1))
         }
     }
+}
+
+/// Runs the guardian: the session's supervisor, until the session ends.
+fn guardian() -> Result<(), Exit> {
+    let program = std::env::current_exe().map_err(|error| {
+        eprintln!("gnoblin: guardian: cannot find this executable to start its children: {error}");
+        Exit(1)
+    })?;
+    let config = gnoblin_session::SupervisorConfig::from_environment(program).map_err(|error| {
+        eprintln!("gnoblin: guardian: {error}");
+        Exit(1)
+    })?;
+    match gnoblin_session::run_guardian(config) {
+        Ok(0) => Ok(()),
+        Ok(status) => Err(Exit(status)),
+        Err(error) => {
+            eprintln!("gnoblin: guardian: {error}");
+            Err(Exit(1))
+        }
+    }
+}
+
+/// Runs the runtime: the Lua host, until the session ends.
+///
+/// No signal handler: the guardian's `SIGTERM` ends this process, and a process that has
+/// gone is exactly what the compositor needs to see to release its connection.
+fn runtime() -> Result<(), Exit> {
+    match gnoblin_lua::Role::from_environment().run(never_stopped) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            eprintln!("gnoblin: runtime: {error}");
+            Err(Exit(1))
+        }
+    }
+}
+
+/// Runs the services role: the D-Bus agents, until the session ends.
+fn services() -> Result<(), Exit> {
+    match gnoblin_services::Role::from_environment().run(never_stopped) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            eprintln!("gnoblin: services: {error}");
+            Err(Exit(1))
+        }
+    }
+}
+
+/// The stop condition a role works under when nobody can ask it to stop.
+///
+/// The guardian stops a role by signalling its process group, so a role does not install a
+/// handler: the kernel's default action ends it, and the connection it held closes with it.
+fn never_stopped() -> bool {
+    false
 }
 
 /// Reports a role this build does not serve.
@@ -134,20 +205,21 @@ mod tests {
 
     #[test]
     fn an_unimplemented_role_is_refused_with_ex_config() {
-        for role in ["runtime", "services", "greeter", "guardian"] {
-            let exit = run(["--role", role].map(std::ffi::OsString::from)).expect_err("the role is not implemented");
-            assert_eq!(exit, Exit(NOT_IMPLEMENTED), "`{role}` reports EX_CONFIG");
-        }
+        // The greeter is the one role this build does not serve. Every other name in the
+        // table starts a process, and a test that started one would run a whole session.
+        let exit = run(["--role", "greeter"].map(std::ffi::OsString::from)).expect_err("not implemented");
+        assert_eq!(exit, Exit(NOT_IMPLEMENTED), "`greeter` reports EX_CONFIG");
     }
 
     #[test]
     fn the_guardian_is_the_default_role() {
-        // No flag means the guardian, which is refused for the same documented reason
-        // rather than doing something else quietly.
-        assert_eq!(
-            run(std::iter::empty()).expect_err("not implemented"),
-            Exit(NOT_IMPLEMENTED)
-        );
+        // No flag means the guardian: that is the process a session manager starts, so the
+        // default is the session rather than a usage error. The dispatch is checked through
+        // the role the command line names, because running the guardian would run a session.
+        let matches = super::role::command()
+            .try_get_matches_from(["gnoblin"])
+            .expect("no flag is fine");
+        assert_eq!(super::role::from_matches(&matches), Ok(super::role::Role::Guardian));
     }
 
     #[test]

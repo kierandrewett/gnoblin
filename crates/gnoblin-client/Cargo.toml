@@ -20,5 +20,18 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 # exercised against the real contract rather than a fixture.
 gnoblin-schema = { path = "../gnoblin-schema" }
 
-[lints]
-workspace = true
+# The workspace's lint table with one deliberate difference: `unsafe_code` is `deny`
+# rather than `forbid`.
+#
+# The exception is `src/inherit.rs`, which adopts the inherited descriptor the guardian
+# hands a role child (design/rust-compositor.md, "Process model"). No safe Rust API turns
+# an integer into a descriptor — `OwnedFd` is only ever built from another owner — so the
+# conversion is one `unsafe` block with a `SAFETY` comment in a named module, which is
+# what the workspace `Cargo.toml` describes for a crate that must cross that line. Every
+# other file in the crate, and every other operation on a descriptor here (creating the
+# pair, clearing `FD_CLOEXEC`, signalling a process group), uses `rustix`.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

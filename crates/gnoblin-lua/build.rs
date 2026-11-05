@@ -63,6 +63,15 @@ fn run() -> Result<(), String> {
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
 
     check_reserved(&catalog)?;
+    // The version the runtime advertises in the IPC handshake is the schema's, which is
+    // the version the compositor serves: the two sides are built from one tree, so a
+    // literal here would be a second place to forget to bump.
+    let namespace =
+        Namespace::parse(OWN_NAMESPACE).map_err(|reason| format!("namespace `{OWN_NAMESPACE}`: {reason}"))?;
+    let version = catalog.version(&namespace).ok_or_else(|| {
+        format!("the schema declares no `{OWN_NAMESPACE}` namespace, so there is no IPC version to advertise")
+    })?;
+    println!("cargo:rustc-env=GNOBLIN_IPC_VERSION={version}");
     fs::write(out_dir.join("bindings.rs"), rust_bindings(&catalog))
         .map_err(|error| format!("cannot write bindings.rs: {error}"))?;
     fs::write(out_dir.join("gnoblin.d.lua"), lua_stub(&catalog))

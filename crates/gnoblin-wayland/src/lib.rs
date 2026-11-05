@@ -187,7 +187,9 @@ mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use observation::{ActivationDenial, LockObservation, ObservedLayer, ObservedWindow, Observer, SessionSnapshot};
-pub use server::{Config, ControlHandle, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError};
+pub use server::{
+    Config, ControlHandle, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError,
+};
 pub use state::State;
 pub use xwayland::XwaylandSession;
 

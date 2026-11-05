@@ -5,8 +5,12 @@
 //! `gnoblin-model`, never on an engine crate: the role runs in its own process
 //! beside the compositor, exactly as the plan's dependency rules require.
 //!
-//! Two things live here so far, and the rest of the role arrives with its own slots:
+//! Three things live here so far, and the rest of the role arrives with its own slots:
 //!
+//! - [`role`], the role itself: it adopts the privileged connection the guardian passed,
+//!   claims the slots the plan gives it a default for, serves the polkit agent and the gcr
+//!   prompter when their buses and names are available, and declines an offer it cannot draw
+//!   instead of letting it wait for a deadline.
 //! - [`slot`], the slot registry. Every optional capability is a slot with one
 //!   provider ([`Slot`]), the plan's default is the services role's for three of them
 //!   and nobody's for `prompt.secret`, and the state is published as the `session`
@@ -63,9 +67,11 @@
 
 pub mod agent;
 pub mod polkit;
+pub mod role;
 pub mod slot;
 pub mod subject;
 
 pub use agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Proposition, Refusal};
 pub use polkit::Polkit;
+pub use role::{Buses, Host, Role, RoleError};
 pub use slot::{ClaimError, Provider, Slot, Slots, UnknownSlot};

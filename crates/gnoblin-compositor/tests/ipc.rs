@@ -150,7 +150,9 @@ fn a_window_object_outlives_its_surface_only_until_the_surface_ends() {
             match client.next_event().expect("an observation") {
                 gnoblin_client::Event::Model(Observation::Closed { object, .. }) => return Some(object),
                 gnoblin_client::Event::Model(_) => {}
-                gnoblin_client::Event::RequestOffered { .. } | gnoblin_client::Event::RequestFinished { .. } => {}
+                gnoblin_client::Event::RequestOffered { .. }
+                | gnoblin_client::Event::RequestAnswered { .. }
+                | gnoblin_client::Event::RequestFinished { .. } => {}
             }
         }
     });
@@ -242,7 +244,9 @@ fn focus_completes_after_the_diff_it_caused() {
                 break;
             }
             gnoblin_client::Event::Model(_) => {}
-            gnoblin_client::Event::RequestOffered { .. } | gnoblin_client::Event::RequestFinished { .. } => {}
+            gnoblin_client::Event::RequestOffered { .. }
+            | gnoblin_client::Event::RequestAnswered { .. }
+            | gnoblin_client::Event::RequestFinished { .. } => {}
         }
     }
     assert!(

@@ -33,6 +33,10 @@ fn window_properties(title: &str) -> Fields {
     properties.insert(TITLE.to_owned(), Value::Text(title.to_owned()));
     properties.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
     properties.insert("focused".to_owned(), Value::Bool(false));
+    properties.insert("x".to_owned(), Value::Int(0));
+    properties.insert("y".to_owned(), Value::Int(0));
+    properties.insert("width".to_owned(), Value::Uint(200));
+    properties.insert("height".to_owned(), Value::Uint(150));
     properties
 }
 
@@ -132,15 +136,29 @@ fn an_operation_is_delivered_exactly_once() {
 #[test]
 fn an_answer_after_the_finish_is_refused() {
     let (mut server, mut client) = pair();
-    let request = server.offer(Tick::new(1_000));
+    let request = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(1_000),
+    );
 
     match client.next_event().expect("the offer arrives") {
         Event::RequestOffered {
             request: offered,
             deadline,
+            slot,
+            title,
+            message,
         } => {
             assert_eq!(offered, request);
             assert_eq!(deadline, Tick::new(1_000));
+            // The proposition travels with the offer, because the schema's `request`
+            // object carries only the identity and the deadline and a provider that
+            // had to ask what a request is about could not draw anything.
+            assert_eq!(slot, "auth.polkit");
+            assert_eq!(title, "Authentication required");
+            assert_eq!(message, "Authenticate to continue");
         }
         other => panic!("expected an offer, got {other:?}"),
     }
@@ -174,7 +192,12 @@ fn an_answer_after_the_finish_is_refused() {
 fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
     let (mut server, mut client) = pair();
 
-    let answered = server.offer(Tick::new(1_000));
+    let answered = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(1_000),
+    );
     assert!(
         matches!(client.next_event().expect("the offer arrives"), Event::RequestOffered { request, .. } if request == answered)
     );
@@ -193,7 +216,12 @@ fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
         } if request == answered
     ));
 
-    let ended = server.offer(Tick::new(1_000));
+    let ended = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(1_000),
+    );
     assert!(
         matches!(client.next_event().expect("the second offer arrives"), Event::RequestOffered { request, .. } if request == ended)
     );
@@ -218,7 +246,12 @@ fn two_clients_cannot_claim_one_request() {
     let mut server = Server::new(graph(), VERSION);
     let mut first = server.connect(VERSION).expect("the versions match");
     let mut second = server.connect(VERSION).expect("the versions match");
-    let request = server.offer(Tick::new(1_000));
+    let request = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(1_000),
+    );
 
     for client in [&mut first, &mut second] {
         assert!(
@@ -346,7 +379,12 @@ fn a_dead_object_is_refused_with_its_own_code() {
 #[test]
 fn an_unanswered_request_times_out_and_the_client_learns_it() {
     let (mut server, mut client) = pair();
-    let request = server.offer(Tick::new(10));
+    let request = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(10),
+    );
     assert!(matches!(
         client.next_event().expect("the offer arrives"),
         Event::RequestOffered { request: offered, .. } if offered == request
@@ -380,8 +418,18 @@ fn an_empty_answer_is_not_an_ended_request() {
     // The first is consent the caller acts on, the second a refusal, so this pins the
     // encoding and the outcome apart for the whole round trip.
     let (mut server, mut client) = pair();
-    let answered = server.offer(Tick::new(500));
-    let ended = server.offer(Tick::new(500));
+    let answered = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(500),
+    );
+    let ended = server.offer(
+        "auth.polkit",
+        "Authentication required",
+        "Authenticate to continue",
+        Tick::new(500),
+    );
     for _ in 0..2 {
         assert!(matches!(
             client.next_event().expect("every offer reaches the client"),

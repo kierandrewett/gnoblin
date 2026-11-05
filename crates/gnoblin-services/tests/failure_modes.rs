@@ -81,7 +81,16 @@ fn no_provider_fails_closed_and_names_the_slot() {
         .expect("no shell holds the slot");
 
     let refusal = agent.begin(request("c1"), Tick::new(15)).expect_err("no provider");
-    assert_eq!(refusal, Refusal::NoProvider { slot: Slot::AuthPolkit });
+    assert!(
+        matches!(
+            refusal,
+            Refusal::NoProvider {
+                slot: Slot::AuthPolkit,
+                ..
+            }
+        ),
+        "{refusal:?}"
+    );
     assert!(
         refusal.to_string().contains("auth.polkit"),
         "the error names the slot: {refusal}"

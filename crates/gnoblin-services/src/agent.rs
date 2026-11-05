@@ -198,6 +198,8 @@ pub enum Refusal {
     NoProvider {
         /// The slot with no provider.
         slot: Slot,
+        /// What the compositor said, which is the detail a log keeps.
+        reason: String,
     },
     /// A claim or a release was refused by the registry.
     Claim(ClaimError),
@@ -219,13 +221,21 @@ pub enum Refusal {
         /// What polkitd or the bus said.
         reason: String,
     },
+    /// The offer could not be delivered: the privileged connection refused it or ended.
+    ///
+    /// This is not a policy answer, so it is separate from [`Refusal::NoProvider`]: the
+    /// slot has a provider, and the compositor never heard about the request.
+    Connection {
+        /// What the connection said.
+        reason: String,
+    },
 }
 
 impl Refusal {
     /// The slot this refusal is about, when it is about one.
     pub fn slot(&self) -> Option<Slot> {
         match self {
-            Refusal::NoProvider { slot } => Some(*slot),
+            Refusal::NoProvider { slot, .. } => Some(*slot),
             Refusal::Claim(ClaimError::Held { slot, .. })
             | Refusal::Claim(ClaimError::NotHolder { slot })
             | Refusal::Claim(ClaimError::TakenOver { slot }) => Some(*slot),
@@ -237,9 +247,9 @@ impl Refusal {
 impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Refusal::NoProvider { slot } => write!(
+            Refusal::NoProvider { slot, reason } => write!(
                 formatter,
-                "no provider claims the `{slot}` slot, so the request was not offered"
+                "no provider claims the `{slot}` slot, so the request was not offered: {reason}"
             ),
             Refusal::Claim(error) => write!(formatter, "{error}"),
             Refusal::UnknownRequest { request } => {
@@ -248,6 +258,9 @@ impl fmt::Display for Refusal {
             Refusal::Finished { request } => write!(formatter, "request {} already ended", request.get()),
             Refusal::AlreadyRegistered => formatter.write_str("an authentication agent is already registered"),
             Refusal::Registration { reason } => write!(formatter, "polkitd refused the registration: {reason}"),
+            Refusal::Connection { reason } => {
+                write!(formatter, "the privileged connection refused the offer: {reason}")
+            }
         }
     }
 }
@@ -351,7 +364,10 @@ impl<O: Offerer> Agent<O> {
     pub fn begin(&mut self, request: PolkitRequest, deadline: Tick) -> Result<Offered, Refusal> {
         let slot = Slot::AuthPolkit;
         if !self.slots.provider(slot).is_present() {
-            return Err(Refusal::NoProvider { slot });
+            return Err(Refusal::NoProvider {
+                slot,
+                reason: "this agent refuses before offering when the slot has no provider".to_owned(),
+            });
         }
         let proposition = Proposition::new(request.clone());
         let offered = self.offerer.offer(&proposition, deadline)?;

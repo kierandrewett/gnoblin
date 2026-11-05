@@ -14,9 +14,24 @@ gnoblin-client = { path = "../gnoblin-client" }
 # The request vocabulary the answer travels in: `Answer`, `RequestOutcome`, the
 # schema-addressed `Fields`, and the `Tick` a deadline is measured in.
 gnoblin-model = { path = "../gnoblin-model" }
+# The primitives the role loop names: the tick a deadline is measured in.
 gnoblin-types = { path = "../gnoblin-types" }
-# The polkit authentication agent is a D-Bus object on the system bus.
+# The version the handshake advertises is the schema's, and the wire crate is where both
+# sides of a handshake read it from.
+gnoblin-proto = { path = "../gnoblin-proto" }
+# The polkit authentication agent is a D-Bus object on the system bus, and the gcr
+# prompter is one on the session bus.
 zbus.workspace = true
+# The adapter that turns a gcr prompt into a `prompt.secret` request. The role table in
+# design/rust-compositor.md puts the passphrase prompter in this role, so this is the
+# process that serves it; `xtask/src/deps.rs`'s `compat_host` rule allows exactly the
+# binaries that do.
+gnoblin-compat-gnome-keyring-prompter = { path = "../compat/gnoblin-compat-gnome-keyring-prompter" }
+# The support matrix and mode gate every compat adapter is admitted through.
+gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
+# One blocking wait per bus registration and one for the prompter's effect loop: the role
+# has no async runtime of its own, and `zbus` runs its connection on its own thread.
+futures-lite.workspace = true
 # Every refusal, cancellation and registration is logged once, and never with the
 # material of an answer.
 tracing.workspace = true
@@ -28,11 +43,10 @@ futures-channel.workspace = true
 # The tests build the graph from the checked-in schema, so the slot property names
 # this crate publishes are checked against the contract rather than a fixture.
 gnoblin-schema = { path = "../gnoblin-schema" }
-# The private bus the D-Bus tests start for themselves, and the loopback IPC pair.
-gnoblin-proto = { path = "../gnoblin-proto" }
-# The tests run a served connection and its caller on one thread, which needs a
-# `join` and a yield rather than a runtime of their own.
-futures-lite.workspace = true
+# The private bus the D-Bus tests start for themselves.
+# The role test serves a real socketpair, so the shipped loop is exercised rather
+# than a copy of it.
+tempfile = "3.23.0"
 
 [lints]
 workspace = true

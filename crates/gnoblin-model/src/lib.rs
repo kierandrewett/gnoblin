@@ -31,7 +31,8 @@
 //!   the pending [`Operation`]s.
 //! - [`Subscription`]s, the snapshot-then-diffs rule.
 //! - [`RequestBroker`], the offered → claimed → finished state machine whose
-//!   timeout is fail closed.
+//!   timeout is fail closed, and the [`Slot`] registry that says which provider a
+//!   request is offered to.
 //!
 //! The vocabulary is the schema's, not this crate's: object types, properties,
 //! methods, signals and error codes come from [`gnoblin_schema::Catalog`], and a
@@ -83,6 +84,7 @@ mod graph;
 mod object;
 mod operation;
 mod request;
+mod slot;
 mod types;
 mod value;
 
@@ -91,6 +93,7 @@ pub use graph::{Filter, Graph, OBJECT_GONE, ObjectView, Observation, Snapshot, S
 pub use object::Object;
 pub use operation::{Operation, OperationOutcome};
 pub use request::{RequestBroker, RequestCompletion, RequestEvent, RequestOutcome, RequestState};
+pub use slot::{ClaimError, Provider, Slot, Slots, UnknownSlot};
 pub use types::TypeKey;
 pub use value::{Fields, Value};
 

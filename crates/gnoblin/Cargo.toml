@@ -16,10 +16,15 @@ path = "src/main.rs"
 # because a binary that reached into an engine crate would be a second composition
 # root.
 gnoblin-compositor = { path = "../gnoblin-compositor" }
-# The guardian's policy: the plan of children, the events it answers and the effects
-# the caller performs. The role that performs them is not implemented in this build,
-# and this dependency is what lets the binary say exactly what it is missing.
+# The guardian: the plan of children, the events it answers, the effects it returns and
+# the supervisor that performs them. The guardian role is this crate's, because the
+# process that starts the other processes is the one that names them.
 gnoblin-session = { path = "../gnoblin-session" }
+# The runtime role: the Lua host as its own process (D1). A role entry point, not an
+# engine: the binary hands it the inherited connection and stays out of the way.
+gnoblin-lua = { path = "../gnoblin-lua" }
+# The services role: the D-Bus agents as their own process.
+gnoblin-services = { path = "../gnoblin-services" }
 # The role flag. One flag with a documented default, and `--version`.
 clap.workspace = true
 
@@ -30,3 +35,9 @@ workspace = true
 # The tests run the built binary, so the exit codes and the flags are the shipped
 # ones rather than a function that happens to share their names.
 tempfile = "3.23.0"
+# The guardian tests ask the session what it serves through the real command line client,
+# and read the version the compositor advertises from the crate that serves it.
+gnoblinctl = { path = "../gnoblinctl" }
+gnoblin-compositor = { path = "../gnoblin-compositor" }
+# A test kills a child the way a crash does, which is one signal to one process group.
+rustix = { workspace = true, features = ["process"] }

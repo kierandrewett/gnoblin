@@ -2,9 +2,11 @@
 //!
 //! These tests run `gnoblin` itself, so what they check is the process a supervisor
 //! starts: the exit code it sees, the standard error it logs and the flags `--help`
-//! promises. A role this build does not serve is the case that matters most — a
-//! supervisor that mistook the refusal for a crash would restart a process that can
-//! never do the work.
+//! promises. A role this build does not serve is the case that matters most — a supervisor
+//! that mistook the refusal for a crash would restart a process that can never do the work.
+//!
+//! The roles that do run are `tests/guardian.rs`'s: a session is processes, so it is tested
+//! as processes rather than as a function call.
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::process::{Command, Output};
@@ -41,24 +43,18 @@ fn private_directory() -> TempDir {
 
 #[test]
 fn an_unimplemented_role_exits_78() {
-    for role in ["guardian", "runtime", "services", "greeter"] {
-        let output = gnoblin(&["--role", role]);
-        assert_eq!(code(&output), 78, "`{role}` reports EX_CONFIG: {}", stderr(&output));
-        assert!(stdout(&output).is_empty(), "nothing on standard output");
-        let message = stderr(&output);
-        assert!(
-            message.contains(&format!("the {role} role is not implemented in this build")),
-            "{message}"
-        );
-        assert!(message.contains("needs:"), "the refusal says what it needs: {message}");
-    }
-}
-
-#[test]
-fn the_default_role_is_the_guardian() {
-    let output = gnoblin(&[]);
-    assert_eq!(code(&output), 78);
-    assert!(stderr(&output).contains("the guardian role"), "{}", stderr(&output));
+    // The greeter is the one role this build does not serve: bsm's extension namespace is
+    // not implemented, and a session manager that mistook the refusal for a crash would
+    // restart it for ever.
+    let output = gnoblin(&["--role", "greeter"]);
+    assert_eq!(code(&output), 78, "`greeter` reports EX_CONFIG: {}", stderr(&output));
+    assert!(stdout(&output).is_empty(), "nothing on standard output");
+    let message = stderr(&output);
+    assert!(
+        message.contains("the greeter role is not implemented in this build"),
+        "{message}"
+    );
+    assert!(message.contains("needs:"), "the refusal says what it needs: {message}");
 }
 
 #[test]
