@@ -119,6 +119,11 @@ naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
 # 0.16 the pinned Smithay revision depends on, so the two cannot resolve to
 # different contexts.
 glow = "0.16"
+# The immediate-mode toolkit of the built-in portal dialogs and the recovery overlay
+# (D5, D19). Default features off: the core is pure math and tessellation, which the
+# headless renderer reads. `default_fonts` bundles the UI font so text renders
+# without a font lookup.
+egui = { version = "0.37.0", default-features = false, features = ["default_fonts"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.140"
 # The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).
