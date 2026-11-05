@@ -26,7 +26,7 @@ use gnoblin_client::Transport as ClientTransport;
 use gnoblin_client::{Client, HandshakeError, Loopback, Server};
 use gnoblin_model::{ErrorCode, Fields, Graph, ObjectId, OperationOutcome, TypeKey, Value};
 use gnoblin_proto::Transport as WireTransport;
-use gnoblin_proto::{CodecError, Envelope, Handshake, Version, write_frame};
+use gnoblin_proto::{CodecError, Envelope, Grant, Handshake, Version, write_frame};
 use gnoblin_schema::Catalog;
 
 use gnoblinctl::{ConnectFailure, Connection, SocketConnection, UnixTransport};
@@ -130,6 +130,10 @@ impl ClientTransport for Stepping {
 
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {
         self.link.receive_handshake()
+    }
+
+    fn receive_grants(&mut self) -> Result<Vec<Grant>, HandshakeError> {
+        self.link.receive_grants()
     }
 }
 
@@ -333,11 +337,13 @@ fn an_error_response_exits_1() {
     let listener = UnixListener::bind(&path).expect("a listener in the temporary directory");
     let server = thread::spawn(move || {
         let (stream, _) = listener.accept().expect("one client");
+        let mut grants_writer = stream.try_clone().expect("a duplicated socket");
         let mut transport = UnixTransport::from_stream(stream).expect("a transport");
         let hello = transport.receive_handshake().expect("the client says hello");
         transport
             .send_handshake(&Handshake::accept(hello.version))
             .expect("the handshake is answered");
+        gnoblin_proto::write_grants(&mut grants_writer, &[]).expect("the grants frame after the accept");
         let request = transport
             .receive(&mut Vec::new())
             .expect("one request")

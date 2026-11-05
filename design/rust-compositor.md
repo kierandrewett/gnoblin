@@ -319,10 +319,17 @@ surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
   client built against version A when its own version B is at least A and
   SemVer-compatible with it, using Cargo's caret rule: the leftmost non-zero
   part matches. Otherwise it refuses with an error that names both versions.
-  After the fixed accept frame, the compositor sends a mandatory Grants frame.
-  It lists the connection's capability set and each extension the connection is
-  granted, with that extension's version (Option B). The socket name carries no
-  version.
+  After the fixed accept frame, the compositor sends a mandatory Grants frame
+  before any other frame: a u32 big-endian length, a u16 entry count, then per
+  entry the namespace (u8 length, then UTF-8) and its major, minor and patch
+  versions as u32s. It lists each extension the connection is granted, with that
+  extension's version, and is empty when none are granted. The socket name carries
+  no version.
+- **Grants failures:** each is a named error on both encode and decode. More
+  than 64 entries; a namespace that is empty, longer than 128 bytes, not UTF-8,
+  or contains a space or control character; a duplicate namespace; a body that
+  ends inside an entry or before its count; bytes after the last entry; a body
+  over the length cap. A refused accept sends no Grants frame.
 - **Breaking changes:** a release that removes or reshapes a released member
   bumps the leftmost non-zero part (0.2.4 to 0.3.0, or 1.4.2 to 2.0.0). The
   compatibility report in CI enforces this.

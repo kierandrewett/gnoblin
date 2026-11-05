@@ -18,7 +18,9 @@
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 
-use gnoblin_proto::{Envelope, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, MAGIC, MAX_FRAME_LEN};
+use gnoblin_proto::{
+    Envelope, Grant, HANDSHAKE_LEN, Handshake, HandshakeKind, Kind, MAGIC, MAX_FRAME_LEN, read_grants,
+};
 use prost::Message as _;
 
 use crate::cli::DumpSource;
@@ -50,6 +52,11 @@ fn dump(source: &DumpSource, out: &mut dyn Write) -> Result<(), String> {
             let handshake = read_handshake(&mut stream, prefix)?;
             writeln!(out, "handshake {} {}", kind_text(handshake.kind), handshake.version)
                 .map_err(|error| format!("cannot write the dump: {error}"))?;
+            if handshake.kind == HandshakeKind::Accept {
+                let grants =
+                    read_grants(&mut stream).map_err(|error| format!("the grants frame did not decode: {error}"))?;
+                write_grants_dump(out, &grants)?;
+            }
             continue;
         }
         let envelope = read_envelope(&mut stream, prefix, frames)?;
@@ -102,6 +109,18 @@ fn read_handshake(stream: &mut impl Read, prefix: [u8; 4]) -> Result<Handshake, 
     frame[..4].copy_from_slice(&prefix);
     read_exactly(stream, &mut frame[4..])?;
     Handshake::decode(&frame).map_err(|error| format!("the handshake frame did not decode: {error}"))
+}
+
+/// The grants frame after an accept: one line per granted namespace, or `grants none`.
+fn write_grants_dump(out: &mut dyn Write, grants: &[Grant]) -> Result<(), String> {
+    if grants.is_empty() {
+        return writeln!(out, "grants none").map_err(|error| format!("cannot write the dump: {error}"));
+    }
+    for grant in grants {
+        writeln!(out, "grant {} {}", grant.namespace, grant.version)
+            .map_err(|error| format!("cannot write the dump: {error}"))?;
+    }
+    Ok(())
 }
 
 /// One length-prefixed envelope.

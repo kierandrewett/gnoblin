@@ -114,6 +114,7 @@
 mod bindings;
 mod configure;
 mod error;
+mod extensions;
 mod glob;
 mod host;
 pub mod layout;
@@ -125,6 +126,7 @@ pub mod role;
 
 pub use bindings::{stub, write_stub};
 pub use error::{HostError, ScriptError};
+pub use extensions::{ExtensionRegistry, RegistryError};
 /// How the runtime role reads its environment, re-exported from the client that reads a
 /// descriptor out of one.
 pub use gnoblin_client::Environment;

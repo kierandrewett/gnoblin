@@ -40,6 +40,7 @@ use mlua::prelude::LuaChunkMode;
 use mlua::{Error, Lua};
 
 use crate::error::{HostError, ScriptError};
+use crate::extensions::ExtensionRegistry;
 use crate::loader::{self, Resolution};
 use gnoblin_lua_sandbox::{Guard, Limits, Profile};
 
@@ -237,7 +238,25 @@ impl<T: Transport + 'static> Host<T> {
     ///
     /// The subscription happens here, before any script runs, so a property read
     /// is never an empty mirror because of start-up order.
-    pub fn new(mut client: Client<T>, limits: Limits) -> Result<Host<T>, HostError> {
+    pub fn new(client: Client<T>, limits: Limits) -> Result<Host<T>, HostError> {
+        Host::with_extensions(client, limits, &ExtensionRegistry::new())
+    }
+
+    /// Connect the host to a live graph, with the extension namespaces it has loaded.
+    ///
+    /// `require` answers only for a namespace that is loaded here and granted to this
+    /// connection by the compositor. A loaded namespace that was not granted is refused
+    /// by name, and a namespace that is not loaded is an unknown module.
+    pub fn with_extensions(
+        mut client: Client<T>,
+        limits: Limits,
+        extensions: &ExtensionRegistry,
+    ) -> Result<Host<T>, HostError> {
+        let granted: BTreeSet<String> = client
+            .granted_extensions()
+            .iter()
+            .map(|grant| grant.namespace.clone())
+            .collect();
         let snapshot = client.subscribe(Filter::All).map_err(HostError::Subscribe)?;
         let mirror: BTreeMap<ObjectId, ObjectView> = snapshot
             .objects()
@@ -264,7 +283,15 @@ impl<T: Transport + 'static> Host<T> {
             reported: BTreeSet::new(),
             reports: Vec::new(),
         }));
-        crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
+        crate::bindings::install(
+            &lua,
+            Rc::clone(&shared),
+            Rc::clone(&guard),
+            limits,
+            extensions,
+            &granted,
+        )
+        .map_err(HostError::Sandbox)?;
         Ok(Host {
             lua,
             shared,

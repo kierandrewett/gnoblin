@@ -54,3 +54,8 @@ wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 gnoblinctl = { path = "../gnoblinctl" }
 # A temporary directory for the two sockets, so a test run touches no shared path.
 tempfile = "3.23.0"
+# The Lua host the grants end-to-end test drives: a granted socket feeds its
+# `require` gate, the same way the runtime role does.
+gnoblin-lua = { path = "../gnoblin-lua" }
+# The configuration search paths the Lua host is pointed at.
+gnoblin-config = { path = "../gnoblin-config" }
