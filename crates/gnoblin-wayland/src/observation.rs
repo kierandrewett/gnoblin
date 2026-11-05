@@ -129,6 +129,8 @@ pub struct SessionSnapshot {
     pub(crate) workspaces: Vec<ObservedWorkspace>,
     /// Every output the session presents on: its connector name and its default layout.
     pub(crate) output_layouts: Vec<ObservedOutput>,
+    /// The logical rectangle each output occupies, so a reader can map a layout point onto it.
+    pub(crate) output_rects: Vec<(OutputId, Rect)>,
     /// Each workspace whose last layout run failed, with the reason it failed.
     pub(crate) layout_failures: Vec<(WorkspaceId, &'static str)>,
     pub(crate) focus: Option<WindowId>,
@@ -215,6 +217,15 @@ impl SessionSnapshot {
     #[must_use]
     pub fn output_layouts(&self) -> &[ObservedOutput] {
         &self.output_layouts
+    }
+
+    /// The logical rectangle an output occupies, if the session presents on it.
+    #[must_use]
+    pub fn output_rect(&self, output: OutputId) -> Option<Rect> {
+        self.output_rects
+            .iter()
+            .find(|(id, _)| *id == output)
+            .map(|(_, rect)| *rect)
     }
 
     /// The reason each workspace's last layout run failed.
@@ -330,6 +341,7 @@ impl SessionSnapshot {
             outputs,
             workspaces: Vec::new(),
             output_layouts: Vec::new(),
+            output_rects: Vec::new(),
             layout_failures: Vec::new(),
             focus,
             lock: LockObservation::default(),

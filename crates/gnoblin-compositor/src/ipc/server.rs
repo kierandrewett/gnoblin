@@ -632,6 +632,7 @@ impl Dispatcher {
                     let expired = self.requests.tick(now);
                     let replies = self.portal.tick(now);
                     self.deliver_replies(replies);
+                    self.pump_portal();
                     self.publish_slots();
                     self.deliver(expired);
                     self.flush();
@@ -1396,6 +1397,28 @@ impl Dispatcher {
         if let Some(connection) = self.connections.get_mut(&client) {
             connection.send(&refusal(envelope, code, message));
         }
+    }
+
+    /// Routes the modal events the session queued and shows or clears the dialog
+    /// modal. The dialog sits on the primary output and follows the session lock.
+    fn pump_portal(&mut self) {
+        if !self.portal.wants_pump() {
+            return;
+        }
+        let snapshot = match self.observation.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let output = snapshot
+            .outputs()
+            .first()
+            .and_then(|id| snapshot.output_rect(*id).map(|rect| (*id, rect)));
+        let events = self.control.modal_events().unwrap_or_default();
+        let scene = self.portal.pump(output, snapshot.lock_active(), &events);
+        if let Some(modal) = scene.modal {
+            self.control.set_modal(modal);
+        }
+        self.deliver_replies(scene.replies);
     }
 
     /// Applies the session's current snapshot to the graph.

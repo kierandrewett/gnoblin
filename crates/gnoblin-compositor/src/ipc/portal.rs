@@ -25,10 +25,12 @@
 //! - Admission refused by the queue or the lock: settles `error(busy|locked)` to the
 //!   submitter, not a refusal, so the requester learns the verdict it waits for.
 
+use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_client::wire::{self, PortalRequest};
 use gnoblin_diag::portal::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_proto::Envelope;
-use gnoblin_types::{ClientId, RequestId, Tick};
+use gnoblin_types::{ClientId, KeyState, OutputId, Rect, RequestId, Size, Tick};
+use gnoblin_wayland::{Modal, ModalEvent};
 
 use crate::portal::{CancelReason, PortalError, PortalUi, Verdict};
 
@@ -64,6 +66,8 @@ struct HeldRequest {
 pub struct PortalService {
     ui: PortalUi,
     owners: Vec<HeldRequest>,
+    /// The output the dialog modal is shown on, while one is shown.
+    shown: Option<OutputId>,
 }
 
 impl Default for PortalService {
@@ -78,6 +82,7 @@ impl PortalService {
         Self {
             ui: PortalUi::new(FRAME_WIDTH, FRAME_HEIGHT),
             owners: Vec::new(),
+            shown: None,
         }
     }
 
@@ -175,12 +180,17 @@ impl PortalService {
     }
 
     /// The session lock changed. Locking settles every held request `error(locked)`.
-    /// No session-lock state source feeds this yet (a documented follow-up), so the
-    /// lock path is exercised by this module's unit tests only.
-    #[allow(dead_code, reason = "no lock-state source yet; exercised by unit tests")]
+    /// `pump` feeds it from the lock state each tick.
     pub fn set_locked(&mut self, locked: bool) -> Vec<Reply> {
         self.ui.set_locked(locked);
         self.settle()
+    }
+
+    /// Whether the dialog modal needs routing: a dialog is open, or one is still
+    /// shown and must be cleared. Otherwise the compositor need not drain events.
+    #[must_use]
+    pub fn wants_pump(&self) -> bool {
+        self.shown.is_some() || self.ui.active_request().is_some()
     }
 
     /// Withdraws every request `client` holds from the UI. Returns whether it held any.
@@ -264,10 +274,153 @@ fn parse_key(name: &str) -> Option<ScreenKey> {
     })
 }
 
+/// The dialog key an evdev keycode stands for, or `None` for a key the dialog does
+/// not use. Shift is not a dialog key, and Shift+Tab reaches the dialog as Tab: the
+/// consent grammar has no reverse focus step.
+#[must_use]
+pub fn screen_key(keycode: u32) -> Option<ScreenKey> {
+    Some(match keycode {
+        1 => ScreenKey::Escape,
+        14 => ScreenKey::Backspace,
+        15 => ScreenKey::Tab,
+        28 | 96 => ScreenKey::Enter,
+        57 => ScreenKey::Space,
+        103 => ScreenKey::Up,
+        108 => ScreenKey::Down,
+        _ => return None,
+    })
+}
+
+/// The evdev code of the left mouse button. Only it answers the dialog.
+const BTN_LEFT: u32 = 0x110;
+
+/// One axis of a centred placement: a frame of `frame` pixels at the middle of
+/// `extent`, starting at `origin`. A frame larger than the extent sits at `origin`.
+fn centred(origin: i32, extent: u32, frame: u32) -> i32 {
+    let offset = extent.saturating_sub(frame) / 2;
+    origin.saturating_add(i32::try_from(offset).unwrap_or(i32::MAX))
+}
+
+/// Where the dialog frame sits on an output: centred, and never past the output's
+/// top left corner.
+#[must_use]
+pub fn dialog_placement(output: Rect, frame_width: u32, frame_height: u32) -> Rect {
+    Rect::new(
+        centred(output.x, output.width, frame_width),
+        centred(output.y, output.height, frame_height),
+        frame_width,
+        frame_height,
+    )
+}
+
+/// The frame pixel under a layout point, or `None` when the point lies outside the
+/// placed dialog. The result is in `0..frame` on each axis.
+#[must_use]
+pub fn frame_point(placement: Rect, x: f64, y: f64) -> Option<(f32, f32)> {
+    let left = f64::from(placement.x);
+    let top = f64::from(placement.y);
+    let right = left + f64::from(placement.width);
+    let bottom = top + f64::from(placement.height);
+    if x < left || y < top || x >= right || y >= bottom {
+        return None;
+    }
+    Some(((x - left) as f32, (y - top) as f32))
+}
+
+/// What one pump changes on the compositor.
+#[derive(Default)]
+pub struct PortalScene {
+    /// `Some(Some(modal))` shows the dialog, `Some(None)` clears it, and `None`
+    /// leaves the modal as it is.
+    pub modal: Option<Option<Modal>>,
+    /// Replies the dispatcher writes.
+    pub replies: Vec<Reply>,
+}
+
+impl PortalService {
+    /// Routes the modal events the compositor queued and says what the modal must
+    /// show now. The dialog is drawn centred on `output` while it is open. Keys and
+    /// left clicks go to the dialog; a click outside it is swallowed. The caller ticks
+    /// the clock first, so a deadline that passed has already settled.
+    pub fn pump(&mut self, output: Option<(OutputId, Rect)>, locked: bool, events: &[ModalEvent]) -> PortalScene {
+        if locked {
+            let replies = self.set_locked(true);
+            return PortalScene {
+                modal: self.clear_modal(),
+                replies,
+            };
+        }
+        let placement = self.placement(output);
+        for event in events {
+            self.route(event, placement);
+        }
+        let replies = self.settle();
+        let modal = match (output, placement) {
+            (Some((output_id, _)), Some(placement)) => self.frame_modal(output_id, placement),
+            _ => self.clear_modal(),
+        };
+        PortalScene { modal, replies }
+    }
+
+    /// The rectangle the open dialog's frame sits at on `output`, or `None` when no
+    /// dialog is open.
+    fn placement(&self, output: Option<(OutputId, Rect)>) -> Option<Rect> {
+        let (_, rect) = output?;
+        self.ui.active_request()?;
+        let (width, height) = self.ui.size();
+        let width = u32::try_from(width).ok()?;
+        let height = u32::try_from(height).ok()?;
+        Some(dialog_placement(rect, width, height))
+    }
+
+    fn route(&mut self, event: &ModalEvent, placement: Option<Rect>) {
+        match *event {
+            ModalEvent::Key { keycode, state } => {
+                if state == KeyState::Pressed
+                    && let Some(key) = screen_key(keycode)
+                {
+                    self.ui.key(key, false);
+                }
+            }
+            ModalEvent::PointerButton { x, y, button, state } => {
+                if button != BTN_LEFT {
+                    return;
+                }
+                let Some(placement) = placement else {
+                    return;
+                };
+                let Some((fx, fy)) = frame_point(placement, x, y) else {
+                    return;
+                };
+                match state {
+                    KeyState::Pressed => self.ui.pointer_press(fx, fy),
+                    KeyState::Released => self.ui.pointer_release(fx, fy),
+                }
+            }
+        }
+    }
+
+    /// Takes the frame the dialog just drew, if its pixels changed, and wraps it as the
+    /// modal. `None` when nothing changed, so the modal stays as it is.
+    fn frame_modal(&mut self, output: OutputId, placement: Rect) -> Option<Option<Modal>> {
+        let frame = self.ui.take_frame()?;
+        let width = u32::try_from(frame.width()).ok()?;
+        let height = u32::try_from(frame.height()).ok()?;
+        let image = Image::new(Size::new(width, height), frame.width() * 4, frame.bytes().to_vec())?;
+        let overlay = Overlay::new(placement, &image)?;
+        self.shown = Some(output);
+        Some(Some(Modal::new(output, overlay)))
+    }
+
+    /// Clears the modal once it was shown, and only then.
+    fn clear_modal(&mut self) -> Option<Option<Modal>> {
+        self.shown.take().map(|_| None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use gnoblin_model::Fields;
-    use gnoblin_types::ClientId;
 
     use super::*;
 
@@ -297,5 +450,68 @@ mod tests {
         assert_eq!(replies[0].1.error_code(), Some("locked"));
 
         assert!(service.set_locked(false).is_empty(), "unlocking settles nothing");
+    }
+
+    #[test]
+    fn keycodes_map_to_dialog_keys() {
+        assert_eq!(screen_key(1), Some(ScreenKey::Escape));
+        assert_eq!(screen_key(15), Some(ScreenKey::Tab));
+        assert_eq!(screen_key(28), Some(ScreenKey::Enter));
+        assert_eq!(screen_key(96), Some(ScreenKey::Enter), "keypad enter answers too");
+        assert_eq!(screen_key(57), Some(ScreenKey::Space));
+        assert_eq!(screen_key(103), Some(ScreenKey::Up));
+        assert_eq!(screen_key(108), Some(ScreenKey::Down));
+        assert_eq!(screen_key(14), Some(ScreenKey::Backspace));
+        assert_eq!(screen_key(42), None, "shift is not a dialog key");
+        assert_eq!(screen_key(30), None, "letters are not dialog keys");
+    }
+
+    #[test]
+    fn the_frame_is_centred_on_the_output() {
+        let output = Rect::new(100, 50, 1920, 1080);
+        assert_eq!(dialog_placement(output, 640, 360), Rect::new(740, 410, 640, 360));
+    }
+
+    #[test]
+    fn a_frame_larger_than_the_output_sits_at_its_origin() {
+        let output = Rect::new(0, 0, 320, 200);
+        assert_eq!(dialog_placement(output, 640, 360), Rect::new(0, 0, 640, 360));
+    }
+
+    #[test]
+    fn pointer_maps_into_the_frame_and_misses_outside() {
+        let placement = Rect::new(740, 410, 640, 360);
+        assert_eq!(frame_point(placement, 740.0, 410.0), Some((0.0, 0.0)));
+        assert_eq!(frame_point(placement, 1000.5, 600.0), Some((260.5, 190.0)));
+        assert_eq!(frame_point(placement, 1380.0, 600.0), None, "right edge is exclusive");
+        assert_eq!(frame_point(placement, 739.9, 500.0), None);
+        assert_eq!(frame_point(placement, 900.0, 770.0), None, "bottom edge is exclusive");
+    }
+
+    #[test]
+    fn no_dialog_leaves_the_modal_alone() {
+        let mut service = PortalService::new();
+        let scene = service.pump(Some((OutputId::new(1), Rect::new(0, 0, 1920, 1080))), false, &[]);
+        assert!(scene.modal.is_none(), "nothing to show and nothing to clear");
+        assert!(scene.replies.is_empty());
+    }
+
+    #[test]
+    fn a_lock_clears_the_shown_modal_and_settles_the_request() {
+        let mut service = PortalService::new();
+        let requester = ClientId::new(1);
+        let output = OutputId::new(1);
+        let rect = Rect::new(0, 0, 1920, 1080);
+        assert!(service.submit(requester, 1, &screenshot(), Tick::ZERO).is_ok());
+        let shown = service.pump(Some((output, rect)), false, &[]);
+        assert!(
+            matches!(shown.modal, Some(Some(_))),
+            "the dialog is drawn once it is open"
+        );
+
+        let locked = service.pump(Some((output, rect)), true, &[]);
+        assert!(matches!(locked.modal, Some(None)), "the lock clears the modal");
+        assert_eq!(locked.replies.len(), 1);
+        assert_eq!(locked.replies[0].1.error_code(), Some("locked"));
     }
 }

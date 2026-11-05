@@ -2079,6 +2079,11 @@ impl State {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
             workspaces,
             output_layouts,
+            output_rects: self
+                .outputs
+                .iter()
+                .filter_map(|entry| self.output_rect(entry.backend).map(|rect| (entry.backend, rect)))
+                .collect(),
             layout_failures: self.layout_failures.iter().map(|(ws, reason)| (*ws, *reason)).collect(),
             focus: focused,
             lock: LockObservation {
