@@ -47,7 +47,7 @@
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
-use gnoblin_render::{Color, Effects};
+use gnoblin_render::{Color, Effects, Mat4};
 use gnoblin_types::{Rect, RectF};
 
 /// One thing a frame paints.
@@ -95,6 +95,8 @@ pub struct Surface {
     /// The passes are the scene's own [`Effects`], so the values a shader reads here are
     /// the values the script that set them was checked against.
     pub effects: Effects,
+    /// How the layer sits in three dimensions, `None` when it is drawn flat.
+    pub model: Option<Model>,
 }
 
 /// A solid rectangle on the output.
@@ -116,6 +118,8 @@ pub struct Solid {
     pub corner_radius: f32,
     /// The effect chain drawn with the rectangle, in application order.
     pub effects: Effects,
+    /// How the rectangle sits in three dimensions, `None` when it is drawn flat.
+    pub model: Option<Model>,
 }
 
 impl Solid {
@@ -131,8 +135,25 @@ impl Solid {
             tint: Color::WHITE,
             corner_radius: 0.0,
             effects: Effects::new(),
+            model: None,
         }
     }
+}
+
+/// How a layer sits in three dimensions.
+///
+/// A layer carries one when its node is tilted, moved in depth or drawn under a perspective
+/// camera. The GLES renderer then draws the layer's plane through `matrix`, depth-tested
+/// against the rest of the frame. A layer without one is drawn flat, in paint order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Model {
+    /// Maps the layer's own plane, whose origin is its top-left corner and whose size is
+    /// its `dst`, to the output's logical space before the perspective divide.
+    pub matrix: Mat4,
+    /// Whether the layer covers its plane with opaque pixels. An opaque layer is drawn
+    /// front to back and writes depth; a transparent one is blended back to front after
+    /// the opaque layers and does not write depth.
+    pub opaque: bool,
 }
 
 /// The frame an output draws.

@@ -176,6 +176,14 @@ impl Mat4 {
     pub fn is_finite(&self) -> bool {
         self.m.iter().flatten().all(|value| value.is_finite())
     }
+
+    /// Whether the matrix keeps the plane flat: no depth offset and no perspective row.
+    ///
+    /// A planar node is drawn by the flat path; anything else needs the depth pass.
+    #[must_use]
+    pub fn is_planar(&self) -> bool {
+        self.m[3] == [0.0, 0.0, 0.0, 1.0] && self.m[2][0] == 0.0 && self.m[2][1] == 0.0 && self.m[2][3] == 0.0
+    }
 }
 
 /// Sine and cosine of an angle in degrees, exact at every quarter turn.

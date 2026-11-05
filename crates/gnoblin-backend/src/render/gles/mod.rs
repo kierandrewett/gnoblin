@@ -107,17 +107,17 @@ use smithay::backend::renderer::ImportMemWl;
 use smithay::utils::Rectangle;
 use tracing::warn;
 
-use gnoblin_render::{Color, Effects, Pass, UniformSchema};
+use gnoblin_render::{Color, Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Rect, RectF, Scale, Size};
 
 use crate::render::RenderError;
-use crate::render::frame::{Layer, OutputFrame, Solid, Surface};
+use crate::render::frame::{Layer, Model, OutputFrame, Solid, Surface};
 use crate::render::image::Image;
 use crate::render::physical_rect;
 
 pub use program::ShaderError;
 
-use gl::{Device, Framebuffer, Program, Texture};
+use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
 use program::Uniforms;
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
@@ -420,6 +420,7 @@ impl Gles {
             physical,
             ..
         } = self;
+        let order = spatial_order(frame.layers(), *physical, scale);
         device.begin(target)?;
         let mut painter = Painter {
             device,
@@ -439,11 +440,19 @@ impl Gles {
             painter.device.scissor(Some(*rect));
             painter.background(*rect)?;
             for (index, layer) in frame.layers().iter().enumerate() {
-                if !intersects(layer, *rect, scale) {
+                if layer_model(layer).is_some() || !intersects(layer, *rect, scale) {
                     continue;
                 }
                 let texture = textures.get(index).and_then(|texture| *texture);
-                painter.layer(layer, texture)?;
+                painter.layer(layer, texture, Placement::FLAT)?;
+            }
+            if !order.is_empty() {
+                painter.device.clear_depth(painter.target);
+            }
+            for (index, placement) in &order {
+                let layer = &frame.layers()[*index];
+                let texture = textures.get(*index).and_then(|texture| *texture);
+                painter.layer(layer, texture, *placement)?;
             }
             if let Some(cursor) = frame.cursor() {
                 painter.cursor(cursor)?;
@@ -473,7 +482,8 @@ impl Gles {
         let uniforms = Uniforms::surface(quad, src, tint, 1.0, corner);
         let mut bytes = Vec::new();
         self.passes.surface.pack_fixed(&uniforms, &mut bytes);
-        self.device.draw(&self.passes.surface, &bytes, quad, Some(texture))?;
+        self.device
+            .draw(&self.passes.surface, &bytes, quad, Some(texture), Placement::FLAT)?;
         self.device.scissor(None);
         self.device.end()?;
         self.draws = self.draws.saturating_add(1);
@@ -525,11 +535,11 @@ impl Painter<'_> {
         } = self;
         let uniforms = Uniforms::solid(rect, *background, Color::WHITE, 1.0);
         passes.solid.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.solid, bytes, rect, None)
+        device.draw(&passes.solid, bytes, rect, None, Placement::FLAT)
     }
 
     /// Draws a layer: its shadow, its backdrop effect, then its own pixels.
-    fn layer(&mut self, layer: &Layer, texture: Option<Texture>) -> Result<(), RenderError> {
+    fn layer(&mut self, layer: &Layer, texture: Option<Texture>, placement: Placement) -> Result<(), RenderError> {
         let (dst, corner_radius, effects, colour, tint, opacity, src) = match layer {
             Layer::Solid(solid) => (
                 solid.dst,
@@ -589,7 +599,7 @@ impl Painter<'_> {
             } = self;
             match resolve(user, effects) {
                 Ok(Some((program, values))) => match program.pack(&uniforms, &values, bytes) {
-                    Ok(()) => device.draw(program, bytes, quad, texture),
+                    Ok(()) => device.draw(program, bytes, quad, texture, placement),
                     Err(error) => {
                         refusal = Some(error);
                         let default = if texture.is_some() {
@@ -598,7 +608,7 @@ impl Painter<'_> {
                             &passes.solid
                         };
                         default.pack_fixed(&uniforms, bytes);
-                        device.draw(default, bytes, quad, texture)
+                        device.draw(default, bytes, quad, texture, placement)
                     }
                 },
                 Ok(None) => {
@@ -608,7 +618,7 @@ impl Painter<'_> {
                         &passes.solid
                     };
                     default.pack_fixed(&uniforms, bytes);
-                    device.draw(default, bytes, quad, texture)
+                    device.draw(default, bytes, quad, texture, placement)
                 }
                 Err(error) => {
                     refusal = Some(error);
@@ -618,7 +628,7 @@ impl Painter<'_> {
                         &passes.solid
                     };
                     default.pack_fixed(&uniforms, bytes);
-                    device.draw(default, bytes, quad, texture)
+                    device.draw(default, bytes, quad, texture, placement)
                 }
             }
         };
@@ -645,7 +655,7 @@ impl Painter<'_> {
         let mut uniforms = Uniforms::solid(quad, cursor.colour, cursor.tint, 1.0);
         uniforms.corner = (cursor.corner_radius * scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
         passes.solid.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.solid, bytes, quad, None)
+        device.draw(&passes.solid, bytes, quad, None, Placement::FLAT)
     }
 
     /// Draws a shadow behind a layer.
@@ -671,7 +681,7 @@ impl Painter<'_> {
         uniforms.corner = radius;
         uniforms.params = [blur, blur, blur, 0.0];
         passes.shadow.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.shadow, bytes, quad, None)
+        device.draw(&passes.shadow, bytes, quad, None, Placement::FLAT)
     }
 
     /// Blurs the pixels the layer is about to cover.
@@ -724,7 +734,7 @@ impl Painter<'_> {
         device.begin(second)?;
         device.scissor(Some(region));
         passes.blur.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.blur, bytes, region, Some(first.texture()))?;
+        device.draw(&passes.blur, bytes, region, Some(first.texture()), Placement::FLAT)?;
         device.end()?;
         // The vertical pass writes back into the frame, scissored to the layer's rectangle:
         // that is the region the pass is for, and the ring exists only to give its taps a
@@ -737,7 +747,7 @@ impl Painter<'_> {
             ..uniforms
         };
         passes.blur.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.blur, bytes, region, Some(second.texture()))?;
+        device.draw(&passes.blur, bytes, region, Some(second.texture()), Placement::FLAT)?;
         // Back to the damage scissor, which the rest of this rectangle's passes expect.
         device.scissor(Some(*clip));
         Ok(())
@@ -810,6 +820,75 @@ impl Passes {
             blur: program::link(device, shaders::VERTEX, shaders::BLUR)?,
         })
     }
+}
+
+/// The layer's model placement, `None` for a flat layer.
+fn layer_model(layer: &Layer) -> Option<&Model> {
+    match layer {
+        Layer::Solid(solid) => solid.model.as_ref(),
+        Layer::Surface(surface) => surface.model.as_ref(),
+    }
+}
+
+/// The projected layers in draw order: opaque ones front to back, then transparent ones back to
+/// front, so every pair that can overlap is drawn with the right depth test.
+///
+/// Each entry is the layer's index in the frame and its placement. The clip matrix maps the unit
+/// quad point `(x, y, 0, 1)` through the layer's model onto the output's device pixels, which
+/// are y-down as the flat path's are; the depth is the one the vertex stage writes for the quad's
+/// centre.
+fn spatial_order(layers: &[Layer], physical: Size, scale: Scale) -> Vec<(usize, Placement)> {
+    let s = scale.as_f64();
+    let (w, h) = (f64::from(physical.width), f64::from(physical.height));
+    let screen = Mat4 {
+        m: [
+            [2.0 * s / w, 0.0, 0.0, -1.0],
+            [0.0, 2.0 * s / h, 0.0, -1.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    };
+    let mut opaque = Vec::new();
+    let mut transparent = Vec::new();
+    for (index, layer) in layers.iter().enumerate() {
+        let (dst, model) = match layer {
+            Layer::Solid(solid) => (solid.dst, solid.model.as_ref()),
+            Layer::Surface(surface) => (surface.dst, surface.model.as_ref()),
+        };
+        let Some(model) = model else {
+            continue;
+        };
+        let matrix = screen
+            .mul(&model.matrix)
+            .mul(&Mat4::scale(f64::from(dst.width), f64::from(dst.height), 1.0));
+        let column = |point: [f64; 4]| {
+            let v = matrix.apply(point);
+            [v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32]
+        };
+        let columns = [
+            column([1.0, 0.0, 0.0, 0.0]),
+            column([0.0, 1.0, 0.0, 0.0]),
+            column([0.0, 0.0, 0.0, 1.0]),
+        ];
+        let centre = matrix.apply([0.5, 0.5, 0.0, 1.0]);
+        let depth = ((centre[2] + centre[3]) * 0.5 / centre[3]) as f32;
+        let (kind, bucket) = if model.opaque {
+            (Depth::Opaque, &mut opaque)
+        } else {
+            (Depth::Transparent, &mut transparent)
+        };
+        bucket.push((
+            index,
+            Placement {
+                depth_value: depth,
+                ..Placement::projected(columns, kind)
+            },
+        ));
+    }
+    opaque.sort_by(|a, b| a.1.depth_value.total_cmp(&b.1.depth_value));
+    transparent.sort_by(|a, b| b.1.depth_value.total_cmp(&a.1.depth_value));
+    opaque.extend(transparent);
+    opaque
 }
 
 /// Whether a layer can touch `damage` at all.

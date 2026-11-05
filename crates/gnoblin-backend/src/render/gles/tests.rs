@@ -10,8 +10,8 @@
 
 use super::*;
 use crate::render::Software;
-use crate::render::frame::Solid;
-use gnoblin_render::{Blur, Effects, Shadow, UniformType, UniformValue, Vec3};
+use crate::render::frame::{Model, Solid};
+use gnoblin_render::{Blur, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
 
 /// A renderer, or a printed reason when this machine cannot make a GLES context.
 fn gles(physical: Size) -> Option<Gles> {
@@ -746,4 +746,183 @@ fn the_same_frame_draws_the_same_pixels() {
             );
         }
     }
+}
+
+/// A rectangle drawn in three dimensions: `matrix` maps its own plane, origin at its top-left
+/// corner, to the output before the perspective divide.
+fn spatial_solid(rect: Rect, colour: Color, matrix: Mat4, opaque: bool) -> Solid {
+    let mut solid = Solid::new(rect, colour);
+    solid.model = Some(Model { matrix, opaque });
+    solid
+}
+
+/// A frame of `layers` painted over `background`, damaging the whole output.
+fn layered_frame(background: Color, size: Size, layers: Vec<Solid>) -> OutputFrame {
+    let mut frame = OutputFrame::new();
+    frame.set_background(background);
+    frame.push_damage(Rect::new(0, 0, size.width, size.height));
+    for solid in layers {
+        frame.push_layer(Layer::Solid(solid));
+    }
+    frame
+}
+
+/// The plane `z = slope * x + offset` over a rectangle's own coordinates.
+fn tilted_plane(slope: f64, offset: f64) -> Mat4 {
+    Mat4 {
+        m: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [slope, 0.0, 0.0, offset],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    }
+}
+
+#[test]
+fn an_intersecting_pair_is_depth_tested_per_pixel() {
+    let size = Size::new(16, 16);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let red = || {
+        spatial_solid(
+            Rect::new(0, 0, 16, 16),
+            Color::from_rgba8(255, 0, 0, 255),
+            Mat4::IDENTITY,
+            true,
+        )
+    };
+    let blue = || {
+        spatial_solid(
+            Rect::new(0, 0, 16, 16),
+            Color::from_rgba8(0, 0, 255, 255),
+            tilted_plane(0.1, -0.8),
+            true,
+        )
+    };
+    for layers in [vec![red(), blue()], vec![blue(), red()]] {
+        renderer
+            .draw(&layered_frame(Color::BLACK, size, layers), Scale::IDENTITY)
+            .expect("drawn");
+        let image = renderer.screenshot().expect("a readback");
+        assert_eq!(
+            probe(&image, 3, 4),
+            [0, 0, 255, 255],
+            "left of the crossing blue is nearer, whatever the submission order"
+        );
+        assert_eq!(probe(&image, 12, 4), [255, 0, 0, 255], "right of it red is nearer");
+    }
+}
+
+#[test]
+fn transparent_layers_blend_in_depth_order_as_the_flat_path_does() {
+    let size = Size::new(16, 16);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let red = Color::from_rgba8(255, 0, 0, 128);
+    let blue = Color::from_rgba8(0, 0, 255, 128);
+    // Painter's order puts blue over red; the projected pair puts red behind blue and must blend
+    // to the same pixel, whichever order it is submitted in.
+    let flat = layered_frame(
+        Color::BLACK,
+        size,
+        vec![
+            Solid::new(Rect::new(0, 0, 16, 16), red),
+            Solid::new(Rect::new(0, 0, 16, 16), blue),
+        ],
+    );
+    renderer.draw(&flat, Scale::IDENTITY).expect("the flat pair");
+    let expected = probe(&renderer.screenshot().expect("a readback"), 8, 8);
+    let far = || spatial_solid(Rect::new(0, 0, 16, 16), red, Mat4::translation(0.0, 0.0, 0.5), false);
+    let near = || spatial_solid(Rect::new(0, 0, 16, 16), blue, Mat4::translation(0.0, 0.0, -0.5), false);
+    for layers in [vec![near(), far()], vec![far(), near()]] {
+        renderer
+            .draw(&layered_frame(Color::BLACK, size, layers), Scale::IDENTITY)
+            .expect("the projected pair");
+        let got = probe(&renderer.screenshot().expect("a readback"), 8, 8);
+        assert!(
+            got.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 1),
+            "projected {got:?}, flat path {expected:?}"
+        );
+    }
+}
+
+#[test]
+fn a_rotated_quad_under_perspective_lands_on_its_projected_corners() {
+    let size = Size::new(64, 64);
+    let Some(mut renderer) = gles(size) else {
+        return;
+    };
+    let (centre, distance, angle) = (32.0_f64, 20.0_f64, 30.0_f64);
+    // A 32 by 32 quad centred on the output, turned about the vertical axis through its centre.
+    let world = Mat4::translation(centre, centre, 0.0)
+        .mul(&Mat4::rotation_y(angle))
+        .mul(&Mat4::translation(-16.0, -16.0, 0.0));
+    let matrix = Mat4::perspective(centre, centre, distance, 1.0, 100.0).mul(&world);
+    let quad = spatial_solid(
+        Rect::new(16, 16, 32, 32),
+        Color::from_rgba8(255, 0, 0, 255),
+        matrix,
+        true,
+    );
+    renderer
+        .draw(&layered_frame(Color::BLACK, size, vec![quad]), Scale::IDENTITY)
+        .expect("drawn");
+    let image = renderer.screenshot().expect("a readback");
+
+    // A point at offset (a, b) from the centre is at (a cos, b, -a sin); the eye at `distance`
+    // projects (X, Y, Z) to ((d X - c Z) / (d - Z), (d Y - c Z) / (d - Z)).
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let corners: Vec<(f64, f64)> = [(-16.0, -16.0), (16.0, -16.0), (16.0, 16.0), (-16.0, 16.0)]
+        .iter()
+        .map(|&(a, b)| {
+            let (x, y, z) = (centre + a * cos, centre + b, -a * sin);
+            let w = distance - z;
+            ((distance * x - centre * z) / w, (distance * y - centre * z) / w)
+        })
+        .collect();
+    let edge = |i: usize| (corners[i], corners[(i + 1) % 4]);
+    let area: f64 = (0..4)
+        .map(|i| {
+            let ((ax, ay), (bx, by)) = edge(i);
+            ax * by - bx * ay
+        })
+        .sum();
+    let orientation = area.signum();
+    let (mut inside, mut outside) = (0, 0);
+    for py in 0..64 {
+        for px in 0..64 {
+            let p = (f64::from(px) + 0.5, f64::from(py) + 0.5);
+            // The signed distance to the nearest edge, positive inside. Pixels within a pixel of
+            // an edge are skipped: rasterisation rounds there.
+            let margin = (0..4)
+                .map(|i| {
+                    let ((ax, ay), (bx, by)) = edge(i);
+                    let (ex, ey) = (bx - ax, by - ay);
+                    orientation * (ex * (p.1 - ay) - ey * (p.0 - ax)) / (ex * ex + ey * ey).sqrt()
+                })
+                .fold(f64::INFINITY, f64::min);
+            if margin > 1.0 {
+                assert_eq!(
+                    probe(&image, px, py),
+                    [255, 0, 0, 255],
+                    "inside the projected quad at {px},{py}"
+                );
+                inside += 1;
+            } else if margin < -1.0 {
+                assert_eq!(
+                    probe(&image, px, py),
+                    [0, 0, 0, 255],
+                    "outside the projected quad at {px},{py}"
+                );
+                outside += 1;
+            }
+        }
+    }
+    assert!(
+        inside > 300 && outside > 300,
+        "the check must see both sides: inside {inside}, outside {outside}"
+    );
 }

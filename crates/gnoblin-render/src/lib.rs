@@ -158,6 +158,7 @@ pub use effect::{
 };
 pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsupported3d, Unsupported3dField, Vec3};
 pub use id::{NodeId, TrackId};
+pub use matrix::Mat4;
 pub use property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
 pub use scene::{DEFAULT_DAMAGE_RECT_LIMIT, Hit, Node, NodeKind, NodeSpec, Scene, SceneError};
 pub use transform::VisualTransform;

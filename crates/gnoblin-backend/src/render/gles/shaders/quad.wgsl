@@ -34,8 +34,18 @@ fn gnoblin_entry(
     @location(0) position: vec2<f32>,
     @location(1) quad: vec4<f32>,
     @location(2) viewport: vec2<f32>,
+    @location(3) column0: vec4<f32>,
+    @location(4) column1: vec4<f32>,
+    @location(5) column3: vec4<f32>,
+    @location(6) params: vec4<f32>,
 ) -> GnoblinVertex {
+    // A projected quad carries the output's clip matrix applied to the unit point: its clip
+    // position is already homogeneous. Depth maps from GL's -w..w range to this stage's 0..w.
+    if params.x > 0.5 {
+        let clip = column0 * position.x + column1 * position.y + column3;
+        return GnoblinVertex(vec4<f32>(clip.xy, (clip.z + clip.w) * 0.5, clip.w), position);
+    }
     let pixel = quad.xy + position * quad.zw;
     let clip = vec2<f32>(pixel.x / viewport.x * 2.0 - 1.0, pixel.y / viewport.y * 2.0 - 1.0);
-    return GnoblinVertex(vec4<f32>(clip, 0.0, 1.0), position);
+    return GnoblinVertex(vec4<f32>(clip, (params.y + 1.0) * 0.5, 1.0), position);
 }

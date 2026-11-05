@@ -42,9 +42,52 @@ const UNIFORM_BINDING: u32 = 0;
 /// The texture unit every pass samples from.
 const TEXTURE_UNIT: u32 = 0;
 
-/// The floats one quad vertex carries: the unit position, the destination rectangle and
-/// the target's size.
-const VERTEX_FLOATS: usize = 8;
+/// The floats one quad vertex carries: the unit position, the destination rectangle and the
+/// target's size, then the three columns of the placement's clip matrix, then the placement's
+/// parameters.
+const VERTEX_FLOATS: usize = 24;
+
+/// How a quad takes part in the depth test.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Depth {
+    /// No depth test and no depth write: painter's order, the flat path.
+    Off,
+    /// Tested and written: an opaque surface, drawn front to back.
+    Opaque,
+    /// Tested but not written: a transparent surface, drawn back to front after the opaque ones.
+    Transparent,
+}
+
+/// Where a quad sits in a frame.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Placement {
+    /// Columns 0, 1 and 3 of the output's clip matrix, applied to the unit quad point `(x, y, 0, 1)`.
+    /// `None` draws the quad flat, in the output's logical pixels.
+    pub(crate) clip: Option<[[f32; 4]; 3]>,
+    /// The quad's normalised device depth when it is flat. A projected quad takes its depth from `clip`.
+    pub(crate) depth_value: f32,
+    /// How the quad takes part in the depth test.
+    pub(crate) depth: Depth,
+}
+
+impl Placement {
+    /// The flat path: painter's order, no depth test.
+    pub(crate) const FLAT: Self = Self {
+        clip: None,
+        depth_value: 0.0,
+        depth: Depth::Off,
+    };
+
+    /// A quad drawn through `columns`, the clip matrix's columns 0, 1 and 3, with the given depth
+    /// behaviour.
+    pub(crate) const fn projected(columns: [[f32; 4]; 3], depth: Depth) -> Self {
+        Self {
+            clip: Some(columns),
+            depth_value: 0.0,
+            depth,
+        }
+    }
+}
 
 /// The GL context and the calls every pass is made of.
 pub(crate) struct Device {
@@ -261,9 +304,25 @@ impl Device {
                     Some(texture),
                     0,
                 );
+                // The depth buffer is read only by a frame that draws in three dimensions; a flat
+                // frame never enables the depth test.
+                let depth = gl.create_renderbuffer().map_err(|error| {
+                    debug!(%error, "[render] no target depth buffer");
+                    RenderError::Unavailable
+                })?;
+                gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth));
+                gl.renderbuffer_storage(glow::RENDERBUFFER, glow::DEPTH_COMPONENT24, width, height);
+                gl.framebuffer_renderbuffer(
+                    glow::FRAMEBUFFER,
+                    glow::DEPTH_ATTACHMENT,
+                    glow::RENDERBUFFER,
+                    Some(depth),
+                );
+                gl.bind_renderbuffer(glow::RENDERBUFFER, None);
                 let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
-                gl.clear(glow::COLOR_BUFFER_BIT);
+                gl.depth_mask(true);
+                gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
                 gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                 if status != glow::FRAMEBUFFER_COMPLETE {
                     debug!(width, height, "[render] the target framebuffer is incomplete");
@@ -352,6 +411,18 @@ impl Device {
         });
     }
 
+    /// Clears the depth buffer of `target` to the far plane, within the current scissor.
+    pub(crate) fn clear_depth(&mut self, target: &Framebuffer) {
+        let _ = self.renderer.with_context(|gl| unsafe {
+            // SAFETY: the target belongs to this context; the clear honours the scissor the caller
+            // set, so a damage-limited frame clears only its damage rectangles.
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(target.framebuffer));
+            gl.depth_mask(true);
+            gl.clear_depth_f32(1.0);
+            gl.clear(glow::DEPTH_BUFFER_BIT);
+        });
+    }
+
     /// Copies `rect` of `from` into the same rectangle of `to`.
     pub(crate) fn copy(&mut self, from: &Framebuffer, to: &Framebuffer, rect: Rect) -> Result<(), RenderError> {
         let (_, height) = from.texture.size;
@@ -394,12 +465,18 @@ impl Device {
         bytes: &[u8],
         quad: Rect,
         texture: Option<Texture>,
+        placement: Placement,
     ) -> Result<(), RenderError> {
         let (width, height) = self.viewport;
         let texture = texture.unwrap_or(self.white);
-        // Two triangles, each vertex carrying the unit position, the destination and the
-        // viewport. Per-vertex rather than a uniform so the fragment stage is the only stage
-        // with a uniform block.
+        // Two triangles, each vertex carrying the unit position, the destination, the viewport,
+        // the clip columns and the parameters. Per-vertex rather than a uniform so the fragment
+        // stage is the only stage with a uniform block. A flat quad sends zero columns and a
+        // clear `projected` flag, so the vertex stage keeps the flat formula.
+        let (projected, columns) = match placement.clip {
+            Some(columns) => (1.0f32, columns),
+            None => (0.0, [[0.0f32; 4]; 3]),
+        };
         let mut geometry: Vec<u8> = Vec::with_capacity(6 * VERTEX_FLOATS * 4);
         for (x, y) in [
             (0.0f32, 0.0f32),
@@ -409,7 +486,7 @@ impl Device {
             (1.0, 0.0),
             (1.0, 1.0),
         ] {
-            for value in [
+            let head = [
                 x,
                 y,
                 quad.x as f32,
@@ -418,7 +495,9 @@ impl Device {
                 quad.height as f32,
                 width as f32,
                 height as f32,
-            ] {
+            ];
+            let tail = [projected, placement.depth_value, 0.0, 0.0];
+            for value in head.into_iter().chain(columns.iter().flatten().copied()).chain(tail) {
                 geometry.extend_from_slice(&value.to_ne_bytes());
             }
         }
@@ -432,12 +511,20 @@ impl Device {
                 gl.bind_buffer(glow::ARRAY_BUFFER, Some(program.geometry));
                 gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, &geometry, glow::DYNAMIC_DRAW);
                 let stride = (VERTEX_FLOATS * 4) as i32;
-                gl.enable_vertex_attrib_array(0);
-                gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, 0);
-                gl.enable_vertex_attrib_array(1);
-                gl.vertex_attrib_pointer_f32(1, 4, glow::FLOAT, false, stride, 2 * 4);
-                gl.enable_vertex_attrib_array(2);
-                gl.vertex_attrib_pointer_f32(2, 2, glow::FLOAT, false, stride, 6 * 4);
+                // Attribute offsets in floats: position 0, quad 2, viewport 6, the clip columns
+                // 8, 12 and 16, and the parameters 20.
+                for (index, size, offset) in [
+                    (0u32, 2i32, 0i32),
+                    (1, 4, 2),
+                    (2, 2, 6),
+                    (3, 4, 8),
+                    (4, 4, 12),
+                    (5, 4, 16),
+                    (6, 4, 20),
+                ] {
+                    gl.enable_vertex_attrib_array(index);
+                    gl.vertex_attrib_pointer_f32(index, size, glow::FLOAT, false, stride, offset * 4);
+                }
 
                 gl.bind_buffer(glow::UNIFORM_BUFFER, Some(program.buffer));
                 gl.buffer_data_u8_slice(glow::UNIFORM_BUFFER, bytes, glow::DYNAMIC_DRAW);
@@ -455,6 +542,19 @@ impl Device {
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+                match placement.depth {
+                    Depth::Off => gl.disable(glow::DEPTH_TEST),
+                    Depth::Opaque => {
+                        gl.enable(glow::DEPTH_TEST);
+                        gl.depth_func(glow::LESS);
+                        gl.depth_mask(true);
+                    }
+                    Depth::Transparent => {
+                        gl.enable(glow::DEPTH_TEST);
+                        gl.depth_func(glow::LEQUAL);
+                        gl.depth_mask(false);
+                    }
+                }
                 gl.draw_arrays(glow::TRIANGLES, 0, 6);
 
                 gl.bind_texture(glow::TEXTURE_2D, None);
@@ -463,6 +563,9 @@ impl Device {
                 gl.disable_vertex_attrib_array(0);
                 gl.disable_vertex_attrib_array(1);
                 gl.disable_vertex_attrib_array(2);
+                for index in 3..=6 {
+                    gl.disable_vertex_attrib_array(index);
+                }
             })
             .map_err(context_lost)
     }
@@ -638,7 +741,7 @@ impl Texture {
     }
 }
 
-/// An offscreen target: a texture and the framebuffer that draws into it.
+/// An offscreen target: a colour texture, a depth buffer and the framebuffer that draws into them.
 pub(crate) struct Framebuffer {
     framebuffer: glow::Framebuffer,
     texture: Texture,

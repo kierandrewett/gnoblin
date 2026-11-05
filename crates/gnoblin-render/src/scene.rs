@@ -718,7 +718,7 @@ impl Scene {
 
     /// The matrix that maps a node's local plane into output space, before the
     /// perspective divide. `None` for a missing node.
-    fn world_matrix(&self, id: NodeId) -> Option<Mat4> {
+    pub fn world_matrix(&self, id: NodeId) -> Option<Mat4> {
         let mut chain = Vec::new();
         let mut current = Some(id);
         while let Some(node_id) = current {

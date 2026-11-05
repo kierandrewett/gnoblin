@@ -61,10 +61,10 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 use tracing::debug;
 
-use gnoblin_render::{Color, Damage, Effects, NodeId, NodeKind, NodeSpec, Scene, VisualTransform};
+use gnoblin_render::{Color, Damage, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, Scene, VisualTransform};
 use gnoblin_types::{OutputId, Rect, RectF, Size, Vec3, WindowId};
 
-use crate::render::frame::{Layer, OutputFrame, Surface};
+use crate::render::frame::{Layer, Model, OutputFrame, Surface};
 
 /// A window's committed content: the crop to draw and its logical size.
 ///
@@ -404,6 +404,7 @@ impl Composer {
         if frame.is_empty() {
             return false;
         }
+        let mut spatial = false;
         for window in &self.order {
             let Some(entry) = self.windows.get(window) else {
                 continue;
@@ -422,9 +423,24 @@ impl Composer {
                 content.size.width,
                 content.size.height,
             );
-            if dst.intersection(rect).is_none() {
+            let model = entry.node.and_then(|node| self.model(node, rect));
+            let on_output = match model {
+                // A projected window's flat rectangle says nothing about where it lands.
+                Some(_) => entry
+                    .node
+                    .and_then(|node| self.scene.absolute_bounds(node))
+                    .is_some_and(|bounds| bounds.intersection(rect).is_some()),
+                None => dst.intersection(rect).is_some(),
+            };
+            if !on_output {
                 // The window is on another output.
                 continue;
+            }
+            if model.is_some() && !spatial {
+                // A tilted window's pixels can land anywhere on the output, so while one is on
+                // it the whole output is repainted rather than its flat rectangle.
+                frame.push_damage(Rect::new(0, 0, rect.width, rect.height));
+                spatial = true;
             }
             if entry.transform.base.rotation_degrees.z != 0.0 {
                 // Pixman's frame API rotates the whole destination rather than one
@@ -444,9 +460,23 @@ impl Composer {
                 tint: entry.transform.tint,
                 corner_radius: entry.transform.corner_radius,
                 effects: entry.effects.clone(),
+                model,
             }));
         }
         !frame.is_empty()
+    }
+
+    /// How a node is placed on `output`: `None` for a flat rectangle drawn in paint order, which
+    /// is every node in a planar scene under the orthographic projection.
+    fn model(&self, node: NodeId, output: Rect) -> Option<Model> {
+        let world = self.scene.world_matrix(node)?;
+        if world.is_planar() && matches!(self.scene.projection_for(node)?, Projection::Orthographic) {
+            return None;
+        }
+        Some(Model {
+            matrix: Mat4::translation(-f64::from(output.x), -f64::from(output.y), 0.0).mul(&world),
+            opaque: false,
+        })
     }
 
     /// Makes a window's node match its state.
