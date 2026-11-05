@@ -74,10 +74,22 @@ fn window_fields(id: u64, title: &str) -> Fields {
     fields.insert("title".to_owned(), Value::Text(title.to_owned()));
     fields.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
     fields.insert("focused".to_owned(), Value::Bool(false));
+    fields.insert("icon".to_owned(), Value::Text(String::new()));
+    fields.insert("tag".to_owned(), Value::Text(String::new()));
+    fields.insert("modal".to_owned(), Value::Bool(false));
+    fields.insert("floating".to_owned(), Value::Bool(false));
     fields.insert("x".to_owned(), Value::Int(0));
     fields.insert("y".to_owned(), Value::Int(0));
     fields.insert("width".to_owned(), Value::Uint(800));
     fields.insert("height".to_owned(), Value::Uint(600));
+    fields
+}
+
+/// The properties a workspace is created with, in schema order.
+fn workspace_fields(id: u64, layout: &str) -> Fields {
+    let mut fields = BTreeMap::new();
+    fields.insert("id".to_owned(), Value::Uint(id));
+    fields.insert("layout".to_owned(), Value::Text(layout.to_owned()));
     fields
 }
 
@@ -113,7 +125,7 @@ fn module(start: &str, on_event: &str) -> String {
         r#"
 (component
   (import "gnoblin:ipc/gnoblin@{PACKAGE}" (instance $api
-    (type $ec (enum "denied" "refused" "unknown-member" "unknown-object"))
+    (type $ec (enum "denied" "refused" "unknown-layout" "unknown-member" "unknown-object"))
     (export "error-code" (type $ecx (eq $ec)))
     (export "operation" (type $op (sub resource)))
     (export "window" (type $w (sub resource)))
@@ -634,5 +646,36 @@ fn the_event_words_are_the_generated_table() {
     assert_eq!(
         gnoblin_wasm::abi::member_index("window", "id"),
         Some(gnoblin_wasm::abi::WINDOW_ID)
+    );
+}
+
+// 10. The workspace, output-layout and floating members the schema adds are
+// accepted by the graph and read back through the same path the host uses.
+#[test]
+fn the_layout_and_floating_members_round_trip_through_the_graph() {
+    let (mut server, window) = server();
+    let workspace = server
+        .create(TypeKey::gnoblin("workspace"), workspace_fields(1, "floating"))
+        .expect("the graph takes a workspace");
+    server
+        .set(workspace, "layout", Value::Text("tile".to_owned()))
+        .expect("the graph takes a layout change");
+    assert_eq!(
+        server
+            .graph()
+            .object(workspace)
+            .and_then(|object| object.property("layout").cloned()),
+        Some(Value::Text("tile".to_owned()))
+    );
+
+    server
+        .set(window, "floating", Value::Bool(true))
+        .expect("the graph takes a floating change");
+    assert_eq!(
+        server
+            .graph()
+            .object(window)
+            .and_then(|object| object.property("floating").cloned()),
+        Some(Value::Bool(true))
     );
 }
