@@ -1772,3 +1772,9 @@ left = "gnoblin-backend::Placement"
 right = "gnoblin-output::Placement"
 kind = "same-name"
 reason = "a backend quad placement is a clip-space draw transform; an output placement is a monitor arrangement"
+
+[[allow]]
+left = "gnoblin-lua::LayoutCall"
+right = "gnoblin-wm::Job"
+kind = "same-shape"
+reason = "the VM's call selector is a payload-free projection of the wm Job; the wm type carries the params the VM reads from its snapshot, which the VM does not need"
