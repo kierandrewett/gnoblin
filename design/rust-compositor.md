@@ -127,7 +127,7 @@ flowchart TB
         Lua["Lua host: config, events, requests, tweens, input policy"]
     end
     subgraph Policy["Policy core (pure crates)"]
-        WM["gnoblin-wm: layout, stacking, focus, workspaces, placement, snapping, rules"]
+        WM["gnoblin-wm: stacking, focus, workspaces, placement, snapping, rules, layout hosting"]
         Lock["gnoblin-lock: session lock state machine"]
         Auth["gnoblin-authority: attribution, grants, activation"]
         Model["gnoblin-model: object graph, revisions, signals"]
@@ -411,6 +411,7 @@ gnoblin/
     gnoblin-config/           configuration document, validation, merge, salvage, last-good store (no Lua)
     gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
     gnoblin-wm/               pure window management policy (no Smithay types)
+    gnoblin-layout/           pure tiling and scrolling layout engines, behind one trait (no Smithay, no clock)
     gnoblin-lock/             pure session lock and protection cover state machine
     gnoblin-authority/        pure attribution, activation and grant rules
     gnoblin-wayland/          Smithay protocol handlers, one module per protocol
@@ -484,7 +485,7 @@ hand-written `.proto`, because the envelope is not a schema member.
 edge, so a violation names the edge and the rule:
 
 - **Foundation crates** are `gnoblin-types`, `gnoblin-schema`, `gnoblin-proto`,
-  `gnoblin-config`, `gnoblin-model`, `gnoblin-client`, `gnoblin-wm`,
+  `gnoblin-wm`, `gnoblin-layout`,
   `gnoblin-lock`, `gnoblin-authority` and `gnoblin-output`. None depends on
   Smithay, `wayland-*`, a GPU renderer, `zbus` or `mlua`.
 - `gnoblin-types` is the root of the graph, and the only home of a value two
@@ -522,6 +523,7 @@ edge, so a violation names the edge and the rule:
   does not depend on Smithay, so `gnoblin-input` and `gnoblin-render` call it
   and its tests run without a session.
 - `gnoblin-testkit` and `gnoblin-parity` are development dependencies only.
+- `gnoblin-layout` depends on `gnoblin-types` alone. Only `gnoblin-wm` and `gnoblin-compositor` may name it. Its Lua adapter sits in the compositor wiring, because the Lua runtime is a client.
 
 These rules are what makes concurrent work safe: a lane can change a crate
 without breaking another lane, provided the shared types do not change.
@@ -957,6 +959,16 @@ failure-mode list that must be complete before isolated tests or code.
   deliberate placement differences go into the ledger.
 - **Done when:** model tests cover the failure modes; parity scenarios for
   focus, stacking, workspaces, snapping and rules pass.
+
+### Layout engines: `gnoblin-layout`
+
+- **Owns:** the `Layout` trait, `Params`, `Placement`, `LayoutCommand`, `LayoutEffect`; built-in engines `Dwindle`, `MasterStack`, `Monocle`, `Grid` and `Scrolling`; tree and column state. Floating placement stays in `gnoblin-wm`.
+- **Replaces:** nothing. Tiling and scrolling are new features.
+- **Depends on:** `gnoblin-types` only. `gnoblin-wm` hosts one instance per workspace.
+- **Interface:** `arrange(area, tiled windows, focus, params) -> Vec<Placement>`; `command(LayoutCommand) -> Result<LayoutEffect, Refused>`; `window_added`, `window_removed`. Full contract in D17.
+- **Failure modes first:** zero, one and oversized windows; area smaller than gaps; removal of the focused or only window; rapid add and remove; output resize mid-layout; non-deterministic output; a transient added to a full workspace; a Lua engine that misses its deadline or returns bad rects. D17 lists the full set.
+- **Parity:** none. This is a new feature, not a divergence, so it has no ledger entry. Floating keeps its parity scenarios in `gnoblin-wm`.
+- **Done when:** model tests name every failure mode; `cargo xtask deps` accepts the new edges; a Gnoblin-only scenario arranges a workspace that mixes floating and tiled windows.
 
 ### Session lock: `gnoblin-lock`
 
@@ -1478,27 +1490,29 @@ Contracts that change, with a migration path in Bingux before cutover:
 
 ## Decisions to confirm
 
-All sixteen decisions were made by Kieran on 2026-11-04. Each section below
-records the choice, its consequences, and the options considered.
+All sixteen decisions were made by Kieran on 2026-11-04. D17 was settled on
+2026-11-05 by the layout design contract, and Kieran has not yet confirmed it.
+Each section below records the choice, its consequences, and the options considered.
 
-| ID  | Question                     | Decision                                                       |
-| --- | ---------------------------- | -------------------------------------------------------------- |
-| D1  | Where scripts run            | **Decided:** separate process                                  |
-| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                               |
-| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                          |
-| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                             |
-| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                    |
-| D6  | Native plugins               | **Decided:** WASM modules                                      |
-| D7  | Smithay tracking             | **Decided:** pinned git revision                               |
-| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                           |
-| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                               |
-| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                          |
-| D11 | Distribution target set      | **Decided:** full list, classified                             |
-| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                            |
-| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only     |
-| D14 | Portal UI without a shell    | **Decided:** fail closed                                       |
-| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default |
-| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                          |
+| ID  | Question                     | Decision                                                                              |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------- |
+| D1  | Where scripts run            | **Decided:** separate process                                                         |
+| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                      |
+| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                 |
+| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                    |
+| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                           |
+| D6  | Native plugins               | **Decided:** WASM modules                                                             |
+| D7  | Smithay tracking             | **Decided:** pinned git revision                                                      |
+| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                  |
+| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                      |
+| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                 |
+| D11 | Distribution target set      | **Decided:** full list, classified                                                    |
+| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                   |
+| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                            |
+| D14 | Portal UI without a shell    | **Decided:** fail closed                                                              |
+| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                        |
+| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                 |
+| D17 | Layout engines               | **Decided:** floating, tiling and scrolling behind one trait; Lua engines via adapter |
 
 ### D1: where scripts run
 
@@ -1822,6 +1836,147 @@ Options considered:
 - **postcard or bincode:** the least code in Rust. Not suitable here: other
   languages cannot speak it, and positional fields break the `since` rule.
 
+### D17: layout engines
+
+**Decided 2026-11-05: floating, tiling and scrolling are layout engines behind one pure trait, in the new crate `gnoblin-layout`. Built-in engines are Rust. User engines are Lua functions behind a deadline adapter.**
+
+Each workspace has one active layout. The layout places the tiled windows, and
+floating placement stays in `gnoblin-wm`. A floating window can sit on a tiled
+workspace, so the two compose. `floating` is itself a layout, so today's
+floating mode is the default and behaves as before.
+
+Options considered:
+
+- **Tiling and scrolling inside `gnoblin-wm`:** one crate and no trait, the
+  fastest path. The policy core grows past its scope, each new engine edits the
+  core, and Lua cannot add engines without reaching into it.
+- **Engines as Lua scripts that drive IPC:** no core code. Each arrange becomes
+  several round trips, windows can move between calls, so arrangement is not
+  atomic, and a slow script stalls the workspace.
+- **Pure trait in `gnoblin-layout`, built-ins in Rust, Lua through an adapter
+  (chosen):** engines are testable without a session, one call returns every
+  rectangle, and Lua gets the same entry point as the built-ins. Costs: a new
+  crate to maintain, and a Lua arrange crosses the process boundary (D1).
+- **Lua-only engines:** one language for every engine. Each arrange pays a Lua
+  round trip, and no workspace tiles while the Lua runtime is down.
+
+**The trait.** Rect, WindowId, WorkspaceId and OutputId come from `gnoblin-types`.
+No crate redefines them.
+
++```rust
+pub trait Layout {
+fn arrange(&mut self, area: Rect, windows: &[LayoutWindow], focus: Option<WindowId>, params: &Params) -> Vec<Placement>;
+fn command(&mut self, cmd: &LayoutCommand) -> Result<LayoutEffect, Refused>;
+fn window_added(&mut self, id: WindowId, focus: Option<WindowId>);
+fn window_removed(&mut self, id: WindowId);
+}
+
+```
+
+- `windows` holds only the tiled windows, in stacking order.
+- `Placement` is `{ id, rect, visible }`. Scrolling may return rects outside
+  `area`, and the renderer clips them. Monocle marks the hidden windows
+  `visible: false`.
+- `LayoutEffect` is named apart from `gnoblin-wm`'s `Effect`. It tells the wm
+  to arrange again, to move focus, or to float a window.
+- `Params` carries inner and outer gaps, border width, ratios and each engine's
+  options. Gaps and borders come from the layout section of `gnoblin-config`.
+
+**Composition rules.**
+
+- **Tiled set:** a window is tiled when it is not floating, minimised,
+  fullscreen, maximised or snapped. Any other window leaves the layout. When its
+  flag clears, it returns to its previous slot if that slot still exists, and
+  otherwise `window_added` places it using the focus hint.
+- **Transients:** dialogs and modals always float over their parent and never
+  enter the tiled set.
+- **Ownership:** `gnoblin-wm` owns one `Layout` per workspace. The instance lives
+  with the workspace, so switching workspaces keeps each layout's state.
+- **Driving:** `gnoblin-wm` calls `window_added` and `window_removed` on each
+  membership change, and calls `arrange` on every change to windows, focus, work
+  area or params. The layout never reads the clock.
+- **Drag:** dropping a tiled window on another tile swaps or reinserts it, as the
+  layout decides. Dropping it outside the work area floats it at the drop point.
+- **Resize:** interactive resize of a tiled window changes the layout's ratio, not
+  the window's size.
+- **Focus moves:** directional commands pick the nearest window by placement
+  rect, not by stacking order. Floating windows count with their own rects.
+- **Output removal:** the taking output adopts each workspace with its layout
+  instance and its trees intact. Trees are never merged. Adopted workspaces are
+  arranged against the new work area.
+- **Output resize:** `gnoblin-wm` arranges again with the new work area on the
+  next event. No partial arrange is applied.
+- **Rules:** `layout` switches the workspace to that layout when the window maps
+  there. `float` sets the initial floating state. `column-width` sets the initial
+  scrolling column width. Rules apply once, on map, so no rule can reclassify a
+  window on every arrange.
+
+**Animation.** `arrange` returns target rects only. The tween player in
+`gnoblin-render` animates from the last drawn rect to the new target, and the
+scrolling view offset animates the same way. Reduced motion makes both instant.
+The layout never sees frames.
+
+**IPC and schema additions (all since 0.2.0).**
+
+- `workspace.layout`: a string, one of the built-ins or a registered name.
+  Settable. When unset, the workspace uses its output's layout.
+- `output.layout`: the default for the output's workspaces that set no layout.
+  Settable.
+- `workspace` operation `layout.command`: takes a command name and parameters and
+  returns the effect. Errors: `refused` (this layout does not know the command)
+  and `unknown-layout`.
+- `workspace` signal `layout-changed`.
+- `window.floating`: a boolean, settable.
+- `window.column`: read-only, `{ index, position }` on a scrolling workspace,
+  otherwise null.
+- Rule keys: `layout`, `float`, `column-width`.
+
+**Lua surface.**
+
+- `gnoblin.layout.register(name, fn)`: `fn(ctx)` receives `{ area, windows,
+  focus, params }` and returns `{ { id, x, y, w, h, visible }, ... }`. A name may
+  not shadow a built-in. Re-registering on reload replaces the function.
+- `workspace:set_layout(name)`, `workspace:layout()`,
+  `workspace:layout_command(name, params)` and `window:set_floating(bool)`.
+- A Lua engine runs in the runtime process, and the compositor never waits on it.
+  The adapter returns the workspace's last placements, sends an arrange request
+  with a deadline, and applies the reply only if the workspace's arrange
+  generation still matches. A late or failed reply is dropped.
+
+**Failure modes.** This list must be complete before any code:
+
+- Zero windows, one window, and a window larger than the area.
+- Area smaller than the gaps: gaps clamp to zero, so no rect is negative.
+- Removal of the focused window, and removal of the only window.
+- Rapid add and remove in one event batch: one arrange, not one per change.
+- Output resize mid-layout: applied on the next event, never partially.
+- Non-deterministic output: placements never follow hash-map iteration order.
+- A transient added to a full workspace floats and is never tiled.
+- A drop outside the work area floats. A drop on a fullscreen window does nothing.
+- A flag clears after its slot was removed: `window_added` restores the window.
+- A rule that loops: rules apply on map only.
+- An output removed while its workspace is the only one: the workspace is adopted
+  and no window is lost.
+- A Lua deadline miss: keep the last placements and report to diag. Three misses
+  in a row switch the workspace to floating.
+- A Lua reply with the wrong count, a duplicate id, or a non-finite rect: the
+  whole reply is rejected.
+- An unknown or unregistered layout name: the workspace falls back to floating
+  and keeps its windows.
+- A reload removes a name that workspaces still use: those workspaces fall back
+  to floating, with a notice.
+- A Lua error inside `fn`: handled as a deadline miss, and the compositor does not
+  crash.
+- A registration that collides with a built-in: refused at registration.
+- Reduced motion during a running tween: the next arrange snaps to the target.
+
+**Parity.** Floating is the default, so the parity harness keeps its placement,
+stacking and focus scenarios against the Mutter reference, unchanged. Tiling,
+scrolling and Lua engines have no Mutter equivalent. They are a new feature, not
+a divergence, so they do not go in `tests/parity/divergences.toml`. Their tests
+are model tests in `gnoblin-layout` and Gnoblin-only scenarios on the candidate,
+with expected outputs under `tests/layout/`. The parity report does not score them.
+
 ## Phase 0 checklist
 
 - [x] Decide D1 to D16 (done 2026-11-04).
@@ -1923,3 +2078,4 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
 - **The version source path.** The plan named `versions/gnoblin-version.json`
   and the tree holds `src/gnoblin-version.json`, which `prepare-release.sh`
   writes. No `xtask` step copies it into the workspace yet.
+```
