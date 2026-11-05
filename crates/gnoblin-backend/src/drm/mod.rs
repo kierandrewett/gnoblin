@@ -40,6 +40,7 @@
 //!    ioctl and the refusal is logged, so the display keeps the table it had.
 
 pub mod gamma;
+pub mod gpu;
 pub mod plan;
 
 use std::fmt;
@@ -95,12 +96,12 @@ impl std::error::Error for DrmError {}
 /// all, which is why [`Drm::open`] returns an error rather than a backend with no outputs: the
 /// composition root chooses the headless backend for that case.
 pub struct Drm {
-    _private: (),
+    gpu: gpu::Gpu,
 }
 
 impl fmt::Debug for Drm {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_struct("Drm").finish_non_exhaustive()
+        formatter.debug_struct("Drm").field("gpu", &self.gpu).finish()
     }
 }
 
@@ -111,10 +112,10 @@ impl Drm {
     ///
     /// [`DrmError`] naming what could not be opened. A session that gets this error runs the
     /// headless backend instead; it is not a frame error.
-    pub fn open(_seat_name: &str) -> Result<Self, DrmError> {
-        Err(DrmError::Device(
-            "the DRM backend's device path is not built yet".to_owned(),
-        ))
+    pub fn open(seat_name: &str) -> Result<Self, DrmError> {
+        Ok(Self {
+            gpu: gpu::Gpu::open(seat_name)?,
+        })
     }
 }
 
@@ -136,7 +137,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
     }
 
     fn input(&mut self) -> &mut dyn InputSource {
-        unreachable!("a hardware backend without a GPU has no input")
+        unreachable!("the DRM backend's input is not built yet: it lands with the input slice")
     }
 
     fn register(&mut self, _loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
