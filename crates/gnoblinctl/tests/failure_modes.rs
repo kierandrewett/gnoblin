@@ -199,6 +199,15 @@ fn two_windows() -> (Graph, ObjectId, ObjectId) {
         .expect("window is in the schema");
     let mut session = Fields::new();
     session.insert("version".to_owned(), Value::Text("0.2.0".to_owned()));
+    // Every slot starts with no provider, which is the schema's fail-closed default.
+    for slot in [
+        "slot_auth_polkit",
+        "slot_prompt_secret",
+        "slot_location_agent",
+        "slot_idle_policy",
+    ] {
+        session.insert(slot.to_owned(), Value::Text("none".to_owned()));
+    }
     graph
         .create(TypeKey::gnoblin("session"), session)
         .expect("session is in the schema");

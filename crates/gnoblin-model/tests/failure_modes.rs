@@ -30,6 +30,12 @@ fn window_properties(title: &str) -> Fields {
     properties.insert(TITLE.to_owned(), Value::Text(title.to_owned()));
     properties.insert("app_id".to_owned(), Value::Text("org.example.App".to_owned()));
     properties.insert("focused".to_owned(), Value::Bool(false));
+    // The frame rectangle the compositor publishes as four numbers; the schema
+    // requires it at creation, so every test helper supplies it.
+    properties.insert("x".to_owned(), Value::Int(0));
+    properties.insert("y".to_owned(), Value::Int(0));
+    properties.insert("width".to_owned(), Value::Uint(800));
+    properties.insert("height".to_owned(), Value::Uint(600));
     properties
 }
 
@@ -493,6 +499,15 @@ fn a_session_signal_carries_its_declared_field() {
     let mut graph = graph();
     let mut properties = Fields::new();
     properties.insert("version".to_owned(), Value::Text("0.2.0".to_owned()));
+    // Every slot starts with no provider, which is the schema's fail-closed default.
+    for slot in [
+        "slot_auth_polkit",
+        "slot_prompt_secret",
+        "slot_location_agent",
+        "slot_idle_policy",
+    ] {
+        properties.insert(slot.to_owned(), Value::Text("none".to_owned()));
+    }
     let session = graph
         .create(TypeKey::gnoblin("session"), properties)
         .expect("the session type takes a version string");

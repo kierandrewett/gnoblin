@@ -221,15 +221,16 @@ mod tests {
             "gnoblin",
             "window.focus",
             1,
+            // Only the members this test reads, so a schema that adds a property
+            // does not break a test about sensitivity.
             &Properties {
                 id: 12,
                 title: "editor".to_owned(),
                 app_id: "code".to_owned(),
                 focused: true,
-                x: 0,
-                y: 0,
-                width: 200,
-                height: 150,
+                // Only the members this test reads: a property the schema adds
+                // later must not break a test about sensitivity.
+                ..Properties::default()
             },
         );
         assert!(!envelope.is_sensitive());

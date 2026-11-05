@@ -93,6 +93,12 @@ fn window_properties(title: &str) -> Fields {
     properties.insert("title".to_owned(), ModelValue::Text(title.to_owned()));
     properties.insert("app_id".to_owned(), ModelValue::Text("org.example.App".to_owned()));
     properties.insert("focused".to_owned(), ModelValue::Bool(false));
+    // The frame rectangle the compositor publishes as four numbers; the schema
+    // requires it at creation, so every test helper supplies it.
+    properties.insert("x".to_owned(), ModelValue::Int(0));
+    properties.insert("y".to_owned(), ModelValue::Int(0));
+    properties.insert("width".to_owned(), ModelValue::Uint(800));
+    properties.insert("height".to_owned(), ModelValue::Uint(600));
     properties
 }
 
@@ -106,6 +112,15 @@ fn open_window(server: &mut Server, title: &str) -> ObjectId {
 fn session(server: &mut Server) -> ObjectId {
     let mut properties = Fields::new();
     properties.insert("version".to_owned(), ModelValue::Text(VERSION.to_string()));
+    // Every slot starts with no provider, which is the schema's fail-closed default.
+    for slot in [
+        "slot_auth_polkit",
+        "slot_prompt_secret",
+        "slot_location_agent",
+        "slot_idle_policy",
+    ] {
+        properties.insert(slot.to_owned(), ModelValue::Text("none".to_owned()));
+    }
     server
         .create(TypeKey::gnoblin("session"), properties)
         .expect("the session type is in the schema")

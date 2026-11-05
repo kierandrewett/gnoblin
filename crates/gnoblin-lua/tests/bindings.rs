@@ -270,6 +270,11 @@ fn window_pair() -> (Server, Host<Loopback>, ObjectId) {
         gnoblin_model::Value::Text("org.example.App".to_owned()),
     );
     properties.insert("focused".to_owned(), gnoblin_model::Value::Bool(false));
+    // The frame rectangle the schema requires at creation.
+    properties.insert("x".to_owned(), gnoblin_model::Value::Int(0));
+    properties.insert("y".to_owned(), gnoblin_model::Value::Int(0));
+    properties.insert("width".to_owned(), gnoblin_model::Value::Uint(800));
+    properties.insert("height".to_owned(), gnoblin_model::Value::Uint(600));
     let window = server
         .create(TypeKey::gnoblin("window"), properties)
         .expect("the window type is in the schema");
