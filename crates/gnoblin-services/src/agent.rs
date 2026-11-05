@@ -113,6 +113,25 @@ impl Proposition {
             request,
         }
     }
+
+    /// The proposition for one GeoClue `AuthorizeApp`.
+    ///
+    /// The desktop id is the name a host shows (it goes in the offer's title, where a polkit
+    /// request carries its action id), and the message is the sentence the host draws. A
+    /// GeoClue request has no cookie, identities or details, so those stay empty.
+    pub fn location(desktop_id: &str, message: &str) -> Proposition {
+        Proposition {
+            slot: Slot::LocationAgent,
+            request: PolkitRequest {
+                cookie: String::new(),
+                action_id: desktop_id.to_owned(),
+                message: message.to_owned(),
+                icon_name: String::new(),
+                details: BTreeMap::new(),
+                identities: Vec::new(),
+            },
+        }
+    }
 }
 
 /// What the user decided.

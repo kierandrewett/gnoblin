@@ -66,6 +66,7 @@
 #![forbid(unsafe_code)]
 
 pub mod agent;
+pub mod location;
 pub mod polkit;
 pub mod role;
 pub mod slot;
