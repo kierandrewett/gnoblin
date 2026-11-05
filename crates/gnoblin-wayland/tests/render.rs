@@ -16,6 +16,14 @@
 //! compare would pin the software path's rounding and make the GLES path's parity a
 //! matter of tolerance arithmetic rather than of meaning.
 //!
+//! ## Both renderers, on purpose
+//!
+//! The tests that assert *pixels* run their body twice: once on the software path and once
+//! on the GLES path (see [`for_each_renderer`]). That is the parity rule of the Renderer card
+//! at the only layer that can prove it — a real client's buffer, imported and composited —
+//! because the backend's own probes compare a synthetic frame, not a `wl_shm` one. A machine
+//! with no surfaceless EGL context prints the reason and runs the software half only.
+//!
 //! ## Two threads, on purpose
 //!
 //! A calloop loop and the backend it drives are not `Send`, so the session runs on the
@@ -32,7 +40,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_backend::headless::Headless;
+use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wayland::{Config, ControlHandle, FrameStats, LoopError, ObservedWindow, Server, SessionSnapshot};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
@@ -332,6 +340,19 @@ impl Client {
 }
 
 /// The centre of a rectangle, in global logical coordinates.
+/// Runs `body` against every renderer this machine offers.
+///
+/// The software path always runs; the GLES path runs when a surfaceless EGL context can be
+/// made, and prints why it did not otherwise. The same body serving both is what makes a
+/// difference between them a bug in one of them rather than a difference between two probes.
+fn for_each_renderer(body: impl Fn(Headless)) {
+    body(Headless::new());
+    match Headless::with_config(HeadlessConfig::gles()) {
+        Ok(backend) => body(backend),
+        Err(error) => println!("skipping the GLES half: {error} (no surfaceless EGL context on this machine)"),
+    }
+}
+
 fn centre(rect: Rect) -> gnoblin_types::Point {
     gnoblin_types::Point::new(rect.x + (rect.width / 2) as i32, rect.y + (rect.height / 2) as i32)
 }
@@ -353,39 +374,41 @@ fn wait_for_rect(session: &Handle, title: &str, rect: Rect) -> ObservedWindow {
 
 #[test]
 fn a_committed_buffer_is_drawn_where_the_window_is() {
-    let session = Session::start(Headless::new());
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("Red");
-        client.attach_solid(&window, 100, 100, RED);
-        let observation = session.wait_for(|observation| {
-            observation
-                .only()
-                .is_some_and(|window| window.mapped && window.geometry.width >= 100)
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Red");
+            client.attach_solid(&window, 100, 100, RED);
+            let observation = session.wait_for(|observation| {
+                observation
+                    .only()
+                    .is_some_and(|window| window.mapped && window.geometry.width >= 100)
+            });
+            let geometry = observation.only().expect("one window").geometry;
+
+            // The probe is the centre of the window's frame rectangle, which the 100x100
+            // buffer fills from the window's origin.
+            let inside = centre(Rect::new(
+                geometry.x,
+                geometry.y,
+                geometry.width.min(100),
+                geometry.height.min(100),
+            ));
+            assert_eq!(
+                session.probe(inside.x, inside.y),
+                RED,
+                "the window's own pixels are drawn at the window's position"
+            );
+
+            // The far corner of the output is not covered by the window.
+            let (width, height) = screen();
+            assert_eq!(
+                session.probe(width - 1, height - 1),
+                BACKGROUND,
+                "the desktop background is drawn where no window is"
+            );
         });
-        let geometry = observation.only().expect("one window").geometry;
-
-        // The probe is the centre of the window's frame rectangle, which the 100x100
-        // buffer fills from the window's origin.
-        let inside = centre(Rect::new(
-            geometry.x,
-            geometry.y,
-            geometry.width.min(100),
-            geometry.height.min(100),
-        ));
-        assert_eq!(
-            session.probe(inside.x, inside.y),
-            RED,
-            "the window's own pixels are drawn at the window's position"
-        );
-
-        // The far corner of the output is not covered by the window.
-        let (width, height) = screen();
-        assert_eq!(
-            session.probe(width - 1, height - 1),
-            BACKGROUND,
-            "the desktop background is drawn where no window is"
-        );
     });
 }
 
@@ -415,150 +438,156 @@ fn a_stride_padded_buffer_is_read_from_the_right_offsets() {
 
 #[test]
 fn moving_a_window_moves_its_pixels_and_clears_the_old_rectangle() {
-    let session = Session::start(Headless::new());
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("Moving");
-        client.attach_solid(&window, 100, 100, RED);
-        let observation = session.wait_for(|observation| {
-            observation
-                .only()
-                .is_some_and(|window| window.mapped && window.geometry.width >= 100)
-        });
-        let id = observation.only().expect("one window").id;
-        // A client that stops acknowledging keeps the state it has, so the move
-        // produces exactly one frame: the one the test measures.
-        client.state.ack = false;
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Moving");
+            client.attach_solid(&window, 100, 100, RED);
+            let observation = session.wait_for(|observation| {
+                observation
+                    .only()
+                    .is_some_and(|window| window.mapped && window.geometry.width >= 100)
+            });
+            let id = observation.only().expect("one window").id;
+            // A client that stops acknowledging keeps the state it has, so the move
+            // produces exactly one frame: the one the test measures.
+            client.state.ack = false;
 
-        let before = Rect::new(40, 40, 120, 90);
-        session.control.move_window(id, before);
-        wait_for_rect(session, "Moving", before);
-        assert_eq!(
-            session.probe(centre(before).x, centre(before).y),
-            RED,
-            "the window is drawn at its new rectangle"
-        );
-
-        let after = Rect::new(300, 260, 120, 90);
-        session.control.move_window(id, after);
-        wait_for_rect(session, "Moving", after);
-        assert_eq!(
-            session.probe(centre(after).x, centre(after).y),
-            RED,
-            "the pixels moved with the window"
-        );
-        assert_eq!(
-            session.probe(centre(before).x, centre(before).y),
-            BACKGROUND,
-            "the rectangle the window left is repainted with the background"
-        );
-
-        // The damage of the frame the move drew covers both rectangles and nothing
-        // else, which is what "only the changed pixels are repainted" means.
-        let stats = session.stats();
-        let damage = stats.damage;
-        assert_eq!(damage.len(), 2, "the old and the new rectangle: {damage:?}");
-        for rect in [before, after] {
-            assert!(
-                damage
-                    .iter()
-                    .any(|damaged| damaged.contains(gnoblin_types::Point::new(rect.x, rect.y))),
-                "the damage covers {rect:?}: {damage:?}"
+            let before = Rect::new(40, 40, 120, 90);
+            session.control.move_window(id, before);
+            wait_for_rect(session, "Moving", before);
+            assert_eq!(
+                session.probe(centre(before).x, centre(before).y),
+                RED,
+                "the window is drawn at its new rectangle"
             );
-        }
+
+            let after = Rect::new(300, 260, 120, 90);
+            session.control.move_window(id, after);
+            wait_for_rect(session, "Moving", after);
+            assert_eq!(
+                session.probe(centre(after).x, centre(after).y),
+                RED,
+                "the pixels moved with the window"
+            );
+            assert_eq!(
+                session.probe(centre(before).x, centre(before).y),
+                BACKGROUND,
+                "the rectangle the window left is repainted with the background"
+            );
+
+            // The damage of the frame the move drew covers both rectangles and nothing
+            // else, which is what "only the changed pixels are repainted" means.
+            let stats = session.stats();
+            let damage = stats.damage;
+            assert_eq!(damage.len(), 2, "the old and the new rectangle: {damage:?}");
+            for rect in [before, after] {
+                assert!(
+                    damage
+                        .iter()
+                        .any(|damaged| damaged.contains(gnoblin_types::Point::new(rect.x, rect.y))),
+                    "the damage covers {rect:?}: {damage:?}"
+                );
+            }
+        });
     });
 }
 
 #[test]
 fn a_half_transparent_window_blends_with_the_background() {
-    let session = Session::start(Headless::new());
-    session.run(|session| {
-        let mut client = Client::connect(session.socket());
-        let window = client.create_window("Faded");
-        client.attach_solid(&window, 100, 100, RED);
-        let observation = session.wait_for(|observation| {
-            observation
-                .only()
-                .is_some_and(|window| window.mapped && window.geometry.width >= 100)
-        });
-        let id = observation.only().expect("one window").id;
-        let geometry = observation.only().expect("one window").geometry;
-        let inside = centre(Rect::new(
-            geometry.x,
-            geometry.y,
-            geometry.width.min(100),
-            geometry.height.min(100),
-        ));
-        assert_eq!(session.probe(inside.x, inside.y), RED, "the window starts opaque");
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Faded");
+            client.attach_solid(&window, 100, 100, RED);
+            let observation = session.wait_for(|observation| {
+                observation
+                    .only()
+                    .is_some_and(|window| window.mapped && window.geometry.width >= 100)
+            });
+            let id = observation.only().expect("one window").id;
+            let geometry = observation.only().expect("one window").geometry;
+            let inside = centre(Rect::new(
+                geometry.x,
+                geometry.y,
+                geometry.width.min(100),
+                geometry.height.min(100),
+            ));
+            assert_eq!(session.probe(inside.x, inside.y), RED, "the window starts opaque");
 
-        session.control.set_window_opacity(id, 0.5);
-        // Red at half alpha over an opaque black background is half red: the blue and
-        // green channels stay dark and red lands at half intensity.
-        let deadline = Instant::now() + TIMEOUT;
-        loop {
-            let [red, green, blue, alpha] = session.probe(inside.x, inside.y);
-            if red.abs_diff(128) <= 2 && green == 0 && blue == 0 && alpha == 255 {
-                break;
+            session.control.set_window_opacity(id, 0.5);
+            // Red at half alpha over an opaque black background is half red: the blue and
+            // green channels stay dark and red lands at half intensity.
+            let deadline = Instant::now() + TIMEOUT;
+            loop {
+                let [red, green, blue, alpha] = session.probe(inside.x, inside.y);
+                if red.abs_diff(128) <= 2 && green == 0 && blue == 0 && alpha == 255 {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "half opacity never blended: the probe is {red} {green} {blue} {alpha}"
+                );
+                thread::sleep(Duration::from_millis(5));
             }
-            assert!(
-                Instant::now() < deadline,
-                "half opacity never blended: the probe is {red} {green} {blue} {alpha}"
-            );
-            thread::sleep(Duration::from_millis(5));
-        }
+        });
     });
 }
 
 #[test]
 fn overlapping_windows_are_drawn_in_stacking_order() {
-    let session = Session::start(Headless::new());
-    session.run(|session| {
-        let mut first = Client::connect(session.socket());
-        let red_window = first.create_window("Red");
-        first.attach_solid(&red_window, 100, 100, RED);
-        let observation = session.wait_for(|observation| {
-            observation
-                .only()
-                .is_some_and(|window| window.mapped && window.geometry.width >= 100)
-        });
-        let red_id = observation.only().expect("the first window").id;
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut first = Client::connect(session.socket());
+            let red_window = first.create_window("Red");
+            first.attach_solid(&red_window, 100, 100, RED);
+            let observation = session.wait_for(|observation| {
+                observation
+                    .only()
+                    .is_some_and(|window| window.mapped && window.geometry.width >= 100)
+            });
+            let red_id = observation.only().expect("the first window").id;
 
-        let mut second = Client::connect(session.socket());
-        let blue_window = second.create_window("Blue");
-        second.attach_solid(&blue_window, 100, 100, BLUE);
-        let observation = session.wait_for(|observation| observation.len() == 2);
-        let blue_id = observation.titled("Blue").expect("the second window").id;
+            let mut second = Client::connect(session.socket());
+            let blue_window = second.create_window("Blue");
+            second.attach_solid(&blue_window, 100, 100, BLUE);
+            let observation = session.wait_for(|observation| observation.len() == 2);
+            let blue_id = observation.titled("Blue").expect("the second window").id;
 
-        // Two overlapping rectangles, the second window on top and raised by its own
-        // map. The overlap is where stacking is visible.
-        let red = Rect::new(40, 40, 100, 100);
-        let blue = Rect::new(80, 80, 100, 100);
-        session.control.move_window(red_id, red);
-        session.control.move_window(blue_id, blue);
-        wait_for_rect(session, "Red", red);
-        wait_for_rect(session, "Blue", blue);
-        assert_eq!(session.probe(120, 120), BLUE, "the topmost window owns the overlap");
-        assert_eq!(session.probe(60, 60), RED, "the lower window shows where it is alone");
+            // Two overlapping rectangles, the second window on top and raised by its own
+            // map. The overlap is where stacking is visible.
+            let red = Rect::new(40, 40, 100, 100);
+            let blue = Rect::new(80, 80, 100, 100);
+            session.control.move_window(red_id, red);
+            session.control.move_window(blue_id, blue);
+            wait_for_rect(session, "Red", red);
+            wait_for_rect(session, "Blue", blue);
+            assert_eq!(session.probe(120, 120), BLUE, "the topmost window owns the overlap");
+            assert_eq!(session.probe(60, 60), RED, "the lower window shows where it is alone");
 
-        // A press on the lower window's exposed part is an activation request, and the
-        // window manager raises it.
-        first.click(session, gnoblin_types::Point::new(60, 60));
-        let deadline = Instant::now() + TIMEOUT;
-        loop {
-            if session.probe(120, 120) == RED {
-                break;
+            // A press on the lower window's exposed part is an activation request, and the
+            // window manager raises it.
+            first.click(session, gnoblin_types::Point::new(60, 60));
+            let deadline = Instant::now() + TIMEOUT;
+            loop {
+                if session.probe(120, 120) == RED {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "the clicked window was never raised above the other"
+                );
+                thread::sleep(Duration::from_millis(5));
             }
-            assert!(
-                Instant::now() < deadline,
-                "the clicked window was never raised above the other"
+            assert_eq!(
+                session.probe(140, 140),
+                BLUE,
+                "the other window still shows where the raised one does not cover it"
             );
-            thread::sleep(Duration::from_millis(5));
-        }
-        assert_eq!(
-            session.probe(140, 140),
-            BLUE,
-            "the other window still shows where the raised one does not cover it"
-        );
+        });
     });
 }
 

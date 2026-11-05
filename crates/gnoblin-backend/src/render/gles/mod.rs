@@ -117,7 +117,7 @@ use crate::render::physical_rect;
 
 pub use program::ShaderError;
 
-use gl::{Device, Program, Target, Texture};
+use gl::{Device, Framebuffer, Program, Texture};
 use program::Uniforms;
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
@@ -155,9 +155,9 @@ pub struct Gles {
     /// The GL context and the pass machinery.
     device: Device,
     /// The output-sized target, replaced by [`Gles::resize`].
-    target: Target,
+    target: Framebuffer,
     /// The two scratch targets the blur passes need, made on first use.
-    scratch: Option<[Target; 2]>,
+    scratch: Option<[Framebuffer; 2]>,
     /// The effect programs, compiled once.
     passes: Passes,
     /// The registered user shader and the program its source compiled to.
@@ -500,8 +500,8 @@ impl Gles {
 /// One frame's mutable state, so a pass's parameters stay a method's arguments.
 struct Painter<'a> {
     device: &'a mut Device,
-    target: &'a Target,
-    scratch: &'a mut Option<[Target; 2]>,
+    target: &'a Framebuffer,
+    scratch: &'a mut Option<[Framebuffer; 2]>,
     passes: &'a mut Passes,
     user: &'a mut Option<Registered>,
     error: &'a mut Option<ShaderError>,

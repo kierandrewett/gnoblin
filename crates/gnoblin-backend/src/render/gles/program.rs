@@ -65,14 +65,14 @@ const FIXED_BYTES: usize = 96;
 
 /// Where a shader's source came from, for a report that names it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Context {
+enum ShaderOrigin {
     /// A pass the compositor ships.
     Effect(&'static str),
     /// A shader a caller registered.
     User,
 }
 
-impl fmt::Display for Context {
+impl fmt::Display for ShaderOrigin {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Effect(name) => write!(formatter, "the {name} pass"),
@@ -112,7 +112,7 @@ impl fmt::Display for Stage {
 /// that chose to draw nothing.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ShaderError {
-    context: Context,
+    context: ShaderOrigin,
     stage: Stage,
     line: usize,
     column: usize,
@@ -120,7 +120,7 @@ pub struct ShaderError {
 }
 
 impl ShaderError {
-    fn new(context: Context, stage: Stage, line: usize, column: usize, detail: String) -> Self {
+    fn new(context: ShaderOrigin, stage: Stage, line: usize, column: usize, detail: String) -> Self {
         Self {
             context,
             stage,
@@ -152,7 +152,7 @@ impl ShaderError {
     /// A refusal that has no line to point at: a value or a schema that disagrees with the
     /// shader the caller registered.
     pub(crate) fn refusal(detail: String) -> Self {
-        Self::new(Context::User, Stage::Module, 0, 0, detail)
+        Self::new(ShaderOrigin::User, Stage::Module, 0, 0, detail)
     }
 }
 
@@ -256,13 +256,13 @@ fn components(colour: Color) -> [f32; 4] {
 /// Where each uniform sits in the block, and which type the shader declared for it.
 #[derive(Clone, Debug)]
 pub(crate) struct UniformLayout {
-    fields: Vec<Field>,
+    fields: Vec<UniformField>,
     bytes: usize,
 }
 
 /// One user-declared uniform.
 #[derive(Clone, Debug)]
-struct Field {
+struct UniformField {
     name: String,
     kind: UniformType,
     offset: usize,
@@ -292,7 +292,7 @@ impl UniformLayout {
         for (name, kind) in schema.entries() {
             let (alignment, size) = kind_layout(*kind);
             offset = offset.div_ceil(alignment) * alignment;
-            fields.push(Field {
+            fields.push(UniformField {
                 name: name.clone(),
                 kind: *kind,
                 offset,
@@ -336,7 +336,7 @@ impl UniformLayout {
         for value in values {
             let Some(field) = self.fields.iter().find(|field| field.name == value.name) else {
                 return Err(ShaderError::new(
-                    Context::User,
+                    ShaderOrigin::User,
                     Stage::Module,
                     0,
                     0,
@@ -345,7 +345,7 @@ impl UniformLayout {
             };
             if field.kind != value.kind {
                 return Err(ShaderError::new(
-                    Context::User,
+                    ShaderOrigin::User,
                     Stage::Module,
                     0,
                     0,
@@ -478,7 +478,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
             (location.line_number as usize, location.line_position as usize)
         });
         ShaderError::new(
-            Context::Effect(context),
+            ShaderOrigin::Effect(context),
             stage,
             shift.line(line),
             column,
@@ -492,7 +492,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
                 (location.line_number as usize, location.line_position as usize)
             });
             ShaderError::new(
-                Context::Effect(context),
+                ShaderOrigin::Effect(context),
                 stage,
                 shift.line(line),
                 column,
@@ -527,7 +527,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
     .map_err(|error| {
         debug!(%error, "[render] naga could not write GLSL");
         ShaderError::new(
-            Context::Effect(context),
+            ShaderOrigin::Effect(context),
             stage,
             0,
             0,
@@ -557,7 +557,7 @@ fn from_failure(shift: Shift, failure: CompileFailure) -> ShaderError {
     } else {
         failure.log
     };
-    ShaderError::new(Context::User, failure.stage, line, 0, detail)
+    ShaderError::new(ShaderOrigin::User, failure.stage, line, 0, detail)
 }
 
 /// Links an effect program from its WGSL stages.

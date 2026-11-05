@@ -15,7 +15,7 @@
 //!
 //! # Objects are freed by the context, not one by one
 //!
-//! A [`Target`] and a [`Program`] own GL names but do not delete them: the context that
+//! A [`Framebuffer`] and a [`Program`] own GL names but do not delete them: the context that
 //! created them is destroyed with the renderer, and destroying a context frees every
 //! object it made. Deleting them individually would need a current context at drop
 //! time, which is exactly the state this module cannot promise on a failure path.
@@ -211,7 +211,7 @@ impl Device {
     }
 
     /// A target of `size` physical pixels, holding no defined pixel.
-    pub(crate) fn target(&mut self, size: Size) -> Result<Target, RenderError> {
+    pub(crate) fn target(&mut self, size: Size) -> Result<Framebuffer, RenderError> {
         let (width, height) = (size.width as i32, size.height as i32);
         if width <= 0 || height <= 0 {
             return Err(RenderError::Degenerate {
@@ -222,7 +222,7 @@ impl Device {
         self.renderer
             .with_context(|gl| unsafe {
                 // SAFETY: every name created here belongs to this context and is stored in the
-                // returned `Target`, which the context outlives. The texture is a colour
+                // returned `Framebuffer`, which the context outlives. The texture is a colour
                 // attachment; it is cleared once so a fresh target holds no defined pixel, the
                 // state a fresh pixman buffer is in.
                 let texture = gl.create_texture().map_err(|error| {
@@ -269,7 +269,7 @@ impl Device {
                     debug!(width, height, "[render] the target framebuffer is incomplete");
                     return Err(RenderError::Unavailable);
                 }
-                Ok(Target {
+                Ok(Framebuffer {
                     framebuffer,
                     texture: Texture {
                         handle: texture,
@@ -285,7 +285,7 @@ impl Device {
     /// Setting the state here rather than per pass is what makes "a frame does not inherit
     /// the last frame's state" true: whatever a pass left behind, the next frame begins
     /// from this.
-    pub(crate) fn begin(&mut self, target: &Target) -> Result<(), RenderError> {
+    pub(crate) fn begin(&mut self, target: &Framebuffer) -> Result<(), RenderError> {
         let (width, height) = target.texture.size;
         self.viewport = (width, height);
         self.renderer
@@ -341,7 +341,7 @@ impl Device {
     }
 
     /// Clears a whole target to `colour`.
-    pub(crate) fn clear(&mut self, target: &Target, colour: Color) {
+    pub(crate) fn clear(&mut self, target: &Framebuffer, colour: Color) {
         let _ = self.renderer.with_context(|gl| unsafe {
             // SAFETY: the target belongs to this context; the clear is unrestricted because
             // the scissor is disabled first.
@@ -353,7 +353,7 @@ impl Device {
     }
 
     /// Copies `rect` of `from` into the same rectangle of `to`.
-    pub(crate) fn copy(&mut self, from: &Target, to: &Target, rect: Rect) -> Result<(), RenderError> {
+    pub(crate) fn copy(&mut self, from: &Framebuffer, to: &Framebuffer, rect: Rect) -> Result<(), RenderError> {
         let (_, height) = from.texture.size;
         self.renderer
             .with_context(|gl| unsafe {
@@ -445,6 +445,16 @@ impl Device {
 
                 gl.active_texture(glow::TEXTURE0 + TEXTURE_UNIT);
                 gl.bind_texture(glow::TEXTURE_2D, Some(texture.handle));
+                // The filter is set per draw rather than once per texture: a texture this
+                // renderer did not create — a client's imported buffer — keeps GL's default
+                // `NEAREST_MIPMAP_LINEAR`, and a texture without mipmaps sampled with a
+                // mipmap filter is *incomplete*, which samples as opaque black. Setting it
+                // here is the same thing Smithay's own texture draw does, and it is why a
+                // client's pixels show.
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
                 gl.draw_arrays(glow::TRIANGLES, 0, 6);
 
                 gl.bind_texture(glow::TEXTURE_2D, None);
@@ -458,7 +468,7 @@ impl Device {
     }
 
     /// Reads a whole target back, bottom row first, as RGBA8.
-    pub(crate) fn read(&mut self, target: &Target) -> Result<Vec<u8>, RenderError> {
+    pub(crate) fn read(&mut self, target: &Framebuffer) -> Result<Vec<u8>, RenderError> {
         let (width, height) = target.texture.size;
         let mut bytes = vec![0u8; width as usize * 4 * height as usize];
         self.renderer
@@ -629,12 +639,12 @@ impl Texture {
 }
 
 /// An offscreen target: a texture and the framebuffer that draws into it.
-pub(crate) struct Target {
+pub(crate) struct Framebuffer {
     framebuffer: glow::Framebuffer,
     texture: Texture,
 }
 
-impl Target {
+impl Framebuffer {
     /// The target's texture, for a pass that samples what it holds.
     pub(crate) fn texture(&self) -> Texture {
         self.texture
