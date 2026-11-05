@@ -1054,11 +1054,9 @@ failure-mode list that must be complete before isolated tests or code.
   rotation, offset), effects as GLES passes, user shaders with a uniform schema,
   the animation and tween player, cursor themes, frame export taps, the recovery
   overlay.
-- **3D-first, 2D by default:** every node carries a full 3D transform (a 4x4 matrix, or position, rotation and scale in three axes) and a `z` depth. The default camera is orthographic, which makes 2D exact. A layout may set a perspective camera.
-    - 0.2.0 scope (GLES 3.1): a depth buffer, a perspective camera, and hit testing through the inverse transform, so a pointer ray is intersected with each placed window in its local space. This is new scope, not a divergence from Mutter.
-    - Damage: under a perspective camera, damage is the full output until a tighter rule is measured. Under an orthographic camera, damage stays per node.
-    - Invalid transforms (non-finite, singular) are refused at the layout boundary, so the renderer never sees them.
-    - Nothing in the IPC, the schema or the damage model assumes a flat plane.
+- **Layouts are 3D-first; the renderer draws 2D today.** Every layout placement is a full 3D transform, and 2D is the special case `z = 0` with an orthographic camera. The renderer's ability to draw depth, a perspective camera and 3D hit testing is a separate decision, D18. Until D18 lands, the renderer refuses any non-2D transform or perspective camera with the named `unsupported-3d` error. That refusal is a temporary renderer state, not a layout restriction.
+- **Damage:** the rule for 3D damage is written in D18.
+- Nothing in the IPC, the schema or the damage model assumes a flat plane.
 - **Session owner:** capture and remote-desktop sessions are compositor objects.
   `gnoblin-capture` owns their PipeWire streams and `gnoblin-input` owns their
   EIS contexts. The portal and the `gnoblin-compat-mutter-screencast` and
@@ -1489,29 +1487,31 @@ Contracts that change, with a migration path in Bingux before cutover:
 
 *All sixteen decisions were made by Kieran on 2026-11-04. D17 was settled on
 2026-11-05 and revised the same day on Kieran's direction: layouts are Lua, they
-own window geometry through messages, and placements are 3D. Kieran has not yet
-confirmed the revision.
+own window geometry through messages, and placements are 3D. The renderer's
+3D pass is D18, and until it lands the renderer refuses non-2D transforms.
+Kieran has not yet confirmed the revision.
 Each section below records the choice, its consequences, and the options considered.
 
-| ID  | Question                     | Decision                                                                                                    |
-| --- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| D1  | Where scripts run            | **Decided:** separate process                                                                               |
-| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                            |
-| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                       |
-| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                          |
-| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                 |
-| D6  | Native plugins               | **Decided:** WASM modules                                                                                   |
-| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                            |
-| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                        |
-| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                            |
-| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                       |
-| D11 | Distribution target set      | **Decided:** full list, classified                                                                          |
-| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                         |
-| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                  |
-| D14 | Portal UI without a shell    | **Decided:** fail closed                                                                                    |
-| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                              |
-| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                       |
-| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback |
+| ID  | Question                     | Decision                                                                                                     |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| D1  | Where scripts run            | **Decided:** separate process                                                                                |
+| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                             |
+| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                        |
+| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                           |
+| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                  |
+| D6  | Native plugins               | **Decided:** WASM modules                                                                                    |
+| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                             |
+| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                         |
+| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                             |
+| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                        |
+| D11 | Distribution target set      | **Decided:** full list, classified                                                                           |
+| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                          |
+| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                   |
+| D14 | Portal UI without a shell    | **Decided:** fail closed                                                                                     |
+| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                               |
+| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                        |
+| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback  |
+| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then |
 
 ### D1: where scripts run
 
@@ -1721,18 +1721,12 @@ early upstream renderer), an own wgpu renderer (dmabuf, sync and scanout need
 unsafe `wgpu-hal` escape hatches), and GLES only (simplest; limits HDR and
 effects).
 
-Depth is the reason the renderer API takes a transform and a camera, not a
-rectangle.
+Depth is the renderer's job, and D18 decides it. This section records only the
+GPU and first-user notes that D18 relies on.
 
-- **GPU:** a depth buffer, a perspective camera and inverse-transform hit testing
-  are 0.2.0 scope on GLES 3.1 (Vulkan also provides depth). They are new scope,
-  not a divergence from Mutter.
-- **First user:** the layout engine. Floating and tiled windows are placed in 3D
-  space by Lua layouts, so 2D is the default orthographic camera. VR and XR, such
-  as Bingux VR, are a later user of the same scene.
-- **Damage:** in 3D it is the projected bounds of a dirty node. A node under a
-  perspective camera falls back to full damage on its output until a tighter
-  rule is measured.
+- **GPU:** a depth buffer exists on GLES 3.1 and Vulkan. See D18.
+- **First user:** the layout engine (D17), which places windows in 3D space.
+- **Damage:** see D18.
 
 ### D13: adapter default set
 
@@ -1876,9 +1870,8 @@ Options considered:
 - **Lua-only engines in the runtime role:** one language for every engine. Each
   arrange pays a round trip, and no workspace tiles while the runtime is down.
 
-**Scope.** Depth, a perspective camera and inverse-transform hit testing move
-into the 0.2.0 scope (see the renderer card and D12). This is new scope, not a
-divergence from Mutter.
+**Scope.** The layout contract is 3D-first (D17). Making the renderer draw it is
+D18, which is new scope and not a divergence from Mutter.
 
 **The layout value.** A layout is either:
 
@@ -1963,7 +1956,10 @@ the 2D special case. `transform` is optional and is either:
 `camera` is optional on a reply. It is `"orthographic"` (the default, which
 makes the 2D case exact), or `{ perspective = { fov = deg, near = n, far = f,
 pose = transform } }`. Layouts may return any valid transform, and a layout may
-set the workspace camera. There is no `unsupported-3d` refusal.
+set the workspace camera. Until D18 lands, the renderer refuses non-2D placements
+and perspective cameras with `unsupported-3d`. That is a temporary renderer
+state, not a layout restriction, and a layout may still be written against the
+full contract.
 
 Validation of a reply, all or nothing:
 
@@ -2218,6 +2214,26 @@ where the module promises it, determinism, zero and one window, and add and
 remove, plus a deadline, memory and bad-return test per host. Expected outputs
 live under `tests/layout/`. The parity report does not score them.
 
+### D18: renderer 3D pass
+
+**Proposed 2026-11-05. The layout contract (D17) is 3D-first, so every placement is a full 3D transform. This decision is whether `gnoblin-render` draws it.**
+
+The user's intent is that 3D should just work. So the target is the 0.2.0 renderer, and the decision is how.
+
+Options considered:
+
+- **GLES 3.1 depth pass in 0.2.0 (proposed):** a depth buffer, a perspective camera, and inverse-transform hit testing on GLES 3.1. Cost: new GPU work with no prototype yet; the renderer's damage rule must change. Benefit: 3D layouts work on the 0.2.0 target without waiting for Vulkan.
+- **Defer the depth pass to Vulkan:** the renderer stays 2D on GLES until the Vulkan backend exists. Cost: 3D layouts do not draw until a later release, and the user's intent slips. Benefit: no new GLES depth code.
+- **Keep refusing non-2D transforms:** the renderer never draws 3D, and 3D is a layout-side expression only. Cost: contradicts the user's intent; a 3D layout is unusable. Benefit: smallest renderer.
+
+Until D18's implementation lands, the renderer refuses any transform that is not 2D, and any perspective camera, with the named `unsupported-3d` error. This is a temporary renderer state, and it is recorded here so the refusal is not read as a layout restriction.
+
+- **Damage:** under an orthographic camera, damage stays per node. Under a perspective camera it is the full output until a tighter rule is measured.
+- **Hit testing:** a pointer ray is taken through the camera and intersected with each placed window in its local space; the nearest hit wins. A 3D arrangement is therefore clickable.
+- **Validation:** non-finite or singular transforms are refused at the layout boundary, before the renderer sees them.
+- **Verification:** screenshot parity of 2D scenes before and after the depth pass; property tests that a point inside a placed window's projected quad hits it and a point outside does not, under a random transform; a host test that a perspective camera refuses in the damage path until the tighter rule exists.
+- **Ledger:** new 0.2.0 scope, recorded in the ledger, not a divergence from Mutter.
+
 ## Phase 0 checklist
 
 - [x] Decide D1 to D16 (done 2026-11-04).
@@ -2325,10 +2341,10 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
   for at most the frame deadline without a visible stall is unmeasured, and
   so are the instruction, memory and deadline defaults in D17.
 
-- **3D scope in 0.2.0.** D17 and the renderer card now make depth, a
-  perspective camera and inverse-transform hit testing part of the 0.2.0
-  scope. The plan does not yet give that work a phase or a size, and the
-  GLES 3.1 depth pass has not been prototyped.
+- **3D renderer pass (D18).** The layout contract is 3D-first. The renderer's
+  depth buffer, perspective camera and 3D hit testing are new 0.2.0 scope,
+  unprototyped on GLES 3.1, with no phase or size yet. Until D18 lands, the
+  renderer refuses non-2D transforms with `unsupported-3d`.
 
 - **Opacity, rotation, scale and decorations.** Placements carry these
   values, but the plan does not say which of them `gnoblin-render` applies
