@@ -22,6 +22,7 @@
 //! | [`extension`] | none of its own | the seam a compat adapter's redirect registers through, and the operations it may ask the compositor for |
 //! | [`zwlr_foreign_toplevel_management_v1`] | `zwlr_foreign_toplevel_manager_v1` | the window list a taskbar reads, and the requests it may make on each window |
 //! | [`zwlr_gamma_control_v1`] | `zwlr_gamma_control_manager_v1` | per-output gamma ramps; a second client asking for an output another holds is refused |
+//! | [`zwlr_output_management_v1`] | `zwlr_output_manager_v1` | the outputs a configuration tool reads, and the layout it may test or apply through the host |
 //! | [`zwlr_output_power_management_v1`] | `zwlr_output_power_manager_v1` | per-output power, on or off; reports each change to its holder |
 //! | [`ext_foreign_toplevel_list_v1`] | `ext_foreign_toplevel_list_v1` | the read-only, standardised form of the same list, keyed by a stable identifier |
 //! | [`foreign_toplevel_shared`] | none of its own | the window record both toplevel lists are fed from, and what changed since it was last sent |
@@ -97,6 +98,7 @@ pub mod zwlr_data_control_v1;
 pub mod zwlr_foreign_toplevel_management_v1;
 pub mod zwlr_gamma_control_v1;
 pub mod zwlr_layer_shell_v1;
+pub mod zwlr_output_management_v1;
 pub mod zwlr_output_power_management_v1;
 pub mod zwlr_screencopy_v1;
 pub mod zwp_idle_inhibit_v1;

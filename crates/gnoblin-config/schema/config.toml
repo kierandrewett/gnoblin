@@ -120,6 +120,7 @@ variants = [
     { spelling = "ext-idle-notify", doc = "ext-idle-notify." },
     { spelling = "wlr-gamma-control", doc = "wlr-gamma-control." },
     { spelling = "wlr-output-power-management", doc = "wlr-output-power-management." },
+    { spelling = "wlr-output-management", doc = "wlr-output-management." },
     { spelling = "ext-session-lock", doc = "ext-session-lock." },
 ]
 

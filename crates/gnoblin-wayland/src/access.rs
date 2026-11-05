@@ -97,6 +97,8 @@ pub enum Global {
     GammaControl,
     /// `zwlr_output_power_manager_v1`: a client turns an output off and on.
     OutputPower,
+    /// `zwlr_output_manager_v1`: a client reads the outputs and asks for a new layout.
+    OutputManagement,
 }
 
 impl Global {
@@ -120,6 +122,7 @@ impl Global {
             | Self::GnoblinWindowFrameV1Frame
             | Self::GammaControl
             | Self::OutputPower
+            | Self::OutputManagement
             | Self::SessionHost => true,
             // The seat's privileged halves are how an input method and an on-screen
             // keyboard are implemented: the method is a process the session runs, and the
@@ -149,6 +152,7 @@ impl Global {
             Self::BackgroundEffect => "ext_background_effect_manager_v1",
             Self::GammaControl => "zwlr_gamma_control_manager_v1",
             Self::OutputPower => "zwlr_output_power_manager_v1",
+            Self::OutputManagement => "zwlr_output_manager_v1",
         }
     }
 
@@ -174,6 +178,7 @@ impl Global {
             Self::BackgroundEffect => gnoblin_config::Protocol::ExtBackgroundEffectV1,
             Self::GammaControl => gnoblin_config::Protocol::WlrGammaControl,
             Self::OutputPower => gnoblin_config::Protocol::WlrOutputPowerManagement,
+            Self::OutputManagement => gnoblin_config::Protocol::WlrOutputManagement,
             Self::GnoblinWindowFrameV1Frame | Self::SessionHost => return true,
             // The schema has no switch for the seat's privileged halves: an input method
             // and a virtual keyboard are always on offer to a connection that earned
@@ -462,6 +467,7 @@ mod tests {
         Global::BackgroundEffect,
         Global::GammaControl,
         Global::OutputPower,
+        Global::OutputManagement,
     ];
 
     #[test]
