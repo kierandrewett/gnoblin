@@ -2282,11 +2282,18 @@ Unset means the provider is chosen per request: a `portal.ui` claimant if one ex
 
 #### Negotiation per request
 
-1. Resolve the provider for `(interface, request)`: the configured one, or the default when unset.
-2. Call it with the typed request and the deadline. Validate its reply (see the safety rules).
-3. Fall back to `"builtin"` only when the provider is absent, errors, times out, or returns a reply that fails validation. A configured provider that fails falls back the same way as an unset one.
-4. If the requester has gone away at any point (relay disconnect, `portal-cancel`), stop: no provider call, no fallback, no dialog. The outcome is discarded.
-5. Return the outcome: `accepted { result }`, `cancelled { reason }` or `error { code }`. The relay maps it to the portal response code (accepted `0`, cancelled `1`, error `2`) and answers the D-Bus call.
+1. Assign a gnoblin `request_id` (unique per boot, from services). It is carried to the provider in every message and to the built-in UI. Late replies are matched on it.
+2. Resolve the provider for `(interface, request)`: the configured one, or the default when unset.
+3. Call it with the typed request and the deadline. A provider returns exactly one terminal outcome, `handled(result)`, `cancelled`, `declined` or `error`, and its reply is validated against the safety rules.
+4. Fall back to `"builtin"` only in these cases:
+    - the provider returns `declined` (it confirms it did not act);
+    - the provider is absent, or failed to start before dispatch (spawn error, connect refused, claim missing);
+    - the provider times out, and the interface is `idempotent: yes` in the contract table (pickers, consent).
+
+    Any other failure is terminal. For `idempotent: no` interfaces, a provider that accepted the request and then crashed, hung or timed out returns `error` (or `cancelled`) to the caller. The built-in UI is never invoked for it, because the provider may already have acted.
+
+5. **Requester gone is terminal.** If the D-Bus caller vanishes, the relay disconnects, or the `Request` is closed, the request is cancelled. No fallback runs and no dialog opens. Any open prompt and input grab are torn down, a `portal-cancel` goes to any provider that has the request, and late replies are dropped.
+6. Return the outcome: `handled { result }`, `cancelled { reason }` or `error { code }`. The relay maps it to the portal response code (handled `0`, cancelled `1`, error `2`) and answers the D-Bus call.
 
 The built-in UI is never reached for a request whose requester has left, and it never auto-accepts.
 
@@ -2294,29 +2301,31 @@ The built-in UI is never reached for a request whose requester has left, and it 
 
 Every interface is served by Gnoblin. Each routes `gnoblin;gtk;kde;*` in `portals.conf` (see "Removability"). Versions are the `xdg-desktop-portal` interface versions [INFERENCE: check the installed `xdg-desktop-portal` headers at implementation].
 
-| Interface               | D-Bus contract (version)                               | Behaviour provider                                                    | UI step                              |
-| ----------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------ |
-| ScreenCast              | `org.freedesktop.impl.portal.ScreenCast` (5)           | compositor capture sessions over IPC (`gnoblin-capture`)              | yes: consent and source pick         |
-| Screenshot              | `org.freedesktop.impl.portal.Screenshot` (2)           | compositor capture over IPC                                           | yes: consent                         |
-| Screenshot, `PickColor` | method of `org.freedesktop.impl.portal.Screenshot` (2) | compositor reads one pixel of the composed frame                      | yes: pick overlay                    |
-| RemoteDesktop           | `org.freedesktop.impl.portal.RemoteDesktop` (2)        | compositor input sessions (EIS) over IPC                              | yes: consent and devices             |
-| InputCapture            | `org.freedesktop.impl.portal.InputCapture` (1)         | compositor input barriers over IPC                                    | yes: consent                         |
-| GlobalShortcuts         | `org.freedesktop.impl.portal.GlobalShortcuts` (1)      | compositor binding over IPC                                           | no                                   |
-| Clipboard               | `org.freedesktop.impl.portal.Clipboard` (1)            | compositor selection over IPC                                         | no                                   |
-| Settings                | `org.freedesktop.impl.portal.Settings` (2)             | compositor settings object (D15)                                      | no                                   |
-| Inhibit                 | `org.freedesktop.impl.portal.Inhibit` (3)              | compositor inhibit and idle policy over IPC                           | no                                   |
-| FileChooser             | `org.freedesktop.impl.portal.FileChooser` (4)          | services: file access and document-portal export                      | yes: open, save, folder              |
-| AppChooser              | `org.freedesktop.impl.portal.AppChooser` (1)           | services: `.desktop` entries and `mimeapps.list`                      | yes: list                            |
-| Print                   | `org.freedesktop.impl.portal.Print` (1)                | services: CUPS through `lp`, or print-to-PDF file                     | yes: printer and copies              |
-| Account                 | `org.freedesktop.impl.portal.Account` (1)              | services: passwd GECOS and `~/.face`                                  | yes: confirm                         |
-| Email                   | `org.freedesktop.impl.portal.Email` (2)                | services: `xdg-open mailto:` with the composed URI                    | no                                   |
-| Notification            | `org.freedesktop.impl.portal.Notification` (1)         | services forwards to the owner of `org.freedesktop.Notifications`     | no                                   |
-| Wallpaper               | `org.freedesktop.impl.portal.Wallpaper` (1)            | compositor background object over IPC                                 | yes: confirm                         |
-| Lockdown                | `org.freedesktop.impl.portal.Lockdown` (1)             | services reads `gnoblin.configure.lockdown`                           | no                                   |
-| DynamicLauncher         | `org.freedesktop.impl.portal.DynamicLauncher` (1)      | services writes a `.desktop` file under `$XDG_DATA_HOME/applications` | yes: confirm                         |
-| Background              | `org.freedesktop.impl.portal.Background` (1)           | services records a session-only grant                                 | yes: confirm                         |
-| Secret                  | `org.freedesktop.impl.portal.Secret` (1)               | store: open decision (see "Secret")                                   | yes: confirm first retrieval per app |
-| OpenURI, Trash          | `org.freedesktop.impl.portal.OpenURI`, `Trash`         | services: `xdg-open`; Trash via `gio trash`                           | no                                   |
+| Interface               | D-Bus contract (version)                               | Behaviour provider                                                    | UI step                              | idempotent |
+| ----------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------ | ---------- |
+| ScreenCast              | `org.freedesktop.impl.portal.ScreenCast` (5)           | compositor capture sessions over IPC (`gnoblin-capture`)              | yes: consent and source pick         | no         |
+| Screenshot              | `org.freedesktop.impl.portal.Screenshot` (2)           | compositor capture over IPC                                           | yes: consent                         | yes        |
+| Screenshot, `PickColor` | method of `org.freedesktop.impl.portal.Screenshot` (2) | compositor reads one pixel of the composed frame                      | yes: pick overlay                    | yes        |
+| RemoteDesktop           | `org.freedesktop.impl.portal.RemoteDesktop` (2)        | compositor input sessions (EIS) over IPC                              | yes: consent and devices             | no         |
+| InputCapture            | `org.freedesktop.impl.portal.InputCapture` (1)         | compositor input barriers over IPC                                    | yes: consent                         | no         |
+| GlobalShortcuts         | `org.freedesktop.impl.portal.GlobalShortcuts` (1)      | compositor binding over IPC                                           | no                                   | no         |
+| Clipboard               | `org.freedesktop.impl.portal.Clipboard` (1)            | compositor selection over IPC                                         | no                                   | no         |
+| Settings                | `org.freedesktop.impl.portal.Settings` (2)             | compositor settings object (D15)                                      | no                                   | yes        |
+| Inhibit                 | `org.freedesktop.impl.portal.Inhibit` (3)              | compositor inhibit and idle policy over IPC                           | no                                   | no         |
+| FileChooser             | `org.freedesktop.impl.portal.FileChooser` (4)          | services: file access and document-portal export                      | yes: open, save, folder              | yes        |
+| AppChooser              | `org.freedesktop.impl.portal.AppChooser` (1)           | services: `.desktop` entries and `mimeapps.list`                      | yes: list                            | no         |
+| Print                   | `org.freedesktop.impl.portal.Print` (1)                | services: CUPS through `lp`, or print-to-PDF file                     | yes: printer and copies              | no         |
+| Account                 | `org.freedesktop.impl.portal.Account` (1)              | services: passwd GECOS and `~/.face`                                  | yes: confirm                         | no         |
+| Email                   | `org.freedesktop.impl.portal.Email` (2)                | services: `xdg-open mailto:` with the composed URI                    | no                                   | no         |
+| Notification            | `org.freedesktop.impl.portal.Notification` (1)         | services forwards to the owner of `org.freedesktop.Notifications`     | no                                   | no         |
+| Wallpaper               | `org.freedesktop.impl.portal.Wallpaper` (1)            | compositor background object over IPC                                 | yes: confirm                         | no         |
+| Lockdown                | `org.freedesktop.impl.portal.Lockdown` (1)             | services reads `gnoblin.configure.lockdown`                           | no                                   | yes        |
+| DynamicLauncher         | `org.freedesktop.impl.portal.DynamicLauncher` (1)      | services writes a `.desktop` file under `$XDG_DATA_HOME/applications` | yes: confirm                         | no         |
+| Background              | `org.freedesktop.impl.portal.Background` (1)           | services records a session-only grant                                 | yes: confirm                         | no         |
+| Secret                  | `org.freedesktop.impl.portal.Secret` (1)               | store: open decision (see "Secret")                                   | yes: confirm first retrieval per app | no         |
+| OpenURI, Trash          | `org.freedesktop.impl.portal.OpenURI`, `Trash`         | services: `xdg-open`; Trash via `gio trash`                           | no                                   | no         |
+
+`idempotent: yes` means a repeated or abandoned request has no effect at the provider, so a timeout may fall back. `no` means the provider may act; an ambiguous outcome is terminal. For consent rows, `yes` covers the consent step only: session creation after consent is compositor work the provider has not started.
 
 The "UI step" column is the built-in UI. A provider may replace it (handler rule).
 
@@ -2362,12 +2371,12 @@ These apply to the built-in UI and to any provider reply that grants capture, in
 A process provider (`command = {...}`) is started by the services role for one request:
 
 - **argv:** exactly the configured `command` list. No shell. Fixed working directory (`$HOME`). Fixed environment (`PATH`, `HOME`, the session's `XDG_*`, and `GNOBLIN_PORTAL_INTERFACE` set to the interface name). No request data goes in argv or environment.
-- **stdin:** one length-prefixed Protocol Buffers `portal-ui` request (`gnoblin-schema`, D16), then EOF.
-- **stdout:** exactly one length-prefixed `portal-provider-reply`, then exit 0. Stdout is capped at 1 MiB; beyond that the reply is an error.
+- **stdin:** one length-prefixed Protocol Buffers `portal-ui` request (`gnoblin-schema`, D16), carrying `request_id`, then EOF.
+- **stdout:** exactly one length-prefixed `portal-provider-reply` whose `request_id` matches, then exit 0. Stdout is capped at 1 MiB; beyond that the reply is an error.
 - **stderr:** captured to the journal; never parsed.
-- **deadline:** `timeout` seconds (default 120). At the deadline the process gets SIGTERM, then SIGKILL after 2 s. A timeout falls back to the built-in UI.
-- **exit:** a non-zero exit, a malformed reply or a validation failure is a provider error and falls back to the built-in UI.
-- **requester gone:** the process is killed at once, and no fallback runs.
+- **outcome:** the reply is one of `handled { result }`, `cancelled`, `declined` (the provider confirms it did not act) or `error { code }`. A non-zero exit, a malformed reply or a validation failure is `error`.
+- **deadline:** `timeout` seconds (default 120). At the deadline the process gets SIGTERM, then SIGKILL after 2 s. The timeout is handled by the negotiation rule for the interface's `idempotent` flag.
+- **requester gone:** the process is sent SIGTERM and then killed, and a late stdout is dropped. No fallback runs.
 
 #### Secret: store decision (open, for Kieran)
 
@@ -2387,29 +2396,33 @@ All messages are Protocol Buffers (D16), versioned with the IPC schema (D3).
 
 - **`portal-call`** (relay to services): `request_id` (opaque, chosen by the relay), `interface`, `method`, `options` (typed per interface; the relay validates the D-Bus shape), `caller_pid` (from the bus credentials, never from the body). Reply: `portal-call-reply`.
 - **`portal-cancel`** (relay to services): `request_id`. Sent when the D-Bus caller disconnects or closes the `Request` object.
-- **`portal-call-reply`**: `request_id` and one outcome: `accepted { result }`; `cancelled { reason }`, `reason` one of `user`, `timeout`, `ui-failed`, `requester-gone`; or `error { code, message }`, `code` one of `no-ui`, `locked`, `busy`, `provider-failed`, `not-supported`, `unknown-app`.
+- **`portal-call-reply`**: `request_id` and one outcome: `handled { result }`; `cancelled { reason }`, `reason` one of `user`, `timeout`, `ui-failed`, `requester-gone`; or `error { code, message }`, `code` one of `no-ui`, `locked`, `busy`, `provider-failed`, `not-supported`, `unknown-app`. A `declined` provider outcome is never sent to the caller; it triggers the built-in fallback.
 - **`portal-ui`** (services to compositor, built-in UI): `request_id`, `interface`, `method`, `app_id` (set by services from attribution), `deadline_ms`, and `payload`, a typed union with one variant per interface: FileChooser `{mode, title, multiple, directories, filters, current_filter, current_folder, current_name, choices}`; AppChooser `{content_type, last_choice, filter_text}`; Print `{title, printers, copies, pages}`; Account `{reason, name, avatar_uri}`; Wallpaper `{uri, options}`; Background `{reason, autostart_requested}`; DynamicLauncher `{name, icon, desktop_file_id}`; ScreenCast `{source_types, cursor_mode, multiple}`; RemoteDesktop `{device_types}`; InputCapture `{capabilities}`; Screenshot `{interactive}`; PickColor `{}`; Secret `{app_id, purpose}`. Reply: `portal-ui-response`, the same outcome shape as `portal-call-reply`, with `result` typed per interface.
 - **`portal-provider-reply`** (process stdout, and the shell claim): the `portal-ui-response` shape, validated by the safety rules above.
 - **Reply validator:** `gnoblin-schema` provides `validate_reply(request, reply)`. It is pure and used by both services and the compositor, so the rules are checked in one place.
 
 #### Failure modes
 
-| Event                                                             | Result                                                                                                                              |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Relay (portal process) not running                                | No portal calls. Core keeps working (removability).                                                                                 |
-| Requester disconnects (relay closes the call, or `portal-cancel`) | Provider killed; built-in dialog closed; no fallback; outcome discarded                                                             |
-| User cancels (Cancel or Escape)                                   | `cancelled { user }`, portal code `1`                                                                                               |
-| Timeout (provider deadline, or built-in 120 s)                    | Provider: killed, then fall back to built-in. Built-in: `cancelled { timeout }`, portal code `1`; for consent this is a denial      |
-| Provider absent, errors, or replies invalidly                     | Fall back to built-in                                                                                                               |
-| Built-in UI fails                                                 | `cancelled { ui-failed }`, portal code `1`; never accepts                                                                           |
-| Lock engaged, or UI requested while locked                        | Refused: `error { locked }`, portal code `2`; an open dialog closes                                                                 |
-| Second request while one is open                                  | Queued (first in first out, eight total, two per app id); shown when the first closes. Queue full: `error { busy }`                 |
-| Headless or no GPU renderer                                       | Built-in unavailable: `error { no-ui }`, unless a provider handles the request. Consent is refused, with the missing renderer named |
-| Named shell provider not connected                                | Fall back to built-in                                                                                                               |
-| Services role down                                                | Portal calls fail with `error { not-supported }` until services returns (services is restartable, D4)                               |
-| Secret store undecided                                            | Secret falls through to the next backend (option C)                                                                                 |
-| Unknown `app_id` (no compositor attribution)                      | `error { unknown-app }`; no dialog                                                                                                  |
-| Relay binary removed                                              | `xdg-desktop-portal` uses the next backend in `portals.conf` (`gtk`, then `kde`). Verified as in "Removability"                     |
+| Event                                                                                         | Result                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Relay (portal process) not running                                                            | No portal calls. Core keeps working (removability).                                                                                                                            |
+| Requester gone (D-Bus caller vanished, relay disconnect, `Request` Close, or `portal-cancel`) | Terminal. No fallback, no dialog. Any open prompt and input grab are torn down, a `portal-cancel` goes to the provider, the request is cancelled, and late replies are dropped |
+| User cancels (Cancel or Escape)                                                               | `cancelled { user }`, portal code `1`                                                                                                                                          |
+| Timeout, provider, `idempotent: yes`                                                          | Provider killed, then fall back to built-in. Built-in: `cancelled { timeout }`, portal code `1`; for consent this is a denial                                                  |
+| Timeout, provider, `idempotent: no`                                                           | Provider killed; `error { provider-failed }`, portal code `2`. No built-in fallback, because the provider may already have acted                                               |
+| Provider absent, or failed to start before dispatch                                           | Fall back to built-in                                                                                                                                                          |
+| Provider returns `declined`                                                                   | Fall back to built-in (the provider confirmed no action)                                                                                                                       |
+| Provider returns `error`, an invalid reply, or crashes after accepting                        | `error { provider-failed }`, portal code `2`; no built-in fallback, for any `idempotent` value                                                                                 |
+| Double reply, or reply after fallback started, or reply for a closed request                  | The first terminal outcome wins. Later replies are dropped and logged to the journal, with the `request_id`                                                                    |
+| Built-in UI fails                                                                             | `cancelled { ui-failed }`, portal code `1`; never accepts                                                                                                                      |
+| Lock engaged, or UI requested while locked                                                    | Refused: `error { locked }`, portal code `2`; an open dialog closes                                                                                                            |
+| Second request while one is open                                                              | Queued (first in first out, eight total, two per app id); shown when the first closes. Queue full: `error { busy }`                                                            |
+| Headless or no GPU renderer                                                                   | Built-in unavailable: `error { no-ui }`, unless a provider handles the request. Consent is refused, with the missing renderer named                                            |
+| Named shell provider not connected                                                            | Absent provider: fall back to built-in                                                                                                                                         |
+| Services role down                                                                            | Portal calls fail with `error { not-supported }` until services returns (services is restartable, D4)                                                                          |
+| Secret store undecided                                                                        | Secret falls through to the next backend (option C)                                                                                                                            |
+| Unknown `app_id` (no compositor attribution)                                                  | `error { unknown-app }`; no dialog                                                                                                                                             |
+| Relay binary removed                                                                          | `xdg-desktop-portal` uses the next backend in `portals.conf` (`gtk`, then `kde`). Verified as in "Removability"                                                                |
 
 Keyboard: Tab moves focus in order; Enter activates the focused default (Deny for consent); Escape cancels (`cancelled { user }`). The egui tree is exposed through AccessKit, as D5 requires. Motion: transitions are skipped when the Settings reduced-motion value is set (D15). Theme: the built-in UI draws only the accent colour and font size from `gnoblin.configure.portal_ui`.
 
@@ -2422,6 +2435,7 @@ Keyboard: Tab moves focus in order; Enter activates the focused default (Deny fo
 3. **Automatic fallthrough:** `portals.conf` ships each interface as `gnoblin;gtk;kde;*` (an ordered list). When the relay is removed, `xdg-desktop-portal` moves to `gtk`, then `kde`, with no config change. The `.portal` file's `UseIn` and `Interfaces` list the interfaces the relay serves, so they stay accurate.
 4. **No stale activation:** the `.portal` file and the D-Bus service file ship in the same package as the binary and are removed with it. Core sets no env var that makes `xdg-desktop-portal` wait on a missing backend.
 5. **Verification step:** in a test session, uninstall the relay (or move its binary and `.portal` file aside), restart `xdg-desktop-portal`, and confirm a FileChooser request is served by the next backend in `portals.conf` (`gtk` or `kde`). Then reinstall and confirm `gnoblin` serves it again. Not yet run.
+6. **Outcome verification (not yet run):** with a test provider, check each failure-table row: `declined` falls back; `error` on an `idempotent: no` interface never reaches the built-in UI; a timeout on a consent interface falls back; a requester disconnect during a provider call kills the provider and opens no dialog; a double reply yields one outcome and a journal entry.
 
 #### Config surface
 
