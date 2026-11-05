@@ -1,0 +1,375 @@
+# Duplicate-type exemptions for `cargo xtask dupes`.
+#
+# Every entry is a reviewed pair of declarations that share a name (or a shape)
+# while naming genuinely different things. A migration target is deliberately
+# absent: `Rect`, `Size`, `Point`, `Insets`, `Version`, `Tick`, `Revision` and the
+# identity newtypes stay reported until the crate that defines them moves to
+# `gnoblin-types`, because the report is what tracks that work.
+#
+# `kind` scopes an entry to one check; omit it to waive every check for the pair.
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-authority::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-lock::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-output::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-authority::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-client::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-input::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-lock::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-output::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-a11y::Rng"
+right = "gnoblin-authority::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-a11y::Rng"
+right = "gnoblin-lock::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-a11y::Rng"
+right = "gnoblin-render::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-a11y::Rng"
+right = "gnoblin-session::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-authority::Answer"
+right = "gnoblin-model::Answer"
+kind = "same-name"
+reason = "a provider's encoded reply, kept beside the request broker that owns it, is not a typed graph value"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-lock::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-output::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-client::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-input::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-lock::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-output::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-authority::Rng"
+right = "gnoblin-lock::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-authority::Rng"
+right = "gnoblin-render::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-authority::Rng"
+right = "gnoblin-session::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-client::Event"
+right = "gnoblin-input::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-client::Event"
+right = "gnoblin-lock::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-client::Event"
+right = "gnoblin-output::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-client::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-client::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-config::Value"
+right = "gnoblin-model::Value"
+kind = "same-name"
+reason = "a typed value in the object graph and a configuration leaf share a name and nothing else"
+
+[[allow]]
+left = "gnoblin-input::Event"
+right = "gnoblin-lock::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-input::Event"
+right = "gnoblin-output::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-input::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-input::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Effect"
+right = "gnoblin-output::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Event"
+right = "gnoblin-output::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::Rng"
+right = "gnoblin-render::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-lock::Rng"
+right = "gnoblin-session::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-model::ErrorCode"
+right = "gnoblin-schema::ErrorCode"
+kind = "same-name"
+reason = "the schema's declaration carries a name and the version that added it; the validated code is the value the wire carries"
+
+[[allow]]
+left = "gnoblin-model::ErrorCode"
+right = "gnoblin-types::ErrorCode"
+kind = "same-name"
+reason = "the schema's declaration carries a name and the version that added it; the validated code is the value the wire carries"
+
+[[allow]]
+left = "gnoblin-model::Observation"
+right = "gnoblin-testkit::Observation"
+kind = "same-name"
+reason = "the graph's published observation and the test kit's recorded one are different records of different streams"
+
+[[allow]]
+left = "gnoblin-output::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-output::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-output::Event"
+right = "gnoblin-session::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-output::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-render::Rng"
+right = "gnoblin-session::Rng"
+kind = "same-name"
+reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
+
+[[allow]]
+left = "gnoblin-schema::ErrorCode"
+right = "gnoblin-types::ErrorCode"
+kind = "same-name"
+reason = "the schema's declaration carries a name and the version that added it; the validated code is the value the wire carries"
+
+[[allow]]
+left = "gnoblin-session::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "each crate's effect enum is what its own state machine asks the caller to do; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-session::Event"
+right = "gnoblin-wm::Event"
+kind = "same-name"
+reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-output::Transform"
+right = "gnoblin-types::Transform"
+kind = "same-name"
+reason = "an output's orientation enum and a node's visual transform share a name and nothing else"
+
+[[allow]]
+left = "gnoblin-input::WhenError"
+right = "gnoblin-types::InvalidErrorCode"
+kind = "same-shape"
+reason = "a gesture's timing refusal and a rejected error-code string both carry one `text` field; they are unrelated failures"

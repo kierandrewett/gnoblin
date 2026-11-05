@@ -15,7 +15,8 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 /// `gnoblin-proto`, `gnoblin-config`, `gnoblin-model`, `gnoblin-wm`,
 /// `gnoblin-lock` and `gnoblin-authority`; `gnoblin-client` joins them because
 /// the runtime, services, portal and shells link it and it must never pull a
-/// compositor in behind itself.
+/// compositor in behind itself. `gnoblin-types` joins them because it holds the
+/// primitives all of them pass around.
 const FOUNDATION: &[&str] = &[
     "gnoblin-authority",
     "gnoblin-client",
@@ -24,8 +25,12 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-model",
     "gnoblin-proto",
     "gnoblin-schema",
+    "gnoblin-types",
     "gnoblin-wm",
 ];
+
+/// The shared primitives: the root of every other crate's dependency graph.
+const TYPES: &str = "gnoblin-types";
 
 /// The mechanism layer: Smithay glue, renderer, input, backends, outputs,
 /// capture and Xwayland. These reach the policy core through `gnoblin-model`
@@ -50,10 +55,10 @@ const COMPAT_HOST: &str = "gnoblin";
 const COMPAT_CORE: &str = "gnoblin-compat-core";
 
 /// Compat crates that speak the Smithay Wayland transport instead of D-Bus.
-const COMPAT_WAYLAND: &[&str] = &["gnoblin-compat-gtk-shell", "gnoblin-compat-x11-interop"];
+const COMPAT_WAYLAND: &[&str] = &["gnoblin-compat-gtk-shell1", "gnoblin-compat-mutter-x11-interop"];
 
 /// The one compat crate that speaks the Xwayland transport.
-const COMPAT_XWAYLAND: &str = "gnoblin-compat-xsettings";
+const COMPAT_XWAYLAND: &str = "gnoblin-compat-x11-xsettings";
 
 /// External libraries a foundation crate may not depend on: Smithay, any
 /// `wayland-*` crate, a GPU renderer, D-Bus or the Lua VM.
@@ -94,6 +99,10 @@ const RULES: &[Rule] = &[
     Rule {
         id: "dev-crates",
         check: dev_crates,
+    },
+    Rule {
+        id: "types-roots",
+        check: types_roots,
     },
 ];
 
@@ -259,6 +268,22 @@ fn a11y_purity(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
+/// `gnoblin-types` is the root of the graph: every crate may depend on it, and
+/// it depends on nothing at all, not even another workspace crate.
+///
+/// The rule is one-directional on purpose. Nothing has to be enforced for an edge
+/// toward the root; what would break the design is the reverse, a primitive that
+/// pulls a policy or an engine crate in behind a value type.
+fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != TYPES {
+        return None;
+    }
+    Some(format!(
+        "gnoblin-types holds the shared primitives and depends on nothing; it declares `{}`",
+        dep.name
+    ))
+}
+
 /// The test kit and the parity harness are development dependencies only.
 fn dev_crates(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name != "gnoblin-testkit" && dep.name != "gnoblin-parity" {
@@ -294,7 +319,8 @@ mod tests {
         let reported: Vec<String> = violations.iter().map(Violation::to_string).collect();
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
-            reported[0].starts_with("gnoblin-compat-screencast -> gnoblin-compat-clipboard [compat-isolation]"),
+            reported[0]
+                .starts_with("gnoblin-compat-mutter-screencast -> gnoblin-compat-mutter-clipboard [compat-isolation]"),
             "unexpected violation: {}",
             reported[0]
         );

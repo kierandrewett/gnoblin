@@ -12,5 +12,18 @@ publish.workspace = true
 serde_json.workspace = true
 gnoblin-schema = { path = "../crates/gnoblin-schema" }
 
+# The duplicate-type report parses every crate's Rust source, so it needs the
+# parser rather than a pattern match. These are build-tool dependencies only:
+# nothing they produce is linked into a shipped binary, and each licence (MIT or
+# Apache-2.0) is already on the allow-list in deny.toml.
+syn = { version = "2.0.119", features = ["full"] }
+quote = "1.0.47"
+# `span-locations` is what gives a declaration its line number outside a proc
+# macro, which is where this report runs.
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+# The allow-list is TOML, like the rest of the repository's declarations.
+serde.workspace = true
+toml.workspace = true
+
 [lints]
 workspace = true

@@ -1,0 +1,104 @@
+//! The one `MAJOR.MINOR.PATCH` version type the IPC and the schema share.
+//!
+//! design/rust-compositor.md ("Versioning") makes the IPC version exactly the
+//! Gnoblin version and gives every schema member the version that added it, so
+//! both sides need one small ordered type instead of a general range type.
+//! Pre-release ordering is deliberately absent: a candidate build
+//! (`0.2.0-alpha.N`) advertises the triple of the release it becomes, so a
+//! candidate and its release interoperate and only three numbers travel.
+
+use std::fmt;
+use std::str::FromStr;
+
+/// A full `MAJOR.MINOR.PATCH` version with no pre-release or build metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Version {
+    /// The incompatible-change number.
+    pub major: u32,
+    /// The additive-change number.
+    pub minor: u32,
+    /// The compatible-fix number.
+    pub patch: u32,
+}
+
+impl Version {
+    /// Build a version from its three parts.
+    #[must_use]
+    pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self { major, minor, patch }
+    }
+
+    /// Parse exactly three dot-separated decimal numbers.
+    ///
+    /// Strictness is the point: `0.2` and `0.2.0-alpha.1` must fail here rather
+    /// than reach a wire format that only carries three numbers.
+    pub fn parse(text: &str) -> Result<Self, InvalidVersion> {
+        let parts: Vec<&str> = text.split('.').collect();
+        if parts.len() != 3 {
+            return Err(InvalidVersion {
+                text: text.to_owned(),
+                reason: "expected exactly three dot-separated numbers",
+            });
+        }
+        let mut numbers = [0u32; 3];
+        for (index, part) in parts.iter().enumerate() {
+            if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err(InvalidVersion {
+                    text: text.to_owned(),
+                    reason: "each part must be a decimal number",
+                });
+            }
+            match part.parse::<u32>() {
+                Ok(number) => numbers[index] = number,
+                Err(_) => {
+                    return Err(InvalidVersion {
+                        text: text.to_owned(),
+                        reason: "a part does not fit in 32 bits",
+                    });
+                }
+            }
+        }
+        Ok(Self::new(numbers[0], numbers[1], numbers[2]))
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+impl FromStr for Version {
+    type Err = InvalidVersion;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        Self::parse(text)
+    }
+}
+
+/// A string that is not a full `MAJOR.MINOR.PATCH` version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvalidVersion {
+    text: String,
+    reason: &'static str,
+}
+
+impl InvalidVersion {
+    /// The text that was rejected, so a caller can quote it in its own message.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+impl fmt::Display for InvalidVersion {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "`{}` is not a MAJOR.MINOR.PATCH version: {}",
+            self.text, self.reason
+        )
+    }
+}
+
+impl std::error::Error for InvalidVersion {}
