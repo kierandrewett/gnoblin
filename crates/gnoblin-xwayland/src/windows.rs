@@ -223,6 +223,10 @@ impl Xwm {
 }
 
 impl Windows for Xwm {
+    fn managed_window(&self, xwindow: u32) -> Option<WindowId> {
+        self.managed(xwindow)
+    }
+
     fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> Outcome {
         match event {
             WindowEvent::Created(meta) => {

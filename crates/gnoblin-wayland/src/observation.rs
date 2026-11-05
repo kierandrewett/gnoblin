@@ -248,6 +248,17 @@ pub trait Observer: Send + Sync + std::fmt::Debug {
 }
 
 impl SessionSnapshot {
+    /// The same snapshot with a bell count, for a reader that replays events.
+    ///
+    /// A session builds its own snapshot; this is what a test or a recorded replay needs
+    /// to state that a bell rang, and it is the only way the count is set from outside
+    /// the session.
+    #[must_use]
+    pub fn with_bells(mut self, bells: u64) -> Self {
+        self.bells = bells;
+        self
+    }
+
     /// Assemble a snapshot from its parts.
     ///
     /// A session builds its own snapshot in [`crate::State`]; this is for a reader

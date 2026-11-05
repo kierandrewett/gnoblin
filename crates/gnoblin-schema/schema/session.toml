@@ -22,6 +22,25 @@ since = "0.2.0"
 name = "ready"
 since = "0.2.0"
 
+# An application rang the bell: `gtk_shell1.system_bell` or the display's own bell.
+#
+# A signal and not a property because there is no state to read afterwards: a reader
+# reacts to the change. Whether the bell is visual, audible or both is configuration
+# (`compositor.visual_bell`, `compositor.audible_bell`) and `gnoblin-a11y`'s decision,
+# so the signal carries the count and nothing that would make the compositor's choice
+# for it.
+[[object.signal]]
+name = "bell"
+since = "0.2.0"
+
+# How many times the bell has rung since the session started. A reader that missed one
+# still sees that it happened, and a reader that compares against what it saw last knows
+# how many it missed.
+[[object.signal.field]]
+name = "count"
+type = "uint"
+since = "0.2.0"
+
 # The provider of one slot, one property per slot ("Providers and slots").
 #
 # The value is `none`, `services` or `shell`. `none` means the slot has no

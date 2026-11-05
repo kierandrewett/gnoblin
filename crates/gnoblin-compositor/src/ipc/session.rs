@@ -52,6 +52,10 @@ mod member {
     pub const VERSION: &str = "version";
     /// The `session` object's ready signal.
     pub const READY: &str = "ready";
+    /// The `session` object's bell signal.
+    pub const BELL: &str = "bell";
+    /// The bell signal's field: how many times the bell has rung.
+    pub const COUNT: &str = "count";
     /// The `window` object's identity.
     pub const ID: &str = "id";
     pub const TITLE: &str = "title";
@@ -78,6 +82,9 @@ struct PublishedWindow {
 pub struct SessionSync {
     graph: Graph,
     session: ObjectId,
+    /// How many bells the last snapshot counted, so `apply` raises the signal once per
+    /// ring rather than once per snapshot.
+    bells: u64,
     windows: BTreeMap<WindowId, PublishedWindow>,
 }
 
@@ -100,8 +107,15 @@ impl SessionSync {
         Ok(SessionSync {
             graph,
             session,
+            bells: 0,
             windows: BTreeMap::new(),
         })
+    }
+
+    /// How many bells this sync has raised.
+    #[must_use]
+    pub fn bells(&self) -> u64 {
+        self.bells
     }
 
     /// Raises `session.ready`, once, when the IPC server is about to accept.
@@ -133,6 +147,24 @@ impl SessionSync {
         Ok(())
     }
 
+    /// Raises `session.bell` once for every ring the snapshot counted since the last one.
+    ///
+    /// The snapshot carries a count rather than a queue: a reader that missed one still
+    /// learns that it happened, and a compositor that served ten bells between two
+    /// snapshots raises the signal for each of them, so a subscriber's count always
+    /// reaches the snapshot's.
+    fn raise_bell(&mut self, bells: u64) {
+        while self.bells < bells {
+            self.bells = self.bells.saturating_add(1);
+            let mut fields = Fields::new();
+            fields.insert(member::COUNT.to_owned(), Value::Uint(self.bells));
+            if let Err(error) = self.graph.signal(self.session, member::BELL, fields) {
+                error!(%error, "[ipc] the session object declares no bell signal");
+                return;
+            }
+        }
+    }
+
     /// Applies a snapshot: creates, changes and closes objects to match it.
     ///
     /// # Errors
@@ -141,6 +173,7 @@ impl SessionSync {
     /// half-applied: the graph validates before it publishes, so a refused property
     /// leaves every subscriber's view whole.
     pub fn apply(&mut self, snapshot: &SessionSnapshot) -> Result<(), ModelError> {
+        self.raise_bell(snapshot.bells());
         let focus = snapshot.focus();
         let mut seen = BTreeSet::new();
         for window in snapshot.windows() {
@@ -371,6 +404,41 @@ mod tests {
         store.apply(&state).expect("applied again");
         assert_eq!(drained(&mut store, &subscription), Vec::new(), "a repeat is not a diff");
         assert_eq!(store.graph().revision(), revision, "and it does not bump the revision");
+    }
+
+    /// A bell is raised once per ring and never for a snapshot that did not ring: the
+    /// count the snapshot carries is the only source, so a subscriber's own count
+    /// reaches it and a repeated snapshot raises nothing.
+    #[test]
+    fn a_bell_is_raised_once_per_ring() {
+        let mut store = store();
+        let subscription = store.subscribe(Filter::All);
+        let mut state = snapshot(Vec::new(), None);
+        state = state.with_bells(1);
+        store.apply(&state).expect("applied");
+        let bells: Vec<u64> = drained(&mut store, &subscription)
+            .into_iter()
+            .filter_map(|observation| match observation {
+                Observation::Signalled { signal, fields, .. } if signal == "bell" => match fields.get("count") {
+                    Some(Value::Uint(count)) => Some(*count),
+                    other => panic!("the bell carries a count, not {other:?}"),
+                },
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bells, vec![1], "one ring, one signal, carrying the count");
+        store.apply(&state).expect("applied again");
+        assert_eq!(
+            drained(&mut store, &subscription)
+                .into_iter()
+                .filter(|observation| matches!(observation, Observation::Signalled { signal, .. } if signal == "bell"))
+                .count(),
+            0,
+            "an unchanged count raises nothing"
+        );
+        state = state.with_bells(3);
+        store.apply(&state).expect("applied");
+        assert_eq!(store.bells(), 3, "a gap is caught up, not dropped");
     }
 
     #[test]

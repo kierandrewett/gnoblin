@@ -1,0 +1,16 @@
+{
+  "interfaces": [
+    {
+      "name": "QT_QPA_PLATFORMTHEME",
+      "version": 1,
+      "members": [
+        {
+          "kind": "property",
+          "name": "XDG_CURRENT_DESKTOP",
+          "support": "partial",
+          "note": "the value published is the one variable Qt reads, QT_QPA_PLATFORMTHEME=xdgdesktopportal; Qt then reads colour scheme, accent colour and contrast from org.freedesktop.portal.Settings, so nothing else is published and no Qt configuration file is written"
+        }
+      ]
+    }
+  ]
+}

@@ -13,6 +13,10 @@
 //!   use, which applies every refusal before an adapter sees a call.
 //! - [`Refusal`] and [`Rule`]: the one error type, naming the adapter, the
 //!   interface, the member, the operation and the rule that refused.
+//! - [`DesktopSettings`], [`ColourScheme`] and [`Switch`]: the values D15
+//!   publishes to other toolkits and the per-target switch that decides whether
+//!   a target hears them. They live here because two compat crates publish the
+//!   same values and a compat crate never depends on another.
 //!
 //! There is no D-Bus, no Smithay, no socket, no clock and no compositor here: a
 //! call and a gate are plain data, so [`Adapter::serve`] is a pure function of
@@ -79,8 +83,10 @@ mod adapter;
 mod matrix;
 mod mode;
 mod refusal;
+mod settings;
 
 pub use adapter::{Adapter, Call, Gate, Upstream};
 pub use matrix::{Builder, Interface, InterfaceBuilder, Kind, MatrixError, Member, Support, SupportMatrix};
 pub use mode::{CallerContext, Decision, LockState, Mode, OperationClass, Sandbox, allow};
 pub use refusal::{Refusal, Rule};
+pub use settings::{ColourScheme, DesktopSettings, Switch};

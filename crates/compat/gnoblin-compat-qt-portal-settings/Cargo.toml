@@ -8,3 +8,10 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-session = { path = "../../gnoblin-session" }
+
+[dev-dependencies]
+tempfile = "3.23.0"

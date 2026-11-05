@@ -8,3 +8,11 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3.23.0"

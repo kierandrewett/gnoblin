@@ -92,13 +92,6 @@ const DEFAULT_WORKSPACES: u32 = 1;
 pub(crate) const KEY_REPEAT_DELAY: i32 = 200;
 pub(crate) const KEY_REPEAT_INTERVAL: i32 = 40;
 
-/// The offset between an evdev scan code and the key code `wl_keyboard.key` carries.
-///
-/// Wayland reserved the low eight codes for buttons it never uses, so the protocol's key
-/// code is the X11 keycode: the evdev code plus eight. Backends hand over evdev codes,
-/// because that is what the kernel reports and what the EI protocol states.
-const KEY_CODE_OFFSET: u32 = 8;
-
 /// The protocol object behind a managed window.
 ///
 /// A Wayland window is its `xdg_toplevel`; an X11 window is the X11 surface the window
