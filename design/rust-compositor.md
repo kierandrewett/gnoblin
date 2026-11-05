@@ -1,10 +1,18 @@
 # Gnoblin compositor rewrite: Rust and Smithay
 
-**Status:** proposal. Nothing in this file is implemented. Items marked
-[INFERENCE] were not verified against source or a running system. The decisions
-in "Decisions to confirm" are proposals until Kieran confirms them. Progress is
-tracked on the Doop canvas <https://doop.drewett.dev/c/gQeAehTEmA>, rendered
-from `~/dev/gnoblin-compositor-doop/progress.json`.
+**Status:** decided and partly built. The workspace, the object schema, the IPC
+envelope, the parity runner and the pure policy crates are on
+`origin/rust-compositor`, and the engine runs one slice.
+
+Items marked [INFERENCE] were not verified against source or a running system.
+Every decision in "Decisions to confirm" records what was decided and when.
+
+The landed commits and their test counts are in
+[rust-compositor-progress.md](rust-compositor-progress.md). The questions that
+the build raised and the plan does not answer are collected in "Known gaps and
+plan ambiguities". Progress is also tracked on the Doop canvas
+<https://doop.drewett.dev/c/gQeAehTEmA>, rendered from
+`~/dev/gnoblin-compositor-doop/progress.json`.
 
 ## Summary
 
@@ -212,6 +220,15 @@ The rewrite has one IPC:
 - JSON stays at the edges for people and scripts: `gnoblinctl --json` prints
   JSON, and `gnoblinctl ipc dump` decodes live traffic for debugging.
 
+The request layer is schema, not a side channel: `request` is an object with the
+methods `claim` and `answer` and the signals `offered` and `finished`.
+
+`answer`'s value field is marked `secret`. A frame's member is the schema's
+qualified member path, `<object>.<member>` — `request.answer`, or
+`greeter.auth_response` for an extension — so the generated sensitive table
+names it, and the envelope constructors flag and redact the frame without
+knowing which members are secret.
+
 ### IPC extensions
 
 A privileged client can provide an extra namespace on the IPC. The compositor
@@ -271,10 +288,13 @@ version is exactly the Gnoblin version, with all three parts, and so is every
 surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
 0.2.0, and Gnoblin 0.2.3 serves IPC 0.2.3. The rewrite ships as 0.2.0.
 
-- **Source:** `versions/gnoblin-version.json`, which `prepare-release.sh`
-  already sets. `xtask` copies it into the Cargo workspace version, the schema,
-  `gnoblin.d.lua`, the WIT package (`gnoblin:ipc@0.2.0`) and the API reference.
-  No crate, file or protocol keeps its own number.
+- **Source:** `src/gnoblin-version.json`, which `prepare-release.sh` writes and
+  the source bundle and `gnoblin --version` read.
+    - `xtask` copies it into the Cargo workspace version, the schema,
+      `gnoblin.d.lua`, the WIT package (`gnoblin:ipc@0.2.0`) and the API
+      reference, so no crate, file or protocol keeps its own number.
+    - The copy step is not written yet; the workspace version is `0.2.0-alpha.0`
+      by hand.
 - **Members:** each schema member records `since`, the full Gnoblin version that
   added it. Clients compare `since` with the compositor's version before they
   use a member.
@@ -379,10 +399,12 @@ gnoblin/
   crates/
     gnoblin/                  the executable: role dispatch (guardian, compositor, runtime, services, greeter)
     gnoblin-schema/           object types, properties, methods, signals, errors, `since` versions
+    gnoblin-types/            shared primitives: geometry, scale, transform, identity, tick, version, error code
     gnoblin-proto/            wire codec, handshake, capabilities, versioning; client and server traits
     gnoblin-client/           Rust client library (gnoblinctl, runtime, services, portal, tests, Bingux)
     gnoblin-model/            live object graph, revisions, property diffs, subscriptions
     gnoblin-config/           configuration document, validation, merge, salvage, last-good store (no Lua)
+    gnoblin-config-codegen/   the config schema's generator, shared by gnoblin-config's build.rs and xtask
     gnoblin-wm/               pure window management policy (no Smithay types)
     gnoblin-lock/             pure session lock and protection cover state machine
     gnoblin-authority/        pure attribution, activation and grant rules
@@ -433,16 +455,51 @@ gnoblin/
   docs/  design/  packaging/  versions/
 ```
 
+The tree is the target layout. `crates/` and `xtask/` exist today; `protocols/`,
+`data/` and the non-parity parts of `tests/` arrive with the phases that need
+them.
+
+Three kinds of file are generated at build time and gitignored, so a clean
+checkout builds with plain `cargo build`:
+
+- the namespace `.proto` documents and the sensitive table, from the object
+  schema into `crates/gnoblin-proto`'s `OUT_DIR`;
+- the configuration document, its enums, the alias table, the validators and the
+  catalogue, from `crates/gnoblin-config/schema/config.toml`;
+- `gnoblinctl`'s command tree and the Lua bindings, each into `OUT_DIR`.
+
+Nothing generated is committed, so a stale copy cannot disagree with the schema
+that produced it. `cargo xtask gen-proto` and `cargo xtask gen-config` write
+readable copies under `target/` for review. `proto/envelope.proto` is the one
+hand-written `.proto`, because the envelope is not a schema member.
+
 ### Dependency rules
 
-CI enforces these with a dependency check over `cargo metadata`:
+`cargo xtask deps` enforces these over `cargo metadata`, one named rule per
+edge, so a violation names the edge and the rule:
 
-- `gnoblin-schema`, `gnoblin-proto`, `gnoblin-config`, `gnoblin-model`,
-  `gnoblin-wm`, `gnoblin-lock` and `gnoblin-authority` do not depend on Smithay,
-  `wayland-*`, a renderer, `zbus` or `mlua`.
-- Only `gnoblin-compositor` depends on every engine crate. Engine crates do not
-  depend on each other except through traits in `gnoblin-backend` and types in
-  `gnoblin-model`.
+- **Foundation crates** are `gnoblin-types`, `gnoblin-schema`, `gnoblin-proto`,
+  `gnoblin-config`, `gnoblin-model`, `gnoblin-client`, `gnoblin-wm`,
+  `gnoblin-lock`, `gnoblin-authority` and `gnoblin-output`. None depends on
+  Smithay, `wayland-*`, a GPU renderer, `zbus` or `mlua`.
+- `gnoblin-types` is the root of the graph, and the only home of a value two
+  crates pass to each other: geometry, scale, transform, identity, tick,
+  revision, version and error code.
+- **Engine crates** are `gnoblin-backend`, `gnoblin-input`, `gnoblin-render`,
+  `gnoblin-wayland`, `gnoblin-capture` and `gnoblin-xwayland`.
+- `gnoblin-output` sits in the foundation set although the mechanism layer
+  performs the mode sets: an output arrives as a descriptor and a configuration
+  becomes a layout of rectangles, so the crate is pure policy.
+- `gnoblin-render` is the one engine crate every other engine crate may name
+  (rule `HUB_SCENE`). A frame _is_ the scene's paint order and damage, so a
+  frame description that could not name the scene would duplicate the graph or
+  drop its damage.
+- The hub edge is one-directional: `gnoblin-render` depends on `gnoblin-types`
+  alone, so it cannot pull Smithay or policy in behind a caller, and no
+  foundation crate may name it.
+- Only `gnoblin-compositor` depends on every engine crate. Apart from
+  `gnoblin-render`, engine crates do not depend on each other, except through
+  traits in `gnoblin-backend` and types in `gnoblin-model`.
 - `gnoblin-lua` depends on `gnoblin-client`, not on compositor crates. The
   runtime is a client.
 - `gnoblin-services`, every `gnoblin-compat-*` D-Bus crate and
@@ -463,6 +520,19 @@ CI enforces these with a dependency check over `cargo metadata`:
 
 These rules are what makes concurrent work safe: a lane can change a crate
 without breaking another lane, provided the shared types do not change.
+
+#### One name per concept
+
+`gnoblin-types` is a foundation crate so that two crates cannot both declare a
+`Rect`, a `Tick` or a `ClientId` and disagree about what they mean. Before
+adding a type, search for the shape and reuse it.
+
+`cargo xtask dupes --deny` reports a struct or enum that two crates declare with
+the same name or the same shape. A genuine homonym — two meanings that share a
+word, such as a backend `Output` and the window manager's — is waived in
+`xtask/dupes-allow.toml` with a reason. The check is local and not part of
+`just ci`, because a lane mid-migration must be able to read the report with
+`--warn`.
 
 ## From the current tree to the new crates
 
@@ -607,20 +677,44 @@ Lanes start work as soon as their inputs exist. Phases are integration gates:
 the candidate is not called "phase N" until every gate item passes and the
 parity report shows it.
 
+A phase 0 item is marked done only when the code is on `origin/rust-compositor`
+with a test that would fail without it. The per-crate ledger is
+[rust-compositor-progress.md](rust-compositor-progress.md).
+
 ### Phase 0: groundwork
 
-- Cargo workspace, toolchain pin, shared lints, `just` recipes, CI jobs for
-  build, Clippy, MSRV, `cargo deny` and the dependency rules.
-- `gnoblin-schema` and `gnoblin-proto` first draft, taken from the object model
-  on the `lua-api/*` branches.
-- Contract inventory recorded from a reference session into
-  `tests/parity/contracts/`.
-- Parity harness with the two Mutter targets, recording reference observations.
-- Failure-mode lists for session lock, activation and focus, input policy, and
-  capture embargo, before any code in those crates.
-- Mutter patch freeze in force (D9).
-- Gate: the parity runner runs in CI against both Mutter targets and stores a
-  report.
+Landed:
+
+- The Cargo workspace, the pinned toolchain, shared lints, the `just` recipes
+  and the `rust.yml` job that runs `just ci`: format, build, Clippy, tests,
+  `cargo xtask deps` and `cargo deny`.
+- `gnoblin-schema` with its parse and catalog rules and its first slice, and
+  `gnoblin-proto` with the framed envelope, the fixed-layout handshake, the
+  caret version rule and build-time `.proto` generation.
+- `tests/parity/contracts/`, read out of the C sources by
+  `scripts/contract-inventory.py` with a `--check` mode that fails on a stale
+  file.
+- The parity runner, its normaliser, its report, three scenarios and the test
+  kit. The Mutter targets are named and refused with the lane that brings them,
+  so no scenario passes on a stand-in.
+- Failure-mode lists, each entry naming its test, in the crate docs of
+  `gnoblin-wm`, `gnoblin-lock`, `gnoblin-authority`, `gnoblin-a11y`,
+  `gnoblin-session`, `gnoblin-config`, `gnoblin-model` and `gnoblin-render`.
+- `gnoblin-types`, and the first engine slice: a headless backend with the
+  software renderer and `gnoblin-wayland` serving a real `wayland-client`.
+
+Open:
+
+- The two Mutter reference targets and the EIS input path, so a scenario can run
+  against the reference and the performance baseline can be recorded.
+- An MSRV job, which waits for the dependency floors the probe produces.
+- The Mutter patch freeze announced in `CONTRIBUTING.md`; D9 is decided but the
+  announcement is not written.
+- The native dependency probe on every target image.
+- The `lua-api/*` phases landed or their design frozen.
+
+Gate, unmet: the parity runner runs in CI against both Mutter targets and stores
+a report.
 
 ### Phase 1: outside-in ports that ship on Mutter
 
@@ -646,6 +740,15 @@ early, and the C tree shrinks before the engine exists.
 
 The thinnest end-to-end compositor, integrated early so every lane plugs into
 something real.
+
+Started on `origin/rust-compositor`: the headless backend, the Pixman software
+renderer with screenshot readback, xdg-shell toplevels and tracked popups,
+floating placement out of `gnoblin-wm`, click-to-focus, keyboard and pointer,
+`wl_shm`, damage and the per-iteration frame loop.
+
+Open: the nested backend, GLES, dmabuf, presentation time, popup grabs,
+interactive move and resize, EIS input, and the `gnoblin-compositor` root that
+wires the roles together.
 
 - Headless and nested backends, GLES and Pixman renderers, xdg-shell toplevels
   and popups, floating placement, click-to-focus, keyboard and pointer, `wl_shm`
@@ -810,6 +913,22 @@ Rules for running lanes in parallel:
   report, not when its crate compiles.
 - Build, lint and test runs happen once per lane change set, not in the middle
   of a parallel batch.
+
+Validation is local, because no CI job boots a graphical session and the pinned
+dependency is a git revision:
+
+- A lane gets its own worktree from `origin/rust-compositor` and its own
+  `CARGO_TARGET_DIR`, so parallel `cargo` runs do not fight over one lock.
+- A lane runs `cargo fmt --check`, `cargo clippy --all-targets -D warnings`,
+  `cargo test` and `cargo xtask deps` for the crates it owns.
+- A lane lands at most two commits. The Beads pre-commit hook spends GitHub API
+  quota, so a lane checks `gh api rate_limit` before committing and waits for
+  the reset rather than retrying.
+- Pushes are serialised through one `flock` queue, and a lane rebases on
+  `origin/rust-compositor` before it pushes. Upstream wins a conflict in a file
+  the lane does not own.
+- Nothing is skipped or force-pushed to get a commit through. A hook that fails
+  is a defect to fix in the same change.
 
 ## Component cards
 
@@ -1286,8 +1405,13 @@ Breaks with a decided path:
       `rustc` is new enough (Fedora, Arch, openSUSE Tumbleweed and Leap 16,
       NixOS, Ubuntu 26.04). Package claims for other targets never rely on
       distro `rustc`.
-- **Smithay:** pin a git revision, as niri and Pinnacle do. Bump it on a
-  schedule, and only with a full parity run (D7).
+- **Smithay:** pinned in `[workspace.dependencies]` to git revision
+  `65aa86fa5236e41775c313408102a5d5c2d1e2ca`, as niri and Pinnacle do. Bump it
+  on a schedule, and only with a full parity run (D7).
+- **Advisories:** `deny.toml` sets `unmaintained = "workspace"`, so a direct
+  dependency that stops being maintained fails the check while a transitive
+  informational advisory does not. Smithay's Pixman renderer pulls in `paste`
+  (RUSTSEC-2024-0436), which no choice of ours can change.
 - **Target set:** the minimum is the four newest major releases of each family,
   taken literally. A release past its vendor's end of life stays in the list as
   a build and test target unless Kieran drops it. The list lives in
@@ -1484,6 +1608,20 @@ parity run. Lane F owns the bump.
 - **crates.io releases:** stable. 0.7.0 is from 2025-06-24 and lacks protocols
   Gnoblin needs.
 
+The pin is `65aa86fa5236e41775c313408102a5d5c2d1e2ca` (2026-11-04,
+"input/tablet: Send the old focus its frame before proximity_in"). It reports
+version 0.7.0 and `rust-version` 1.87, so the toolchain pin builds it. The
+workspace entry waits for a release that carries `ext-image-copy-capture-v1`
+rather than taking 0.7.0.
+
+Every member inherits the entry with `default-features = false`, so the DRM,
+libinput, X11, winit and Xwayland backends stay out of the dependency graph
+until a crate asks for them.
+
+`renderer_pixman` sits in the workspace entry rather than a member, because the
+software path is the reference renderer and it turns `#[cfg]`s on in Smithay's
+own modules: that switch must look the same for the whole workspace.
+
 ### D8: licence of the workspace
 
 **Decided 2026-11-04: keep GPL-2.0-or-later** for the whole workspace, as in
@@ -1649,8 +1787,10 @@ the missing provider.
 **Decided 2026-11-04: binary Protocol Buffers.**
 
 - **Frames:** length-prefixed; file descriptors travel with `SCM_RIGHTS`.
-- **Code generation:** `xtask` writes the `.proto` files from `gnoblin-schema`;
-  Rust uses `prost`.
+- **Code generation:** `gnoblin-proto`'s `build.rs` renders the `.proto` text
+  from `gnoblin-schema` and compiles it in `OUT_DIR` with the pure-Rust `protox`
+  front end, so a build needs no `protoc` binary. `cargo xtask gen-proto` runs
+  the same renderer for reading; nothing generated is checked in.
 - **Evolution:** field numbers are assigned once and never reused, which fits
   the additive `since` rule.
 - **RPC:** Gnoblin owns a small envelope for request, reply, event and error
@@ -1680,22 +1820,101 @@ Options considered:
 ## Phase 0 checklist
 
 - [x] Decide D1 to D16 (done 2026-11-04).
-- [ ] Define the frame header and RPC envelope before the F lane writes
-      `gnoblin-proto`.
+- [x] Define the frame header and RPC envelope, and compile it: `gnoblin-proto`
+      has the framed envelope, the handshake and the caret version rule, with a
+      test per failure mode.
 - [ ] Land the in-flight `lua-api/*` phases, or freeze their design, so the
       schema has a stable source.
 - [ ] Announce the Mutter patch freeze in `CONTRIBUTING.md` and the patch audit.
-- [ ] Create the Cargo workspace, toolchain pin, lints, `just` recipes and CI
-      jobs (build, Clippy, MSRV, `cargo deny`, dependency rules).
-- [ ] Draft `gnoblin-schema` and `gnoblin-proto` from the object model.
-- [ ] Record the contract inventory from a reference session at API 1.93 into
-      `tests/parity/contracts/`.
-- [ ] Build the parity runner with the two Mutter targets and the EIS input
-      path; record reference observations and the performance baseline.
-- [ ] Write the failure-mode lists for lock, authority, input policy and capture
-      embargo.
+- [x] Create the Cargo workspace, toolchain pin, shared lints, `just` recipes
+      and the CI job for build, Clippy, tests, `cargo deny` and the dependency
+      rules.
+- [ ] Add the MSRV job. It waits for the dependency floors the probe produces.
+- [x] Draft `gnoblin-schema` and `gnoblin-proto` from the object model, with the
+      parse and catalog rules under test.
+- [x] Read the contract inventory out of the C sources into
+      `tests/parity/contracts/`, with `scripts/contract-inventory.py --check`.
+- [ ] Record a contract inventory from a reference session at API 1.93.
+- [x] Build the parity runner with its normaliser, report, three scenarios and
+      the test kit.
+- [ ] Add the two Mutter targets and the EIS input path, and record the
+      reference observations and the performance baseline with them.
+- [x] Write the failure-mode lists for lock, authority and focus, input policy
+      and the pure crates, each entry naming its test.
+- [ ] Write the capture-embargo failure-mode list; `gnoblin-capture` is still a
+      skeleton and the lock crate owns only the answer, not the list.
 - [ ] Probe native dependency versions on every target image.
 - [ ] Record every GNOME and Mutter D-Bus name and private Wayland protocol that
       a reference session uses (`busctl monitor`, `WAYLAND_DEBUG`), and write
       the first adapter support matrices from it.
 - [ ] Create one Beads epic and one issue per lane, published to GitHub.
+
+## Known gaps and plan ambiguities
+
+These came out of the first build. Each names what is unknown and where the
+evidence sits. None is a decision, and none blocks a crate that has landed.
+
+- **Global or per-output workspaces.** `gnoblin-wm` keeps one declared workspace
+  list (`crates/gnoblin-wm/src/workspace.rs`), while the configuration declares
+  `workspaces-only-on-primary`. The plan does not say whether a workspace
+  belongs to an output or to the session.
+
+- **Rule patterns need a translator.** The rule matcher accepts a small language
+  with no quantifiers, so a pattern cannot backtrack
+  (`crates/gnoblin-wm/src/rules.rs`). Its doc says the configuration layer is
+  where quantifiers would be translated, and that translator does not exist.
+
+- **`auto-maximize` is declared, not implemented.** The setting is generated
+  into the document with the "nearly fills its monitor" description.
+  `gnoblin-wm` holds maximised as a window state, and no code decides it from
+  the window's size; the plan's window management card does not name the
+  heuristic either.
+
+- **Salvage granularity.** `salvage` drops the sections that hold a problem and
+  keeps the rest (`crates/gnoblin-config/src/lib.rs`). The plan says "keeps what
+  it can" without fixing the unit at a section, a table or a key, and a dropped
+  section takes its unaffected keys with it.
+
+- **An unknown protocol is a warning in C.** The C configuration ignores an
+  unknown `protocols` name, logs it and keeps the reload
+  (`src/config/lua/gnoblin-lua-input.c`). The generated schema keys that map by
+  an enum of protocol names, so the name becomes a problem in the section, which
+  `salvage` then drops.
+
+- **Request layer, twice.** The request lifecycle is a schema object with its
+  own signals (`crates/gnoblin-schema/schema/request.toml`), and it is also a
+  broker inside `gnoblin-model`. The plan does not say which side publishes
+  `offered` and `finished`, or whether the broker's states are the schema's.
+
+- **`closed` signal or `Observation::Closed`.** `window.toml` declares a
+  `closed` signal, and the model also ends every subscription with
+  `Observation::Closed`. A client has two ways to learn an object ended, and the
+  plan describes only the signal.
+
+- **Secret properties are unexercised.** The schema can mark a member secret,
+  and `gnoblinctl` skips a secret property in `list`, `get` and `watch`. No
+  schema declares a secret property, so that branch is the one place in
+  `gnoblinctl` with no test.
+
+- **Secret arguments on the command line.** A secret method parameter reaches
+  `gnoblinctl` as `NAME=VALUE` on argv, so the shell history and the process
+  list keep it. The crate guarantees only that an error message does not echo
+  it.
+
+- **Popup grabs at the pinned Smithay.** A grab on a tracked popup is logged
+  rather than implemented, and interactive move, resize and grabs are later
+  slices (`crates/gnoblin-wayland/src/lib.rs`). The plan assumes a grab exists
+  by the phase 2 gate.
+
+- **No cursor pixels.** `gnoblin-backend`'s frame has a cursor slot and the
+  software renderer draws it, but nothing loads a theme image, so a session
+  composes no cursor (`crates/gnoblin-backend/src/render/frame.rs`).
+
+- **Naming the perspective refusal.** The renderer refuses a perspective camera
+  with its own error type whose member is the literal `"perspective"`
+  (`crates/gnoblin-render/src/camera.rs`). The plan's 3D rule names refused
+  members but not what a camera's member is called.
+
+- **The version source path.** The plan named `versions/gnoblin-version.json`
+  and the tree holds `src/gnoblin-version.json`, which `prepare-release.sh`
+  writes. No `xtask` step copies it into the workspace yet.
