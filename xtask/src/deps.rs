@@ -17,12 +17,21 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 /// the runtime, services, portal and shells link it and it must never pull a
 /// compositor in behind itself. `gnoblin-types` joins them because it holds the
 /// primitives all of them pass around.
+///
+/// `gnoblin-output` joins them for the same reason as `gnoblin-wm`: it is pure
+/// policy. It holds no Smithay, DRM, udev or Wayland type, reads no clock and
+/// touches no hardware — an output arrives as a descriptor and a configuration
+/// becomes a layout of rectangles (`crates/gnoblin-output/src/lib.rs`). The plan
+/// files it under the mechanism layer, but the mechanism is the backend that
+/// performs the mode sets; keeping it here is what lets the Wayland engine lay out
+/// its outputs without an engine-to-engine edge, which is the edge the plan forbids.
 const FOUNDATION: &[&str] = &[
     "gnoblin-authority",
     "gnoblin-client",
     "gnoblin-config",
     "gnoblin-lock",
     "gnoblin-model",
+    "gnoblin-output",
     "gnoblin-proto",
     "gnoblin-schema",
     "gnoblin-types",
@@ -32,14 +41,13 @@ const FOUNDATION: &[&str] = &[
 /// The shared primitives: the root of every other crate's dependency graph.
 const TYPES: &str = "gnoblin-types";
 
-/// The mechanism layer: Smithay glue, renderer, input, backends, outputs,
-/// capture and Xwayland. These reach the policy core through `gnoblin-model`
-/// types and each other through `gnoblin-backend` traits.
+/// The mechanism layer: Smithay glue, renderer, input, backends, capture and
+/// Xwayland. These reach the policy core through `gnoblin-model` and
+/// `gnoblin-output` types and each other through `gnoblin-backend` traits.
 const ENGINE: &[&str] = &[
     "gnoblin-backend",
     "gnoblin-capture",
     "gnoblin-input",
-    "gnoblin-output",
     "gnoblin-render",
     "gnoblin-wayland",
     "gnoblin-xwayland",

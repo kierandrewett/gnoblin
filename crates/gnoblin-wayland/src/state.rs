@@ -1,0 +1,806 @@
+//! The compositor state: the Smithay protocol state, the window manager and the
+//! translation between them.
+//!
+//! Every protocol handler in [`crate::protocols`] turns a request into an event for
+//! [`gnoblin_wm::Wm::apply`] and hands the returned effects back here, where they
+//! become client configures, seat focus and output enter/leave. Policy never sees a
+//! Smithay type and this module never decides policy: the same split the plan draws
+//! between the composition root and the pure crates.
+
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use smithay::backend::input::{ButtonState, InputTime, KeyState};
+use smithay::backend::renderer::utils::with_renderer_surface_state;
+use smithay::desktop::PopupManager;
+use smithay::input::keyboard::{FilterResult, KeyboardHandle, ModifiersState};
+use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
+use smithay::input::{Seat, SeatState};
+use smithay::output::{Mode, Output, PhysicalProperties, Scale as OutputScale, Subpixel};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::reexports::wayland_server::Display;
+use smithay::reexports::wayland_server::backend::GlobalId;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::utils::{Logical, Point as SmithayPoint, SERIAL_COUNTER, Size as SmithaySize, Transform};
+use smithay::wayland::compositor::{CompositorState, with_states};
+use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
+use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData};
+use smithay::wayland::shm::ShmState;
+use smithay::wayland::viewporter::ViewporterState;
+use tracing::{debug, warn};
+
+use gnoblin_backend::{Host, InputEvent, Target};
+use gnoblin_output::{LayoutConfig, compute};
+use gnoblin_types::{OutputId, Rect, Size};
+use gnoblin_wm::{
+    ActivationDecision, Effect, Event, OutputId as PolicyOutputId, Rect as PolicyRect, WindowId, WindowSpec, Wm,
+    WmOptions,
+};
+
+use crate::observation::{ObservedWindow, SessionSnapshot};
+use crate::server::StartupError;
+
+/// How many workspaces a session declares when its configuration names none.
+const DEFAULT_WORKSPACES: u32 = 1;
+
+/// The keyboard repeat settings a session starts with, in milliseconds and
+/// repeats per second: the values the configuration reference defaults to.
+const KEY_REPEAT_DELAY: i32 = 200;
+const KEY_REPEAT_RATE: i32 = 25;
+
+/// One toplevel the server is managing.
+struct WindowEntry {
+    /// The protocol object the client owns.
+    surface: ToplevelSurface,
+    /// Whether the client has committed a buffer, which is what "mapped" means for
+    /// a toplevel.
+    mapped: bool,
+    /// The application id the client last sent.
+    app_id: String,
+    /// The title the client last sent.
+    title: String,
+}
+
+/// One output the server presents on.
+struct OutputEntry {
+    /// The backend's identity for the output.
+    backend: OutputId,
+    /// The window manager's identity for it.
+    policy: PolicyOutputId,
+    /// The Smithay output, which owns the `wl_output` global.
+    output: Output,
+    /// The global the output created.
+    global: GlobalId,
+    /// The logical rectangle the layout assigned.
+    rect: PolicyRect,
+}
+
+/// The compositor state every protocol handler receives.
+///
+/// The fields are private: a handler asks for what it needs through the accessor
+/// methods below, so a protocol module cannot reach into another one's table.
+pub struct State {
+    /// The handle every protocol handler needs to create objects and globals.
+    pub(crate) display_handle: DisplayHandle,
+    /// The Wayland display, taken out for the duration of a dispatch.
+    ///
+    /// `Display::dispatch_clients` needs `&mut Display` and `&mut State` at the
+    /// same time, and the state is the type the display is generic over, so the
+    /// two cannot be borrowed at once through `&mut self`. Taking the display out
+    /// and putting it back is the safe way to hand both to the dispatcher; the
+    /// alternative is an `unsafe` `get_mut` on an event source, which this
+    /// workspace forbids.
+    display: Option<Display<State>>,
+
+    // The Smithay protocol state, one field per protocol module.
+    pub(crate) compositor_state: CompositorState,
+    pub(crate) xdg_shell_state: XdgShellState,
+    pub(crate) shm_state: ShmState,
+    pub(crate) seat_state: SeatState<State>,
+    pub(crate) popups: PopupManager,
+    /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
+    #[allow(dead_code)]
+    pub(crate) output_manager_state: OutputManagerState,
+    /// Kept alive so the `wp_viewporter` global stays registered. The protocol
+    /// needs no handler trait: Smithay validates a viewport on commit.
+    #[allow(dead_code)]
+    pub(crate) viewporter_state: ViewporterState,
+    /// Kept alive so the `zxdg_decoration_manager_v1` global stays registered; the
+    /// handler in [`crate::protocols::decoration`] answers its requests.
+    #[allow(dead_code)]
+    pub(crate) decoration_state: XdgDecorationState,
+
+    /// Keyboard and pointer handles for the one seat this slice creates.
+    pub(crate) keyboard: KeyboardHandle<State>,
+    pub(crate) pointer: PointerHandle<State>,
+
+    /// The window management policy.
+    wm: Wm,
+    /// The protocol objects of the managed windows, keyed by policy identity.
+    windows: BTreeMap<WindowId, WindowEntry>,
+    /// The outputs, in connection order.
+    outputs: Vec<OutputEntry>,
+    /// The next window identity to hand out.
+    next_window: u32,
+    /// The last pointer position the backend reported, in global logical
+    /// coordinates.
+    pointer_position: SmithayPoint<f64, Logical>,
+
+    /// The snapshot tests read.
+    observation: Arc<Mutex<SessionSnapshot>>,
+}
+
+impl State {
+    /// Builds the state, its globals and its outputs.
+    ///
+    /// # Errors
+    ///
+    /// [`StartupError::Keyboard`] when xkbcommon cannot build a keymap — a machine
+    /// with no XKB data cannot run a seat with a keyboard.
+    pub(crate) fn new(
+        display: Display<State>,
+        backend_outputs: &[gnoblin_backend::Output],
+        seat_name: &str,
+        options: WmOptions,
+        workspaces: u32,
+    ) -> Result<Self, StartupError> {
+        let display_handle = display.handle();
+
+        let compositor_state = CompositorState::new::<Self>(&display_handle);
+        let xdg_shell_state = XdgShellState::new::<Self>(&display_handle);
+        let shm_state = ShmState::new::<Self>(&display_handle, Vec::new());
+        let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
+        let viewporter_state = crate::protocols::viewporter::global(&display_handle);
+        let decoration_state = XdgDecorationState::new::<Self>(&display_handle);
+
+        let mut seat_state = SeatState::new();
+        let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
+        let keyboard = seat
+            .add_keyboard(Default::default(), KEY_REPEAT_DELAY, KEY_REPEAT_RATE)
+            .map_err(StartupError::Keyboard)?;
+        let pointer = seat.add_pointer();
+
+        let mut state = Self {
+            display_handle,
+            display: Some(display),
+            compositor_state,
+            xdg_shell_state,
+            shm_state,
+            seat_state,
+            popups: PopupManager::default(),
+            output_manager_state,
+            viewporter_state,
+            decoration_state,
+            keyboard,
+            pointer,
+            wm: Wm::new(options),
+            windows: BTreeMap::new(),
+            outputs: Vec::new(),
+            next_window: 1,
+            pointer_position: SmithayPoint::from((0.0, 0.0)),
+            observation: Arc::new(Mutex::new(SessionSnapshot::default())),
+        };
+
+        for raw in 0..workspaces.max(DEFAULT_WORKSPACES) {
+            state.wm.apply(Event::WorkspaceAdded {
+                workspace: gnoblin_wm::WorkspaceId::new(raw + 1),
+            });
+        }
+        state.sync_outputs(backend_outputs);
+        state.publish();
+        Ok(state)
+    }
+
+    /// The snapshot of the window state the tests and a diagnostics reader copy.
+    #[must_use]
+    pub fn observation(&self) -> Arc<Mutex<SessionSnapshot>> {
+        Arc::clone(&self.observation)
+    }
+
+    /// The window management policy, for a caller that wants to read it.
+    #[must_use]
+    pub fn wm(&self) -> &Wm {
+        &self.wm
+    }
+
+    /// The outputs the server presents on, as the backend numbered them.
+    #[must_use]
+    pub fn output_ids(&self) -> Vec<OutputId> {
+        self.outputs.iter().map(|entry| entry.backend).collect()
+    }
+
+    /// Inserts a connected client with the data its handlers expect.
+    pub(crate) fn insert_client_data(
+        &mut self,
+        stream: std::os::unix::net::UnixStream,
+        data: Arc<dyn smithay::reexports::wayland_server::backend::ClientData>,
+    ) -> std::io::Result<()> {
+        self.display_handle.insert_client(stream, data).map(|_| ())
+    }
+
+    /// The display, taken out for the caller that drives a dispatch.
+    pub(crate) fn take_display(&mut self) -> Option<Display<State>> {
+        self.display.take()
+    }
+
+    /// Puts the display back after a dispatch.
+    pub(crate) fn restore_display(&mut self, display: Display<State>) {
+        self.display = Some(display);
+    }
+
+    /// Reconciles the outputs with what the backend reports.
+    ///
+    /// The whole layout is recomputed from the connected set, so a hotplug, a
+    /// removal and a mode change all end in the same place: one declarative layout
+    /// from `gnoblin-output`, applied to the Smithay outputs and to the window
+    /// manager. A layout the engine refuses leaves the previous one in place and is
+    /// logged, because a display configuration mistake must not end the session.
+    pub(crate) fn sync_outputs(&mut self, outputs: &[gnoblin_backend::Output]) {
+        let connected: Vec<&gnoblin_backend::Output> = outputs
+            .iter()
+            .filter(|output| output.mode.width > 0 && output.mode.height > 0)
+            .collect();
+        if connected.is_empty() {
+            self.remove_outputs_unless(&[]);
+            return;
+        }
+        let descriptors: Vec<_> = connected.iter().map(|output| output.descriptor()).collect();
+        let connectors: Vec<String> = connected.iter().map(|output| output.connector.clone()).collect();
+        let layout = match compute(&descriptors, &LayoutConfig::row_over(&connectors)) {
+            Ok(layout) => layout,
+            Err(error) => {
+                warn!(?error, "[output] the layout was refused; keeping the previous one");
+                return;
+            }
+        };
+
+        self.remove_outputs_unless(&connected.iter().map(|output| output.id).collect::<Vec<_>>());
+        for output in &connected {
+            let Some(monitor) = layout.monitor_of(output.id) else {
+                warn!(connector = %output.connector, "[output] the layout does not place this output");
+                continue;
+            };
+            match self.outputs.iter().position(|entry| entry.backend == output.id) {
+                Some(index) => self.move_output(index, monitor.rect),
+                None => self.add_output(output, monitor.rect),
+            }
+        }
+    }
+
+    /// Removes every output the connected set no longer names.
+    fn remove_outputs_unless(&mut self, keep: &[OutputId]) {
+        let gone: Vec<usize> = self
+            .outputs
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| !keep.contains(&entry.backend))
+            .map(|(index, _)| index)
+            .collect();
+        for index in gone.into_iter().rev() {
+            let entry = self.outputs.remove(index);
+            self.display_handle.remove_global::<Self>(entry.global);
+            debug!(connector = %entry.output.name(), "[output] disconnected");
+            let effects = self.wm.apply(Event::OutputDisconnected { output: entry.policy });
+            self.apply(effects);
+        }
+    }
+
+    /// Creates one output's Smithay object, global and window-manager entry.
+    fn add_output(&mut self, output: &gnoblin_backend::Output, rect: Rect) {
+        let smithay_output = Output::new(
+            output.connector.clone(),
+            PhysicalProperties {
+                size: SmithaySize::from((0, 0)),
+                subpixel: Subpixel::Unknown,
+                make: "Gnoblin".to_owned(),
+                model: output.connector.clone(),
+                serial_number: String::new(),
+            },
+        );
+        let mode = smithay_mode(output);
+        smithay_output.set_preferred(mode);
+        smithay_output.change_current_state(
+            Some(mode),
+            Some(Transform::Normal),
+            Some(OutputScale::Integer(1)),
+            Some(SmithayPoint::from((rect.x, rect.y))),
+        );
+        let global = smithay_output.create_global::<Self>(&self.display_handle);
+
+        let policy = PolicyOutputId::new(self.outputs.len() as u32);
+        let policy_rect = policy_rect(rect);
+        let effects = self.wm.apply(Event::OutputConnected {
+            output: policy,
+            rect: policy_rect,
+        });
+        self.apply(effects);
+        debug!(connector = %output.connector, ?rect, "[output] connected");
+        self.outputs.push(OutputEntry {
+            backend: output.id,
+            policy,
+            output: smithay_output,
+            global,
+            rect: policy_rect,
+        });
+    }
+
+    /// Applies a new layout rectangle to an output that is already connected.
+    fn move_output(&mut self, index: usize, rect: Rect) {
+        let Some(entry) = self.outputs.get_mut(index) else {
+            return;
+        };
+        let policy = entry.policy;
+        let policy_rect = policy_rect(rect);
+        if entry.rect == policy_rect {
+            return;
+        }
+        entry.rect = policy_rect;
+        entry
+            .output
+            .change_current_state(None, None, None, Some(SmithayPoint::from((rect.x, rect.y))));
+        let effects = self.wm.apply(Event::OutputMoved {
+            output: policy,
+            rect: policy_rect,
+        });
+        self.apply(effects);
+    }
+
+    /// Applies the effects the window manager returned.
+    ///
+    /// This is the only place a policy answer becomes observable behaviour, so
+    /// every arm says what a window manager command means to a client.
+    pub(crate) fn apply(&mut self, effects: Vec<Effect>) {
+        for effect in effects {
+            match effect {
+                Effect::Configure {
+                    window,
+                    geometry,
+                    state,
+                } => self.configure(window, geometry, state),
+                Effect::SetVisible { window, visible } => self.set_visible(window, visible),
+                Effect::Stack { order } => debug!(log = ?order, "[stack]"),
+                Effect::Focus { focused, .. } => self.move_focus(focused),
+                Effect::ActivationDenied { window } => {
+                    debug!(%window, "[focus] activation refused by the caller");
+                }
+                Effect::WorkspaceShown { workspace } => debug!(%workspace, "[workspace] shown"),
+                Effect::RuleRejected { window, rule, reason } => {
+                    warn!(%window, rule, ?reason, "[rules] rule did not apply")
+                }
+                Effect::Rejected { reason } => debug!(?reason, "[wm] the event changed nothing"),
+            }
+        }
+    }
+
+    /// Applies a configure to a toplevel and sends it if the client is ready for it.
+    ///
+    /// The state is written to the surface's pending state either way; a toplevel
+    /// that has not had its initial configure yet carries this state into that
+    /// configure, which the client's first commit triggers.
+    fn configure(&mut self, window: WindowId, geometry: PolicyRect, state: gnoblin_wm::WindowState) {
+        let Some(surface) = self.windows.get(&window).map(|entry| entry.surface.clone()) else {
+            // The window closed between the policy call and this action, which is
+            // the race the policy's rejections describe.
+            return;
+        };
+        surface.with_pending_state(|pending| {
+            pending.bounds = None;
+            pending.size = Some(SmithaySize::from((geometry.width, geometry.height)));
+            set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
+            set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
+        });
+        if surface.is_initial_configure_sent() {
+            surface.send_configure();
+        }
+        debug!(%window, width = geometry.width, height = geometry.height, "[wm] configured");
+    }
+
+    /// Shows or hides a window's surface.
+    fn set_visible(&mut self, window: WindowId, visible: bool) {
+        let Some(entry) = self.windows.get(&window) else {
+            return;
+        };
+        let surface = entry.surface.wl_surface().clone();
+        for output in &self.outputs {
+            if visible {
+                output.output.enter(&surface);
+            } else {
+                output.output.leave(&surface);
+            }
+        }
+    }
+
+    /// Moves keyboard focus to a window, or to nothing.
+    fn move_focus(&mut self, focused: Option<WindowId>) {
+        let target = focused
+            .and_then(|window| self.windows.get(&window))
+            .map(|entry| entry.surface.wl_surface().clone());
+        let serial = SERIAL_COUNTER.next_serial();
+        let keyboard = self.keyboard.clone();
+        keyboard.set_focus(self, target, serial);
+    }
+
+    /// A client created a toplevel.
+    pub(crate) fn toplevel_created(&mut self, surface: ToplevelSurface) {
+        if self
+            .windows
+            .values()
+            .any(|entry| entry.surface.wl_surface() == surface.wl_surface())
+        {
+            return;
+        }
+        let window = WindowId::new(self.next_window);
+        self.next_window = self.next_window.saturating_add(1);
+        let wl_surface = surface.wl_surface().clone();
+        self.windows.insert(
+            window,
+            WindowEntry {
+                surface,
+                mapped: false,
+                app_id: String::new(),
+                title: String::new(),
+            },
+        );
+        // The window is placed now and takes focus when it first maps; the
+        // activation event is sent from `toplevel_committed` for that reason.
+        let effects = self.wm.apply(Event::WindowOpened(WindowSpec::normal(window, "")));
+        self.apply(effects);
+        debug!(%window, surface = ?wl_surface.id(), "[window] opened");
+        self.publish();
+    }
+
+    /// A toplevel is gone, whether the client destroyed it or disconnected.
+    pub(crate) fn toplevel_destroyed(&mut self, surface: &ToplevelSurface) {
+        let Some(window) = self.window_of(surface.wl_surface()) else {
+            return;
+        };
+        if let Some(entry) = self.windows.remove(&window) {
+            let wl_surface = entry.surface.wl_surface().clone();
+            for output in &self.outputs {
+                output.output.leave(&wl_surface);
+            }
+            debug!(%window, surface = ?wl_surface.id(), "[window] closed");
+        }
+        let effects = self.wm.apply(Event::WindowClosed { window });
+        self.apply(effects);
+        self.publish();
+    }
+
+    /// A toplevel committed: record its title, application id and buffer.
+    pub(crate) fn toplevel_committed(&mut self, surface: &WlSurface) {
+        let Some(window) = self.window_of(surface) else {
+            return;
+        };
+        let (app_id, title) = with_states(surface, |states| {
+            let attributes = states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .expect("a toplevel always has its attributes")
+                .lock()
+                .expect("the attributes lock is never poisoned");
+            (
+                attributes.app_id.clone().unwrap_or_default(),
+                attributes.title.clone().unwrap_or_default(),
+            )
+        });
+        let mut effects = Vec::new();
+        let mut newly_mapped = false;
+        let mut initial_configure = None;
+        if let Some(entry) = self.windows.get_mut(&window) {
+            if entry.app_id != app_id {
+                entry.app_id.clone_from(&app_id);
+                effects.push(Event::WindowAppIdChanged { window, app_id });
+            }
+            if entry.title != title {
+                entry.title.clone_from(&title);
+                effects.push(Event::WindowTitleChanged { window, title });
+            }
+            let mapped = has_buffer(surface);
+            newly_mapped = mapped && !entry.mapped;
+            entry.mapped = mapped;
+            if !entry.surface.is_initial_configure_sent() {
+                initial_configure = Some(entry.surface.clone());
+            }
+        }
+        if let Some(surface) = initial_configure {
+            // The client's first commit is answered with the initial configure,
+            // carrying whatever the window manager wrote to the pending state.
+            surface.send_configure();
+        }
+        if newly_mapped {
+            // Attribution is not part of this slice: a mapping toplevel is a
+            // locally launched client and `window_management.focus_new_windows`
+            // defaults to taking focus, so the caller's decision is `Allow`.
+            effects.push(Event::ActivationRequested {
+                window,
+                decision: ActivationDecision::Allow,
+            });
+        }
+        self.apply_events(effects);
+        self.publish();
+    }
+
+    /// Applies a batch of events to the policy and then their effects.
+    fn apply_events(&mut self, events: Vec<Event>) {
+        let mut effects = Vec::new();
+        for event in events {
+            effects.extend(self.wm.apply(event));
+        }
+        self.apply(effects);
+    }
+
+    /// The policy identity of the window owning a surface.
+    pub(crate) fn window_of(&self, surface: &WlSurface) -> Option<WindowId> {
+        self.windows
+            .iter()
+            .find(|(_, entry)| entry.surface.wl_surface() == surface)
+            .map(|(window, _)| *window)
+    }
+
+    /// Applies one event about the window a toplevel belongs to.
+    pub(crate) fn window_event(&mut self, surface: &ToplevelSurface, event: impl FnOnce(WindowId) -> Event) {
+        let Some(window) = self.window_of(surface.wl_surface()) else {
+            return;
+        };
+        let effects = self.wm.apply(event(window));
+        self.apply(effects);
+        self.publish();
+    }
+
+    /// The window manager's state for a toplevel.
+    pub(crate) fn window_state(&self, surface: &ToplevelSurface) -> Option<gnoblin_wm::WindowState> {
+        let window = self.window_of(surface.wl_surface())?;
+        Some(self.wm.window(window)?.state)
+    }
+
+    /// Dispatches every pending client request.
+    ///
+    /// The display is taken out for the call so the dispatcher can be handed
+    /// `&mut State` at the same time: see the field's documentation.
+    ///
+    /// # Errors
+    ///
+    /// Any error the Wayland backend reports. A protocol error raised by a client
+    /// is not one of them — it is reported on that client's connection and this
+    /// call still succeeds, which is what keeps one bad client from ending the
+    /// session.
+    pub(crate) fn dispatch(&mut self) -> std::io::Result<usize> {
+        let Some(mut display) = self.take_display() else {
+            return Ok(0);
+        };
+        let result = display.dispatch_clients(self);
+        self.restore_display(display);
+        result
+    }
+
+    /// Writes every queued event to its client.
+    pub(crate) fn flush(&mut self) {
+        let Some(mut display) = self.take_display() else {
+            return;
+        };
+        let result = display.flush_clients();
+        self.restore_display(display);
+        if let Err(error) = result {
+            warn!(%error, "[wayland] flushing a client failed");
+        }
+    }
+
+    /// The window's geometry, for popup positioning. `None` when it closed.
+    pub(crate) fn geometry_of(&self, window: WindowId) -> Option<PolicyRect> {
+        Some(self.wm.window(window)?.geometry)
+    }
+
+    /// The monitor rectangle of the output the window is on.
+    pub(crate) fn monitor_of(&self, window: WindowId) -> Option<PolicyRect> {
+        let output = self.wm.window(window)?.output?;
+        Some(self.wm.output(output)?.rect())
+    }
+
+    /// Publishes the window state for the tests and for a diagnostics reader.
+    fn publish(&mut self) {
+        let active = self.wm.active_workspace();
+        let focused = self.wm.focused();
+        let mut snapshot = SessionSnapshot {
+            outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
+            focus: focused,
+            ..SessionSnapshot::default()
+        };
+        for window in self.wm.windows() {
+            let mapped = self.windows.get(&window.id).is_some_and(|entry| entry.mapped);
+            snapshot.windows.insert(
+                window.id,
+                ObservedWindow {
+                    id: window.id,
+                    title: window.title.clone(),
+                    app_id: window.app_id.clone(),
+                    mapped,
+                    visible: window.is_visible(active),
+                    focused: focused == Some(window.id),
+                    geometry: window.geometry,
+                },
+            );
+        }
+        if let Ok(mut guard) = self.observation.lock() {
+            *guard = snapshot;
+        }
+    }
+
+    /// Asks the window manager to focus the window under the pointer.
+    fn activate_under_pointer(&mut self) {
+        let Some((surface, _)) = self.surface_under(self.pointer_position) else {
+            return;
+        };
+        let Some(window) = self.window_of(&surface) else {
+            return;
+        };
+        let effects = self.wm.apply(Event::ActivationRequested {
+            window,
+            decision: ActivationDecision::Allow,
+        });
+        self.apply(effects);
+        self.publish();
+    }
+
+    /// The surface under a global position, topmost first.
+    pub(crate) fn surface_under(
+        &self,
+        position: SmithayPoint<f64, Logical>,
+    ) -> Option<(WlSurface, SmithayPoint<f64, Logical>)> {
+        let active = self.wm.active_workspace();
+        for window in self.wm.stack().iter().rev() {
+            let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
+                continue;
+            };
+            if !managed.is_visible(active) {
+                continue;
+            }
+            let geometry = managed.geometry;
+            let inside = position.x >= f64::from(geometry.x)
+                && position.y >= f64::from(geometry.y)
+                && position.x < geometry.right() as f64
+                && position.y < geometry.bottom() as f64;
+            if inside {
+                let local =
+                    SmithayPoint::from((position.x - f64::from(geometry.x), position.y - f64::from(geometry.y)));
+                return Some((entry.surface.wl_surface().clone(), local));
+            }
+        }
+        None
+    }
+}
+
+/// The Smithay mode for a backend output.
+fn smithay_mode(output: &gnoblin_backend::Output) -> Mode {
+    Mode {
+        size: SmithaySize::from((output.mode.width as i32, output.mode.height as i32)),
+        refresh: output.mode.refresh_mhz as i32,
+    }
+}
+
+/// A layout rectangle as the window manager states it.
+fn policy_rect(rect: Rect) -> PolicyRect {
+    PolicyRect::new(rect.x, rect.y, rect.width as i32, rect.height as i32)
+}
+
+/// Sets or clears an xdg toplevel state flag.
+fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: bool) {
+    if enabled {
+        states.set(state);
+    } else {
+        states.unset(state);
+    }
+}
+
+/// Whether a surface has a committed buffer, which is what makes a toplevel
+/// mapped.
+///
+/// The buffer is read from the renderer's surface state rather than from
+/// `SurfaceAttributes`: `on_commit_buffer_handler` takes the buffer out of the
+/// attributes when it applies a commit, so the attributes are empty by the time this
+/// runs and only the renderer's copy records that the client has content.
+pub(crate) fn has_buffer(surface: &WlSurface) -> bool {
+    with_renderer_surface_state(surface, |state| state.buffer().is_some()).unwrap_or(false)
+}
+
+impl Host for State {
+    fn render(&mut self, output: OutputId, target: &mut dyn Target) {
+        // The scene is empty in this slice. The frame is still presented with the
+        // whole target as damage so a capture or a screenshot sees a defined
+        // background rather than whatever the target held.
+        if !self.outputs.iter().any(|entry| entry.backend == output) {
+            return;
+        }
+        let size: Size = target.size();
+        target.present(&[Rect::new(0, 0, size.width, size.height)]);
+    }
+
+    fn input(&mut self, event: InputEvent) {
+        let time = InputTime::now();
+        match event {
+            InputEvent::PointerMotion { output, position } => {
+                let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
+                    return;
+                };
+                let position = SmithayPoint::from((
+                    f64::from(position.x + entry.rect.x),
+                    f64::from(position.y + entry.rect.y),
+                ));
+                self.pointer_position = position;
+                let focus = self.surface_under(position);
+                let pointer = self.pointer.clone();
+                let serial = SERIAL_COUNTER.next_serial();
+                pointer.motion(
+                    self,
+                    focus,
+                    &MotionEvent {
+                        location: position,
+                        serial,
+                        time,
+                    },
+                );
+            }
+            InputEvent::PointerLeave => {
+                let pointer = self.pointer.clone();
+                let serial = SERIAL_COUNTER.next_serial();
+                pointer.motion(
+                    self,
+                    None,
+                    &MotionEvent {
+                        location: self.pointer_position,
+                        serial,
+                        time,
+                    },
+                );
+            }
+            InputEvent::PointerButton { button, pressed } => {
+                if pressed {
+                    // A press on a window is the activation request the window
+                    // manager expects from the caller: attribution decides whether
+                    // it may take focus in a later slice, and a trusted input
+                    // context is exactly this case.
+                    self.activate_under_pointer();
+                }
+                let pointer = self.pointer.clone();
+                let serial = SERIAL_COUNTER.next_serial();
+                pointer.button(
+                    self,
+                    &ButtonEvent {
+                        serial,
+                        time,
+                        button,
+                        state: if pressed {
+                            ButtonState::Pressed
+                        } else {
+                            ButtonState::Released
+                        },
+                    },
+                );
+            }
+            InputEvent::Key { keycode, pressed } => {
+                let keyboard = self.keyboard.clone();
+                let serial = SERIAL_COUNTER.next_serial();
+                let key_state = if pressed { KeyState::Pressed } else { KeyState::Released };
+                keyboard.input::<(), _>(
+                    self,
+                    keycode.into(),
+                    key_state,
+                    serial,
+                    time,
+                    |_, _modifiers: &ModifiersState, _keysym| FilterResult::Forward,
+                );
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for State {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("State")
+            .field("windows", &self.windows.len())
+            .field("outputs", &self.outputs.len())
+            .finish_non_exhaustive()
+    }
+}

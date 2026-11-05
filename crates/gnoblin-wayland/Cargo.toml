@@ -8,3 +8,39 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+# The Wayland server itself, pinned to the revision in the root manifest (D7).
+# The safe API is enough for this slice, so the crate keeps the workspace's
+# `unsafe_code = "forbid"` and has no FFI shim module.
+smithay.workspace = true
+# Rectangles, sizes, scales and output identities, so a geometry value is the same
+# value the window manager and the output layout already know.
+gnoblin-types.workspace = true
+# Window state transitions go through the pure policy state machine: this crate
+# translates protocols into `Wm::apply` events and turns the effects back into
+# configures, focus changes and stacking.
+gnoblin-wm = { path = "../gnoblin-wm" }
+# Output layout: the backend's connected outputs become a declarative layout here,
+# so the window manager sees the same monitor rectangles the display configuration
+# and the portal will.
+gnoblin-output = { path = "../gnoblin-output" }
+# The backend trait and the headless backend this server drives. It is the only
+# engine crate this crate is allowed to name (design/rust-compositor.md,
+# "Dependency rules").
+gnoblin-backend = { path = "../gnoblin-backend" }
+# `[tag]` log lines. Smithay already brings `tracing` in, so this adds no crate to
+# the graph.
+tracing = "0.1.37"
+
+[dev-dependencies]
+# The real client the integration tests run against the server. A `wayland-client`
+# connection over the test's own socket is what proves the round trip: no display,
+# no session, no compositor from the environment.
+wayland-client = "0.31.14"
+# The client side of the protocols the tests exercise, generated from the same XML
+# the server side uses.
+wayland-protocols = { version = "0.32.13", features = ["client"] }
+# A temporary directory and a shared-memory file for the test's socket and buffers,
+# so a test run touches no shared path.
+tempfile = "3.23.0"

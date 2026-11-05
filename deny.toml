@@ -71,4 +71,10 @@ unknown-registry = "deny"
 # entry here, so a dependency cannot silently start tracking a mutable branch.
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# The one git source the workspace allows, and the reason it is a git source
+# rather than a registry release: the Smithay revision pinned in the root
+# `Cargo.toml` is newer than 0.7.0 and carries protocols 0.7.0 does not
+# (design/rust-compositor.md, D7). Adding a second entry here is a reviewable
+# change to the pin policy, so a dependency cannot quietly start tracking a
+# branch or someone else's fork.
+allow-git = ["https://github.com/Smithay/smithay"]

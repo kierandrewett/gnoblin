@@ -111,6 +111,20 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.140"
 # The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).
 toml = "1.2.0"
+# The Wayland compositor library the engine is built on (design/rust-compositor.md,
+# D7). A git revision, not a crates.io release: 0.7.0 is from 2025-06-24 and lacks
+# protocols the session needs (`ext-image-copy-capture-v1`), so the pin tracks
+# master until a release carries them. Every member takes the same revision, and a
+# bump is its own change with a full parity run.
+#
+# Revision: 65aa86fa5236e41775c313408102a5d5c2d1e2ca (2026-11-04, "input/tablet:
+# Send the old focus its frame before proximity_in"). Reported version is 0.7.0,
+# `rust-version` 1.87, so the toolchain pin builds it.
+#
+# `default-features = false` keeps the DRM, libinput, X11, winit, GLES and Xwayland
+# backends out of the dependency graph until their crates ask for them: a member
+# adds the features it needs on top of this entry.
+smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = ["wayland_frontend", "desktop"] }
 
 # The shared primitives: geometry, transform, scale, identities, ticks and error
 # codes. Every crate that names a rectangle or an output uses this crate instead
