@@ -1056,7 +1056,7 @@ failure-mode list that must be complete before isolated tests or code.
 
 - **Owns:** the scene graph with window visual transforms (opacity, scale,
   rotation, offset), effects as GLES passes, user shaders with a uniform schema,
-  the animation and tween player, cursor themes, frame export taps, the recovery
+  the animation and tween player, cursor providers (D20), frame export taps, the recovery
   overlay, and the egui fallback UI for portal requests (D19).
 - **Layouts are 3D-first; the renderer draws 2D today.** Every layout placement is a full 3D transform, and 2D is the special case `z = 0` with an orthographic camera. The renderer's ability to draw depth, a perspective camera and 3D hit testing is a separate decision, D18. Until D18 lands, the renderer refuses any non-2D transform or perspective camera with the named `unsupported-3d` error. That refusal is a temporary renderer state, not a layout restriction.
 - **Damage:** the rule for 3D damage is written in D18.
@@ -1069,7 +1069,7 @@ failure-mode list that must be complete before isolated tests or code.
   disconnects, so a crashed adapter cannot leave a stream running.
 - **Replaces:** `src/compositor/effects`, `src/compositor/plugin`,
   `51-blur-cache`, `53`, `56`, `60`, `62`, `63`, `64`, `65`, `66`, `77`,
-  `43-hyprcursor`, the ImGui overlay.
+  `43-hyprcursor` (replaced by the D20 provider chain), the ImGui overlay.
 - **Note:** the Mutter plugin's rule that every animation hook must end in a
   `*_completed` call becomes: every animation track ends, even when its target
   closes, and reports `finished`.
@@ -1515,27 +1515,28 @@ own window geometry through messages, and placements are 3D. The renderer's
 Kieran has not yet confirmed the revision.
 Each section below records the choice, its consequences, and the options considered.
 
-| ID  | Question                     | Decision                                                                                                             |
-| --- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| D1  | Where scripts run            | **Decided:** separate process                                                                                        |
-| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                     |
-| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                |
-| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                                   |
-| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                          |
-| D6  | Native plugins               | **Decided:** WASM modules                                                                                            |
-| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                     |
-| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                 |
-| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                     |
-| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                                |
-| D11 | Distribution target set      | **Decided:** full list, classified                                                                                   |
-| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                  |
-| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                           |
-| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers |
-| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                          |
-| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                       |
-| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                |
-| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback          |
-| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then         |
+| ID  | Question                     | Decision                                                                                                                     |
+| --- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Where scripts run            | **Decided:** separate process                                                                                                |
+| D2  | Xwayland                     | **Decided:** Smithay XWM in-tree                                                                                             |
+| D3  | Control API transition       | **Decided:** IPC 0.2.0 only, lockstep                                                                                        |
+| D4  | How bsm hosts sessions       | **Decided:** bsm becomes a Gnoblin                                                                                           |
+| D5  | Recovery and console UI      | **Decided:** egui overlay in the compositor                                                                                  |
+| D6  | Native plugins               | **Decided:** WASM modules                                                                                                    |
+| D7  | Smithay tracking             | **Decided:** pinned git revision                                                                                             |
+| D8  | Licence of the workspace     | **Decided:** GPL-2.0-or-later (kept)                                                                                         |
+| D9  | Mutter patch freeze          | **Decided:** now, fixes excepted                                                                                             |
+| D10 | Lua version                  | **Decided:** Lua 5.5, vendored (kept)                                                                                        |
+| D11 | Distribution target set      | **Decided:** full list, classified                                                                                           |
+| D12 | Renderer                     | **Decided:** GLES now, Vulkan later                                                                                          |
+| D13 | Adapter default set          | **Decided:** reads on; writes off; capture via portal only                                                                   |
+| D14 | Portal UI without a shell    | **Superseded in part by D19:** fail closed stays for security-sensitive consent only; no longer the rule for pickers         |
+| D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                                  |
+| D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                               |
+| D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                        |
+| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback                  |
+| D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                 |
+| D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last |
 
 ### D1: where scripts run
 
@@ -2466,6 +2467,43 @@ Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-por
 - **Secret:** the store is undecided; Secret falls through to the next backend until decided.
 - **Relay optionality:** the plan's `xdg-desktop-portal-gnoblin` is a required package; D19 makes it optional. Packaging changes follow.
 - **`portals.conf`:** not edited by this decision. The implementation lane changes the routes and adds Background.
+
+### D20: cursor providers
+
+**Decided 2026-11-05: cursors come from an ordered chain of pure providers in `gnoblin-render`: Hyprcursor, the KDE/GNOME SVG layout and Xcursor. A built-in arrow is the last resort. This replaces the single Hyprcursor path.**
+
+Sourced context (found by Main on 2026-11-05 by web search; not re-fetched for this entry):
+
+- GNOME 51 and Mutter 51 render SVG cursors. The theme layout is `cursors_scalable/<name>/metadata.json` plus SVG files, with symlinks for CSS names (`default`, `pointer`, `text`). KDE Plasma 6.2 and later use the same layout. Sources: https://newreleases.io/project/github/phisch/phinger-cursors/release/v2.2 and https://github.com/ful1e5/Bibata_Cursor/issues/188 (comment by kjozsa).
+- GNOME 51 searches only `~/.local/share/icons` and `/usr/share/icons` for `cursors_scalable`, not `~/.icons`. A theme without it falls back to Adwaita.
+- Mutter 51.rc NEWS: "Fix using hardware cursor for SVG cursors" (!5217). Mutter releases: "cursor implementations fall back to Xcursor" (!5352).
+- cursor-shape-v1 version 2 adds `dnd_ask` and `all_resize`. GNOME 51 expects a theme to supply both.
+- [INFERENCE: unchecked] The `metadata.json` schema. Read it from the Mutter source or a real theme before implementing `kde-gnome-svg`.
+- Not claimed: that stock Mutter reads Hyprcursor. The evidence covers the SVG layout and the Xcursor fallback only.
+
+- **Trait:** `gnoblin-render` defines `CursorProvider::lookup(theme, shape, size, scale, files) -> Lookup`. `files` is a loader over a fixed list of theme directories, passed in, so tests use an in-memory loader. The result is `Found(CursorImages)`, `Miss` (no such theme or shape) or `Failed(reason)` (a corrupt or oversized file). No provider touches the filesystem directly.
+- **Images:** `CursorImages { hotspot, frames }`. Each frame is a premultiplied ARGB8888 bitmap at the physical size, with `delay_ms`. A static shape has one frame. The hotspot is clamped into the image. A zero-size image is `Failed`.
+- **Chain:** `gnoblin.configure.cursor.providers` gives the order. Default: `hyprcursor`, `kde-gnome-svg`, `xcursor`. The first `Found` wins. `Miss` and `Failed` pass to the next provider, and `Failed` is logged with the file and reason. After the last provider, a built-in arrow answers, so the pointer is never invisible. The arrow is a 24-pixel RGBA bitmap compiled into the binary.
+- **Providers in 0.2.0:**
+    - `xcursor`: parses Xcursor files. Inheritance follows `index.theme` `Inherits`, with a depth limit of 8 and cycle detection. Search path: `XCURSOR_PATH`, then `~/.local/share/icons`, `~/.icons`, `/usr/share/icons`, `/usr/share/pixmaps`. Size rule: the smallest nominal size at or above the physical size, else the largest, resampled to the physical size.
+    - `hyprcursor`: reads compiled Hyprcursor themes and rasterises the vector at the exact physical size. [INFERENCE: check the layout against hyprcursor's documentation before implementing.]
+    - `kde-gnome-svg`: reads `cursors_scalable/<name>/metadata.json` and the SVGs, follows the CSS-name symlinks, and searches the two GNOME 51 roots above. Rasterises at the exact physical size.
+    - Rasteriser: `resvg`/`usvg`, pure Rust. librsvg is rejected: it is C with GLib and Cairo, which breaks the pure-Rust build and the `gnoblin-render` dependency rules. Cost: resvg can be slower than librsvg on large SVGs; the caps below bound it.
+    - `svg-dir` (plain SVG themes without metadata) is reserved in the enum and not built in 0.2.0.
+- **Not in 0.2.0:** Lua user providers (a Lua call in the cursor load path breaks the pure trait and the sandbox limits) and external-command providers (IO and latency in the load path). Each needs its own decision.
+- **Shapes:** cursor-shape-v1 shapes map to a fixed candidate list in `gnoblin-render` (for example `default` to `left_ptr`, then `default`, then `arrow`). A client-supplied cursor surface bypasses the providers: the client draws it.
+- **HiDPI:** the request is `size * scale` physical pixels. Vector providers rasterise at that size. Xcursor resamples as in the size rule.
+- **Animation:** frames and delays come from the theme where it defines them; otherwise the shape is static. The renderer advances frames on the frame clock and does not resample animated frames. The `wait` shape uses the same chain.
+- **Cache:** keyed by `(theme, shape, size, scale)`, LRU-capped at 64 MiB of pixel data. A `Miss` is cached too.
+- **Theme change:** the new snapshot is built off the render thread and swapped in atomically. The old cache is dropped with it.
+- **Caps:** a theme file over 1 MiB is `Failed`. A physical size over 512 is rejected at config validation. resvg cannot be interrupted [INFERENCE], so the input-size caps are the only bound on rasterisation time.
+- **Panics:** each lookup runs under `catch_unwind`; a panic is `Failed` with the file in the log.
+- **Config:** `gnoblin.configure.cursor = { theme = "default", size = 24, providers = { "hyprcursor", "kde-gnome-svg", "xcursor" } }`. `theme` is a string. `size` is logical pixels, 1 to 256. `providers` is a non-empty ordered list drawn from `hyprcursor`, `kde-gnome-svg`, `xcursor`, `svg-dir`; an unknown name fails validation. A reload that changes any of the three rebuilds the snapshot atomically. The last-good document stays until the new one validates.
+- **Failure modes:** missing theme: the chain runs with the default name, and the miss is logged once per theme. Corrupt file: `Failed` for that shape; the next provider answers. Oversized SVG: `Failed`. Zero-size image: `Failed`. Hotspot outside the image: clamped and logged. Provider panic: `Failed`. No usable provider: the built-in arrow.
+- **Crate placement:** providers, the trait and the cache live in `gnoblin-render`, which gains `resvg`/`usvg` and no compositor crate. The theme loader that reads the directories is in `gnoblin-render` too; no new crate.
+- **Ledger:** new 0.2.0 scope, not a divergence from Mutter. Mutter is the reference only for the `kde-gnome-svg` layout and the Xcursor fallback.
+- **Docs:** `docs/guides/cursors.md` and `docs/config/configure/cursor.md` describe the shipped behaviour (Xcursor by default, Hyprcursor behind a build flag). D20 changes the default chain, so those pages change when D20 is built. Not edited by this decision.
+- **Verification plan (not run):** a provider test for each of `Miss`, `Failed` and `Found`; a chain test for order and fallback to the arrow; an Xcursor inheritance-cycle test; HiDPI size tests at scale 1, 2 and 3; a corrupt-SVG test; a theme-swap test under load; a panic-injection test for `catch_unwind`.
 
 ## Phase 0 checklist
 
