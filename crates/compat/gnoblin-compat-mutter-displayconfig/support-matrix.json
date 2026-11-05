@@ -1,0 +1,103 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.DisplayConfig",
+      "version": 3,
+      "members": [
+        {
+          "kind": "method",
+          "name": "ApplyConfiguration",
+          "support": "unsupported",
+          "reason": "the legacy variant is not served; a caller uses ApplyMonitorsConfig"
+        },
+        {
+          "kind": "method",
+          "name": "ApplyMonitorsConfig",
+          "support": "partial",
+          "note": "each output is applied in turn through its own `apply` method, so a multi-output configuration is not atomic; the compositor's transactional apply is what will make it so"
+        },
+        {
+          "kind": "method",
+          "name": "ChangeBacklight",
+          "support": "unsupported",
+          "reason": "the schema publishes no backlight, so there is nothing to change"
+        },
+        {
+          "kind": "method",
+          "name": "GetCrtcGamma",
+          "support": "unsupported",
+          "reason": "CRTC gamma is a hardware detail of the legacy configuration path, which is not served"
+        },
+        {
+          "kind": "method",
+          "name": "GetCurrentState",
+          "support": "partial",
+          "note": "monitors, their modes and the logical monitors come from the `output` objects; the per-monitor and per-mode property dicts carry only `is-current` and are otherwise empty because the schema publishes no physical size, preferred mode or colour state yet"
+        },
+        {
+          "kind": "method",
+          "name": "GetResources",
+          "support": "unsupported",
+          "reason": "the legacy resource list is replaced by the `output` objects and GetCurrentState"
+        },
+        {
+          "kind": "method",
+          "name": "SetBacklight",
+          "support": "unsupported",
+          "reason": "the schema publishes no backlight, so there is nothing to set"
+        },
+        {
+          "kind": "method",
+          "name": "SetCrtcGamma",
+          "support": "unsupported",
+          "reason": "CRTC gamma is a hardware detail of the legacy configuration path, which is not served"
+        },
+        {
+          "kind": "method",
+          "name": "SetOutputCTM",
+          "support": "unsupported",
+          "reason": "the schema publishes no colour transform matrix"
+        },
+        {
+          "kind": "property",
+          "name": "ApplyMonitorsConfigAllowed",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Backlight",
+          "support": "unsupported",
+          "reason": "the schema publishes no backlight"
+        },
+        {
+          "kind": "property",
+          "name": "HasExternalMonitor",
+          "support": "unsupported",
+          "reason": "the schema does not publish whether an output is built in, so the adapter cannot answer without guessing"
+        },
+        {
+          "kind": "property",
+          "name": "NightLightSupported",
+          "support": "partial",
+          "note": "false: Night Light belongs to the services role (D15) and the IPC publishes no colour temperature for this adapter to read"
+        },
+        {
+          "kind": "property",
+          "name": "PanelOrientationManaged",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "PowerSaveMode",
+          "support": "unsupported",
+          "reason": "display power saving is the compositor's own policy and has no IPC member"
+        },
+        {
+          "kind": "signal",
+          "name": "MonitorsChanged",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

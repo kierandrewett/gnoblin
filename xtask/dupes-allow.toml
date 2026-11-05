@@ -1065,3 +1065,75 @@ left = "gnoblin-compat-x11-xsettings::Owner"
 right = "gnoblin-lock::Owner"
 kind = "same-name"
 reason = "an XSETTINGS owner supplies the property's values; a lock owner is the client that holds the session lock"
+
+[[allow]]
+left = "gnoblin-compat-mutter-displayconfig::LogicalMonitor"
+right = "gnoblin-output::LogicalMonitor"
+kind = "same-name"
+reason = "a DisplayConfig logical monitor is one entry of the D-Bus argument list as a caller sent it; the output crate's is the layout record the compositor resolves it into"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+right = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Admission"
+right = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-introspect::IntrospectAdmission"
+right = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+right = "gnoblin-compat-mutter-displayconfig::DisplayConfigAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-gnome-shell-screenshot::ScreenshotAdmission"
+right = "gnoblin-compat-mutter-idlemonitor::IdleMonitorAdmission"
+kind = "same-shape"
+reason = "every adapter's admission wrapper is one parsed SupportMatrix; the type is per adapter so a refusal cannot name the wrong adapter, and the shape is the frame's own"
+
+[[allow]]
+left = "gnoblin-compat-core::Refusal"
+right = "gnoblin-compositor::Refusal"
+kind = "same-name"
+reason = "a compat refusal says why an adapter refused an upstream call, with the rule id a report quotes; the compositor's refusal is an IPC error frame's answer to a member the schema does not serve"

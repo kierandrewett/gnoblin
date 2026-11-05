@@ -1,0 +1,48 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Shell.Introspect",
+      "version": 3,
+      "members": [
+        {
+          "kind": "method",
+          "name": "GetRunningApplications",
+          "support": "unsupported",
+          "reason": "the schema publishes no application object; the window list is what this adapter serves"
+        },
+        {
+          "kind": "method",
+          "name": "GetWindows",
+          "support": "partial",
+          "note": "the window dict carries title, app-id, wm-class, is-hidden, has-focus, width and height from the `window` object; client-type is always 0 because the schema does not publish whether a surface is Wayland or X11, and is-hidden is always false because it publishes no hidden state"
+        },
+        {
+          "kind": "property",
+          "name": "AnimationsEnabled",
+          "support": "partial",
+          "note": "always true: the IPC publishes no animations switch yet, and a caller that reads false would disable its own animations for no reason"
+        },
+        {
+          "kind": "property",
+          "name": "ScreenSize",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "version",
+          "support": "supported"
+        },
+        {
+          "kind": "signal",
+          "name": "RunningApplicationsChanged",
+          "support": "supported"
+        },
+        {
+          "kind": "signal",
+          "name": "WindowsChanged",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

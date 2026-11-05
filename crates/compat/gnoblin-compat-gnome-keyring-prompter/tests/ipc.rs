@@ -30,8 +30,12 @@ struct LoopbackHost {
 }
 
 impl Offerer for LoopbackHost {
-    fn offer(&mut self, _prompt: &Prompt, deadline: Tick) -> Result<RequestId, Unavailable> {
-        Ok(self.server.borrow_mut().offer(deadline))
+    fn offer(&mut self, prompt: &Prompt, deadline: Tick) -> Result<RequestId, Unavailable> {
+        // The proposition is what the shell shows, and the slot is the one this adapter serves.
+        Ok(self
+            .server
+            .borrow_mut()
+            .offer("prompt.secret", &prompt.title, &prompt.message, deadline))
     }
 }
 

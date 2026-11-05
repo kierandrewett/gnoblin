@@ -1,0 +1,29 @@
+# The `idle` object: how long the session has been idle.
+#
+# `org.gnome.Mutter.IdleMonitor` is the first reader (design/rust-compositor.md,
+# the redirect map's `IdleMonitor` row), and idle policy, the lock and the
+# screensaver all read the same counter, so it is published once here rather than
+# kept per consumer.
+#
+# It is its own object rather than a `session` property because a property is
+# required at creation: adding one to `session` would make every creator of that
+# object — the compositor's `SessionSync`, the services role's slot publisher and
+# four test suites — fail until it published a value it does not own. A new object
+# is additive, and a reader that finds no `idle` object fails closed instead of
+# reporting zero idle time, which is the difference between "the user is active"
+# and "nothing told me".
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "idle"
+since = "0.2.0"
+
+# Milliseconds since the last input event. Monotonic while the user is away and
+# zero immediately after an event, which is the value `IdleMonitor.GetIdletime`
+# returns. It is a property, so a watcher learns a threshold was crossed from the
+# diff rather than by polling.
+[[object.property]]
+name = "idle_ms"
+type = "uint"
+since = "0.2.0"

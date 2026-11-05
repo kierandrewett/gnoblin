@@ -934,10 +934,30 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compat-gnome-shell-introspect"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-client",
+ "gnoblin-compat-core",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "gnoblin-compat-gnome-shell-screenshot"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-client",
+ "gnoblin-compat-core",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "gnoblin-compat-gtk-dconf-settings"
@@ -971,10 +991,30 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-compat-mutter-displayconfig"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-client",
+ "gnoblin-compat-core",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-idlemonitor"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-client",
+ "gnoblin-compat-core",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "gnoblin-compat-mutter-inputcapture"

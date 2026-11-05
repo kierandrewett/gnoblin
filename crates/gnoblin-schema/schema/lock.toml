@@ -1,0 +1,26 @@
+# The `lock` object: whether the session lock is holding the desktop.
+#
+# The compat adapters read it for the lock embargo: capture is refused while the
+# session is covering, in every mode (design/rust-compositor.md, "Capture and
+# input adapters"). It is published here rather than as a `session` property for
+# the reason `idle.toml` gives: a required property on `session` would break every
+# creator of that object, and a new object is additive.
+#
+# One boolean and not the locker's five states on purpose. The value is exactly
+# `org.gnome.ScreenSaver.GetActive`: true from the moment a lock is requested
+# until the cover is gone, so a caller that misses an event cannot read
+# `unlocking` and conclude the desktop is visible. The distinction between
+# `locking` and `locked` belongs to the locker's own state machine, which is the
+# only thing that acts on it.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "lock"
+since = "0.2.0"
+
+# Whether anything is hidden. False only while the session is fully unlocked.
+[[object.property]]
+name = "locked"
+type = "bool"
+since = "0.2.0"

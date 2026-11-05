@@ -1,0 +1,160 @@
+# The `output` object: one display the compositor drives.
+#
+# This is the slice `org.gnome.Mutter.DisplayConfig` needs, and it exists so that
+# a monitor is an object rather than a second vocabulary beside the window one
+# (design/rust-compositor.md, "Compatibility crates" and the redirect map's
+# `DisplayConfig` row). The compositor's output lane populates it from the
+# backend; until then the object is declared and nothing publishes it, which is
+# why every adapter that reads it fails closed instead of reporting a zero-sized
+# monitor.
+#
+# A mode is a string rather than an object because the schema has no record type
+# yet. Each entry of `modes` is `<width>x<height>@<refresh>`, which is both the
+# mode's identity and its description: `GetCurrentState` needs the numbers, and
+# `ApplyMonitorsConfig` hands the same string back, so one spelling serves both
+# directions and the compositor has one obvious thing to publish. A `mode` object
+# with its own properties is the next step, and this encoding is what makes that
+# a schema change rather than a protocol one.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "output"
+since = "0.2.0"
+
+# The connector name, such as `DP-1` or `eDP-1`. It is the identity a caller uses
+# in `ApplyMonitorsConfig`, and the one name every adapter reports: a consumer
+# that sees two spellings for one connector has no way to tell which is which.
+[[object.property]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+# The monitor's vendor, as EDID reports it. Empty when the output has none.
+[[object.property]]
+name = "make"
+type = "string"
+since = "0.2.0"
+
+# The monitor's model name. Empty when the output has none.
+[[object.property]]
+name = "model"
+type = "string"
+since = "0.2.0"
+
+# Every mode the output supports, as `<width>x<height>@<refresh>`.
+[[object.property]]
+name = "modes"
+type = "list<string>"
+since = "0.2.0"
+
+# The mode that is currently set. It is one of `modes`; a value that is not makes
+# the output unreadable rather than reported as an unknown mode.
+[[object.property]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+
+# The logical scale, such as 1 or 1.5.
+[[object.property]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+
+# The rotation and flip, in Mutter's own numbering: 0 normal, 1 90 degrees, 2 180,
+# 3 270, 4 flipped, 5 90 flipped, 6 180 flipped, 7 270 flipped. The numbering is
+# the wire's, not an internal enum: a `DisplayConfig` caller sends it back in
+# `ApplyMonitorsConfig`, so translating it here would mean translating it twice.
+[[object.property]]
+name = "transform"
+type = "uint"
+since = "0.2.0"
+
+# Whether this output carries the primary logical monitor.
+[[object.property]]
+name = "primary"
+type = "bool"
+since = "0.2.0"
+
+# Whether the output is driving a logical monitor. A disabled output is still an
+# object: a caller may enable it, and its modes are what makes that possible.
+[[object.property]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+
+# The logical monitor's left edge, in the global logical coordinate space.
+[[object.property]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+# The logical monitor's top edge.
+[[object.property]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+# The logical monitor's width in logical pixels, which is the mode's width divided
+# by the scale. Published rather than derived so that a caller which only reads
+# the object does not have to know how the compositor rounds.
+[[object.property]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+
+# The logical monitor's height in logical pixels.
+[[object.property]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+
+# Apply a new configuration to this output. This is the write half of the
+# `DisplayConfig` mapping: one logical monitor is one output in this slice, so the
+# position, scale, transform and mode arrive here rather than in a separate
+# configuration object. The result arrives as property diffs, so a caller learns
+# what the compositor did by reading the object, not from this call's reply.
+[[object.method]]
+name = "apply"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "scale"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "transform"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "primary"
+type = "bool"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "enabled"
+type = "bool"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+
+# The output is gone: it was unplugged or the compositor stopped driving it. A
+# caller drops its view on this signal and asks for the state again.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
