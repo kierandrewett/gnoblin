@@ -9,8 +9,8 @@ use std::path::Path;
 
 use gnoblin_client::{Client, ClientError, ConnectError, Event, Loopback, Server, code};
 use gnoblin_model::{
-    Answer, Fields, Filter, Graph, ObjectId, Observation, OperationOutcome, RequestCompletion, RequestOutcome, Tick,
-    TypeKey, Value,
+    Fields, Filter, Graph, ObjectId, Observation, OperationOutcome, RequestCompletion, RequestOutcome, Tick, TypeKey,
+    Value,
 };
 use gnoblin_proto::Version;
 use gnoblin_schema::Catalog;
@@ -146,11 +146,9 @@ fn an_answer_after_the_finish_is_refused() {
     }
 
     client.claim(request).expect("the first claim wins");
-    client
-        .answer(request, &Answer::Answered(vec![0x42]))
-        .expect("the owner answers once");
+    client.answer(request, &[0x42]).expect("the owner answers once");
 
-    match client.answer(request, &Answer::Ended) {
+    match client.decline(request) {
         Err(ClientError::Refused { code: refused, .. }) => assert_eq!(refused, code::REQUEST_FINISHED),
         other => panic!("expected a finished refusal, got {other:?}"),
     }
@@ -170,6 +168,49 @@ fn an_answer_after_the_finish_is_refused() {
         }
         other => panic!("expected a finish, got {other:?}"),
     }
+}
+
+#[test]
+fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
+    let (mut server, mut client) = pair();
+
+    let answered = server.offer(Tick::new(1_000));
+    assert!(
+        matches!(client.next_event().expect("the offer arrives"), Event::RequestOffered { request, .. } if request == answered)
+    );
+    client.claim(answered).expect("the first claim wins");
+    client.answer(answered, &[]).expect("an empty answer is sent");
+    assert_eq!(
+        server.finished(answered),
+        Some(RequestOutcome::Answered(Vec::new())),
+        "zero bytes arrives as an answer, not as an ended request"
+    );
+    assert!(matches!(
+        client.next_event().expect("the finish reaches the client"),
+        Event::RequestFinished {
+            request,
+            completion: RequestCompletion::Answered
+        } if request == answered
+    ));
+
+    let ended = server.offer(Tick::new(1_000));
+    assert!(
+        matches!(client.next_event().expect("the second offer arrives"), Event::RequestOffered { request, .. } if request == ended)
+    );
+    client.claim(ended).expect("the first claim wins");
+    client.decline(ended).expect("declining is its own member");
+    assert_eq!(
+        server.finished(ended),
+        Some(RequestOutcome::Ended),
+        "declining carries no value"
+    );
+    assert!(matches!(
+        client.next_event().expect("the finish reaches the client"),
+        Event::RequestFinished {
+            request,
+            completion: RequestCompletion::Ended
+        } if request == ended
+    ));
 }
 
 #[test]
@@ -194,7 +235,7 @@ fn two_clients_cannot_claim_one_request() {
         Err(ClientError::Refused { code: refused, .. }) => assert_eq!(refused, code::REQUEST_TAKEN),
         other => panic!("expected a taken refusal, got {other:?}"),
     }
-    match second.answer(request, &Answer::Ended) {
+    match second.decline(request) {
         Err(ClientError::Refused { code: refused, .. }) => {
             assert_eq!(refused, code::REQUEST_TAKEN, "the loser cannot answer either")
         }
@@ -350,10 +391,10 @@ fn an_empty_answer_is_not_an_ended_request() {
 
     client.claim(answered).expect("the first claim wins");
     client
-        .answer(answered, &Answer::Answered(Vec::new()))
+        .answer(answered, &[])
         .expect("an empty answer is still an answer");
     client.claim(ended).expect("the first claim wins");
-    client.answer(ended, &Answer::Ended).expect("ending is not answering");
+    client.decline(ended).expect("declining is not answering");
 
     assert_eq!(
         server.finished(answered),

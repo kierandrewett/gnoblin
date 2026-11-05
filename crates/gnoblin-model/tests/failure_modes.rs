@@ -7,9 +7,9 @@
 use std::path::Path;
 
 use gnoblin_model::{
-    Answer, ErrorCode, Fields, Filter, Graph, ModelError, OBJECT_GONE, ObjectId, Observation, OperationOutcome,
-    OwnerId, RequestBroker, RequestError, RequestEvent, RequestOutcome, RequestState, Revision, Subscription, Tick,
-    TypeKey, Value,
+    ErrorCode, Fields, Filter, Graph, ModelError, OBJECT_GONE, ObjectId, Observation, OperationOutcome, OwnerId,
+    RequestBroker, RequestError, RequestEvent, RequestOutcome, RequestState, Revision, Subscription, Tick, TypeKey,
+    Value,
 };
 use gnoblin_schema::Catalog;
 
@@ -132,12 +132,9 @@ fn an_answer_after_the_finish_is_refused() {
     );
 
     broker
-        .answer(request, owner, Answer::Answered(vec![0x42]))
+        .answer(request, owner, vec![0x42])
         .expect("the owner may answer once");
-    assert_eq!(
-        broker.answer(request, owner, Answer::Ended),
-        Err(RequestError::Finished { request })
-    );
+    assert_eq!(broker.decline(request, owner), Err(RequestError::Finished { request }));
     assert_eq!(
         broker.tick(Tick::new(4_000)),
         0,
@@ -154,6 +151,45 @@ fn an_answer_after_the_finish_is_refused() {
             outcome: RequestOutcome::Answered(vec![0x42])
         }],
         "exactly one finished outcome, in order after the offer"
+    );
+}
+
+#[test]
+fn an_empty_answer_is_an_answer_and_decline_is_its_own_outcome() {
+    // The distinction the two members exist for: zero bytes is consent with no
+    // content, while ending is a refusal or a provider that went away. A broker
+    // that collapsed the two would report an empty prompt answer as a decline.
+    let mut broker = RequestBroker::new();
+    let owner = OwnerId::new(3);
+
+    let answered = broker.offer(Tick::new(100));
+    broker.claim(answered, owner).expect("the first claim wins");
+    broker
+        .answer(answered, owner, Vec::new())
+        .expect("an empty answer is an answer");
+    assert_eq!(
+        broker.state(answered),
+        Some(RequestState::Finished(RequestOutcome::Answered(Vec::new()))),
+        "zero bytes is consent with no content, not a refusal"
+    );
+
+    let ended = broker.offer(Tick::new(100));
+    broker.claim(ended, owner).expect("the first claim wins");
+    broker.decline(ended, owner).expect("the owner may decline it");
+    assert_eq!(broker.state(ended), Some(RequestState::Finished(RequestOutcome::Ended)));
+
+    let finished: Vec<RequestOutcome> = broker
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            RequestEvent::Finished { outcome, .. } => Some(outcome),
+            RequestEvent::Offered { .. } => None,
+        })
+        .collect();
+    assert_eq!(
+        finished,
+        vec![RequestOutcome::Answered(Vec::new()), RequestOutcome::Ended],
+        "one outcome per request, and they are different outcomes"
     );
 }
 
@@ -176,7 +212,7 @@ fn two_claimants_only_the_first_wins() {
         "a client retrying the claim it already won is not told it lost"
     );
     assert_eq!(
-        broker.answer(request, second, Answer::Ended),
+        broker.decline(request, second),
         Err(RequestError::NotOwner { request, owner: second }),
         "a non-owner cannot answer on the holder's behalf"
     );
@@ -370,7 +406,7 @@ fn a_request_times_out_fail_closed() {
         Some(RequestState::Finished(RequestOutcome::TimedOut))
     );
     assert_eq!(
-        broker.answer(request, owner, Answer::Ended),
+        broker.decline(request, owner),
         Err(RequestError::Finished { request }),
         "a timed-out request stays finished: fail closed"
     );

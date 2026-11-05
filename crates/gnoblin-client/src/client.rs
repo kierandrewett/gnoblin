@@ -25,8 +25,7 @@ use std::collections::VecDeque;
 use std::os::fd::OwnedFd;
 
 use gnoblin_model::{
-    Answer, Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, RequestCompletion, RequestId, Snapshot,
-    Tick,
+    Fields, Filter, ObjectId, Observation, Operation, OperationOutcome, RequestCompletion, RequestId, Snapshot, Tick,
 };
 use gnoblin_proto::{Envelope, Handshake, HandshakeKind, Kind, Mismatch, Version};
 
@@ -190,9 +189,24 @@ impl<T: Transport> Client<T> {
     }
 
     /// Answer a request this client claimed.
-    pub fn answer(&mut self, request: RequestId, answer: &Answer) -> Result<(), ClientError> {
+    ///
+    /// An empty answer is a legitimate answer: the provider chose with no content.
+    /// Use [`Client::decline`] instead when the provider will not answer.
+    pub fn answer(&mut self, request: RequestId, answer: &[u8]) -> Result<(), ClientError> {
         let correlation = self.next_id();
         let frame = wire::answer(correlation, request, answer);
+        self.send(&frame)?;
+        let _ = self.await_reply(correlation)?;
+        Ok(())
+    }
+
+    /// Decline a request this client claimed: the provider will not answer it.
+    ///
+    /// This is the refusal and provider-gone outcome, and it is a different member
+    /// from [`Client::answer`] so the two can never be confused.
+    pub fn decline(&mut self, request: RequestId) -> Result<(), ClientError> {
+        let correlation = self.next_id();
+        let frame = wire::decline(correlation, request);
         self.send(&frame)?;
         let _ = self.await_reply(correlation)?;
         Ok(())

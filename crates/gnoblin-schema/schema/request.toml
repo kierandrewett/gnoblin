@@ -53,6 +53,23 @@ type = "bytes"
 since = "0.2.0"
 secret = true
 
+# Decline a request the caller holds: the provider will not answer it. Declining is
+# its own member rather than an empty answer, because an empty answer is consent with
+# no content — a provider that chooses nothing still chose — and the two outcomes
+# must stay distinguishable on the wire. The member is `decline` and not `end`
+# because a schema member is also generated into the Lua bindings, where `end` is a
+# reserved word and `object:end()` cannot be written or parsed; the *outcome* it
+# produces is still `ended`. It carries no answer bytes, so its frame is not secret.
+[[object.method]]
+name = "decline"
+since = "0.2.0"
+
+# The identity the offer named.
+[[object.method.param]]
+name = "request"
+type = "uint"
+since = "0.2.0"
+
 # A request is available to claim.
 [[object.signal]]
 name = "offered"

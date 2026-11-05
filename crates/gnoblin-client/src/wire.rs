@@ -19,6 +19,7 @@
 //! | reply to `object.call`        | compositor| operation                                         |
 //! | `request.claim`               | client    | request                                           |
 //! | `request.answer`              | client    | request, answer                                   |
+//! | `request.decline`             | client    | request                                           |
 //! | `object.opened`               | compositor| revision, object view                             |
 //! | `object.changed`              | compositor| revision, object, property, value                 |
 //! | `object.signalled`            | compositor| revision, object, signal, fields                  |
@@ -36,8 +37,8 @@
 //! keeps an older client working.
 
 use gnoblin_model::{
-    Answer, ErrorCode, Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome,
-    RequestCompletion, RequestId, Revision, Snapshot, Tick, TypeKey, Value,
+    ErrorCode, Fields, Filter, ObjectId, ObjectView, Observation, OperationId, OperationOutcome, RequestCompletion,
+    RequestId, Revision, Snapshot, Tick, TypeKey, Value,
 };
 use gnoblin_proto::Envelope;
 
@@ -57,6 +58,9 @@ pub mod member {
     /// Client to compositor: answer a request it holds. The schema marks its
     /// `answer` field secret, so every frame for it is flagged sensitive.
     pub const ANSWER: &str = "request.answer";
+    /// Client to compositor: decline a request it holds. The schema marks no field
+    /// secret, because a declined request carries no value.
+    pub const DECLINE: &str = "request.decline";
     /// Compositor to client: an object came into existence.
     pub const OPENED: &str = "object.opened";
     /// Compositor to client: one property changed.
@@ -139,17 +143,25 @@ pub fn claim(request_id: u64, request: RequestId) -> Envelope {
 }
 
 /// A request answering a request the client holds.
-pub fn answer(request_id: u64, request: RequestId, answer: &Answer) -> Envelope {
+///
+/// An empty `answer` is a real answer — consent with no content — and is encoded as
+/// a zero-length value, not as an ended request: ending has its own member, so the
+/// two outcomes can never be confused by their bytes.
+pub fn answer(request_id: u64, request: RequestId, answer: &[u8]) -> Envelope {
     let mut writer = Writer::new();
     writer.u64(request.get());
-    match answer {
-        Answer::Answered(bytes) => {
-            writer.u8(0);
-            writer.bytes(bytes);
-        }
-        Answer::Ended => writer.u8(1),
-    }
+    writer.bytes(answer);
     Envelope::request(NAMESPACE, member::ANSWER, request_id, writer.finish())
+}
+
+/// A request declining a request the client holds: the provider will not answer it.
+///
+/// This is the refusal and provider-gone outcome, and it carries no value at all,
+/// which is why its frame is never flagged sensitive.
+pub fn decline(request_id: u64, request: RequestId) -> Envelope {
+    let mut writer = Writer::new();
+    writer.u64(request.get());
+    Envelope::request(NAMESPACE, member::DECLINE, request_id, writer.finish())
 }
 
 /// An offer, sent as a request frame so it carries a correlation id and looks to
@@ -290,16 +302,20 @@ pub fn read_claim(payload: &[u8]) -> Result<RequestId, WireError> {
 }
 
 /// Decode a `request.answer` request.
-pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Answer), WireError> {
+pub fn read_answer(payload: &[u8]) -> Result<(RequestId, Vec<u8>), WireError> {
     let mut reader = Reader::new(payload);
     let request = RequestId::new(reader.u64()?);
-    let answer = match reader.u8()? {
-        0 => Answer::Answered(reader.bytes()?),
-        1 => Answer::Ended,
-        tag => return Err(WireError::Tag(tag)),
-    };
+    let answer = reader.bytes()?;
     reader.done()?;
     Ok((request, answer))
+}
+
+/// Decode a `request.decline` request.
+pub fn read_decline(payload: &[u8]) -> Result<RequestId, WireError> {
+    let mut reader = Reader::new(payload);
+    let request = RequestId::new(reader.u64()?);
+    reader.done()?;
+    Ok(request)
 }
 
 /// Decode one frame from the compositor.
@@ -737,17 +753,20 @@ mod tests {
     }
 
     #[test]
-    fn a_claim_and_an_answer_round_trip() {
+    fn a_claim_an_answer_and_an_end_round_trip() {
         let frame = claim(5, RequestId::new(2));
         assert_eq!(read_claim(frame.payload().expect("payload")), Ok(RequestId::new(2)));
 
-        for answer in [Answer::Answered(vec![7, 8]), Answer::Ended] {
+        for answer in [vec![7, 8], Vec::new()] {
             let frame = self::answer(6, RequestId::new(2), &answer);
             assert_eq!(
                 read_answer(frame.payload().expect("payload")),
                 Ok((RequestId::new(2), answer))
             );
         }
+
+        let frame = decline(7, RequestId::new(2));
+        assert_eq!(read_decline(frame.payload().expect("payload")), Ok(RequestId::new(2)));
     }
 
     #[test]
@@ -790,7 +809,7 @@ mod tests {
         // every frame that carries an answer and redaction drops its bytes. This is
         // the property that keeps a prompt answer out of a log or a frame dump, and
         // it holds because this layer names the member the schema declares.
-        let frame = answer(6, RequestId::new(2), &Answer::Answered(b"hunter2".to_vec()));
+        let frame = answer(6, RequestId::new(2), b"hunter2");
         assert!(
             frame.is_sensitive(),
             "an answer carries secret material and must be flagged"
@@ -799,6 +818,41 @@ mod tests {
             frame.redact().payload().map(<[u8]>::to_vec),
             Some(Vec::new()),
             "redaction keeps the routing fields and drops the answer"
+        );
+    }
+
+    #[test]
+    fn a_decline_frame_is_not_flagged() {
+        // Ending a request carries no value, so the frame is readable: the schema
+        // marks no field of `request.end` secret, and the generated table agrees.
+        let frame = decline(1, RequestId::new(2));
+        assert_eq!(frame.member, member::DECLINE);
+        assert!(!frame.is_sensitive(), "a declined request carries nothing secret");
+        assert_eq!(frame.redact(), frame, "redaction leaves it alone");
+        assert_eq!(read_decline(frame.payload().expect("payload")), Ok(RequestId::new(2)));
+    }
+
+    #[test]
+    fn an_empty_answer_is_an_answer_not_a_decline() {
+        // The failure this prevents: treating zero bytes as "no answer". An empty
+        // answer is consent with no content, it travels on `request.answer` (which
+        // is flagged), and it decodes to an empty value rather than to an end.
+        let request = RequestId::new(4);
+        let frame = answer(1, request, &[]);
+        assert_eq!(frame.member, member::ANSWER, "an empty answer is an answer");
+        assert!(frame.is_sensitive(), "the member is still the secret one");
+        assert_eq!(
+            read_answer(frame.payload().expect("payload")),
+            Ok((request, Vec::new()))
+        );
+        assert_eq!(
+            read_decline(decline(1, request).payload().expect("payload")),
+            Ok(request)
+        );
+        assert_ne!(
+            member::ANSWER,
+            member::DECLINE,
+            "the outcomes are different members, not different bytes"
         );
     }
 
@@ -818,7 +872,7 @@ mod tests {
         // secret field, so the envelope the client builds is flagged and the one
         // thing that may be shown loses the payload.
         const SECRET: &[u8] = b"hunter2";
-        let frame = self::answer(6, RequestId::new(2), &Answer::Answered(SECRET.to_vec()));
+        let frame = self::answer(6, RequestId::new(2), SECRET);
         assert_eq!(frame.member, member::ANSWER);
         assert!(frame.is_sensitive(), "an answer carries secret material");
 
@@ -860,13 +914,18 @@ mod tests {
             .expect("the schema declares the request object");
 
         let claimed: Vec<&str> = request.methods.iter().map(|method| method.name.as_str()).collect();
-        assert_eq!(claimed, vec!["claim", "answer"], "the methods this layer serves");
+        assert_eq!(
+            claimed,
+            vec!["claim", "answer", "decline"],
+            "the methods this layer serves"
+        );
         let signalled: Vec<&str> = request.signals.iter().map(|signal| signal.name.as_str()).collect();
         assert_eq!(signalled, vec!["offered", "finished"], "the signals this layer serves");
 
         for (object, member, path) in [
             ("request", "claim", member::CLAIM),
             ("request", "answer", member::ANSWER),
+            ("request", "decline", member::DECLINE),
             ("request", "offered", member::REQUEST_OFFERED),
             ("request", "finished", member::REQUEST_FINISHED),
         ] {

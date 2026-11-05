@@ -8,7 +8,7 @@
 //! The state machine is small on purpose:
 //!
 //! ```text
-//! offer → Offered → claim(owner) → Claimed → answer | tick(deadline) → Finished
+//! offer → Offered → claim(owner) → Claimed → answer | decline | tick(deadline) → Finished
 //! ```
 //!
 //! Three properties matter more than the transitions:
@@ -39,25 +39,6 @@ use crate::error::RequestError;
 /// that has fallen out of the buffer is refused as unknown, which is still a
 /// refusal: forgetting never reopens a request.
 pub const REMEMBERED_FINISHED: usize = 256;
-
-/// What the owning provider answered.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Answer {
-    /// The provider chose something. The bytes are the provider's encoded answer
-    /// and never leave the host that offered the request.
-    Answered(Vec<u8>),
-    /// The provider declined or went away without choosing.
-    Ended,
-}
-
-impl From<Answer> for RequestOutcome {
-    fn from(answer: Answer) -> RequestOutcome {
-        match answer {
-            Answer::Answered(bytes) => RequestOutcome::Answered(bytes),
-            Answer::Ended => RequestOutcome::Ended,
-        }
-    }
-}
 
 /// How a request ended. Exactly one of these is produced per request.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -207,14 +188,37 @@ impl RequestBroker {
 
     /// Answer a request the owner holds.
     ///
+    /// An empty `bytes` is a real answer: the provider chose with no content, which
+    /// is [`RequestOutcome::Answered`] and not the same as ending the request. Use
+    /// [`RequestBroker::decline`] for "the provider declined or went away".
+    ///
     /// An answer from anyone else, or to a request that already finished, is
     /// refused; a refusal never changes the request's state.
-    pub fn answer(&mut self, request: RequestId, owner: OwnerId, answer: Answer) -> Result<(), RequestError> {
+    pub fn answer(&mut self, request: RequestId, owner: OwnerId, bytes: Vec<u8>) -> Result<(), RequestError> {
+        self.finish_owned(request, owner, RequestOutcome::Answered(bytes))
+    }
+
+    /// Decline a request the owner holds: the provider will not answer it.
+    ///
+    /// This is the refusal and provider-gone outcome: the request ends as
+    /// [`RequestOutcome::Ended`] and carries no value, so nothing secret can travel
+    /// on it. The owner rules are the same as [`RequestBroker::answer`].
+    pub fn decline(&mut self, request: RequestId, owner: OwnerId) -> Result<(), RequestError> {
+        self.finish_owned(request, owner, RequestOutcome::Ended)
+    }
+
+    /// Finish a request only its owner may finish.
+    fn finish_owned(
+        &mut self,
+        request: RequestId,
+        owner: OwnerId,
+        outcome: RequestOutcome,
+    ) -> Result<(), RequestError> {
         match self.live_state(request)? {
             Live::Offered { .. } => Err(RequestError::NotOwner { request, owner }),
             Live::Claimed { owner: holder, .. } if holder != owner => Err(RequestError::NotOwner { request, owner }),
             Live::Claimed { .. } => {
-                self.finish(request, answer.into());
+                self.finish(request, outcome);
                 Ok(())
             }
         }

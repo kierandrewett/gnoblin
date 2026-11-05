@@ -164,6 +164,22 @@ impl Inner {
                     "the claim payload did not decode",
                 )),
             },
+            wire::member::DECLINE => match wire::read_decline(payload) {
+                Ok(request) => match self.broker.decline(request, owner) {
+                    Ok(()) => out.push(Frame::Envelope(Envelope::reply(
+                        wire::NAMESPACE,
+                        wire::member::DECLINE,
+                        envelope.request_id,
+                        Vec::new(),
+                    ))),
+                    Err(error) => out.push(request_refusal(envelope, &error)),
+                },
+                Err(_) => out.push(refusal(
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    "the decline payload did not decode",
+                )),
+            },
             wire::member::ANSWER => match wire::read_answer(payload) {
                 Ok((request, answer)) => match self.broker.answer(request, owner, answer) {
                     Ok(()) => out.push(Frame::Envelope(Envelope::reply(

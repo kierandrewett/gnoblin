@@ -93,12 +93,6 @@ kind = "same-name"
 reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
 
 [[allow]]
-left = "gnoblin-authority::Answer"
-right = "gnoblin-model::Answer"
-kind = "same-name"
-reason = "a provider's encoded reply, kept beside the request broker that owns it, is not a typed graph value"
-
-[[allow]]
 left = "gnoblin-authority::Effect"
 right = "gnoblin-lock::Effect"
 kind = "same-name"
