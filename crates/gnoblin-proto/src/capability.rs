@@ -41,14 +41,25 @@ pub enum Capability {
     /// This is the runtime as well. No member serves it in this build; the name is
     /// here because a grant must be a closed set, and the set is the plan's.
     InputPolicy,
+    /// Ask the built-in portal UI to decide a request (`portal.ui`).
+    ///
+    /// This is the portal relay's connection. The dialog it opens is the one
+    /// thing on screen the user must trust, so only the relay may create one.
+    PortalUi,
+    /// Route keyboard input to the open portal dialog (`portal.key`).
+    ///
+    /// This is the input relay. While a dialog is open, keys go only to it.
+    PortalInput,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 3] = [
+    pub const ALL: [Capability; 5] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
+        Capability::PortalUi,
+        Capability::PortalInput,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -57,6 +68,8 @@ impl Capability {
             Capability::OfferRequest => "offer-request",
             Capability::CommitConfig => "commit-config",
             Capability::InputPolicy => "input-policy",
+            Capability::PortalUi => "portal-ui",
+            Capability::PortalInput => "portal-input",
         }
     }
 
@@ -66,6 +79,8 @@ impl Capability {
             Capability::OfferRequest => 1 << 0,
             Capability::CommitConfig => 1 << 1,
             Capability::InputPolicy => 1 << 2,
+            Capability::PortalUi => 1 << 3,
+            Capability::PortalInput => 1 << 4,
         }
     }
 

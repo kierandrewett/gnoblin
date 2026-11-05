@@ -119,6 +119,8 @@ pub fn grants(role: &str) -> Capabilities {
     match role {
         "runtime" => Capabilities::of(&[Capability::CommitConfig, Capability::InputPolicy]),
         "services" => Capabilities::of(&[Capability::OfferRequest]),
+        "portal" => Capabilities::of(&[Capability::PortalUi]),
+        "input" => Capabilities::of(&[Capability::PortalInput]),
         _ => Capabilities::NONE,
     }
 }
@@ -148,6 +150,14 @@ mod tests {
             !services.contains(Capability::CommitConfig),
             "the services role commits no configuration"
         );
+
+        let portal = grants("portal");
+        assert!(portal.contains(Capability::PortalUi), "the relay asks for a dialog");
+        assert!(!portal.contains(Capability::PortalInput), "and routes no keys");
+
+        let input = grants("input");
+        assert!(input.contains(Capability::PortalInput), "the input relay routes keys");
+        assert!(!input.contains(Capability::PortalUi), "and opens no dialog");
 
         // Deny by default: every other role, including one a newer guardian invented.
         for role in ["compositor", "invented", "guardian", "runtime2", ""] {

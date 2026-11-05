@@ -37,6 +37,9 @@ fn window_properties(title: &str) -> Fields {
     properties.insert("y".to_owned(), Value::Int(0));
     properties.insert("width".to_owned(), Value::Uint(200));
     properties.insert("height".to_owned(), Value::Uint(150));
+    properties.insert("icon".to_owned(), Value::Text(String::new()));
+    properties.insert("tag".to_owned(), Value::Text(String::new()));
+    properties.insert("modal".to_owned(), Value::Bool(false));
     properties
 }
 

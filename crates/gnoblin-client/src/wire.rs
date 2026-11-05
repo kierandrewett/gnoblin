@@ -92,6 +92,14 @@ pub mod member {
     pub const CONFIG_COMMIT: &str = "config.commit";
     /// Privileged client to compositor: the last document the compositor accepted.
     pub const CONFIG_CURRENT: &str = "config.current";
+    /// Privileged client to compositor: ask the built-in portal UI to decide a
+    /// request. The answer comes later, as the reply to this request.
+    pub const PORTAL_UI: &str = "portal.ui";
+    /// Privileged client to compositor: withdraw the portal request this connection
+    /// holds. Its late answer is dropped.
+    pub const PORTAL_CANCEL: &str = "portal.cancel";
+    /// Input client to compositor: route one key to the open portal dialog.
+    pub const PORTAL_KEY: &str = "portal.key";
 }
 
 /// The error codes this layer reports in an error frame.
@@ -272,6 +280,39 @@ pub fn config_commit(request_id: u64, document: &[u8]) -> Envelope {
     Envelope::request(NAMESPACE, member::CONFIG_COMMIT, request_id, writer.finish())
 }
 
+/// A request for a decision from the built-in portal UI. Privileged.
+pub fn portal_ui(request_id: u64, request: &PortalRequest) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(&request.interface);
+    writer.text(&request.app);
+    writer.text(&request.prompt);
+    writer.u64(request.timeout_ms);
+    writer.fields(&request.options);
+    Envelope::request(NAMESPACE, member::PORTAL_UI, request_id, writer.finish())
+}
+
+/// A request to withdraw the portal request this connection holds. Privileged.
+pub fn portal_cancel(request_id: u64) -> Envelope {
+    Envelope::request(NAMESPACE, member::PORTAL_CANCEL, request_id, Vec::new())
+}
+
+/// A request routing one key to the open portal dialog. The key is named `escape`,
+/// `enter`, `tab`, `up`, `down`, `space`, `backspace`, or `text:` and one character.
+pub fn portal_key(request_id: u64, key: &str, repeat: bool) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(key);
+    writer.u8(u8::from(repeat));
+    Envelope::request(NAMESPACE, member::PORTAL_KEY, request_id, writer.finish())
+}
+
+/// The answer to a `portal.ui` request, sent once the request settles.
+pub fn portal_outcome(request_id: u64, kind: &str, detail: &str) -> Envelope {
+    let mut writer = Writer::new();
+    writer.text(kind);
+    writer.text(detail);
+    Envelope::reply(NAMESPACE, member::PORTAL_UI, request_id, writer.finish())
+}
+
 /// A request for the last document the compositor accepted. Privileged.
 pub fn config_current(request_id: u64) -> Envelope {
     Envelope::request(NAMESPACE, member::CONFIG_CURRENT, request_id, Vec::new())
@@ -430,6 +471,60 @@ pub fn read_offer(payload: &[u8]) -> Result<(String, String, String, u64), WireE
     let timeout = reader.u64()?;
     reader.done()?;
     Ok((slot, title, message, timeout))
+}
+
+/// A `portal.ui` request: the interface the caller asked for, the app it asked on
+/// behalf of, the prompt, how long the caller will wait, and the interface's own
+/// options (a consent has none; a file or app chooser carries its fields here).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PortalRequest {
+    /// The portal interface name, such as `org.freedesktop.impl.portal.Access`.
+    pub interface: String,
+    /// The requesting application's id; empty when the caller is unsandboxed.
+    pub app: String,
+    /// The prompt shown to the user.
+    pub prompt: String,
+    /// How long the caller will wait for the answer, in milliseconds.
+    pub timeout_ms: u64,
+    /// The interface's own options, as named object-model values.
+    pub options: Fields,
+}
+
+/// Decode a `portal.ui` request.
+pub fn read_portal_ui(payload: &[u8]) -> Result<PortalRequest, WireError> {
+    let mut reader = Reader::new(payload);
+    let interface = reader.text()?;
+    let app = reader.text()?;
+    let prompt = reader.text()?;
+    let timeout_ms = reader.u64()?;
+    let options = reader.fields()?;
+    reader.done()?;
+    Ok(PortalRequest {
+        interface,
+        app,
+        prompt,
+        timeout_ms,
+        options,
+    })
+}
+
+/// Decode a `portal.key` request: the key's name and whether it is a repeat.
+pub fn read_portal_key(payload: &[u8]) -> Result<(String, bool), WireError> {
+    let mut reader = Reader::new(payload);
+    let key = reader.text()?;
+    let repeat = reader.u8()? != 0;
+    reader.done()?;
+    Ok((key, repeat))
+}
+
+/// Decode a `portal.ui` reply: how the request settled (`handled`, `cancelled` or
+/// `error`) and the grant, reason or error code that says why.
+pub fn read_portal_outcome(payload: &[u8]) -> Result<(String, String), WireError> {
+    let mut reader = Reader::new(payload);
+    let kind = reader.text()?;
+    let detail = reader.text()?;
+    reader.done()?;
+    Ok((kind, detail))
 }
 
 /// Decode a `slot.claim` request.
@@ -909,6 +1004,68 @@ mod tests {
                 "a payload cut at {cut} decoded"
             );
         }
+    }
+
+    #[test]
+    fn a_portal_request_round_trips_with_its_options() {
+        let request = PortalRequest {
+            interface: "org.freedesktop.impl.portal.FileChooser".to_owned(),
+            app: "org.example.App".to_owned(),
+            prompt: "Open a file".to_owned(),
+            timeout_ms: 30_000,
+            options: fields(&[
+                ("multiple", Value::Bool(true)),
+                ("filters", Value::List(vec![Value::Text("*.txt".to_owned())])),
+            ]),
+        };
+        let envelope = portal_ui(7, &request);
+        assert_eq!(read_portal_ui(envelope.payload().unwrap_or(&[])), Ok(request));
+    }
+
+    #[test]
+    fn a_portal_request_with_no_options_round_trips() {
+        let request = PortalRequest {
+            interface: "org.freedesktop.impl.portal.Access".to_owned(),
+            app: String::new(),
+            prompt: "Allow the camera".to_owned(),
+            timeout_ms: 0,
+            options: Fields::new(),
+        };
+        let envelope = portal_ui(8, &request);
+        assert_eq!(read_portal_ui(envelope.payload().unwrap_or(&[])), Ok(request));
+    }
+
+    #[test]
+    fn a_truncated_portal_request_is_refused() {
+        let request = PortalRequest {
+            interface: "org.freedesktop.impl.portal.Access".to_owned(),
+            app: "app".to_owned(),
+            prompt: "p".to_owned(),
+            timeout_ms: 1,
+            options: fields(&[("k", Value::Uint(1))]),
+        };
+        let envelope = portal_ui(9, &request);
+        let payload = envelope.payload().unwrap_or(&[]);
+        for cut in 0..payload.len() {
+            assert!(
+                read_portal_ui(&payload[..cut]).is_err(),
+                "a request cut at {cut} decoded"
+            );
+        }
+    }
+
+    #[test]
+    fn a_portal_key_and_outcome_round_trip() {
+        let key = portal_key(3, "text:a", true);
+        assert_eq!(
+            read_portal_key(key.payload().unwrap_or(&[])),
+            Ok(("text:a".to_owned(), true))
+        );
+        let outcome = portal_outcome(3, "cancelled", "user");
+        assert_eq!(
+            read_portal_outcome(outcome.payload().unwrap_or(&[])),
+            Ok(("cancelled".to_owned(), "user".to_owned()))
+        );
     }
 
     #[test]

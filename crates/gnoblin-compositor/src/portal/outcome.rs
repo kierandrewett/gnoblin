@@ -47,6 +47,7 @@ pub enum PortalError {
     ProviderFailed,
     NotSupported,
     UnknownApp,
+    UnsupportedUi,
 }
 
 impl PortalError {
@@ -60,6 +61,7 @@ impl PortalError {
             Self::ProviderFailed => "provider-failed",
             Self::NotSupported => "not-supported",
             Self::UnknownApp => "unknown-app",
+            Self::UnsupportedUi => "unsupported-ui",
         }
     }
 }
