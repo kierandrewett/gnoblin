@@ -14,6 +14,14 @@
 
 ### Fixed
 
+- The package suite's upgrade case `I13` failed on a target that publishes packages in one channel only (Fedora 41 to
+  44 had nightly packages and no stable ones): the search in the missing channel folder ended the case. A channel
+  without packages for the target is now skipped, and the case upgrades from the other one, or is skipped with the
+  reason for each channel.
+- The graphical VM test tries an image download, an index and a checksum file again after a connection error, a
+  time-out or HTTP 403, 429 or 5xx (after 5 s and 15 s, with the reason printed). A refusal from download.opensuse.org
+  failed the `image` check of openSUSE Tumbleweed aarch64 at once. HTTP 404 still fails at once.
+
 - The `s3` back end of `pkgrepo publish` no longer uses `aws s3 sync` for package files and removals. The sync uploaded
   and deleted every arch package (and pacman database file) that has a `.sig` beside it in the same run, so a nightly
   rewrote them all and could leave some deleted: two copies of an architecture-independent package were missing from

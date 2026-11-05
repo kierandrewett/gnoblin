@@ -281,19 +281,28 @@ case_upgrade() {
     if [ -f "$published_dir/SKIP" ]; then
         skip_case "$(cat "$published_dir/SKIP")"
     fi
-    local new_version channel chosen="" old_files=()
+    local new_version channel chosen="" old_files=() reasons=()
     new_version="$(pm_file_version "$(core)")"
+    # suite.py writes a folder only for a channel that publishes packages for the target: Fedora 41 to 44 had nightly
+    # packages and no stable ones (run 42000579809).
     for channel in stable nightly; do
         local old
-        old="$(find "$published_dir/$channel" -maxdepth 1 -type f -name "gnoblin${separator}[0-9]*" 2>/dev/null | head -n1)"
-        [ -n "$old" ] || continue
+        if [ ! -d "$published_dir/$channel" ]; then
+            reasons+=("$channel publishes no version for this target")
+            continue
+        fi
+        old="$(find_package gnoblin "$published_dir/$channel")"
         if pm_older "$(pm_file_version "$old")" "$new_version"; then
             chosen="$channel"
             break
         fi
-        echo "the $channel version $(pm_file_version "$old") is not older than $new_version"
+        reasons+=("the $channel version $(pm_file_version "$old") is not older than $new_version")
     done
-    [ -n "$chosen" ] || skip_case "no published version is older than $new_version (stable and nightly checked)"
+    if [ -z "$chosen" ]; then
+        local joined
+        joined="$(printf '%s; ' "${reasons[@]}")"
+        skip_case "no published version to upgrade from: ${joined%; }"
+    fi
     mapfile -t old_files < <(find "$published_dir/$chosen" -maxdepth 1 -type f | sort)
     echo "upgrade from $chosen: $(basename -a "${old_files[@]}" | paste -sd' ')"
     pm_install_files "${old_files[@]}"

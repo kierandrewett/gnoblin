@@ -53,7 +53,11 @@ guest's `{cpu}` (`x86_64`, `aarch64`) and `{boot}` (`bios`, `uefi`) are replaced
 image name. A key named after an architecture replaces `index`, `file` or `checksum` there, or holds `none`: the
 reason that the system has no image for that architecture. The harness takes the newest name that matches, reads the
 checksum file from the same mirror, and checks the download against it. A checksum file of one image may hold the
-bare digest (Alpine).
+bare digest (Alpine). A download that does not match, or that fails with a connection error, a time-out or HTTP 403,
+429 or 5xx, is tried again after 5 s and after 15 s, with the reason printed: mirrors refuse requests for a moment
+(download.opensuse.org answered 403 in run 41996202839) and end transfers early. The index and the checksum file are
+read with the same rule. HTTP 404 and other errors fail the check at once, and so does a file that does not match after
+three downloads.
 
 | Family              | amd64 image                              | arm64 image                                | Checksum file                                   |
 | ------------------- | ---------------------------------------- | ------------------------------------------ | ----------------------------------------------- |

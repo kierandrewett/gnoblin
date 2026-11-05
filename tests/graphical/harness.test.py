@@ -4,7 +4,9 @@ names, the screenshot properties, the allow-list, the QEMU command of each archi
 deadline. No network, no QEMU: the aarch64 command is checked as text only."""
 
 import argparse
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -702,16 +704,23 @@ class PollEvents(unittest.TestCase):
 
 
 class DownloadRetry(unittest.TestCase):
-    """A download that does not match its checksum is fetched again, a bounded number of times (run 41672380634)."""
+    """A download that fails with a transient network error (run 41996202839: HTTP 403 from download.opensuse.org) or
+    does not match its checksum (run 41672380634) is fetched again, a bounded number of times, after 5 and 15 s. A
+    final error (404) fails at once."""
 
     GOOD = b"the image\n"
 
+    @staticmethod
+    def http_error(code):
+        return harness.urllib.error.HTTPError("https://mirror.invalid/i.qcow2", code, "error", {}, io.BytesIO())
+
     def download(self, bodies, corrupt=False):
+        """bodies: what each request gets, a body or an exception to raise."""
         import hashlib
-        import io
 
         served = list(bodies)
-        calls = []
+        self.calls = []
+        self.sleeps = []
         expected = hashlib.sha256(self.GOOD).hexdigest()
 
         class Response(io.BytesIO):
@@ -722,30 +731,104 @@ class DownloadRetry(unittest.TestCase):
                 return False
 
         def urlopen(request, timeout):
-            calls.append(request.full_url)
-            return Response(served.pop(0))
+            self.calls.append(request.full_url)
+            body = served.pop(0)
+            if isinstance(body, Exception):
+                raise body
+            return Response(body)
 
         originals = (harness.resolve_image, harness.urllib.request.urlopen, harness.time.sleep)
         harness.resolve_image = lambda image: ("https://mirror.invalid/i.qcow2", "i.qcow2", "SUMS", "sha256", expected)
         harness.urllib.request.urlopen = urlopen
-        harness.time.sleep = lambda seconds: None
+        harness.time.sleep = self.sleeps.append
         try:
-            return harness.download_image({}, Path(tempfile.mkdtemp()), 0, corrupt), calls
+            with contextlib.redirect_stdout(io.StringIO()) as self.printed:
+                return harness.download_image({}, Path(tempfile.mkdtemp()), 0, corrupt)
         finally:
             harness.resolve_image, harness.urllib.request.urlopen, harness.time.sleep = originals
 
     def test_a_short_download_is_fetched_again(self):
-        info, calls = self.download([b"the ima", self.GOOD])
-        self.assertEqual(len(calls), 2)
+        info = self.download([b"the ima", self.GOOD])
+        self.assertEqual(len(self.calls), 2)
         self.assertEqual(Path(info["path"]).read_bytes(), self.GOOD)
 
     def test_a_file_that_never_matches_fails_after_three_downloads(self):
         with self.assertRaisesRegex(harness.CheckFailed, "after 3 downloads"):
             self.download([b"x", b"y", b"z"])
+        self.assertEqual(self.sleeps, [5, 15])
 
     def test_a_deliberate_break_does_not_retry(self):
         with self.assertRaises(harness.CheckFailed):
             self.download([self.GOOD, self.GOOD], corrupt=True)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_a_refused_or_failed_request_is_tried_again_with_the_reason(self):
+        for error in (self.http_error(403), self.http_error(429), self.http_error(503), ConnectionResetError("reset")):
+            with self.subTest(error=error):
+                info = self.download([error, self.GOOD])
+                self.assertEqual(Path(info["path"]).read_bytes(), self.GOOD)
+                self.assertEqual((len(self.calls), self.sleeps), (2, [5]))
+                self.assertIn(f"image download 1 of 3: the download of https://mirror.invalid/i.qcow2 failed: {error}",
+                              self.printed.getvalue())  # fmt: skip
+
+    def test_a_time_out_is_tried_again(self):
+        info = self.download([harness.urllib.error.URLError(TimeoutError("timed out")), self.GOOD])
+        self.assertEqual(Path(info["path"]).read_bytes(), self.GOOD)
+
+    def test_a_refusal_that_lasts_fails_after_three_tries(self):
+        with self.assertRaisesRegex(harness.CheckFailed, r"HTTP Error 403: error \(after 3 downloads\)"):
+            self.download([self.http_error(403)] * 3)
+        self.assertEqual((len(self.calls), self.sleeps), (3, [5, 15]))
+
+    def test_a_missing_file_fails_at_once(self):
+        with self.assertRaisesRegex(harness.CheckFailed, "HTTP Error 404"):
+            self.download([self.http_error(404), self.GOOD])
+        self.assertEqual((len(self.calls), self.sleeps), (1, []))
+
+
+class FetchRetry(unittest.TestCase):
+    """An index or checksum file is read again after a transient error, and not after 404."""
+
+    def fetch(self, bodies):
+        served = list(bodies)
+        self.calls = 0
+        self.sleeps = []
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def geturl(self):
+                return "https://mirror.invalid/"
+
+        def urlopen(request, timeout):
+            self.calls += 1
+            body = served.pop(0)
+            if isinstance(body, Exception):
+                raise body
+            return Response(body)
+
+        originals = (harness.urllib.request.urlopen, harness.time.sleep)
+        harness.urllib.request.urlopen = urlopen
+        harness.time.sleep = self.sleeps.append
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                return harness.fetch("https://index.invalid/")
+        finally:
+            harness.urllib.request.urlopen, harness.time.sleep = originals
+
+    def test_a_refusal_is_tried_again(self):
+        error = DownloadRetry.http_error(403)
+        self.assertEqual(self.fetch([error, error, b"listing"]), (b"listing", "https://mirror.invalid/"))
+        self.assertEqual(self.sleeps, [5, 15])
+
+    def test_a_missing_index_fails_at_once(self):
+        with self.assertRaises(harness.urllib.error.HTTPError):
+            self.fetch([DownloadRetry.http_error(404), b"listing"])
+        self.assertEqual(self.calls, 1)
 
 
 class Deadline(unittest.TestCase):

@@ -34,6 +34,7 @@ import argparse
 import base64
 import datetime
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -282,22 +283,35 @@ def tail(text, lines=40):
 # Images
 
 
-NETWORK_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError)
+NETWORK_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException)
+# The waits before the second and the third try of a download.
+RETRY_DELAYS = (5, 15)
+
+
+def transient(error):
+    """Whether a network error can go away on its own: a connection error, a time-out, a transfer cut short, or HTTP
+    403, 429 or 5xx (a mirror that refuses or is overloaded for a moment: download.opensuse.org answered 403 in run
+    41996202839 and served the same file to the same request later). 404 and other HTTP errors are final."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in (403, 429) or error.code >= 500
+    return isinstance(error, NETWORK_ERRORS)
 
 
 def fetch(url, timeout=120):
-    """The body of url and the URL it came from after redirects (a mirror)."""
+    """The body of url and the URL it came from after redirects (a mirror). A transient error is tried again (see
+    RETRY_DELAYS), with the reason printed."""
     request = urllib.request.Request(url, headers={"User-Agent": "gnoblin-graphical-test"})
-    for attempt in (1, 2, 3):
+    attempts = len(RETRY_DELAYS) + 1
+    for attempt in range(1, attempts + 1):
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return response.read(), response.geturl()
-        except urllib.error.HTTPError:
-            raise
-        except NETWORK_ERRORS:
-            if attempt == 3:
+        except NETWORK_ERRORS as error:
+            if attempt == attempts or not transient(error):
                 raise
-            time.sleep(5 * attempt)
+            delay = RETRY_DELAYS[attempt - 1]
+            print(f"[graphical] {url}: try {attempt} of {attempts} failed: {error}; again in {delay} s", flush=True)
+            time.sleep(delay)
 
 
 def version_numbers(name):
@@ -352,17 +366,21 @@ def resolve_image(image):
     raise CheckFailed("no image with a checksum found", "\n".join(errors))
 
 
-def download_image(image, cache, min_free_gb, corrupt=False, attempts=3):
-    """Download the newest image and check it against the checksum file. A download that does not match is removed
-    and fetched again, up to attempts times in all, each time with the reason printed: a mirror can end a transfer
-    early without an error, or serve a file that its checksum file does not list yet (run 41672380634, Fedora 41
-    aarch64). A file that never matches fails the check. --break image (corrupt) does not retry."""
+def download_image(image, cache, min_free_gb, corrupt=False):
+    """Download the newest image and check it against the checksum file. A download that fails with a transient error
+    (see transient) or does not match is fetched again, up to len(RETRY_DELAYS) + 1 times in all, each time with the
+    reason printed: a mirror can refuse a request for a moment (HTTP 403, run 41996202839, openSUSE Tumbleweed
+    aarch64), end a transfer early without an error, or serve a file that its checksum file does not list yet (run
+    41672380634, Fedora 41 aarch64). Any other error, and a file that never matches, fails the check. --break image
+    (corrupt) does not retry."""
+    attempts = len(RETRY_DELAYS) + 1
     for attempt in range(1, attempts + 1):
         url, file_name, sums_url, algorithm, expected = resolve_image(image)
         if corrupt:
             expected = "0" * len(expected)
         cache.mkdir(parents=True, exist_ok=True)
         path = cache / file_name
+        problem = None
         if not path.exists():
             free = shutil.disk_usage(cache).free / 2**30
             if free < min_free_gb:
@@ -372,22 +390,28 @@ def download_image(image, cache, min_free_gb, corrupt=False, attempts=3):
             try:
                 with urllib.request.urlopen(request, timeout=120) as response, partial.open("wb") as handle:
                     shutil.copyfileobj(response, handle, 1 << 20)
+                partial.rename(path)
             except NETWORK_ERRORS as exception:
                 partial.unlink(missing_ok=True)
-                raise CheckFailed(f"the download of {url} failed: {exception}") from None
-            partial.rename(path)
-        digest = hashlib.new(algorithm)
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1 << 20), b""):
-                digest.update(block)
-        if digest.hexdigest() == expected:
-            return {"url": url, "file": file_name, "checksum_url": sums_url, algorithm: expected, "path": str(path)}
-        problem = f"{file_name}: {algorithm} {digest.hexdigest()} does not match {expected} of {sums_url}"
-        if corrupt or attempt == attempts:
-            raise CheckFailed(problem + (f" (after {attempt} downloads)" if attempt > 1 else ""))
-        print(f"[graphical] image download {attempt} of {attempts}: {problem}; downloading again", flush=True)
-        path.unlink()
-        time.sleep(10 * attempt)
+                problem = f"the download of {url} failed: {exception}"
+                if not transient(exception):
+                    raise CheckFailed(problem) from None
+        if problem is None:
+            digest = hashlib.new(algorithm)
+            with path.open("rb") as handle:
+                for block in iter(lambda: handle.read(1 << 20), b""):
+                    digest.update(block)
+            if digest.hexdigest() == expected:
+                return {"url": url, "file": file_name, "checksum_url": sums_url, algorithm: expected, "path": str(path)}
+            problem = f"{file_name}: {algorithm} {digest.hexdigest()} does not match {expected} of {sums_url}"
+            if corrupt:
+                raise CheckFailed(problem)
+            path.unlink()
+        if attempt == attempts:
+            raise CheckFailed(f"{problem} (after {attempts} downloads)")
+        delay = RETRY_DELAYS[attempt - 1]
+        print(f"[graphical] image download {attempt} of {attempts}: {problem}; again in {delay} s", flush=True)
+        time.sleep(delay)
 
 
 def build_image(build, cache, work, log, corrupt=False, min_free_gb=0.0):

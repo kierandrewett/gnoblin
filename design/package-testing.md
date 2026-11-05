@@ -117,8 +117,10 @@ Failure modes:
 - `I11` Stock GNOME does not install beside Gnoblin, or a file of stock GNOME belongs to a Gnoblin package.
 - `I12` A reinstall of the same files fails, or leaves a file that the package manager reports as changed.
 - `I13` The upgrade from the version that is published at `https://repo.gnoblin.org` for the family and release of the
-  target fails, or leaves the old version. When no tree is published for the target, or every published version is
-  not older than the new one, the case is skipped with that reason.
+  target fails, or leaves the old version. The case tries the stable channel, then the nightly one. When no tree is
+  published for the target, a channel publishes nothing for it (Fedora 41 to 44 had only nightly packages in run
+  42000579809), or every published version is not older than the new one, the case is skipped, and the reason names
+  each channel.
 - `I14` The removal of Gnoblin leaves a Gnoblin file, or changes or removes a stock GNOME package.
 - `I15` A tar package of a glibc target does not extract, does not resolve, or does not start. Its removal by the list
   of its files leaves a file.
