@@ -42,7 +42,10 @@ pub mod image;
 pub mod software;
 
 pub use compose::{Composer, Content};
+// The colour a frame is described with, so a caller that paints a surface the scene
+// graph does not know about names the same type the renderer does.
 pub use frame::{Layer, OutputFrame, Solid, Surface};
+pub use gnoblin_render::Color;
 pub use image::Image;
 pub use software::Software;
 

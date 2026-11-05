@@ -515,6 +515,7 @@ name = "gnoblin-wayland"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
+ "gnoblin-lock",
  "gnoblin-output",
  "gnoblin-types",
  "gnoblin-wm",

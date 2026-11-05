@@ -38,7 +38,7 @@ use smithay::reexports::calloop::ping::Ping;
 use tracing::warn;
 
 use gnoblin_backend::render::Image;
-use gnoblin_backend::{Backend, Host, Present};
+use gnoblin_backend::{Backend, Host};
 use gnoblin_types::{OutputId, Rect};
 
 use crate::state::State;
@@ -183,19 +183,26 @@ pub fn render(
     let mut drew = false;
     let mut damage: Vec<Rect> = Vec::new();
     for output in outputs {
-        match backend.render(state, output) {
-            Ok(Present::Rendered | Present::Nothing) => {}
-            Err(error) => {
-                // A frame that cannot be drawn leaves the output's previous pixels in
-                // place, which is the only safe state: showing a half-composed frame
-                // or ending the session would both be worse.
-                warn!(?error, %output, "[frame] a frame could not be drawn");
-            }
+        let drawn = backend.render(state, output);
+        let changed = state.frame_damage(output).is_some();
+        if let Err(error) = &drawn {
+            // A frame that cannot be drawn leaves the output's previous pixels in
+            // place, which is the only safe state: showing a half-composed frame
+            // or ending the session would both be worse.
+            warn!(?error, %output, "[frame] a frame could not be drawn");
         }
-        if let Some(rects) = state.frame_damage(output) {
-            drew = true;
-            damage.clear();
-            damage.extend_from_slice(rects);
+        if changed {
+            if let Some(rects) = state.frame_damage(output) {
+                drew = true;
+                damage.clear();
+                damage.extend_from_slice(rects);
+            }
+            if drawn.is_ok() {
+                // The host described a changed frame and the backend drew it, so the
+                // frame reached the output: a lock waiting for a covering frame hears
+                // about it here and nowhere earlier.
+                state.cover_presented(output);
+            }
         }
     }
     state.end_frame();
@@ -209,10 +216,13 @@ pub fn render(
 #[cfg(test)]
 mod tests {
     use gnoblin_backend::headless::Headless;
-    use gnoblin_backend::{BackendError, InputSource};
+    use gnoblin_backend::render::{OutputFrame, RenderError};
+    use gnoblin_backend::{BackendError, InputSource, Present};
     use smithay::reexports::calloop::LoopHandle;
     use smithay::reexports::wayland_server::Display;
 
+    use gnoblin_lock::{Event as LockEvent, State as LockState};
+    use gnoblin_types::ClientId;
     use gnoblin_wm::WmOptions;
 
     use super::*;
@@ -269,6 +279,86 @@ mod tests {
         fn dispatch(&mut self, _host: &mut State) -> Vec<gnoblin_backend::BackendEvent> {
             Vec::new()
         }
+    }
+
+    /// A backend that describes a frame and then fails to draw it.
+    ///
+    /// It exists for the one case where "the host described a frame" and "the frame
+    /// reached the output" disagree.
+    struct Undrawable {
+        outputs: Vec<gnoblin_backend::Output>,
+        frame: OutputFrame,
+    }
+
+    impl Backend<State> for Undrawable {
+        fn name(&self) -> &'static str {
+            "undrawable"
+        }
+
+        fn outputs(&self) -> &[gnoblin_backend::Output] {
+            &self.outputs
+        }
+
+        fn output(&self, id: OutputId) -> Option<&gnoblin_backend::Output> {
+            self.outputs.iter().find(|output| output.id == id)
+        }
+
+        fn target(&mut self, _id: OutputId) -> Option<&mut dyn gnoblin_backend::Target> {
+            None
+        }
+
+        fn input(&mut self) -> &mut dyn InputSource {
+            unreachable!("this backend has no input")
+        }
+
+        fn register(&mut self, _loop_handle: &LoopHandle<'static, State>) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn render(&mut self, host: &mut State, output: OutputId) -> Result<Present, BackendError> {
+            if host.frame(output, &mut self.frame) {
+                return Err(BackendError::Render(RenderError::Failed));
+            }
+            Ok(Present::Nothing)
+        }
+
+        fn screenshot(&mut self, _output: OutputId) -> Option<Image> {
+            None
+        }
+
+        fn dispatch(&mut self, _host: &mut State) -> Vec<gnoblin_backend::BackendEvent> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn a_failed_cover_draw_does_not_prove_the_cover() {
+        let (mut backend, mut state) = session();
+        // A lock request arms the barrier for the one output, and the cover is what
+        // the host will describe from now on.
+        let effects = state.lock.apply(LockEvent::LockRequested {
+            locker: ClientId::new(1),
+        });
+        state.apply_lock(effects);
+        assert_eq!(state.lock_state(), LockState::Locking);
+
+        let stats = Arc::new(Mutex::new(FrameStats::default()));
+        let screenshots = Screenshots::default();
+        let mut undrawable = Undrawable {
+            outputs: Backend::<State>::outputs(&backend).to_vec(),
+            frame: OutputFrame::new(),
+        };
+        render(&mut undrawable, &mut state, &stats, &screenshots);
+        assert_eq!(
+            state.lock_state(),
+            LockState::Locking,
+            "a frame that was described but not drawn proves nothing"
+        );
+
+        // The cover is still owed, so the next output that draws paints it and the
+        // lock is proven.
+        render(&mut backend, &mut state, &stats, &screenshots);
+        assert_eq!(state.lock_state(), LockState::Locked);
     }
 
     #[test]

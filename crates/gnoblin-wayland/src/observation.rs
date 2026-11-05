@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_lock::State as LockState;
 use gnoblin_types::{OutputId, Rect, WindowId};
 
 /// One window, as the server last saw it.
@@ -29,12 +30,38 @@ pub struct ObservedWindow {
     pub geometry: Rect,
 }
 
+/// What a reader may know about the session lock.
+///
+/// The answers are the ones the lock announced, so a consumer compares what it
+/// holds against them instead of reconstructing the policy: `capture_allowed` is
+/// the embargo, not a second opinion about it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LockObservation {
+    /// Where the lock is.
+    pub state: LockState,
+    /// Whether a capture path may produce frames at all. The lock scene is not the
+    /// desktop, so a path that cannot tell them apart must refuse while this is
+    /// false.
+    pub capture_allowed: bool,
+}
+
+impl Default for LockObservation {
+    fn default() -> Self {
+        Self {
+            // A session starts unlocked, which is the lock's own initial state.
+            state: LockState::Unlocked,
+            capture_allowed: true,
+        }
+    }
+}
+
 /// The window state at one instant.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct SessionSnapshot {
     pub(crate) windows: BTreeMap<WindowId, ObservedWindow>,
     pub(crate) outputs: Vec<OutputId>,
     pub(crate) focus: Option<WindowId>,
+    pub(crate) lock: LockObservation,
 }
 
 impl SessionSnapshot {
@@ -93,5 +120,23 @@ impl SessionSnapshot {
     #[must_use]
     pub fn titled(&self, title: &str) -> Option<&ObservedWindow> {
         self.windows.values().find(|window| window.title == title)
+    }
+
+    /// Where the session lock is.
+    #[must_use]
+    pub fn lock_state(&self) -> LockState {
+        self.lock.state
+    }
+
+    /// Whether anything is hidden. This is `ScreenSaver.GetActive`.
+    #[must_use]
+    pub fn lock_active(&self) -> bool {
+        self.lock.state.is_active()
+    }
+
+    /// Whether a capture path may produce frames at all.
+    #[must_use]
+    pub fn capture_allowed(&self) -> bool {
+        self.lock.capture_allowed
     }
 }

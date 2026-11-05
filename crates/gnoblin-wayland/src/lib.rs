@@ -12,7 +12,8 @@
 //!   runnable anywhere: no DRM, no GPU, one virtual output with a settable size.
 //! - The globals are `wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_output`
 //!   (with `zxdg_output_manager_v1`), `wl_seat` with a keyboard and a pointer,
-//!   `xdg_shell`, `wp_viewporter` and `zxdg_decoration_manager_v1`.
+//!   `xdg_shell`, `ext_session_lock_manager_v1`, `wp_viewporter` and
+//!   `zxdg_decoration_manager_v1`.
 //! - Window state is `gnoblin-wm`'s: every map, unmap, configure, focus change and
 //!   close is an [`gnoblin_wm::Event`] and comes back as an
 //!   [`gnoblin_wm::Effect`]. Output rectangles come from `gnoblin-output`'s layout
@@ -22,20 +23,30 @@
 //!   damage, and a client's committed `wl_shm` buffer reaches the output's pixels
 //!   through the software renderer in `gnoblin-backend`. [`ControlHandle::screenshot`]
 //!   reads those pixels back, which is what the pixel tests assert on.
+//! - Session locking is `gnoblin-lock`'s: a lock request is an
+//!   [`gnoblin_lock::Event`], the effects it returns are what `protocols::session_lock`
+//!   performs, and a frame carrying the armed cover generation on every output is what
+//!   lets the locker hear `locked`. While anything is covered the frame path describes
+//!   the opaque cover instead of the desktop, input reaches the owner's lock surface or
+//!   nothing, and
+//!   [`State::capture`]/[`State::capture_allowed`]/[`State::selection_allowed`] say
+//!   what a capture or clipboard path may do.
 //!
 //! # What is deliberately not here
 //!
-//! The session lock global, interactive move and resize, popup grabs and the effects
-//! passes belong to later slices. Nothing here is a stub that silently pretends to
-//! work: a popup grab is refused and explained, a decoration request is answered with
-//! client-side decorations because no frames are drawn, and a frame is presented as
+//! Interactive move and resize, popup grabs, drawing the lock surface itself and the
+//! effects passes belong to later slices, and so does the capture and selection surface
+//! the lock embargo guards. Nothing here is a stub that silently pretends to work: a
+//! popup grab is refused and explained, a decoration request is answered with
+//! client-side decorations, and a frame is presented as
 //! [`gnoblin_backend::Present::Nothing`] because a headless output scans out nothing —
 //! the pixels are still composed and readable.
 //!
 //! # Failure modes first
 //!
-//! Each entry names the integration test in `tests/real_client.rs` unless it is a
-//! unit test in the module named.
+//! Each entry names the integration test in `tests/real_client.rs` unless it says
+//! otherwise; the session lock's own list is at the top of
+//! `protocols::session_lock` and its tests are in `tests/session_lock.rs`.
 //!
 //! 1. **A client crash leaves a mapped ghost window.** A client that disconnects
 //!    without destroying its toplevel has its resources destroyed by the display, so
@@ -82,7 +93,9 @@
 //!
 //! Window identities are handed out in creation order, the window manager is
 //! deterministic, and the only clock the protocol side reads is the serial counter.
-//! A test therefore asserts on window order and geometry rather than on timing.
+//! A test therefore asserts on window order and geometry rather than on timing. The
+//! session lock reads no clock either: its barrier is a generation counter, and the
+//! loop's turn is the only thing that decides when a dead connection is noticed.
 
 mod frame;
 mod observation;
@@ -91,7 +104,7 @@ mod server;
 mod state;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
-pub use observation::{ObservedWindow, SessionSnapshot};
+pub use observation::{LockObservation, ObservedWindow, SessionSnapshot};
 pub use server::{Config, ControlHandle, LoopError, Server, StartupError};
 pub use state::State;
 

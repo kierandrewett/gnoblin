@@ -237,6 +237,9 @@ impl Server {
             } = self;
             event_loop.run(Duration::from_millis(100), &mut state, |state| {
                 state.flush();
+                // A locker that dies sends no request, so the lock is told to look for
+                // a connection that is gone, once per turn.
+                state.poll_lock();
                 let events = backend.dispatch(state);
                 if events.iter().any(is_output_change) {
                     // A hotplug, a removal or a mode change: the whole layout is

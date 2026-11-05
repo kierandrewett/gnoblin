@@ -25,6 +25,7 @@ use smithay::reexports::wayland_server::{DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, SERIAL_COUNTER, Size as SmithaySize, Transform};
 use smithay::wayland::compositor::{CompositorState, with_states};
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::session_lock::SessionLockManagerState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData};
 use smithay::wayland::shm::ShmState;
@@ -33,11 +34,13 @@ use tracing::{debug, warn};
 
 use gnoblin_backend::render::{Composer, Content, OutputFrame};
 use gnoblin_backend::{Host, InputEvent};
+use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_types::{OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
-use crate::observation::{ObservedWindow, SessionSnapshot};
+use crate::observation::{LockObservation, ObservedWindow, SessionSnapshot};
+use crate::protocols::session_lock::LockTables;
 use crate::server::StartupError;
 
 /// How many workspaces a session declares when its configuration names none.
@@ -109,6 +112,9 @@ pub struct State {
     /// handler in [`crate::protocols::decoration`] answers its requests.
     #[allow(dead_code)]
     pub(crate) decoration_state: XdgDecorationState,
+    /// Kept alive so the `ext_session_lock_manager_v1` global stays registered; the
+    /// handler in [`crate::protocols::session_lock`] answers its requests.
+    pub(crate) session_lock_state: SessionLockManagerState,
 
     /// Keyboard and pointer handles for the one seat this slice creates.
     pub(crate) keyboard: KeyboardHandle<State>,
@@ -131,6 +137,18 @@ pub struct State {
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     last_frame: Option<(OutputId, Vec<Rect>)>,
+
+    /// The session lock and protection-cover policy. Every request, output change
+    /// and committed lock surface is an event for it, and the effects it returns are
+    /// what the protocol side in [`crate::protocols::session_lock`] performs.
+    pub(crate) lock: Lock,
+    /// The embargo the lock last announced. It is what the capture and selection
+    /// queries answer, so a consumer reads what the lock decided rather than a second
+    /// opinion about it.
+    pub(crate) lock_embargo: Embargo,
+    /// The protocol bookkeeping the lock needs: held confirmations, lock surfaces, the
+    /// cover generation and the presentation barrier.
+    pub(crate) lock_tables: LockTables,
 
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
@@ -158,6 +176,10 @@ impl State {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
         let viewporter_state = crate::protocols::viewporter::global(&display_handle);
         let decoration_state = XdgDecorationState::new::<Self>(&display_handle);
+        // The lock global is advertised to every client: the standard protocol makes
+        // the socket the admission boundary, and `docs/session-lock.md` states that
+        // the first request owns the lock.
+        let session_lock_state = SessionLockManagerState::new::<Self, _>(&display_handle, |_| true);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
@@ -177,6 +199,7 @@ impl State {
             output_manager_state,
             viewporter_state,
             decoration_state,
+            session_lock_state,
             keyboard,
             pointer,
             wm: Wm::new(options),
@@ -186,6 +209,9 @@ impl State {
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             composer: Composer::new(),
             last_frame: None,
+            lock: Lock::new(),
+            lock_embargo: Embargo::RELEASED,
+            lock_tables: LockTables::default(),
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
         };
 
@@ -250,6 +276,7 @@ impl State {
             .collect();
         if connected.is_empty() {
             self.remove_outputs_unless(&[]);
+            self.report_outputs();
             return;
         }
         let descriptors: Vec<_> = connected.iter().map(|output| output.descriptor()).collect();
@@ -273,6 +300,10 @@ impl State {
                 None => self.add_output(output, monitor.rect),
             }
         }
+        // The lock hears the whole layout once, after every change landed: it restarts
+        // its presentation barrier from this set, so a hotplugged output is covered
+        // before it shows anything.
+        self.report_outputs();
     }
 
     /// Removes every output the connected set no longer names.
@@ -433,13 +464,81 @@ impl State {
     }
 
     /// Moves keyboard focus to a window, or to nothing.
+    ///
+    /// While the session is covered nothing moves: the lock's gate routes every key to
+    /// the owner's lock surface or to nothing, and the window manager's answer is
+    /// applied again when the reveal completes.
     fn move_focus(&mut self, focused: Option<WindowId>) {
+        if self.lock.state() != LockState::Unlocked {
+            debug!(?focused, "[focus] withheld while the session is covered");
+            return;
+        }
         let target = focused
             .and_then(|window| self.windows.get(&window))
             .map(|entry| entry.surface.wl_surface().clone());
+        self.set_keyboard_focus(target);
+    }
+
+    /// Installs the keyboard focus target. This is the only place focus is set.
+    pub(crate) fn set_keyboard_focus(&mut self, target: Option<WlSurface>) {
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, target, serial);
+    }
+
+    /// Drops the pointer's focus, so a covered client cannot receive a button.
+    pub(crate) fn clear_pointer_focus(&mut self) {
+        let serial = SERIAL_COUNTER.next_serial();
+        let position = self.pointer_position;
+        let time = InputTime::now();
+        let pointer = self.pointer.clone();
+        pointer.motion(
+            self,
+            None,
+            &MotionEvent {
+                location: position,
+                serial,
+                time,
+            },
+        );
+    }
+
+    /// The surface of the window the window manager has focused.
+    pub(crate) fn focused_window_surface(&self) -> Option<WlSurface> {
+        let window = self.wm.focused()?;
+        self.windows
+            .get(&window)
+            .map(|entry| entry.surface.wl_surface().clone())
+    }
+
+    /// The identity of a `wl_output` global this session created.
+    pub(crate) fn output_id_of(&self, output: &Output) -> Option<OutputId> {
+        self.outputs
+            .iter()
+            .find(|entry| entry.output == *output)
+            .map(|entry| entry.backend)
+    }
+
+    /// The logical rectangle an output occupies.
+    pub(crate) fn output_rect(&self, output: OutputId) -> Option<Rect> {
+        self.outputs
+            .iter()
+            .find(|entry| entry.backend == output)
+            .map(|entry| entry.rect)
+    }
+
+    /// The output whose rectangle contains a global position.
+    pub(crate) fn output_under(&self, position: SmithayPoint<f64, Logical>) -> Option<OutputId> {
+        self.outputs
+            .iter()
+            .find(|entry| {
+                let rect = entry.rect;
+                position.x >= f64::from(rect.x)
+                    && position.y >= f64::from(rect.y)
+                    && position.x < rect.right() as f64
+                    && position.y < rect.bottom() as f64
+            })
+            .map(|entry| entry.backend)
     }
 
     /// A client created a toplevel.
@@ -673,6 +772,17 @@ impl State {
     ///
     /// The frame hook asks immediately after rendering that output, which is why one
     /// remembered frame is enough.
+    /// Forces every output to repaint, for a change the scene graph cannot see.
+    ///
+    /// Taking the cover down is exactly that: the composer was not asked to draw
+    /// anything while the session was covered, so its damage for those outputs was
+    /// consumed and the desktop has to be painted again from scratch.
+    pub(crate) fn damage_outputs(&mut self) {
+        for output in self.output_ids() {
+            self.composer.damage_output(output);
+        }
+    }
+
     pub(crate) fn frame_damage(&self, output: OutputId) -> Option<&[Rect]> {
         match &self.last_frame {
             Some((described, damage)) if *described == output => Some(damage),
@@ -698,12 +808,23 @@ impl State {
     }
 
     /// Publishes the window state for the tests and for a diagnostics reader.
-    fn publish(&mut self) {
+    pub(crate) fn publish(&mut self) {
         let active = self.wm.active_workspace();
-        let focused = self.wm.focused();
+        // A covered window keeps the window manager's focus so the reveal can restore
+        // it, but it holds no keyboard focus: the lock gate routes keys to the lock
+        // surface or to nothing, so the snapshot says nothing is focused.
+        let focused = if self.lock.state() == LockState::Unlocked {
+            self.wm.focused()
+        } else {
+            None
+        };
         let mut snapshot = SessionSnapshot {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
             focus: focused,
+            lock: LockObservation {
+                state: self.lock.state(),
+                capture_allowed: !self.lock_embargo.capture,
+            },
             ..SessionSnapshot::default()
         };
         for window in self.wm.windows() {
@@ -743,10 +864,17 @@ impl State {
     }
 
     /// The surface under a global position, topmost first.
+    ///
+    /// While the session is covered the lock answers instead: the only surface a
+    /// pointer event may reach is the owner's lock surface, and a miss reaches nothing
+    /// at all.
     pub(crate) fn surface_under(
         &self,
         position: SmithayPoint<f64, Logical>,
     ) -> Option<(WlSurface, SmithayPoint<f64, Logical>)> {
+        if self.lock.state() != LockState::Unlocked {
+            return self.lock_surface_under(position);
+        }
         let active = self.wm.active_workspace();
         for window in self.wm.stack().iter().rev() {
             let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
@@ -808,7 +936,11 @@ impl Host for State {
     }
 
     fn frame(&mut self, output: OutputId, frame: &mut OutputFrame) -> bool {
-        let changed = self.composer.compose(output, frame);
+        let changed = if self.lock.state() == LockState::Unlocked {
+            self.composer.compose(output, frame)
+        } else {
+            self.cover_frame(output, frame)
+        };
         if changed {
             self.last_frame = Some((output, frame.damage().to_vec()));
         }

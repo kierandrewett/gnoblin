@@ -13,7 +13,9 @@
 //!    protocol error for that client, not for the session).
 //! 2. The popup manager is told, so a popup that was waiting for a parent is
 //!    tracked once it has one.
-//! 3. Only for a non-synchronous subsurface, the commit is attributed to its root
+//! 3. A lock surface's commit is reported to the session lock, which is what makes
+//!    it a destination for input once it has a buffer.
+//! 4. Only for a non-synchronous subsurface, the commit is attributed to its root
 //!    surface, which is the toplevel the window manager knows.
 
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
@@ -59,6 +61,9 @@ impl CompositorHandler for State {
         on_commit_buffer_handler::<Self>(surface);
         self.popups.commit(surface);
         self.popup_committed(surface);
+        // A lock surface with a buffer is the only surface input may reach while the
+        // session is covered, so the lock hears about it before anything else runs.
+        self.lock_surface_committed(surface);
         if is_sync_subsurface(surface) {
             // A synchronous subsurface's commit is applied with its parent's, so
             // attributing it here would report a window change twice.

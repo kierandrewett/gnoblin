@@ -21,6 +21,10 @@ gnoblin-types.workspace = true
 # translates protocols into `Wm::apply` events and turns the effects back into
 # configures, focus changes and stacking.
 gnoblin-wm = { path = "../gnoblin-wm" }
+# The session lock and protection-cover policy: `ext-session-lock-v1` is a request
+# for `Lock::apply`, and the cover, the input gate and the embargo are what its
+# effects perform (design/rust-compositor.md, "Session lock: gnoblin-lock").
+gnoblin-lock = { path = "../gnoblin-lock" }
 # Output layout: the backend's connected outputs become a declarative layout here,
 # so the window manager sees the same monitor rectangles the display configuration
 # and the portal will.
@@ -40,7 +44,7 @@ tracing = "0.1.37"
 wayland-client = "0.31.14"
 # The client side of the protocols the tests exercise, generated from the same XML
 # the server side uses.
-wayland-protocols = { version = "0.32.13", features = ["client"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
 tempfile = "3.23.0"

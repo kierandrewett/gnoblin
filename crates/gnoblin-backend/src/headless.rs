@@ -14,6 +14,20 @@
 //! The virtual output's size is settable, which is how a test drives a mode change
 //! and how the parity harness will run a session at a fixed size.
 //!
+//! ## Driving a backend the session owns
+//!
+//! Once a session owns its backend a caller cannot reach it any more, so a test that
+//! needs a hotplug, an unplug or a frame that is not presented holds a
+//! [`HeadlessHandle`] taken before the session starts. The handle queues its requests
+//! and [`Backend::dispatch`] applies them, which is the same path a DRM backend's udev
+//! source takes when a monitor is plugged in: the compositor learns about it as a
+//! [`BackendEvent`] and never as a call into the backend.
+//!
+//! A held present is a frame the backend did not put on the output: the host is not
+//! asked to describe one and nothing is drawn. It exists because presentation is what
+//! a locked session waits for — the lock may report itself locked only after every
+//! output has drawn its cover — and a test can prove that by never presenting one.
+//!
 //! # Failure modes
 //!
 //! 1. **A frame is drawn on a target whose renderer was never created.** Constructing
@@ -25,6 +39,7 @@
 
 use std::collections::VecDeque;
 use std::io;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_types::{OutputId, Rect, Scale, Size};
 use smithay::reexports::calloop::LoopHandle;
@@ -201,6 +216,68 @@ impl InputSource for HeadlessInput {
     }
 }
 
+/// What a [`HeadlessHandle`] asked the backend to do.
+///
+/// The list is drained by [`Backend::dispatch`], so every request takes the same path
+/// a device event does and the compositor sees only its [`BackendEvent`]s.
+#[derive(Debug, Default)]
+struct Requests {
+    /// The presentation state the caller last set, if it set one.
+    present: Option<bool>,
+    /// Outputs to connect, with the connector, mode and scale to connect them at.
+    connect: Vec<(String, DisplayMode, Scale)>,
+    /// Outputs to disconnect.
+    disconnect: Vec<OutputId>,
+}
+
+/// A caller's control over a headless backend a session already owns.
+///
+/// A test takes one with [`Headless::handle`] before handing the backend to a server,
+/// and then hotplugs, unplugs or withholds presentation from its own thread while the
+/// session runs.
+#[derive(Clone, Debug)]
+pub struct HeadlessHandle {
+    requests: Arc<Mutex<Requests>>,
+}
+
+impl HeadlessHandle {
+    /// Connects a new output on the next dispatch.
+    ///
+    /// # Errors
+    ///
+    /// [`BackendError::DegenerateMode`] when the mode covers no pixels; nothing is
+    /// queued then, because an output that can show nothing is not an output.
+    pub fn connect_output(&self, connector: &str, mode: DisplayMode, scale: Scale) -> Result<(), BackendError> {
+        if mode.width == 0 || mode.height == 0 {
+            return Err(BackendError::DegenerateMode {
+                width: mode.width,
+                height: mode.height,
+            });
+        }
+        self.requests().connect.push((connector.to_owned(), mode, scale));
+        Ok(())
+    }
+
+    /// Disconnects an output on the next dispatch.
+    pub fn disconnect_output(&self, output: OutputId) {
+        self.requests().disconnect.push(output);
+    }
+
+    /// Stops presenting frames, or resumes.
+    ///
+    /// A held frame is one the backend did not put on the output: the host is not asked
+    /// to describe it and nothing is drawn, so a lock waiting for a presented cover
+    /// keeps waiting.
+    pub fn hold_presents(&self, hold: bool) {
+        self.requests().present = Some(!hold);
+    }
+
+    /// The request queue, locked for writing.
+    fn requests(&self) -> MutexGuard<'_, Requests> {
+        self.requests.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
 /// A headless backend: the outputs it drives and the events it has to report.
 pub struct Headless {
     /// The outputs, and the target for each one, kept in step by every method that
@@ -215,6 +292,13 @@ pub struct Headless {
     /// The frame description the host fills, kept here so a steady frame allocates
     /// nothing.
     frame: OutputFrame,
+    /// The requests a [`HeadlessHandle`] queued, and the shared queue itself.
+    requests: Arc<Mutex<Requests>>,
+    /// Whether [`Backend::render`] presents the frame it drew.
+    presenting: bool,
+    /// The next output identity. A counter, not the table length, so a hotplug after an
+    /// unplug cannot name an output that already exists.
+    next_output: u64,
 }
 
 impl std::fmt::Debug for Headless {
@@ -262,6 +346,18 @@ impl Headless {
             pending: Vec::new(),
             input: HeadlessInput::default(),
             frame: OutputFrame::new(),
+            requests: Arc::new(Mutex::new(Requests::default())),
+            presenting: true,
+            next_output: 0,
+        }
+    }
+
+    /// A handle that can hotplug, unplug and withhold presentation after a session has
+    /// taken this backend.
+    #[must_use]
+    pub fn handle(&self) -> HeadlessHandle {
+        HeadlessHandle {
+            requests: Arc::clone(&self.requests),
         }
     }
 
@@ -278,12 +374,34 @@ impl Headless {
             mode.width > 0 && mode.height > 0,
             "a mode that covers no pixels cannot be an output: {mode:?}"
         );
-        let id = OutputId::new(self.outputs.len() as u64);
+        let id = OutputId::new(self.next_output);
+        self.next_output = self.next_output.saturating_add(1);
         let output = Output::new(id, connector, mode, scale);
         let target = HeadlessTarget::new(mode, scale).expect("a virtual output with a software renderer");
         self.outputs.push(output.clone());
         self.targets.push(target);
         self.pending.push(BackendEvent::OutputConnected(output));
+    }
+
+    /// Removes an output and its target, reporting the change on the next dispatch.
+    ///
+    /// # Errors
+    ///
+    /// [`BackendError::UnknownOutput`] when the id is not this backend's.
+    pub fn remove_output(&mut self, output: OutputId) -> Result<(), BackendError> {
+        let Some(index) = self.index(output) else {
+            return Err(BackendError::UnknownOutput(output));
+        };
+        self.outputs.remove(index);
+        self.targets.remove(index);
+        self.pending.retain(|event| {
+            !matches!(
+                event,
+                BackendEvent::OutputResized { output: changed, .. } if *changed == output
+            )
+        });
+        self.pending.push(BackendEvent::OutputDisconnected(output));
+        Ok(())
     }
 
     /// Sets the mode and scale of an output, reporting the change on the next
@@ -357,6 +475,22 @@ impl Headless {
         target.screenshot().ok()
     }
 
+    /// Applies the requests a [`HeadlessHandle`] queued, as the next dispatch.
+    fn apply_requests(&mut self) {
+        let requests = std::mem::take(&mut *self.requests.lock().unwrap_or_else(PoisonError::into_inner));
+        if let Some(present) = requests.present {
+            self.presenting = present;
+        }
+        for output in requests.disconnect {
+            // A caller that unplugs an output twice is not an error: the second request
+            // names nothing and reports nothing.
+            let _ = self.remove_output(output);
+        }
+        for (connector, mode, scale) in requests.connect {
+            self.push_output(&connector, mode, scale);
+        }
+    }
+
     /// The position of an output in the backend's table.
     fn index(&self, output: OutputId) -> Option<usize> {
         self.outputs.iter().position(|entry| entry.id == output)
@@ -393,6 +527,11 @@ impl<S: Host + 'static> Backend<S> for Headless {
 
     fn render(&mut self, host: &mut S, output: OutputId) -> Result<Present, BackendError> {
         let index = self.index(output).ok_or(BackendError::UnknownOutput(output))?;
+        if !self.presenting {
+            // A held present: the host is not asked to describe a frame and the output
+            // stays as it was, so nothing reaches it.
+            return Ok(Present::Nothing);
+        }
         if !host.frame(output, &mut self.frame) {
             // Nothing changed, so nothing is drawn or presented. This is what makes an
             // idle iteration free.
@@ -413,6 +552,7 @@ impl<S: Host + 'static> Backend<S> for Headless {
         while let Some(event) = self.input.next_event() {
             host.input(event);
         }
+        self.apply_requests();
         std::mem::take(&mut self.pending)
     }
 }
@@ -629,6 +769,71 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], BackendEvent::OutputConnected(_)));
         assert!(backend.dispatch(&mut host).is_empty(), "a change is reported once");
+    }
+
+    #[test]
+    fn a_hotplug_from_a_handle_is_reported_once() {
+        let mut backend = Headless::new();
+        let mut host = changing();
+        let started = backend.dispatch(&mut host);
+        assert_eq!(started.len(), 1, "the start-up output: {started:#?}");
+        let handle = backend.handle();
+        handle
+            .connect_output("HEADLESS-2", DisplayMode::new(800, 600, 60_000), Scale::integral(1))
+            .expect("a mode with pixels");
+        let events = backend.dispatch(&mut host);
+        assert_eq!(events.len(), 1, "one output connected: {events:#?}");
+        assert_eq!(
+            backend.outputs.len(),
+            2,
+            "the backend drives the output it was asked for"
+        );
+        assert!(backend.dispatch(&mut host).is_empty(), "a hotplug is reported once");
+    }
+
+    #[test]
+    fn a_hotplug_after_an_unplug_does_not_reuse_an_identity() {
+        let mut backend = Headless::new();
+        let first = backend.outputs[0].id;
+        let handle = backend.handle();
+        handle.disconnect_output(first);
+        handle
+            .connect_output("HEADLESS-2", DisplayMode::new(800, 600, 60_000), Scale::integral(1))
+            .expect("a mode with pixels");
+        let mut host = changing();
+        backend.dispatch(&mut host);
+        let connected: Vec<OutputId> = backend.outputs.iter().map(|output| output.id).collect();
+        assert_eq!(connected.len(), 1);
+        assert_ne!(
+            connected[0], first,
+            "an identity names one output for the life of the backend"
+        );
+        assert!(
+            backend.target_of(first).is_none(),
+            "the unplugged output left no target behind"
+        );
+    }
+
+    #[test]
+    fn a_held_present_keeps_the_output_as_it_was() {
+        let mut backend = Headless::new();
+        let output = backend.outputs[0].id;
+        let presents = backend.target_of(output).map(HeadlessTarget::presents);
+        backend.handle().hold_presents(true);
+        let mut host = changing();
+        backend.dispatch(&mut host);
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        assert!(host.described.is_empty(), "a held frame is not described");
+        assert_eq!(
+            backend.target_of(output).map(HeadlessTarget::presents),
+            presents,
+            "a held frame is not presented"
+        );
+
+        backend.handle().hold_presents(false);
+        backend.dispatch(&mut host);
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        assert_eq!(host.described, vec![output], "a resumed present reaches the host");
     }
 
     #[test]

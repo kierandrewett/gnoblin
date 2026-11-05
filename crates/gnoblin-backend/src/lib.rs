@@ -86,6 +86,18 @@
 //! 10. **A readback is taken from a target that has none.**
 //!     [`Backend::screenshot`] answers [`None`] for an output this backend does not
 //!     drive: `a_screenshot_of_an_unknown_output_is_none`.
+//! 11. **A hotplug reuses the identity of an output that was unplugged.** Identities
+//!     come from a counter that never repeats, so a lock's presentation barrier cannot
+//!     mistake the new output for the old one:
+//!     `a_hotplug_after_an_unplug_does_not_reuse_an_identity`. A caller behind the
+//!     session reaches the backend through a [`headless::HeadlessHandle`], and the
+//!     request is reported once, as its own dispatch:
+//!     `a_hotplug_from_a_handle_is_reported_once`.
+//! 12. **A frame is reported as presented when it was not.** A held present leaves the
+//!     output as it was and never calls the host, so a lock waiting for a presented
+//!     cover keeps waiting: `a_held_present_keeps_the_output_as_it_was`. A frame the
+//!     host described but the target could not draw is not presented either, so a lock
+//!     is not proven by it: `a_failed_cover_draw_does_not_prove_the_cover`.
 
 pub mod headless;
 pub mod render;

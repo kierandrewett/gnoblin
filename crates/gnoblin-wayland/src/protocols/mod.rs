@@ -11,6 +11,7 @@
 //! | [`decoration`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
 //! | [`output`] | `wl_output` | the output globals the layout created |
 //! | [`seat`] | `wl_seat` | keyboard and pointer focus over surfaces |
+//! | [`session_lock`] | `ext_session_lock_v1` | the lock request, its cover, its surfaces and the input gate |
 //! | [`viewporter`] | `wp_viewporter` | creates the global; Smithay validates a viewport on commit |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
 
@@ -18,5 +19,6 @@ pub mod compositor;
 pub mod decoration;
 pub mod output;
 pub mod seat;
+pub mod session_lock;
 pub mod viewporter;
 pub mod xdg_shell;

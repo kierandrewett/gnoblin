@@ -170,6 +170,15 @@ impl Composer {
         self.scene.remove_output(output);
     }
 
+    /// Damages an output in full, so its next frame repaints every pixel.
+    ///
+    /// A caller that drew something the scene does not know about — a session lock
+    /// cover, and the reveal that takes it down — needs the output painted again
+    /// even though no window moved.
+    pub fn damage_output(&mut self, output: OutputId) {
+        self.scene.damage_output(output);
+    }
+
     /// Takes every output's damage for this iteration.
     ///
     /// It is taken once, not per output: the backend renders outputs one call at a
