@@ -12,7 +12,7 @@ use std::fmt;
 use std::path::Path;
 
 use crate::error::SchemaError;
-use crate::version::Version;
+use gnoblin_types::Version;
 
 /// A schema namespace: `gnoblin` for the compositor's own objects, or a dotted
 /// extension name such as `bsm.greeter`.
@@ -137,7 +137,7 @@ pub struct Schema {
     pub namespace: Namespace,
     pub version: Version,
     pub objects: Vec<ObjectType>,
-    pub errors: Vec<ErrorCode>,
+    pub errors: Vec<ErrorDecl>,
 }
 
 /// An object type: an identity with typed properties, methods and signals.
@@ -256,9 +256,14 @@ pub struct Field {
     pub secret: bool,
 }
 
-/// An error code a namespace can return in an error frame.
+/// A declared error code a namespace can return in an error frame.
+///
+/// Named `ErrorDecl` and not `ErrorCode` because the two are different things: this
+/// is the schema's *declaration* of a code (its name and the version that added
+/// it), while [`gnoblin_types::ErrorCode`] is the kebab-case *value* a frame
+/// carries. One is a member of a contract, the other is what travels.
 #[derive(Clone, Debug)]
-pub struct ErrorCode {
+pub struct ErrorDecl {
     /// Kebab-case name, for example `provider-gone`.
     pub name: String,
     /// The version that added the code.
@@ -440,7 +445,7 @@ impl Catalog {
     }
 
     /// Every error code in a namespace, in declaration order.
-    pub fn errors<'a>(&'a self, namespace: &'a Namespace) -> impl Iterator<Item = &'a ErrorCode> {
+    pub fn errors<'a>(&'a self, namespace: &'a Namespace) -> impl Iterator<Item = &'a ErrorDecl> {
         self.schemas
             .iter()
             .filter(move |schema| &schema.namespace == namespace)

@@ -7,6 +7,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The version every member records is the IPC version, and the IPC version is the
+# shared `Version`: one type decides what "newer than the compositor" means.
+gnoblin-types.workspace = true
 # Schema files are TOML (see the justification in src/parse.rs).
 serde.workspace = true
 toml.workspace = true

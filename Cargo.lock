@@ -461,6 +461,7 @@ name = "gnoblin-proto"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
+ "gnoblin-types",
  "prost",
  "prost-build",
  "prost-types",
@@ -478,6 +479,7 @@ dependencies = [
 name = "gnoblin-schema"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-types",
  "serde",
  "toml",
 ]

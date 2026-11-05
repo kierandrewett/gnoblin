@@ -17,7 +17,7 @@
 //! `Control`-masked keystroke match a chord typed with a latched Control.
 
 use crate::geometry::Point;
-use crate::{Appearance, Config, Effect, Event, Follow, Key, KeyRouting, Published, View};
+use crate::{Appearance, Config, Effect, Event, Follow, Key, KeyRouting, KeyState, Published, View};
 
 use crate::keyboard::{BounceKeys, SlowKeys, Sticky, StickyKeys};
 use crate::magnifier::Magnifier;
@@ -176,7 +176,7 @@ impl A11y {
         if self.slow.defer(&key, self.now_ms, effects) {
             return;
         }
-        self.deliver(key, false, effects);
+        self.deliver(key, KeyState::Pressed, effects);
     }
 
     fn release(&mut self, key: Key, effects: &mut Vec<Effect>) {
@@ -189,7 +189,7 @@ impl A11y {
         if self.slow.reject(&key, effects) {
             return;
         }
-        self.deliver(key, true, effects);
+        self.deliver(key, KeyState::Released, effects);
     }
 
     fn tick(&mut self, now_ms: u64, effects: &mut Vec<Effect>) {
@@ -197,7 +197,7 @@ impl A11y {
             self.now_ms = now_ms;
         }
         for key in self.slow.accept(self.now_ms, effects) {
-            self.deliver(key, false, effects);
+            self.deliver(key, KeyState::Pressed, effects);
         }
         if let Some(at_ms) = self.slow.deadline() {
             effects.push(Effect::AwaitTick { at_ms });
@@ -209,9 +209,9 @@ impl A11y {
     ///
     /// A `None` from sticky keys means the key was withheld: no effect, so the
     /// client cannot see a modifier press it never got a release for.
-    fn deliver(&mut self, key: Key, released: bool, effects: &mut Vec<Effect>) {
-        self.monitors.note(&key, released);
-        let modifiers = if released {
+    fn deliver(&mut self, key: Key, state: KeyState, effects: &mut Vec<Effect>) {
+        self.monitors.note(&key, state);
+        let modifiers = if state.is_release() {
             self.sticky.release(&key, effects)
         } else {
             self.sticky.press(&key, effects)
@@ -221,7 +221,7 @@ impl A11y {
         };
         let (decision, monitors) = self.monitors.decide(&key, modifiers);
         effects.push(Effect::Key(KeyRouting {
-            released,
+            state,
             key,
             modifiers,
             decision,

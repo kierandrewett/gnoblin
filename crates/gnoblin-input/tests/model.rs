@@ -25,10 +25,10 @@ use std::collections::BTreeMap;
 
 use common::{CODE_Q, CODE_W, Q, W, button_event, chord, name, pointer_chord};
 use gnoblin_input::{
-    Activity, Contact, ContactPhase, Context, Decision, Event, GestureAction, GestureConfig, GestureEvent, GestureKind,
-    GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, Keysym, Modifiers, Phase, PinchDirection,
-    PolicyQueue, Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick,
-    Trigger, When,
+    Activity, ButtonState, Contact, ContactPhase, Context, Decision, Event, GestureAction, GestureConfig, GestureEvent,
+    GestureKind, GesturePhase, GestureRoute, GestureRouter, GestureSpec, GrabId, KeyCode, KeyState, Keysym, Modifiers,
+    PinchDirection, PolicyQueue, Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted,
+    Target, Tick, Trigger, When,
 };
 
 /// Sequences per test run.
@@ -239,7 +239,7 @@ impl Model {
                 key_code: code,
                 symbol,
                 modifiers,
-                phase: Phase::Press,
+                state: KeyState::Pressed,
                 repeat: false,
             },
             inhibit,
@@ -262,7 +262,7 @@ impl Model {
                 key_code: code,
                 symbol,
                 modifiers,
-                phase: Phase::Release,
+                state: KeyState::Released,
                 repeat: false,
             },
             inhibit,
@@ -293,7 +293,7 @@ impl Model {
     fn press_button(&mut self, button: u8, modifiers: Modifiers, inhibit: ShortcutInhibit) {
         let routed = self
             .router
-            .route(button_event(button, modifiers, Phase::Press), inhibit);
+            .route(button_event(button, modifiers, ButtonState::Pressed), inhibit);
         self.presses += 1;
         self.held_buttons.insert(button, routed.target);
         if routed.fired.is_some() {
@@ -307,7 +307,7 @@ impl Model {
     fn release_button(&mut self, button: u8, modifiers: Modifiers, inhibit: ShortcutInhibit) {
         let routed = self
             .router
-            .route(button_event(button, modifiers, Phase::Release), inhibit);
+            .route(button_event(button, modifiers, ButtonState::Released), inhibit);
         self.releases += 1;
         match self.held_buttons.remove(&button) {
             Some(expected) => {

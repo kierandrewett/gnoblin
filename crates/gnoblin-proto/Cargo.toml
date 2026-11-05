@@ -10,6 +10,9 @@ publish.workspace = true
 # The IPC version and its `since` rule are shared with the schema, so the wire
 # layer borrows the schema crate's Version rather than defining a second one.
 gnoblin-schema = { path = "../gnoblin-schema" }
+# And the version itself is the shared primitive, re-exported at this crate's root
+# so a peer names one type for the handshake and for a member's `since`.
+gnoblin-types.workspace = true
 # Protocol Buffers messages (design/rust-compositor.md, D16).
 prost.workspace = true
 

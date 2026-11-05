@@ -16,7 +16,7 @@
 
 use std::fmt;
 
-use gnoblin_schema::Version;
+use gnoblin_types::Version;
 
 /// Which part of the client's version the caret rule anchors on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,7 +80,7 @@ impl std::error::Error for Mismatch {}
 #[cfg(test)]
 mod tests {
     use super::{Mismatch, accepts, check};
-    use gnoblin_schema::Version;
+    use gnoblin_types::Version;
 
     fn version(text: &str) -> Version {
         Version::parse(text).expect("version")

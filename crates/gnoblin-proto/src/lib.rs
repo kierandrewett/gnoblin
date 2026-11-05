@@ -46,4 +46,4 @@ pub use version::{Mismatch, accepts, check};
 ///
 /// Re-exported so a client crate needs one import for the version it was built
 /// against, rather than depending on `gnoblin-schema` for it.
-pub use gnoblin_schema::Version;
+pub use gnoblin_types::Version;

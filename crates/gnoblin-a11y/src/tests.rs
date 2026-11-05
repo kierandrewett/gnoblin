@@ -8,9 +8,9 @@
 use crate::geometry::{Point, Rect, Scale};
 use crate::ids::{KeyCode, Keysym, OutputId, OwnerId};
 use crate::{
-    A11y, Appearance, BounceKeysConfig, ButtonAction, Config, Effect, Event, Follow, Key, KeyDecision, KeyRouting,
-    Keystroke, MagnifierConfig, Mode, Modifiers, MouseKeysConfig, Output, PointerButton, Published, SlowKeysConfig,
-    StickyKeysConfig, View,
+    A11y, Appearance, BounceKeysConfig, ButtonState, Config, Effect, Event, Follow, Key, KeyDecision, KeyRouting,
+    KeyState, Keystroke, MagnifierConfig, Mode, Modifiers, MouseKeysConfig, Output, PointerButton, Published,
+    SlowKeysConfig, StickyKeysConfig, View,
 };
 
 const SHIFT_L: u32 = 0xffe1;
@@ -455,7 +455,7 @@ fn slow_keys_hold_the_press_until_the_delay() {
     assert!(keys(&tick(&mut machine, 1299)).is_empty());
     let routed = keys(&tick(&mut machine, 1300));
     assert_eq!(routed.len(), 1);
-    assert!(!routed[0].released);
+    assert_eq!(routed[0].state, KeyState::Pressed);
     assert_eq!(routed[0].key.keysym, Keysym::new(LETTER_A));
     assert!(routed[0].modifiers.is_empty());
 }
@@ -571,14 +571,14 @@ fn disabling_mouse_keys_releases_pressed_buttons() {
     let effects = press(&mut machine, key(82, KP_0));
     assert!(effects.contains(&Effect::PointerButton {
         button: PointerButton::Primary,
-        action: ButtonAction::Press,
+        state: ButtonState::Pressed,
     }));
 
     let effects = machine.apply(Event::Configure(Config::default()));
 
     assert!(effects.contains(&Effect::PointerButton {
         button: PointerButton::Primary,
-        action: ButtonAction::Release,
+        state: ButtonState::Released,
     }));
 }
 

@@ -102,3 +102,41 @@ impl fmt::Display for InvalidVersion {
 }
 
 impl std::error::Error for InvalidVersion {}
+
+#[cfg(test)]
+mod tests {
+    use super::Version;
+
+    #[test]
+    fn parses_and_orders_full_versions() {
+        let version = Version::parse("0.2.10").expect("version");
+        assert_eq!(version, Version::new(0, 2, 10));
+        assert_eq!(version.to_string(), "0.2.10");
+        assert!(Version::new(0, 2, 9) < version);
+        assert!(Version::new(0, 3, 0) > version);
+        assert!(Version::new(1, 0, 0) > Version::new(0, 99, 99));
+    }
+
+    #[test]
+    fn rejects_anything_that_is_not_three_numbers() {
+        for text in [
+            "",
+            "0.2",
+            "0.2.0.1",
+            "0.2.x",
+            "0..2",
+            "0.2.0-alpha.1",
+            "1.0.0 ",
+            "-1.0.0",
+        ] {
+            assert!(Version::parse(text).is_err(), "`{text}` should not parse");
+        }
+    }
+
+    #[test]
+    fn message_names_the_rejected_text() {
+        let error = Version::parse("0.2").expect_err("invalid");
+        assert!(error.to_string().contains("`0.2`"), "{error}");
+        assert_eq!(error.text(), "0.2");
+    }
+}

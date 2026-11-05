@@ -35,9 +35,9 @@ use serde::Deserialize;
 
 use crate::error::SchemaError;
 use crate::model::{
-    ErrorCode, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code, is_lower_name,
+    ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code, is_lower_name,
 };
-use crate::version::Version;
+use gnoblin_types::Version;
 
 /// Shape of one schema file, exactly as `toml` deserializes it.
 ///
@@ -174,7 +174,7 @@ pub fn parse_schema(origin: &str, text: &str) -> Result<Schema, SchemaError> {
     }
 }
 
-fn parse_errors(raw_errors: &[RawError], version: Option<Version>, problems: &mut Vec<String>) -> Vec<ErrorCode> {
+fn parse_errors(raw_errors: &[RawError], version: Option<Version>, problems: &mut Vec<String>) -> Vec<ErrorDecl> {
     let mut errors = Vec::new();
     let mut seen = BTreeSet::new();
     for raw_error in raw_errors {
@@ -188,7 +188,7 @@ fn parse_errors(raw_errors: &[RawError], version: Option<Version>, problems: &mu
         let Some(since) = since_of(problems, raw_error.since.as_deref(), &owner, version) else {
             continue;
         };
-        errors.push(ErrorCode {
+        errors.push(ErrorDecl {
             name: raw_error.name.clone(),
             since,
         });

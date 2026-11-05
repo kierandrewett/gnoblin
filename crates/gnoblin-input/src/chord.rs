@@ -103,94 +103,41 @@ impl ChordKind {
     }
 }
 
-/// A set of modifier keys, as a plain bit set.
+/// A set of modifier keys, in the one layout `gnoblin-types` documents.
 ///
-/// The bit values are the crate's own; the mechanism layer maps them onto the
-/// xkbcommon and libinput masks it already has, so no xkb type leaks into the
-/// grammar.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Modifiers(u8);
+/// Re-exported from `gnoblin-types` rather than declared here: an event mask the
+/// router compares a chord against is built by the mechanism layer from the same
+/// bit layout, so a chord and an event cannot disagree about which bit Alt is.
+pub use gnoblin_types::Modifiers;
 
-impl Modifiers {
-    /// No modifier.
-    pub const NONE: Self = Self(0);
-    /// Shift.
-    pub const SHIFT: Self = Self(1 << 0);
-    /// Control.
-    pub const CONTROL: Self = Self(1 << 1);
-    /// Alt.
-    pub const ALT: Self = Self(1 << 2);
-    /// Meta.
-    pub const META: Self = Self(1 << 3);
-    /// Super, usually the Windows-logo key.
-    pub const SUPER: Self = Self(1 << 4);
-    /// Hyper.
-    pub const HYPER: Self = Self(1 << 5);
-    /// Every modifier the grammar knows.
-    pub const ALL: Self = Self(0b0011_1111);
+/// The order every written chord uses, and the order the error suggestions use.
+const WRITTEN_ORDER: [Modifiers; 6] = [
+    Modifiers::SHIFT,
+    Modifiers::CONTROL,
+    Modifiers::ALT,
+    Modifiers::META,
+    Modifiers::SUPER,
+    Modifiers::HYPER,
+];
 
-    /// The order every written chord uses, and the order the error suggestions use.
-    pub const WRITTEN_ORDER: [Self; 6] = [
-        Self::SHIFT,
-        Self::CONTROL,
-        Self::ALT,
-        Self::META,
-        Self::SUPER,
-        Self::HYPER,
-    ];
-
-    /// Whether every modifier in `other` is also in this set.
-    pub const fn contains(self, other: Self) -> bool {
-        self.0 & other.0 == other.0
-    }
-
-    /// This set with the modifiers of `other` added.
-    pub const fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
-    }
-
-    /// The raw bit set, for wire formats and logging.
-    pub const fn bits(self) -> u8 {
-        self.0
-    }
-
-    /// Whether no modifier is held.
-    pub const fn is_empty(self) -> bool {
-        self.0 == 0
-    }
-
-    /// The written name of a single-modifier set, or an empty string otherwise.
-    pub const fn name(self) -> &'static str {
-        match self.0 {
-            1 => "Shift",
-            2 => "Control",
-            4 => "Alt",
-            8 => "Meta",
-            16 => "Super",
-            32 => "Hyper",
-            _ => "",
-        }
+/// The name a single-modifier set is written as, or an empty string otherwise.
+fn written_name(modifier: Modifiers) -> &'static str {
+    match modifier {
+        Modifiers::SHIFT => "Shift",
+        Modifiers::CONTROL => "Control",
+        Modifiers::ALT => "Alt",
+        Modifiers::META => "Meta",
+        Modifiers::SUPER => "Super",
+        Modifiers::HYPER => "Hyper",
+        _ => "",
     }
 }
 
-/// An XKB keysym value.
+/// An XKB keysym value, from `gnoblin-types`.
 ///
-/// The grammar never interprets the value; it only compares and re-emits it, which
-/// is what makes a chord mean the same key to Gnoblin and to Mutter.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Keysym(u32);
-
-impl Keysym {
-    /// The keysym with this XKB value.
-    pub const fn new(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// The XKB value.
-    pub const fn raw(self) -> u32 {
-        self.0
-    }
-}
+/// Shared with the accessibility machines: a key a chord names and a key the
+/// screen reader grabs are the same symbol, so they are the same type.
+pub use gnoblin_types::Keysym;
 
 /// A keysym together with the name Gnoblin writes it as.
 ///
@@ -248,21 +195,12 @@ impl Ord for Symbol {
     }
 }
 
-/// A hardware key code, as libinput reports it: 1 to 255.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct KeyCode(u8);
-
-impl KeyCode {
-    /// The key code with this number.
-    pub const fn new(code: u8) -> Self {
-        Self(code)
-    }
-
-    /// The number.
-    pub const fn raw(self) -> u8 {
-        self.0
-    }
-}
+/// A hardware key code, from `gnoblin-types`.
+///
+/// The grammar accepts the `0x01` to `0xff` range only (a written chord names a key
+/// a person can write in two hex digits), while the type holds libinput's 32-bit
+/// codes so the router carries a key past 255 unchanged.
+pub use gnoblin_types::KeyCode;
 
 /// The key part of a chord.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -283,7 +221,7 @@ impl fmt::Display for Key {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Symbol(symbol) => formatter.write_str(symbol.name()),
-            Self::KeyCode(code) => write!(formatter, "0x{:02x}", code.raw()),
+            Self::KeyCode(code) => write!(formatter, "0x{:02x}", code.get()),
             Self::AboveTab => formatter.write_str("Above_Tab"),
             Self::Button(button) => write!(formatter, "Button{button}"),
             Self::BareSuper => formatter.write_str("Super"),
@@ -392,7 +330,7 @@ impl Chord {
             }
             return Ok(Self {
                 modifiers,
-                key: Key::KeyCode(KeyCode::new(code)),
+                key: Key::KeyCode(KeyCode::new(u32::from(code))),
             });
         }
         if rest.len() > MAX_KEY_NAME_LENGTH {
@@ -456,9 +394,9 @@ impl fmt::Display for Chord {
         if self.is_bare_super() {
             return formatter.write_str("Super");
         }
-        for modifier in Modifiers::WRITTEN_ORDER {
+        for modifier in WRITTEN_ORDER {
             if self.modifiers.contains(modifier) {
-                write!(formatter, "<{}>", modifier.name())?;
+                write!(formatter, "<{}>", written_name(modifier))?;
             }
         }
         write!(formatter, "{}", self.key)
@@ -715,7 +653,7 @@ fn suggest(text: &str, kind: ChordKind) -> Option<String> {
         if code == 0 {
             return None;
         }
-        Key::KeyCode(KeyCode::new(code))
+        Key::KeyCode(KeyCode::new(u32::from(code)))
     } else {
         Key::Symbol(PLACEHOLDER_KEYSYMS.resolve(key)?)
     };

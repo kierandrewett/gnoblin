@@ -23,8 +23,8 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use crate::model::{Catalog, ErrorCode, Field, Namespace, ObjectType, Type};
-use crate::version::Version;
+use crate::model::{Catalog, ErrorDecl, Field, Namespace, ObjectType, Type};
+use gnoblin_types::Version;
 
 /// Path of the schema files, relative to the workspace root.
 ///
@@ -164,7 +164,7 @@ fn render(catalog: &Catalog, namespace: &Namespace, version: Version) -> String 
         render_object(&mut text, object);
     }
 
-    let errors: Vec<&ErrorCode> = catalog.errors(namespace).collect();
+    let errors: Vec<&ErrorDecl> = catalog.errors(namespace).collect();
     if !errors.is_empty() {
         let _ = writeln!(text);
         render_errors(&mut text, namespace, &errors);
@@ -275,7 +275,7 @@ fn proto_type(ty: &Type) -> (Option<&'static str>, String, Option<String>) {
     }
 }
 
-fn render_errors(text: &mut String, namespace: &Namespace, errors: &[&ErrorCode]) {
+fn render_errors(text: &mut String, namespace: &Namespace, errors: &[&ErrorDecl]) {
     let prefix = namespace
         .as_str()
         .split('.')

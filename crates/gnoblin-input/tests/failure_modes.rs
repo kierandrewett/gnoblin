@@ -4,10 +4,10 @@ mod common;
 
 use common::{CODE_Q, CODE_W, E, Q, W, button_event, chord, key_event, name, pointer_chord, press, release};
 use gnoblin_input::{
-    Activity, BindingTable, CancelReason, Chord, ChordKind, Contact, ContactPhase, Context, Decision, Edge, EdgeBand,
-    Expired, GestureAction, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase, GestureRoute,
-    GestureRouter, GestureSpec, Insertion, Modifiers, Name, Phase, PinchDirection, PolicyQueue, Recogniser, Reply,
-    RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick, Trigger, When,
+    Activity, BindingTable, ButtonState, CancelReason, Chord, ChordKind, Contact, ContactPhase, Context, Decision,
+    Edge, EdgeBand, Expired, GestureAction, GestureConfig, GestureEvent, GestureKind, GesturePath, GesturePhase,
+    GestureRoute, GestureRouter, GestureSpec, Insertion, KeyState, Modifiers, Name, PinchDirection, PolicyQueue,
+    Recogniser, Reply, RequestId, Routed, Router, Scope, ShortcutInhibit, Submitted, Target, Tick, Trigger, When,
 };
 
 fn route(router: &mut Router, event: gnoblin_input::Event) -> Routed {
@@ -312,7 +312,7 @@ fn a_consumed_press_keeps_its_release() {
         gnoblin_input::KeyCode::new(28),
         gnoblin_input::Keysym::new(0xff0d),
         Modifiers::SUPER,
-        Phase::Press,
+        KeyState::Pressed,
     );
     assert_eq!(route(&mut router, return_press).target, Target::Binding(binding));
     assert!(router.bindings_mut().remove(binding).is_some());
@@ -320,7 +320,7 @@ fn a_consumed_press_keeps_its_release() {
         gnoblin_input::KeyCode::new(28),
         gnoblin_input::Keysym::new(0xff0d),
         Modifiers::SUPER,
-        Phase::Release,
+        KeyState::Released,
     );
     let routed = route(&mut router, return_release);
     assert_eq!(routed.target, Target::Binding(binding));
@@ -536,18 +536,18 @@ fn a_pointer_chord_needs_a_modifier_and_keeps_the_click() {
         .expect("resize")
         .id();
     assert_eq!(
-        route(&mut router, button_event(3, Modifiers::SUPER, Phase::Press)).target,
+        route(&mut router, button_event(3, Modifiers::SUPER, ButtonState::Pressed)).target,
         Target::Binding(binding)
     );
     assert_eq!(
-        route(&mut router, button_event(1, Modifiers::NONE, Phase::Press)).target,
+        route(&mut router, button_event(1, Modifiers::NONE, ButtonState::Pressed)).target,
         Target::Client,
         "an ordinary click still reaches the application"
     );
-    route(&mut router, button_event(1, Modifiers::NONE, Phase::Release));
+    route(&mut router, button_event(1, Modifiers::NONE, ButtonState::Released));
     assert_eq!(router.held(), 1, "the chord's own button is still down");
     assert_eq!(
-        route(&mut router, button_event(3, Modifiers::SUPER, Phase::Release)).target,
+        route(&mut router, button_event(3, Modifiers::SUPER, ButtonState::Released)).target,
         Target::Binding(binding),
         "its release belongs to the binding too"
     );

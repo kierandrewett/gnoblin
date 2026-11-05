@@ -34,12 +34,11 @@ mod error;
 mod model;
 mod parse;
 pub mod proto;
-mod version;
 
 pub use error::SchemaError;
+pub use gnoblin_types::{InvalidVersion, Version};
 pub use model::{
-    Catalog, ErrorCode, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code,
+    Catalog, ErrorDecl, Field, Method, Namespace, ObjectType, Property, Schema, Signal, Type, is_error_code,
     is_lower_name,
 };
 pub use parse::parse_schema;
-pub use version::{InvalidVersion, Version};

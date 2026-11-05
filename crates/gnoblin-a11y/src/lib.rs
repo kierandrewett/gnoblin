@@ -99,9 +99,10 @@
 //! [`geometry`] and [`ids`] re-export `gnoblin-types`: a [`geometry::Rect`]
 //! here is the same type as a `Rect` in window management or in the renderer,
 //! and an [`ids::OutputId`] is the same identity the output layout allocates, so
-//! a magnifier view needs no conversion to be drawn. What this crate defines
-//! itself is only what the input layer hands it (a keycode, a keysym, a modifier
-//! set, a key event) and its own states.
+//! a magnifier view needs no conversion to be drawn. A [`Modifiers`] here is the
+//! mask the input router compared a chord against, so sticky keys adds a bit the
+//! router already understands. What this crate defines itself is only the key
+//! event, the keystroke and the machines' own states.
 //!
 //! # What this crate does not own
 //!
@@ -121,7 +122,6 @@ pub mod geometry;
 pub mod ids;
 mod keyboard;
 mod magnifier;
-mod modifiers;
 mod monitor;
 mod mouse_keys;
 
@@ -134,9 +134,7 @@ pub use a11y::A11y;
 pub use config::{
     BounceKeysConfig, Config, Follow, MagnifierConfig, Mode, MouseKeysConfig, SlowKeysConfig, StickyKeysConfig,
 };
-pub use effect::{
-    Appearance, BeepReason, ButtonAction, Effect, KeyDecision, KeyRouting, PointerButton, Published, View,
-};
+pub use effect::{Appearance, BeepReason, Effect, KeyDecision, KeyRouting, PointerButton, Published, View};
 pub use event::{Event, Key, Keystroke, Output};
+pub use gnoblin_types::{ButtonState, KeyState, Modifiers};
 pub use keyboard::Sticky;
-pub use modifiers::Modifiers;

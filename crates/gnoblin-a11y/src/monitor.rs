@@ -16,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ids::{Keysym, OwnerId};
-use crate::{Key, KeyDecision, Keystroke, Modifiers};
+use crate::{Key, KeyDecision, KeyState, Keystroke, Modifiers};
 
 /// What one consumer asked for.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -110,7 +110,7 @@ impl Monitors {
 
     /// Records a key event so a held grabbed modifier can grab the keys pressed
     /// with it, and a released one stops doing so.
-    pub fn note(&mut self, key: &Key, released: bool) {
+    pub fn note(&mut self, key: &Key, state: KeyState) {
         let grabbed = self
             .consumers
             .values()
@@ -118,7 +118,7 @@ impl Monitors {
         if !grabbed {
             return;
         }
-        if released {
+        if state.is_release() {
             self.held.remove(&key.keysym);
         } else {
             self.held.insert(key.keysym);

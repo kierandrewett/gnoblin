@@ -14,7 +14,7 @@
 
 use crate::error::CodecError;
 use crate::version::{self, Mismatch};
-use gnoblin_schema::Version;
+use gnoblin_types::Version;
 
 /// Magic that starts every handshake frame, so one can be told from an envelope.
 pub const MAGIC: [u8; 4] = *b"GNBL";
@@ -127,7 +127,7 @@ fn read_u32(frame: &[u8], at: usize) -> u32 {
 mod tests {
     use super::{HANDSHAKE_LEN, Handshake, HandshakeKind, MAGIC};
     use crate::CodecError;
-    use gnoblin_schema::Version;
+    use gnoblin_types::Version;
 
     fn version(text: &str) -> Version {
         Version::parse(text).expect("version")

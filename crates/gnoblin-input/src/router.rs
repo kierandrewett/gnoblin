@@ -35,8 +35,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::binding::{Binding, BindingId, BindingTable, Conflict, Trigger};
-use crate::chord::{Chord, KeyCode, Keysym, Modifiers};
+use crate::chord::Chord;
 use crate::name::Name;
+use gnoblin_types::{ButtonState, KeyCode, KeyState, Keysym, Modifiers};
 
 /// Which devices a grab takes.
 ///
@@ -99,15 +100,6 @@ impl Grab {
     }
 }
 
-/// Which half of a key or button pair an event is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Phase {
-    /// The press.
-    Press,
-    /// The release.
-    Release,
-}
-
 /// The edge to route.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
@@ -120,7 +112,7 @@ pub enum Event {
         /// The modifiers held now.
         modifiers: Modifiers,
         /// Press or release.
-        phase: Phase,
+        state: KeyState,
         /// Whether this is an autorepeat, which only follows its press.
         repeat: bool,
     },
@@ -131,7 +123,7 @@ pub enum Event {
         /// The modifiers held now.
         modifiers: Modifiers,
         /// Press or release.
-        phase: Phase,
+        state: ButtonState,
     },
 }
 
@@ -312,14 +304,14 @@ impl Router {
                 key_code,
                 symbol,
                 modifiers,
-                phase,
+                state,
                 repeat,
-            } => self.route_key(key_code, symbol, modifiers, phase, repeat, inhibit),
+            } => self.route_key(key_code, symbol, modifiers, state, repeat, inhibit),
             Event::Button {
                 button,
                 modifiers,
-                phase,
-            } => self.route_button(button, modifiers, phase, inhibit),
+                state,
+            } => self.route_button(button, modifiers, state, inhibit),
         }
     }
 
@@ -328,7 +320,7 @@ impl Router {
         key_code: KeyCode,
         symbol: Keysym,
         modifiers: Modifiers,
-        phase: Phase,
+        state: KeyState,
         repeat: bool,
         inhibit: ShortcutInhibit,
     ) -> Routed {
@@ -357,8 +349,8 @@ impl Router {
                 }
             };
         }
-        match phase {
-            Phase::Press => {
+        match state {
+            KeyState::Pressed => {
                 self.stats.presses += 1;
                 let (target, fired) = self.press_key(symbol, modifiers, inhibit);
                 if self.owned.insert(pressed, target).is_some() {
@@ -374,7 +366,7 @@ impl Router {
                     followed_press: false,
                 }
             }
-            Phase::Release => {
+            KeyState::Released => {
                 self.stats.releases += 1;
                 match self.owned.remove(&pressed) {
                     Some(target) => {
@@ -405,10 +397,16 @@ impl Router {
         }
     }
 
-    fn route_button(&mut self, button: u8, modifiers: Modifiers, phase: Phase, inhibit: ShortcutInhibit) -> Routed {
+    fn route_button(
+        &mut self,
+        button: u8,
+        modifiers: Modifiers,
+        state: ButtonState,
+        inhibit: ShortcutInhibit,
+    ) -> Routed {
         let pressed = Pressed::Button(button);
-        match phase {
-            Phase::Press => {
+        match state {
+            ButtonState::Pressed => {
                 self.stats.presses += 1;
                 let (target, fired) = self.press_button(button, modifiers, inhibit);
                 if self.owned.insert(pressed, target).is_some() {
@@ -424,7 +422,7 @@ impl Router {
                     followed_press: false,
                 }
             }
-            Phase::Release => {
+            ButtonState::Released => {
                 self.stats.releases += 1;
                 match self.owned.remove(&pressed) {
                     Some(target) => {
@@ -556,10 +554,11 @@ fn allowed(binding: &Binding, inhibit: ShortcutInhibit) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, Phase, Routed, Router, Scope, ShortcutInhibit, Target};
+    use super::{Event, Routed, Router, Scope, ShortcutInhibit, Target};
     use crate::binding::Trigger;
     use crate::chord::{Chord, ChordKind, KeyCode, Keysym, Keysyms, Modifiers, Symbol};
     use crate::name::Name;
+    use gnoblin_types::{ButtonState, KeyState};
 
     const Q: Keysym = Keysym::new(0x71);
     const W: Keysym = Keysym::new(0x77);
@@ -603,7 +602,7 @@ mod tests {
             key_code: code_for(symbol),
             symbol,
             modifiers,
-            phase: Phase::Press,
+            state: KeyState::Pressed,
             repeat: false,
         }
     }
@@ -613,7 +612,7 @@ mod tests {
             key_code: code_for(symbol),
             symbol,
             modifiers,
-            phase: Phase::Release,
+            state: KeyState::Released,
             repeat: false,
         }
     }
@@ -687,7 +686,7 @@ mod tests {
             Event::Button {
                 button: 3,
                 modifiers: Modifiers::SUPER,
-                phase: Phase::Press,
+                state: ButtonState::Pressed,
             },
             ShortcutInhibit::Clear,
         );
@@ -696,7 +695,7 @@ mod tests {
             Event::Button {
                 button: 1,
                 modifiers: Modifiers::NONE,
-                phase: Phase::Press,
+                state: ButtonState::Pressed,
             },
             ShortcutInhibit::Clear,
         );
@@ -705,7 +704,7 @@ mod tests {
             Event::Button {
                 button: 1,
                 modifiers: Modifiers::NONE,
-                phase: Phase::Release,
+                state: ButtonState::Released,
             },
             ShortcutInhibit::Clear,
         );
@@ -758,7 +757,7 @@ mod tests {
             key_code: code_for(Q),
             symbol: Q,
             modifiers: Modifiers::NONE,
-            phase: Phase::Press,
+            state: KeyState::Pressed,
             repeat: true,
         };
         let routed = route(&mut router, repeat);

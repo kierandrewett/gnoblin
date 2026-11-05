@@ -6,7 +6,7 @@
 //! carried between moves so a slow setting still moves at all.
 
 use crate::ids::Keysym;
-use crate::{ButtonAction, Effect, Key, MouseKeysConfig, PointerButton};
+use crate::{ButtonState, Effect, Key, MouseKeysConfig, PointerButton};
 
 /// The interval between pointer moves while a movement key is held, in
 /// milliseconds: the same 10 Hz cadence the reference uses.
@@ -40,9 +40,13 @@ const KP_7: u32 = 0xffb7;
 const KP_8: u32 = 0xffb8;
 const KP_9: u32 = 0xffb9;
 
-/// Which way a held movement key moves the pointer.
+/// One step per movement tick: which way a held movement key moves the pointer.
+///
+/// Deliberately not `gnoblin_types::Direction`: that names one of four edges, while
+/// this is a signed step on both axes (a keypad 7 moves up and left at once). The
+/// two would collide as names and mean different things.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Direction {
+struct PointerStep {
     x: i8,
     y: i8,
 }
@@ -52,19 +56,19 @@ struct Direction {
 /// Both the numeric keypad names and the navigation names are accepted, because
 /// which keysym the key produces depends on Num Lock and on the layout, and the
 /// reference accepts both.
-fn direction(keysym: Keysym) -> Option<Direction> {
-    let direction = match keysym.get() {
-        KP_7 | KP_HOME => Direction { x: -1, y: -1 },
-        KP_8 | KP_UP => Direction { x: 0, y: -1 },
-        KP_9 | KP_PAGE_UP => Direction { x: 1, y: -1 },
-        KP_4 | KP_LEFT => Direction { x: -1, y: 0 },
-        KP_6 | KP_RIGHT => Direction { x: 1, y: 0 },
-        KP_1 | KP_END => Direction { x: -1, y: 1 },
-        KP_2 | KP_DOWN => Direction { x: 0, y: 1 },
-        KP_3 | KP_PAGE_DOWN => Direction { x: 1, y: 1 },
+fn step(keysym: Keysym) -> Option<PointerStep> {
+    let step = match keysym.get() {
+        KP_7 | KP_HOME => PointerStep { x: -1, y: -1 },
+        KP_8 | KP_UP => PointerStep { x: 0, y: -1 },
+        KP_9 | KP_PAGE_UP => PointerStep { x: 1, y: -1 },
+        KP_4 | KP_LEFT => PointerStep { x: -1, y: 0 },
+        KP_6 | KP_RIGHT => PointerStep { x: 1, y: 0 },
+        KP_1 | KP_END => PointerStep { x: -1, y: 1 },
+        KP_2 | KP_DOWN => PointerStep { x: 0, y: 1 },
+        KP_3 | KP_PAGE_DOWN => PointerStep { x: 1, y: 1 },
         _ => return None,
     };
-    Some(direction)
+    Some(step)
 }
 
 /// Whether this key does something to the pointer's buttons.
@@ -79,7 +83,7 @@ fn is_button_key(keysym: Keysym) -> bool {
 pub struct MouseKeys {
     config: MouseKeysConfig,
     /// The direction of the movement key that is down, if any.
-    direction: Option<Direction>,
+    step: Option<PointerStep>,
     /// When the movement key went down, which is where acceleration starts.
     press_at_ms: u64,
     /// When the last move happened, so the next one moves only its own span.
@@ -101,7 +105,7 @@ impl MouseKeys {
     pub fn new(config: MouseKeysConfig) -> Self {
         Self {
             config,
-            direction: None,
+            step: None,
             press_at_ms: 0,
             last_ms: 0,
             next_ms: None,
@@ -171,10 +175,10 @@ impl MouseKeys {
                 true
             }
             keysym => {
-                let Some(direction) = direction(Keysym::new(keysym)) else {
+                let Some(step) = step(Keysym::new(keysym)) else {
                     return false;
                 };
-                self.start(direction, now_ms, effects);
+                self.start(step, now_ms, effects);
                 true
             }
         }
@@ -185,7 +189,7 @@ impl MouseKeys {
         if !self.config.enabled || num_lock {
             return false;
         }
-        if direction(key.keysym).is_some() {
+        if step(key.keysym).is_some() {
             self.stop();
             return true;
         }
@@ -197,14 +201,14 @@ impl MouseKeys {
         let Some(next_ms) = self.next_ms else {
             return;
         };
-        let Some(direction) = self.direction else {
+        let Some(step) = self.step else {
             self.next_ms = None;
             return;
         };
         if now_ms < next_ms {
             return;
         }
-        let (dx, dy) = self.advance(direction, now_ms);
+        let (dx, dy) = self.advance(step, now_ms);
         if dx != 0 || dy != 0 {
             effects.push(Effect::PointerMotion { dx, dy });
         }
@@ -217,8 +221,8 @@ impl MouseKeys {
     ///
     /// Pressing a second movement key changes direction without restarting the
     /// clock, so a diagonal walk keeps accelerating.
-    fn start(&mut self, direction: Direction, now_ms: u64, effects: &mut Vec<Effect>) {
-        self.direction = Some(direction);
+    fn start(&mut self, step: PointerStep, now_ms: u64, effects: &mut Vec<Effect>) {
+        self.step = Some(step);
         if self.next_ms.is_some() {
             return;
         }
@@ -232,7 +236,7 @@ impl MouseKeys {
 
     /// Stops the motion loop, keeping the pointer where it is.
     fn stop(&mut self) {
-        self.direction = None;
+        self.step = None;
         self.next_ms = None;
         self.carry = 0;
     }
@@ -243,7 +247,7 @@ impl MouseKeys {
     /// The ramp starts when the initial delay ends, not when the key goes down,
     /// so the pointer leaves rest slowly instead of arriving at full speed by
     /// the time the delay is over.
-    fn advance(&mut self, direction: Direction, now_ms: u64) -> (i64, i64) {
+    fn advance(&mut self, step: PointerStep, now_ms: u64) -> (i64, i64) {
         let acceleration_ms = self.config.acceleration_time_ms.max(1);
         let started_ms = self.press_at_ms.saturating_add(self.config.initial_delay_ms);
         let moving_ms = now_ms.saturating_sub(started_ms).min(acceleration_ms);
@@ -254,7 +258,7 @@ impl MouseKeys {
         let distance = self.carry + covered;
         self.carry = distance.rem_euclid(1000);
         let whole = distance.div_euclid(1000);
-        (whole * i64::from(direction.x), whole * i64::from(direction.y))
+        (whole * i64::from(step.x), whole * i64::from(step.y))
     }
 
     /// Press the selected button, then let it up again.
@@ -270,7 +274,7 @@ impl MouseKeys {
         self.held[self.button.slot()] = true;
         effects.push(Effect::PointerButton {
             button: self.button,
-            action: ButtonAction::Press,
+            state: ButtonState::Pressed,
         });
     }
 
@@ -281,7 +285,7 @@ impl MouseKeys {
         self.held[button.slot()] = false;
         effects.push(Effect::PointerButton {
             button,
-            action: ButtonAction::Release,
+            state: ButtonState::Released,
         });
     }
 }

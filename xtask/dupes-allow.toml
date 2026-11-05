@@ -267,12 +267,6 @@ kind = "same-name"
 reason = "each crate's event enum is the input vocabulary of its own state machine; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-schema::ErrorCode"
-right = "gnoblin-types::ErrorCode"
-kind = "same-name"
-reason = "the schema's declaration carries a name and the version that added it; the validated code is the value the wire carries"
-
-[[allow]]
 left = "gnoblin-session::Effect"
 right = "gnoblin-wm::Effect"
 kind = "same-name"
@@ -289,12 +283,6 @@ left = "gnoblin-a11y::Mode"
 right = "gnoblin-compat-core::Mode"
 kind = "same-name"
 reason = "an accessibility input mode and a compat adapter's mode gate share a word and nothing else"
-
-[[allow]]
-left = "gnoblin-input::Phase"
-right = "gnoblin-output::Phase"
-kind = "same-name"
-reason = "an output transaction's lifecycle phase and the input router's phase belong to different state machines"
 
 [[allow]]
 left = "gnoblin-output::Verdict"
@@ -319,12 +307,6 @@ left = "gnoblin-output::Edge"
 right = "gnoblin-types::Edge"
 kind = "same-name"
 reason = "a placement side, which can be above or below an anchor, is not one axis direction of a rectangle"
-
-[[allow]]
-left = "gnoblin-a11y::ButtonAction"
-right = "gnoblin-input::Phase"
-kind = "same-shape"
-reason = "a mouse-key action and an input-router phase carry the same pressing vocabulary and mean different things"
 
 [[allow]]
 left = "gnoblin-a11y::Event"
@@ -537,13 +519,67 @@ kind = "same-name"
 reason = "an object-model signal is not a process signal"
 
 [[allow]]
-left = "gnoblin-a11y::ButtonAction"
-right = "gnoblin-input::Trigger"
-kind = "same-shape"
-reason = "a mouse-key action and an input trigger carry the same pressing vocabulary and mean different things"
-
-[[allow]]
 left = "gnoblin-input::WhenError"
 right = "gnoblin-types::InvalidErrorCode"
 kind = "same-shape"
 reason = "a gesture's timing refusal and a rejected error-code string both carry one text field; they are unrelated failures"
+
+[[allow]]
+left = "gnoblin-a11y::Key"
+right = "gnoblin-input::Key"
+kind = "same-name"
+reason = "an a11y key is one key event as the compositor saw it; an input key is the key half of a parsed chord, which may be a pointer button or the bare word Super"
+
+[[allow]]
+left = "gnoblin-a11y::Output"
+right = "gnoblin-wm::Output"
+kind = "same-name"
+reason = "an a11y output is the layout bounds the magnifier clamps into; the window manager's output is the managed output with its reservation"
+
+[[allow]]
+left = "gnoblin-authority::GestureKind"
+right = "gnoblin-input::GestureKind"
+kind = "same-name"
+reason = "authority names the input that created a trusted context (pointer, key, touch); the input router names a recognised multi-touch gesture (swipe, pinch)"
+
+[[allow]]
+left = "gnoblin-compat-core::Kind"
+right = "gnoblin-config::Kind"
+kind = "same-name"
+reason = "a compat matrix entry describes a D-Bus interface member (method, property, signal); a config kind is the declared type of a setting's value"
+
+[[allow]]
+left = "gnoblin-compat-core::Kind"
+right = "gnoblin-config-codegen::Kind"
+kind = "same-name"
+reason = "a compat matrix entry describes a D-Bus interface member (method, property, signal); the codegen's kind is the type of a setting's value"
+
+[[allow]]
+left = "gnoblin-config::Kind"
+right = "gnoblin-config-codegen::Kind"
+kind = "same-name"
+reason = "the codegen's parser decides a spelling and the published catalogue names the result; the two enums are separate because one is build-time input and carries no ranges"
+
+[[allow]]
+left = "gnoblin-config::Kind"
+right = "xtask::Kind"
+kind = "same-name"
+reason = "a config kind is the declared type of a setting's value; the scan's kind says whether a declaration is a struct or an enum"
+
+[[allow]]
+left = "gnoblin-config-codegen::Kind"
+right = "xtask::Kind"
+kind = "same-name"
+reason = "a setting's value kind is not a declaration kind; the scan only distinguishes structs from enums"
+
+[[allow]]
+left = "gnoblin-config-codegen::Schema"
+right = "gnoblin-schema::Schema"
+kind = "same-name"
+reason = "the codegen's schema is the config document format it reads (settings, enums, records); the schema crate's is the IPC object contract"
+
+[[allow]]
+left = "gnoblin-config::IdShape"
+right = "gnoblin-config-codegen::IdShape"
+kind = "same-name"
+reason = "the codegen parses a record map's key shape and the generated crate names the same four shapes at run time; merging them would make the generated document depend on its generator"

@@ -6,7 +6,7 @@
 
 use crate::geometry::{Rect, Scale};
 use crate::ids::{OutputId, OwnerId};
-use crate::{Key, Mode, Modifiers, Sticky};
+use crate::{ButtonState, Key, KeyState, Mode, Modifiers, Sticky};
 
 /// Who sees a key event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,8 +28,8 @@ pub enum KeyDecision {
 /// wiring mistake cannot invent a delivery.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct KeyRouting {
-    /// Whether this is the key-up half.
-    pub released: bool,
+    /// Which half of the press and release pair this is.
+    pub state: KeyState,
     /// The key itself, for the monitor's `KeyEvent` signal and for the client.
     pub key: Key,
     /// The modifier mask the client and the monitor see, with sticky keys
@@ -51,15 +51,6 @@ pub enum PointerButton {
     Middle,
     /// Button 3.
     Secondary,
-}
-
-/// What a mouse-keys click does to a button.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ButtonAction {
-    /// Hold the button down.
-    Press,
-    /// Let the button up.
-    Release,
 }
 
 impl PointerButton {
@@ -164,7 +155,7 @@ pub enum Effect {
         /// Which button.
         button: PointerButton,
         /// What happens to it.
-        action: ButtonAction,
+        state: ButtonState,
     },
     /// Ask the compositor's timer to deliver [`crate::Event::Tick`] no earlier
     /// than this instant. A later tick is allowed.
