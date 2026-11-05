@@ -30,6 +30,42 @@ pub struct ObservedWindow {
     pub geometry: Rect,
 }
 
+/// One layer surface, as the server last saw it.
+///
+/// A layer surface is not a window: it has no work-area constraint, no stacking place
+/// in the window manager and no identity there. What it has is a namespace, a layer, a
+/// rectangle and, when its anchors make it a strip against one edge, an exclusive zone
+/// the work area leaves out.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ObservedLayer {
+    /// The namespace the client named, which is how a shell recognises its own bars.
+    pub namespace: String,
+    /// `background`, `bottom`, `top` or `overlay`.
+    pub layer: String,
+    /// The rectangle it occupies in global logical coordinates.
+    pub rect: Rect,
+    /// The exclusive zone as the protocol states it: a positive amount, `0` neutral
+    /// and `-1` for a surface that does not care.
+    pub exclusive: i32,
+    /// Whether it has committed a buffer, which is what "shown" means for one.
+    pub mapped: bool,
+}
+
+/// A refused activation: what was refused and why.
+///
+/// The plan calls the signal `activation-denied`; a shell shows it and a test asserts
+/// on it, so "focus did not move" is never the only evidence. `reason` is one of
+/// `gnoblin-authority`'s own denial names (`unknown-token`, `reused-token`,
+/// `session-locked`, ...) or `not-a-window` when the token named a surface that is not
+/// a managed window.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ActivationDenial {
+    /// The window that asked, when the surface was a managed one.
+    pub window: Option<WindowId>,
+    /// Why it was refused.
+    pub reason: String,
+}
+
 /// What a reader may know about the session lock.
 ///
 /// The answers are the ones the lock announced, so a consumer compares what it
@@ -62,6 +98,9 @@ pub struct SessionSnapshot {
     pub(crate) outputs: Vec<OutputId>,
     pub(crate) focus: Option<WindowId>,
     pub(crate) lock: LockObservation,
+    pub(crate) layers: Vec<ObservedLayer>,
+    pub(crate) activation_denied: Option<ActivationDenial>,
+    pub(crate) selection: Option<Vec<String>>,
 }
 
 impl SessionSnapshot {
@@ -139,6 +178,30 @@ impl SessionSnapshot {
     pub fn capture_allowed(&self) -> bool {
         self.lock.capture_allowed
     }
+
+    /// The layer surfaces, in creation order.
+    #[must_use]
+    pub fn layers(&self) -> &[ObservedLayer] {
+        &self.layers
+    }
+
+    /// The layer surface of one namespace, when a test knows there is exactly one.
+    #[must_use]
+    pub fn layer(&self, namespace: &str) -> Option<&ObservedLayer> {
+        self.layers.iter().find(|layer| layer.namespace == namespace)
+    }
+
+    /// The last refused activation, if one happened and nothing has refused since.
+    #[must_use]
+    pub fn activation_denied(&self) -> Option<&ActivationDenial> {
+        self.activation_denied.as_ref()
+    }
+
+    /// The mime types of the current clipboard selection, when there is one.
+    #[must_use]
+    pub fn selection(&self) -> Option<&[String]> {
+        self.selection.as_deref()
+    }
 }
 
 /// A reader outside the loop that wants to know when the session's state changed.
@@ -178,6 +241,9 @@ impl SessionSnapshot {
             outputs,
             focus,
             lock: LockObservation::default(),
+            layers: Vec::new(),
+            activation_denied: None,
+            selection: None,
         }
     }
 }

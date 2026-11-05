@@ -58,8 +58,7 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle, SERIAL_COUNTER};
-use smithay::wayland::selection::SelectionHandler;
-use smithay::wayland::selection::data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler};
+
 use smithay::wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrab, XWaylandKeyboardGrabHandler};
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::settings::Value as SettingValue;
@@ -634,22 +633,6 @@ impl XWaylandShellHandler for State {
 }
 
 impl DndGrabHandler for State {}
-
-impl SelectionHandler for State {
-    type SelectionUserData = ();
-}
-
-impl WaylandDndGrabHandler for State {}
-
-impl DataDeviceHandler for State {
-    fn data_device_state(&mut self) -> &mut DataDeviceState {
-        // The global is created with the session, so the handler cannot be reached
-        // without one.
-        self.data_device
-            .as_mut()
-            .expect("the data device global exists with the Xwayland session that needs it")
-    }
-}
 
 impl XWaylandKeyboardGrabHandler for State {
     fn grab(&mut self, surface: WlSurface, seat: Seat<Self>, grab: XWaylandKeyboardGrab<Self>) {

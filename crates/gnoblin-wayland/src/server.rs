@@ -44,10 +44,12 @@ use tracing::{debug, info, warn};
 
 use gnoblin_backend::render::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
+use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
 use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wm::WmOptions;
 
+use crate::access::Role;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
 use crate::protocols::compositor::ClientState;
@@ -69,6 +71,13 @@ pub struct Config {
     /// where a client looks when it has no explicit socket. A test passes its own
     /// path so the run touches no shared directory.
     pub socket_path: Option<PathBuf>,
+    /// Where the session's own processes connect.
+    ///
+    /// A connection accepted here is recorded as [`crate::access::Role::Privileged`]
+    /// and may bind the privileged globals; a connection on the ordinary socket may
+    /// not. [`None`] means a session with no privileged path, which is the safe
+    /// default: nothing is privileged by accident.
+    pub privileged_socket_path: Option<PathBuf>,
     /// The seat name clients see in `wl_seat.name`.
     pub seat_name: String,
     /// How many workspaces to declare. The first one is active.
@@ -81,16 +90,20 @@ pub struct Config {
     /// snapshot every other reader sees, without a second description of the
     /// window state that could drift from this one.
     pub observer: Option<Arc<dyn Observer>>,
+    /// Which globals the session advertises (`gnoblin.configure.protocols`).
+    pub protocols: Protocols,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             socket_path: None,
+            privileged_socket_path: None,
             seat_name: "seat0".to_owned(),
             workspaces: 1,
             wm: WmOptions::default(),
             observer: None,
+            protocols: Protocols::default(),
         }
     }
 }
@@ -163,6 +176,7 @@ impl Server {
             config.workspaces,
             xwayland,
             config.observer,
+            &config.protocols,
         )?;
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
@@ -176,11 +190,26 @@ impl Server {
             .insert_source(
                 Generic::new(listener, Interest::READ, Mode::Level),
                 |_, listener, state: &mut State| {
-                    accept_clients(listener, state);
+                    accept_clients(listener, state, Role::Unprivileged);
                     Ok(PostAction::Continue)
                 },
             )
             .map_err(|error| StartupError::EventLoop(error.into()))?;
+
+        if let Some(path) = &config.privileged_socket_path {
+            let privileged = bind(path)?;
+            info!(socket = %path.display(), "[wayland] listening for privileged clients");
+            event_loop
+                .handle()
+                .insert_source(
+                    Generic::new(privileged, Interest::READ, Mode::Level),
+                    |_, listener, state: &mut State| {
+                        accept_clients(listener, state, Role::Privileged);
+                        Ok(PostAction::Continue)
+                    },
+                )
+                .map_err(|error| StartupError::EventLoop(error.into()))?;
+        }
 
         event_loop
             .handle()
@@ -285,8 +314,11 @@ impl Server {
                 frames,
                 ..
             } = self;
+            // The loop's own handle, so a sandbox listener created during a dispatch
+            // can be watched from inside the turn that created it, and so the Xwayland
+            // session can be ticked from the loop's own timeout.
             let handle = event_loop.handle();
-            event_loop.run(Duration::from_millis(100), &mut state, |state| {
+            event_loop.run(Duration::from_millis(100), &mut state, move |state| {
                 state.flush();
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.
@@ -295,6 +327,17 @@ impl Server {
                 // clock its process needs, and a dead or hung instance is noticed within
                 // one turn.
                 state.poll_xwayland(&handle, Instant::now());
+                state.sync_authority_lock();
+                for source in state.take_pending_contexts() {
+                    let inserted = handle.insert_source(source, |stream, (), state: &mut State| {
+                        if let Err(error) = state.accept_sandbox(stream) {
+                            warn!(%error, "[access] a sandboxed client could not be inserted");
+                        }
+                    });
+                    if let Err(error) = inserted {
+                        warn!(?error, "[access] a sandbox listener could not be watched");
+                    }
+                }
                 let events = backend.dispatch(state);
                 if events.iter().any(is_output_change) {
                     // A hotplug, a removal or a mode change: the whole layout is
@@ -459,11 +502,14 @@ fn is_output_change(event: &BackendEvent) -> bool {
 }
 
 /// Accepts every client that connected since the last wake.
-fn accept_clients(listener: &UnixListener, state: &mut State) {
+///
+/// The role is decided by which socket the connection arrived on and is recorded
+/// before the client's first request, so its registry answer already knows.
+fn accept_clients(listener: &UnixListener, state: &mut State, role: Role) {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
-                if let Err(error) = state.insert_client_data(stream, Arc::new(ClientState::default())) {
+                if let Err(error) = state.insert_client(stream, Arc::new(ClientState::new(&state.access())), role) {
                     warn!(%error, "[wayland] a client could not be inserted");
                 }
             }

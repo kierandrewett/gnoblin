@@ -64,7 +64,7 @@ impl XdgShellHandler for State {
     }
 
     fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        if self.popup_root_window(&surface).is_none() {
+        if self.popup_root_window(&surface).is_none() && self.popup_root_layer(&surface).is_none() {
             // Nothing will ever send this popup `popup_done`, because it has no
             // parent to be dismissed with, so it is dismissed here. Without this the
             // popup stays on screen for the life of the session.
@@ -143,6 +143,16 @@ impl State {
         self.window_of(&root)
     }
 
+    /// The layer surface a popup belongs to, if its parent chain reaches one.
+    ///
+    /// A bar's menu is a popup whose root is a layer surface, which is not a managed
+    /// window: it has a rectangle of its own and that is the area the menu is held
+    /// inside.
+    fn popup_root_layer(&self, surface: &PopupSurface) -> Option<gnoblin_types::Rect> {
+        let root = find_popup_root_surface(&PopupKind::Xdg(surface.clone())).ok()?;
+        self.layer_rect(&root)
+    }
+
     /// Whether the window manager has this toplevel maximised.
     fn is_maximised(&self, surface: &ToplevelSurface) -> bool {
         self.window_state(surface).is_some_and(|state| state.maximised)
@@ -157,24 +167,39 @@ impl State {
     ///
     /// A positioner places a popup relative to its parent's window geometry; the
     /// result is clamped to the monitor the parent is on, so a menu opened at the
-    /// bottom of the screen flips up instead of hanging off the edge.
+    /// bottom of the screen flips up instead of hanging off the edge. A popup whose
+    /// root is a layer surface is clamped to that surface's own rectangle instead: a
+    /// bar's menu belongs over the bar, not over the whole monitor.
     fn unconstrain_popup(&mut self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             trace!("[xdg] a popup has no root surface yet");
             return;
         };
-        let Some(window) = self.window_of(&root) else {
-            return;
+        let (rectangle, origin) = match (self.window_of(&root), self.layer_rect(&root)) {
+            (Some(window), _) => {
+                let (Some(geometry), Some(monitor)) = (self.geometry_of(window), self.monitor_of(window)) else {
+                    return;
+                };
+                (
+                    Rectangle::new(
+                        Point::from((monitor.x, monitor.y)),
+                        Size::from((monitor.width as i32, monitor.height as i32)),
+                    ),
+                    Point::from((geometry.x, geometry.y)),
+                )
+            }
+            (None, Some(rect)) => (
+                Rectangle::new(
+                    Point::from((rect.x, rect.y)),
+                    Size::from((rect.width as i32, rect.height as i32)),
+                ),
+                Point::from((rect.x, rect.y)),
+            ),
+            (None, None) => return,
         };
-        let (Some(geometry), Some(monitor)) = (self.geometry_of(window), self.monitor_of(window)) else {
-            return;
-        };
-        let mut target = Rectangle::new(
-            Point::from((monitor.x, monitor.y)),
-            Size::from((monitor.width as i32, monitor.height as i32)),
-        );
+        let mut target = rectangle;
         target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
-        target.loc -= Point::from((geometry.x, geometry.y));
+        target.loc -= origin;
         popup.with_pending_state(|state| {
             state.geometry = state.positioner.get_unconstrained_geometry(target);
         });

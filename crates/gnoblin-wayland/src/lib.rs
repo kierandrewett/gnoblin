@@ -103,6 +103,7 @@
 //! session lock reads no clock either: its barrier is a generation counter, and the
 //! loop's turn is the only thing that decides when a dead connection is noticed.
 
+mod access;
 mod frame;
 mod observation;
 mod protocols;
@@ -111,10 +112,12 @@ mod state;
 mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
-pub use observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
+pub use observation::{ActivationDenial, LockObservation, ObservedLayer, ObservedWindow, Observer, SessionSnapshot};
 pub use server::{Config, ControlHandle, FOCUS_TIMEOUT, LoopError, Server, StartupError};
 pub use state::State;
 pub use xwayland::XwaylandSession;
+
+pub use access::{Access, AccessPolicy, Global, Registration, Role};
 
 // The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
 // `Dispatch2` implementation below, which is why no protocol module carries its own

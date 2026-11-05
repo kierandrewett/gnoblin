@@ -21,16 +21,23 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
 use smithay::wayland::compositor::{CompositorState, SurfaceAttributes, with_states};
+use smithay::wayland::foreign_toplevel_list::ForeignToplevelListState;
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::security_context::{SecurityContextListenerSource, SecurityContextState};
 use smithay::wayland::selection::data_device::DataDeviceState;
+use smithay::wayland::selection::ext_data_control::DataControlState as ExtDataControlState;
+use smithay::wayland::selection::primary_selection::PrimarySelectionState;
+use smithay::wayland::selection::wlr_data_control::DataControlState as WlrDataControlState;
 use smithay::wayland::session_lock::SessionLockManagerState;
+use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{ToplevelStateSet, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData};
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::viewporter::ViewporterState;
+use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
@@ -38,12 +45,18 @@ use tracing::{debug, warn};
 
 use gnoblin_backend::render::{Composer, Content, OutputFrame};
 use gnoblin_backend::{Host, InputEvent};
+use gnoblin_config::Protocols;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
-use gnoblin_types::{OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
+use crate::access::{Access, AccessPolicy, Global, Role};
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
+use crate::protocols::activation::Activation;
+use crate::protocols::foreign_toplevel::ForeignToplevels;
+use crate::protocols::layer_shell::Layers;
+use crate::protocols::selection::Selections;
 use crate::protocols::session_lock::LockTables;
 use crate::server::StartupError;
 
@@ -121,7 +134,7 @@ impl WindowEntry {
 /// One output the server presents on.
 pub(crate) struct OutputEntry {
     /// The backend's identity for the output.
-    backend: OutputId,
+    pub(crate) backend: OutputId,
     /// The window manager's identity for it.
     policy: OutputId,
     /// The Smithay output, which owns the `wl_output` global.
@@ -177,18 +190,60 @@ pub struct State {
     /// in the same way: Xwayland is its only client.
     #[allow(dead_code)]
     pub(crate) keyboard_grab_state: Option<XWaylandKeyboardGrabState>,
-    /// The data device global, created with the Xwayland session because Smithay's X11
-    /// window manager needs the drag-and-drop target type for its X11 surfaces. A session
-    /// without Xwayland advertises neither global rather than one that answers nothing.
-    pub(crate) data_device: Option<DataDeviceState>,
     /// The Xwayland session, when one is configured.
     pub(crate) x11: Option<crate::xwayland::Running>,
+    /// The layer shell, which places bars and docks against output edges and feeds
+    /// their exclusive zones to the window manager as reserved insets.
+    pub(crate) layer_shell_state: WlrLayerShellState,
+    /// The standardised toplevel list, which a shell reads through
+    /// [`crate::protocols::foreign_toplevel`].
+    pub(crate) foreign_toplevel_list_state: ForeignToplevelListState,
+    /// The activation tokens, decided by `gnoblin-authority`.
+    pub(crate) activation_state: XdgActivationState,
+    /// The clipboard and the primary selection; both have sources kept beside them.
+    pub(crate) data_device_state: DataDeviceState,
+    pub(crate) primary_selection_state: PrimarySelectionState,
+    /// The privileged clipboard managers. They are created even when the
+    /// configuration hides them, because a state that does not exist cannot be
+    /// re-advertised on a reload; the global itself is removed instead.
+    pub(crate) ext_data_control_state: ExtDataControlState,
+    pub(crate) wlr_data_control_state: WlrDataControlState,
+    /// Application sandboxes: a client that arrives through one is marked sandboxed
+    /// and sees no privileged global.
+    #[allow(dead_code)]
+    pub(crate) security_context_state: SecurityContextState,
 
     /// Keyboard and pointer handles for the one seat this slice creates.
     pub(crate) keyboard: KeyboardHandle<State>,
     pub(crate) pointer: PointerHandle<State>,
+    /// The seat itself, which the clipboard needs to follow the keyboard focus.
+    pub(crate) seat: Seat<State>,
+
+    /// What each connection is allowed to be, shared with the globals' filters.
+    pub(crate) access: Arc<Access>,
+    /// The layer surfaces and what they reserve.
+    pub(crate) layers: Layers,
+    /// The published toplevel list.
+    pub(crate) foreign_toplevels: ForeignToplevels,
+    /// The activation tokens.
+    pub(crate) activation: Activation,
+    /// The current clipboard and primary selections.
+    pub(crate) selections: Selections,
+    /// Sandbox listeners waiting for the event loop to watch them.
+    ///
+    /// `wp_security_context_v1` hands the compositor a listening socket during a
+    /// dispatch, and only the loop can watch one, so the source is queued here and
+    /// taken by [`crate::Server`] on the same turn.
+    pub(crate) pending_contexts: Vec<SecurityContextListenerSource>,
+    /// The session's turn counter: the only clock the protocol side reads, so a token's
+    /// lifetime is measured in the work the session did rather than in seconds.
+    pub(crate) turn: Tick,
 
     /// The window management policy.
+    ///
+    /// Crate-visible because every protocol module turns a request into an
+    /// [`gnoblin_wm::Event`] and applies the effects it gets back; the fields around it
+    /// stay private to this module.
     pub(crate) wm: Wm,
     /// The protocol objects of the managed windows, keyed by policy identity.
     pub(crate) windows: BTreeMap<WindowId, WindowEntry>,
@@ -234,6 +289,10 @@ impl State {
     ///
     /// [`StartupError::Keyboard`] when xkbcommon cannot build a keymap — a machine
     /// with no XKB data cannot run a seat with a keyboard.
+    // Eight arguments, because a session is assembled from eight independent answers:
+    // the display, its outputs, the seat, the policy options, the workspaces, Xwayland,
+    // the observer and the protocol configuration. A struct would only move the list.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         display: Display<State>,
         backend_outputs: &[gnoblin_backend::Output],
@@ -242,6 +301,7 @@ impl State {
         workspaces: u32,
         xwayland: Option<crate::xwayland::XwaylandSession>,
         observer: Option<Arc<dyn Observer>>,
+        protocols: &Protocols,
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
 
@@ -255,19 +315,64 @@ impl State {
         // the socket the admission boundary, and `docs/session-lock.md` states that
         // the first request owns the lock.
         let session_lock_state = SessionLockManagerState::new::<Self, _>(&display_handle, |_| true);
-        // The three Xwayland globals exist only with a session: `xwayland-shell-v1` and
-        // the keyboard grab manager are bound by Xwayland alone, and the data device is
-        // the drag-and-drop target Smithay's X11 window manager requires. Advertising a
-        // data device to Wayland clients in a session with no clipboard path would be a
-        // protocol that answers nothing.
-        let (xwayland_shell_state, keyboard_grab_state, data_device) = match &xwayland {
+        // The two Xwayland-only globals exist only with a session: `xwayland-shell-v1`
+        // and the keyboard grab manager are bound by Xwayland alone. The data device is
+        // not one of them: it is the clipboard, which every session serves, and
+        // Smithay's X11 window manager reaches it through the same state.
+        let (xwayland_shell_state, keyboard_grab_state) = match &xwayland {
             Some(_) => (
                 Some(XWaylandShellState::new::<Self>(&display_handle)),
                 Some(XWaylandKeyboardGrabState::new::<Self>(&display_handle)),
-                Some(DataDeviceState::new::<Self>(&display_handle)),
             ),
-            None => (None, None, None),
+            None => (None, None),
         };
+
+        // Every privileged global takes its per-client filter from this one roster, so
+        // a protocol cannot forget the policy: the closure is the only way it is
+        // created, and the roster is the only answer it gives.
+        let access = Arc::new(Access::new());
+
+        let layer_shell_state = WlrLayerShellState::new_with_filter::<Self, _>(&display_handle, {
+            let access = Arc::clone(&access);
+            move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::LayerShell)
+        });
+        let foreign_toplevel_list_state = ForeignToplevelListState::new_with_filter::<Self>(&display_handle, {
+            let access = Arc::clone(&access);
+            move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::ForeignToplevelList)
+        });
+        let activation_state = XdgActivationState::new::<Self>(&display_handle);
+        let data_device_state = DataDeviceState::new::<Self>(&display_handle);
+        let primary_selection_state = PrimarySelectionState::new::<Self>(&display_handle);
+        let ext_data_control_state =
+            ExtDataControlState::new::<Self, _>(&display_handle, Some(&primary_selection_state), {
+                let access = Arc::clone(&access);
+                move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::DataControl)
+            });
+        let wlr_data_control_state =
+            WlrDataControlState::new::<Self, _>(&display_handle, Some(&primary_selection_state), {
+                let access = Arc::clone(&access);
+                move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::WlrDataControl)
+            });
+        // Which clients may create a sandbox at all is a session-wide admission
+        // question, and the answer is every client that can connect: what the sandbox
+        // buys a client is a *denied* role for the connection it creates.
+        let security_context_state = crate::protocols::security_context::global(&display_handle);
+
+        let foreign_toplevel_global = crate::protocols::foreign_toplevel::global(&display_handle, &access);
+
+        // A global the configuration turned off is removed rather than skipped, so
+        // every protocol state exists for its handler and no client sees it.
+        remove_disabled_globals(
+            &display_handle,
+            protocols,
+            &[
+                (Global::LayerShell, layer_shell_state.shell_global()),
+                (Global::ForeignToplevelList, foreign_toplevel_list_state.global()),
+                (Global::ForeignToplevelManagement, foreign_toplevel_global),
+                (Global::DataControl, ext_data_control_state.global()),
+                (Global::WlrDataControl, wlr_data_control_state.global()),
+            ],
+        );
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&display_handle, seat_name);
@@ -290,10 +395,25 @@ impl State {
             session_lock_state,
             xwayland_shell_state,
             keyboard_grab_state,
-            data_device,
             x11: None,
+            layer_shell_state,
+            foreign_toplevel_list_state,
+            activation_state,
+            data_device_state,
+            primary_selection_state,
+            ext_data_control_state,
+            wlr_data_control_state,
+            security_context_state,
             keyboard,
             pointer,
+            seat,
+            access,
+            layers: Layers::default(),
+            foreign_toplevels: ForeignToplevels::default(),
+            activation: Activation::default(),
+            selections: Selections::default(),
+            pending_contexts: Vec::new(),
+            turn: Tick::ZERO,
             wm: Wm::new(options),
             windows: BTreeMap::new(),
             outputs: Vec::new(),
@@ -333,6 +453,29 @@ impl State {
         &self.wm
     }
 
+    /// The access roster, so a caller can build a connection's data from it.
+    #[must_use]
+    pub(crate) fn access(&self) -> Arc<Access> {
+        Arc::clone(&self.access)
+    }
+
+    /// The toplevel object of one managed window, when it is a Wayland one.
+    pub(crate) fn toplevel_of(&self, window: WindowId) -> Option<ToplevelSurface> {
+        self.windows.get(&window)?.surface.toplevel().cloned()
+    }
+
+    /// The surface behind one managed window, for a check that must not care whether
+    /// it is a Wayland or an X11 window.
+    pub(crate) fn surface_of(&self, window: WindowId) -> Option<WlSurface> {
+        self.windows.get(&window)?.surface.wl_surface()
+    }
+
+    /// The outputs, with their Smithay objects, for a protocol that must address a
+    /// client's `wl_output`.
+    pub(crate) fn output_entries(&self) -> impl Iterator<Item = &OutputEntry> {
+        self.outputs.iter()
+    }
+
     /// The outputs the server presents on, as the backend numbered them.
     #[must_use]
     pub fn output_ids(&self) -> Vec<OutputId> {
@@ -340,12 +483,53 @@ impl State {
     }
 
     /// Inserts a connected client with the data its handlers expect.
-    pub(crate) fn insert_client_data(
+    ///
+    /// The connection's role is recorded here rather than inferred from a request,
+    /// because every request arrives *after* the registry answer: a connection that is
+    /// not recorded before its first bind could only be refused, never hidden.
+    pub(crate) fn insert_client(
         &mut self,
         stream: std::os::unix::net::UnixStream,
-        data: Arc<dyn smithay::reexports::wayland_server::backend::ClientData>,
-    ) -> std::io::Result<()> {
-        self.display_handle.insert_client(stream, data).map(|_| ())
+        data: Arc<crate::protocols::compositor::ClientState>,
+        role: Role,
+    ) -> std::io::Result<Client> {
+        let client = self.display_handle.insert_client(
+            stream,
+            Arc::clone(&data) as Arc<dyn smithay::reexports::wayland_server::backend::ClientData>,
+        )?;
+        self.access.record(&client.id(), role);
+        // From here the roster entry lives exactly as long as the connection: the
+        // client's data owns the registration that removes it.
+        data.registration.attach(&client.id());
+        Ok(client)
+    }
+
+    /// Accepts a connection that arrived through a `wp_security_context_v1` sandbox.
+    ///
+    /// The connection is a client of its own — it has its own registry, its own
+    /// objects and its own resources — and it is marked sandboxed before its first
+    /// request is dispatched, so it never sees a privileged global.
+    pub(crate) fn accept_sandbox(&mut self, stream: std::os::unix::net::UnixStream) -> std::io::Result<Client> {
+        let client = self.insert_client(
+            stream,
+            Arc::new(crate::protocols::compositor::ClientState::new(&self.access)),
+            Role::Sandboxed,
+        )?;
+        debug!(client = ?client.id(), "[access] a sandboxed connection joined");
+        Ok(client)
+    }
+
+    /// The listeners `wp_security_context_v1` created, for the event loop to watch.
+    pub(crate) fn take_pending_contexts(&mut self) -> Vec<SecurityContextListenerSource> {
+        std::mem::take(&mut self.pending_contexts)
+    }
+
+    /// The policy identity a backend output's rectangle is known by.
+    pub(crate) fn policy_output(&self, output: OutputId) -> Option<OutputId> {
+        self.outputs
+            .iter()
+            .find(|entry| entry.backend == output)
+            .map(|entry| entry.policy)
     }
 
     /// The display, taken out for the caller that drives a dispatch.
@@ -584,6 +768,13 @@ impl State {
             debug!(?focused, "[focus] withheld while the session is covered");
             return;
         }
+        // A keyboard-exclusive layer surface above the shell layer keeps the keyboard:
+        // the protocol makes that promise for the top and overlay layers, so a bar's
+        // own focus is not taken by whatever window maps next.
+        if let Some(grab) = self.layer_keyboard_focus() {
+            self.set_keyboard_focus(Some(grab));
+            return;
+        }
         let target = focused
             .and_then(|window| self.windows.get(&window))
             .and_then(|entry| entry.surface.wl_surface());
@@ -601,10 +792,16 @@ impl State {
     }
 
     /// Installs the keyboard focus target. This is the only place focus is set.
+    ///
+    /// The clipboard follows the keyboard: `wl_data_device` delivers a selection to the
+    /// focused client and to nobody else, so a client that cannot be pasted into has no
+    /// offer to paste from.
     pub(crate) fn set_keyboard_focus(&mut self, target: Option<WlSurface>) {
         let serial = SERIAL_COUNTER.next_serial();
+        let client = target.as_ref().and_then(|surface| surface.client());
         let keyboard = self.keyboard.clone();
         keyboard.set_focus(self, target, serial);
+        self.set_selection_focus(client.as_ref());
     }
 
     /// Drops the pointer's focus, so a covered client cannot receive a button.
@@ -865,6 +1062,9 @@ impl State {
     /// call still succeeds, which is what keeps one bad client from ending the
     /// session.
     pub(crate) fn dispatch(&mut self) -> std::io::Result<usize> {
+        // The turn advances before the dispatch, so every event of one turn reads the
+        // same reading: the protocol side's clock, never a wall clock.
+        self.turn = self.turn.saturating_add(1);
         let Some(mut display) = self.take_display() else {
             return Ok(0);
         };
@@ -983,6 +1183,10 @@ impl State {
         } else {
             None
         };
+        // The published lists follow the window manager, so a shell and a test read
+        // the same answer as the compositor's own record.
+        self.sync_authority_lock();
+        self.sync_foreign_toplevels();
         let mut snapshot = SessionSnapshot {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
             focus: focused,
@@ -990,6 +1194,9 @@ impl State {
                 state: self.lock.state(),
                 capture_allowed: !self.lock_embargo.capture,
             },
+            layers: self.layers.observed(),
+            activation_denied: self.activation.denied().cloned(),
+            selection: self.clipboard_mime_types(),
             ..SessionSnapshot::default()
         };
         for window in self.wm.windows() {
@@ -1111,6 +1318,21 @@ impl State {
     }
 }
 
+/// Removes the globals the session's configuration turned off.
+///
+/// Every protocol state is still created, because a reload can turn a protocol back on
+/// and a handler needs somewhere to answer from; what a disabled protocol loses is its
+/// global, which is the only thing a client can discover.
+fn remove_disabled_globals(display_handle: &DisplayHandle, protocols: &Protocols, globals: &[(Global, GlobalId)]) {
+    for (global, id) in globals {
+        if global.is_advertised(protocols) {
+            continue;
+        }
+        display_handle.remove_global::<State>(id.clone());
+        debug!(global = global.as_str(), "[access] not advertised");
+    }
+}
+
 /// The Smithay mode for a backend output.
 fn smithay_mode(output: &gnoblin_backend::Output) -> Mode {
     Mode {
@@ -1191,6 +1413,7 @@ impl Host for State {
                 let focus = self.surface_under(position);
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
+                self.remember_input_serial(u32::from(serial));
                 pointer.motion(
                     self,
                     focus,
@@ -1224,6 +1447,9 @@ impl Host for State {
                 }
                 let pointer = self.pointer.clone();
                 let serial = SERIAL_COUNTER.next_serial();
+                // A button serial is the one an application names in
+                // `xdg_activation_token.set_serial`, so it has to be remembered.
+                self.remember_input_serial(u32::from(serial));
                 pointer.button(
                     self,
                     &ButtonEvent {
@@ -1241,6 +1467,7 @@ impl Host for State {
             InputEvent::Key { keycode, pressed } => {
                 let keyboard = self.keyboard.clone();
                 let serial = SERIAL_COUNTER.next_serial();
+                self.remember_input_serial(u32::from(serial));
                 let key_state = if pressed { KeyState::Pressed } else { KeyState::Released };
                 keyboard.input::<(), _>(
                     self,

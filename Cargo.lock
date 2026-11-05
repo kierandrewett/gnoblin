@@ -934,7 +934,9 @@ dependencies = [
 name = "gnoblin-wayland"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-authority",
  "gnoblin-backend",
+ "gnoblin-config",
  "gnoblin-lock",
  "gnoblin-output",
  "gnoblin-render",
@@ -945,6 +947,7 @@ dependencies = [
  "tracing",
  "wayland-client",
  "wayland-protocols",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]
@@ -2353,6 +2356,7 @@ checksum = "eb04e52f7836d7c7976c78ca0250d61e33873c34156a2a1fc9474828ec268234"
 dependencies = [
  "bitflags",
  "wayland-backend",
+ "wayland-client",
  "wayland-protocols",
  "wayland-scanner",
  "wayland-server",

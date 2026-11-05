@@ -37,6 +37,17 @@ gnoblin-output = { path = "../gnoblin-output" }
 # engine crate this crate is allowed to name (design/rust-compositor.md,
 # "Dependency rules").
 gnoblin-backend = { path = "../gnoblin-backend" }
+# The `protocols` configuration: which globals a session advertises is a document
+# value, and the `Protocol` enum is the schema's own list of names, so gating a
+# global cannot drift from what `gnoblin.configure` accepts.
+gnoblin-config = { path = "../gnoblin-config" }
+# Activation authority: a token is minted once, redeemed once, refused when it
+# expired, reused or was never issued, and an app id alone never grants focus.
+gnoblin-authority = { path = "../gnoblin-authority" }
+# `zwlr_foreign_toplevel_manager_v1` is not in Smithay, so the server interfaces
+# come straight from the wlroots protocol definitions. The tests use the same
+# crate's client side, which is what keeps one XML behind both halves.
+wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
 # `[tag]` log lines. Smithay already brings `tracing` in, so this adds no crate to
 # the graph.
 tracing = "0.1.37"
@@ -49,6 +60,9 @@ wayland-client = "0.31.14"
 # The client side of the protocols the tests exercise, generated from the same XML
 # the server side uses.
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# `zwlr_foreign_toplevel_manager_v1`'s client half, from the same wlroots XML the
+# server in `protocols::foreign_toplevel` is generated from.
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 # A temporary directory and a shared-memory file for the test's socket and buffers,
 # so a test run touches no shared path.
 tempfile = "3.23.0"

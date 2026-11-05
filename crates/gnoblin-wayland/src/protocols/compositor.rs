@@ -18,6 +18,8 @@
 //! 4. Only for a non-synchronous subsurface, the commit is attributed to its root
 //!    surface, which is the toplevel the window manager knows.
 
+use std::sync::Arc;
+
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::backend::ClientData;
@@ -31,6 +33,7 @@ use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::xwayland::XWaylandClientData;
 
 use crate::State;
+use crate::access::{Access, Registration};
 
 /// Data every connected client carries.
 ///
@@ -38,10 +41,27 @@ use crate::State;
 /// client's surface state. A client inserted without this data is a bug in the
 /// server, which is why [`CompositorHandler::client_compositor_state`] can rely on
 /// it existing: a client's own requests cannot reach that path.
-#[derive(Debug, Default)]
+///
+/// It also carries the connection's [`Registration`], which is how the access roster
+/// learns that a connection is gone: dropping this data is the one thing a disconnect
+/// reliably does.
+#[derive(Debug)]
 pub struct ClientState {
     /// Smithay's per-client compositor state.
     pub compositor_state: CompositorClientState,
+    /// The connection's claim on its access-roster entry.
+    pub registration: Registration,
+}
+
+impl ClientState {
+    /// The data a connection is inserted with.
+    #[must_use]
+    pub fn new(access: &Arc<Access>) -> Self {
+        Self {
+            compositor_state: CompositorClientState::default(),
+            registration: Registration::new(Arc::clone(access)),
+        }
+    }
 }
 
 impl ClientData for ClientState {}
@@ -76,6 +96,10 @@ impl CompositorHandler for State {
             // attributing it here would report a window change twice.
             return;
         }
+        // A layer surface is not a toplevel and is not a parent of one, so it is
+        // recomputed before the window path: a bar's commit changes its rectangle, its
+        // exclusive zone and possibly the work area, never a window's state.
+        self.layer_surface_committed(surface);
         let mut root = surface.clone();
         while let Some(parent) = get_parent(&root) {
             root = parent;
