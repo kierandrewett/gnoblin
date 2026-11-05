@@ -443,8 +443,8 @@ gnoblin/
       gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem
     gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens (uses gnoblin-lua-sandbox)
-    gnoblin-lua-sandbox/      mlua VM construction and limits, shared by gnoblin-lua and gnoblin-layout-lua
-    gnoblin-layout-lua/       Lua layout host: worker thread, generations, module loader (the compositor's in-process VM)
+    gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset, shared by gnoblin-lua and gnoblin-layout-lua
+    gnoblin-layout-lua/       Lua layout host: worker thread, generations, abandon-and-replace backstop, module loader (the compositor's in-process VM)
     gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
     gnoblin-services/         D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit, idle
@@ -968,11 +968,11 @@ failure-mode list that must be complete before isolated tests or code.
 
 ### Layout engines: `gnoblin-layout`, `gnoblin-layout-lua`, `gnoblin-lua-sandbox`
 
-- **Owns:** `gnoblin-layout` holds the pure value types (`Placement`, `Transform3`, `Camera`, `LayoutRequest`, `Reply`, `LayoutEffect`, `Refused`, `LayoutFailure`), the `Layout` trait, the placement validator and the floating fallback. `gnoblin-layout-lua` holds the Lua host: the worker thread, generation bookkeeping and module loader. `gnoblin-lua-sandbox` holds the mlua VM construction and limits, shared with `gnoblin-lua`. The standard layouts are Lua files under `gnoblin.layouts.*`, not Rust.
+- **Owns:** `gnoblin-layout` holds the pure value types (`Placement`, `Transform3`, `Camera`, `LayoutRequest`, `Reply`, `LayoutEffect`, `Refused`, `LayoutFailure`), the `Layout` trait, the placement validator and the floating fallback. `gnoblin-layout-lua` holds the Lua host: the worker thread, generation bookkeeping, the abandon-and-replace backstop and module loader. `gnoblin-lua-sandbox` holds the mlua VM construction and limits, shared with `gnoblin-lua`. The standard layouts are Lua files under `gnoblin.layouts.*`, not Rust.
 - **Replaces:** nothing. Tiling, scrolling and 3D layouts are new features.
 - **Depends on:** `gnoblin-layout` on `gnoblin-types` alone; `gnoblin-layout-lua` on `gnoblin-layout`, `gnoblin-types` and `gnoblin-lua-sandbox`; `gnoblin-lua-sandbox` on `mlua` alone. `gnoblin-wm` hosts one `Box<dyn Layout>` per workspace.
 - **Interface:** `arrange(ctx) -> Result<Reply, LayoutFailure>` and `on_request(ctx, req) -> Result<Reply, LayoutFailure>`, where a `Reply` is `Handled` or `Declined`. Full contract in D17.
-- **Failure modes first:** zero, one and oversized windows; area smaller than gaps; removal of the focused or only window; rapid add and remove; output resize mid-layout; non-deterministic output; a transient added to a full workspace; a spinning layout; a stuck C call; a late or stale reply; a reply with a bad count, id or transform. D17 lists the full set.
+- **Failure modes first:** zero, one and oversized windows; area smaller than gaps; removal of the focused or only window; rapid add and remove; output resize mid-layout; non-deterministic output; a transient added to a full workspace; a spinning layout; a wedged worker (a native call that never returns); a late or stale reply; a reply with a bad count, id or transform. D17 lists the full set.
 - **Parity:** none. This is a new feature, not a divergence, so it has no ledger entry. Floating keeps its parity scenarios in `gnoblin-wm`.
 - **Done when:** host tests name every failure mode; `cargo xtask deps` accepts the new edges; a Gnoblin-only scenario arranges a workspace that mixes floating, tiled and 3D windows.
 
@@ -1895,7 +1895,8 @@ Options considered:
   and scripts stay in the runtime role.
 - **Lua VM in a separate layout process:** keeps crash isolation, but each
   request crosses IPC on the hot path, and the reply can arrive after the frame.
-  That is non-atomic again, and it needs a supervisor.
+  That is non-atomic again, and it needs a supervisor. This is also the only safe
+  hard-termination path, and it is rejected for 0.2.0 (see "Stuck worker").
 - **Lua-only engines in the runtime role:** one language for every engine. Each
   arrange pays a round trip, and no workspace tiles while the runtime is down.
 
@@ -2021,7 +2022,7 @@ pub trait Layout {
 ```
 
 `gnoblin-layout-lua` implements the trait for a Lua layout. It owns the worker
-thread, the generation bookkeeping, and the host adapter. It depends on
+thread, the generation bookkeeping, and the abandon-and-replace backstop. It depends on
 `gnoblin-layout`, `gnoblin-types` and `gnoblin-lua-sandbox`. The sandbox crate
 owns the mlua VM construction and limits, and `gnoblin-lua` moves its sandbox
 code into `gnoblin-lua-sandbox` so both share one set of limits. `gnoblin-wm`
@@ -2077,8 +2078,10 @@ the scrolling view offset animates the same way. Reduced motion makes both
 instant. The layout never sees frames.
 
 **Runtime and sandbox.** Layout code runs under these limits. A Lua instruction
-hook cannot pre-empt a C call that is already blocked, so the limits avoid such
-calls, and the worker is the backstop for the rest.
+hook cannot pre-empt a C call that is already blocked. The cooperative guard is
+the instruction hook with a wall deadline check inside it, and the stdlib subset
+removes the long blocking C calls so the hook always gets control. The backstop
+for a worker that still does not return is abandon-and-replace (see "Stuck worker").
 
 - **Stdlib subset.** The VM loads only `math` without `random`; `table` without
   `sort`, because a comparator is user code the hook must count; `string` limited
@@ -2100,19 +2103,27 @@ calls, and the worker is the backstop for the rest.
   phase 0]. Exceeding it is a `memory` failure.
 - **Blocking calls.** The remaining C functions, `table.concat` and `string.format`,
   are linear in their output and bounded by the memory limit.
-- **Stuck worker.** A worker still running past the hard limit, 100 ms
-  [INFERENCE], is abandoned, not killed, because a Rust thread blocked in C
-  cannot be stopped. The VM is dropped, a new VM is built from the last good
-  module set, and each layout's last good `ctx.state` is restored. The abandoned
-  thread ends when its C call returns, and its reply is discarded by generation.
-  More than three abandoned workers in one session disable Lua layouts, and every
-  Lua workspace falls back to floating.
+- **Stuck worker (abandon and replace).** The caller never blocks on the VM. It
+  waits for a batch's reply for at most the frame deadline. A worker that still
+  has not returned past the hard limit, 100 ms [INFERENCE], is abandoned. Rust
+  cannot safely terminate a thread blocked in C, so nothing is killed. The
+  abandoned worker's results are discarded by generation. A fresh worker is spawned
+  with a VM rebuilt from the last good module set, and each layout's last good
+  `ctx.state` is restored. The wedged thread is counted as leaked and ends only if
+  its C call returns. After three leaked workers in one session, Lua layouts are
+  disabled for that session, every workspace stays on the built-in floating
+  fallback, and `layout-failed` reports `vm-wedged`.
+- **Hard termination (rejected for 0.2.0).** The only safe way to stop a wedged
+  layout is process isolation: the layout VM runs in a child process, as the
+  runtime role does. That costs one IPC round trip on every arrange and request,
+  on the hot path, and it reopens the supervisor question in D1. It is not built
+  in 0.2.0.
 - **Safety of the fallback.** The compositor never waits on the VM past the frame
-  deadline. A stuck layout delays nothing after that deadline, and it cannot stop
+  deadline. A wedged layout delays nothing after that deadline, and it cannot stop
   input or frames.
 
 **Failure fallback.** On a failed batch, whether deadline, error, memory, refused
-reply, stall or VM down:
+reply, wedged worker or VM down:
 
 - Each window keeps the last good placement for its id, if that id is still in
   the set. A window with no last good placement keeps its own rectangle, which is
@@ -2168,7 +2179,7 @@ layout, and an output with none uses `floating`.
 - `workspace` signal `layout-changed`.
 - `workspace` signal `layout-failed`: `{ workspace, layout, reason, consecutive }`,
   where `reason` is one of `deadline`, `memory`, `error`, `refused-reply`,
-  `stalled`, `vm-down` or `missing-module`.
+  `vm-wedged`, `vm-down` or `missing-module`.
 - `window.floating`: a boolean, settable.
 - `window.column`: read-only, `{ index, position }` on a scrolling workspace,
   otherwise null.
@@ -2208,11 +2219,13 @@ layout, and an output with none uses `floating`.
   hook raises a `deadline` failure, the batch falls back, and the worker is
   reused. The test asserts the fallback and that the next frame is not delayed
   past the deadline.
-- A stuck C call: `string.find`, `match`, `gmatch`, `gsub` and `rep` do not exist
-  in the VM, so calling them fails as a nil call, reported as `error`. A blocking
-  native call cannot be expressed in the VM, so the test injects a blocking native
-  function into the test build. It must produce `stalled`, an abandoned worker and
-  a rebuilt VM, with no input or frame delayed past the deadline.
+- A wedged worker: a worker that never returns, such as one blocked in a native
+  call the stdlib subset does not cover. The test build injects a test-only hook
+  that makes the worker block forever. It must produce `vm-wedged` for the batch,
+  an abandoned worker counted as leaked, and a fresh worker with a VM rebuilt from
+  the last good `ctx.state`, with a late reply from the abandoned worker discarded
+  by generation and no input or frame delayed past the deadline. A fourth leak in
+  the session disables layouts and the test asserts the floating fallback.
 - A Lua deadline miss, error or memory overrun: the fallback above, with the
   reason in `layout-failed`.
 - A Lua reply with the wrong count, a duplicate or unknown id, a non-finite value,
@@ -2616,10 +2629,11 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
   and the tree holds `src/gnoblin-version.json`, which `prepare-release.sh`
   writes. No `xtask` step copies it into the workspace yet.
 - **Layout VM and blocking calls.** D17 runs layouts on a worker thread and
-  discards late results, because a Lua instruction hook cannot pre-empt a C
-  call that blocks. Whether the Smithay frame loop can wait on the worker
-  for at most the frame deadline without a visible stall is unmeasured, and
-  so are the instruction, memory and deadline defaults in D17.
+  discards late results. A Lua instruction hook cannot pre-empt a C call that
+  blocks, so the stdlib subset removes the long blocking calls and the backstop
+  is abandon-and-replace (see "Stuck worker"). Whether the Smithay frame loop can
+  wait on the worker for at most the frame deadline without a visible stall is
+  unmeasured, and so are the instruction, memory and deadline defaults in D17.
 
 - **3D renderer pass (D18).** The layout contract is 3D-first. The renderer's
   depth buffer, perspective camera and 3D hit testing are new 0.2.0 scope,
