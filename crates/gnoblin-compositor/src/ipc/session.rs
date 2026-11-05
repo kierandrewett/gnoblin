@@ -39,7 +39,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
-use gnoblin_types::{Rect, Version, WindowId};
+use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::SessionSnapshot;
 use tracing::error;
 
@@ -70,6 +70,27 @@ mod member {
     pub const MODAL: &str = "modal";
     /// The `window` object's floating property.
     pub const FLOATING: &str = "floating";
+    pub const LAYOUT: &str = "layout";
+    pub const NAME: &str = "name";
+    pub const REASON: &str = "reason";
+    pub const LAYOUT_CHANGED: &str = "layout_changed";
+    pub const LAYOUT_FAILED: &str = "layout_failed";
+}
+
+/// What the graph last published for one workspace.
+#[derive(Clone, Debug, PartialEq)]
+struct PublishedWorkspace {
+    object: ObjectId,
+    layout: String,
+    failure: Option<&'static str>,
+}
+
+/// What the graph last published for one output.
+#[derive(Clone, Debug, PartialEq)]
+struct PublishedOutput {
+    object: ObjectId,
+    name: String,
+    layout: String,
 }
 
 /// What the graph last published for one window.
@@ -95,6 +116,8 @@ pub struct SessionSync {
     /// ring rather than once per snapshot.
     bells: u64,
     windows: BTreeMap<WindowId, PublishedWindow>,
+    workspaces: BTreeMap<WorkspaceId, PublishedWorkspace>,
+    outputs: BTreeMap<OutputId, PublishedOutput>,
 }
 
 impl SessionSync {
@@ -118,6 +141,8 @@ impl SessionSync {
             session,
             bells: 0,
             windows: BTreeMap::new(),
+            workspaces: BTreeMap::new(),
+            outputs: BTreeMap::new(),
         })
     }
 
@@ -265,7 +290,129 @@ impl SessionSync {
                 self.graph.close(published.object)?;
             }
         }
+        self.apply_outputs(snapshot)?;
+        self.apply_workspaces(snapshot)?;
         Ok(())
+    }
+
+    /// Creates, changes and closes `output` objects to match the snapshot.
+    fn apply_outputs(&mut self, snapshot: &SessionSnapshot) -> Result<(), ModelError> {
+        let mut seen = BTreeSet::new();
+        for output in snapshot.output_layouts() {
+            seen.insert(output.id);
+            let Some(previous) = self.outputs.get(&output.id).cloned() else {
+                let properties = Fields::from([
+                    (member::NAME.to_owned(), Value::Text(output.name.clone())),
+                    (member::LAYOUT.to_owned(), Value::Text(output.layout.clone())),
+                ]);
+                let object = self.graph.create(TypeKey::gnoblin("output"), properties)?;
+                self.outputs.insert(
+                    output.id,
+                    PublishedOutput {
+                        object,
+                        name: output.name.clone(),
+                        layout: output.layout.clone(),
+                    },
+                );
+                continue;
+            };
+            if previous.layout != output.layout {
+                self.graph
+                    .set(previous.object, member::LAYOUT, Value::Text(output.layout.clone()))?;
+            }
+            self.outputs.insert(
+                output.id,
+                PublishedOutput {
+                    layout: output.layout.clone(),
+                    name: output.name.clone(),
+                    ..previous
+                },
+            );
+        }
+        let lost: Vec<OutputId> = self.outputs.keys().filter(|id| !seen.contains(id)).copied().collect();
+        for id in lost {
+            if let Some(published) = self.outputs.remove(&id) {
+                self.graph.close(published.object)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Creates, changes and closes `workspace` objects to match the snapshot, and raises
+    /// `layout_changed` and `layout_failed` where the layout or its failure changed.
+    ///
+    /// A failure is raised once when it first appears; a workspace that stops failing
+    /// (its layout was replaced) simply publishes its layout again.
+    fn apply_workspaces(&mut self, snapshot: &SessionSnapshot) -> Result<(), ModelError> {
+        let failures: BTreeMap<WorkspaceId, &'static str> = snapshot.layout_failures().iter().copied().collect();
+        let mut seen = BTreeSet::new();
+        for workspace in snapshot.workspaces() {
+            seen.insert(workspace.id);
+            let failure = failures.get(&workspace.id).copied();
+            let Some(previous) = self.workspaces.get(&workspace.id).cloned() else {
+                let properties = Fields::from([
+                    (member::ID.to_owned(), Value::Uint(workspace.id.get())),
+                    (member::LAYOUT.to_owned(), Value::Text(workspace.layout.clone())),
+                ]);
+                let object = self.graph.create(TypeKey::gnoblin("workspace"), properties)?;
+                if let Some(reason) = failure {
+                    self.raise_failed(object, &workspace.layout, reason)?;
+                }
+                self.workspaces.insert(
+                    workspace.id,
+                    PublishedWorkspace {
+                        object,
+                        layout: workspace.layout.clone(),
+                        failure,
+                    },
+                );
+                continue;
+            };
+            let object = previous.object;
+            if previous.layout != workspace.layout {
+                self.graph
+                    .set(object, member::LAYOUT, Value::Text(workspace.layout.clone()))?;
+                self.raise_changed(object, &workspace.layout)?;
+            }
+            if let Some(reason) = failure.filter(|reason| previous.failure != Some(*reason)) {
+                self.raise_failed(object, &workspace.layout, reason)?;
+            }
+            self.workspaces.insert(
+                workspace.id,
+                PublishedWorkspace {
+                    object,
+                    layout: workspace.layout.clone(),
+                    failure,
+                },
+            );
+        }
+        let lost: Vec<WorkspaceId> = self
+            .workspaces
+            .keys()
+            .filter(|id| !seen.contains(id))
+            .copied()
+            .collect();
+        for id in lost {
+            if let Some(published) = self.workspaces.remove(&id) {
+                self.graph.close(published.object)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Raises `layout_changed` on a workspace object.
+    fn raise_changed(&mut self, object: ObjectId, layout: &str) -> Result<(), ModelError> {
+        let fields = Fields::from([(member::LAYOUT.to_owned(), Value::Text(layout.to_owned()))]);
+        self.graph.signal(object, member::LAYOUT_CHANGED, fields).map(|_| ())
+    }
+
+    /// Raises `layout_failed` on a workspace object, with the reason the run failed.
+    fn raise_failed(&mut self, object: ObjectId, layout: &str, reason: &str) -> Result<(), ModelError> {
+        let fields = Fields::from([
+            (member::LAYOUT.to_owned(), Value::Text(layout.to_owned())),
+            (member::REASON.to_owned(), Value::Text(reason.to_owned())),
+        ]);
+        self.graph.signal(object, member::LAYOUT_FAILED, fields).map(|_| ())
     }
 
     /// The graph, for a caller that reads state.
@@ -283,6 +430,24 @@ impl SessionSync {
     #[must_use]
     pub fn session(&self) -> ObjectId {
         self.session
+    }
+
+    /// The workspace an object stands for, if it is one this graph publishes.
+    #[must_use]
+    pub fn workspace_of(&self, object: ObjectId) -> Option<WorkspaceId> {
+        self.workspaces
+            .iter()
+            .find(|(_, published)| published.object == object)
+            .map(|(workspace, _)| *workspace)
+    }
+
+    /// The output an object stands for, if it is one this graph publishes.
+    #[must_use]
+    pub fn output_of(&self, object: ObjectId) -> Option<(OutputId, String)> {
+        self.outputs
+            .iter()
+            .find(|(_, published)| published.object == object)
+            .map(|(output, published)| (*output, published.name.clone()))
     }
 
     /// The window an object stands for, if it is one this graph publishes.

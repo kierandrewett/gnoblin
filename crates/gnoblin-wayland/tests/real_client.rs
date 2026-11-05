@@ -20,6 +20,7 @@
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -27,7 +28,7 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
-use gnoblin_wayland::{Config, ControlHandle, LoopError, ObservedWindow, Server, SessionSnapshot};
+use gnoblin_wayland::{Config, ControlHandle, LayoutControl, LoopError, ObservedWindow, Server, SessionSnapshot};
 use gnoblin_wm::layout::{
     Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
 };
@@ -861,14 +862,42 @@ impl LayoutEngine for ScriptedEngine {
 fn install_scripted(session: &mut Session, shape: SharedShape) -> Arc<Mutex<Vec<WorkspaceId>>> {
     let made = Arc::new(Mutex::new(Vec::new()));
     let record = Arc::clone(&made);
-    session.server.install_layouts(move |workspace, _output| {
-        record.lock().expect("the workspace lock").push(workspace);
+    session
+        .server
+        .install_layouts(Rc::new(ScriptedLayouts { record, shape }));
+    made
+}
+
+/// Builds the scripted engine for every workspace and refuses runtime layout changes.
+struct ScriptedLayouts {
+    record: Arc<Mutex<Vec<WorkspaceId>>>,
+    shape: SharedShape,
+}
+
+impl LayoutControl for ScriptedLayouts {
+    fn engine(&self, workspace: WorkspaceId, _output: Option<&str>) -> Box<dyn LayoutEngine> {
+        self.record.lock().expect("the workspace lock").push(workspace);
         Box::new(ScriptedEngine {
-            shape: Arc::clone(&shape),
+            shape: Arc::clone(&self.shape),
             ready: None,
         })
-    });
-    made
+    }
+
+    fn set_workspace(&self, _workspace: WorkspaceId, _name: &str) -> Result<(), String> {
+        Err("the scripted layouts take no runtime choice".to_owned())
+    }
+
+    fn set_output(&self, _output: &str, _name: &str) -> Result<(), String> {
+        Err("the scripted layouts take no runtime choice".to_owned())
+    }
+
+    fn layout_name(&self, _workspace: WorkspaceId, _output: Option<&str>) -> String {
+        "scripted".to_owned()
+    }
+
+    fn output_layout(&self, _output: &str) -> String {
+        "scripted".to_owned()
+    }
 }
 
 /// Processes the client's events until its toplevel is configured to `size`.

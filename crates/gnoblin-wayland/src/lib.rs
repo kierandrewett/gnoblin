@@ -187,7 +187,10 @@ mod state;
 mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
-pub use observation::{ActivationDenial, LockObservation, ObservedLayer, ObservedWindow, Observer, SessionSnapshot};
+pub use observation::{
+    ActivationDenial, LockObservation, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace, Observer,
+    SessionSnapshot,
+};
 pub use output_control::{NoOutputControl, OutputControl};
 pub use server::{
     Config, ControlHandle, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError,
@@ -204,7 +207,7 @@ pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
 pub use protocols::extension::{
     Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
 };
-pub use state::State;
+pub use state::{LayoutControl, State};
 pub use xwayland::XwaylandSession;
 
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};

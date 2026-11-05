@@ -8,6 +8,7 @@
 //! between the composition root and the pure crates.
 
 use std::collections::{BTreeMap, HashSet};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -186,6 +187,33 @@ pub(crate) struct OutputEntry {
 
 /// The compositor state every protocol handler receives.
 ///
+/// Builds the layout engines for the window manager and takes runtime layout changes.
+///
+/// The compositor implements this over its per-workspace and per-output overrides, so
+/// `set_workspace` and `set_output` store the choice that `engine` later resolves.
+pub trait LayoutControl {
+    /// Builds a fresh engine for `workspace`, resolving its layout from the overrides.
+    fn engine(&self, workspace: WorkspaceId, output: Option<&str>) -> Box<dyn LayoutEngine>;
+
+    /// Stores `name` as `workspace`'s layout override.
+    ///
+    /// # Errors
+    /// A refusal message when `name` is not a known layout.
+    fn set_workspace(&self, workspace: WorkspaceId, name: &str) -> Result<(), String>;
+
+    /// Stores `name` as `output`'s default layout.
+    ///
+    /// # Errors
+    /// A refusal message when `name` is not a known layout.
+    fn set_output(&self, output: &str, name: &str) -> Result<(), String>;
+
+    /// The layout name `workspace` runs now, as the engine would resolve it.
+    fn layout_name(&self, workspace: WorkspaceId, output: Option<&str>) -> String;
+
+    /// The default layout of `output`, which its workspaces fall back to.
+    fn output_layout(&self, output: &str) -> String;
+}
+
 /// The fields are private: a handler asks for what it needs through the accessor
 /// methods below, so a protocol module cannot reach into another one's table.
 pub struct State {
@@ -416,6 +444,9 @@ pub struct State {
     pub(crate) composer: Composer,
     /// The reason each workspace's last layout run failed, until its next placement.
     pub(crate) layout_failures: BTreeMap<WorkspaceId, &'static str>,
+    /// The layout control the compositor installed, which builds engines and holds the
+    /// runtime layout overrides. `None` until a layout is installed.
+    layouts: Option<Rc<dyn LayoutControl>>,
     /// The output whose frame the host described last, and its damage, so the frame
     /// hook can record what was drawn.
     last_frame: Option<(OutputId, Vec<Rect>)>,
@@ -683,6 +714,7 @@ impl State {
             pointer_position: SmithayPoint::from((0.0, 0.0)),
             composer: Composer::new(),
             layout_failures: BTreeMap::new(),
+            layouts: None,
             last_frame: None,
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
@@ -1548,12 +1580,93 @@ impl State {
 
     /// Installs the factory that makes one layout engine per workspace and submits
     /// every workspace's arrangement.
-    pub(crate) fn install_layouts(
-        &mut self,
-        factory: impl FnMut(WorkspaceId, Option<&str>) -> Box<dyn LayoutEngine> + 'static,
-    ) {
-        let effects = self.wm.set_layout_engines(factory);
+    pub(crate) fn install_layouts(&mut self, control: Rc<dyn LayoutControl>) {
+        let factory = Rc::clone(&control);
+        self.layouts = Some(control);
+        let effects = self
+            .wm
+            .set_layout_engines(move |workspace, output| factory.engine(workspace, output));
         self.apply(effects);
+    }
+
+    /// Sets one workspace's layout at runtime. The workspace's engine is replaced; the
+    /// old one is dropped with its run.
+    ///
+    /// # Errors
+    /// The control's refusal when `name` is not a known layout; nothing changes.
+    pub(crate) fn set_workspace_layout(&mut self, workspace: WorkspaceId, name: &str) -> Result<(), String> {
+        let control = self
+            .layouts
+            .clone()
+            .ok_or_else(|| "no layouts are installed".to_owned())?;
+        control.set_workspace(workspace, name)?;
+        let effects = self.wm.rebuild_layout(workspace);
+        self.apply(effects);
+        self.publish();
+        Ok(())
+    }
+
+    /// Every workspace the window manager arranges, with the layout it runs.
+    fn observed_workspaces(&self) -> Vec<crate::observation::ObservedWorkspace> {
+        let Some(control) = self.layouts.as_ref() else {
+            return Vec::new();
+        };
+        let output = self.wm.arrange_output_name();
+        self.wm
+            .workspaces()
+            .iter()
+            .map(|&id| crate::observation::ObservedWorkspace {
+                id,
+                layout: control.layout_name(id, output),
+            })
+            .collect()
+    }
+
+    /// Every output with its connector name and default layout.
+    fn observed_outputs(&self) -> Vec<crate::observation::ObservedOutput> {
+        let Some(control) = self.layouts.as_ref() else {
+            return Vec::new();
+        };
+        self.outputs
+            .iter()
+            .map(|entry| {
+                let name = entry.output.name();
+                crate::observation::ObservedOutput {
+                    id: entry.backend,
+                    layout: control.output_layout(&name),
+                    name,
+                }
+            })
+            .collect()
+    }
+
+    /// Sets an output's default layout at runtime. Every workspace's engine is replaced,
+    /// so a workspace with its own override gets a fresh engine for that override.
+    ///
+    /// # Errors
+    /// The control's refusal when `name` is not a known layout, or when no output has
+    /// that name; nothing changes.
+    pub(crate) fn set_output_layout(&mut self, output: &str, name: &str) -> Result<(), String> {
+        let control = self
+            .layouts
+            .clone()
+            .ok_or_else(|| "no layouts are installed".to_owned())?;
+        control.set_output(output, name)?;
+        let effects = self.wm.rebuild_all_layouts();
+        self.apply(effects);
+        self.publish();
+        Ok(())
+    }
+
+    /// Sets whether a window floats, and reports whether the window exists.
+    pub(crate) fn set_floating(&mut self, window: WindowId, floating: bool) -> bool {
+        if self.wm.window(window).is_none() {
+            return false;
+        }
+        let effects = self.wm.apply(Event::SetFloating { window, floating });
+        self.apply(effects);
+        self.publish();
+        true
     }
 
     /// Lets the window manager collect the layout runs that finished and applies the
@@ -1869,8 +1982,13 @@ impl State {
         // the same answer as the compositor's own record.
         self.sync_authority_lock();
         self.sync_foreign_toplevels();
+        let workspaces = self.observed_workspaces();
+        let output_layouts = self.observed_outputs();
         let mut snapshot = SessionSnapshot {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
+            workspaces,
+            output_layouts,
+            layout_failures: self.layout_failures.iter().map(|(ws, reason)| (*ws, *reason)).collect(),
             focus: focused,
             lock: LockObservation {
                 state: self.lock.state(),

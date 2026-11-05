@@ -72,7 +72,7 @@ use std::time::{Duration, Instant};
 use gnoblin_client::wire;
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
-use gnoblin_types::{ClientId, Version};
+use gnoblin_types::{ClientId, ErrorCode, Version, WorkspaceId};
 use gnoblin_wayland::{ControlHandle, Observer, SessionSnapshot};
 use tracing::{debug, info, warn};
 
@@ -1091,23 +1091,34 @@ impl Dispatcher {
             .object(object)
             .map(|live| live.ty().name().to_owned());
         let window = self.store.window_of(object);
-        match (ty, window) {
-            (Some(ty), Some(window)) if ty == "window" && method == "focus" => {
+        let workspace = self.store.workspace_of(object);
+        let output = self.store.output_of(object);
+        match (ty, window, workspace, output) {
+            (Some(ty), Some(window), _, _) if ty == "window" && method == "focus" => {
                 self.focus(client, envelope, object, &method, &arguments, window);
             }
-            (None, _) => self.refuse(
+            (Some(ty), Some(window), _, _) if ty == "window" && method == "set_floating" => {
+                self.set_floating(client, envelope, object, &method, &arguments, window);
+            }
+            (Some(ty), _, Some(workspace), _) if ty == "workspace" && method == "set_layout" => {
+                self.set_workspace_layout(client, envelope, object, &method, &arguments, workspace);
+            }
+            (Some(ty), _, _, Some((_, name))) if ty == "output" && method == "set_layout" => {
+                self.set_output_layout(client, envelope, object, &method, &arguments, &name);
+            }
+            (None, _, _, _) => self.refuse(
                 client,
                 envelope,
                 wire::code::OBJECT_UNKNOWN,
                 &format!("no live object has identity {}", object.get()),
             ),
-            (Some(_), None) => self.refuse(
+            (Some(_), None, None, None) => self.refuse(
                 client,
                 envelope,
                 wire::code::UNKNOWN_MEMBER,
-                "this object is not a window, and this build serves no method on it",
+                "this object is not a window, workspace or output, and this build serves no method on it",
             ),
-            (Some(_), Some(_)) => self.refuse(
+            (Some(_), _, _, _) => self.refuse(
                 client,
                 envelope,
                 wire::code::UNKNOWN_MEMBER,
@@ -1163,6 +1174,173 @@ impl Dispatcher {
         };
         if let Some(outcome) = outcome {
             let _ = self.store.graph_mut().complete(operation.id(), outcome);
+        }
+    }
+
+    /// Serves `window.set_floating`: the window manager moves the window in or out of the
+    /// tiled set, and the other windows re-arrange around it.
+    fn set_floating(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        window: gnoblin_types::WindowId,
+    ) {
+        let floating = match arguments.get("floating") {
+            Some(gnoblin_model::Value::Bool(value)) => *value,
+            _ => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    "set_floating takes a bool `floating`",
+                );
+                return;
+            }
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let answered = self.control.set_floating(window, floating);
+        self.sync();
+        self.finish(object, &operation, answered.map(|_| OperationOutcome::Done));
+    }
+
+    /// Serves `workspace.set_layout`: the layout is swapped, and the completion says
+    /// whether it was. An unknown name is refused and the workspace keeps its layout.
+    fn set_workspace_layout(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        workspace: WorkspaceId,
+    ) {
+        let name = match text_argument(arguments, "name") {
+            Some(name) => name,
+            None => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    "set_layout takes a text `name`",
+                );
+                return;
+            }
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let answered = self.control.set_workspace_layout(workspace, &name);
+        self.sync();
+        self.finish_layout(object, &operation, answered);
+    }
+
+    /// Serves `output.set_layout`: the output's default layout is replaced.
+    fn set_output_layout(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        output: &str,
+    ) {
+        let name = match text_argument(arguments, "name") {
+            Some(name) => name,
+            None => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    "set_layout takes a text `name`",
+                );
+                return;
+            }
+        };
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let answered = self.control.set_output_layout(output, &name);
+        self.sync();
+        self.finish_layout(object, &operation, answered);
+    }
+
+    /// Sends the call's reply: the operation's identity, which its completion will reach.
+    fn reply_with_operation(&mut self, client: ClientId, envelope: &Envelope, operation: &gnoblin_model::Operation) {
+        if let Some(connection) = self.connections.get_mut(&client) {
+            connection.send(&Envelope::reply(
+                wire::NAMESPACE,
+                wire::member::CALL,
+                envelope.request_id,
+                operation.id().get().to_be_bytes().to_vec(),
+            ));
+        }
+    }
+
+    /// Completes an operation with `outcome` unless the loop stopped answering.
+    fn finish(
+        &mut self,
+        object: gnoblin_types::ObjectId,
+        operation: &gnoblin_model::Operation,
+        outcome: Option<OperationOutcome>,
+    ) {
+        let Some(outcome) = outcome else {
+            return;
+        };
+        if self.store.graph().object(object).is_none() {
+            let _ = self
+                .store
+                .graph_mut()
+                .complete(operation.id(), OperationOutcome::Failed(OBJECT_GONE));
+            return;
+        }
+        let _ = self.store.graph_mut().complete(operation.id(), outcome);
+    }
+
+    /// Completes a layout operation: `Some(Ok)` is done, `Some(Err(reason))` fails with
+    /// the reason the layout gave, and `None` leaves it pending because the loop stopped.
+    fn finish_layout(
+        &mut self,
+        object: gnoblin_types::ObjectId,
+        operation: &gnoblin_model::Operation,
+        answered: Option<Result<(), String>>,
+    ) {
+        match answered {
+            Some(Ok(())) => self.finish(object, operation, Some(OperationOutcome::Done)),
+            Some(Err(reason)) => {
+                let code = if reason.starts_with("unknown layout") {
+                    ErrorCode::from_static("unknown-layout")
+                } else {
+                    ErrorCode::from_static("refused")
+                };
+                let _ = self
+                    .store
+                    .graph_mut()
+                    .complete(operation.id(), OperationOutcome::Failed(code));
+            }
+            None => {}
         }
     }
 
@@ -1299,6 +1477,14 @@ fn required_capability(member: &str) -> Option<Capability> {
 }
 
 /// The wire code a model refusal reports.
+/// A text argument by name, `None` when it is absent or not text.
+fn text_argument(arguments: &gnoblin_model::Fields, name: &str) -> Option<String> {
+    match arguments.get(name) {
+        Some(gnoblin_model::Value::Text(text)) => Some(text.clone()),
+        _ => None,
+    }
+}
+
 fn refusal_code(error: &ModelError) -> &'static str {
     match error {
         ModelError::UnknownObject { .. } | ModelError::UnknownOperation { .. } => wire::code::OBJECT_UNKNOWN,

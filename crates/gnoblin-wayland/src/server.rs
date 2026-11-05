@@ -46,7 +46,7 @@ use gnoblin_backend::render::Image;
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 use gnoblin_config::Protocols;
 use gnoblin_output::LayoutError;
-use gnoblin_types::{OutputId, Rect, WindowId};
+use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::WmOptions;
 
 use crate::access::ClientRole;
@@ -319,6 +319,19 @@ impl Server {
                                 // the focus request did.
                                 let _ = reply.send(state.focus_window(window));
                             }
+                            Command::SetWorkspaceLayout { workspace, name, reply } => {
+                                let _ = reply.send(state.set_workspace_layout(workspace, &name));
+                            }
+                            Command::SetOutputLayout { output, name, reply } => {
+                                let _ = reply.send(state.set_output_layout(&output, &name));
+                            }
+                            Command::SetFloating {
+                                window,
+                                floating,
+                                reply,
+                            } => {
+                                let _ = reply.send(state.set_floating(window, floating));
+                            }
                             Command::Advance(milliseconds) => state.advance_clock(milliseconds),
                             Command::SelectSource(index) => {
                                 if !state.select_input_source(index) {
@@ -393,11 +406,8 @@ impl Server {
     ///
     /// Called by the composition root before the loop runs. A layout that is never
     /// installed leaves the window manager tiling nothing.
-    pub fn install_layouts(
-        &mut self,
-        factory: impl FnMut(gnoblin_types::WorkspaceId, Option<&str>) -> Box<dyn gnoblin_wm::layout::LayoutEngine> + 'static,
-    ) {
-        self.state.install_layouts(factory);
+    pub fn install_layouts(&mut self, control: std::rc::Rc<dyn crate::state::LayoutControl>) {
+        self.state.install_layouts(control);
     }
 
     /// Runs until the loop is stopped.
@@ -534,6 +544,41 @@ impl ControlHandle {
     pub fn focus(&self, window: WindowId) -> Option<bool> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::Focus { window, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Sets a workspace's layout. `None` when the loop did not answer in time; otherwise
+    /// the refusal message when `name` is not a loadable layout.
+    pub fn set_workspace_layout(&self, workspace: WorkspaceId, name: &str) -> Option<Result<(), String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::SetWorkspaceLayout {
+            workspace,
+            name: name.to_owned(),
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Sets an output's default layout; same answers as [`ControlHandle::set_workspace_layout`].
+    pub fn set_output_layout(&self, output: &str, name: &str) -> Option<Result<(), String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::SetOutputLayout {
+            output: output.to_owned(),
+            name: name.to_owned(),
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
+    /// Sets whether a window floats. `None` when the loop did not answer in time;
+    /// otherwise whether the window exists.
+    pub fn set_floating(&self, window: WindowId, floating: bool) -> Option<bool> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::SetFloating {
+            window,
+            floating,
+            reply,
+        });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
@@ -737,6 +782,24 @@ enum Command {
     /// A focus request, and the channel its answer goes back on.
     Focus {
         window: WindowId,
+        reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// A workspace's layout choice; the answer is the refusal, if any.
+    SetWorkspaceLayout {
+        workspace: WorkspaceId,
+        name: String,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
+    },
+    /// An output's default layout choice; the answer is the refusal, if any.
+    SetOutputLayout {
+        output: String,
+        name: String,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
+    },
+    /// Whether a window floats, and whether the window exists.
+    SetFloating {
+        window: WindowId,
+        floating: bool,
         reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// Promise a role to a process the compositor is about to start.

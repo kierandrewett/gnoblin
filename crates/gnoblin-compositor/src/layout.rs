@@ -28,6 +28,7 @@ use std::time::Instant;
 use gnoblin_config::{Layout, SearchPaths, Store};
 use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, default_prefix, installed_module_dir};
 use gnoblin_types::WorkspaceId;
+use gnoblin_wayland::LayoutControl;
 use gnoblin_wm::layout::{
     Camera, Generation, Handled, Job, LayoutEffect, LayoutEngine, LayoutFailure, LayoutOutcome, Reply, Ticket,
 };
@@ -124,11 +125,11 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 /// The resolved layout settings for the session's workspaces, with the Lua host that
 /// runs them. Built once, inside the thread that runs the compositor.
 pub struct WorkspaceLayouts {
-    default: String,
-    outputs: BTreeMap<String, String>,
-    workspaces: BTreeMap<String, String>,
+    default: RefCell<String>,
+    outputs: RefCell<BTreeMap<String, String>>,
+    workspaces: RefCell<BTreeMap<WorkspaceId, String>>,
     host: Rc<RefCell<Host>>,
-    failed: BTreeSet<String>,
+    failed: RefCell<BTreeSet<String>>,
 }
 
 impl WorkspaceLayouts {
@@ -154,26 +155,33 @@ impl WorkspaceLayouts {
             }
         }
         Self {
-            default: settings.default,
-            outputs: settings.outputs.into_iter().collect(),
-            workspaces: settings.workspaces.into_iter().collect(),
+            default: RefCell::new(settings.default),
+            outputs: RefCell::new(settings.outputs.into_iter().collect()),
+            workspaces: RefCell::new(
+                settings
+                    .workspaces
+                    .into_iter()
+                    .filter_map(|(key, layout)| key.parse::<u64>().ok().map(|id| (WorkspaceId::new(id), layout)))
+                    .collect(),
+            ),
             host: Rc::new(RefCell::new(host)),
-            failed,
+            failed: RefCell::new(failed),
         }
     }
 
-    /// The layout a workspace on `output` uses: its workspace override, else the
-    /// override of `output`, else `default`. A name that is floating or failed to load
-    /// resolves to [`FLOATING`].
-    pub fn resolve(&self, workspace: WorkspaceId, output: Option<&str>) -> &str {
-        let key = workspace.get().to_string();
+    /// The layout a workspace on `output` uses: its runtime override, else its
+    /// configured workspace override, else the override of `output`, else `default`.
+    /// A name that is floating or failed to load resolves to [`FLOATING`].
+    pub fn resolve(&self, workspace: WorkspaceId, output: Option<&str>) -> String {
         let name = self
             .workspaces
-            .get(&key)
-            .or_else(|| output.and_then(|output| self.outputs.get(output)))
-            .unwrap_or(&self.default);
-        if name == FLOATING || self.failed.contains(name) {
-            FLOATING
+            .borrow()
+            .get(&workspace)
+            .cloned()
+            .or_else(|| output.and_then(|output| self.outputs.borrow().get(output).cloned()))
+            .unwrap_or_else(|| self.default.borrow().clone());
+        if name == FLOATING || self.failed.borrow().contains(&name) {
+            FLOATING.to_owned()
         } else {
             name
         }
@@ -182,9 +190,67 @@ impl WorkspaceLayouts {
     /// The engine for `workspace` on `output`. Floating workspaces get
     /// [`FloatingEngine`]; others get a Lua engine over the shared host.
     pub fn engine_for(&self, workspace: WorkspaceId, output: Option<&str>) -> Box<dyn LayoutEngine> {
-        match self.resolve(workspace, output) {
-            FLOATING => Box::new(FloatingEngine::default()),
-            name => Box::new(LuaEngine::new(self.host.clone(), name, workspace, Gaps::default())),
+        let name = self.resolve(workspace, output);
+        if name == FLOATING {
+            Box::new(FloatingEngine::default())
+        } else {
+            Box::new(LuaEngine::new(self.host.clone(), &name, workspace, Gaps::default()))
+        }
+    }
+
+    /// Loads `name` into the host when it is not registered yet, so a runtime choice
+    /// names a real layout or is refused. A layout that fails to load is refused too.
+    fn ensure_layout(&self, name: &str) -> Result<(), String> {
+        if name == FLOATING {
+            return Ok(());
+        }
+        if self.failed.borrow().contains(name) {
+            return Err(format!("layout `{name}` failed to load"));
+        }
+        let mut host = self.host.borrow_mut();
+        match host.register(name, &format!("gnoblin.layouts.{name}"), Data::Table(BTreeMap::new())) {
+            Ok(()) => Ok(()),
+            Err(failure) => {
+                warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] runtime layout cannot be loaded");
+                self.failed.borrow_mut().insert(name.to_owned());
+                Err(format!("layout `{name}` cannot be loaded: {}", failure.message))
+            }
+        }
+    }
+}
+
+impl LayoutControl for WorkspaceLayouts {
+    fn engine(&self, workspace: WorkspaceId, output: Option<&str>) -> Box<dyn LayoutEngine> {
+        self.engine_for(workspace, output)
+    }
+
+    fn set_workspace(&self, workspace: WorkspaceId, name: &str) -> Result<(), String> {
+        self.ensure_layout(name)?;
+        self.workspaces.borrow_mut().insert(workspace, name.to_owned());
+        Ok(())
+    }
+
+    fn set_output(&self, output: &str, name: &str) -> Result<(), String> {
+        self.ensure_layout(name)?;
+        self.outputs.borrow_mut().insert(output.to_owned(), name.to_owned());
+        Ok(())
+    }
+
+    fn layout_name(&self, workspace: WorkspaceId, output: Option<&str>) -> String {
+        self.resolve(workspace, output)
+    }
+
+    fn output_layout(&self, output: &str) -> String {
+        let name = self
+            .outputs
+            .borrow()
+            .get(output)
+            .cloned()
+            .unwrap_or_else(|| self.default.borrow().clone());
+        if name == FLOATING || self.failed.borrow().contains(&name) {
+            FLOATING.to_owned()
+        } else {
+            name
         }
     }
 }

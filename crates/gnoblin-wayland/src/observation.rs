@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use gnoblin_lock::State as LockState;
-use gnoblin_types::{OutputId, Rect, WindowId};
+use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 
 /// One window, as the server last saw it.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -104,11 +104,33 @@ impl Default for LockObservation {
     }
 }
 
+/// One workspace at one instant: its identity and the layout it runs.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct ObservedWorkspace {
+    pub id: WorkspaceId,
+    pub layout: String,
+}
+
+/// One output at one instant: its connector name and the default layout its workspaces
+/// fall back to.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct ObservedOutput {
+    pub id: OutputId,
+    pub name: String,
+    pub layout: String,
+}
+
 /// The window state at one instant.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct SessionSnapshot {
     pub(crate) windows: BTreeMap<WindowId, ObservedWindow>,
     pub(crate) outputs: Vec<OutputId>,
+    /// Every workspace the window manager arranges, with the layout it runs.
+    pub(crate) workspaces: Vec<ObservedWorkspace>,
+    /// Every output the session presents on: its connector name and its default layout.
+    pub(crate) output_layouts: Vec<ObservedOutput>,
+    /// Each workspace whose last layout run failed, with the reason it failed.
+    pub(crate) layout_failures: Vec<(WorkspaceId, &'static str)>,
     pub(crate) focus: Option<WindowId>,
     pub(crate) lock: LockObservation,
     pub(crate) layers: Vec<ObservedLayer>,
@@ -181,6 +203,24 @@ impl SessionSnapshot {
     #[must_use]
     pub fn outputs(&self) -> &[OutputId] {
         &self.outputs
+    }
+
+    /// Every workspace the window manager arranges, with its layout.
+    #[must_use]
+    pub fn workspaces(&self) -> &[ObservedWorkspace] {
+        &self.workspaces
+    }
+
+    /// Every output with its connector name and default layout.
+    #[must_use]
+    pub fn output_layouts(&self) -> &[ObservedOutput] {
+        &self.output_layouts
+    }
+
+    /// The reason each workspace's last layout run failed.
+    #[must_use]
+    pub fn layout_failures(&self) -> &[(WorkspaceId, &'static str)] {
+        &self.layout_failures
     }
 
     /// The one managed window, when a test knows there is exactly one.
@@ -288,6 +328,9 @@ impl SessionSnapshot {
         SessionSnapshot {
             windows: windows.into_iter().map(|window| (window.id, window)).collect(),
             outputs,
+            workspaces: Vec::new(),
+            output_layouts: Vec::new(),
+            layout_failures: Vec::new(),
             focus,
             lock: LockObservation::default(),
             layers: Vec::new(),

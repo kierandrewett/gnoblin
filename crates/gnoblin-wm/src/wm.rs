@@ -1319,6 +1319,28 @@ impl Wm {
         self.sync_layouts()
     }
 
+    /// Replaces one workspace's engine with a fresh one from the installed factory and
+    /// submits its arrangement. The old engine is dropped. Does nothing when no
+    /// factory is installed or the workspace is not declared.
+    pub fn rebuild_layout(&mut self, workspace: WorkspaceId) -> Vec<Effect> {
+        self.layouts.forget(workspace);
+        self.sync_layouts()
+    }
+
+    /// The connector name of the output every workspace is arranged on, when it is known.
+    /// A layout's output override is keyed by this name.
+    #[must_use]
+    pub fn arrange_output_name(&self) -> Option<&str> {
+        self.outputs.first().map(Output::name).filter(|name| !name.is_empty())
+    }
+
+    /// Replaces every workspace's engine with one from the installed factory and
+    /// submits the arrangements. Used when an output's default layout changes.
+    pub fn rebuild_all_layouts(&mut self) -> Vec<Effect> {
+        self.layouts.forget_all();
+        self.sync_layouts()
+    }
+
     /// Submits a run for every workspace whose tiled input changed since its last
     /// submit. Does nothing when no factory is installed.
     fn sync_layouts(&mut self) -> Vec<Effect> {

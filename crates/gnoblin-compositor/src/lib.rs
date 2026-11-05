@@ -278,8 +278,8 @@ impl Compositor {
             }
         }
         .map_err(Error::Wayland)?;
-        let layouts = layout::WorkspaceLayouts::new(config.layouts);
-        server.install_layouts(move |workspace, output| layouts.engine_for(workspace, output));
+        let layouts = std::rc::Rc::new(layout::WorkspaceLayouts::new(config.layouts));
+        server.install_layouts(layouts.clone());
         let control = server.control();
         let observation = server.observation();
         let ipc = ipc::IpcServer::start(

@@ -182,6 +182,17 @@ impl Layouts {
         self.by_workspace.clear();
     }
 
+    /// Drops the workspace's engine so the next sync asks the factory for a new one.
+    /// The old slot, and any run in flight on it, is dropped with the engine.
+    pub(crate) fn forget(&mut self, workspace: WorkspaceId) {
+        self.by_workspace.remove(&workspace);
+    }
+
+    /// Drops every workspace's engine; the next sync asks the factory for each again.
+    pub(crate) fn forget_all(&mut self) {
+        self.by_workspace.clear();
+    }
+
     /// Creates a layout for each declared workspace, drops the layouts of removed
     /// workspaces, and submits a run for each workspace whose wanted input changed.
     ///
