@@ -17,7 +17,7 @@ use crate::placement::{self, PlacementMode};
 use crate::rules::{Rule, RuleAction};
 use crate::snapping::SnapZone;
 use crate::stack::{Stack, StackLayer};
-use crate::window::{Window, WindowState};
+use crate::window::{Window, WindowKind, WindowState};
 use crate::workspace::Workspaces;
 
 /// Size used for a window that asks for none.
@@ -279,6 +279,11 @@ impl Wm {
             Event::WindowClosed { window } => self.window_closed(window),
             Event::WindowTitleChanged { window, title } => self.window_title_changed(window, title),
             Event::WindowAppIdChanged { window, app_id } => self.window_app_id_changed(window, app_id),
+            Event::WindowRoleChanged {
+                window,
+                kind,
+                transient_for,
+            } => self.window_role_changed(window, kind, transient_for),
             Event::RulesChanged { rules } => {
                 // Rules apply when a window is taken into management, never to
                 // windows that are already managed, so a reload cannot re-place or
@@ -534,6 +539,18 @@ impl Wm {
             .is_some_and(|window| window.is_visible(self.active_workspace))
     }
 
+    /// The topmost visible modal child of `parent`. While it is open the parent cannot
+    /// take focus: the modal does.
+    fn blocking_modal(&self, parent: WindowId) -> Option<WindowId> {
+        self.stack.order().iter().copied().find(|id| {
+            self.windows.get(id).is_some_and(|window| {
+                window.kind == WindowKind::Modal
+                    && window.transient_for == Some(parent)
+                    && window.is_visible(self.active_workspace)
+            })
+        })
+    }
+
     /// The output a new window belongs on: the focused window's output, or the
     /// primary output.
     fn placement_output(&self) -> Option<OutputId> {
@@ -589,6 +606,7 @@ impl Wm {
                     .copied()
                     .find(|id| self.is_focus_candidate(*id))
             });
+        let candidate = candidate.map(|id| self.blocking_modal(id).unwrap_or(id));
         self.focus = candidate;
         if let Some(id) = candidate {
             self.remember_focus(id);
@@ -918,6 +936,56 @@ impl Wm {
         Vec::new()
     }
 
+    /// Applies a role change: the kind and parent of a window. A transient follows its
+    /// parent on the same workspace and always floats, so a window that becomes one
+    /// leaves the tiled set.
+    fn window_role_changed(&mut self, id: WindowId, kind: WindowKind, transient_for: Option<WindowId>) -> Vec<Effect> {
+        let Some(window) = self.windows.get(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
+        let parent = transient_for.filter(|parent| *parent != id);
+        if let Some(parent) = parent {
+            match self.windows.get(&parent) {
+                None => return vec![Effect::rejected(Rejection::UnknownWindow(parent))],
+                Some(parent_window) if parent_window.workspace != window.workspace => {
+                    return vec![Effect::rejected(Rejection::ParentOnOtherWorkspace {
+                        window: id,
+                        parent,
+                    })];
+                }
+                Some(_) => {}
+            }
+        }
+        let needs_floating = kind.is_transient() && !window.state.floating;
+        let parent_changed = window.transient_for != parent;
+        let Some(window) = self.windows.get_mut(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
+        window.kind = kind;
+        window.transient_for = parent;
+        let mut effects = if needs_floating {
+            self.set_floating(id, true)
+        } else {
+            Vec::new()
+        };
+        if parent.is_some() && parent_changed {
+            // A transient opens above its parent, so a window that becomes one is stacked
+            // above the parent in its layer, as a window opened with a parent is.
+            let before = self.stack.order().to_vec();
+            self.stack.raise(id);
+            effects.extend(self.stack_changed(&before));
+        }
+        // A modal that appears while its parent holds focus takes focus from it.
+        if let Some(parent) = parent
+            && kind == WindowKind::Modal
+            && self.focus == Some(parent)
+            && self.is_focus_candidate(id)
+        {
+            effects.extend(self.focus_window(id, ActivationDecision::Allow));
+        }
+        effects
+    }
+
     fn workspace_added(&mut self, id: WorkspaceId) -> Vec<Effect> {
         if !self.workspaces.add(id) {
             return vec![Effect::rejected(Rejection::DuplicateWorkspace(id))];
@@ -986,12 +1054,23 @@ impl Wm {
     }
 
     fn activation(&mut self, id: WindowId, decision: ActivationDecision) -> Vec<Effect> {
-        let Some(window) = self.windows.get(&id) else {
+        if !self.windows.contains_key(&id) {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
-        };
+        }
         if !decision.permits_focus() {
             return vec![Effect::ActivationDenied { window: id }];
         }
+        // A parent with an open modal child cannot take focus: the modal takes it instead.
+        let target = self.blocking_modal(id).unwrap_or(id);
+        self.focus_window(target, decision)
+    }
+
+    /// Focuses a visible window, raising it when the decision allows. The caller has
+    /// already chosen the window, including any modal that stands in for a parent.
+    fn focus_window(&mut self, id: WindowId, decision: ActivationDecision) -> Vec<Effect> {
+        let Some(window) = self.windows.get(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
         if !window.is_visible(self.active_workspace) {
             return vec![Effect::rejected(Rejection::NotVisible(id))];
         }
@@ -1410,6 +1489,7 @@ fn changes_tiling(event: &Event) -> bool {
         event,
         Event::WindowOpened(_)
             | Event::WindowClosed { .. }
+            | Event::WindowRoleChanged { .. }
             | Event::Minimise { .. }
             | Event::Unminimise { .. }
             | Event::SetFloating { .. }
@@ -1507,6 +1587,102 @@ mod tests {
         });
         assert_eq!(wm.windows().count(), 2);
         assert_eq!(wm.stack().len(), 2);
+        assert_eq!(wm.check_invariants().map(|_| ()), Ok(()));
+    }
+
+    fn wm_with_two_windows() -> Wm {
+        let mut wm = Wm::new(WmOptions::default());
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(1),
+        });
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(0),
+            rect: Rect::new(0, 0, 1920, 1080),
+        });
+        for raw in 1..=2 {
+            wm.apply(Event::WindowOpened(WindowSpec::normal(
+                WindowId::new(raw),
+                "org.example.App",
+            )));
+        }
+        wm
+    }
+
+    #[test]
+    fn an_open_modal_takes_focus_from_its_parent_until_it_closes() {
+        // While a modal dialog is open its parent cannot take focus; the modal does.
+        // Once the modal is no longer modal, the parent can be focused again.
+        let mut wm = wm_with_two_windows();
+        let (parent, modal) = (WindowId::new(1), WindowId::new(2));
+        wm.apply(Event::ActivationRequested {
+            window: parent,
+            decision: ActivationDecision::Allow,
+        });
+        assert_eq!(wm.focused(), Some(parent));
+
+        wm.apply(Event::WindowRoleChanged {
+            window: modal,
+            kind: WindowKind::Modal,
+            transient_for: Some(parent),
+        });
+        assert_eq!(
+            wm.focused(),
+            Some(modal),
+            "an opening modal takes focus from its parent"
+        );
+
+        wm.apply(Event::ActivationRequested {
+            window: parent,
+            decision: ActivationDecision::Allow,
+        });
+        assert_eq!(wm.focused(), Some(modal), "the parent is redirected to its modal child");
+
+        wm.apply(Event::WindowRoleChanged {
+            window: modal,
+            kind: WindowKind::Normal,
+            transient_for: None,
+        });
+        wm.apply(Event::ActivationRequested {
+            window: parent,
+            decision: ActivationDecision::Allow,
+        });
+        assert_eq!(wm.focused(), Some(parent), "the parent focuses again once unblocked");
+        assert_eq!(wm.check_invariants().map(|_| ()), Ok(()));
+    }
+
+    #[test]
+    fn a_transient_floats_and_stacks_above_its_parent() {
+        let mut wm = Wm::new(WmOptions::default());
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(1),
+        });
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(0),
+            rect: Rect::new(0, 0, 1920, 1080),
+        });
+        for raw in 1..=3 {
+            wm.apply(Event::WindowOpened(WindowSpec::normal(
+                WindowId::new(raw),
+                "org.example.App",
+            )));
+        }
+        let (child, parent) = (WindowId::new(1), WindowId::new(3));
+        assert_eq!(wm.stack(), &[WindowId::new(3), WindowId::new(2), child]);
+
+        wm.apply(Event::WindowRoleChanged {
+            window: child,
+            kind: WindowKind::Dialog,
+            transient_for: Some(parent),
+        });
+
+        let Some(window) = wm.window(child) else {
+            panic!("the transient is managed");
+        };
+        assert!(window.state.floating, "a transient leaves the tiled set");
+        assert_eq!(window.transient_for, Some(parent));
+        let child_at = wm.stack().iter().position(|id| *id == child);
+        let parent_at = wm.stack().iter().position(|id| *id == parent);
+        assert!(child_at < parent_at, "the transient is stacked above its parent");
         assert_eq!(wm.check_invariants().map(|_| ()), Ok(()));
     }
 }

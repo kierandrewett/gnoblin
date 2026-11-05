@@ -88,6 +88,13 @@ pub enum Event {
     WindowTitleChanged { window: WindowId, title: String },
     /// A window's application id changed, as it can for a late-starting client.
     WindowAppIdChanged { window: WindowId, app_id: String },
+    /// A window's role changed: it became a dialog or a modal dialog, or its parent
+    /// changed. `transient_for` of `None` leaves the window without a parent.
+    WindowRoleChanged {
+        window: WindowId,
+        kind: WindowKind,
+        transient_for: Option<WindowId>,
+    },
     /// The configured window rules were replaced.
     RulesChanged { rules: Vec<Rule> },
     /// A workspace was declared.
@@ -160,6 +167,9 @@ pub enum Rejection {
     NotFloating(WindowId),
     /// The window is a transient, which always floats and cannot be tiled.
     TransientAlwaysFloating(WindowId),
+    /// The parent of a transient is on another workspace, so the transient cannot
+    /// follow it. The link is refused and the window keeps its role.
+    ParentOnOtherWorkspace { window: WindowId, parent: WindowId },
     /// `window_management.edge_tiling` is off, so edge snapping is unavailable. The
     /// rejection is not about one window, because the setting applies to the session.
     EdgeTilingDisabled,
