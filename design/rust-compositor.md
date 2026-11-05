@@ -1888,6 +1888,22 @@ fn window_removed(&mut self, id: WindowId);
   fullscreen, maximised or snapped. Any other window leaves the layout. When its
   flag clears, it returns to its previous slot if that slot still exists, and
   otherwise `window_added` places it using the focus hint.
+- **State precedence:** `floating` is a preference the user or a rule sets. It
+  never overrides the other flags and none of them clears it.
+    - Effective state, strongest first: `minimised` (hidden, out of every
+      layout), `fullscreen`, `maximised`, `snapped`, `floating`, tiled.
+    - Entering `maximised`, `fullscreen` or `snapped` keeps `floating` as it
+      was. Leaving it returns the window to the next weaker state: a window
+      that was tiled returns to its tiled slot, and a window that was floating
+      returns to its floating rect.
+    - Snapping or maximising a tiled window is allowed. It leaves the tiled set
+      until it is restored, and the layout arranges the rest.
+    - Setting `floating` on a window saves its tiled slot. Clearing it returns
+      the window to that slot if it still exists.
+    - The layout only returns geometry. It never writes `WindowState`. Only
+      `gnoblin-wm`'s state machine changes flags, including the `LayoutEffect`
+      request to float a window.
+    - A workspace belongs to one output, and its layout instance moves with it.
 - **Transients:** dialogs and modals always float over their parent and never
   enter the tiled set.
 - **Ownership:** `gnoblin-wm` owns one `Layout` per workspace. The instance lives
