@@ -2,8 +2,9 @@
 //!
 //! Design/rust-compositor.md, "One IPC": the socket is
 //! `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`, found through `GNOBLIN_IPC_SOCKET`. The
-//! resolution is a function of the environment rather than of the process, so the
-//! precedence is testable without changing a process-global variable.
+//! resolution belongs to `gnoblin_client::unix`, together with the transport over
+//! it, because every IPC client has to find the same socket; this module only
+//! turns that path into a [`Connection`] and maps its failures onto exit codes.
 //!
 //! The exit codes are the whole contract with a script:
 //!
@@ -20,21 +21,12 @@
 //! versions so neither guess is necessary.
 
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use gnoblin_client::{Client, ConnectError, Transport};
 use gnoblin_proto::Mismatch;
 
-use crate::socket::UnixTransport;
-
-/// The variable that overrides the socket path.
-pub const SOCKET_VARIABLE: &str = "GNOBLIN_IPC_SOCKET";
-
-/// The directory variable the default path is built from.
-pub const RUNTIME_VARIABLE: &str = "XDG_RUNTIME_DIR";
-
-/// The socket path under `$XDG_RUNTIME_DIR`.
-pub const DEFAULT_SOCKET: &str = "gnoblin/ipc.sock";
+use gnoblin_client::unix::{UnixTransport, socket_path};
 
 /// A way to open one connection.
 ///
@@ -109,23 +101,6 @@ impl fmt::Display for ConnectFailure {
 
 impl std::error::Error for ConnectFailure {}
 
-/// The socket path, from the two variables that decide it.
-///
-/// `env` is passed in so the precedence can be tested without a process-global
-/// write, which is `unsafe` in this edition and would make the tests order
-/// dependent.
-pub fn socket_path(env: impl Fn(&str) -> Option<String>) -> Result<PathBuf, String> {
-    if let Some(path) = env(SOCKET_VARIABLE).filter(|path| !path.is_empty()) {
-        return Ok(PathBuf::from(path));
-    }
-    match env(RUNTIME_VARIABLE).filter(|dir| !dir.is_empty()) {
-        Some(dir) => Ok(Path::new(&dir).join(DEFAULT_SOCKET)),
-        None => Err(format!(
-            "no IPC socket: set {SOCKET_VARIABLE}, or {RUNTIME_VARIABLE} so that ${RUNTIME_VARIABLE}/{DEFAULT_SOCKET} can be found"
-        )),
-    }
-}
-
 /// The compositor's socket.
 #[derive(Debug)]
 pub struct SocketConnection {
@@ -160,54 +135,5 @@ impl Connection for SocketConnection {
             reason: error.to_string(),
         })?;
         Client::connect(transport, crate::tree::ipc_version()).map_err(ConnectFailure::from_connect)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn environment(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
-        move |name| {
-            pairs
-                .iter()
-                .find(|(key, _)| *key == name)
-                .map(|(_, value)| (*value).to_owned())
-        }
-    }
-
-    #[test]
-    fn the_socket_variable_wins_over_the_runtime_directory() {
-        let path = socket_path(environment(&[
-            (SOCKET_VARIABLE, "/run/user/1000/other.sock"),
-            (RUNTIME_VARIABLE, "/run/user/1000"),
-        ]))
-        .expect("both variables are set");
-        assert_eq!(path, PathBuf::from("/run/user/1000/other.sock"));
-    }
-
-    #[test]
-    fn the_default_is_built_from_the_runtime_directory() {
-        let path = socket_path(environment(&[(RUNTIME_VARIABLE, "/run/user/1000")])).expect("the directory is set");
-        assert_eq!(path, PathBuf::from("/run/user/1000/gnoblin/ipc.sock"));
-    }
-
-    #[test]
-    fn neither_variable_is_a_cannot_connect_error() {
-        let error = socket_path(environment(&[])).expect_err("nothing names a socket");
-        assert!(
-            error.contains(SOCKET_VARIABLE) && error.contains(RUNTIME_VARIABLE),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn an_empty_variable_is_not_a_path() {
-        let path = socket_path(environment(&[
-            (SOCKET_VARIABLE, ""),
-            (RUNTIME_VARIABLE, "/run/user/1000"),
-        ]))
-        .expect("the directory still names one");
-        assert_eq!(path, PathBuf::from("/run/user/1000/gnoblin/ipc.sock"));
     }
 }

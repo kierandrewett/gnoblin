@@ -77,10 +77,9 @@
 //!
 //! # What is not here
 //!
-//! The socket. `gnoblin-client` deliberately holds none, so `src/socket.rs` is this
-//! crate's [`gnoblin_client::Transport`] over a Unix stream; a descriptor
-//! (`SCM_RIGHTS`) is refused rather than silently dropped, because receiving one
-//! needs `unsafe` and nothing `gnoblinctl` handles carries one.
+//! The socket. It lives in `gnoblin_client::unix` rather than here, because the
+//! path resolution and the stream over it are what every IPC client shares; this
+//! crate re-exports them and adds nothing of its own.
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -91,12 +90,13 @@ mod commands;
 mod connection;
 mod dump;
 mod output;
-mod socket;
 mod tree;
 mod value;
 
-pub use connection::{ConnectFailure, Connection, SocketConnection, socket_path};
-pub use socket::UnixTransport;
+pub use connection::{ConnectFailure, Connection, SocketConnection};
+// Where the socket is and the transport over it are the client library's, because
+// every client of the IPC has to find the same file and speak the same handshake.
+pub use gnoblin_client::unix::{DEFAULT_SOCKET, RUNTIME_VARIABLE, SOCKET_VARIABLE, UnixTransport, socket_path};
 
 /// The command tree, built from the generated schema table.
 ///

@@ -72,7 +72,9 @@ mod loopback;
 #[cfg(unix)]
 mod transport;
 #[cfg(unix)]
-mod wire;
+pub mod unix;
+#[cfg(unix)]
+pub mod wire;
 
 #[cfg(unix)]
 pub use client::{Client, Event};
@@ -82,5 +84,7 @@ pub use error::{ClientError, ConnectError, HandshakeError, WireError};
 pub use loopback::{Loopback, Server};
 #[cfg(unix)]
 pub use transport::Transport;
+#[cfg(unix)]
+pub use unix::{DEFAULT_SOCKET, RUNTIME_VARIABLE, SOCKET_VARIABLE, UnixTransport, socket_path};
 #[cfg(unix)]
 pub use wire::{NAMESPACE, code, member};
