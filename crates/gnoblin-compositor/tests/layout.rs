@@ -8,9 +8,10 @@
 mod support;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use gnoblin_compositor::LayoutSettings;
-use support::{Client, Session, Window, wait_for, wait_for_listed_id};
+use support::{Client, Command, Session, Window, wait_for, wait_for_listed_id};
 
 /// The repository's shipped Lua layouts, the directory an installed prefix provides.
 fn shipped_modules() -> PathBuf {
@@ -53,6 +54,19 @@ fn settled_sizes(client: &mut Client, windows: &[Window; 3]) -> Vec<(i32, i32)> 
             None
         })
     })
+}
+
+/// Waits until the configure sizes equal `expected`. `settled_sizes` alone would return
+/// the stale sizes straight after a layout change, before the new arrangement is applied.
+fn wait_for_sizes(client: &mut Client, windows: &[Window; 3], expected: &[(i32, i32)]) {
+    wait_for("the configure sizes to reach the expected arrangement", || {
+        client.roundtrip();
+        let sizes: Vec<(i32, i32)> = windows
+            .iter()
+            .map(|window| client.configured_size(window).expect("configured"))
+            .collect();
+        (sizes == expected).then_some(())
+    });
 }
 
 #[test]
@@ -223,5 +237,154 @@ fn set_floating_overrides_the_workspace_layout() {
             .ctl(&["window", "call", &id.to_string(), "set_floating", "floating=true"])
             .ok();
     }
+    assert_eq!(settled_sizes(&mut client, &windows), floating);
+}
+
+/// The id of the first workspace `workspace list` prints. A session always has one.
+fn workspace_id(session: &Session) -> u64 {
+    wait_for("a workspace to be listed", || {
+        let listed = session.ctl(&["workspace", "list"]).ok();
+        listed
+            .out
+            .lines()
+            .find_map(|line| line.split('\t').next()?.parse().ok())
+    })
+}
+
+#[test]
+fn set_layout_retiles_the_windows_on_the_workspace() {
+    let session = session_with(LayoutSettings {
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    let floating = settled_sizes(&mut client, &windows);
+
+    let workspace = workspace_id(&session);
+    session
+        .ctl(&[
+            "workspace",
+            "call",
+            &workspace.to_string(),
+            "set_layout",
+            "name=master_stack",
+        ])
+        .ok();
+    wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
+    assert_ne!(floating, vec![(512, 768), (512, 384), (512, 384)]);
+}
+
+#[test]
+fn layout_command_is_delivered_to_the_layout_that_answers_it() {
+    // The `fill` command places every window at the size its parameters name, so the
+    // configure sizes show the command reached this module with those parameters.
+    let modules = tempfile::tempdir().expect("a module directory");
+    let layouts = modules.path().join("gnoblin/layouts");
+    std::fs::create_dir_all(&layouts).expect("the layouts directory");
+    std::fs::write(
+        layouts.join("probe.lua"),
+        r#"local M = {}
+M.options = {}
+function M.arrange(_ctx) return { placements = {} } end
+function M.on_request(_ctx) return nil end
+M.command = {}
+function M.command.fill(ctx, args)
+  local placements = {}
+  for i, window in ipairs(ctx.windows) do
+    placements[i] = { window = window.id, x = 0, y = 0, width = args.width, height = args.height }
+  end
+  return { placements = placements }
+end
+return M
+"#,
+    )
+    .expect("the probe module");
+
+    let session = session_with(LayoutSettings {
+        module_dirs: vec![modules.path().to_path_buf()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    settled_sizes(&mut client, &windows);
+
+    let workspace = workspace_id(&session).to_string();
+    session
+        .ctl(&["workspace", "call", &workspace, "set_layout", "name=probe"])
+        .ok();
+    session
+        .ctl(&[
+            "workspace",
+            "call",
+            &workspace,
+            "layout_command",
+            "name=fill",
+            "params={\"width\":300,\"height\":200}",
+        ])
+        .ok();
+
+    wait_for_sizes(&mut client, &windows, &[(300, 200); 3]);
+}
+
+#[test]
+fn an_unknown_layout_name_is_refused_over_ipc() {
+    let session = session_with(LayoutSettings {
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let workspace = workspace_id(&session).to_string();
+
+    let refusal = session.ctl(&["workspace", "call", &workspace, "set_layout", "name=no_such_layout"]);
+    assert_ne!(refusal.code, 0, "an unknown layout is refused");
+    assert!(
+        refusal.out.contains("unknown-layout") || refusal.err.contains("unknown-layout"),
+        "the refusal names unknown-layout: out {:?}, err {:?}",
+        refusal.out,
+        refusal.err
+    );
+}
+
+#[test]
+fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
+    let floating = {
+        let session = session_with(LayoutSettings::default());
+        let mut client = Client::connect(session.wayland());
+        let windows = map_three(&mut client);
+        settled_sizes(&mut client, &windows)
+    };
+
+    let modules = tempfile::tempdir().expect("a module directory");
+    let layouts = modules.path().join("gnoblin/layouts");
+    std::fs::create_dir_all(&layouts).expect("the layouts directory");
+    std::fs::write(
+        layouts.join("broken.lua"),
+        "local M = {}\nM.options = {}\nfunction M.arrange(_ctx) error(\"broken on purpose\") end\n\
+         function M.on_request(_ctx) return nil end\nreturn M\n",
+    )
+    .expect("the broken module");
+
+    let session = session_with(LayoutSettings {
+        default: "broken".to_owned(),
+        module_dirs: vec![modules.path().to_path_buf()],
+        ..LayoutSettings::default()
+    });
+    // Watch the workspace before any window maps: the failing run happens on the first
+    // placement, and a watch subscribes only from its own start.
+    let workspace = workspace_id(&session);
+    let socket = session.socket().to_path_buf();
+    let watcher = std::thread::spawn(move || {
+        Command::run(&socket, &["workspace", "watch", &workspace.to_string(), "--count", "1"])
+    });
+    std::thread::sleep(Duration::from_millis(200));
+
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    let watched = watcher.join().expect("the watch thread finishes");
+    assert!(
+        watched.out.contains("layout_failed"),
+        "the workspace emits layout_failed: {:?}",
+        watched.out
+    );
     assert_eq!(settled_sizes(&mut client, &windows), floating);
 }
