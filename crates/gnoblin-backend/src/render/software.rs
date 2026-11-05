@@ -102,6 +102,8 @@ pub struct Software {
     textures: Vec<Option<PixmanTexture>>,
     /// The overlay's texture for the frame being drawn, if it has one.
     overlay: Option<PixmanTexture>,
+    /// The cursor's texture for the frame being drawn, if it has one.
+    cursor: Option<PixmanTexture>,
     /// The pixels under the overlay as they were before it was drawn: packed rows of
     /// the overlay's visible rectangle, so a capture can leave the overlay out.
     under: Vec<u8>,
@@ -140,6 +142,7 @@ impl Software {
             physical,
             textures: Vec::new(),
             overlay: None,
+            cursor: None,
             under: Vec::new(),
             under_rect: None,
             scratch: Vec::new(),
@@ -278,6 +281,7 @@ impl Software {
             physical,
             textures,
             overlay,
+            cursor,
             under,
             under_rect,
             ..
@@ -332,18 +336,12 @@ impl Software {
             renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
             drawn?;
         }
-        if let Some(cursor) = frame.cursor() {
-            let dst = physical_rect(cursor.dst, scale);
-            layer_damage(damage, dst, clipped);
-            if !clipped.is_empty() {
-                let mut pixman_frame = renderer
-                    .render(&mut target, output, Transform::Normal)
-                    .map_err(failed)?;
-                pixman_frame
-                    .draw_solid(dst, clipped, colour(tinted(cursor.colour, cursor.tint)))
-                    .map_err(failed)?;
-                let _sync = pixman_frame.finish().map_err(failed)?;
-            }
+        if let (Some(cursor), Some(texture)) = (frame.cursor(), cursor.as_ref()) {
+            // The cursor is drawn above the overlay, with the same nearest-neighbour scaling.
+            renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
+            let drawn = draw_overlay(renderer, &mut target, output, cursor, texture, scale, damage, clipped);
+            renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
+            drawn?;
         }
         Ok(())
     }
@@ -354,6 +352,7 @@ impl Software {
             renderer,
             textures,
             overlay: overlay_texture,
+            cursor: cursor_texture,
             scratch,
             ..
         } = self;
@@ -367,6 +366,9 @@ impl Software {
         *overlay_texture = frame
             .overlay()
             .and_then(|overlay| import_overlay(renderer, overlay.image()));
+        *cursor_texture = frame
+            .cursor()
+            .and_then(|cursor| import_overlay(renderer, cursor.image()));
     }
 }
 
@@ -737,10 +739,8 @@ mod tests {
             Rect::new(0, 0, 16, 16),
             Color::from_rgba8(0, 0, 255, 255),
         )));
-        frame.set_cursor(Some(Solid::new(
-            Rect::new(2, 2, 4, 4),
-            Color::from_rgba8(255, 255, 255, 255),
-        )));
+        let white = Image::new(Size::new(4, 4), 16, [255, 255, 255, 255].repeat(16)).expect("a 4x4 image");
+        frame.set_cursor_image(Overlay::new(Rect::new(2, 2, 4, 4), &white));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
         let image = software.screenshot().expect("a readback");
         assert_eq!(

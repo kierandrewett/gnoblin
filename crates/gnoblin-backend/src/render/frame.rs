@@ -234,7 +234,7 @@ pub struct OutputFrame {
     damage: Vec<Rect>,
     layers: Vec<Layer>,
     overlay: Option<Overlay>,
-    cursor: Option<Solid>,
+    cursor: Option<Overlay>,
 }
 
 impl OutputFrame {
@@ -359,21 +359,19 @@ impl OutputFrame {
         self.overlay = overlay.filter(|overlay| !overlay.dst().is_empty());
     }
 
-    /// The cursor, drawn above every layer.
+    /// The cursor image, drawn above every layer and above the overlay.
     ///
-    /// The seat's cursor image needs a theme loader that this slice does not have,
-    /// so a session composes no cursor yet; the slot exists so the frame
-    /// description the GLES path and capture will read does not change shape when
-    /// it arrives.
+    /// The image's destination already accounts for the hotspot, so the caller places
+    /// the rectangle at the pointer minus the hotspot. Unlike the overlay, a capture
+    /// does not leave the cursor out.
     #[must_use]
-    pub fn cursor(&self) -> Option<&Solid> {
+    pub fn cursor(&self) -> Option<&Overlay> {
         self.cursor.as_ref()
     }
 
-    /// Sets the cursor.
-    pub fn set_cursor(&mut self, cursor: Option<Solid>) {
-        self.cursor =
-            cursor.filter(|solid| !solid.dst.is_empty() && solid.colour.is_finite() && solid.tint.is_finite());
+    /// Sets the cursor image, or clears it with [`None`].
+    pub fn set_cursor_image(&mut self, cursor: Option<Overlay>) {
+        self.cursor = cursor;
     }
 }
 

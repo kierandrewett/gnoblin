@@ -113,7 +113,7 @@ use gnoblin_render::{Color, Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Rect, RectF, Scale, Size};
 
 use crate::render::RenderError;
-use crate::render::frame::{Layer, Model, OutputFrame, Overlay, Solid, Surface};
+use crate::render::frame::{Layer, Model, OutputFrame, Overlay, Surface};
 use crate::render::image::Image;
 use crate::render::physical_rect;
 use crate::render::software::READBACK_FORMAT;
@@ -511,6 +511,11 @@ impl Gles {
             .overlay()
             .zip(overlay_texture.as_ref().and_then(Texture::from_smithay));
         let background = frame.background();
+        // The cursor is imported like the overlay: the texture owns the GL name until the frame is painted.
+        let cursor_texture = frame.cursor().and_then(|cursor| self.import_overlay(cursor.image()));
+        let cursor = frame
+            .cursor()
+            .zip(cursor_texture.as_ref().and_then(Texture::from_smithay));
         let Self {
             device,
             target,
@@ -577,8 +582,8 @@ impl Gles {
                 }
                 painter.overlay(overlay, texture)?;
             }
-            if let Some(cursor) = frame.cursor() {
-                painter.cursor(cursor)?;
+            if let Some((cursor, texture)) = cursor {
+                painter.overlay(cursor, texture)?;
             }
         }
         painter.finish()
@@ -820,26 +825,6 @@ impl Painter<'_> {
         let uniforms = Uniforms::surface(quad, [0.0, 0.0, 1.0, 1.0], Color::WHITE, 1.0, 0.0);
         passes.surface.pack_fixed(&uniforms, bytes);
         device.draw(&passes.surface, bytes, quad, Some(texture), Placement::FLAT)
-    }
-
-    /// The cursor, above every layer.
-    fn cursor(&mut self, cursor: &Solid) -> Result<(), RenderError> {
-        let Self {
-            device,
-            passes,
-            bytes,
-            scale,
-            ..
-        } = self;
-        let dst = physical_rect(cursor.dst, *scale);
-        let quad = Rect::new(dst.loc.x, dst.loc.y, dst.size.w.max(0) as u32, dst.size.h.max(0) as u32);
-        if quad.is_empty() {
-            return Ok(());
-        }
-        let mut uniforms = Uniforms::solid(quad, cursor.colour, cursor.tint, 1.0);
-        uniforms.corner = (cursor.corner_radius * scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
-        passes.solid.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.solid, bytes, quad, None, Placement::FLAT)
     }
 
     /// Draws a shadow behind a layer.
