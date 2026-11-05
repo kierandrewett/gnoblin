@@ -201,6 +201,9 @@ pub struct Wm {
     history: Vec<WindowId>,
     rules: Vec<Rule>,
     layouts: Layouts,
+    /// Windows a layout floated out of tiling. A layout change returns them to the
+    /// tiled set unless the user has floated them since.
+    layout_floated: std::collections::BTreeSet<WindowId>,
     /// Events held back until the next [`Event::Frame`] because a layout is
     /// installed and the event either changes tiling or follows one that does.
     /// They are applied in arrival order so that layouts see every tiling change.
@@ -311,7 +314,10 @@ impl Wm {
             Event::ToggleMaximise { window } => self.toggle_maximise(window),
             Event::ToggleFullscreen { window } => self.toggle_fullscreen(window),
             Event::SnapRequested { window, zone } => self.snap(window, zone),
-            Event::SetFloating { window, floating } => self.set_floating(window, floating),
+            Event::SetFloating { window, floating } => {
+                self.layout_floated.remove(&window);
+                self.set_floating(window, floating)
+            }
             Event::Unsnap { window } => self.unsnap(window),
             Event::MoveResize { window, geometry } => self.move_resize(window, geometry),
             Event::FocusDirection { direction } => self.focus_direction(direction),
@@ -1332,8 +1338,20 @@ impl Wm {
     /// submits its arrangement. The old engine is dropped. Does nothing when no
     /// factory is installed or the workspace is not declared.
     pub fn rebuild_layout(&mut self, workspace: WorkspaceId) -> Vec<Effect> {
+        let returned: Vec<WindowId> = self
+            .layout_floated
+            .iter()
+            .copied()
+            .filter(|id| self.windows.get(id).is_some_and(|window| window.workspace == workspace))
+            .collect();
+        let mut effects = Vec::new();
+        for id in returned {
+            self.layout_floated.remove(&id);
+            effects.extend(self.set_floating(id, false));
+        }
         self.layouts.forget(workspace);
-        self.sync_layouts()
+        effects.extend(self.sync_layouts());
+        effects
     }
 
     /// The connector name of the output every workspace is arranged on, when it is known.
@@ -1472,6 +1490,7 @@ impl Wm {
                 .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state));
             if tiled_here {
                 effects.extend(self.set_floating(window, true));
+                self.layout_floated.insert(window);
             }
         }
         effects.extend(

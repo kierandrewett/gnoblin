@@ -212,6 +212,9 @@ impl WorkspaceLayouts {
             Ok(()) => Ok(()),
             Err(failure) => {
                 warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] runtime layout cannot be loaded");
+                if failure.message.contains("not found") {
+                    return Err(format!("unknown layout: `{name}` has no layout module"));
+                }
                 self.failed.borrow_mut().insert(name.to_owned());
                 Err(format!("layout `{name}` cannot be loaded: {}", failure.message))
             }

@@ -1599,6 +1599,7 @@ impl State {
             .wm
             .set_layout_engines(move |workspace, output| factory.engine(workspace, output));
         self.apply(effects);
+        self.publish();
     }
 
     /// Sets one workspace's layout at runtime. The workspace's engine is replaced; the
