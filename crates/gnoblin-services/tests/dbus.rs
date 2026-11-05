@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use gnoblin_services::polkit::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE};
-use gnoblin_services::{Offerer, Polkit, Proposition, Provider, Refusal, Slot};
+use gnoblin_services::{CapabilitySlot, Offerer, Polkit, Proposition, Provider, Refusal};
 use gnoblin_types::OwnerId;
 use support::bus::Bus;
 use zbus::connection::Builder;
@@ -217,7 +217,7 @@ fn the_agent_registers_with_polkitd_and_answers_an_authentication() {
                 let offers = fixture.offers.lock().expect("the offer lock is not poisoned");
                 offers[0].clone()
             };
-            assert_eq!(proposition.slot, Slot::AuthPolkit);
+            assert_eq!(proposition.slot, CapabilitySlot::AuthPolkit);
             assert_eq!(proposition.request.cookie, "cookie-1");
             assert_eq!(proposition.request.identities.len(), 1);
             assert_eq!(proposition.request.identities[0].kind, "unix-user");
@@ -246,7 +246,7 @@ fn a_begin_authentication_without_a_provider_names_the_slot() {
         let fixture = fixture(&address).await;
         fixture
             .polkit
-            .claim(Slot::AuthPolkit, Provider::None, None)
+            .claim(CapabilitySlot::AuthPolkit, Provider::None, None)
             .expect("no shell holds the slot");
 
         let error = begin(&fixture.caller, "cookie-1")
@@ -317,14 +317,14 @@ fn a_departed_provider_ends_the_waiting_authentication() {
         let owner = OwnerId::new(1);
         fixture
             .polkit
-            .claim(Slot::AuthPolkit, Provider::Shell, Some(owner))
+            .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(owner))
             .expect("a shell claims the slot");
 
         let provider = async {
             until(|| fixture.offers.lock().is_ok_and(|offers| offers.len() == 1)).await;
             let finished = fixture
                 .polkit
-                .release(Slot::AuthPolkit, owner)
+                .release(CapabilitySlot::AuthPolkit, owner)
                 .expect("the holder releases");
             assert_eq!(finished.len(), 1, "the pending request ended");
         };

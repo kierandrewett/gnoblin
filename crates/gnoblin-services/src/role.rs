@@ -48,7 +48,7 @@ use std::time::Duration;
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
-use gnoblin_model::{RequestCompletion, RequestId, RequestOutcome, Slot, Tick};
+use gnoblin_model::{CapabilitySlot, RequestCompletion, RequestId, RequestOutcome, Tick};
 use gnoblin_types::Version;
 use tracing::{info, warn};
 use zbus::Connection;
@@ -151,7 +151,7 @@ impl Role {
 
         // The slots this role provides by default, claimed explicitly so the session
         // object publishes the answer instead of leaving it to be inferred.
-        let holding: Vec<Slot> = Slot::ALL
+        let holding: Vec<CapabilitySlot> = CapabilitySlot::ALL
             .into_iter()
             .filter(|slot| slot.default_provider() == Provider::Services)
             .collect();

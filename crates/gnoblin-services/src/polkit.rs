@@ -54,7 +54,7 @@ use zbus::proxy;
 use zbus::{Connection, ObjectPath, OwnedVariant, Variant, fdo};
 
 use crate::agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Refusal};
-use crate::slot::{Provider, Slot, Slots};
+use crate::slot::{CapabilitySlot, Provider, Slots};
 use crate::subject;
 
 /// Where polkitd calls the registered agent.
@@ -156,7 +156,12 @@ impl Polkit {
     }
 
     /// Claim a slot, cancelling what the previous provider was holding.
-    pub fn claim(&self, slot: Slot, provider: Provider, owner: Option<OwnerId>) -> Result<Vec<Finished>, Refusal> {
+    pub fn claim(
+        &self,
+        slot: CapabilitySlot,
+        provider: Provider,
+        owner: Option<OwnerId>,
+    ) -> Result<Vec<Finished>, Refusal> {
         let finished = {
             let mut shared = self.lock();
             shared.agent.claim(slot, provider, owner)?
@@ -165,7 +170,7 @@ impl Polkit {
     }
 
     /// Release a shell's claim on a slot, cancelling what it was holding.
-    pub fn release(&self, slot: Slot, owner: OwnerId) -> Result<Vec<Finished>, Refusal> {
+    pub fn release(&self, slot: CapabilitySlot, owner: OwnerId) -> Result<Vec<Finished>, Refusal> {
         let finished = {
             let mut shared = self.lock();
             shared.agent.release(slot, owner)?
@@ -204,7 +209,7 @@ impl Polkit {
     }
 
     /// Cancel every request of a slot whose provider just changed.
-    pub fn slot_changed(&self, slot: Slot) -> Vec<Finished> {
+    pub fn slot_changed(&self, slot: CapabilitySlot) -> Vec<Finished> {
         let finished = self.lock().agent.cancel_slot(slot);
         self.settle(finished)
     }

@@ -53,7 +53,8 @@ use gnoblin_proto::Envelope;
 
 use gnoblin_client::wire;
 use gnoblin_model::{
-    Fields, Provider, RequestBroker, RequestCompletion, RequestEvent, RequestId, RequestOutcome, Slot, Slots, Tick,
+    CapabilitySlot, Fields, Provider, RequestBroker, RequestCompletion, RequestEvent, RequestId, RequestOutcome, Slots,
+    Tick,
 };
 use gnoblin_types::{ClientId, OwnerId};
 
@@ -61,7 +62,7 @@ use gnoblin_types::{ClientId, OwnerId};
 #[derive(Clone, Debug)]
 struct Offer {
     /// The slot that owns it.
-    slot: Slot,
+    slot: CapabilitySlot,
     /// What the provider shows. The schema's `request` object carries only the identity
     /// and the deadline, and a provider that had to ask what a request is about would
     /// need a second round trip before it could draw anything.
@@ -113,7 +114,7 @@ pub(crate) struct Requests {
     offers: BTreeMap<RequestId, Offer>,
     slots: Slots,
     /// The connection that claimed a slot as a shell, which is where its offers go.
-    claims: BTreeMap<Slot, ClientId>,
+    claims: BTreeMap<CapabilitySlot, ClientId>,
     published: Fields,
     configuration: Configuration,
 }
@@ -144,7 +145,7 @@ impl Requests {
         message: &str,
         deadline: Tick,
     ) -> Result<(RequestId, Vec<FrameDelivery>), RequestRefusal> {
-        let slot = Slot::from_str(slot).map_err(|error| RequestRefusal {
+        let slot = CapabilitySlot::from_str(slot).map_err(|error| RequestRefusal {
             code: wire::code::UNKNOWN_SLOT,
             message: error.to_string(),
         })?;
@@ -166,7 +167,7 @@ impl Requests {
     }
 
     /// The connection an offer for `slot` goes to.
-    fn provider_of(&self, slot: Slot, offered_by: ClientId) -> Result<ClientId, RequestRefusal> {
+    fn provider_of(&self, slot: CapabilitySlot, offered_by: ClientId) -> Result<ClientId, RequestRefusal> {
         match self.slots.provider(slot) {
             Provider::Services => Ok(offered_by),
             Provider::Shell => self.claims.get(&slot).copied().ok_or_else(|| RequestRefusal {
@@ -184,7 +185,7 @@ impl Requests {
     pub(crate) fn claim_slot(
         &mut self,
         owner: ClientId,
-        slot: Slot,
+        slot: CapabilitySlot,
         provider: Provider,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.slots
@@ -202,7 +203,11 @@ impl Requests {
     }
 
     /// Release a slot this connection claimed.
-    pub(crate) fn release_slot(&mut self, owner: ClientId, slot: Slot) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+    pub(crate) fn release_slot(
+        &mut self,
+        owner: ClientId,
+        slot: CapabilitySlot,
+    ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
         self.slots
             .release(slot, OwnerId::new(owner.get()))
             .map_err(|error| RequestRefusal {
@@ -293,7 +298,7 @@ impl Requests {
             .collect();
         // A slot a departed shell held falls back to its default provider, so the next
         // offer for it reaches the services role instead of nowhere.
-        let held: Vec<Slot> = self
+        let held: Vec<CapabilitySlot> = self
             .claims
             .iter()
             .filter(|(_, claimant)| **claimant == client)

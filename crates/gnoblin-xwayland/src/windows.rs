@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 use gnoblin_types::{Rect, WindowId};
 use gnoblin_wm::{ActivationDecision, Event, WindowKind, WindowSpec, Wm};
 
-use gnoblin_backend::x11::{Command, Outcome, WindowEvent, WindowMeta, Windows};
+use gnoblin_backend::x11::{Command, EventOutcome, WindowEvent, WindowMeta, Windows};
 
 /// The bit that separates an X11 window identity from a Wayland one.
 ///
@@ -165,17 +165,17 @@ impl Xwm {
     }
 
     /// A client asked for its window to become visible.
-    fn map_requested(&mut self, meta: &WindowMeta<'_>, wm: &mut Wm) -> Outcome {
+    fn map_requested(&mut self, meta: &WindowMeta<'_>, wm: &mut Wm) -> EventOutcome {
         self.remember(meta);
         if meta.override_redirect {
             // Unmanaged by definition: the client maps it itself and the manager never
             // grants, configures or focuses it.
-            return Outcome::nothing();
+            return EventOutcome::nothing();
         }
         if let Some(window) = self.managed(meta.x11) {
             // A window the manager still holds is being shown again, which is a
             // request for attention rather than a new window.
-            return Outcome {
+            return EventOutcome {
                 window: Some(window),
                 effects: wm.apply(Event::ActivationRequested {
                     window,
@@ -185,7 +185,7 @@ impl Xwm {
             };
         }
         let Some(spec) = self.spec(meta.x11) else {
-            return Outcome::nothing();
+            return EventOutcome::nothing();
         };
         let window = spec.id;
         if let Some(entry) = self.windows.get_mut(&meta.x11) {
@@ -199,7 +199,7 @@ impl Xwm {
             window,
             decision: ActivationDecision::Allow,
         }));
-        Outcome {
+        EventOutcome {
             window: Some(window),
             effects,
             commands: vec![Command::SetMapped { window, mapped: true }],
@@ -207,14 +207,14 @@ impl Xwm {
     }
 
     /// A window left the screen, or went away with its client.
-    fn closed(&mut self, x11: u32, wm: &mut Wm) -> Outcome {
+    fn closed(&mut self, x11: u32, wm: &mut Wm) -> EventOutcome {
         let Some(entry) = self.windows.remove(&x11) else {
-            return Outcome::nothing();
+            return EventOutcome::nothing();
         };
         let Some(window) = entry.managed else {
-            return Outcome::nothing();
+            return EventOutcome::nothing();
         };
-        Outcome {
+        EventOutcome {
             window: Some(window),
             effects: wm.apply(Event::WindowClosed { window }),
             commands: Vec::new(),
@@ -227,14 +227,14 @@ impl Windows for Xwm {
         self.managed(xwindow)
     }
 
-    fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> Outcome {
+    fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> EventOutcome {
         match event {
             WindowEvent::Created(meta) => {
                 self.remember(&meta);
-                Outcome::nothing()
+                EventOutcome::nothing()
             }
             WindowEvent::MapRequested(meta) => self.map_requested(&meta, wm),
-            WindowEvent::Mapped(x11) => Outcome::of(self.managed(x11)),
+            WindowEvent::Mapped(x11) => EventOutcome::of(self.managed(x11)),
             WindowEvent::Unmapped(x11) | WindowEvent::Destroyed(x11) => self.closed(x11, wm),
             WindowEvent::ConfigureRequested {
                 x11,
@@ -243,7 +243,7 @@ impl Windows for Xwm {
                 size,
             } => {
                 let Some(entry) = self.windows.get(&x11) else {
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
                 let current = entry.geometry;
                 let candidate = Rect::new(
@@ -259,9 +259,9 @@ impl Windows for Xwm {
                     if let Some(entry) = self.windows.get_mut(&x11) {
                         entry.geometry = candidate;
                     }
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
-                Outcome {
+                EventOutcome {
                     window: Some(window),
                     effects: wm.apply(Event::MoveResize {
                         window,
@@ -272,16 +272,16 @@ impl Windows for Xwm {
             }
             WindowEvent::Configured { x11, geometry } => {
                 let Some(entry) = self.windows.get_mut(&x11) else {
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
                 entry.geometry = geometry;
                 let Some(window) = entry.managed else {
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
                 // A client that moved itself is honoured: the manager clamps the
                 // rectangle and the client hears the answer, which is what makes an
                 // X11 application's own positioning work on a floating desktop.
-                Outcome {
+                EventOutcome {
                     window: Some(window),
                     effects: wm.apply(Event::MoveResize { window, geometry }),
                     commands: Vec::new(),
@@ -289,14 +289,14 @@ impl Windows for Xwm {
             }
             WindowEvent::TitleChanged { x11, title } => {
                 let Some(entry) = self.windows.get_mut(&x11) else {
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
                 entry.title.clear();
                 entry.title.push_str(title);
                 let Some(window) = entry.managed else {
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
-                Outcome {
+                EventOutcome {
                     window: Some(window),
                     effects: wm.apply(Event::WindowTitleChanged {
                         window,
@@ -308,14 +308,14 @@ impl Windows for Xwm {
             WindowEvent::ClassChanged(meta) => {
                 self.remember(&meta);
                 let Some(window) = self.managed(meta.x11) else {
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
                 let app_id = self
                     .windows
                     .get(&meta.x11)
                     .map(|entry| entry.app_id().to_owned())
                     .unwrap_or_default();
-                Outcome {
+                EventOutcome {
                     window: Some(window),
                     effects: wm.apply(Event::WindowAppIdChanged { window, app_id }),
                     commands: Vec::new(),
@@ -325,9 +325,9 @@ impl Windows for Xwm {
                 let Some(window) = self.managed(x11) else {
                     // The request came from a window the manager does not hold, which
                     // includes every override-redirect window: a menu cannot take focus.
-                    return Outcome::nothing();
+                    return EventOutcome::nothing();
                 };
-                Outcome {
+                EventOutcome {
                     window: Some(window),
                     effects: wm.apply(Event::ActivationRequested {
                         window,
@@ -339,12 +339,12 @@ impl Windows for Xwm {
         }
     }
 
-    fn close(&mut self, window: WindowId) -> Outcome {
+    fn close(&mut self, window: WindowId) -> EventOutcome {
         let known = self.windows.values().any(|entry| entry.managed == Some(window));
         if !known {
-            return Outcome::nothing();
+            return EventOutcome::nothing();
         }
-        Outcome {
+        EventOutcome {
             window: Some(window),
             effects: Vec::new(),
             commands: vec![Command::Close { window }],
@@ -436,15 +436,15 @@ mod tests {
 
         assert_eq!(
             xwm.handle(WindowEvent::Created(popup.clone()), &mut wm),
-            Outcome::nothing()
+            EventOutcome::nothing()
         );
         assert_eq!(
             xwm.handle(WindowEvent::MapRequested(popup.clone()), &mut wm),
-            Outcome::nothing()
+            EventOutcome::nothing()
         );
         assert_eq!(
             xwm.handle(WindowEvent::ActivationRequested(9), &mut wm),
-            Outcome::nothing()
+            EventOutcome::nothing()
         );
 
         assert!(wm.windows().next().is_none(), "no window may enter the manager");
@@ -512,7 +512,7 @@ mod tests {
                 size: true,
             },
         ] {
-            assert_eq!(xwm.handle(event, &mut wm), Outcome::nothing());
+            assert_eq!(xwm.handle(event, &mut wm), EventOutcome::nothing());
         }
         assert!(wm.windows().next().is_none());
     }
@@ -580,13 +580,13 @@ mod tests {
 
         assert_eq!(
             xwm.close(window_id(8)),
-            Outcome {
+            EventOutcome {
                 window: Some(window_id(8)),
                 effects: Vec::new(),
                 commands: vec![Command::Close { window: window_id(8) }],
             }
         );
-        assert_eq!(xwm.close(window_id(99)), Outcome::nothing());
+        assert_eq!(xwm.close(window_id(99)), EventOutcome::nothing());
     }
 
     /// Grabs follow the configuration: off by default, and a rule list only narrows.

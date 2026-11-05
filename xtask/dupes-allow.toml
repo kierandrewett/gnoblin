@@ -858,12 +858,6 @@ kind = "same-name"
 reason = "a capture target is what is being exported; an input target is where an input edge goes"
 
 [[allow]]
-left = "gnoblin-backend::Outcome"
-right = "gnoblin-capture::Outcome"
-kind = "same-name"
-reason = "a capture outcome says whether a frame reached the client's buffer; the backend's says how an X11 request ended"
-
-[[allow]]
 left = "gnoblin-capture::Refusal"
 right = "gnoblin-services::Refusal"
 kind = "same-name"
@@ -1146,12 +1140,6 @@ kind = "same-name"
 reason = "backend's Command is an X11 request the compositor sends and the policy cannot; the portal's Command is one thing its connection thread has to do"
 
 [[allow]]
-left = "gnoblin-backend::Outcome"
-right = "xdg-desktop-portal-gnoblin::Outcome"
-kind = "same-name"
-reason = "backend's Outcome is what the compositor does with one X11 event; the portal's Outcome is how a consent question ended"
-
-[[allow]]
 left = "gnoblin-backend::Setting"
 right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
@@ -1168,12 +1156,6 @@ left = "gnoblin-backend::Table"
 right = "xdg-desktop-portal-gnoblin::Table"
 kind = "same-name"
 reason = "backend's Table is the parent-facing state of every nested output plus the seat; the portal's Table holds the published values"
-
-[[allow]]
-left = "gnoblin-capture::Outcome"
-right = "xdg-desktop-portal-gnoblin::Outcome"
-kind = "same-name"
-reason = "capture's Outcome is the answer to a capture or a request; the portal's Outcome is how a consent question ended"
 
 [[allow]]
 left = "gnoblin-capture::Refusal"

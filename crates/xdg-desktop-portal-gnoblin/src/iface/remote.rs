@@ -27,7 +27,7 @@ use zbus::{Connection, ObjectPath, fdo};
 
 use super::capture::{CURSOR_EMBEDDED, Options, recorded_uint, sandboxed, uint};
 use super::{Portal, Reply, await_consent, export_request, export_session, refused, remove, sender, unsupported};
-use crate::consent::{Interface, NewSession, Outcome, PortalCapability, State};
+use crate::consent::{ConsentOutcome, Interface, NewSession, PortalCapability, State};
 
 /// `types` bit: a keyboard.
 pub const DEVICE_KEYBOARD: u32 = 1;
@@ -539,7 +539,7 @@ impl InputCapture {
         )
         .await;
         let reply = match outcome {
-            Ok(Outcome::Granted) => {
+            Ok(ConsentOutcome::Granted) => {
                 let request = {
                     let shared = self.portal.lock();
                     let session = shared

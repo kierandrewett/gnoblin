@@ -77,7 +77,7 @@ use tracing::{debug, warn};
 use gnoblin_backend::render::Image;
 use gnoblin_backend::render::copy_into_shm;
 use gnoblin_capture::{
-    BufferId, CaptureSource as PixelSource, Copied, Format, Outcome, SessionId, Stop, Table, Target,
+    BufferId, CaptureOutcome, CaptureSource as PixelSource, Copied, Format, SessionId, Stop, Table, Target,
 };
 use gnoblin_lock::{Capture, CaptureStream};
 use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
@@ -518,8 +518,8 @@ impl State {
         let outcome = self.capture.table.capture(&mut frame, tick, capture, &mut source);
         self.capture.table.close(session);
         match outcome {
-            Outcome::Copied(report) => Some((report.region, presented)),
-            Outcome::Refused(refusal) => {
+            CaptureOutcome::Copied(report) => Some((report.region, presented)),
+            CaptureOutcome::Refused(refusal) => {
                 debug!(reason = refusal.as_str(), "[capture] the frame was refused");
                 None
             }

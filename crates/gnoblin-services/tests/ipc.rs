@@ -12,7 +12,9 @@ use gnoblin_client::{Event, Server};
 use gnoblin_model::{Fields, Filter, Graph, Observation, RequestOutcome, Tick, TypeKey, Value};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, Type};
-use gnoblin_services::{Agent, Decision, Offerer, PolkitRequest, Proposition, Provider, Refusal, Slot, Slots};
+use gnoblin_services::{
+    Agent, CapabilitySlot, Decision, Offerer, PolkitRequest, Proposition, Provider, Refusal, Slots,
+};
 use gnoblin_types::OwnerId;
 
 const VERSION: Version = Version::new(0, 2, 0);
@@ -88,7 +90,7 @@ fn the_published_slots_are_the_session_properties() {
     for (name, ty) in declared_slot_properties() {
         assert_eq!(ty, Type::Text, "`{name}` is published as a string");
     }
-    for slot in Slot::ALL {
+    for slot in CapabilitySlot::ALL {
         assert!(
             declared.contains(&slot.property().to_owned()),
             "`{}` is published as `{}`",
@@ -155,7 +157,7 @@ fn a_shell_claims_and_answers_an_offered_request() {
     let mut shell = host.server.connect(VERSION).expect("versions match");
     let mut agent = Agent::new(host);
     agent
-        .claim(Slot::AuthPolkit, Provider::Shell, Some(OwnerId::new(1)))
+        .claim(CapabilitySlot::AuthPolkit, Provider::Shell, Some(OwnerId::new(1)))
         .expect("the shell claims the slot");
 
     let offered = agent
@@ -237,7 +239,7 @@ fn an_empty_registry_publishes_none_for_a_prompt() {
     // A publication is a value, not a side effect: an empty registry still says which
     // slots exist and what a client should expect from each.
     let fields: Fields = Slots::new().fields();
-    assert_eq!(fields.len(), Slot::ALL.len());
+    assert_eq!(fields.len(), CapabilitySlot::ALL.len());
     let published: Vec<&str> = fields
         .values()
         .map(|value| match value {

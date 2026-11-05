@@ -7,7 +7,7 @@ use futures_channel::oneshot;
 use gnoblin_authority::Consent;
 use gnoblin_types::{ClientId, RequestId, Tick};
 use xdg_desktop_portal_gnoblin::consent::{
-    Guard, Host, Interface, NewSession, Offer, Outcome, Pending, PortalCapability, Prompt, Refusal,
+    ConsentOutcome, Guard, Host, Interface, NewSession, Offer, Pending, PortalCapability, Prompt, Refusal,
 };
 
 const BUS: &str = ":1.42";
@@ -60,7 +60,7 @@ fn guard_with_session() -> Guard {
     guard
 }
 
-fn ask(guard: &mut Guard, now: u64) -> (RequestId, oneshot::Receiver<Outcome>) {
+fn ask(guard: &mut Guard, now: u64) -> (RequestId, oneshot::Receiver<ConsentOutcome>) {
     match guard
         .ask(Tick::new(now), BUS, PATH, PortalCapability::Capture)
         .expect("an asked session is not refused")
@@ -83,7 +83,7 @@ fn allow_answer_grants_capability() {
     assert!(outcome.granted());
     assert_eq!(
         answered.try_recv().expect("the waiter is still live"),
-        Some(Outcome::Granted)
+        Some(ConsentOutcome::Granted)
     );
     assert!(guard.consent(BUS, APP, PortalCapability::Capture).is_some());
 }
@@ -100,7 +100,7 @@ fn refusal_grants_nothing() {
 
     assert_eq!(
         answered.try_recv().expect("the waiter is still live"),
-        Some(Outcome::Refused)
+        Some(ConsentOutcome::Refused)
     );
     assert_eq!(
         guard.consent(BUS, APP, PortalCapability::Capture),
@@ -119,7 +119,7 @@ fn unanswered_prompt_expires() {
     assert_eq!(expired, vec![request]);
     assert_eq!(
         answered.try_recv().expect("the waiter is still live"),
-        Some(Outcome::Expired)
+        Some(ConsentOutcome::Expired)
     );
     assert_eq!(guard.pending(), 0);
     assert!(guard.consent(BUS, APP, PortalCapability::Capture).is_none());
@@ -135,7 +135,7 @@ fn requester_gone_releases_prompt() {
 
     assert_eq!(
         answered.try_recv().expect("the waiter is still live"),
-        Some(Outcome::Left)
+        Some(ConsentOutcome::Left)
     );
     assert_eq!(guard.pending(), 0);
 }
@@ -150,7 +150,7 @@ fn provider_gone_releases_prompt() {
 
     assert_eq!(
         answered.try_recv().expect("the waiter is still live"),
-        Some(Outcome::ProviderGone)
+        Some(ConsentOutcome::ProviderGone)
     );
     assert!(guard.consent(BUS, APP, PortalCapability::Capture).is_none());
 }

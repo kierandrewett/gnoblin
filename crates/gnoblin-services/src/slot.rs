@@ -12,4 +12,4 @@
 //! offers anything and cancels what a previous provider was holding when the claim
 //! changes.
 
-pub use gnoblin_model::{ClaimError, Provider, Slot, Slots, UnknownSlot};
+pub use gnoblin_model::{CapabilitySlot, ClaimError, Provider, Slots, UnknownSlot};

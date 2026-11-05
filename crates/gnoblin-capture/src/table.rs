@@ -112,14 +112,14 @@ pub struct FrameReport {
 
 /// The answer to a capture or a request.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Outcome {
+pub enum CaptureOutcome {
     /// The client's buffer holds the frame.
     Copied(FrameReport),
     /// Nothing was copied; the client is told why.
     Refused(Refusal),
 }
 
-impl Outcome {
+impl CaptureOutcome {
     /// The refusal, if this outcome is one.
     #[must_use]
     pub const fn refusal(&self) -> Option<Refusal> {
@@ -294,53 +294,53 @@ impl Table {
         tick: Tick,
         capture: Capture,
         source: &mut dyn CaptureSource,
-    ) -> Outcome {
+    ) -> CaptureOutcome {
         if frame.used {
-            return Outcome::Refused(Refusal::Used);
+            return CaptureOutcome::Refused(Refusal::Used);
         }
         frame.used = true;
         let Some(entry) = self.sessions.get_mut(&frame.session) else {
-            return Outcome::Refused(Refusal::Closed);
+            return CaptureOutcome::Refused(Refusal::Closed);
         };
         if let Some(stop) = entry.stop {
-            return Outcome::Refused(Refusal::Stopped(stop));
+            return CaptureOutcome::Refused(Refusal::Stopped(stop));
         }
         if entry.claim != Some((frame.buffer, frame.sequence)) {
-            return Outcome::Refused(Refusal::Stale);
+            return CaptureOutcome::Refused(Refusal::Stale);
         }
         let lock_scene = match Self::embargo(entry.stream, entry.target, capture) {
             Ok(lock_scene) => lock_scene,
             Err(refusal) => {
                 entry.end(Stop::Embargoed);
-                return Outcome::Refused(refusal);
+                return CaptureOutcome::Refused(refusal);
             }
         };
         if entry.last_tick == Some(tick) {
             entry.release(frame.sequence);
-            return Outcome::Refused(Refusal::Paced);
+            return CaptureOutcome::Refused(Refusal::Paced);
         }
         let Some(bounds) = source.bounds(entry.target) else {
             entry.end(Stop::TargetGone);
-            return Outcome::Refused(Refusal::TargetGone);
+            return CaptureOutcome::Refused(Refusal::TargetGone);
         };
         let Some(region) = entry.full().intersection(bounds) else {
             // The target exists but nothing of it fits the buffer the client
             // negotiated, which happens when a window shrank below the frame it
             // asked for: serving a partial frame would report pixels it never wrote.
             entry.end(Stop::TargetGone);
-            return Outcome::Refused(Refusal::TargetGone);
+            return CaptureOutcome::Refused(Refusal::TargetGone);
         };
         let damage = entry.take_damage(region, lock_scene);
         if source.copy(entry.target, region, entry.format) == Copied::Nothing {
             entry.restore_damage(damage);
             entry.release(frame.sequence);
-            return Outcome::Refused(Refusal::Source);
+            return CaptureOutcome::Refused(Refusal::Source);
         }
         entry.frames = entry.frames.saturating_add(1);
         entry.last_tick = Some(tick);
         entry.claim = None;
         entry.claim_tick = None;
-        Outcome::Copied(FrameReport {
+        CaptureOutcome::Copied(FrameReport {
             region,
             damage,
             lock_scene,
@@ -410,7 +410,7 @@ mod tests {
     use crate::format::{Format, PixelFormat};
     use crate::session::{BufferId, Refusal, SessionId, Stop, Target};
     use crate::source::{CaptureSource, Copied};
-    use crate::table::{Outcome, Table};
+    use crate::table::{CaptureOutcome, Table};
 
     const SIZE: Size = Size::new(16, 8);
 
@@ -466,7 +466,7 @@ mod tests {
         table.close(session);
         let mut source = Fake::new(Some(Rect::from_size(SIZE)));
         let outcome = table.capture(&mut frame, Tick::new(1), Capture::Desktop, &mut source);
-        assert_eq!(outcome, Outcome::Refused(Refusal::Closed));
+        assert_eq!(outcome, CaptureOutcome::Refused(Refusal::Closed));
         assert!(source.copies.is_empty(), "nothing was copied for a closed session");
         assert!(table.is_empty(), "the session is gone");
     }
@@ -487,7 +487,7 @@ mod tests {
         let mut second = table.request(session, BufferId::new(2), Tick::new(2)).expect("a claim");
         assert_eq!(
             table.capture(&mut second, Tick::new(2), Capture::Refused, &mut source),
-            Outcome::Refused(Refusal::Locked)
+            CaptureOutcome::Refused(Refusal::Locked)
         );
         assert_eq!(
             table.get(session).and_then(|session| session.stop),
@@ -506,7 +506,7 @@ mod tests {
         let mut frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
         assert_eq!(
             table.capture(&mut frame, Tick::new(1), Capture::Refused, &mut source),
-            Outcome::Refused(Refusal::Locked)
+            CaptureOutcome::Refused(Refusal::Locked)
         );
         assert_eq!(
             table.request(session, BufferId::new(2), Tick::new(2)),
@@ -523,7 +523,7 @@ mod tests {
         let mut source = Fake::new(Some(Rect::from_size(SIZE)));
         let mut frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
         let outcome = table.capture(&mut frame, Tick::new(1), Capture::LockScene, &mut source);
-        let Outcome::Copied(report) = outcome else {
+        let CaptureOutcome::Copied(report) = outcome else {
             panic!("a granted stream sees the lock scene, got {outcome:?}");
         };
         assert!(report.lock_scene);
@@ -546,7 +546,7 @@ mod tests {
         let mut frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
         assert_eq!(
             table.capture(&mut frame, Tick::new(1), Capture::LockScene, &mut source),
-            Outcome::Refused(Refusal::Locked)
+            CaptureOutcome::Refused(Refusal::Locked)
         );
     }
 
@@ -576,7 +576,7 @@ mod tests {
         let mut source = Fake::new(Some(Rect::from_size(SIZE)));
         assert_eq!(
             table.capture(&mut old, Tick::new(2), Capture::Desktop, &mut source),
-            Outcome::Refused(Refusal::Stale)
+            CaptureOutcome::Refused(Refusal::Stale)
         );
         assert!(
             table
@@ -601,7 +601,7 @@ mod tests {
         let mut frame = table.request(session, BufferId::new(1), Tick::new(1)).expect("a claim");
         assert_eq!(
             table.capture(&mut frame, Tick::new(1), Capture::Desktop, &mut source),
-            Outcome::Refused(Refusal::TargetGone)
+            CaptureOutcome::Refused(Refusal::TargetGone)
         );
         assert_eq!(
             table.get(session).and_then(|session| session.stop),
@@ -642,7 +642,7 @@ mod tests {
         );
         assert_eq!(
             table.capture(&mut frame, Tick::new(2), Capture::Desktop, &mut source),
-            Outcome::Refused(Refusal::Used)
+            CaptureOutcome::Refused(Refusal::Used)
         );
         assert_eq!(source.copies.len(), 1);
         // A cancelled claim is refused for the same reason.
@@ -650,7 +650,7 @@ mod tests {
         table.cancel(&mut cancelled);
         assert_eq!(
             table.capture(&mut cancelled, Tick::new(3), Capture::Desktop, &mut source),
-            Outcome::Refused(Refusal::Used)
+            CaptureOutcome::Refused(Refusal::Used)
         );
     }
 
@@ -671,7 +671,7 @@ mod tests {
             .expect("a claim from the same tick");
         assert_eq!(
             table.capture(&mut second, Tick::new(5), Capture::Desktop, &mut source),
-            Outcome::Refused(Refusal::Paced)
+            CaptureOutcome::Refused(Refusal::Paced)
         );
         assert_eq!(source.copies.len(), 1);
     }
@@ -687,7 +687,7 @@ mod tests {
         let first = table.capture(&mut first, Tick::new(1), Capture::Desktop, &mut source);
         assert!(
             first
-                == Outcome::Copied(crate::table::FrameReport {
+                == CaptureOutcome::Copied(crate::table::FrameReport {
                     region: Rect::from_size(SIZE),
                     damage: vec![Rect::from_size(SIZE)],
                     lock_scene: false,
@@ -697,7 +697,8 @@ mod tests {
         table.note_damage(output(), Rect::new(2, 2, 4, 4));
         table.note_damage(output(), Rect::new(100, 100, 4, 4));
         let mut second = table.request(session, BufferId::new(2), Tick::new(2)).expect("a claim");
-        let Outcome::Copied(report) = table.capture(&mut second, Tick::new(2), Capture::Desktop, &mut source) else {
+        let CaptureOutcome::Copied(report) = table.capture(&mut second, Tick::new(2), Capture::Desktop, &mut source)
+        else {
             panic!("the second frame copies");
         };
         assert_eq!(
@@ -725,11 +726,12 @@ mod tests {
         let mut second = table.request(session, BufferId::new(2), Tick::new(2)).expect("a claim");
         assert_eq!(
             table.capture(&mut second, Tick::new(2), Capture::Desktop, &mut source),
-            Outcome::Refused(Refusal::Source)
+            CaptureOutcome::Refused(Refusal::Source)
         );
         source.refuse = false;
         let mut third = table.request(session, BufferId::new(3), Tick::new(3)).expect("a claim");
-        let Outcome::Copied(report) = table.capture(&mut third, Tick::new(3), Capture::Desktop, &mut source) else {
+        let CaptureOutcome::Copied(report) = table.capture(&mut third, Tick::new(3), Capture::Desktop, &mut source)
+        else {
             panic!("the third frame copies");
         };
         assert_eq!(report.damage, vec![Rect::new(3, 3, 2, 2)]);

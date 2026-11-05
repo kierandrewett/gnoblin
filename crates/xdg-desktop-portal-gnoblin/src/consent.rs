@@ -381,7 +381,7 @@ impl std::error::Error for Refusal {}
 
 /// How a consent question ended.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Outcome {
+pub enum ConsentOutcome {
     /// The provider allowed it.
     Granted,
     /// The provider declined it, or declined the request.
@@ -396,7 +396,7 @@ pub enum Outcome {
     Locked,
 }
 
-impl Outcome {
+impl ConsentOutcome {
     /// The `Response` code `org.freedesktop.impl.portal` uses: 0 success, 1 the user
     /// cancelled, 2 cancelled for any other reason.
     #[must_use]
@@ -429,7 +429,7 @@ pub enum Pending {
         /// The request the provider will answer, so a cancellation can name it.
         request: RequestId,
         /// The answer's arrival.
-        answered: oneshot::Receiver<Outcome>,
+        answered: oneshot::Receiver<ConsentOutcome>,
     },
 }
 
@@ -443,7 +443,7 @@ struct Waiting {
     capability: Option<PortalCapability>,
     provider: ClientId,
     deadline: Tick,
-    wake: oneshot::Sender<Outcome>,
+    wake: oneshot::Sender<ConsentOutcome>,
 }
 
 /// The session table and the grants behind it.
@@ -622,7 +622,7 @@ impl Guard {
             .map(|(request, _)| *request)
             .collect();
         for request in abandoned {
-            self.finish(request, Outcome::Refused);
+            self.finish(request, ConsentOutcome::Refused);
         }
         Ok(session)
     }
@@ -784,7 +784,7 @@ impl Guard {
     /// The answer's encoding is this backend's: the prompt was offered here, so the
     /// bytes are the question's. `allow` grants, `deny` refuses, and anything else is a
     /// denial rather than a grant, because an unreadable answer must never consent.
-    pub fn answer(&mut self, now: Tick, request: RequestId, answer: Option<&[u8]>) -> Result<Outcome, Refusal> {
+    pub fn answer(&mut self, now: Tick, request: RequestId, answer: Option<&[u8]>) -> Result<ConsentOutcome, Refusal> {
         let Some(waiting) = self.waiting.get(&request) else {
             return Err(Refusal::UnknownRequest { request });
         };
@@ -812,9 +812,9 @@ impl Guard {
             let _ = self.resolve(effects);
         }
         let outcome = if reply == Answer::Allow {
-            Outcome::Granted
+            ConsentOutcome::Granted
         } else {
-            Outcome::Refused
+            ConsentOutcome::Refused
         };
         self.finish(request, outcome);
         Ok(outcome)
@@ -846,7 +846,7 @@ impl Guard {
                 let _ = self.resolve(effects);
             }
             self.host.withdraw(*request);
-            let _ = waiting.wake.send(Outcome::Expired);
+            let _ = waiting.wake.send(ConsentOutcome::Expired);
             tracing::info!(request = request.get(), "a consent prompt expired closed");
         }
         overdue
@@ -877,7 +877,7 @@ impl Guard {
             .map(|(request, _)| *request)
             .collect();
         for request in abandoned {
-            self.finish(request, Outcome::Left);
+            self.finish(request, ConsentOutcome::Left);
         }
         self.requesters.retain(|(name, _), _| name != bus_name);
         for requester in gone {
@@ -919,7 +919,7 @@ impl Guard {
                 .find(|(_, waiting)| waiting.prompt == Some(request))
                 .map(|(ipc, _)| *ipc)
             {
-                self.finish(ipc, Outcome::ProviderGone);
+                self.finish(ipc, ConsentOutcome::ProviderGone);
             }
         }
     }
@@ -940,7 +940,7 @@ impl Guard {
         }
         let waiting: Vec<RequestId> = self.waiting.keys().copied().collect();
         for request in waiting {
-            self.finish(request, Outcome::Locked);
+            self.finish(request, ConsentOutcome::Locked);
         }
     }
 
@@ -977,7 +977,7 @@ impl Guard {
     ///
     /// The waiting entry is removed here, so a second wake for the same request is
     /// impossible and a late answer is [`Refusal::UnknownRequest`].
-    fn finish(&mut self, request: RequestId, outcome: Outcome) {
+    fn finish(&mut self, request: RequestId, outcome: ConsentOutcome) {
         let Some(waiting) = self.waiting.remove(&request) else {
             return;
         };
@@ -1003,7 +1003,7 @@ impl Guard {
                         .find(|(_, waiting)| waiting.prompt == Some(request))
                         .map(|(ipc, _)| *ipc)
                     {
-                        self.finish(ipc, Outcome::ProviderGone);
+                        self.finish(ipc, ConsentOutcome::ProviderGone);
                     }
                 }
                 Effect::Answer { decision: answer, .. } => decision = Some(answer),

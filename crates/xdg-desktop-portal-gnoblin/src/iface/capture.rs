@@ -33,7 +33,7 @@ use zbus::{Connection, ObjectPath, fdo};
 
 use super::{Portal, Reply, await_consent, export_request, refused, remove, sender, unsupported, variant};
 use crate::backends::{ScreenshotOptions, StreamRequest};
-use crate::consent::{Interface, NewSession, Outcome, PortalCapability};
+use crate::consent::{ConsentOutcome, Interface, NewSession, PortalCapability};
 
 /// `types` bit: an existing monitor.
 pub const SOURCE_MONITOR: u32 = 1;
@@ -106,7 +106,7 @@ impl Screenshot {
         }
         let outcome = await_consent(&self.portal, &path, &caller, &path, PortalCapability::Capture).await;
         let reply = match outcome {
-            Ok(Outcome::Granted) => {
+            Ok(ConsentOutcome::Granted) => {
                 let options = ScreenshotOptions {
                     parent_window,
                     interactive: flag(&options, "interactive"),
@@ -173,7 +173,7 @@ impl Screenshot {
         }
         let outcome = await_consent(&self.portal, &path, &caller, &path, PortalCapability::Capture).await;
         let reply = match outcome {
-            Ok(Outcome::Granted) => {
+            Ok(ConsentOutcome::Granted) => {
                 let _ = parent_window;
                 let picked = {
                     let mut shared = self.portal.lock();
@@ -320,7 +320,7 @@ impl ScreenCast {
         let _ = options;
         let outcome = await_consent(&self.portal, handle.as_str(), &caller, &path, PortalCapability::Capture).await;
         let reply = match outcome {
-            Ok(Outcome::Granted) => {
+            Ok(ConsentOutcome::Granted) => {
                 let request = {
                     let shared = self.portal.lock();
                     let session = shared

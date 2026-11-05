@@ -15,7 +15,7 @@ use smithay::wayland::image_copy_capture::{
 };
 use tracing::{debug, warn};
 
-use gnoblin_capture::{BufferId, Format, Outcome, PixelFormat, Refusal, Session, Stop, Target};
+use gnoblin_capture::{BufferId, CaptureOutcome, Format, PixelFormat, Refusal, Session, Stop, Target};
 use gnoblin_lock::CaptureStream;
 use gnoblin_types::{ClientId, OutputId, Point};
 
@@ -97,7 +97,7 @@ impl ImageCopyCaptureHandler for State {
         };
         let outcome = self.capture.table.capture(&mut claim, tick, capture, &mut source);
         match outcome {
-            Outcome::Copied(report) => {
+            CaptureOutcome::Copied(report) => {
                 let damage: Vec<Rectangle<i32, BufferSpace>> = report
                     .damage
                     .iter()
@@ -119,7 +119,7 @@ impl ImageCopyCaptureHandler for State {
                     std::time::Duration::from_millis(presented.get()),
                 );
             }
-            Outcome::Refused(refusal) => {
+            CaptureOutcome::Refused(refusal) => {
                 frame.fail(failure_reason(refusal));
                 if matches!(refusal, Refusal::Locked | Refusal::Stopped(_) | Refusal::TargetGone) {
                     // The session can never produce another frame, so the client is told

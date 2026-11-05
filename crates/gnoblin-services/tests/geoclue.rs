@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use gnoblin_services::location::{AGENT_INTERFACE, AGENT_PATH, GEOCLUE_SERVICE, Location, MANAGER_PATH, Policy};
-use gnoblin_services::{Offerer, Proposition, Refusal, Slot};
+use gnoblin_services::{CapabilitySlot, Offerer, Proposition, Refusal};
 use support::bus::Bus;
 use zbus::connection::Builder;
 use zbus::{Connection, Proxy, fdo};
@@ -163,7 +163,7 @@ fn an_answered_request_grants_the_level_the_shell_names() {
     let agent = connection.unique_name().expect("unique name").to_string();
     let call = authorize(address.clone(), agent, "org.example.Maps");
     let (request, proposition) = one_offer(&host);
-    assert_eq!(proposition.slot, Slot::LocationAgent);
+    assert_eq!(proposition.slot, CapabilitySlot::LocationAgent);
     assert_eq!(proposition.request.action_id, "org.example.Maps");
     assert!(location.answer(request, &RequestOutcome::Answered(b"5".to_vec())));
 

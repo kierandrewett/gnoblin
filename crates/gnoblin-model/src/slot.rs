@@ -14,7 +14,7 @@
 //!
 //! Two things live here and nothing else:
 //!
-//! - [`Slot`], the closed set of slot names from the plan's table, with the schema
+//! - [`CapabilitySlot`], the closed set of slot names from the plan's table, with the schema
 //!   property each one is published as. The names are the schema's: adding a slot
 //!   is a schema change and a property in `crates/gnoblin-schema/schema/session.toml`
 //!   at the same time, which is what keeps the plan's table and the wire in step.
@@ -43,7 +43,7 @@
 //!    first thing a request consults:
 //!    `no_provider_fails_closed_and_names_the_slot`.
 //! 3. **A publication names a property the schema does not declare.** Every
-//!    property name comes from [`Slot::property`], and the test compares the whole
+//!    property name comes from [`CapabilitySlot::property`], and the test compares the whole
 //!    field set with the checked-in schema:
 //!    `the_published_fields_are_the_schema_properties`.
 
@@ -62,7 +62,7 @@ const COUNT: usize = 4;
 /// The declaration order is the publication order and the index order of
 /// [`Slots`], so the registry needs no map and a publication is a fixed list.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub enum Slot {
+pub enum CapabilitySlot {
     /// The polkit agent: an authentication request answered as a `Request`,
     /// default provider the services role.
     AuthPolkit,
@@ -75,23 +75,23 @@ pub enum Slot {
     IdlePolicy,
 }
 
-impl Slot {
+impl CapabilitySlot {
     /// Every slot, in publication order.
-    pub const ALL: [Slot; COUNT] = [
-        Slot::AuthPolkit,
-        Slot::PromptSecret,
-        Slot::LocationAgent,
-        Slot::IdlePolicy,
+    pub const ALL: [CapabilitySlot; COUNT] = [
+        CapabilitySlot::AuthPolkit,
+        CapabilitySlot::PromptSecret,
+        CapabilitySlot::LocationAgent,
+        CapabilitySlot::IdlePolicy,
     ];
 
     /// The slot name from the plan's table, which is also the configuration and
     /// log spelling.
     pub const fn name(self) -> &'static str {
         match self {
-            Slot::AuthPolkit => "auth.polkit",
-            Slot::PromptSecret => "prompt.secret",
-            Slot::LocationAgent => "location.agent",
-            Slot::IdlePolicy => "idle.policy",
+            CapabilitySlot::AuthPolkit => "auth.polkit",
+            CapabilitySlot::PromptSecret => "prompt.secret",
+            CapabilitySlot::LocationAgent => "location.agent",
+            CapabilitySlot::IdlePolicy => "idle.policy",
         }
     }
 
@@ -102,33 +102,35 @@ impl Slot {
     /// publication cannot invent a second spelling.
     pub const fn property(self) -> &'static str {
         match self {
-            Slot::AuthPolkit => "slot_auth_polkit",
-            Slot::PromptSecret => "slot_prompt_secret",
-            Slot::LocationAgent => "slot_location_agent",
-            Slot::IdlePolicy => "slot_idle_policy",
+            CapabilitySlot::AuthPolkit => "slot_auth_polkit",
+            CapabilitySlot::PromptSecret => "slot_prompt_secret",
+            CapabilitySlot::LocationAgent => "slot_location_agent",
+            CapabilitySlot::IdlePolicy => "slot_idle_policy",
         }
     }
 
     /// The provider the plan's table gives this slot when nobody claimed it.
     pub const fn default_provider(self) -> Provider {
         match self {
-            Slot::PromptSecret => Provider::None,
-            Slot::AuthPolkit | Slot::LocationAgent | Slot::IdlePolicy => Provider::Services,
+            CapabilitySlot::PromptSecret => Provider::None,
+            CapabilitySlot::AuthPolkit | CapabilitySlot::LocationAgent | CapabilitySlot::IdlePolicy => {
+                Provider::Services
+            }
         }
     }
 
     /// The registry index of this slot.
     const fn index(self) -> usize {
         match self {
-            Slot::AuthPolkit => 0,
-            Slot::PromptSecret => 1,
-            Slot::LocationAgent => 2,
-            Slot::IdlePolicy => 3,
+            CapabilitySlot::AuthPolkit => 0,
+            CapabilitySlot::PromptSecret => 1,
+            CapabilitySlot::LocationAgent => 2,
+            CapabilitySlot::IdlePolicy => 3,
         }
     }
 }
 
-impl fmt::Display for Slot {
+impl fmt::Display for CapabilitySlot {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.name())
     }
@@ -147,18 +149,18 @@ impl fmt::Display for UnknownSlot {
             formatter,
             "`{}` is not a slot; the slots are {}",
             self.name,
-            Slot::ALL.map(Slot::name).join(", ")
+            CapabilitySlot::ALL.map(CapabilitySlot::name).join(", ")
         )
     }
 }
 
 impl std::error::Error for UnknownSlot {}
 
-impl FromStr for Slot {
+impl FromStr for CapabilitySlot {
     type Err = UnknownSlot;
 
-    fn from_str(name: &str) -> Result<Slot, UnknownSlot> {
-        Slot::ALL
+    fn from_str(name: &str) -> Result<CapabilitySlot, UnknownSlot> {
+        CapabilitySlot::ALL
             .into_iter()
             .find(|slot| slot.name() == name)
             .ok_or_else(|| UnknownSlot { name: name.to_owned() })
@@ -223,20 +225,20 @@ pub enum ClaimError {
     /// connections drawing one prompt.
     Held {
         /// The slot that is held.
-        slot: Slot,
+        slot: CapabilitySlot,
         /// Who holds it, which is what the refused claimant is told.
         by: Provider,
     },
     /// The release named a connection that does not hold the slot.
     NotHolder {
         /// The slot the caller tried to release.
-        slot: Slot,
+        slot: CapabilitySlot,
     },
     /// The services role cannot take a slot back from a shell; only the claiming
     /// shell can release it.
     TakenOver {
         /// The slot a services claim was refused for.
-        slot: Slot,
+        slot: CapabilitySlot,
     },
 }
 
@@ -278,18 +280,18 @@ impl Slots {
     /// The registry at the plan's defaults, before any shell claimed anything.
     pub fn new() -> Slots {
         Slots {
-            providers: Slot::ALL.map(Slot::default_provider),
+            providers: CapabilitySlot::ALL.map(CapabilitySlot::default_provider),
             claims: [None; COUNT],
         }
     }
 
     /// Who provides the slot.
-    pub fn provider(&self, slot: Slot) -> Provider {
+    pub fn provider(&self, slot: CapabilitySlot) -> Provider {
         self.providers[slot.index()]
     }
 
     /// Who claimed the slot, when a shell holds it.
-    pub fn claimant(&self, slot: Slot) -> Option<OwnerId> {
+    pub fn claimant(&self, slot: CapabilitySlot) -> Option<OwnerId> {
         self.claims[slot.index()]
     }
 
@@ -302,7 +304,12 @@ impl Slots {
     ///
     /// Returns whether the provider changed, so the caller can cancel the requests
     /// the previous provider was holding.
-    pub fn claim(&mut self, slot: Slot, provider: Provider, owner: Option<OwnerId>) -> Result<bool, ClaimError> {
+    pub fn claim(
+        &mut self,
+        slot: CapabilitySlot,
+        provider: Provider,
+        owner: Option<OwnerId>,
+    ) -> Result<bool, ClaimError> {
         let current = self.provider(slot);
         match (provider, current) {
             (Provider::Shell, Provider::None | Provider::Services) => {
@@ -333,7 +340,7 @@ impl Slots {
     /// Returns whether the provider changed. A release from a connection that does
     /// not hold the slot is refused, so one shell cannot take a prompt away from
     /// another by releasing its claim.
-    pub fn release(&mut self, slot: Slot, owner: OwnerId) -> Result<bool, ClaimError> {
+    pub fn release(&mut self, slot: CapabilitySlot, owner: OwnerId) -> Result<bool, ClaimError> {
         if self.provider(slot) != Provider::Shell || self.claims[slot.index()] != Some(owner) {
             return Err(ClaimError::NotHolder { slot });
         }
@@ -349,7 +356,7 @@ impl Slots {
     /// object a client subscribes to carries exactly the state a shell, `gnoblinctl`
     /// and the recovery overlay read.
     pub fn fields(&self) -> Fields {
-        Slot::ALL
+        CapabilitySlot::ALL
             .into_iter()
             .map(|slot| {
                 (

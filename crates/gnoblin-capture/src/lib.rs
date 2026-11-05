@@ -90,4 +90,4 @@ pub mod table;
 pub use format::{Format, PixelFormat};
 pub use session::{BufferId, Refusal, Session, SessionId, Stop, Target};
 pub use source::{CaptureSource, Copied};
-pub use table::{FrameClaim, FrameReport, Outcome, Table};
+pub use table::{CaptureOutcome, FrameClaim, FrameReport, Table};

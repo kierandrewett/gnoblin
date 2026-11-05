@@ -816,7 +816,7 @@ impl Dispatcher {
                 return;
             }
         };
-        let slot = match gnoblin_model::Slot::from_str(&slot) {
+        let slot = match gnoblin_model::CapabilitySlot::from_str(&slot) {
             Ok(slot) => slot,
             Err(error) => {
                 self.refuse(client, envelope, wire::code::UNKNOWN_SLOT, &error.to_string());
@@ -847,7 +847,7 @@ impl Dispatcher {
                 return;
             }
         };
-        let slot = match gnoblin_model::Slot::from_str(&name) {
+        let slot = match gnoblin_model::CapabilitySlot::from_str(&name) {
             Ok(slot) => slot,
             Err(error) => {
                 self.refuse(client, envelope, wire::code::UNKNOWN_SLOT, &error.to_string());

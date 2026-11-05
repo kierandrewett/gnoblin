@@ -12,7 +12,7 @@
 //!   prompter when their buses and names are available, and declines an offer it cannot draw
 //!   instead of letting it wait for a deadline.
 //! - [`slot`], the slot registry. Every optional capability is a slot with one
-//!   provider ([`Slot`]), the plan's default is the services role's for three of them
+//!   provider ([`CapabilitySlot`]), the plan's default is the services role's for three of them
 //!   and nobody's for `prompt.secret`, and the state is published as the `session`
 //!   object's `slot_*` properties so a shell, `gnoblinctl` and the recovery overlay
 //!   read the same answer.
@@ -76,4 +76,4 @@ pub use agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitReq
 pub use gnoblin_model::{RequestId, RequestOutcome, Tick};
 pub use polkit::Polkit;
 pub use role::{Buses, Host, LinkedAgent, OfferFailure, Role, RoleError};
-pub use slot::{ClaimError, Provider, Slot, Slots, UnknownSlot};
+pub use slot::{CapabilitySlot, ClaimError, Provider, Slots, UnknownSlot};

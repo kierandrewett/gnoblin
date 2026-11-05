@@ -52,7 +52,7 @@ use std::fmt;
 use gnoblin_model::{RequestId, RequestOutcome, Tick, Value};
 use gnoblin_types::OwnerId;
 
-use crate::slot::{ClaimError, Provider, Slot, Slots};
+use crate::slot::{CapabilitySlot, ClaimError, Provider, Slots};
 
 /// How many finished requests the agent remembers.
 ///
@@ -100,7 +100,7 @@ pub struct PolkitRequest {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Proposition {
     /// The slot that owns this request.
-    pub slot: Slot,
+    pub slot: CapabilitySlot,
     /// The action, message, icon, details and identities of the request.
     pub request: PolkitRequest,
 }
@@ -109,7 +109,7 @@ impl Proposition {
     /// The proposition for one polkit request.
     pub fn new(request: PolkitRequest) -> Proposition {
         Proposition {
-            slot: Slot::AuthPolkit,
+            slot: CapabilitySlot::AuthPolkit,
             request,
         }
     }
@@ -121,7 +121,7 @@ impl Proposition {
     /// GeoClue request has no cookie, identities or details, so those stay empty.
     pub fn location(desktop_id: &str, message: &str) -> Proposition {
         Proposition {
-            slot: Slot::LocationAgent,
+            slot: CapabilitySlot::LocationAgent,
             request: PolkitRequest {
                 cookie: String::new(),
                 action_id: desktop_id.to_owned(),
@@ -168,7 +168,7 @@ pub struct Pending {
     /// The request's identity on the IPC.
     pub request: RequestId,
     /// The slot that owns the request.
-    pub slot: Slot,
+    pub slot: CapabilitySlot,
     /// polkitd's cookie, which `CancelAuthentication` names.
     pub cookie: String,
     /// The action being authorized, for a log line that never carries an answer.
@@ -216,7 +216,7 @@ pub enum Refusal {
     /// the slot, because that is the one thing a caller or a log needs to fix it.
     NoProvider {
         /// The slot with no provider.
-        slot: Slot,
+        slot: CapabilitySlot,
         /// What the compositor said, which is the detail a log keeps.
         reason: String,
     },
@@ -252,7 +252,7 @@ pub enum Refusal {
 
 impl Refusal {
     /// The slot this refusal is about, when it is about one.
-    pub fn slot(&self) -> Option<Slot> {
+    pub fn slot(&self) -> Option<CapabilitySlot> {
         match self {
             Refusal::NoProvider { slot, .. } => Some(*slot),
             Refusal::Claim(ClaimError::Held { slot, .. })
@@ -359,7 +359,7 @@ impl<O: Offerer> Agent<O> {
     /// Record that the agent unregistered, cancelling everything it was waiting on.
     pub fn unregister(&mut self) -> Vec<Finished> {
         self.registered = false;
-        self.cancel_slot(Slot::AuthPolkit)
+        self.cancel_slot(CapabilitySlot::AuthPolkit)
     }
 
     /// Claim a slot for a provider, cancelling the requests the previous provider was
@@ -368,20 +368,25 @@ impl<O: Offerer> Agent<O> {
     /// A claim is how a shell takes `auth.polkit` over, and a provider change is why the
     /// pending requests end: the connection that was drawing the prompt is not the one
     /// that will answer it.
-    pub fn claim(&mut self, slot: Slot, provider: Provider, owner: Option<OwnerId>) -> Result<Vec<Finished>, Refusal> {
+    pub fn claim(
+        &mut self,
+        slot: CapabilitySlot,
+        provider: Provider,
+        owner: Option<OwnerId>,
+    ) -> Result<Vec<Finished>, Refusal> {
         let changed = self.slots.claim(slot, provider, owner)?;
         Ok(if changed { self.cancel_slot(slot) } else { Vec::new() })
     }
 
     /// Release a shell's claim, cancelling what it was holding.
-    pub fn release(&mut self, slot: Slot, owner: OwnerId) -> Result<Vec<Finished>, Refusal> {
+    pub fn release(&mut self, slot: CapabilitySlot, owner: OwnerId) -> Result<Vec<Finished>, Refusal> {
         let changed = self.slots.release(slot, owner)?;
         Ok(if changed { self.cancel_slot(slot) } else { Vec::new() })
     }
 
     /// Offer one polkit request to the slot's provider.
     pub fn begin(&mut self, request: PolkitRequest, deadline: Tick) -> Result<Offered, Refusal> {
-        let slot = Slot::AuthPolkit;
+        let slot = CapabilitySlot::AuthPolkit;
         if !self.slots.provider(slot).is_present() {
             return Err(Refusal::NoProvider {
                 slot,
@@ -443,7 +448,7 @@ impl<O: Offerer> Agent<O> {
     }
 
     /// Cancel every pending request of one slot, returning what ended.
-    pub fn cancel_slot(&mut self, slot: Slot) -> Vec<Finished> {
+    pub fn cancel_slot(&mut self, slot: CapabilitySlot) -> Vec<Finished> {
         let requests: Vec<RequestId> = self
             .pending
             .values()

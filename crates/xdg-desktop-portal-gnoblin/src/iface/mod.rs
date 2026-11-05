@@ -44,7 +44,7 @@ use zbus::{Connection, fdo};
 use crate::backends::{
     Backends, CaptureBackend, ClipboardBackend, EisBackend, InhibitBackend, InhibitHandle, ShortcutsBackend,
 };
-use crate::consent::{Guard, Host, Outcome, Refusal};
+use crate::consent::{ConsentOutcome, Guard, Host, Refusal};
 use crate::settings::Table;
 
 /// The name the backend owns, as the `.portal` file and the frontend's routing name it.
@@ -324,10 +324,10 @@ impl Portal {
 }
 
 /// Wait for a consent answer, mapping the channel's own failure.
-pub async fn wait(pending: crate::consent::Pending) -> Outcome {
+pub async fn wait(pending: crate::consent::Pending) -> ConsentOutcome {
     match pending {
-        crate::consent::Pending::AlreadyGranted => Outcome::Granted,
-        crate::consent::Pending::Asked { answered, .. } => answered.await.unwrap_or(Outcome::Left),
+        crate::consent::Pending::AlreadyGranted => ConsentOutcome::Granted,
+        crate::consent::Pending::Asked { answered, .. } => answered.await.unwrap_or(ConsentOutcome::Left),
     }
 }
 
@@ -543,17 +543,17 @@ pub async fn await_consent(
     bus_name: &str,
     path: &str,
     capability: gnoblin_authority::PortalCapability,
-) -> Result<Outcome, fdo::Error> {
+) -> Result<ConsentOutcome, fdo::Error> {
     let pending = {
         let mut shared = portal.lock();
         let now = shared.now();
         shared.guard.ask(now, bus_name, path, capability).map_err(refused)?
     };
     match pending {
-        crate::consent::Pending::AlreadyGranted => Ok(Outcome::Granted),
+        crate::consent::Pending::AlreadyGranted => Ok(ConsentOutcome::Granted),
         crate::consent::Pending::Asked { request, answered } => {
             portal.handle(handle, Handle::Consent(request));
-            let outcome = answered.await.unwrap_or(Outcome::Left);
+            let outcome = answered.await.unwrap_or(ConsentOutcome::Left);
             portal.release_handle(handle);
             Ok(outcome)
         }

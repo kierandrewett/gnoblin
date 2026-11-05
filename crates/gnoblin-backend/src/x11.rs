@@ -211,7 +211,7 @@ pub enum Command {
 
 /// What the compositor does with one X11 event.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
-pub struct Outcome {
+pub struct EventOutcome {
     /// The window the event is about, when the policy decided it is managed.
     ///
     /// `None` means the window is not managed at all: an override-redirect window,
@@ -224,7 +224,7 @@ pub struct Outcome {
     pub commands: Vec<Command>,
 }
 
-impl Outcome {
+impl EventOutcome {
     /// Nothing happened.
     #[must_use]
     pub fn nothing() -> Self {
@@ -245,14 +245,14 @@ impl Outcome {
 /// requests out.
 pub trait Windows: Send {
     /// Takes one X11 event and answers what the compositor should do about it.
-    fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> Outcome;
+    fn handle(&mut self, event: WindowEvent<'_>, wm: &mut Wm) -> EventOutcome;
 
     /// Asks the client to close a window.
     ///
     /// This is the shell's close request, not a protocol event: the compositor calls
     /// it when a person closes the window and the answer is the
     /// [`Command::Close`] to send.
-    fn close(&mut self, window: WindowId) -> Outcome;
+    fn close(&mut self, window: WindowId) -> EventOutcome;
 
     /// Whether X11 clients may take keyboard grabs at all.
     ///
@@ -354,7 +354,7 @@ mod tests {
     /// carries no effects and no commands either.
     #[test]
     fn an_outcome_with_no_window_asks_for_nothing() {
-        let outcome = Outcome::nothing();
+        let outcome = EventOutcome::nothing();
         assert_eq!(outcome.window, None);
         assert!(outcome.effects.is_empty());
         assert!(outcome.commands.is_empty());
