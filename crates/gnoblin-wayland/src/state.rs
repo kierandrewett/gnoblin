@@ -22,9 +22,7 @@ use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
-use smithay::utils::{
-    Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform,
-};
+use smithay::utils::{Logical, Point as SmithayPoint, Rectangle, SERIAL_COUNTER, Size as SmithaySize, Transform};
 use smithay::wayland::compositor::{CompositorState, SurfaceAttributes, with_states};
 use smithay::wayland::output::OutputManagerState;
 use smithay::wayland::selection::data_device::DataDeviceState;
