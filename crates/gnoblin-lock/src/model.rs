@@ -5,10 +5,9 @@
 //! dependency, no clock and no seed from the environment, so a failure is
 //! reproducible by seed alone.
 
-use crate::{
-    Capture, CaptureStream, ClientId, CoverFailure, Delivery, Effect, Event, InputSource, Lock, OutputId, State,
-    Subject,
-};
+use gnoblin_types::{ClientId, OutputId};
+
+use crate::{Capture, CaptureStream, CoverFailure, Delivery, Effect, Event, InputSource, Lock, State, Subject};
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
 /// every platform, so a failing seed replays exactly.
@@ -36,7 +35,7 @@ impl Rng {
     }
 
     fn output(&mut self) -> OutputId {
-        OutputId::new(u32::try_from(1 + self.below(2)).unwrap_or(1))
+        OutputId::new(1 + self.below(2))
     }
 
     fn layout(&mut self) -> Vec<OutputId> {

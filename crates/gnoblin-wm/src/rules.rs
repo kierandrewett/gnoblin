@@ -22,7 +22,8 @@
 //! Quantifiers are the part of Lua patterns a rule author would notice missing, and
 //! the configuration layer is the place to translate them.
 
-use crate::ids::WorkspaceId;
+use gnoblin_types::WorkspaceId;
+
 use crate::window::{Window, WindowKind};
 
 /// A compiled match pattern.
@@ -189,8 +190,7 @@ impl Rule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::Rect;
-    use crate::ids::{OutputId, WindowId};
+    use gnoblin_types::{OutputId, Rect, WindowId};
 
     fn window(app_id: &str, title: &str, kind: WindowKind) -> Window {
         Window {

@@ -1,51 +1,12 @@
-//! The identifiers the compositor hands the lock, and the thing a cover hides.
+//! What a cover hides.
 //!
-//! The lock never invents an identifier and never reads a clock: every id below
-//! is allocated by the compositor and every `u64` generation is one the lock
-//! itself counted. That is what makes `Lock::apply` replayable, which the model
-//! tests in [`crate::model`] depend on.
+//! The identifiers the lock names are the shared primitives: a client is a
+//! [`gnoblin_types::ClientId`] and an output a [`gnoblin_types::OutputId`], the
+//! same values the compositor routes input by and the window manager places
+//! windows on. The lock never invents one and never reads a clock, so
+//! `Lock::apply` replays, which the model tests in [`crate::model`] depend on.
 
-/// A Wayland client connection, as the compositor names it.
-///
-/// Identity is a connection, not a process: a connection is the unit the
-/// compositor routes input to, observes going away and can close. One process
-/// may hold several connections and `fork` duplicates none of them, so a
-/// connection id cannot be inherited by a child the way a session leader or a
-/// process id can.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ClientId(u64);
-
-impl ClientId {
-    /// Wraps the compositor's stable client index.
-    #[must_use]
-    pub const fn new(raw: u64) -> Self {
-        Self(raw)
-    }
-
-    /// The raw index, for logs and test assertions.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-}
-
-/// An output that the cover must reach before the session may be called locked.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct OutputId(u32);
-
-impl OutputId {
-    /// Wraps the compositor's stable output index.
-    #[must_use]
-    pub const fn new(raw: u32) -> Self {
-        Self(raw)
-    }
-
-    /// The raw index, for logs and test assertions.
-    #[must_use]
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
+use gnoblin_types::ClientId;
 
 /// Something the lock can hide, feed input to, or embargo.
 ///

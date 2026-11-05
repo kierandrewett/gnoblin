@@ -3,9 +3,11 @@
 //! Each drives [`Authority::apply`] and its queries only, with ticks the test
 //! supplies, so nothing here depends on a clock or on a process table.
 
+use gnoblin_types::{ClientId, Tick};
+
 use crate::{
-    Answer, AppId, Authority, Capability, Claimant, ClientId, Consent, ContextRequest, Decision, Denial, Effect, Event,
-    Gesture, GestureId, LaunchOrigin, Limits, RequestId, RequesterId, SessionLeader, SurfaceId, Tick, TokenId,
+    Answer, AppId, Authority, Capability, Claimant, Consent, ContextRequest, Decision, Denial, Effect, Event, Gesture,
+    GestureId, LaunchOrigin, Limits, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
 };
 
 const LEADER: SessionLeader = SessionLeader::new(100);
@@ -41,7 +43,7 @@ fn launched() -> Authority {
             token: TOKEN,
             leader: LEADER,
             app_id: None,
-            expires_at: NOW.after(LIFETIME),
+            expires_at: NOW.saturating_add(LIFETIME),
         }]
     );
     authority
@@ -236,7 +238,7 @@ fn an_expired_token_is_refused() {
     let mut authority = launched();
     assert_eq!(
         authority.apply(
-            NOW.after(LIFETIME),
+            NOW.saturating_add(LIFETIME),
             Event::Activate {
                 claim: claim(Some(TOKEN), None)
             }
@@ -372,7 +374,7 @@ fn an_expired_context_is_refused() {
     let mut authority = Authority::new();
     authority.apply(NOW, gesture(10));
     assert_eq!(
-        authority.apply(NOW.after(10), move_request(CLIENT, SURFACE)),
+        authority.apply(NOW.saturating_add(10), move_request(CLIENT, SURFACE)),
         vec![Effect::RefuseContext {
             gesture: GESTURE,
             client: CLIENT,
@@ -578,7 +580,7 @@ fn a_refused_consent_stays_refused() {
     );
     // It does end with its lifetime.
     assert_eq!(
-        authority.gate(NOW.after(LIFETIME), REQUESTER, Capability::Capture),
+        authority.gate(NOW.saturating_add(LIFETIME), REQUESTER, Capability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -683,7 +685,7 @@ fn token_capacity_fails_closed() {
     // An expired token frees its slot rather than accumulating forever.
     assert_eq!(
         authority.apply(
-            NOW.after(LIFETIME),
+            NOW.saturating_add(LIFETIME),
             Event::Launch {
                 origin: LaunchOrigin {
                     leader: OTHER_LEADER,
@@ -697,7 +699,7 @@ fn token_capacity_fails_closed() {
             token: TokenId::new(0xfeed),
             leader: OTHER_LEADER,
             app_id: None,
-            expires_at: NOW.after(LIFETIME * 2),
+            expires_at: NOW.saturating_add(LIFETIME * 2),
         }]
     );
 }
@@ -707,7 +709,7 @@ fn an_unanswered_prompt_expires_closed() {
     let mut authority = prompting();
     assert_eq!(
         authority.apply(
-            NOW.after(LIFETIME),
+            NOW.saturating_add(LIFETIME),
             Event::ConsentAnswered {
                 request: REQUEST,
                 from: SHELL,
@@ -720,7 +722,7 @@ fn an_unanswered_prompt_expires_closed() {
         }]
     );
     assert_eq!(
-        authority.gate(NOW.after(LIFETIME), REQUESTER, Capability::Capture),
+        authority.gate(NOW.saturating_add(LIFETIME), REQUESTER, Capability::Capture),
         Decision::Denied(Denial::NoGrant)
     );
 }
@@ -729,7 +731,7 @@ fn an_unanswered_prompt_expires_closed() {
 fn a_stale_prompt_cannot_end_a_newer_grant() {
     let mut authority = prompting();
     // The first prompt expires unanswered and a second request replaces it.
-    let later = NOW.after(LIFETIME);
+    let later = NOW.saturating_add(LIFETIME);
     assert_eq!(
         authority.apply(
             later,

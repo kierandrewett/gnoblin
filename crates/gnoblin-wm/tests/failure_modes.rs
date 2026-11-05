@@ -1,10 +1,10 @@
 //! One test per documented failure mode, plus the behaviours the state machine
 //! exists to provide.
 
+use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, Insets, Match, OutputId, Pattern, PlacementMode, Rect,
-    Rejection, Rule, RuleAction, RuleRejection, SnapZone, WindowId, WindowSpec, Wm, WmOptions, WorkspaceId,
-    WorkspaceSelector,
+    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, PlacementMode, Rejection, Rule, RuleAction,
+    RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceSelector,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -27,11 +27,11 @@ fn default_wm() -> Wm {
     wm_with(WmOptions::default())
 }
 
-fn window(raw: u32) -> WindowId {
+fn window(raw: u64) -> WindowId {
     WindowId::new(raw)
 }
 
-fn open(wm: &mut Wm, raw: u32) {
+fn open(wm: &mut Wm, raw: u64) {
     let effects = wm.apply(Event::WindowOpened(
         WindowSpec::normal(window(raw), "org.example.App").with_requested(Rect::new(0, 0, 600, 400)),
     ));
@@ -41,7 +41,7 @@ fn open(wm: &mut Wm, raw: u32) {
     );
 }
 
-fn focus(wm: &mut Wm, raw: u32, decision: ActivationDecision) -> Vec<Effect> {
+fn focus(wm: &mut Wm, raw: u64, decision: ActivationDecision) -> Vec<Effect> {
     wm.apply(Event::ActivationRequested {
         window: window(raw),
         decision,
@@ -801,7 +801,7 @@ fn free_space_placement_avoids_existing_windows() {
     let second = wm.window(window(2)).map(|w| w.geometry);
     assert_eq!(first, Some(Rect::new(0, 0, 600, 400)));
     match (first, second) {
-        (Some(first), Some(second)) => assert!(!first.intersects(&second)),
+        (Some(first), Some(second)) => assert!(!first.intersects(second)),
         _ => panic!("both windows are managed"),
     }
     check(&wm);

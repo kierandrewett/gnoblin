@@ -1,168 +1,45 @@
-//! Rectangles in logical global coordinates.
+//! The one-pixel floor window management puts on an extent, and the narrowing
+//! its edge arithmetic needs.
 //!
-//! The window manager compares, clamps and splits rectangles and nothing else, so
-//! it carries its own integer geometry instead of borrowing a compositor type.
-//! Coordinates are logical pixels in the session's global space; scaling belongs
-//! to the renderer. Every constructor clamps a non-positive width or height to one
-//! pixel, so a degenerate client request cannot produce a rectangle that
-//! intersects nothing and disappears from every placement scan.
+//! Rectangles, sizes and insets are the shared primitives of `gnoblin-types`, so a
+//! rectangle this crate hands back is the same value the renderer, the output
+//! layout and the accessibility tree already hold. One of that type's decisions is
+//! deliberately not this crate's, though: a shared logical extent is unsigned and
+//! may be zero, because "this rectangle covers no pixel" is a real state for a
+//! hidden surface or an output with nothing left over. Window management needs
+//! every managed window to be reachable input, so a degenerate request is floored
+//! at one pixel at the seams where it enters: a client's requested rectangle, an
+//! output's work area and a placement size.
+//!
+//! # Failure modes
+//!
+//! 1. **A client asks for a zero or negative extent, and the window disappears
+//!    from every placement scan.** [`extent`] floors it at [`MIN_EXTENT`].
+//!    Covered by `a_degenerate_extent_becomes_one_pixel`.
+//! 2. **An edge calculation leaves the coordinate type.** Edges are computed in
+//!    [`i64`] and [`clamp_to_i32`] narrows them back, saturating instead of
+//!    wrapping. Covered by `an_edge_beyond_the_coordinate_range_saturates`.
 
-/// A width and height in logical pixels, each at least one.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Size {
-    /// Horizontal extent.
-    pub width: i32,
-    /// Vertical extent.
-    pub height: i32,
-}
+/// The smallest extent a managed window or an output's work area can have.
+pub(crate) const MIN_EXTENT: u32 = 1;
 
-impl Size {
-    /// A size, clamped to at least one pixel in each direction.
-    #[must_use]
-    pub const fn new(width: i32, height: i32) -> Self {
-        Self {
-            width: if width < 1 { 1 } else { width },
-            height: if height < 1 { 1 } else { height },
-        }
-    }
-}
-
-impl Default for Size {
-    fn default() -> Self {
-        Self::new(1, 1)
-    }
-}
-
-/// An axis-aligned rectangle, half-open on the right and bottom edges.
+/// The extent a caller's request becomes, never smaller than a pixel.
 ///
-/// There is deliberately no `Default`: a zero-size rectangle is never valid, and
-/// the only way to build one should be a constructor that clamps it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Rect {
-    /// Left edge.
-    pub x: i32,
-    /// Top edge.
-    pub y: i32,
-    /// Horizontal extent, at least one.
-    pub width: i32,
-    /// Vertical extent, at least one.
-    pub height: i32,
+/// The input is [`i64`] because the callers reach it with a difference of two
+/// extents and an inset, which can be negative and does not fit [`i32`] at the far
+/// end of the range. A value that does not fit [`u32`] saturates to
+/// [`u32::MAX`], which no real layout reaches.
+pub(crate) fn extent(value: i64) -> u32 {
+    u32::try_from(value).unwrap_or(0).max(MIN_EXTENT)
 }
 
-impl Rect {
-    /// A rectangle, clamped to at least one pixel in each direction.
-    #[must_use]
-    pub const fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
-        Self {
-            x,
-            y,
-            width: if width < 1 { 1 } else { width },
-            height: if height < 1 { 1 } else { height },
-        }
-    }
-
-    /// A rectangle at the origin with the given size.
-    #[must_use]
-    pub const fn from_size(size: Size) -> Self {
-        Self::new(0, 0, size.width, size.height)
-    }
-
-    /// The first column past the right edge.
-    #[must_use]
-    pub const fn right(&self) -> i32 {
-        self.x.saturating_add(self.width)
-    }
-
-    /// The first row past the bottom edge.
-    #[must_use]
-    pub const fn bottom(&self) -> i32 {
-        self.y.saturating_add(self.height)
-    }
-
-    /// The size of the rectangle.
-    #[must_use]
-    pub const fn size(&self) -> Size {
-        Size::new(self.width, self.height)
-    }
-
-    /// Whether the two rectangles share more than a zero-area edge.
-    ///
-    /// Touching edges do not count as overlapping, so a window placed exactly
-    /// beside another one is free space rather than a collision.
-    #[must_use]
-    pub fn intersects(&self, other: &Self) -> bool {
-        self.x < other.right() && other.x < self.right() && self.y < other.bottom() && other.y < self.bottom()
-    }
-
-    /// The same rectangle moved by the given offset.
-    #[must_use]
-    pub const fn translate(&self, dx: i32, dy: i32) -> Self {
-        Self::new(
-            self.x.saturating_add(dx),
-            self.y.saturating_add(dy),
-            self.width,
-            self.height,
-        )
-    }
-
-    /// The rectangle moved as little as possible to sit inside `bounds`.
-    ///
-    /// A rectangle larger than the bounds is aligned to the bounds' origin and
-    /// keeps its size, because shrinking a client's window is the compositor's
-    /// decision to send as a configure, not a geometry side effect.
-    #[must_use]
-    pub fn clamp_inside(&self, bounds: &Self) -> Self {
-        let x = if self.width >= bounds.width {
-            bounds.x
-        } else {
-            self.x.max(bounds.x).min(bounds.right().saturating_sub(self.width))
-        };
-        let y = if self.height >= bounds.height {
-            bounds.y
-        } else {
-            self.y.max(bounds.y).min(bounds.bottom().saturating_sub(self.height))
-        };
-        Self::new(x, y, self.width, self.height)
-    }
-
-    /// Whether the whole of `self` lies inside `bounds`.
-    #[must_use]
-    pub fn is_inside(&self, bounds: &Self) -> bool {
-        self.x >= bounds.x && self.y >= bounds.y && self.right() <= bounds.right() && self.bottom() <= bounds.bottom()
-    }
-}
-
-/// Space reserved by panels and bars, counted inwards from each output edge.
+/// Clamps a widened coordinate back into [`gnoblin_types::Rect`]'s coordinate type.
 ///
-/// The work area is the output rectangle minus these insets. They are part of the
-/// output model rather than a separate layer list because placement, maximise and
-/// snapping only ever need the resulting rectangle.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub struct Insets {
-    /// Reserved above the work area.
-    pub top: i32,
-    /// Reserved to the right of the work area.
-    pub right: i32,
-    /// Reserved below the work area.
-    pub bottom: i32,
-    /// Reserved to the left of the work area.
-    pub left: i32,
-}
-
-impl Insets {
-    /// The same inset on every edge.
-    #[must_use]
-    pub const fn uniform(value: i32) -> Self {
-        Self {
-            top: value,
-            right: value,
-            bottom: value,
-            left: value,
-        }
-    }
-
-    /// No reservation.
-    pub const ZERO: Self = Self::uniform(0);
+/// The work area, placement and drag maths run in [`i64`] so an origin near the
+/// edge of the range cannot overflow, and only the final coordinate needs
+/// narrowing.
+pub(crate) fn clamp_to_i32(value: i64) -> i32 {
+    i32::try_from(value).unwrap_or(if value < 0 { i32::MIN } else { i32::MAX })
 }
 
 #[cfg(test)]
@@ -170,47 +47,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_degenerate_size_becomes_one_pixel() {
-        let rect = Rect::new(10, 10, 0, -40);
-        assert_eq!((rect.width, rect.height), (1, 1));
-        assert_eq!(Size::new(-5, 0), Size::new(1, 1));
+    fn a_degenerate_extent_becomes_one_pixel() {
+        assert_eq!(extent(0), 1);
+        assert_eq!(extent(-40), 1);
+        assert_eq!(extent(i64::from(i32::MIN)), 1);
     }
 
     #[test]
-    fn touching_edges_do_not_intersect() {
-        let left = Rect::new(0, 0, 100, 100);
-        let right = Rect::new(100, 0, 100, 100);
-        assert!(!left.intersects(&right));
-        assert!(left.intersects(&Rect::new(99, 0, 100, 100)));
-        assert!(!left.intersects(&Rect::new(0, 100, 100, 100)));
+    fn a_real_extent_is_kept_exactly() {
+        assert_eq!(extent(1), 1);
+        assert_eq!(extent(1920), 1920);
+        assert_eq!(extent(i64::from(u32::MAX)), u32::MAX);
     }
 
     #[test]
-    fn clamping_moves_inside_but_keeps_size() {
-        let bounds = Rect::new(0, 0, 1920, 1080);
-        let clamped = Rect::new(1900, -50, 400, 300).clamp_inside(&bounds);
-        assert_eq!(clamped, Rect::new(1520, 0, 400, 300));
-        assert!(clamped.is_inside(&bounds));
-    }
-
-    #[test]
-    fn clamping_an_oversized_window_aligns_it_to_the_origin() {
-        let bounds = Rect::new(100, 50, 800, 600);
-        let clamped = Rect::new(400, 400, 900, 700).clamp_inside(&bounds);
-        assert_eq!(clamped, Rect::new(100, 50, 900, 700));
-    }
-
-    #[test]
-    fn clamping_an_inside_rectangle_changes_nothing() {
-        let bounds = Rect::new(0, 0, 1920, 1080);
-        let rect = Rect::new(100, 100, 200, 200);
-        assert_eq!(rect.clamp_inside(&bounds), rect);
-    }
-
-    #[test]
-    fn extremes_saturate_instead_of_panicking() {
-        let rect = Rect::new(i32::MAX - 5, i32::MIN, 10, 10);
-        assert_eq!(rect.right(), i32::MAX);
-        assert_eq!(rect.translate(i32::MAX, i32::MIN).width, 10);
+    fn an_edge_beyond_the_coordinate_range_saturates() {
+        assert_eq!(clamp_to_i32(i64::from(i32::MAX) + 1), i32::MAX);
+        assert_eq!(clamp_to_i32(i64::from(i32::MIN) - 1), i32::MIN);
+        assert_eq!(clamp_to_i32(-7), -7);
     }
 }

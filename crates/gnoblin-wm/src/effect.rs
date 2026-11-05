@@ -7,8 +7,8 @@
 //! [`Effect::Stack`] to scene-graph reordering and a [`Effect::Focus`] to seat
 //! keyboard focus.
 
-use crate::geometry::Rect;
-use crate::ids::{WindowId, WorkspaceId};
+use gnoblin_types::{Rect, WindowId, WorkspaceId};
+
 use crate::rules::WorkspaceSelector;
 use crate::window::WindowState;
 

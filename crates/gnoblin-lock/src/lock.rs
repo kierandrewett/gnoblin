@@ -2,9 +2,11 @@
 
 use std::collections::BTreeSet;
 
+use gnoblin_types::{ClientId, OutputId};
+
 use crate::effect::{Effect, Published, RejectReason};
 use crate::event::{CoverFailure, Event};
-use crate::ids::{ClientId, OutputId, Subject};
+use crate::ids::Subject;
 use crate::state::{Capture, CaptureStream, Delivery, Embargo, InputSource, State};
 
 /// The active owner and what it has proven so far.

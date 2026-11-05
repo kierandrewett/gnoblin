@@ -1,6 +1,6 @@
 //! Everything the caller tells the guardian.
 
-use crate::Millis;
+use crate::Tick;
 use crate::ids::ChildId;
 
 /// One thing that happened, at the moment the caller observed it.
@@ -11,7 +11,7 @@ use crate::ids::ChildId;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Event {
     /// When the caller observed it, on the caller's monotonic clock.
-    pub now: Millis,
+    pub now: Tick,
     /// What happened.
     pub kind: EventKind,
 }
@@ -19,7 +19,7 @@ pub struct Event {
 impl Event {
     /// An event at `now`.
     #[must_use]
-    pub const fn new(now: Millis, kind: EventKind) -> Self {
+    pub const fn new(now: Tick, kind: EventKind) -> Self {
         Self { now, kind }
     }
 }

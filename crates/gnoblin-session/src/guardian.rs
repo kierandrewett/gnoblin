@@ -13,7 +13,7 @@ use crate::ids::ChildId;
 use crate::plan::{ChildKind, ChildSpec, Plan, Restart};
 use crate::recovery::{ConfigStatus, Recovery};
 use crate::state::{ChildState, ChildStatus, SessionState, StopCause, StopReason};
-use crate::time::Millis;
+use crate::time::{Tick, secs};
 
 /// How the guardian behaves.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,7 +21,7 @@ pub struct Rules {
     /// How long a child may take to exit after a graceful signal before it is
     /// killed. Two seconds matches `guardian_stop_supervisor` in
     /// `src/session/gnoblin-runtime.c`.
-    pub stop_grace: Millis,
+    pub stop_grace: Tick,
     /// How many session starts may fail in a row before the guardian asks for
     /// safe mode.
     pub safe_mode_after: u32,
@@ -34,7 +34,7 @@ impl Rules {
     #[must_use]
     pub fn standard(inherited: &Inherited<'_>) -> Self {
         Self {
-            stop_grace: Millis::from_secs(2),
+            stop_grace: secs(2),
             safe_mode_after: 3,
             environment: EnvironmentRules::standard(inherited),
         }
@@ -62,12 +62,12 @@ struct Child {
     generation: u64,
     /// The absolute deadline of the phase in `state`: the readiness deadline
     /// while `Starting`, the grace deadline while `Stopping`.
-    deadline: Option<Millis>,
+    deadline: Option<Tick>,
     /// When the current instance last became usable, for the restart-budget
     /// reset.
-    ready_at: Option<Millis>,
+    ready_at: Option<Tick>,
     /// When a restart is due while `Backoff`.
-    restart_at: Option<Millis>,
+    restart_at: Option<Tick>,
     /// Restarts scheduled since the child was last stable.
     restarts: u32,
     /// How the last instance ended.
@@ -108,7 +108,7 @@ pub struct Guardian {
     /// counts as a failed start.
     reached_up: bool,
     /// The newest time any event carried.
-    now: Millis,
+    now: Tick,
 }
 
 impl Guardian {
@@ -148,7 +148,7 @@ impl Guardian {
             stop: None,
             stop_reason: None,
             reached_up: false,
-            now: Millis::ZERO,
+            now: Tick::ZERO,
         }
     }
 
@@ -221,7 +221,7 @@ impl Guardian {
 
     /// The newest time seen in an event.
     #[must_use]
-    pub const fn now(&self) -> Millis {
+    pub const fn now(&self) -> Tick {
         self.now
     }
 
@@ -265,7 +265,7 @@ impl Guardian {
         }
     }
 
-    fn start(&mut self, now: Millis, effects: &mut Vec<Effect>) {
+    fn start(&mut self, now: Tick, effects: &mut Vec<Effect>) {
         if self.session != SessionState::Idle {
             note(
                 Level::Warning,
@@ -309,7 +309,7 @@ impl Guardian {
     /// Walk the start sequence as far as it can go: spawn the child at the cursor
     /// and stop when it needs to report readiness, or finish the sequence when
     /// every child has been spawned.
-    fn ladder(&mut self, now: Millis, effects: &mut Vec<Effect>) {
+    fn ladder(&mut self, now: Tick, effects: &mut Vec<Effect>) {
         if self.stalled.is_some() {
             return;
         }
@@ -363,7 +363,7 @@ impl Guardian {
         note(Level::Info, "[guardian] session ready".to_owned(), effects);
     }
 
-    fn spawn(&mut self, index: usize, now: Millis, effects: &mut Vec<Effect>) {
+    fn spawn(&mut self, index: usize, now: Tick, effects: &mut Vec<Effect>) {
         let environment = self.environment();
         let child = &mut self.children[index];
         child.generation += 1;
@@ -373,7 +373,7 @@ impl Guardian {
         } else {
             ChildState::Running
         };
-        child.deadline = child.spec.ready_within.map(|within| now.saturating_add(within));
+        child.deadline = child.spec.ready_within.map(|within| now.saturating_add(within.get()));
         child.ready_at = if needs_ready { None } else { Some(now) };
         child.restart_at = None;
         child.stop = None;
@@ -390,7 +390,7 @@ impl Guardian {
         child: ChildId,
         generation: u64,
         environment: Vec<(String, String)>,
-        now: Millis,
+        now: Tick,
         effects: &mut Vec<Effect>,
     ) {
         let Some(index) = self.plan.index(child) else {
@@ -456,7 +456,7 @@ impl Guardian {
     /// session's, so every later child and the D-Bus activation environment see
     /// the display. A missing required variable ends the session instead of
     /// launching children that cannot reach their server.
-    fn publish_display(&mut self, environment: Vec<(String, String)>, now: Millis, effects: &mut Vec<Effect>) {
+    fn publish_display(&mut self, environment: Vec<(String, String)>, now: Tick, effects: &mut Vec<Effect>) {
         let mut published = Vec::new();
         let mut missing = Vec::new();
         for name in &self.rules.environment.forwarded {
@@ -496,7 +496,7 @@ impl Guardian {
         });
     }
 
-    fn exited(&mut self, child: ChildId, generation: u64, status: ExitStatus, now: Millis, effects: &mut Vec<Effect>) {
+    fn exited(&mut self, child: ChildId, generation: u64, status: ExitStatus, now: Tick, effects: &mut Vec<Effect>) {
         let Some(index) = self.plan.index(child) else {
             note(
                 Level::Warning,
@@ -566,7 +566,7 @@ impl Guardian {
         }
     }
 
-    fn crashed(&mut self, index: usize, status: ExitStatus, now: Millis, effects: &mut Vec<Effect>) {
+    fn crashed(&mut self, index: usize, status: ExitStatus, now: Tick, effects: &mut Vec<Effect>) {
         let name = self.children[index].spec.name.clone();
         let restart = self.children[index].spec.restart;
         let up = self.reached_up;
@@ -624,14 +624,14 @@ impl Guardian {
                     let delay = backoff.delay(attempt);
                     self.children[index].restarts = attempt;
                     self.children[index].state = ChildState::Backoff;
-                    self.children[index].restart_at = Some(now.saturating_add(delay));
+                    self.children[index].restart_at = Some(now.saturating_add(delay.get()));
                     self.children[index].deadline = None;
                     self.children[index].stop = None;
                     note(
                         Level::Warning,
                         format!(
                             "[guardian] restarting {name} in {} ms (attempt {attempt} of {})",
-                            delay.as_millis(),
+                            delay.get(),
                             backoff.max_restarts
                         ),
                         effects,
@@ -653,7 +653,7 @@ impl Guardian {
         }
     }
 
-    fn tick(&mut self, now: Millis, effects: &mut Vec<Effect>) {
+    fn tick(&mut self, now: Tick, effects: &mut Vec<Effect>) {
         match self.session {
             SessionState::Idle | SessionState::Ended => return,
             SessionState::Stopping => {
@@ -678,13 +678,13 @@ impl Guardian {
             if deadline > now {
                 continue;
             }
-            let within = child.spec.ready_within.unwrap_or(Millis::ZERO);
+            let within = child.spec.ready_within.unwrap_or(Tick::ZERO);
             note(
                 Level::Warning,
                 format!(
                     "[guardian] {} did not report ready within {} ms; killing it",
                     child.spec.name,
-                    within.as_millis()
+                    within.get()
                 ),
                 effects,
             );
@@ -694,7 +694,7 @@ impl Guardian {
                 cause: StopCause::Unready,
                 killed: true,
             });
-            child.deadline = Some(now.saturating_add(grace));
+            child.deadline = Some(now.saturating_add(grace.get()));
         }
 
         // A killed child the caller never reported: the kernel guarantees the
@@ -752,7 +752,7 @@ impl Guardian {
             let Some(ready_at) = child.ready_at else {
                 continue;
             };
-            if now.elapsed_since(ready_at) >= backoff.stable_after {
+            if now.since(ready_at) >= backoff.stable_after.get() {
                 child.restarts = 0;
                 note(
                     Level::Debug,
@@ -766,7 +766,7 @@ impl Guardian {
         }
     }
 
-    fn end(&mut self, reason: ShutdownReason, now: Millis, effects: &mut Vec<Effect>) {
+    fn end(&mut self, reason: ShutdownReason, now: Tick, effects: &mut Vec<Effect>) {
         let reason = match reason {
             ShutdownReason::Logout => StopReason::Logout,
             ShutdownReason::Signal => StopReason::Signal,
@@ -801,7 +801,7 @@ impl Guardian {
         }
     }
 
-    fn begin_stop(&mut self, reason: StopReason, now: Millis, effects: &mut Vec<Effect>) {
+    fn begin_stop(&mut self, reason: StopReason, now: Tick, effects: &mut Vec<Effect>) {
         if matches!(self.session, SessionState::Stopping | SessionState::Ended) {
             return;
         }
@@ -833,7 +833,7 @@ impl Guardian {
     /// The first call signals the last-started rank, so a caller that shuts the
     /// session down and then only reports exits and ticks drives the whole
     /// sequence without another instruction from the guardian.
-    fn stop_step(&mut self, now: Millis, effects: &mut Vec<Effect>) {
+    fn stop_step(&mut self, now: Tick, effects: &mut Vec<Effect>) {
         let grace = self.rules.stop_grace;
         loop {
             let Some(rank) = self
@@ -875,7 +875,7 @@ impl Guardian {
                         format!(
                             "[guardian] {} did not stop within {} ms; killing it",
                             child.spec.name,
-                            grace.as_millis()
+                            grace.get()
                         ),
                         effects,
                     );
@@ -883,7 +883,7 @@ impl Guardian {
                     if let Some(stop) = &mut child.stop {
                         stop.killed = true;
                     }
-                    child.deadline = Some(now.saturating_add(grace));
+                    child.deadline = Some(now.saturating_add(grace.get()));
                 }
             }
 
@@ -908,7 +908,7 @@ impl Guardian {
                             cause: StopCause::Session,
                             killed: false,
                         });
-                        child.deadline = Some(now.saturating_add(grace));
+                        child.deadline = Some(now.saturating_add(grace.get()));
                         signalled = true;
                     }
                     ChildState::Backoff => {

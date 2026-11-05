@@ -1,8 +1,8 @@
 //! Everything that can happen to the window manager.
 
+use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
+
 use crate::activation::ActivationDecision;
-use crate::geometry::{Insets, Rect};
-use crate::ids::{OutputId, WindowId, WorkspaceId};
 use crate::rules::Rule;
 use crate::snapping::SnapZone;
 use crate::window::WindowKind;

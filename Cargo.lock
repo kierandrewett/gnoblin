@@ -220,6 +220,9 @@ dependencies = [
 [[package]]
 name = "gnoblin-authority"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-backend"
@@ -354,6 +357,9 @@ dependencies = [
 [[package]]
 name = "gnoblin-lock"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-lua"
@@ -416,6 +422,9 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-session"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-testkit"
@@ -450,6 +459,9 @@ dependencies = [
 [[package]]
 name = "gnoblin-wm"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-xwayland"

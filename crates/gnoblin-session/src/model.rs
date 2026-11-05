@@ -6,8 +6,8 @@
 //! seed alone.
 
 use crate::{
-    ChildId, ChildState, Effect, Event, EventKind, ExitStatus, Guardian, Inherited, Millis, Plan, Rules, SessionState,
-    ShutdownReason, Signal,
+    ChildId, ChildState, Effect, Event, EventKind, ExitStatus, Guardian, Inherited, Plan, Rules, SessionState,
+    ShutdownReason, Signal, Tick,
 };
 
 const COMPOSITOR: ChildId = ChildId::new(1);
@@ -184,19 +184,14 @@ impl Harness {
     /// Start the session and bring every child up, so the random phase explores
     /// restarts and stops instead of spending its steps failing to start.
     fn bring_up(&mut self, guardian: &mut Guardian, seed: u64, now: &mut u64) {
-        self.apply(
-            guardian,
-            Event::new(Millis::from_millis(*now), EventKind::Start),
-            seed,
-            0,
-        );
+        self.apply(guardian, Event::new(Tick::new(*now), EventKind::Start), seed, 0);
         for child in [COMPOSITOR, SERVICES, RUNTIME, GREETER] {
             *now += 10;
             let generation = guardian.status(child).expect("planned child").generation;
             self.apply(
                 guardian,
                 Event::new(
-                    Millis::from_millis(*now),
+                    Tick::new(*now),
                     EventKind::Ready {
                         child,
                         generation,
@@ -214,7 +209,7 @@ impl Harness {
     /// grace period before reporting, on alternate seeds.
     fn stop(&mut self, guardian: &mut Guardian, seed: u64, force: bool) {
         if guardian.session() != SessionState::Ended {
-            let now = guardian.now().saturating_add(Millis::from_millis(100));
+            let now = guardian.now().saturating_add(100);
             self.apply(
                 guardian,
                 Event::new(
@@ -235,9 +230,7 @@ impl Harness {
                 );
                 return;
             }
-            let now = guardian
-                .now()
-                .saturating_add(Millis::from_millis(if force { 3000 } else { 500 }));
+            let now = guardian.now().saturating_add(if force { 3000 } else { 500 });
             self.apply(guardian, Event::new(now, EventKind::Tick), seed, round);
             let live: Vec<(ChildId, u64)> = CHILDREN
                 .iter()
@@ -291,7 +284,7 @@ fn display_environment() -> Vec<(String, String)> {
 /// started; the crashes, stale generations and shutdowns are what then break it.
 fn generate(rng: &mut Rng, guardian: &Guardian, now: &mut u64) -> Event {
     *now += rng.below(700);
-    let moment = Millis::from_millis(*now);
+    let moment = Tick::new(*now);
     let statuses = guardian.statuses();
     let starting: Vec<ChildId> = statuses
         .iter()
@@ -485,16 +478,11 @@ fn invariants_hold_over_random_sequences() {
 fn deadlines_hold_without_readiness_or_exits() {
     let mut guardian = Guardian::new(plan(), rules());
     let mut harness = Harness::new();
-    harness.apply(&mut guardian, Event::new(Millis::ZERO, EventKind::Start), 0, 0);
+    harness.apply(&mut guardian, Event::new(Tick::ZERO, EventKind::Start), 0, 0);
     let mut now = 0u64;
     for step in 0..400 {
         now += 1000;
-        harness.apply(
-            &mut guardian,
-            Event::new(Millis::from_millis(now), EventKind::Tick),
-            0,
-            step,
-        );
+        harness.apply(&mut guardian, Event::new(Tick::new(now), EventKind::Tick), 0, step);
     }
     // The compositor missed its deadline, so the session was stopped, and its
     // start counted as a failure.

@@ -90,3 +90,13 @@ identity! {
     /// owner and a claimant cannot choose who it claims to be.
     OwnerId
 }
+
+identity! {
+    /// One client connection, as the compositor numbers it.
+    ///
+    /// A connection, not a process: it is what input is routed to, what can be
+    /// observed going away and what can be closed, and a forked child never
+    /// shares one. Authority decides who may act per connection and the locker
+    /// covers and embargoes a connection, so both name the same value.
+    ClientId
+}

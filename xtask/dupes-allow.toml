@@ -495,6 +495,18 @@ kind = "same-name"
 reason = "each state machine's record of what it observed is its own"
 
 [[allow]]
+left = "gnoblin-a11y::Output"
+right = "gnoblin-wm::Output"
+kind = "same-name"
+reason = "an a11y output is the layout bounds the magnifier clamps into; the window manager's output is the managed output with its panel reservation"
+
+[[allow]]
+left = "gnoblin-authority::GestureKind"
+right = "gnoblin-input::GestureKind"
+kind = "same-name"
+reason = "authority names the input that created a trusted context (a pointer button, a key press, a touch); the input router names a recognised multi-touch gesture (swipe, pinch)"
+
+[[allow]]
 left = "gnoblin-schema::Signal"
 right = "gnoblin-session::Signal"
 kind = "same-name"

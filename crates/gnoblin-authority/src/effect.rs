@@ -1,8 +1,10 @@
 //! What authority asks the compositor or the portal to do.
 
+use gnoblin_types::{ClientId, Tick};
+
 use crate::denial::{Decision, Denial};
 use crate::event::{Capability, ContextRequest, GestureKind};
-use crate::ids::{AppId, ClientId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, Tick, TokenId};
+use crate::ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// One instruction, in the order it must happen.
 #[derive(Clone, Debug, Eq, PartialEq)]

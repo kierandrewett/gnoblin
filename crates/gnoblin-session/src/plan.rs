@@ -1,7 +1,8 @@
 //! The plan: which children exist, in which order, and how each is supervised.
 
-use crate::Millis;
+use crate::Tick;
 use crate::ids::ChildId;
+use crate::time::secs;
 use core::fmt;
 
 /// How long a child may take to report readiness before the guardian kills it.
@@ -9,7 +10,7 @@ use core::fmt;
 /// `STARTUP_TIMEOUT_MS` in `src/session/gnoblin-runtime-internal.h` gives the
 /// runtime ten seconds; one number for every child keeps the plan readable and a
 /// child that needs longer can override it in its own [`ChildSpec`].
-pub const DEFAULT_READY_WITHIN: Millis = Millis::from_secs(10);
+pub const DEFAULT_READY_WITHIN: Tick = secs(10);
 
 /// What a planned child is.
 ///
@@ -68,16 +69,16 @@ pub enum Restart {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Backoff {
     /// The wait before the first restart.
-    pub initial: Millis,
+    pub initial: Tick,
     /// The multiplier applied for each later restart.
     pub factor: u32,
     /// The longest wait the ladder may reach.
-    pub max: Millis,
+    pub max: Tick,
     /// How many restarts in a row are attempted before the child is failed and
     /// the session is reported degraded.
     pub max_restarts: u32,
     /// How long a child must stay up before its restart budget is reset.
-    pub stable_after: Millis,
+    pub stable_after: Tick,
 }
 
 impl Backoff {
@@ -85,11 +86,11 @@ impl Backoff {
     #[must_use]
     pub const fn guardian() -> Self {
         Self {
-            initial: Millis::from_millis(250),
+            initial: Tick::new(250),
             factor: 2,
-            max: Millis::from_millis(4000),
+            max: Tick::new(4000),
             max_restarts: 5,
-            stable_after: Millis::from_secs(60),
+            stable_after: secs(60),
         }
     }
 
@@ -99,7 +100,7 @@ impl Backoff {
     /// as it reaches `max`, so this terminates for every input, including a
     /// `restart` large enough to make an unguarded shift overflow.
     #[must_use]
-    pub fn delay(&self, restart: u32) -> Millis {
+    pub fn delay(&self, restart: u32) -> Tick {
         let factor = u64::from(self.factor);
         let mut delay = self.initial;
         if factor < 2 {
@@ -110,7 +111,10 @@ impl Backoff {
             if delay >= self.max {
                 break;
             }
-            delay = delay.saturating_mul(factor);
+            // The doubling step: a shared tick has no scale operation because no
+            // other crate needs one, and doing it here keeps the saturation at
+            // the value that reaches the caller.
+            delay = Tick::new(delay.get().saturating_mul(factor));
             step += 1;
         }
         if delay > self.max { self.max } else { delay }
@@ -128,7 +132,7 @@ pub struct ChildSpec {
     pub name: String,
     /// How long the child may take to report readiness, or `None` when it never
     /// reports any.
-    pub ready_within: Option<Millis>,
+    pub ready_within: Option<Tick>,
     /// What happens when its process ends.
     pub restart: Restart,
 }

@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::ids::WindowId;
+use gnoblin_types::WindowId;
 
 /// The layers the stack orders, lowest first.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -127,7 +127,7 @@ impl Stack {
 mod tests {
     use super::*;
 
-    fn id(raw: u32) -> WindowId {
+    fn id(raw: u64) -> WindowId {
         WindowId::new(raw)
     }
 

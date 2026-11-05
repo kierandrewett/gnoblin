@@ -7,9 +7,10 @@
 //! session for a child the session can live without.
 
 use crate::recovery::ConfigStatus;
+use crate::time::secs;
 use crate::{
     Backoff, ChildId, ChildState, EnvTarget, Environment, Event, EventKind, ExitStatus, Guardian, Inherited, Level,
-    Millis, Plan, Recovery, Restart, Rules, SessionState, ShutdownReason, Signal, StopReason,
+    Plan, Recovery, Restart, Rules, SessionState, ShutdownReason, Signal, StopReason, Tick,
 };
 
 const COMPOSITOR: ChildId = ChildId::new(1);
@@ -43,7 +44,7 @@ fn guardian() -> Guardian {
 }
 
 fn at(now: u64, kind: EventKind) -> Event {
-    Event::new(Millis::from_millis(now), kind)
+    Event::new(Tick::new(now), kind)
 }
 
 fn tick(guardian: &mut Guardian, now: u64) -> Vec<crate::Effect> {
@@ -368,35 +369,32 @@ fn an_unready_child_is_killed_at_its_deadline() {
 #[test]
 fn backoff_saturates_instead_of_overflowing() {
     let ladder = Backoff::guardian();
-    assert_eq!(ladder.delay(1), Millis::from_millis(250));
-    assert_eq!(ladder.delay(2), Millis::from_millis(500));
-    assert_eq!(ladder.delay(3), Millis::from_millis(1000));
-    assert_eq!(ladder.delay(4), Millis::from_millis(2000));
-    assert_eq!(ladder.delay(5), Millis::from_millis(4000));
-    assert_eq!(ladder.delay(6), Millis::from_millis(4000));
-    assert_eq!(ladder.delay(u32::MAX), Millis::from_millis(4000));
+    assert_eq!(ladder.delay(1), Tick::new(250));
+    assert_eq!(ladder.delay(2), Tick::new(500));
+    assert_eq!(ladder.delay(3), Tick::new(1000));
+    assert_eq!(ladder.delay(4), Tick::new(2000));
+    assert_eq!(ladder.delay(5), Tick::new(4000));
+    assert_eq!(ladder.delay(6), Tick::new(4000));
+    assert_eq!(ladder.delay(u32::MAX), Tick::new(4000));
 
     // A caller-supplied ladder can ask for more than a `u64` holds.
     let huge = Backoff {
-        initial: Millis::from_millis(u64::MAX / 3),
+        initial: Tick::new(u64::MAX / 3),
         factor: 3,
-        max: Millis::from_millis(u64::MAX),
+        max: Tick::new(u64::MAX),
         ..ladder
     };
-    assert_eq!(huge.delay(u32::MAX), Millis::from_millis(u64::MAX));
+    assert_eq!(huge.delay(u32::MAX), Tick::new(u64::MAX));
     let still = Backoff {
-        initial: Millis::from_millis(0),
+        initial: Tick::new(0),
         factor: 1,
         ..ladder
     };
-    assert_eq!(still.delay(u32::MAX), Millis::from_millis(0));
+    assert_eq!(still.delay(u32::MAX), Tick::new(0));
 
     // Time itself saturates, and a session that has run for ever still stops.
-    assert_eq!(Millis::from_secs(u64::MAX), Millis::from_millis(u64::MAX));
-    assert_eq!(
-        Millis::from_millis(u64::MAX).saturating_add(Millis::from_millis(1)),
-        Millis::from_millis(u64::MAX)
-    );
+    assert_eq!(secs(u64::MAX), Tick::new(u64::MAX));
+    assert_eq!(Tick::new(u64::MAX).saturating_add(1), Tick::new(u64::MAX));
     let mut guardian = up();
     exited(&mut guardian, RUNTIME, ExitStatus::Exited(1), 1);
     let effects = spawns(actions(tick(&mut guardian, u64::MAX)));

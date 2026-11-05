@@ -1,7 +1,8 @@
 //! Outputs as abstract rectangles and their work areas.
 
-use crate::geometry::{Insets, Rect};
-use crate::ids::OutputId;
+use gnoblin_types::{Insets, OutputId, Rect};
+
+use crate::geometry::{clamp_to_i32, extent};
 
 /// One connected output.
 ///
@@ -18,9 +19,17 @@ pub struct Output {
 
 impl Output {
     /// A connected output with nothing reserved.
+    ///
+    /// The monitor rectangle is floored at one pixel because every rectangle a
+    /// client can be configured to sit in is derived from it, and a window that
+    /// covers nothing is never reachable input.
     #[must_use]
     pub const fn new(id: OutputId, rect: Rect, reserved: Insets) -> Self {
-        Self { id, rect, reserved }
+        Self {
+            id,
+            rect: rect.at_least_one(),
+            reserved,
+        }
     }
 
     /// The caller's identity for this output.
@@ -45,24 +54,23 @@ impl Output {
     ///
     /// An output whose panels ask for more space than it has still yields a valid
     /// work area, so a broken panel cannot make placement divide by zero or place
-    /// windows at the origin of an empty rectangle.
+    /// windows at the origin of an empty rectangle. The subtraction runs in [`i64`]
+    /// because an inset is signed and a rectangle's extent is not.
     #[must_use]
     pub fn work_area(&self) -> Rect {
-        Rect::new(
-            self.rect.x.saturating_add(self.reserved.left),
-            self.rect.y.saturating_add(self.reserved.top),
-            self.rect
-                .width
-                .saturating_sub(self.reserved.left.saturating_add(self.reserved.right)),
-            self.rect
-                .height
-                .saturating_sub(self.reserved.top.saturating_add(self.reserved.bottom)),
-        )
+        let left = i64::from(self.rect.x) + i64::from(self.reserved.left);
+        let top = i64::from(self.rect.y) + i64::from(self.reserved.top);
+        let width = i64::from(self.rect.width) - i64::from(self.reserved.left) - i64::from(self.reserved.right);
+        let height = i64::from(self.rect.height) - i64::from(self.reserved.top) - i64::from(self.reserved.bottom);
+        Rect::new(clamp_to_i32(left), clamp_to_i32(top), extent(width), extent(height))
     }
 
     /// Replaces the monitor rectangle, keeping the reservation.
+    ///
+    /// The same one-pixel floor [`Output::new`] applies holds here, so a mode set
+    /// cannot make an output's geometry degenerate.
     pub(crate) fn set_rect(&mut self, rect: Rect) {
-        self.rect = rect;
+        self.rect = rect.at_least_one();
     }
 
     /// Replaces the reservation, keeping the monitor rectangle.

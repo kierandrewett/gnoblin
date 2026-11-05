@@ -1,7 +1,7 @@
 //! Managed windows and the states the window manager derives geometry from.
 
-use crate::geometry::Rect;
-use crate::ids::{OutputId, WindowId, WorkspaceId};
+use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
+
 use crate::snapping::SnapZone;
 
 /// What kind of toplevel a window is.

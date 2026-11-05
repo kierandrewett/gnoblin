@@ -99,6 +99,6 @@ mod tests;
 
 pub use effect::{Effect, Published, RejectReason};
 pub use event::{CoverFailure, Event};
-pub use ids::{ClientId, OutputId, Subject};
+pub use ids::Subject;
 pub use lock::Lock;
 pub use state::{Capture, CaptureStream, Delivery, Embargo, InputSource, State};

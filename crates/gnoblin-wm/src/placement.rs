@@ -9,7 +9,9 @@
 //! Only normal application toplevels use this module. Dialogs and modals are
 //! placed with their parent by the window manager.
 
-use crate::geometry::{Rect, Size};
+use gnoblin_types::{Rect, Size};
+
+use crate::geometry::clamp_to_i32;
 
 /// Where a new normal window opens.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -39,8 +41,12 @@ pub(crate) const MAX_SCAN_STEPS: i64 = 20_000;
 pub(crate) const MAX_CASCADE_STEPS: i32 = 32;
 
 /// The rectangle for a new window of `size`, avoiding `occupied` where possible.
+///
+/// A size with an empty axis is raised to one pixel, because a window that covers
+/// nothing can never receive input and would fall out of every placement scan.
 #[must_use]
 pub fn place(mode: PlacementMode, size: Size, work_area: Rect, occupied: &[Rect]) -> Rect {
+    let size = size.at_least_one();
     match mode {
         PlacementMode::FreeSpace => free_space(size, work_area, occupied),
         PlacementMode::Center => centered(size, work_area, occupied),
@@ -56,11 +62,11 @@ pub fn place(mode: PlacementMode, size: Size, work_area: Rect, occupied: &[Rect]
 fn free_space(size: Size, work_area: Rect, occupied: &[Rect]) -> Rect {
     let mut steps = 0_i64;
     let mut y = work_area.y;
-    while y.saturating_add(size.height) <= work_area.bottom() && steps < MAX_SCAN_STEPS {
+    while i64::from(y) + i64::from(size.height) <= work_area.bottom() && steps < MAX_SCAN_STEPS {
         let mut x = work_area.x;
-        while x.saturating_add(size.width) <= work_area.right() && steps < MAX_SCAN_STEPS {
+        while i64::from(x) + i64::from(size.width) <= work_area.right() && steps < MAX_SCAN_STEPS {
             let candidate = Rect::new(x, y, size.width, size.height);
-            if !occupied.iter().any(|other| other.intersects(&candidate)) {
+            if !occupied.iter().any(|other| other.intersects(candidate)) {
                 return candidate;
             }
             x = x.saturating_add(SCAN_STEP);
@@ -78,17 +84,17 @@ fn free_space(size: Size, work_area: Rect, occupied: &[Rect]) -> Rect {
 
 /// Centres the window, cascading from the centre only when the spot is exactly taken.
 fn centered(size: Size, work_area: Rect, occupied: &[Rect]) -> Rect {
+    // The offset saturates at zero because a window wider than the work area is
+    // aligned to the origin below, not centred off the left edge.
+    let offset_x = i64::from(work_area.width.saturating_sub(size.width) / 2);
+    let offset_y = i64::from(work_area.height.saturating_sub(size.height) / 2);
     let centered = Rect::new(
-        work_area
-            .x
-            .saturating_add((work_area.width.saturating_sub(size.width)) / 2),
-        work_area
-            .y
-            .saturating_add((work_area.height.saturating_sub(size.height)) / 2),
+        clamp_to_i32(i64::from(work_area.x) + offset_x),
+        clamp_to_i32(i64::from(work_area.y) + offset_y),
         size.width,
         size.height,
     )
-    .clamp_inside(&work_area);
+    .clamp_inside(work_area);
     if occupied.contains(&centered) {
         return cascade(centered, work_area, occupied);
     }
@@ -97,13 +103,13 @@ fn centered(size: Size, work_area: Rect, occupied: &[Rect]) -> Rect {
 
 /// Steps diagonally from `origin` until the window overlaps nothing, or the bound is hit.
 fn cascade(origin: Rect, work_area: Rect, occupied: &[Rect]) -> Rect {
-    let mut candidate = origin.clamp_inside(&work_area);
+    let mut candidate = origin.clamp_inside(work_area);
     for step in 1..=MAX_CASCADE_STEPS {
-        if !occupied.iter().any(|other| other.intersects(&candidate)) {
+        if !occupied.iter().any(|other| other.intersects(candidate)) {
             break;
         }
         let offset = CASCADE_STEP.saturating_mul(step);
-        candidate = origin.translate(offset, offset).clamp_inside(&work_area);
+        candidate = origin.translate(offset, offset).clamp_inside(work_area);
     }
     candidate
 }
@@ -128,8 +134,8 @@ mod tests {
         let size = Size::new(400, 300);
         let occupied = [Rect::new(0, 0, 400, 300)];
         let placed = place(PlacementMode::FreeSpace, size, WORK_AREA, &occupied);
-        assert!(!placed.intersects(&occupied[0]));
-        assert!(placed.is_inside(&WORK_AREA));
+        assert!(!placed.intersects(occupied[0]));
+        assert!(placed.is_inside(WORK_AREA));
     }
 
     #[test]
@@ -138,7 +144,7 @@ mod tests {
         let size = Size::new(400, 300);
         let occupied = [WORK_AREA];
         let placed = place(PlacementMode::FreeSpace, size, WORK_AREA, &occupied);
-        assert!(placed.is_inside(&WORK_AREA));
+        assert!(placed.is_inside(WORK_AREA));
         assert_eq!(placed.size(), size);
     }
 
@@ -162,7 +168,7 @@ mod tests {
         let occupied = [Rect::new(760, 390, 400, 300)];
         let placed = place(PlacementMode::Center, size, WORK_AREA, &occupied);
         assert_ne!(placed, occupied[0]);
-        assert!(!placed.intersects(&occupied[0]));
+        assert!(!placed.intersects(occupied[0]));
     }
 
     #[test]
@@ -183,7 +189,7 @@ mod tests {
         // Eleven diagonal steps clear the second window vertically: the overlap in
         // x still exists, but no rows are shared.
         assert_eq!(placed, Rect::new(352, 352, 400, 300));
-        assert!(!occupied.iter().any(|other| other.intersects(&placed)));
+        assert!(!occupied.iter().any(|other| other.intersects(placed)));
     }
 
     #[test]
@@ -193,7 +199,7 @@ mod tests {
             .map(|step| Rect::new(0, 0, 400, 300).translate(step, step))
             .collect();
         let placed = place(PlacementMode::Cascade, size, WORK_AREA, &occupied);
-        assert!(placed.is_inside(&WORK_AREA));
+        assert!(placed.is_inside(WORK_AREA));
         assert_eq!(placed.size(), size);
     }
 
@@ -204,8 +210,8 @@ mod tests {
         let first = place(PlacementMode::FreeSpace, size, work_area, &[]);
         assert_eq!(first, Rect::new(64, 32, 400, 300));
         let second = place(PlacementMode::FreeSpace, size, work_area, &[first]);
-        assert!(!second.intersects(&first));
-        assert!(second.is_inside(&work_area));
+        assert!(!second.intersects(first));
+        assert!(second.is_inside(work_area));
         assert_eq!(second, place(PlacementMode::FreeSpace, size, work_area, &[first]));
     }
 

@@ -5,7 +5,8 @@
 //! membership, remembered placement) uses the id, and only user-facing ordering
 //! uses the one-based number.
 
-use crate::ids::WorkspaceId;
+use gnoblin_types::WorkspaceId;
+
 use crate::rules::WorkspaceSelector;
 
 /// Workspaces in position order.
@@ -86,7 +87,7 @@ impl Workspaces {
 mod tests {
     use super::*;
 
-    fn id(raw: u32) -> WorkspaceId {
+    fn id(raw: u64) -> WorkspaceId {
         WorkspaceId::new(raw)
     }
 

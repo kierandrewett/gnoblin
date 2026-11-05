@@ -2,12 +2,13 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_types::{Insets, OutputId, Rect, Size, WindowId, WorkspaceId};
+
 use crate::activation::ActivationDecision;
 use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
-use crate::geometry::{Insets, Rect, Size};
-use crate::ids::{OutputId, WindowId, WorkspaceId};
+use crate::geometry::clamp_to_i32;
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::rules::{Rule, RuleAction};
@@ -65,7 +66,7 @@ fn destination(state: WindowState, restore: Rect, work_area: Rect) -> Rect {
     if let Some(zone) = state.snapped {
         return zone.rect(work_area);
     }
-    restore.clamp_inside(&work_area)
+    restore.clamp_inside(work_area)
 }
 
 /// Where a window's rectangle belongs after an output change.
@@ -79,7 +80,7 @@ fn reshape(state: WindowState, geometry: Rect, work_area: Rect, monitor: Rect) -
     if let Some(zone) = state.snapped {
         return zone.rect(work_area);
     }
-    geometry.clamp_inside(&work_area)
+    geometry.clamp_inside(work_area)
 }
 
 /// The stack layer a window belongs in for its state.
@@ -419,7 +420,7 @@ impl Wm {
                 }
             }
             checks += 1;
-            if window.geometry.width < 1 || window.geometry.height < 1 {
+            if window.geometry.is_empty() {
                 return Err(Broken::EmptyGeometry(window.id));
             }
             if let Some(output) = window.output.and_then(|id| self.output(id)) {
@@ -442,7 +443,7 @@ impl Wm {
                 if !window.state.fullscreen
                     && !window.state.maximised
                     && window.state.snapped.is_none()
-                    && !window.geometry.intersects(&work_area)
+                    && !window.geometry.intersects(work_area)
                 {
                     return Err(Broken::WindowOffWorkArea(window.id));
                 }
@@ -610,7 +611,7 @@ impl Wm {
                     continue;
                 };
                 window.output = Some(id);
-                window.restore = window.restore.clamp_inside(&work_area);
+                window.restore = window.restore.clamp_inside(work_area);
                 window.geometry = reshape(window.state, window.geometry, work_area, monitor);
                 (window.geometry, window.state)
             };
@@ -652,7 +653,7 @@ impl Wm {
                 match survivor {
                     Some((survivor_id, work_area, monitor)) => {
                         window.output = Some(survivor_id);
-                        window.restore = window.restore.clamp_inside(&work_area);
+                        window.restore = window.restore.clamp_inside(work_area);
                         window.geometry = reshape(window.state, window.geometry, work_area, monitor);
                     }
                     None => window.output = None,
@@ -690,7 +691,7 @@ impl Wm {
             let Some(window) = self.windows.get_mut(&window_id) else {
                 continue;
             };
-            window.restore = window.restore.clamp_inside(&work_area);
+            window.restore = window.restore.clamp_inside(work_area);
             let geometry = reshape(window.state, window.geometry, work_area, monitor);
             if geometry != window.geometry {
                 window.geometry = geometry;
@@ -713,7 +714,12 @@ impl Wm {
         let Some(fallback_area) = self.work_area(fallback_output) else {
             return vec![Effect::rejected(Rejection::NoOutput)];
         };
-        let size = spec.requested.map_or(DEFAULT_WINDOW_SIZE, |rect| rect.size());
+        // A client that asks for an empty extent still has to be placeable, so the
+        // request is floored at one pixel exactly as `gnoblin-types` allows.
+        let size = spec
+            .requested
+            .map_or(DEFAULT_WINDOW_SIZE, |rect| rect.size())
+            .at_least_one();
         let parent = spec
             .transient_for
             .filter(|parent| *parent != spec.id)
@@ -732,17 +738,15 @@ impl Wm {
                 let area = output
                     .and_then(|output| self.work_area(output))
                     .unwrap_or(fallback_area);
+                let offset_x = i64::from(parent_geometry.width.saturating_sub(size.width) / 2);
+                let offset_y = i64::from(parent_geometry.height.saturating_sub(size.height) / 2);
                 let geometry = Rect::new(
-                    parent_geometry
-                        .x
-                        .saturating_add((parent_geometry.width.saturating_sub(size.width)) / 2),
-                    parent_geometry
-                        .y
-                        .saturating_add((parent_geometry.height.saturating_sub(size.height)) / 2),
+                    clamp_to_i32(i64::from(parent_geometry.x) + offset_x),
+                    clamp_to_i32(i64::from(parent_geometry.y) + offset_y),
                     size.width,
                     size.height,
                 )
-                .clamp_inside(&area);
+                .clamp_inside(area);
                 (parent_workspace, output, geometry, Some(parent_id))
             }
             None => {
@@ -1023,7 +1027,7 @@ impl Wm {
         };
         if state.maximised {
             window.state.maximised = false;
-            window.geometry = restore.clamp_inside(&work_area);
+            window.geometry = restore.clamp_inside(work_area);
         } else {
             if state.snapped.is_none() {
                 window.restore = geometry;
@@ -1108,7 +1112,7 @@ impl Wm {
         };
         window.state.snapped = None;
         if let Some(work_area) = work_area {
-            window.geometry = restore.clamp_inside(&work_area);
+            window.geometry = restore.clamp_inside(work_area);
         }
         Self::configured_with(id, window.geometry, window.state)
     }
@@ -1120,6 +1124,9 @@ impl Wm {
         if window.state.fullscreen {
             return vec![Effect::rejected(Rejection::NotFloating(id))];
         }
+        // A resize can ask for an empty extent; the window keeps a pixel so the
+        // user can still grab it again.
+        let geometry = geometry.at_least_one();
         let work_area = window.output.and_then(|output| self.work_area(output));
         let constraint = self.options.drag_constraint;
         let Some(window) = self.windows.get_mut(&id) else {

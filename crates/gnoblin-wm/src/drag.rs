@@ -9,7 +9,9 @@
 //! The same function is used for placement, snapping and output changes, so a
 //! window cannot end up in a position that a drag would have refused to produce.
 
-use crate::geometry::Rect;
+use gnoblin_types::Rect;
+
+use crate::geometry::clamp_to_i32;
 
 /// Height and width, in logical pixels, that must stay inside the work area when
 /// the drag constraint only requires a visible strip.
@@ -31,25 +33,29 @@ pub enum DragConstraint {
 #[must_use]
 pub fn constrain(rect: Rect, work_area: Rect, constraint: DragConstraint) -> Rect {
     match constraint {
-        DragConstraint::WorkArea => rect.clamp_inside(&work_area),
+        DragConstraint::WorkArea => rect.clamp_inside(work_area),
         DragConstraint::MinimumStrip => strip(rect, work_area),
     }
 }
 
 /// Clamps so that a strip of each axis still overlaps the work area.
 fn strip(rect: Rect, work_area: Rect) -> Rect {
-    let visible_x = MIN_VISIBLE_STRIP.min(rect.width);
-    let visible_y = MIN_VISIBLE_STRIP.min(rect.height);
-    // The window may hang off an edge by all of its extent except the strip. Using
-    // max/min instead of clamp keeps an oversized window inside instead of panicking
-    // when the range would be empty.
-    let min_x = work_area.x.saturating_sub(rect.width.saturating_sub(visible_x));
-    let max_x = work_area.right().saturating_sub(visible_x);
-    let min_y = work_area.y.saturating_sub(rect.height.saturating_sub(visible_y));
-    let max_y = work_area.bottom().saturating_sub(visible_y);
+    // The whole computation runs in `i64`: a window may hang off an edge by all of
+    // its extent except the strip, and an extent is unsigned while an edge is not.
+    let strip = i64::from(MIN_VISIBLE_STRIP);
+    let width = i64::from(rect.width);
+    let height = i64::from(rect.height);
+    let visible_x = strip.min(width);
+    let visible_y = strip.min(height);
+    // Using max/min instead of clamp keeps an oversized window inside instead of
+    // panicking when the range would be empty.
+    let min_x = i64::from(work_area.x) - (width - visible_x);
+    let max_x = work_area.right() - visible_x;
+    let min_y = i64::from(work_area.y) - (height - visible_y);
+    let max_y = work_area.bottom() - visible_y;
     Rect::new(
-        rect.x.max(min_x).min(max_x),
-        rect.y.max(min_y).min(max_y),
+        clamp_to_i32(i64::from(rect.x).max(min_x).min(max_x)),
+        clamp_to_i32(i64::from(rect.y).max(min_y).min(max_y)),
         rect.width,
         rect.height,
     )
@@ -66,7 +72,7 @@ mod tests {
         let dragged = Rect::new(-500, 900, 400, 300);
         let constrained = constrain(dragged, WORK_AREA, DragConstraint::WorkArea);
         assert_eq!(constrained, Rect::new(0, 780, 400, 300));
-        assert!(constrained.is_inside(&WORK_AREA));
+        assert!(constrained.is_inside(WORK_AREA));
     }
 
     #[test]
@@ -84,15 +90,21 @@ mod tests {
         let constrained = constrain(dragged, WORK_AREA, DragConstraint::MinimumStrip);
         // Only the 75 pixel strip is left on screen.
         assert_eq!(constrained.x, -325);
-        assert_eq!(constrained.right(), MIN_VISIBLE_STRIP);
+        assert_eq!(constrained.right(), i64::from(MIN_VISIBLE_STRIP));
     }
 
     #[test]
     fn the_strip_constraint_stops_at_the_far_edge() {
         let dragged = Rect::new(5000, 5000, 400, 300);
         let constrained = constrain(dragged, WORK_AREA, DragConstraint::MinimumStrip);
-        assert_eq!(constrained.x, WORK_AREA.right() - MIN_VISIBLE_STRIP);
-        assert_eq!(constrained.y, WORK_AREA.bottom() - MIN_VISIBLE_STRIP);
+        assert_eq!(
+            i64::from(constrained.x),
+            WORK_AREA.right() - i64::from(MIN_VISIBLE_STRIP)
+        );
+        assert_eq!(
+            i64::from(constrained.y),
+            WORK_AREA.bottom() - i64::from(MIN_VISIBLE_STRIP)
+        );
     }
 
     #[test]
@@ -113,7 +125,7 @@ mod tests {
     fn an_oversized_window_under_the_strip_constraint_stays_reachable() {
         let dragged = Rect::new(-5000, -5000, 3000, 2000);
         let constrained = constrain(dragged, WORK_AREA, DragConstraint::MinimumStrip);
-        assert!(constrained.intersects(&WORK_AREA));
+        assert!(constrained.intersects(WORK_AREA));
         assert_eq!(constrained.size(), dragged.size());
     }
 }

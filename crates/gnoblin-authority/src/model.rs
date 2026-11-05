@@ -7,9 +7,11 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_types::{ClientId, Tick};
+
 use crate::{
-    Answer, AppId, Authority, Capability, Claimant, ClientId, ContextRequest, Decision, Denial, Effect, Event, Gesture,
-    GestureId, GestureKind, LaunchOrigin, RequestId, RequesterId, SessionLeader, SurfaceId, Tick, TokenId,
+    Answer, AppId, Authority, Capability, Claimant, ContextRequest, Decision, Denial, Effect, Event, Gesture,
+    GestureId, GestureKind, LaunchOrigin, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId,
 };
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
@@ -165,7 +167,7 @@ fn invariants_hold_over_random_sequences() {
 
         for step in 0..80 {
             // A monotonic clock never runs backwards.
-            now = now.after(rng.below(3));
+            now = now.saturating_add(rng.below(3));
             let event = generate(&mut rng);
             let offered = offered_token(&event);
             let effects = authority.apply(now, event);
@@ -230,7 +232,7 @@ fn the_same_sequence_produces_the_same_effects() {
         let mut second = Authority::new();
         let mut now = Tick::new(1_000);
         for _ in 0..80 {
-            now = now.after(rng.below(3));
+            now = now.saturating_add(rng.below(3));
             let event = generate(&mut rng);
             assert_eq!(first.apply(now, event.clone()), second.apply(now, event), "seed {seed}");
         }

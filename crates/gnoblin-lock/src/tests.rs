@@ -5,9 +5,11 @@
 //! compositor could show, capture or feed something it must not, which is the
 //! property each failure-mode entry names.
 
+use gnoblin_types::{ClientId, OutputId};
+
 use crate::{
-    Capture, CaptureStream, ClientId, CoverFailure, Delivery, Effect, Embargo, Event, InputSource, Lock, OutputId,
-    Published, RejectReason, State, Subject,
+    Capture, CaptureStream, CoverFailure, Delivery, Effect, Embargo, Event, InputSource, Lock, Published, RejectReason,
+    State, Subject,
 };
 
 const LOCKER: ClientId = ClientId::new(1);

@@ -2,10 +2,12 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_types::{ClientId, Tick};
+
 use crate::denial::{Decision, Denial};
 use crate::effect::Effect;
 use crate::event::{Answer, Capability, Claimant, ContextRequest, Event, Gesture, LaunchOrigin};
-use crate::ids::{ClientId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, Tick, TokenId};
+use crate::ids::{GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// How many of each value the machine keeps before it refuses new ones.
 ///
@@ -227,7 +229,7 @@ impl Authority {
                 }];
             }
         }
-        let expires_at = now.after(lifetime);
+        let expires_at = now.saturating_add(lifetime);
         self.launches.push(Launch {
             token,
             leader: origin.leader,
@@ -307,7 +309,7 @@ impl Authority {
                 return Vec::new();
             }
         }
-        let expires_at = now.after(lifetime);
+        let expires_at = now.saturating_add(lifetime);
         self.gestures.insert(
             gesture.id,
             InputContext {
@@ -439,7 +441,7 @@ impl Authority {
         // A previous prompt for the same grant may have been abandoned. It can
         // never be answered into this new grant, so withdraw it first.
         let mut effects = self.withdraw_prompts(requester, capability);
-        let expires_at = now.after(lifetime);
+        let expires_at = now.saturating_add(lifetime);
         self.grants.insert(
             (requester, capability),
             Grant {

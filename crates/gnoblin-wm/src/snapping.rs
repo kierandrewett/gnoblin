@@ -5,7 +5,9 @@
 //! rectangle when it unsnaps. Zones are derived from the work area so that a panel
 //! changing its reservation moves a snapped window with it.
 
-use crate::geometry::Rect;
+use gnoblin_types::Rect;
+
+use crate::geometry::clamp_to_i32;
 
 /// One of the eight edges and corners a window can snap to.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -52,8 +54,8 @@ impl SnapZone {
         let half_height = work_area.height / 2;
         let right_width = work_area.width - half_width;
         let lower_height = work_area.height - half_height;
-        let mid_x = work_area.x.saturating_add(half_width);
-        let mid_y = work_area.y.saturating_add(half_height);
+        let mid_x = clamp_to_i32(i64::from(work_area.x) + i64::from(half_width));
+        let mid_y = clamp_to_i32(i64::from(work_area.y) + i64::from(half_height));
         match self {
             Self::Left => Rect::new(work_area.x, work_area.y, half_width, work_area.height),
             Self::Right => Rect::new(mid_x, work_area.y, right_width, work_area.height),
@@ -76,12 +78,12 @@ mod tests {
         let work_area = Rect::new(0, 0, 1921, 1081);
         assert_eq!(
             SnapZone::Left.rect(work_area).right(),
-            SnapZone::Right.rect(work_area).x
+            i64::from(SnapZone::Right.rect(work_area).x)
         );
         assert_eq!(SnapZone::Right.rect(work_area).right(), work_area.right());
         assert_eq!(
             SnapZone::Top.rect(work_area).bottom(),
-            SnapZone::Bottom.rect(work_area).y
+            i64::from(SnapZone::Bottom.rect(work_area).y)
         );
         assert_eq!(SnapZone::Bottom.rect(work_area).bottom(), work_area.bottom());
     }
@@ -97,9 +99,9 @@ mod tests {
         ];
         let rects: Vec<Rect> = zones.iter().map(|zone| zone.rect(work_area)).collect();
         for (index, left) in rects.iter().enumerate() {
-            assert!(left.is_inside(&work_area));
+            assert!(left.is_inside(work_area));
             for right in rects.iter().skip(index + 1) {
-                assert!(!left.intersects(right));
+                assert!(!left.intersects(*right));
             }
         }
         let covered: i64 = rects

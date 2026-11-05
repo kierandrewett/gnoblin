@@ -3,7 +3,7 @@
 //! This crate decides who may take focus, who may act on a trusted input gesture
 //! and who may capture or inject input, with no compositor in it: no Smithay
 //! type, no socket, no `/proc` read and no clock. The compositor supplies every
-//! [`Tick`], every identifier and every event, so a decision replays exactly.
+//! [`gnoblin_types::Tick`], every identifier and every event, so a decision replays exactly.
 //!
 //! It replaces the `FocusContext`, `MenuContext`, `WindowDrag`, `SnapContext` and
 //! `TextTarget` rules of `src/config/lua/gnoblin-lua-contexts.c` and
@@ -22,7 +22,7 @@
 //! - **A token is accepted at most once and expires on the caller's tick.** A
 //!   redeemed token moves to the spent list, so a second attempt is refused as
 //!   reused rather than looking like a forgery, and a token cannot outlive
-//!   [`Tick::after`] of its issue time no matter how long the machine is idle.
+//!   [`gnoblin_types::Tick::saturating_add`] of its issue time no matter how long the machine is idle.
 //! - **A trusted input context belongs to one gesture.** It carries the client
 //!   and surface of the gesture that created it, is single use, and ends when the
 //!   gesture ends, when it expires, or when the session locks.
@@ -98,4 +98,4 @@ pub use authority::{Authority, Consent, Limits};
 pub use denial::{Decision, Denial};
 pub use effect::Effect;
 pub use event::{Answer, Capability, Claimant, ContextRequest, Event, Gesture, GestureKind, LaunchOrigin};
-pub use ids::{AppId, ClientId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, Tick, TokenId};
+pub use ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};

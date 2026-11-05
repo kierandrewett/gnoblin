@@ -1,6 +1,8 @@
 //! What the compositor, the runtime and the portal ask authority.
 
-use crate::ids::{AppId, ClientId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
+use gnoblin_types::ClientId;
+
+use crate::ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
 
 /// Everything that can grant, refuse or expire authority.
 #[derive(Clone, Debug, Eq, PartialEq)]

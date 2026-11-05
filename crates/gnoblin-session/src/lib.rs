@@ -125,4 +125,4 @@ pub use ids::ChildId;
 pub use plan::{Backoff, ChildKind, ChildSpec, DEFAULT_READY_WITHIN, Plan, PlanError, Restart};
 pub use recovery::{ConfigRecovery, ConfigStatus, Recovery};
 pub use state::{ChildState, ChildStatus, SessionState, StopReason};
-pub use time::Millis;
+pub use time::Tick;

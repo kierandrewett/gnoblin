@@ -84,7 +84,7 @@
 //!
 //! # Determinism
 //!
-//! Windows are keyed by [`WindowId`] in an ordered map, outputs keep connection
+//! Windows are keyed by [`gnoblin_types::WindowId`] in an ordered map, outputs keep connection
 //! order and workspaces keep declared order, so iteration and effect order are
 //! stable. Nothing in this crate reads a clock, a random source or the
 //! environment. `tests/model.rs` replays each random sequence twice and requires
@@ -95,7 +95,6 @@ mod drag;
 mod effect;
 mod event;
 mod geometry;
-mod ids;
 mod output;
 mod placement;
 mod rules;
@@ -109,8 +108,6 @@ pub use activation::ActivationDecision;
 pub use drag::DragConstraint;
 pub use effect::{Effect, RuleRejection};
 pub use event::{Event, Rejection, WindowSpec};
-pub use geometry::{Insets, Rect, Size};
-pub use ids::{OutputId, WindowId, WorkspaceId};
 pub use output::Output;
 pub use placement::PlacementMode;
 pub use rules::{Match, Pattern, Rule, RuleAction, WorkspaceSelector};

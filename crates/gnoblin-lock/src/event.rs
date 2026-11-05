@@ -1,6 +1,8 @@
 //! What the compositor tells the lock, and why a cover can fail.
 
-use crate::{ClientId, OutputId, Subject};
+use gnoblin_types::{ClientId, OutputId};
+
+use crate::Subject;
 
 /// Everything that can change the lock's mind.
 ///

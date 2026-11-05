@@ -1,59 +1,18 @@
-//! The identifiers authority is decided over.
+//! The identifiers authority is decided over that no other crate names.
 //!
-//! Every value here is supplied by the caller. The machine never reads a clock
-//! (`Tick` comes from the compositor's monotonic source), never reads
-//! `/proc`, and never invents an identifier, so a sequence of events replays to
-//! the same decisions.
-
-/// A point on the compositor's monotonic clock.
-///
-/// Authority measures every lifetime against ticks the caller supplies, never
-/// against a clock of its own: the caller owns time, so tests drive expiry
-/// exactly and a suspended machine cannot make a token look fresh.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Tick(u64);
-
-impl Tick {
-    /// Wraps a monotonic reading.
-    #[must_use]
-    pub const fn new(raw: u64) -> Self {
-        Self(raw)
-    }
-
-    /// The raw reading, for logs and test assertions.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-
-    /// The tick `ticks` after this one, saturating so a lifetime can never wrap
-    /// into the past.
-    #[must_use]
-    pub const fn after(self, ticks: u64) -> Self {
-        Self(self.0.saturating_add(ticks))
-    }
-}
-
-/// A Wayland client connection.
-///
-/// A connection, not a process: it is what the compositor can observe, route to
-/// and close, and a forked child never shares one.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ClientId(u64);
-
-impl ClientId {
-    /// Wraps the compositor's stable client index.
-    #[must_use]
-    pub const fn new(raw: u64) -> Self {
-        Self(raw)
-    }
-
-    /// The raw index, for logs and test assertions.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-}
+//! Every value here is supplied by the caller. The machine never reads a clock,
+//! never reads `/proc`, and never invents an identifier, so a sequence of events
+//! replays to the same decisions. The two values authority shares with the rest
+//! of the desktop — the caller's [`gnoblin_types::Tick`] and a connection's
+//! [`gnoblin_types::ClientId`] — are the primitives from `gnoblin-types` instead
+//! of copies, so a tick the compositor took and a client it saw are the same
+//! values here.
+//!
+//! [`SurfaceId`], [`SessionLeader`], [`AppId`], [`TokenId`], [`GestureId`],
+//! [`RequesterId`] and [`RequestId`] stay local because nothing outside this
+//! crate has the same meaning for them: a portal request is not an object-graph
+//! request, a peer's process group leader is not a graph token, and an
+//! activation token is 128 random bits rather than a counter.
 
 /// A Wayland surface, as the compositor names it.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

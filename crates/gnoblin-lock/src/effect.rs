@@ -1,6 +1,8 @@
 //! What the lock asks the compositor to do.
 
-use crate::{ClientId, CoverFailure, Embargo, OutputId, State, Subject};
+use gnoblin_types::{ClientId, OutputId};
+
+use crate::{CoverFailure, Embargo, State, Subject};
 
 /// One imperative instruction, produced by [`crate::Lock::apply`].
 ///

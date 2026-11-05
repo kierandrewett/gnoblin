@@ -18,9 +18,10 @@
 //! - a transient shares its parent's workspace;
 //! - the focus history names no window that has gone away.
 
+use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, Insets, Match, OutputId, Pattern, PlacementMode, Rect, Rule,
-    RuleAction, SnapZone, WindowId, WindowSpec, Wm, WmOptions, WorkspaceId, WorkspaceSelector,
+    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, PlacementMode, Rule, RuleAction, SnapZone,
+    WindowSpec, Wm, WmOptions, WorkspaceSelector,
 };
 
 /// Windows the generator draws ids from; the pool is smaller than the event count so
@@ -69,21 +70,21 @@ impl Rng {
         Rect::new(
             self.below(2600) as i32 - 400,
             self.below(1600) as i32 - 300,
-            self.below(900) as i32 + 100,
-            self.below(700) as i32 + 100,
+            self.below(900) + 100,
+            self.below(700) + 100,
         )
     }
 
     fn window(&mut self) -> WindowId {
-        WindowId::new(self.below(WINDOW_POOL) + 1)
+        WindowId::new(u64::from(self.below(WINDOW_POOL)) + 1)
     }
 
     fn output(&mut self) -> OutputId {
-        OutputId::new(self.below(OUTPUT_POOL) + 1)
+        OutputId::new(u64::from(self.below(OUTPUT_POOL)) + 1)
     }
 
     fn workspace(&mut self) -> WorkspaceId {
-        WorkspaceId::new(self.below(WORKSPACE_POOL) + 1)
+        WorkspaceId::new(u64::from(self.below(WORKSPACE_POOL)) + 1)
     }
 
     fn decision(&mut self) -> ActivationDecision {
@@ -182,8 +183,8 @@ fn next_event(rng: &mut Rng) -> Event {
             rect: Rect::new(
                 coord(rng.below(3)) * 1920,
                 coord(rng.below(2)) * 1080,
-                1280 + coord(rng.below(1280)),
-                720 + coord(rng.below(720)),
+                1280 + rng.below(1280),
+                720 + rng.below(720),
             ),
         },
         96 => Event::OutputMoved {
@@ -231,12 +232,12 @@ fn run(seed: u64) -> (Vec<Vec<Effect>>, usize) {
     let mut wm = Wm::new(options);
     for raw in 1..=WORKSPACE_POOL {
         wm.apply(Event::WorkspaceAdded {
-            workspace: WorkspaceId::new(raw),
+            workspace: WorkspaceId::new(u64::from(raw)),
         });
     }
     for raw in 1..=OUTPUT_POOL {
         wm.apply(Event::OutputConnected {
-            output: OutputId::new(raw),
+            output: OutputId::new(u64::from(raw)),
             rect: Rect::new(coord(raw - 1) * 1920, 0, 1920, 1080),
         });
     }
@@ -298,7 +299,7 @@ fn hotplug_storms_never_strand_a_window() {
         });
         for raw in 1..=WORKSPACE_POOL {
             wm.apply(Event::WorkspaceAdded {
-                workspace: WorkspaceId::new(raw),
+                workspace: WorkspaceId::new(u64::from(raw)),
             });
         }
         wm.apply(Event::OutputConnected {

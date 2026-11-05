@@ -36,7 +36,8 @@
 //! all name, so it is one type instead of three.
 //!
 //! [`WindowId`], [`OutputId`], [`WorkspaceId`], [`ObjectId`], [`OperationId`],
-//! [`RequestId`], [`SubscriptionId`] and [`OwnerId`] are opaque [`u64`] tokens.
+//! [`RequestId`], [`SubscriptionId`], [`OwnerId`] and [`ClientId`] are opaque
+//! [`u64`] tokens.
 //! They are all [`u64`] because the object graph allocates unbounded counters
 //! and the engine must be able to hold one without narrowing it; a backend that
 //! numbers outputs from zero widens trivially. [`Tick`] is a caller-supplied
@@ -56,7 +57,7 @@ mod version;
 pub use direction::{Axis, Corner, Direction, Edge};
 pub use error_code::{ErrorCode, InvalidErrorCode, is_error_code};
 pub use geometry::{Insets, Point, PointF, Rect, RectF, Size, Vec3};
-pub use ids::{ObjectId, OperationId, OutputId, OwnerId, RequestId, SubscriptionId, WindowId, WorkspaceId};
+pub use ids::{ClientId, ObjectId, OperationId, OutputId, OwnerId, RequestId, SubscriptionId, WindowId, WorkspaceId};
 pub use orientation::Orientation;
 pub use scale::Scale;
 pub use tick::{Revision, Tick};
