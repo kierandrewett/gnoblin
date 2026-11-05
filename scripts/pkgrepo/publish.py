@@ -11,6 +11,7 @@ The default is a dry run that prints the plan. --apply is the only way anything 
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
@@ -211,6 +212,23 @@ def plan_rsync(
 # --- S3 and compatible stores (Cloudflare R2, MinIO) -------------------------------------------------------------------
 
 
+def _bucket_objects(bucket: str, prefix: str) -> dict[str, int]:
+    """Key -> size of every object under the prefix, from one ListObjectsV2 listing (the CLI pages through it).
+
+    The syncs of `aws s3 sync` compare two sorted listings and cannot be trusted on a store that orders keys differently
+    from the CLI: see plan_s3. A dictionary of the listing does not depend on the order.
+    """
+    out = run(
+        ["aws", "s3api", "list-objects-v2", "--bucket", bucket, "--prefix", prefix, "--output", "json"],
+        capture=True,
+        quiet=True,
+    ).strip()
+    if not out or out == "null":
+        return {}
+    contents = json.loads(out).get("Contents") or []
+    return {item["Key"]: int(item["Size"]) for item in contents if not item["Key"].endswith("/")}
+
+
 def plan_s3(
     root: Path, scope: str, destination: str, changed: list[str], *, env: dict[str, str], first: bool = False
 ) -> Plan:
@@ -231,7 +249,8 @@ def plan_s3(
                 raise CommandError(f"could not look at the bucket: {result.stderr.strip()}")
 
         plan.steps.append(Step("check that the bucket has no copy of this channel that was not pulled", action=guard))
-    package_filter = ["--exclude", "*", *[arg for g in PACKAGE_GLOBS for arg in ("--include", g)]]
+    bucket, _, prefix = base[len("s3://") :].partition("/")
+    key_prefix = f"{prefix}/" if prefix else ""
     metadata_filter = [arg for g in PACKAGE_GLOBS for arg in ("--exclude", g)]
     for relative in changed:
         plan.steps.append(
@@ -240,22 +259,42 @@ def plan_s3(
                 ["aws", "s3", "cp", "--only-show-errors", str(root / relative), f"{base}/{relative}"],
             )
         )
-    # The syncs print every upload and every delete. A nightly lost two package files after a run that reported no
-    # error, and the log of what the syncs did is the only record of which step touched them.
-    plan.steps.append(
-        Step(
-            "upload package files the bucket lacks",
-            [
-                "aws",
-                "s3",
-                "sync",
-                "--size-only",
-                f"{root / scope}",
-                f"{base}/{scope}",
-                *package_filter,
-            ],
-        )
-    )
+
+    # Package files and removals do not use `aws s3 sync`. It walks the local tree and the bucket listing in step and
+    # decides from the order of the keys. The log of nightly 41984281147 shows every arch package and every pacman
+    # database file that has a `.sig` beside it uploaded and deleted in the same sync, and not the `.sig` files, which
+    # is what the comparison does when the two listings order `name` and `name.sig` differently (the bucket's listing
+    # puts `name.sig` first). Both operations ran in no fixed order, so every nightly rewrote every arch package and
+    # could leave some deleted: two copies of an any package disappeared from arch/x86_64 this way. The steps below
+    # compare the listing as a dictionary, upload what is missing or has another size, and delete only keys that are
+    # not in the tree, after every upload. Each upload and delete is printed.
+    def tree_keys() -> dict[str, int]:
+        return {key_prefix + relative: (root / relative).stat().st_size for relative in tree_files(root, scope)}
+
+    def bucket_objects() -> dict[str, int]:
+        return _bucket_objects(bucket, f"{key_prefix}{scope}/")
+
+    def upload_missing_packages() -> None:
+        remote = bucket_objects()
+        for relative in tree_files(root, scope):
+            if not is_package_file(relative):
+                continue
+            key = key_prefix + relative
+            size = (root / relative).stat().st_size
+            if remote.get(key) == size:
+                continue
+            why = "missing" if key not in remote else f"the bucket has {remote[key]} bytes, the tree {size}"
+            print(f"upload {key} ({why})", flush=True)
+            run(["aws", "s3", "cp", "--only-show-errors", str(root / relative), f"{base}/{relative}"])
+
+    def remove_stale() -> None:
+        wanted = tree_keys()
+        stale = sorted(key for key in bucket_objects() if key not in wanted)
+        for key in stale:
+            print(f"delete {key} (not in the tree)", flush=True)
+            run(["aws", "s3", "rm", "--only-show-errors", f"s3://{bucket}/{key}"])
+
+    plan.steps.append(Step("upload package files the bucket lacks", action=upload_missing_packages))
     plan.steps.append(
         Step(
             "upload metadata and pages",
@@ -273,35 +312,7 @@ def plan_s3(
                 ["aws", "s3", "rm", "--only-show-errors", f"{base}/{name}"],
             )
         )
-    plan.steps.append(
-        Step(
-            "remove package files the new tree no longer has",
-            [
-                "aws",
-                "s3",
-                "sync",
-                "--size-only",
-                "--delete",
-                f"{root / scope}",
-                f"{base}/{scope}",
-                *package_filter,
-            ],
-        )
-    )
-    plan.steps.append(
-        Step(
-            "remove metadata the new tree no longer has",
-            [
-                "aws",
-                "s3",
-                "sync",
-                "--delete",
-                f"{root / scope}",
-                f"{base}/{scope}",
-                *metadata_filter,
-            ],
-        )
-    )
+    plan.steps.append(Step("remove files the new tree no longer has", action=remove_stale))
     return plan
 
 

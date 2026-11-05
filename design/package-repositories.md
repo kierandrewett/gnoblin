@@ -302,6 +302,14 @@ file:
 3. removal of files the new tree no longer has, and of the retired `index.html` at the site root (an earlier version
    of the tool wrote index pages; none are written now).
 
+The `s3` back end does not use `aws s3 sync` for package files or removals. The sync walks the local tree and the
+bucket listing in step, and on the Cloudflare R2 bucket it saw every arch package and pacman database file that has a
+`.sig` beside it as both new and gone, so it uploaded and deleted the same key in one run, in no fixed order. A nightly
+lost two copies of an architecture-independent package that way. The back end lists the bucket once, uploads each
+package file that is missing or has another size, and deletes only keys that are not in the tree, after every upload.
+Every upload and delete is printed. A copy that an earlier publication lost is uploaded again by the next
+publication, because every architecture directory of the tree has its copy.
+
 `--dry-run` is the default: the tool prints the plan, and only `--apply` uploads.
 
 A build merges with the packages that are already published, so a build made

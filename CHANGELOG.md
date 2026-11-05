@@ -12,6 +12,14 @@
 - `Window.client_type` (`"wayland"` or `"x11"`, bridge API 1.93) in window records, `gnoblin.find("Window", {client_type = ...})`,
   the window rule `match.client_type` key and `gnoblinctl window list` and `window match`.
 
+### Fixed
+
+- The `s3` back end of `pkgrepo publish` no longer uses `aws s3 sync` for package files and removals. The sync uploaded
+  and deleted every arch package (and pacman database file) that has a `.sig` beside it in the same run, so a nightly
+  rewrote them all and could leave some deleted: two copies of an architecture-independent package were missing from
+  `arch/x86_64` after nightly 41984281147. The back end now lists the bucket, uploads package files that are missing or
+  have another size, and deletes only keys that are not in the tree, after all uploads, printing each one.
+
 ### Changed
 
 - Xwayland windows get Gnoblin's own frame, rules and effects like Wayland windows. Mutter no longer launches

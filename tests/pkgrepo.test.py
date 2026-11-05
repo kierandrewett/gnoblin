@@ -15,6 +15,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -323,6 +324,93 @@ def build_tree(directory: Path, project="bingux", channel="nightly", packages=No
     return scope
 
 
+FAKE_AWS = r"""#!/usr/bin/env python3
+# A bucket in a directory ($FAKE_S3). `s3 sync` follows the algorithm of aws-cli's Comparator (two sorted listings,
+# walked in step), and the bucket lists `name.sig` before `name`, which is how the real bucket's listing disagrees with
+# the CLI's own order.
+import fnmatch, json, os, sys
+from pathlib import Path
+
+store = Path(os.environ["FAKE_S3"])
+args = sys.argv[1:]
+
+
+def split(url):
+    bucket, _, key = url[len("s3://"):].partition("/")
+    return bucket, key
+
+
+def bucket_keys(bucket, prefix):
+    root = store / bucket
+    keys = [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()] if root.exists() else []
+    return sorted((k for k in keys if k.startswith(prefix)), key=lambda k: (k[:-4], 0) if k.endswith(".sig") else (k, 1))
+
+
+def put(src, url):
+    bucket, key = split(url)
+    target = store / bucket / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(Path(src).read_bytes())
+    print(f"upload: {src} to {url}")
+
+
+def delete(url):
+    bucket, key = split(url)
+    (store / bucket / key).unlink(missing_ok=True)
+    print(f"delete: {url}")
+
+
+def included(path, filters):
+    result = True
+    for kind, pattern in filters:
+        if fnmatch.fnmatch(path, pattern):
+            result = kind == "include"
+    return result
+
+
+if args[:2] == ["s3api", "list-objects-v2"]:
+    options = dict(zip(args[2::2], args[3::2]))
+    bucket, prefix = options["--bucket"], options["--prefix"]
+    sizes = [{"Key": k, "Size": (store / bucket / k).stat().st_size} for k in bucket_keys(bucket, prefix)]
+    print(json.dumps({"Contents": sizes}) if sizes else "")
+elif args[:2] == ["s3", "cp"]:
+    put([a for a in args[2:] if not a.startswith("--")][0], args[-1])
+elif args[:2] == ["s3", "rm"]:
+    delete(args[-1])
+elif args[:2] == ["s3", "sync"]:
+    flags = [a for a in args[2:] if a.startswith("--")]
+    positional = [a for a in args[2:] if not a.startswith("--") or a in ()]
+    filters, rest, i = [], [], 2
+    while i < len(args):
+        if args[i] in ("--exclude", "--include"):
+            filters.append((args[i][2:], "*" + args[i + 1] if args[i + 1] != "*" else "*")); i += 2
+        elif args[i].startswith("--"):
+            i += 1
+        else:
+            rest.append(args[i]); i += 1
+    src, dest = Path(rest[0]), rest[1]
+    bucket, prefix = split(dest)
+    local = sorted(str(p.relative_to(src)) for p in src.rglob("*") if p.is_file() and included(str(p), filters))
+    remote = [k[len(prefix) + 1:] for k in bucket_keys(bucket, prefix + "/") if included("/" + k, filters)]
+    delete_flag, size_only = "--delete" in flags, "--size-only" in flags
+    a = b = 0
+    while a < len(local) or b < len(remote):
+        if b >= len(remote) or (a < len(local) and local[a] < remote[b]):
+            put(src / local[a], f"s3://{bucket}/{prefix}/{local[a]}"); a += 1
+        elif a >= len(local) or local[a] > remote[b]:
+            if delete_flag:
+                delete(f"s3://{bucket}/{prefix}/{remote[b]}")
+            b += 1
+        else:
+            same = (src / local[a]).stat().st_size == (store / bucket / prefix / remote[b]).stat().st_size
+            if not (size_only and same):
+                put(src / local[a], f"s3://{bucket}/{prefix}/{local[a]}")
+            a += 1; b += 1
+else:
+    sys.exit("fake aws: " + " ".join(args))
+"""
+
+
 class PublishPlans(unittest.TestCase):
     def setUp(self):
         self.directory = Path(tempfile.mkdtemp(prefix="pkgrepo-test-"))
@@ -434,6 +522,46 @@ class PublishPlans(unittest.TestCase):
         self.assertEqual(removals, [["aws", "s3", "rm", "--only-show-errors", "s3://bucket/prefix/index.html"]])
         with self.assertRaises(ValueError):
             publish.plan_s3(self.directory / "tree", "bingux/nightly", "bucket/prefix", [], env={})
+
+    def test_s3_publish_keeps_every_package_that_has_a_signature_when_the_bucket_lists_signatures_first(self):
+        """`aws s3 sync` saw `name` as new and as gone in one run, and the delete could land after the upload."""
+        bin_dir = self.directory / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "aws").write_text(FAKE_AWS)
+        (bin_dir / "aws").chmod(0o755)
+        bucket = self.directory / "bucket"
+        files = {f"arch/x86_64/pkg-{n}-any.pkg.tar.zst": f"package {n}".encode() for n in range(6)}
+        tree_root = self.directory / "s3tree"
+        scope = build_tree(tree_root, packages=files)
+        for relative in files:
+            (scope / (relative + ".sig")).write_bytes(b"signature")
+        (scope / "arch" / "x86_64" / "bingux-nightly.db.tar.zst").write_bytes(b"database")
+        (scope / "arch" / "x86_64" / "bingux-nightly.db.tar.zst.sig").write_bytes(b"signature")
+        # What the bucket holds from an earlier run: the same files, one package of another size and one stale file.
+        for path in scope.rglob("*"):
+            if path.is_file():
+                target = bucket / "bucket" / "prefix" / path.relative_to(tree_root)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes())
+        (bucket / "bucket" / "prefix" / "bingux/nightly/arch/x86_64/pkg-0-any.pkg.tar.zst").write_bytes(b"short")
+        (bucket / "bucket" / "prefix" / "bingux/nightly/arch/x86_64/old-any.pkg.tar.zst").write_bytes(b"old")
+        os.environ["PATH"], path_before = f"{bin_dir}{os.pathsep}{os.environ['PATH']}", os.environ["PATH"]
+        os.environ["FAKE_S3"] = str(bucket)
+        self.addCleanup(os.environ.update, PATH=path_before)
+        self.addCleanup(os.environ.pop, "FAKE_S3", None)
+        plan = publish.plan_s3(tree_root, "bingux/nightly", "s3://bucket/prefix", [], env={})
+        plan.execute()
+        held = sorted(
+            str(p.relative_to(bucket / "bucket" / "prefix"))
+            for p in (bucket / "bucket" / "prefix" / "bingux" / "nightly").rglob("*")
+            if p.is_file()
+        )
+        wanted = sorted(str(p.relative_to(tree_root)) for p in scope.rglob("*") if p.is_file())
+        self.assertEqual(held, wanted)
+        self.assertEqual(
+            (bucket / "bucket" / "prefix" / "bingux/nightly/arch/x86_64/pkg-0-any.pkg.tar.zst").read_bytes(),
+            b"package 0",
+        )
 
     def test_unknown_backend_and_unbuilt_channel(self):
         with self.assertRaises(ValueError):
