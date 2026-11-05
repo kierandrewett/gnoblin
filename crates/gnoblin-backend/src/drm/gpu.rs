@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use gnoblin_output::{DisplayMode, Edid, VrrSupport};
 use gnoblin_types::{Orientation, OutputId};
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmSurface, VrrSupport as KernelVrr};
+use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::{
     Device as ControlDevice, Mode, ModeTypeFlags, ResourceHandles, connector, crtc,
 };
@@ -292,6 +293,34 @@ impl Gpu {
     #[must_use]
     pub fn seat(&self) -> &Seat {
         &self.seat
+    }
+
+    /// Registers the seat's event source with the loop, so VT switches reach
+    /// [`Seat::take_events`].
+    ///
+    /// # Errors
+    ///
+    /// The loop refuses the source.
+    pub fn register<S: 'static>(&mut self, loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
+        self.seat.register(loop_handle)
+    }
+
+    /// Releases DRM master for a VT switch away. Smithay's pause cannot fail.
+    pub fn pause(&mut self) {
+        self.hardware.device.pause();
+    }
+
+    /// Takes DRM master back after a VT switch returns. Connectors are disabled, so the next
+    /// modeset re-enables them rather than trusting the state the switch left behind.
+    ///
+    /// # Errors
+    ///
+    /// [`DrmError::Device`] when smithay cannot re-activate the device.
+    pub fn activate(&mut self) -> Result<(), DrmError> {
+        self.hardware
+            .device
+            .activate(true)
+            .map_err(|error| DrmError::Device(error.to_string()))
     }
 
     /// Takes the notifier that reports the device's page flips and VBlanks, for the event loop.

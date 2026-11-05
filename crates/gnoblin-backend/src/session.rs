@@ -261,6 +261,12 @@ impl Seat {
         &self.name
     }
 
+    /// The libseat session the seat wraps, which is what libinput opens its devices through.
+    #[must_use]
+    pub fn libseat(&self) -> &LibSeatSession {
+        &self.session
+    }
+
     /// Whether the session currently holds the seat.
     #[must_use]
     pub fn is_active(&self) -> bool {

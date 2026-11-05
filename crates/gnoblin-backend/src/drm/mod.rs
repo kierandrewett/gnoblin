@@ -28,8 +28,8 @@
 //!    pause into one transition, the device is paused through Smithay, and no frame is
 //!    submitted until its resume: see `session`'s tests and [`Drm::render`].
 //! 2. **A resume repaints only part of the screen.** The resume bumps the session's
-//!    generation, and this backend answers with a full-output damage for every output, so no
-//!    stale pixel survives: `Drm::dirty` is set from the transition, not from the host.
+//!    generation. Presenting an output is not built yet, so no full-output damage is issued
+//!    from it; see [`Drm::render`].
 //! 3. **A hotplug arrives during a modeset.** The connector event is queued and applied in
 //!    the next dispatch, never from inside the commit it interrupted; a failure to create the
 //!    surface leaves the output disconnected and the session running.
@@ -49,7 +49,10 @@ use std::io;
 use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
 
+use crate::libinput::Libinput;
+use crate::libinput::map::Screen;
 use crate::render::Image;
+use crate::session::{SeatEvent, SeatState, Transition};
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
 
 /// Why the hardware backend could not start.
@@ -99,7 +102,9 @@ pub struct Drm {
     gpu: gpu::Gpu,
     /// The connected connectors, one output each, in the order the kernel lists them.
     outputs: Vec<Output>,
-    input: Refused,
+    input: Input,
+    /// Whether the seat is ours, which decides whether the device may be used.
+    seat: SeatState,
 }
 
 /// Why the hardware backend offers no input events.
@@ -143,6 +148,24 @@ impl InputSource for Refused {
     }
 }
 
+/// Where the hardware backend's input comes from.
+#[derive(Debug)]
+enum Input {
+    /// libinput is open on the seat; its devices are read in [`Backend::dispatch`].
+    Live(Box<Libinput>),
+    /// No libinput context could be opened, so the session has no input; see [`Refused`].
+    Refused(Refused),
+}
+
+impl InputSource for Input {
+    fn next_event(&mut self) -> Option<InputEvent> {
+        match self {
+            Self::Live(libinput) => libinput.next_event(),
+            Self::Refused(refused) => refused.next_event(),
+        }
+    }
+}
+
 impl fmt::Debug for Drm {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.debug_struct("Drm").field("gpu", &self.gpu).finish()
@@ -150,7 +173,11 @@ impl fmt::Debug for Drm {
 }
 
 impl Drm {
-    /// Opens the hardware session: the seat, the primary GPU and every connector on it.
+    /// Opens the hardware session: the seat, the primary GPU, every connector on it, and the
+    /// libinput context on the same seat.
+    ///
+    /// A libinput context that cannot be opened does not fail the session: the backend runs with
+    /// no input, and the reason is logged here.
     ///
     /// # Errors
     ///
@@ -168,13 +195,63 @@ impl Drm {
                 Some(Output::new(connector.id, connector.name.clone(), mode, scale))
             })
             .collect();
+        let input = match Libinput::open(gpu.seat().libseat()) {
+            Ok(libinput) => Input::Live(Box::new(libinput)),
+            Err(error) => {
+                tracing::warn!(%error, "[input] libinput is not open; the session runs without input");
+                Input::Refused(Refused {
+                    refusal: InputRefusal::NotOpened,
+                })
+            }
+        };
         Ok(Self {
             gpu,
             outputs,
-            input: Refused {
-                refusal: InputRefusal::NotOpened,
-            },
+            input,
+            seat: SeatState::new(),
         })
+    }
+
+    /// Each output's logical extent, which is the space libinput states absolute positions in.
+    fn screens(&self) -> Vec<Screen> {
+        self.outputs
+            .iter()
+            .map(|output| Screen {
+                id: output.id,
+                logical: output.logical_size(),
+            })
+            .collect()
+    }
+
+    /// The seat was taken away: release the device and stop delivering input.
+    ///
+    /// A pause for a session that is already paused does nothing, since the device was released
+    /// by the first event.
+    fn pause(&mut self) {
+        if self.seat.paused() == Transition::None {
+            return;
+        }
+        self.gpu.pause();
+        if let Input::Live(libinput) = &mut self.input {
+            libinput.suspend();
+        }
+    }
+
+    /// The seat is ours again: take the device back and deliver input again.
+    ///
+    /// Presenting the outputs after a resume is not built yet (see [`Backend::render`]), so the
+    /// resume restores the device and the input only. A failure to take the device back is logged;
+    /// the input is delivered regardless, because the seat is ours either way.
+    fn resume(&mut self) {
+        let Transition::Resume { .. } = self.seat.resumed() else {
+            return;
+        };
+        if let Err(error) = self.gpu.activate() {
+            tracing::error!(%error, "[drm] the device could not be re-activated after the seat returned");
+        }
+        if let Input::Live(libinput) = &mut self.input {
+            libinput.resume();
+        }
     }
 }
 
@@ -199,7 +276,13 @@ impl<S: Host + 'static> Backend<S> for Drm {
         &mut self.input
     }
 
-    fn register(&mut self, _loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
+    fn register(&mut self, loop_handle: &LoopHandle<'static, S>) -> io::Result<()> {
+        self.gpu.register(loop_handle)?;
+        let screens = self.screens();
+        if let Input::Live(libinput) = &mut self.input {
+            libinput.set_screens(screens);
+            libinput.register(loop_handle)?;
+        }
         Ok(())
     }
 
@@ -215,6 +298,15 @@ impl<S: Host + 'static> Backend<S> for Drm {
     }
 
     fn dispatch(&mut self, _host: &mut S) -> Vec<BackendEvent> {
+        for event in self.gpu.seat().take_events() {
+            match event {
+                SeatEvent::Paused => self.pause(),
+                SeatEvent::Activated => self.resume(),
+            }
+        }
+        if let Input::Live(libinput) = &mut self.input {
+            libinput.pump();
+        }
         Vec::new()
     }
 }
