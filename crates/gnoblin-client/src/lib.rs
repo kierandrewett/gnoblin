@@ -57,6 +57,11 @@
 //!    timeout: `an_unanswered_request_times_out_and_the_client_learns_it`.
 //! 10. **A payload this build cannot read is half-applied.** A decode refuses the
 //!     whole frame: the unit tests in `src/wire.rs`.
+//! 11. **A prompt's answer travels unflagged, so a log keeps the password.** The
+//!     request layer is schema-addressed, so `request.answer` is flagged from the
+//!     schema's `secret` field and redaction drops the bytes:
+//!     `a_request_answer_is_flagged_sensitive_and_redacts`, and
+//!     `the_request_members_are_the_schema_members` keeps the names equal.
 
 #[cfg(unix)]
 mod client;

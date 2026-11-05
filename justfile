@@ -46,15 +46,15 @@ gen-proto:
 compat-report:
     cargo xtask compat-report
 
-# Report structs and enums two crates declare twice. Report-only: migration lanes
-# still produce duplicates, so this prints and exits zero. `just dupes-deny` is
-# the failing form.
+# Fail on a struct or enum two crates declare twice and `xtask/dupes-allow.toml`
+# does not waive. Local only: `just ci` stays the commands that need no network, so
+# this is not part of it. `just dupes-warn` prints without failing.
 dupes:
-    cargo xtask dupes
-
-# The same report, failing on any hit that `xtask/dupes-allow.toml` does not waive.
-dupes-deny:
     cargo xtask dupes --deny
+
+# The same report, exiting zero so a lane mid-migration can read it.
+dupes-warn:
+    cargo xtask dupes --warn
 
 # Check advisories, licences, duplicate versions and git sources.
 deny:

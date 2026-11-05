@@ -50,6 +50,22 @@ pub fn proto_files(catalog: &Catalog) -> Vec<(String, String)> {
     files
 }
 
+/// The name a frame's `member` field carries: the schema's qualified member path.
+///
+/// A member name alone is ambiguous across objects, and the envelope carries one
+/// namespace and one member, so a member is named by its object type and its name,
+/// `request.answer`. That is also the spelling a peer writes in its own schema, so an
+/// extension's frames and the compositor's are addressed the same way.
+///
+/// The generated sensitive table is keyed by this path, which is what lets a layer
+/// that *is* an exchange (the request layer) be declared in the schema at all: the
+/// frame that carries a secret answer is addressed exactly as the schema addresses
+/// it, so the flag is set without the client knowing which members are secret.
+#[must_use]
+pub fn member_path(object: &str, member: &str) -> String {
+    format!("{object}.{member}")
+}
+
 /// The Rust table the envelope builders and the frame decoder read.
 ///
 /// It is generated rather than hand-kept so the `secret` flag in the schema is the
@@ -65,12 +81,12 @@ pub fn sensitive_table(catalog: &Catalog) -> String {
         for object in catalog.objects(&namespace) {
             for method in &object.methods {
                 if method.is_sensitive() || object.secret {
-                    members.insert((namespace.to_string(), method.name.clone()));
+                    members.insert((namespace.to_string(), member_path(&object.name, &method.name)));
                 }
             }
             for signal in &object.signals {
                 if signal.is_sensitive() || object.secret {
-                    members.insert((namespace.to_string(), signal.name.clone()));
+                    members.insert((namespace.to_string(), member_path(&object.name, &signal.name)));
                 }
             }
         }
@@ -101,7 +117,10 @@ pub fn sensitive_table(catalog: &Catalog) -> String {
     );
     let _ = writeln!(text, "// sending zero.");
     let _ = writeln!(text);
-    let _ = writeln!(text, "/// Every `(namespace, member)` pair the schema marks secret.");
+    let _ = writeln!(
+        text,
+        "/// Every `(namespace, member path)` pair the schema marks secret."
+    );
     let _ = writeln!(text, "///");
     let _ = writeln!(
         text,
@@ -399,8 +418,8 @@ since = "1.0.0"
 "#,
         );
         let text = sensitive_table(&with_secret);
-        assert!(text.contains("(\"test.secret\", \"unlock\")"), "{text}");
-        assert!(!text.contains("\"poke\""), "{text}");
+        assert!(text.contains("(\"test.secret\", \"thing.unlock\")"), "{text}");
+        assert!(!text.contains("poke"), "{text}");
         assert!(text.contains("#[rustfmt::skip]"), "{text}");
 
         // A secret object marks every one of its members, not only the fields the
@@ -425,17 +444,17 @@ since = "1.0.0"
 "#,
         );
         let text = sensitive_table(&secret_object);
-        assert!(text.contains("(\"test.secret\", \"poke\")"), "{text}");
-        assert!(text.contains("(\"test.secret\", \"moved\")"), "{text}");
+        assert!(text.contains("(\"test.secret\", \"thing.poke\")"), "{text}");
+        assert!(text.contains("(\"test.secret\", \"thing.moved\")"), "{text}");
     }
 
     #[test]
     fn the_sensitive_table_names_every_secret_member() {
         let text = sensitive_table(&catalog());
-        assert!(text.contains("(\"bsm.greeter\", \"auth_response\")"), "{text}");
+        assert!(text.contains("(\"bsm.greeter\", \"greeter.auth_response\")"), "{text}");
         // A member with no secret field is not listed.
-        assert!(!text.contains("\"begin_auth\""), "{text}");
-        assert!(!text.contains("\"focus\""), "{text}");
+        assert!(!text.contains("begin_auth"), "{text}");
+        assert!(!text.contains("focus"), "{text}");
         assert!(text.contains("#[rustfmt::skip]"), "{text}");
     }
 

@@ -54,7 +54,8 @@ pub mod member {
     pub const CALL: &str = "object.call";
     /// Client to compositor: claim an offered request.
     pub const CLAIM: &str = "request.claim";
-    /// Client to compositor: answer a request it holds.
+    /// Client to compositor: answer a request it holds. The schema marks its
+    /// `answer` field secret, so every frame for it is flagged sensitive.
     pub const ANSWER: &str = "request.answer";
     /// Compositor to client: an object came into existence.
     pub const OPENED: &str = "object.opened";
@@ -599,6 +600,10 @@ impl<'a> Reader<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use gnoblin_schema::Catalog;
+
     use super::*;
 
     fn fields(pairs: &[(&str, Value)]) -> Fields {
@@ -776,5 +781,76 @@ mod tests {
                 completion: RequestCompletion::TimedOut
             })
         );
+    }
+
+    #[test]
+    fn a_request_answer_is_flagged_sensitive_and_redacts() {
+        // The failure mode: a prompt's password travels in an answer, the layer is
+        // not an object member, and nothing flags the frame, so a log or the parity
+        // recorder keeps the bytes. `request.answer` is a schema member with a
+        // secret field, so the envelope the client builds is flagged and the one
+        // thing that may be shown loses the payload.
+        const SECRET: &[u8] = b"hunter2";
+        let frame = self::answer(6, RequestId::new(2), &Answer::Answered(SECRET.to_vec()));
+        assert_eq!(frame.member, member::ANSWER);
+        assert!(frame.is_sensitive(), "an answer carries secret material");
+
+        let payload = frame.payload().expect("payload");
+        assert!(
+            payload.windows(SECRET.len()).any(|window| window == SECRET),
+            "the flag is what protects the bytes, not the encoding"
+        );
+
+        let redacted = frame.redact();
+        assert!(redacted.is_sensitive(), "a redacted frame stays marked");
+        assert_eq!(redacted.payload(), Some(&b""[..]));
+        assert_eq!(redacted.member, member::ANSWER, "the routing fields survive");
+    }
+
+    #[test]
+    fn a_finished_request_is_not_flagged() {
+        // Only the frame that carries the answer is secret, so the completion every
+        // subscriber sees stays readable.
+        let frame = finished(RequestId::new(2), RequestCompletion::Answered);
+        assert!(!frame.is_sensitive());
+        assert_eq!(frame, frame.redact());
+    }
+
+    #[test]
+    fn the_request_members_are_the_schema_members() {
+        // The member paths on this layer are the schema's, not this file's opinion: a
+        // rename in request.toml that this crate misses would silently stop flagging
+        // answers, which is the failure the whole table exists to prevent.
+        let catalog = Catalog::load_dir(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../gnoblin-schema/schema"
+        )))
+        .expect("the checked-in schema loads");
+        let namespace = gnoblin_schema::Namespace::parse(NAMESPACE).expect("namespace");
+        let request = catalog
+            .objects(&namespace)
+            .find(|object| object.name == "request")
+            .expect("the schema declares the request object");
+
+        let claimed: Vec<&str> = request.methods.iter().map(|method| method.name.as_str()).collect();
+        assert_eq!(claimed, vec!["claim", "answer"], "the methods this layer serves");
+        let signalled: Vec<&str> = request.signals.iter().map(|signal| signal.name.as_str()).collect();
+        assert_eq!(signalled, vec!["offered", "finished"], "the signals this layer serves");
+
+        for (object, member, path) in [
+            ("request", "claim", member::CLAIM),
+            ("request", "answer", member::ANSWER),
+            ("request", "offered", member::REQUEST_OFFERED),
+            ("request", "finished", member::REQUEST_FINISHED),
+        ] {
+            assert_eq!(gnoblin_schema::proto::member_path(object, member), path);
+        }
+
+        let answered = request
+            .methods
+            .iter()
+            .find(|method| method.name == "answer")
+            .expect("answer is declared");
+        assert!(answered.is_sensitive(), "an answer field is secret");
     }
 }

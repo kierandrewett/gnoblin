@@ -19,9 +19,11 @@ use crate::generated::sensitive;
 /// The envelope flag that marks a frame as carrying secret material.
 ///
 /// The generated client sets it on any message with a field the schema marks
-/// `secret` (for example `bsm.greeter.auth_response`). Logs, the parity recorder
-/// and `gnoblinctl ipc dump` call [`Envelope::redact`] before they show anything,
-/// so none of them needs the extension's schema to keep the secret out.
+/// `secret` (for example `greeter.auth_response`, the greeter's namespace being
+/// `bsm.greeter`). The member is the schema's qualified member path, so the request
+/// layer's own frames are named the same way (`request.answer`). Logs, the parity
+/// recorder and `gnoblinctl ipc dump` call [`Envelope::redact`] before they show
+/// anything, so none of them needs the extension's schema to keep the secret out.
 pub const FLAG_SENSITIVE: u32 = 1 << 0;
 
 /// The error code a peer sends when it does not serve the requested member.
@@ -190,7 +192,7 @@ mod tests {
         // Built through the public API with no extra call: the schema decides.
         let envelope = Envelope::request_message(
             "bsm.greeter",
-            "auth_response",
+            "greeter.auth_response",
             7,
             &AuthResponseArgs {
                 response: SECRET.to_owned(),
@@ -204,10 +206,10 @@ mod tests {
 
         // Every constructor, not only requests.
         for envelope in [
-            Envelope::request("bsm.greeter", "auth_response", 1, Vec::new()),
-            Envelope::reply("bsm.greeter", "auth_response", 1, Vec::new()),
-            Envelope::event("bsm.greeter", "auth_response", Vec::new()),
-            Envelope::error("bsm.greeter", "auth_response", 1, UNKNOWN_MEMBER, "no"),
+            Envelope::request("bsm.greeter", "greeter.auth_response", 1, Vec::new()),
+            Envelope::reply("bsm.greeter", "greeter.auth_response", 1, Vec::new()),
+            Envelope::event("bsm.greeter", "greeter.auth_response", Vec::new()),
+            Envelope::error("bsm.greeter", "greeter.auth_response", 1, UNKNOWN_MEMBER, "no"),
         ] {
             assert!(envelope.is_sensitive(), "{envelope:?}");
         }
@@ -217,7 +219,7 @@ mod tests {
     fn a_plain_member_is_not_flagged() {
         let envelope = Envelope::request_message(
             "gnoblin",
-            "focus",
+            "window.focus",
             1,
             &Properties {
                 id: 12,
@@ -237,7 +239,7 @@ mod tests {
     fn redaction_drops_the_secret_bytes() {
         let envelope = Envelope::request_message(
             "bsm.greeter",
-            "auth_response",
+            "greeter.auth_response",
             7,
             &AuthResponseArgs {
                 response: SECRET.to_owned(),
@@ -271,7 +273,13 @@ mod tests {
 
     #[test]
     fn an_error_redacts_to_its_code() {
-        let envelope = Envelope::error("bsm.greeter", "auth_response", 3, UNKNOWN_MEMBER, "no such member");
+        let envelope = Envelope::error(
+            "bsm.greeter",
+            "greeter.auth_response",
+            3,
+            UNKNOWN_MEMBER,
+            "no such member",
+        );
         let redacted = envelope.redact();
         assert_eq!(redacted.error_code(), Some("redacted"));
         assert!(matches!(redacted.kind, Some(Kind::Error(_))));

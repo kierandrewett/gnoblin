@@ -469,11 +469,11 @@ pub fn is_lower_name(text: &str) -> bool {
 }
 
 /// True for an error code: `[a-z][a-z0-9-]*`.
-pub fn is_error_code(text: &str) -> bool {
-    let mut bytes = text.bytes();
-    matches!(bytes.next(), Some(first) if first.is_ascii_lowercase())
-        && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-}
+///
+/// The rule is `gnoblin-types`': a declaration and a wire value must not be able to
+/// disagree about what an error code looks like, and that crate's
+/// [`gnoblin_types::ErrorCode`] is what the wire carries.
+pub use gnoblin_types::is_error_code;
 
 #[cfg(test)]
 mod tests {

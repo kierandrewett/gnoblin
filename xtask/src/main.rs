@@ -18,8 +18,8 @@ subcommands:
   deps               check the workspace dependency rules from design/rust-compositor.md
   gen-proto          write the generated .proto text to target/gen-proto, to read
   compat-report      print every compat adapter's declared support matrix
-  dupes              list the structs and enums two crates declare twice
-  dupes --deny       the same report, failing on a hit not in xtask/dupes-allow.toml
+  dupes              fail on a struct or enum two crates declare twice
+  dupes --warn       the same report, printing every hit and exiting zero
   compat-report --json  the same report as JSON";
 
 fn main() -> ExitCode {
@@ -34,8 +34,9 @@ fn main() -> ExitCode {
         ("gen-proto", []) => gen_proto::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
-        ("dupes", []) => dupes::run(false),
+        ("dupes", []) => dupes::run(true),
         ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
+        ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
         ("deps" | "gen-proto" | "dupes" | "compat-report", _) => usage_error("unexpected argument"),
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }

@@ -32,14 +32,22 @@
 //! reason = "an answer is a provider's encoded reply; a value is a typed graph value"
 //! ```
 //!
-//! # Flipping the gate to `--deny`
+//! # Running the gate
 //!
-//! Today the command reports and exits zero, because the migration lands crate
-//! by crate and a failing gate would block the lanes that are producing the
-//! duplicates. When the shared types have moved into `gnoblin-types` and the
-//! allow-list holds only the reviewed same-name-different-meaning pairs, add
-//! `dupes --deny` to the `ci` recipe in the `justfile`; that is the only change
-//! needed, and it turns every unallowed hit into a failure.
+//! `cargo xtask dupes` fails on any hit the allow-list does not waive: the shared
+//! types have moved into `gnoblin-types` and every remaining pair is either that or
+//! a reviewed homonym, so a new duplicate is a regression rather than the state of
+//! the migration. The check runs locally, as every check in this rewrite does:
+//!
+//! ```text
+//! cargo xtask dupes --deny     # the gate, exits non-zero on an unwaived hit
+//! cargo xtask dupes --warn     # the report, exits zero, for a lane mid-migration
+//! ```
+//!
+//! It is deliberately *not* a step in `just ci`: the rewrite's validation is local
+//! and `just ci` must stay the commands a contributor can run without a network. Run
+//! `cargo xtask dupes --deny` before merging anything that adds a crate or moves a
+//! type.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
