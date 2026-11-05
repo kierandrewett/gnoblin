@@ -150,6 +150,28 @@ STUCK = re.compile(
     r"|Kernel panic - not syncing"
 )
 
+# A soft lockup that lasts SOFT_LOCKUP_LIMIT seconds does not end. In the arm64 graphical legs of runs 41835867674 to
+# 41947714180 (111 legs on TCG), 12 passing legs logged a soft lockup, and the longest that recovered lasted 106 s
+# (Fedora 44, run 41918451629). In run 41947714180 the Arch Linux guest had a kernel oops while it loaded a module, and
+# the next modprobe spun on the lock that the dead task held: the watchdog reported it every 22 s, from 26 s to 1647 s,
+# until the boot timeout. A watchdog line alone is not enough, and neither is an oops: run 41835867674 had the same oops
+# on Arch Linux and passed. The limit is about three times the longest lockup that recovered.
+SOFT_LOCKUP = re.compile(r"soft lockup - CPU#\d+ stuck for (\d+)s")
+SOFT_LOCKUP_LIMIT = 300
+
+
+def stuck_in(text):
+    """The line part that shows that the guest gave up booting, or None: a STUCK message, or a soft lockup of at least
+    SOFT_LOCKUP_LIMIT seconds."""
+    found = STUCK.search(text)
+    if found:
+        return found.group(0)
+    for lockup in SOFT_LOCKUP.finditer(text):
+        if int(lockup.group(1)) >= SOFT_LOCKUP_LIMIT:
+            return lockup.group(0)
+    return None
+
+
 # What Gnoblin logs when its Lua runtime is gone for the rest of the session: the supervisor could not recover it and
 # keeps the compositor alive without it, so "runtime running" never comes (src/session, notify_runtime_recovery_failed
 # follows each). A runtime failure that the supervisor recovers ("restarting Lua runtime worker") is not one of them.
@@ -659,13 +681,13 @@ class Guest:
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
                 raise CheckFailed("QEMU exited during boot", tail(serial.read_text(errors="replace")))
-            # A guest that has given up (emergency mode, PID 1 frozen, a kernel panic) never lets SSH in: say so now,
-            # rather than after the whole boot timeout.
+            # A guest that has given up (emergency mode, PID 1 frozen, a kernel panic, a soft lockup that does not end)
+            # never lets SSH in: say so now, rather than after the whole boot timeout.
             text = serial.read_text(errors="replace") if serial.exists() else ""
-            stuck = STUCK.search(text)
+            stuck = stuck_in(text)
             if stuck:
                 self.keep_screen(settle=30)
-                raise GuestStuck(f"the guest stopped booting: {stuck.group(0)}", tail(text))
+                raise GuestStuck(f"the guest stopped booting: {stuck}", tail(text))
             try:
                 code, _, _ = self.root("test -e /var/lib/cloud/instance/boot-finished", timeout=30, check=False)
                 if code == 0:

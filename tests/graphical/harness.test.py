@@ -384,6 +384,64 @@ class StuckForms(unittest.TestCase):
         self.assertIsNone(harness.STUCK.search(stopped))
 
 
+# Run 41947714180, Arch Linux aarch64 (failed): a module load oopses, and the next modprobe spins on the lock that the
+# dead task held. The watchdog reports the same CPU every 22 s, until the boot timeout (1647 s).
+ARCH_LOCKUP = """\
+[   39.246038] Internal error: Oops: 0000000096000047 [#1]  SMP
+[   96.225430] watchdog: BUG: soft lockup - CPU#0 stuck for 26s! [modprobe:398]
+[   96.226003] CPU: 0 UID: 0 PID: 398 Comm: modprobe Tainted: G      D             7.3.1-2-aarch64-ARCH #1 PREEMPT(full)
+[   96.226607]  queued_spin_lock_slowpath+0x38/0x5e0 (P)
+[   96.226638]  idempotent_init_module+0xa4/0x2b0
+[  120.225194] watchdog: BUG: soft lockup - CPU#0 stuck for 48s! [modprobe:398]
+[  168.225223] watchdog: BUG: soft lockup - CPU#0 stuck for 93s! [modprobe:398]
+[  192.225181] watchdog: BUG: soft lockup - CPU#0 stuck for 116s! [modprobe:398]
+[  372.225235] watchdog: BUG: soft lockup - CPU#0 stuck for 283s! [modprobe:398]
+[  396.225225] watchdog: BUG: soft lockup - CPU#0 stuck for 306s! [modprobe:398]
+[  420.225250] watchdog: BUG: soft lockup - CPU#0 stuck for 328s! [modprobe:398]
+"""
+
+# Run 41918451629, Fedora 44 aarch64 (passed): the longest soft lockup that recovered in the arm64 legs of runs
+# 41835867674 to 41947714180, then a short one on another CPU, then the boot went on.
+FEDORA_44_LOCKUP = """\
+[   96.998942] watchdog: BUG: soft lockup - CPU#3 stuck for 34s! [systemd:1]
+[  123.786103] watchdog: BUG: soft lockup - CPU#3 stuck for 59s! [systemd:1]
+[  148.986899] watchdog: BUG: soft lockup - CPU#3 stuck for 82s! [systemd:1]
+[  174.877227] watchdog: BUG: soft lockup - CPU#3 stuck for 106s! [systemd:1]
+[  241.306379] watchdog: BUG: soft lockup - CPU#1 stuck for 56s! [systemd:1]
+[  OK  ] Reached target multi-user.target - Multi-User System.
+"""
+
+
+class SoftLockup(unittest.TestCase):
+    """A soft lockup of at least SOFT_LOCKUP_LIMIT seconds means the guest gave up; a shorter one recovers."""
+
+    def test_the_arch_lockup_matches_at_the_limit(self):
+        self.assertEqual(harness.stuck_in(ARCH_LOCKUP), "soft lockup - CPU#0 stuck for 306s")
+        before = ARCH_LOCKUP.split("[  396.225225]")[0]
+        self.assertIsNone(harness.stuck_in(before))  # 283 s: not yet
+
+    def test_the_longest_lockup_that_recovered_does_not_match(self):
+        self.assertIsNone(harness.stuck_in(FEDORA_44_LOCKUP))
+
+    def test_the_limit_is_well_above_every_lockup_that_recovered(self):
+        self.assertGreaterEqual(harness.SOFT_LOCKUP_LIMIT, 2 * 106)
+
+    def test_the_other_forms_still_match_through_stuck_in(self):
+        self.assertIn("unit=emergency", harness.stuck_in(FEDORA_42_EMERGENCY))
+        self.assertIsNone(harness.stuck_in(FEDORA_42_BOOT))
+
+    def test_a_long_lockup_fails_the_boot_at_once(self):
+        work = Path(tempfile.mkdtemp())
+        (work / "serial.log").write_text(ARCH_LOCKUP)
+        guest = harness.Guest.__new__(harness.Guest)
+        guest.out, guest.process = work, type("Running", (), {"poll": lambda self: None})()
+        guest.root = lambda *a, **k: (1, "", "")
+        started = time.monotonic()
+        with self.assertRaisesRegex(harness.GuestStuck, "stuck for 306s"):
+            guest.wait_ssh(8)
+        self.assertLess(time.monotonic() - started, 5)
+
+
 class BootRetry(unittest.TestCase):
     """A guest whose serial console shows that it gave up booting fails at once. An emulated guest boots once more
     from a fresh disk (run 41770211755, Fedora 44 aarch64: systemd froze after a soft lockup); a KVM guest does not."""

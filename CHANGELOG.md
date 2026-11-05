@@ -462,7 +462,8 @@ composing, time}`. `text` is the character a press types. Gnoblin feeds each pre
 - An emulated graphical guest waits 10 minutes for its disks (systemd credentials, without changing the image), also
   on Fedora 41 and 42, where SELinux kept the drop-in out of the real root. A guest that goes to emergency mode or
   freezes fails `boot` at once, with a picture of its screen, and is booted once more from a fresh disk. This also
-  covers a guest whose serial console shows only sulogin or the audit record of the emergency service.
+  covers a guest whose serial console shows only sulogin or the audit record of the emergency service, and a guest
+  with a soft lockup of 300 s or more (the longest that recovered in CI lasted 106 s).
 - The graphical VM test fails `session` at once when Gnoblin logs that its Lua runtime is lost for the session,
   instead of after the 600 s session timeout, and says why gnoblinctl cannot reach the session. A failed `session`
   keeps a picture of the screen and where each compositor thread is (`compositor-threads.txt`, with an `eu-stack`

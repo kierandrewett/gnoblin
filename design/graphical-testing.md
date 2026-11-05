@@ -320,12 +320,18 @@ Two more settings apply to a guest without KVM:
   image is not changed.
 - A guest that has given up booting fails `boot` at once, not after the boot timeout. The serial console shows it:
   emergency or rescue mode, sulogin ("the root account is locked"), the audit record of the emergency service, a
-  frozen PID 1 or a kernel panic. On Fedora 41 and 42 aarch64 `/dev/console` is tty1 (their `console=ttyS0` does not
-  exist on that machine), so systemd's own messages are only on the screen: the harness keeps a picture of it,
-  `boot-screen.png`, after a failed boot. An emulated guest then boots once more from a fresh disk, with the reason
-  printed and kept in `result.json` (`boot_retry`). The first boot races the host's speed (Fedora 44 aarch64 froze
-  after a soft lockup in one run and passed in the runs before), so a second boot is a new draw. A KVM guest is not
-  booted again.
+  frozen PID 1, a kernel panic, or a soft lockup of 300 s or more. In the 111 arm64 legs of runs 41835867674 to
+  41947714180, 12 passing legs logged a soft lockup, and the longest that recovered lasted 106 s. In run 41947714180
+  the Arch Linux guest had a kernel oops while it loaded a module, the next `modprobe` spun on the lock that the dead
+  task held, and the watchdog reported it from 26 s to 1647 s (from 300 s it now fails `boot` and boots again). An oops
+  alone is not a sign: run 41835867674 had the same oops on Arch Linux and passed. The systemd lines "A start job is
+  running for … / no limit" are not used: only the Arch Linux image prints them on the serial console, its passing
+  boots show them for up to 66 s, and in the failed boot they follow the lockup. On Fedora 41 and 42 aarch64
+  `/dev/console` is tty1 (their `console=ttyS0` does not exist on that machine), so systemd's own messages are only on
+  the screen: the harness keeps a picture of it, `boot-screen.png`, after a failed boot. An emulated guest then boots
+  once more from a fresh disk, with the reason printed and kept in `result.json` (`boot_retry`). The first boot races
+  the host's speed (Fedora 44 aarch64 froze after a soft lockup in one run and passed in the runs before), so a second
+  boot is a new draw. A KVM guest is not booted again.
 
 The aarch64 guests run on the CPU model `max,pauth-impdef=on`, which is much faster under TCG than `max`. Every
 arm64 graphical target has run in CI.
