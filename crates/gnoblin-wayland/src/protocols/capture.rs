@@ -861,6 +861,8 @@ impl ImageCopyCaptureHandler for State {
         Some(BufferConstraints {
             size: (bounds.width as i32, bounds.height as i32).into(),
             shm: vec![wl_shm::Format::Argb8888, wl_shm::Format::Xrgb8888],
+            // Capture advertises SHM only; DMA-BUF capture is not implemented yet.
+            dma: None,
         })
     }
 
