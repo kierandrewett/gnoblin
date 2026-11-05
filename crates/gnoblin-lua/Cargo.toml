@@ -22,6 +22,9 @@ gnoblin-config = { path = "../gnoblin-config" }
 # The bindings speak the object model's vocabulary: identities, values,
 # observations, operations and ticks.
 gnoblin-model = { path = "../gnoblin-model" }
+# The schema parser: the stock schemas are embedded and parsed at run time, and an
+# extension's schema is parsed from its package, so the runtime needs the parser itself.
+gnoblin-schema = { path = "../gnoblin-schema" }
 # The document a commit carries is the configuration tree as JSON, which is the encoding the
 # configuration layer already uses for its stored last-good file.
 serde_json.workspace = true
@@ -46,7 +49,6 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # The tests drive the host through the in-process loopback against a real graph
 # built from the checked-in schema, and re-derive the expected bindings from it.
 gnoblin-client = { path = "../gnoblin-client" }
-gnoblin-schema = { path = "../gnoblin-schema" }
 # The role test serves a real socketpair and a real client, so the shipped role is
 # exercised rather than a copy of its loop.
 tempfile = "3.23.0"

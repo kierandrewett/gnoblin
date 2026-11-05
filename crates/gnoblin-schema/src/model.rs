@@ -162,6 +162,40 @@ impl ObjectType {
             || self.signals.iter().any(Signal::is_sensitive)
     }
 
+    /// The object as Lua may see it: `None` when the whole object is secret, otherwise
+    /// a copy without every property, method and signal that is itself sensitive.
+    ///
+    /// A method or signal that carries a secret parameter or field is removed whole,
+    /// because its signature cannot be exposed without the secret.
+    pub fn without_secrets(&self) -> Option<ObjectType> {
+        if self.secret {
+            return None;
+        }
+        Some(ObjectType {
+            name: self.name.clone(),
+            since: self.since,
+            secret: false,
+            properties: self
+                .properties
+                .iter()
+                .filter(|property| !property.is_sensitive())
+                .cloned()
+                .collect(),
+            methods: self
+                .methods
+                .iter()
+                .filter(|method| !method.is_sensitive())
+                .cloned()
+                .collect(),
+            signals: self
+                .signals
+                .iter()
+                .filter(|signal| !signal.is_sensitive())
+                .cloned()
+                .collect(),
+        })
+    }
+
     /// Every typed member with a description, for validation messages.
     pub fn typed_members(&self) -> Vec<(String, &Type)> {
         let mut members = Vec::new();
