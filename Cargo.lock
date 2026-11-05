@@ -184,6 +184,10 @@ version = "0.2.0-alpha.0"
 [[package]]
 name = "gnoblin-config"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-testkit",
+ "serde_json",
+]
 
 [[package]]
 name = "gnoblin-diag"
