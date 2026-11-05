@@ -247,6 +247,19 @@ pub enum InputEvent {
         /// The position within that output.
         position: Point,
     },
+    /// The pointer moved relative to where it is, in logical pixels.
+    ///
+    /// A mouse is a relative device: the hardware reports a delta rather than a
+    /// position, so the seat applies the delta to the position it already holds and
+    /// keeps the result inside the layout. The unit is whole logical pixels; a backend
+    /// reading a finer device accumulates the fraction and reports the whole part,
+    /// which is the same rounding the compositor's integer layout does anyway.
+    PointerMotionRelative {
+        /// Horizontal movement.
+        dx: i32,
+        /// Vertical movement.
+        dy: i32,
+    },
     /// The pointer left every output.
     PointerLeave,
     /// A pointer button changed state; `button` is the Linux input event code.

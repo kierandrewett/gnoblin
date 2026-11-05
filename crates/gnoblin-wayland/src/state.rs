@@ -72,6 +72,13 @@ const DEFAULT_WORKSPACES: u32 = 1;
 const KEY_REPEAT_DELAY: i32 = 200;
 const KEY_REPEAT_RATE: i32 = 25;
 
+/// The offset between an evdev scan code and the key code `wl_keyboard.key` carries.
+///
+/// Wayland reserved the low eight codes for buttons it never uses, so the protocol's key
+/// code is the X11 keycode: the evdev code plus eight. Backends hand over evdev codes,
+/// because that is what the kernel reports and what the EI protocol states.
+const KEY_CODE_OFFSET: u32 = 8;
+
 /// The protocol object behind a managed window.
 ///
 /// A Wayland window is its `xdg_toplevel`; an X11 window is the X11 surface the window
@@ -864,6 +871,60 @@ impl State {
         self.set_selection_focus(client.as_ref());
     }
 
+    /// Moves the pointer to a layout position and gives it the focus it lands on.
+    ///
+    /// The serial is remembered because a client names it in a grab or an activation
+    /// request, which is the same rule a button follows.
+    fn move_pointer(&mut self, position: SmithayPoint<f64, Logical>, time: InputTime) {
+        self.pointer_position = position;
+        // A frame renderer hears the hover before the pointer focus changes: the region
+        // under the pointer is the renderer's, the surface is the window's, and the two
+        // are decided independently.
+        self.frame_pointer(Some(position), None);
+        let focus = self.surface_under(position);
+        let pointer = self.pointer.clone();
+        let serial = SERIAL_COUNTER.next_serial();
+        self.remember_input_serial(u32::from(serial));
+        pointer.motion(
+            self,
+            focus,
+            &MotionEvent {
+                location: position,
+                serial,
+                time,
+            },
+        );
+    }
+
+    /// The layout position nearest `wanted` that is inside an output.
+    ///
+    /// A relative move has no output to be relative to, so it is the seat that decides
+    /// where it lands: the output that holds the position keeps it, and a position
+    /// outside every output is clamped into the nearest one. The first output in policy
+    /// order wins a tie, which keeps the answer deterministic.
+    fn within_layout(&self, wanted: SmithayPoint<f64, Logical>) -> SmithayPoint<f64, Logical> {
+        if self.outputs.iter().any(|entry| contains(&entry.rect, wanted)) {
+            return wanted;
+        }
+        let mut best: Option<(f64, SmithayPoint<f64, Logical>)> = None;
+        for entry in &self.outputs {
+            let rect = entry.rect;
+            let x = wanted.x.clamp(
+                f64::from(rect.x),
+                f64::from(rect.x + i32::try_from(rect.width).unwrap_or(i32::MAX) - 1),
+            );
+            let y = wanted.y.clamp(
+                f64::from(rect.y),
+                f64::from(rect.y + i32::try_from(rect.height).unwrap_or(i32::MAX) - 1),
+            );
+            let distance = (x - wanted.x).powi(2) + (y - wanted.y).powi(2);
+            if best.is_none_or(|(best_distance, _)| distance < best_distance) {
+                best = Some((distance, SmithayPoint::from((x, y))));
+            }
+        }
+        best.map_or(self.pointer_position, |(_, position)| position)
+    }
+
     /// Drops the pointer's focus, so a covered client cannot receive a button.
     pub(crate) fn clear_pointer_focus(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
@@ -1455,6 +1516,16 @@ pub(crate) fn x11_geometry(rect: Rect) -> Rectangle<i32, Logical> {
     )
 }
 
+/// Whether a rectangle holds a layout point.
+///
+/// The upper edges are exclusive, because a point on the right or bottom edge of a
+/// monitor is a point on the next one, and a point on the last one is outside it.
+fn contains(rect: &Rect, point: SmithayPoint<f64, Logical>) -> bool {
+    let right = f64::from(rect.x + i32::try_from(rect.width).unwrap_or(i32::MAX));
+    let bottom = f64::from(rect.y + i32::try_from(rect.height).unwrap_or(i32::MAX));
+    point.x >= f64::from(rect.x) && point.x < right && point.y >= f64::from(rect.y) && point.y < bottom
+}
+
 /// Whether a surface has a committed buffer, which is what makes a toplevel
 /// mapped.
 ///
@@ -1498,28 +1569,25 @@ impl Host for State {
                 let Some(entry) = self.outputs.iter().find(|entry| entry.backend == output) else {
                     return;
                 };
-                let position = SmithayPoint::from((
-                    f64::from(position.x + entry.rect.x),
-                    f64::from(position.y + entry.rect.y),
-                ));
-                self.pointer_position = position;
-                // A frame renderer hears the hover before the pointer focus changes:
-                // the region under the pointer is the renderer's, the surface is the
-                // window's, and the two are decided independently.
-                self.frame_pointer(Some(position), None);
-                let focus = self.surface_under(position);
-                let pointer = self.pointer.clone();
-                let serial = SERIAL_COUNTER.next_serial();
-                self.remember_input_serial(u32::from(serial));
-                pointer.motion(
-                    self,
-                    focus,
-                    &MotionEvent {
-                        location: position,
-                        serial,
-                        time,
-                    },
+                self.move_pointer(
+                    SmithayPoint::from((
+                        f64::from(position.x + entry.rect.x),
+                        f64::from(position.y + entry.rect.y),
+                    )),
+                    time,
                 );
+            }
+            InputEvent::PointerMotionRelative { dx, dy } => {
+                // A relative device states a delta rather than a position, which is what
+                // a mouse and an EI client both send. The delta is applied to the
+                // position the seat holds and the result is kept inside the layout, so a
+                // fast move stops at an edge instead of leaving every output.
+                let wanted = SmithayPoint::from((
+                    self.pointer_position.x + f64::from(dx),
+                    self.pointer_position.y + f64::from(dy),
+                ));
+                let position = self.within_layout(wanted);
+                self.move_pointer(position, time);
             }
             InputEvent::PointerLeave => {
                 self.frame_pointer(None, None);
@@ -1568,9 +1636,15 @@ impl Host for State {
                 let serial = SERIAL_COUNTER.next_serial();
                 self.remember_input_serial(u32::from(serial));
                 let key_state = if pressed { KeyState::Pressed } else { KeyState::Released };
+                // The event states an evdev scan code, which is the number the kernel and
+                // the EI protocol call a key code; the keymap is indexed by the X11 keycode
+                // that `wl_keyboard.key` carries, which is the same number plus the eight
+                // the protocol reserves for the buttons it never uses. The translation
+                // belongs here and nowhere else: `gnoblin_backend::nested::input` removes
+                // the same eight from a host's `wl_keyboard.key` before the seat sees it.
                 keyboard.input::<(), _>(
                     self,
-                    keycode.into(),
+                    (keycode + KEY_CODE_OFFSET).into(),
                     key_state,
                     serial,
                     time,

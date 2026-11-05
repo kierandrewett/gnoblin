@@ -516,6 +516,42 @@ impl std::fmt::Debug for ControlHandle {
     }
 }
 
+/// A handle that can only inject input.
+///
+/// Everything it queues takes the seat's own path, so the session lock's input gate,
+/// grabs, bindings and focus apply to it exactly as they do to a device. That is why it
+/// is the seam an input producer outside this crate uses: the EIS server in
+/// `gnoblin-input` is one, and a test's synthetic click is another. It is deliberately
+/// narrower than [`ControlHandle`] — a producer has no reason to move a window, take a
+/// screenshot or stop the session, so it never holds the handles that could.
+#[derive(Clone)]
+pub struct InputSink {
+    control: Arc<Control>,
+}
+
+impl InputSink {
+    /// Queues an event as if the backend had delivered it.
+    pub fn inject(&self, event: InputEvent) {
+        self.control.push(Command::Input(event));
+    }
+}
+
+impl std::fmt::Debug for InputSink {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("InputSink").finish_non_exhaustive()
+    }
+}
+
+impl ControlHandle {
+    /// The input-only handle a producer outside this crate delivers through.
+    #[must_use]
+    pub fn input_sink(&self) -> InputSink {
+        InputSink {
+            control: Arc::clone(&self.control),
+        }
+    }
+}
+
 /// One command a control handle queued for the loop.
 ///
 /// They share a queue because they share a wake-up: a test that moves a window and

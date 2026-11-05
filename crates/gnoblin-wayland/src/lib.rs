@@ -37,6 +37,11 @@
 //!   nothing, and
 //!   [`State::capture`]/[`State::capture_allowed`]/[`State::selection_allowed`] say
 //!   what a capture or clipboard path may do.
+//! - Injected input is the seat's own path. [`InputSink`] is the input-only handle a
+//!   producer outside this crate delivers through — the EIS server in `gnoblin-input` is
+//!   the one the plan names — and what it queues becomes an [`gnoblin_backend::InputEvent`]
+//!   at the backend's own input hook, so the lock gate, grabs, bindings and focus apply
+//!   to it exactly as they apply to a device.
 //!
 //! # What is deliberately not here
 //!
@@ -113,7 +118,7 @@ mod xwayland;
 
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use observation::{ActivationDenial, LockObservation, ObservedLayer, ObservedWindow, Observer, SessionSnapshot};
-pub use server::{Config, ControlHandle, FOCUS_TIMEOUT, LoopError, Server, StartupError};
+pub use server::{Config, ControlHandle, FOCUS_TIMEOUT, InputSink, LoopError, Server, StartupError};
 pub use state::State;
 pub use xwayland::XwaylandSession;
 
