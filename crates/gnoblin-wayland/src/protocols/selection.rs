@@ -61,7 +61,7 @@ use crate::State;
 
 /// The selection targets the session holds a source for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Target {
+pub(crate) enum SelectionKind {
     /// The clipboard: what `Ctrl+V` pastes.
     Clipboard,
     /// The primary selection: what a middle click pastes.
@@ -83,18 +83,18 @@ pub(crate) struct Selections {
 
 impl Selections {
     /// The mime types of a target, for the observation.
-    fn mime_types(&self, target: Target) -> Option<Vec<String>> {
+    fn mime_types(&self, target: SelectionKind) -> Option<Vec<String>> {
         match target {
-            Target::Clipboard => self.clipboard.clone(),
-            Target::Primary => self.primary.clone(),
+            SelectionKind::Clipboard => self.clipboard.clone(),
+            SelectionKind::Primary => self.primary.clone(),
         }
     }
 
     /// Replaces a target's selection.
-    fn set(&mut self, target: Target, mime_types: Option<Vec<String>>) {
+    fn set(&mut self, target: SelectionKind, mime_types: Option<Vec<String>>) {
         let slot = match target {
-            Target::Clipboard => &mut self.clipboard,
-            Target::Primary => &mut self.primary,
+            SelectionKind::Clipboard => &mut self.clipboard,
+            SelectionKind::Primary => &mut self.primary,
         };
         *slot = mime_types;
     }
@@ -108,8 +108,8 @@ impl SelectionHandler for State {
     fn new_selection(&mut self, ty: SelectionTarget, source: Option<SelectionSource>, seat: Seat<Self>) {
         let _ = &seat;
         let target = match ty {
-            SelectionTarget::Clipboard => Target::Clipboard,
-            SelectionTarget::Primary => Target::Primary,
+            SelectionTarget::Clipboard => SelectionKind::Clipboard,
+            SelectionTarget::Primary => SelectionKind::Primary,
         };
         // Captured now, while the source's client is certainly there: asking later
         // would be asking a resource that may be gone.
@@ -133,8 +133,8 @@ impl SelectionHandler for State {
         let _ = user_data;
         let _ = &seat;
         let target = match ty {
-            SelectionTarget::Clipboard => Target::Clipboard,
-            SelectionTarget::Primary => Target::Primary,
+            SelectionTarget::Clipboard => SelectionKind::Clipboard,
+            SelectionTarget::Primary => SelectionKind::Primary,
         };
         // A client-set selection never reaches here: Smithay forwards that `receive` to
         // the source's own client, which is what keeps the bytes out of the compositor.
@@ -179,7 +179,7 @@ impl WlrDataControlHandler for State {
 impl State {
     /// The mime types of the current clipboard selection, for a diagnostics reader.
     pub(crate) fn clipboard_mime_types(&self) -> Option<Vec<String>> {
-        self.selections.mime_types(Target::Clipboard)
+        self.selections.mime_types(SelectionKind::Clipboard)
     }
 
     /// Tells the clipboard which connection has focus.

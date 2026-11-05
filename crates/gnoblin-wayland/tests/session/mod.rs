@@ -14,7 +14,7 @@
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
-use std::os::fd::{AsFd, OwnedFd};
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -32,13 +32,18 @@ use wayland_client::protocol::{
     wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
-use wayland_protocols::ext::data_control::v1::client::ext_data_control_manager_v1;
+use wayland_protocols::ext::data_control::v1::client::{
+    ext_data_control_device_v1, ext_data_control_manager_v1, ext_data_control_offer_v1, ext_data_control_source_v1,
+};
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1, ext_foreign_toplevel_list_v1,
 };
 use wayland_protocols::wp::security_context::v1::client::{wp_security_context_manager_v1, wp_security_context_v1};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols_wlr::data_control::v1::client::{
+    zwlr_data_control_device_v1, zwlr_data_control_manager_v1, zwlr_data_control_offer_v1, zwlr_data_control_source_v1,
+};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1, zwlr_foreign_toplevel_manager_v1,
 };
@@ -49,6 +54,9 @@ pub const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// `BTN_LEFT` from `linux/input-event-codes.h`.
 pub const BTN_LEFT: u32 = 0x110;
+
+/// The bytes a test's clipboard source answers a paste with.
+pub const CLIPBOARD_BYTES: &[u8] = b"gnoblin clipboard";
 
 /// What a worker thread can reach of a running session.
 #[derive(Clone)]
@@ -211,12 +219,18 @@ pub struct Toplevel {
     pub closed: bool,
     /// The outputs it entered.
     pub outputs: Vec<u32>,
+    /// The identifier, from `ext_foreign_toplevel_list_v1`.
+    pub identifier: String,
 }
 
 /// What a test's client records from the events it receives.
 #[derive(Default)]
 pub struct App {
-    /// Every global the session advertised, by interface name and version.
+    /// Every global the session advertised to this connection.
+    ///
+    /// Filled from the live [`GlobalList`] after each round trip rather than from the
+    /// `wl_registry` events: `registry_queue_init` consumes the initial burst before
+    /// the client state exists, so only the library's own list has it.
     pub globals: BTreeMap<String, u32>,
     /// The keyboard object, created when the seat announced the capability.
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -245,14 +259,20 @@ pub struct App {
     pub token: Option<String>,
     /// The mime types of the current clipboard offer, or `None` for no selection.
     pub selection: Option<Vec<String>>,
+    /// The offer object the current selection names, so a test can paste from it.
+    pub selection_offer: Option<wl_data_offer::WlDataOffer>,
     /// How many selection events arrived, so a test can wait for a change.
     pub selection_events: u32,
     /// The mime types of every offer this client was given, by object id.
     pub offers: BTreeMap<u32, Vec<String>>,
     /// The mime type a `wl_data_source.send` carried, with the file descriptor.
-    pub sends: Vec<(String, OwnedFd)>,
+    pub sends: Vec<String>,
     /// Whether the server cancelled this client's source.
     pub source_cancelled: bool,
+    /// The wlr foreign-toplevel handles, so a test can send a taskbar's requests.
+    pub handles: BTreeMap<u32, zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1>,
+    /// The ext foreign-toplevel handles.
+    pub ext_handles: BTreeMap<u32, ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1>,
     /// The wlr foreign-toplevel handles, by object id.
     pub toplevels: BTreeMap<u32, Toplevel>,
     /// The ext foreign-toplevel identifiers, by object id.
@@ -260,9 +280,9 @@ pub struct App {
 }
 
 impl App {
-    /// The interface names the session advertised.
-    pub fn interfaces(&self) -> Vec<&str> {
-        self.globals.keys().map(String::as_str).collect()
+    /// The interface names the session advertised, as of the last round trip.
+    pub fn interfaces(&self) -> Vec<String> {
+        self.globals.keys().cloned().collect()
     }
 
     /// Whether the session advertised a global.
@@ -285,12 +305,20 @@ pub struct Client {
     pub shm: wl_shm::WlShm,
     pub wm_base: xdg_wm_base::XdgWmBase,
     pub seat: wl_seat::WlSeat,
+    /// The output the client bound, which is what a foreign-toplevel handle's
+    /// `output_enter` names: without one the compositor has no object to send.
+    pub output: wl_output::WlOutput,
 }
 
 impl Client {
     /// Connects to a socket and binds the globals every protocol needs.
     pub fn connect(socket: &Path) -> Self {
         let stream = UnixStream::connect(socket).expect("the session is listening");
+        // A socket the server never accepts would block the round trip for ever; a
+        // read timeout turns that into a failed test instead of a hung binary.
+        stream
+            .set_read_timeout(Some(TIMEOUT))
+            .expect("a read timeout on the client socket");
         let connection = Connection::from_socket(stream).expect("a client connection");
         let (globals, queue) = registry_queue_init::<App>(&connection).expect("the global list");
         let qh = queue.handle();
@@ -302,6 +330,9 @@ impl Client {
             .bind(&qh, 1..=5, ())
             .expect("every session advertises xdg_wm_base");
         let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=7, ()).expect("every session advertises wl_seat");
+        let output: wl_output::WlOutput = globals
+            .bind(&qh, 1..=4, ())
+            .expect("every session advertises wl_output");
         let mut client = Self {
             connection,
             queue,
@@ -312,6 +343,7 @@ impl Client {
             shm,
             wm_base,
             seat,
+            output,
         };
         client.roundtrip();
         client
@@ -320,6 +352,18 @@ impl Client {
     /// Processes every event the server has sent.
     pub fn roundtrip(&mut self) {
         self.queue.roundtrip(&mut self.state).expect("a round trip");
+        self.refresh_globals();
+    }
+
+    /// Copies the live global list into the state a test reads.
+    fn refresh_globals(&mut self) {
+        let mut globals = BTreeMap::new();
+        self.globals.contents().with_list(|list| {
+            for global in list {
+                globals.insert(global.interface.clone(), global.version);
+            }
+        });
+        self.state.globals = globals;
     }
 
     /// Processes whatever has arrived, then waits for the predicate to hold.
@@ -439,16 +483,9 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // `registry_queue_init` keeps the live list; this copy is the one a test reads
-        // after the fact, because it survives the round trip that discovered it.
-        if let wl_registry::Event::Global {
-            name: _,
-            interface,
-            version,
-        } = event
-        {
-            state.globals.insert(interface, version);
-        }
+        // The live list in `GlobalListContents` is the record; `Client::roundtrip` copies
+        // it, so nothing is collected from the events themselves.
+        let _ = (state, event);
     }
 }
 
@@ -594,6 +631,10 @@ impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for App {
 }
 
 impl Dispatch<wl_data_device::WlDataDevice, ()> for App {
+    wayland_client::event_created_child!(App, wl_data_device::WlDataDevice, [
+        wl_data_device::EVT_DATA_OFFER_OPCODE => (wl_data_offer::WlDataOffer, ()),
+    ]);
+
     fn event(
         state: &mut Self,
         device: &wl_data_device::WlDataDevice,
@@ -613,6 +654,7 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for App {
                 state.selection = id
                     .as_ref()
                     .and_then(|offer| state.offers.get(&offer.id().protocol_id()).cloned());
+                state.selection_offer = id.clone();
                 let _ = (device, qh);
             }
             _ => {}
@@ -649,7 +691,13 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_data_source::Event::Send { mime_type, fd } => state.sends.push((mime_type, fd)),
+            wl_data_source::Event::Send { mime_type, fd } => {
+                state.sends.push(mime_type);
+                // The source is the client: it answers the request by writing into the
+                // pipe the destination was given. Nothing in the compositor copies it.
+                let mut file = std::fs::File::from(fd);
+                let _ = std::io::Write::write_all(&mut file, CLIPBOARD_BYTES);
+            }
             wl_data_source::Event::Cancelled => state.source_cancelled = true,
             _ => {}
         }
@@ -657,6 +705,11 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for App {
 }
 
 impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()> for App {
+    wayland_client::event_created_child!(App, zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, [
+        zwlr_foreign_toplevel_manager_v1::EVT_TOPLEVEL_OPCODE =>
+            (zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, ()),
+    ]);
+
     fn event(
         state: &mut Self,
         _: &zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
@@ -668,6 +721,7 @@ impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()
         match event {
             zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => {
                 state.toplevels.entry(toplevel.id().protocol_id()).or_default();
+                state.handles.insert(toplevel.id().protocol_id(), toplevel);
             }
             zwlr_foreign_toplevel_manager_v1::Event::Finished => {}
             _ => {}
@@ -703,6 +757,11 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, ()> 
 }
 
 impl Dispatch<ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, ()> for App {
+    wayland_client::event_created_child!(App, ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, [
+        ext_foreign_toplevel_list_v1::EVT_TOPLEVEL_OPCODE =>
+            (ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()),
+    ]);
+
     fn event(
         state: &mut Self,
         _: &ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1,
@@ -713,6 +772,7 @@ impl Dispatch<ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, ()> for Ap
     ) {
         if let ext_foreign_toplevel_list_v1::Event::Toplevel { toplevel } = event {
             state.ext_toplevels.entry(toplevel.id().protocol_id()).or_default();
+            state.ext_handles.insert(toplevel.id().protocol_id(), toplevel);
         }
     }
 }
@@ -728,7 +788,9 @@ impl Dispatch<ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()> fo
     ) {
         let entry = state.ext_toplevels.entry(handle.id().protocol_id()).or_default();
         match event {
-            ext_foreign_toplevel_handle_v1::Event::Identifier { .. } => {}
+            ext_foreign_toplevel_handle_v1::Event::Identifier { identifier } => {
+                entry.identifier.clone_from(&identifier);
+            }
             ext_foreign_toplevel_handle_v1::Event::Title { title } => entry.title = title,
             ext_foreign_toplevel_handle_v1::Event::AppId { app_id } => entry.app_id = app_id,
             ext_foreign_toplevel_handle_v1::Event::Done => entry.dones += 1,
@@ -750,5 +812,12 @@ wayland_client::delegate_noop!(App: ignore wl_data_device_manager::WlDataDeviceM
 wayland_client::delegate_noop!(App: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
 wayland_client::delegate_noop!(App: ignore xdg_activation_v1::XdgActivationV1);
 wayland_client::delegate_noop!(App: ignore ext_data_control_manager_v1::ExtDataControlManagerV1);
+wayland_client::delegate_noop!(App: ignore ext_data_control_device_v1::ExtDataControlDeviceV1);
+wayland_client::delegate_noop!(App: ignore ext_data_control_offer_v1::ExtDataControlOfferV1);
+wayland_client::delegate_noop!(App: ignore ext_data_control_source_v1::ExtDataControlSourceV1);
+wayland_client::delegate_noop!(App: ignore zwlr_data_control_manager_v1::ZwlrDataControlManagerV1);
+wayland_client::delegate_noop!(App: ignore zwlr_data_control_device_v1::ZwlrDataControlDeviceV1);
+wayland_client::delegate_noop!(App: ignore zwlr_data_control_offer_v1::ZwlrDataControlOfferV1);
+wayland_client::delegate_noop!(App: ignore zwlr_data_control_source_v1::ZwlrDataControlSourceV1);
 wayland_client::delegate_noop!(App: ignore wp_security_context_manager_v1::WpSecurityContextManagerV1);
 wayland_client::delegate_noop!(App: ignore wp_security_context_v1::WpSecurityContextV1);

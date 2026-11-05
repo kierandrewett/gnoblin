@@ -51,7 +51,7 @@ use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_types::{OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 
-use crate::access::{Access, AccessPolicy, Global, Role};
+use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::protocols::activation::Activation;
 use crate::protocols::foreign_toplevel::ForeignToplevels;
@@ -353,10 +353,15 @@ impl State {
                 let access = Arc::clone(&access);
                 move |client: &Client| AccessPolicy::allows(&*access, &client.id(), Global::WlrDataControl)
             });
-        // Which clients may create a sandbox at all is a session-wide admission
-        // question, and the answer is every client that can connect: what the sandbox
-        // buys a client is a *denied* role for the connection it creates.
-        let security_context_state = crate::protocols::security_context::global(&display_handle);
+        // A sandbox may not create another sandbox: `wp_security_context_v1` says
+        // nesting is how a sandboxed client escapes its own restrictions, so the
+        // manager is hidden from the connections that already have one. Every other
+        // connection may create one, and what the sandbox buys is a *denied* role for
+        // the connection it creates.
+        let security_context_state = crate::protocols::security_context::global(&display_handle, {
+            let access = Arc::clone(&access);
+            move |client: &Client| access.role(&client.id()) != ClientRole::Sandboxed
+        });
 
         let foreign_toplevel_global = crate::protocols::foreign_toplevel::global(&display_handle, &access);
 
@@ -491,7 +496,7 @@ impl State {
         &mut self,
         stream: std::os::unix::net::UnixStream,
         data: Arc<crate::protocols::compositor::ClientState>,
-        role: Role,
+        role: ClientRole,
     ) -> std::io::Result<Client> {
         let client = self.display_handle.insert_client(
             stream,
@@ -513,7 +518,7 @@ impl State {
         let client = self.insert_client(
             stream,
             Arc::new(crate::protocols::compositor::ClientState::new(&self.access)),
-            Role::Sandboxed,
+            ClientRole::Sandboxed,
         )?;
         debug!(client = ?client.id(), "[access] a sandboxed connection joined");
         Ok(client)

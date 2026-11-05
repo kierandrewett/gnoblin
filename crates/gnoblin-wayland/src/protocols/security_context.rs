@@ -4,7 +4,7 @@
 //! the compositor it is already connected to for a *listener*, and connects its own
 //! child processes there. Each connection that arrives on that listener is a client of
 //! its own — its own registry, its own objects — and it is marked
-//! [`crate::access::Role::Sandboxed`] before its first request is dispatched, which is
+//! [`crate::access::ClientRole::Sandboxed`] before its first request is dispatched, which is
 //! what makes "a sandboxed client sees no privileged global" true rather than hoped
 //! for.
 //!
@@ -46,6 +46,13 @@ impl SecurityContextHandler for State {
 }
 
 /// The state's security-context global, named so the field has one owner.
-pub(crate) fn global(display_handle: &DisplayHandle) -> SecurityContextState {
-    SecurityContextState::new::<State, _>(display_handle, |_| true)
+///
+/// `may_create` decides which connections may create a sandbox at all. The compositor
+/// passes "not already sandboxed", because nesting contexts is the documented way for
+/// a sandboxed client to climb out of its restrictions.
+pub(crate) fn global(
+    display_handle: &DisplayHandle,
+    may_create: impl Fn(&smithay::reexports::wayland_server::Client) -> bool + Send + Sync + 'static,
+) -> SecurityContextState {
+    SecurityContextState::new::<State, _>(display_handle, may_create)
 }

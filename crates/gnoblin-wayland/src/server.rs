@@ -49,7 +49,7 @@ use gnoblin_output::LayoutError;
 use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wm::WmOptions;
 
-use crate::access::Role;
+use crate::access::ClientRole;
 use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
 use crate::protocols::compositor::ClientState;
@@ -73,7 +73,7 @@ pub struct Config {
     pub socket_path: Option<PathBuf>,
     /// Where the session's own processes connect.
     ///
-    /// A connection accepted here is recorded as [`crate::access::Role::Privileged`]
+    /// A connection accepted here is recorded as [`crate::access::ClientRole::Privileged`]
     /// and may bind the privileged globals; a connection on the ordinary socket may
     /// not. [`None`] means a session with no privileged path, which is the safe
     /// default: nothing is privileged by accident.
@@ -190,7 +190,7 @@ impl Server {
             .insert_source(
                 Generic::new(listener, Interest::READ, Mode::Level),
                 |_, listener, state: &mut State| {
-                    accept_clients(listener, state, Role::Unprivileged);
+                    accept_clients(listener, state, ClientRole::Unprivileged);
                     Ok(PostAction::Continue)
                 },
             )
@@ -204,7 +204,7 @@ impl Server {
                 .insert_source(
                     Generic::new(privileged, Interest::READ, Mode::Level),
                     |_, listener, state: &mut State| {
-                        accept_clients(listener, state, Role::Privileged);
+                        accept_clients(listener, state, ClientRole::Privileged);
                         Ok(PostAction::Continue)
                     },
                 )
@@ -505,7 +505,7 @@ fn is_output_change(event: &BackendEvent) -> bool {
 ///
 /// The role is decided by which socket the connection arrived on and is recorded
 /// before the client's first request, so its registry answer already knows.
-fn accept_clients(listener: &UnixListener, state: &mut State, role: Role) {
+fn accept_clients(listener: &UnixListener, state: &mut State, role: ClientRole) {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {

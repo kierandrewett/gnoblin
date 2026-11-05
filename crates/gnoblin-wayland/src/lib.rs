@@ -117,7 +117,7 @@ pub use server::{Config, ControlHandle, FOCUS_TIMEOUT, LoopError, Server, Startu
 pub use state::State;
 pub use xwayland::XwaylandSession;
 
-pub use access::{Access, AccessPolicy, Global, Registration, Role};
+pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
 
 // The dispatch glue: one call implements `Dispatch` and `GlobalDispatch` for every
 // `Dispatch2` implementation below, which is why no protocol module carries its own

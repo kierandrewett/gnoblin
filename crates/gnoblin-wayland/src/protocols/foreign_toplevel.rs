@@ -122,7 +122,7 @@ struct Sent {
 }
 
 /// One handle object and the manager it belongs to.
-struct Handle {
+struct HandleObject {
     /// The manager that created it, so `stop` can retire exactly its handles.
     manager: ZwlrForeignToplevelManagerV1,
     /// The handle object itself.
@@ -130,13 +130,13 @@ struct Handle {
 }
 
 /// The published record of one window.
-struct Entry {
+struct ToplevelEntry {
     /// The window manager's identity for the window.
     window: WindowId,
     /// The standardised list's handle for the window, shared by every list instance.
     ext: ForeignToplevelHandle,
     /// One handle object per binding of the wlr manager.
-    handles: Vec<Handle>,
+    handles: Vec<HandleObject>,
     /// What those handles have been told.
     sent: Sent,
 }
@@ -144,7 +144,7 @@ struct Entry {
 /// The published window list.
 #[derive(Default)]
 pub(crate) struct ForeignToplevels {
-    entries: Vec<Entry>,
+    entries: Vec<ToplevelEntry>,
     /// The manager bindings that asked for events.
     ///
     /// A manager leaves the list when its client sends `stop`, because the protocol
@@ -333,7 +333,7 @@ impl State {
         manager: &ZwlrForeignToplevelManagerV1,
         client: &Client,
         window: WindowId,
-    ) -> Option<Handle> {
+    ) -> Option<HandleObject> {
         match client.create_resource::<ZwlrForeignToplevelHandleV1, _, State>(
             &self.display_handle,
             MANAGER_VERSION.min(manager.version()),
@@ -341,7 +341,7 @@ impl State {
         ) {
             Ok(object) => {
                 manager.toplevel(&object);
-                Some(Handle {
+                Some(HandleObject {
                     manager: manager.clone(),
                     object,
                 })
@@ -360,7 +360,7 @@ impl State {
     pub(crate) fn sync_foreign_toplevels(&mut self) {
         let active = self.wm.active_workspace();
         let focused = self.wm.focused();
-        let windows: Vec<Published> = self
+        let windows: Vec<ToplevelState> = self
             .wm
             .windows()
             .map(|window| {
@@ -377,7 +377,7 @@ impl State {
                 if focused == Some(window.id) {
                     states.0 |= States::ACTIVATED;
                 }
-                Published {
+                ToplevelState {
                     window: window.id,
                     title: window.title.clone(),
                     app_id: window.app_id.clone(),
@@ -496,7 +496,7 @@ impl State {
     }
 
     /// Publishes a window that was not in the list yet.
-    fn publish_foreign_toplevel(&mut self, published: &Published) {
+    fn publish_foreign_toplevel(&mut self, published: &ToplevelState) {
         let identifier = identifier(published.window);
         let ext = self.foreign_toplevel_list_state.new_toplevel_with_identifier::<State>(
             published.title.clone(),
@@ -512,7 +512,7 @@ impl State {
                 handles.push(handle);
             }
         }
-        self.foreign_toplevels.entries.push(Entry {
+        self.foreign_toplevels.entries.push(ToplevelEntry {
             window: published.window,
             ext,
             handles,
@@ -609,7 +609,7 @@ impl State {
 }
 
 /// One window, as the window manager states it for publication.
-struct Published {
+struct ToplevelState {
     window: WindowId,
     title: String,
     app_id: String,

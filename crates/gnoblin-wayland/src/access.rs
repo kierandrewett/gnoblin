@@ -66,6 +66,24 @@ pub enum Global {
 }
 
 impl Global {
+    /// Whether this global needs a privileged connection to see it.
+    ///
+    /// The default answer is yes, which is the safe direction: a global a lane adds
+    /// without thinking about it is hidden from applications rather than leaked to
+    /// them. An unprivileged global — one every application legitimately needs, such
+    /// as an idle-notify or an input-method manager — says so here and
+    /// [`decide`] then admits every role that is not sandboxed.
+    #[must_use]
+    pub const fn is_privileged(self) -> bool {
+        match self {
+            Self::LayerShell
+            | Self::ForeignToplevelManagement
+            | Self::ForeignToplevelList
+            | Self::DataControl
+            | Self::WlrDataControl => true,
+        }
+    }
+
     /// The name a log line and a test use, which is the protocol's own.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -98,7 +116,7 @@ impl Global {
 
 /// What a connection has earned.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Role {
+pub enum ClientRole {
     /// Connected on the session's own socket with no other qualification.
     #[default]
     Unprivileged,
@@ -112,7 +130,7 @@ pub enum Role {
     Sandboxed,
 }
 
-impl Role {
+impl ClientRole {
     /// The name a log line and a test use.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -123,28 +141,33 @@ impl Role {
             Self::Sandboxed => "sandboxed",
         }
     }
-
-    /// Whether this role may bind a privileged global.
-    #[must_use]
-    const fn earns_privileged(self) -> bool {
-        matches!(self, Self::Privileged | Self::Trusted)
-    }
 }
 
 /// The decision for one connection and one global.
 ///
 /// A pure function so the rule can be read and tested without a session: a sandbox
-/// earns nothing, the two earned roles earn everything, and an unprivileged
-/// application earns nothing.
+/// earns nothing, the two earned roles earn everything, and an unprivileged application
+/// earns exactly the globals [`Global::is_privileged`] does not claim.
 #[must_use]
-pub const fn decide(role: Role, _global: Global) -> bool {
-    role.earns_privileged()
+pub const fn decide(role: ClientRole, global: Global) -> bool {
+    match role {
+        ClientRole::Sandboxed => false,
+        ClientRole::Privileged | ClientRole::Trusted => true,
+        ClientRole::Unprivileged => !global.is_privileged(),
+    }
 }
 
-/// A decision procedure for privileged globals.
+/// A decision procedure for which globals a connection may see.
 ///
 /// The compositor's own globals answer through this, which is what lets a caller
 /// replace the roster with a policy of its own without a second code path.
+///
+/// **A filter runs inside that client's own dispatch.** `GlobalDispatch2::can_view` is
+/// called while the backend holds the client's state locked, so a policy that answers by
+/// asking the backend about the client — `Client::get_credentials`, a resource lookup —
+/// re-enters that lock and deadlocks the loop for every client on it. The roster is a
+/// lock over a map for exactly this reason: a decision must be answerable from what the
+/// compositor already recorded, never from a call back into the connection.
 pub trait AccessPolicy: Send + Sync + 'static {
     /// Whether the connection `client` may bind `global`.
     fn allows(&self, client: &ClientKey, global: Global) -> bool;
@@ -152,9 +175,9 @@ pub trait AccessPolicy: Send + Sync + 'static {
 
 /// What the roster holds for one connection.
 #[derive(Clone, Copy, Debug)]
-struct Record {
+struct Membership {
     /// What the connection is.
-    role: Role,
+    role: ClientRole,
     /// The connection's number in this session, handed out in accept order.
     number: u32,
 }
@@ -166,7 +189,7 @@ struct Record {
 /// client reads the registry.
 #[derive(Debug, Default)]
 pub struct Access {
-    connections: Mutex<HashMap<ClientKey, Record>>,
+    connections: Mutex<HashMap<ClientKey, Membership>>,
 }
 
 impl Access {
@@ -181,12 +204,12 @@ impl Access {
     /// A sandboxed connection stays sandboxed: the compositor decides a connection's
     /// role when it accepts the connection, so the only thing a later mark can do is
     /// refine an unprivileged one.
-    pub fn record(&self, client: &ClientKey, role: Role) {
+    pub fn record(&self, client: &ClientKey, role: ClientRole) {
         let mut connections = self.connections();
         if connections
             .get(client)
-            .is_some_and(|record| record.role == Role::Sandboxed)
-            && role != Role::Sandboxed
+            .is_some_and(|record| record.role == ClientRole::Sandboxed)
+            && role != ClientRole::Sandboxed
         {
             debug!(
                 client = ?client,
@@ -206,7 +229,7 @@ impl Access {
             |record| record.number,
         );
         debug!(client = ?client, role = role.as_str(), number, "[access] recorded");
-        connections.insert(client.clone(), Record { role, number });
+        connections.insert(client.clone(), Membership { role, number });
     }
 
     /// Forgets a connection that disconnected.
@@ -218,10 +241,10 @@ impl Access {
 
     /// What a connection is.
     #[must_use]
-    pub fn role(&self, client: &ClientKey) -> Role {
+    pub fn role(&self, client: &ClientKey) -> ClientRole {
         self.connections()
             .get(client)
-            .map_or(Role::Unprivileged, |record| record.role)
+            .map_or(ClientRole::Unprivileged, |record| record.role)
     }
 
     /// The connection's session number, or zero when it is not recorded.
@@ -244,7 +267,7 @@ impl Access {
     /// A poisoned roster is a bug in this crate, not a reason to refuse every client
     /// for ever: the worst case of reading an empty roster is that a privileged client
     /// is treated as unprivileged, which hides a global rather than leaking one.
-    fn connections(&self) -> std::sync::MutexGuard<'_, HashMap<ClientKey, Record>> {
+    fn connections(&self) -> std::sync::MutexGuard<'_, HashMap<ClientKey, Membership>> {
         self.connections.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
@@ -295,7 +318,7 @@ impl Drop for Registration {
 
 #[cfg(test)]
 mod tests {
-    use super::{Global, Role, decide};
+    use super::{ClientRole, Global, decide};
 
     /// Every global this crate serves, so a new one cannot skip the decision tests.
     const ALL: &[Global] = &[
@@ -310,7 +333,7 @@ mod tests {
     fn a_sandboxed_client_is_refused_every_privileged_global() {
         for global in ALL {
             assert!(
-                !decide(Role::Sandboxed, *global),
+                !decide(ClientRole::Sandboxed, *global),
                 "sandboxing must deny {}",
                 global.as_str()
             );
@@ -321,7 +344,7 @@ mod tests {
     fn an_unprivileged_client_sees_no_privileged_global() {
         for global in ALL {
             assert!(
-                !decide(Role::Unprivileged, *global),
+                !decide(ClientRole::Unprivileged, *global),
                 "an application must not see {}",
                 global.as_str()
             );
@@ -330,7 +353,7 @@ mod tests {
 
     #[test]
     fn the_two_earned_roles_see_every_privileged_global() {
-        for role in [Role::Privileged, Role::Trusted] {
+        for role in [ClientRole::Privileged, ClientRole::Trusted] {
             for global in ALL {
                 assert!(decide(role, *global), "{} must see {}", role.as_str(), global.as_str());
             }
@@ -338,8 +361,45 @@ mod tests {
     }
 
     #[test]
+    fn an_unprivileged_global_is_admitted_to_applications_but_not_to_a_sandbox() {
+        // A global a lane marks unprivileged must reach ordinary applications through
+        // the same `decide` the privileged ones use, and must still be denied inside a
+        // sandbox: this is the shape `idle_notify`, input methods and virtual
+        // keyboards take.
+        for global in ALL {
+            if global.is_privileged() {
+                assert!(!decide(ClientRole::Unprivileged, *global));
+                continue;
+            }
+            assert!(
+                decide(ClientRole::Unprivileged, *global),
+                "an application needs {}",
+                global.as_str()
+            );
+            assert!(
+                !decide(ClientRole::Sandboxed, *global),
+                "a sandbox is denied {}",
+                global.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_global_is_privileged_until_it_says_otherwise() {
+        // The safe default, stated as a test: nothing in the enum is unprivileged today,
+        // and a lane that adds a global has to opt out explicitly.
+        for global in ALL {
+            assert!(
+                global.is_privileged(),
+                "{} must opt out of privilege explicitly",
+                global.as_str()
+            );
+        }
+    }
+
+    #[test]
     fn the_default_role_is_the_one_that_grants_nothing() {
-        assert_eq!(Role::default(), Role::Unprivileged);
+        assert_eq!(ClientRole::default(), ClientRole::Unprivileged);
     }
 
     #[test]

@@ -64,7 +64,7 @@ use smithay::wayland::shell::wlr_layer::{
 };
 use tracing::{debug, trace};
 
-use gnoblin_types::{Insets, OutputId, Rect};
+use gnoblin_types::{Edge, Insets, OutputId, Rect};
 
 use crate::State;
 use crate::observation::ObservedLayer;
@@ -96,15 +96,6 @@ impl WlrLayerShellHandler for State {
     fn layer_destroyed(&mut self, surface: LayerSurface) {
         self.layer_destroyed(&surface);
     }
-}
-
-/// Which edge of an output a surface's exclusive zone lies along.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Edge {
-    Top,
-    Bottom,
-    Left,
-    Right,
 }
 
 /// One layer surface the session is showing.

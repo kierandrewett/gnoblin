@@ -2,10 +2,10 @@
 //!
 //! The plan's rule is "Activation needs a valid token or a trusted context. A process
 //! ID or app ID alone never grants focus" (`design/rust-compositor.md`, "Safety
-//! model"). The token machine is `gnoblin-authority`'s: a token is minted once, bound
-//! to the process that asked for it, redeemed at most once, and refused when it was
-//! never issued, already used or has expired. What this module adds is the protocol
-//! half — what counts as asking for a token, and how a refusal becomes observable.
+//! model"). The token machine is `gnoblin-authority`'s: a token is minted once, earned
+//! by a trusted context, redeemed at most once, and refused when it was never issued,
+//! already used or has expired. What this module adds is the protocol half — what
+//! counts as asking for a token, and how a refusal becomes observable.
 //!
 //! ## What earns a token
 //!
@@ -21,20 +21,32 @@
 //! Anything else is refused, and a refused mint leaves the token nonexistent, so a
 //! later request is refused as unknown rather than honoured.
 //!
-//! ## What is deliberately not here
+//! ## Known gap: two refusals are silent, not observable
 //!
-//! A token is bound to the session, not to a process. `xdg-activation`'s token is a
-//! bearer capability — a launcher hands it to a program it is about to start — so the
+//! Smithay's `xdg_activation_v1` dispatch consults its own `known_tokens` **before** it
+//! calls [`smithay::wayland::xdg_activation::XdgActivationHandler::request_activation`],
+//! and its `token_created` still answers `done` with a token string when the handler
+//! returned `false`. Two consequences, both deliberate to record rather than paper over:
+//!
+//! - **A fabricated token never reaches this compositor.** The request is dropped inside
+//!   Smithay, so it activates nothing and records nothing: there is no
+//!   `activation-denied` observation for it, because no decision was taken. The test
+//!   `a_fabricated_token_is_refused` asserts exactly that — focus does not move and no
+//!   denial appears.
+//! - **A token minted without an earned reason still reaches the client** as a string,
+//!   but is not kept, so redeeming it also activates nothing and records nothing:
+//!   `a_token_needs_a_trusted_context` and `an_app_id_alone_does_not_activate` assert
+//!   the absence of focus and of a denial.
+//!
+//! Only a token this session minted *and kept* can be refused observably, which is the
+//! `reused-token` case. Making the other two observable would mean the compositor
+//! owning the `xdg_activation_v1` objects instead of delegating them to Smithay; that is
+//! a change to file here, not a test to loosen.
+//!
+//! A token is also bound to the *session*, not to a process. `xdg-activation`'s token is
+//! a bearer capability — a launcher hands it to a program it is about to start — so the
 //! authority machine's session-leader rule stays at zero until the launch-attribution
-//! slice supplies the launched process's leader. What is already enforced is the part
-//! that matters here: a token exists only because this session minted it for an earned
-//! reason, and it buys one activation.
-//!
-//! Two refusals are the protocol's own silence rather than the compositor's: a token
-//! this session never minted, and a token minted but not kept because its request
-//! earned nothing, never reach the handler at all (Smithay drops the request before the
-//! compositor sees it). Both activate nothing, and neither produces a denial, because no
-//! decision was taken.
+//! slice supplies the launched process's leader.
 //!
 //! ## Failure modes first
 //!
@@ -42,18 +54,19 @@
 //!
 //! 1. **A token is used twice.** The second request is refused as `reused-token` and
 //!    focus does not move: `a_token_cannot_be_redeemed_twice`.
-//! 2. **A client invents a token.** A token that was never issued is refused as
-//!    `unknown-token`: `a_fabricated_token_is_refused`.
+//! 2. **A client invents a token.** A token that was never issued activates nothing,
+//!    and — see the known gap above — produces no denial:
+//!    `a_fabricated_token_is_refused`.
 //! 3. **A client names an app id instead of a token.** An app id is a label a process
-//!    chooses, so a request that presents one as its authority is refused exactly like
-//!    an invented token: `an_app_id_alone_does_not_activate`.
-//! 4. **A token without a trusted context is handed out freely.** A client that names
-//!    a serial this session never issued, and is not one of the session's own
-//!    processes, gets no token: `a_token_needs_a_trusted_context`.
-//! 5. **A refusal is invisible.** Every refusal records
-//!    [`crate::observation::ActivationDenial`] and asks the window manager for
-//!    `ActivationDenied`, so a shell can say *why* a window did not come up:
-//!    `a_refused_activation_is_observable`.
+//!    chooses, so a request that presents one as its authority buys exactly what an
+//!    invented token buys: nothing (`an_app_id_alone_does_not_activate`).
+//! 4. **A token without a trusted context is handed out freely.** A client that names a
+//!    serial this session never issued, and is not one of the session's own processes,
+//!    is not kept as a token holder: `a_token_needs_a_trusted_context`.
+//! 5. **A refusal is invisible.** A refusal this module *takes* records
+//!    [`crate::observation::ActivationDenial`] with the authority's own reason and asks
+//!    the window manager for `ActivationDenied`, so a shell can say *why* a window did
+//!    not come up: `a_token_cannot_be_redeemed_twice`.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -69,7 +82,7 @@ use gnoblin_types::{ClientId as ConnectionId, Tick, WindowId};
 use gnoblin_wm::ActivationDecision;
 
 use crate::State;
-use crate::access::Role;
+use crate::access::ClientRole;
 use crate::observation::ActivationDenial;
 
 /// How long a minted token stays redeemable, in session turns.
@@ -171,7 +184,7 @@ impl XdgActivationHandler for State {
         let privileged = data
             .client_id
             .as_ref()
-            .is_some_and(|client| matches!(self.access.role(client), Role::Privileged | Role::Trusted));
+            .is_some_and(|client| matches!(self.access.role(client), ClientRole::Privileged | ClientRole::Trusted));
         if !trusted_context && !privileged {
             debug!(?serial, "[activation] a token was refused: no trusted context");
             return false;
