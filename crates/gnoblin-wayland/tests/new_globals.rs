@@ -13,7 +13,8 @@
 //! - `xdg_toplevel_tag_v1`: `a_toplevel_tag_is_set`
 //! - `wp_fifo_v1`: `a_fifo_barrier_is_released_on_a_frame`
 //!
-//! `wp_alpha_modifier_v1` is implemented but not advertised, so it has no test here.
+//! `wp_alpha_modifier_v1`: `a_surface_has_one_alpha_modifier`; the factor's effect on pixels is
+//! `a_surface_alpha_factor_blends_with_the_background` in `render.rs`.
 //!
 //! Smithay posts a protocol error by closing the offending connection. The refusal test
 //! reads the error code the client receives and checks a second client still connects.
@@ -31,6 +32,7 @@ use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_callback, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, DispatchError, EventQueue, QueueHandle};
+use wayland_protocols::wp::alpha_modifier::v1::client::{wp_alpha_modifier_surface_v1, wp_alpha_modifier_v1};
 use wayland_protocols::wp::fifo::v1::client::{wp_fifo_manager_v1, wp_fifo_v1};
 use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
 use wayland_protocols::xdg::foreign::zv2::client::{
@@ -511,6 +513,30 @@ impl Dispatch<wp_fifo_v1::WpFifoV1, ()> for App {
     }
 }
 
+impl Dispatch<wp_alpha_modifier_v1::WpAlphaModifierV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &wp_alpha_modifier_v1::WpAlphaModifierV1,
+        _: wp_alpha_modifier_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1,
+        _: wp_alpha_modifier_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
 impl Dispatch<wl_shm::WlShm, ()> for App {
     fn event(_: &mut Self, _: &wl_shm::WlShm, _: wl_shm::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
 }
@@ -794,6 +820,38 @@ fn an_exported_surface_that_is_not_a_toplevel_is_refused() {
         assert!(
             client.state.exported_handles.is_empty(),
             "nothing was exported, so no handle was named"
+        );
+
+        // The refused client's connection is closed; a fresh client still gets the session.
+        let mut fresh = Client::connect(session.socket());
+        fresh.roundtrip();
+    });
+}
+
+#[test]
+fn a_surface_has_one_alpha_modifier() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let surface = client.compositor().create_surface(&client.qh, ());
+        surface.commit();
+        client.roundtrip();
+        let manager: wp_alpha_modifier_v1::WpAlphaModifierV1 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises wp_alpha_modifier_v1");
+        // The first modifier is the surface's; a second one for the same surface is refused
+        // with `wp_alpha_modifier_v1.already_constructed`, which closes this connection.
+        let _first = manager.get_surface(&surface, &client.qh, ());
+        client.roundtrip();
+        let _second = manager.get_surface(&surface, &client.qh, ());
+        let (interface, code) = client
+            .roundtrip_protocol_error()
+            .expect("the server closes a connection that builds a second modifier");
+        assert_eq!(interface, "wp_alpha_modifier_v1", "the error names the manager");
+        assert_eq!(
+            code,
+            wp_alpha_modifier_v1::Error::AlreadyConstructed as u32,
+            "the error is already_constructed"
         );
 
         // The refused client's connection is closed; a fresh client still gets the session.

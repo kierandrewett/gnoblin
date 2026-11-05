@@ -339,6 +339,10 @@ pub struct State {
     /// [`crate::protocols::wp_fifo_v1`] on each frame tick.
     #[allow(dead_code)]
     pub(crate) fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
+    /// Kept alive so `wp_alpha_modifier_v1` stays registered; the factor each surface commits
+    /// is read in [`State::sync_content`] and applied by the composer.
+    #[allow(dead_code)]
+    pub(crate) alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
     /// Kept alive so `ext_idle_notifier_v1` stays registered; the handler in
     /// [`crate::protocols::ext_idle_notify_v1`] answers its notifications.
     #[allow(dead_code)]
@@ -641,6 +645,7 @@ impl State {
         let xdg_toplevel_icon_manager = crate::protocols::xdg_toplevel_icon_v1::global(&display_handle);
         let xdg_toplevel_tag_manager = crate::protocols::xdg_toplevel_tag_v1::global(&display_handle);
         let fifo_manager_state = crate::protocols::wp_fifo_v1::global(&display_handle);
+        let alpha_modifier_state = crate::protocols::wp_alpha_modifier_v1::global(&display_handle);
         let text_input_state = crate::protocols::zwp_text_input_v3::text_input_global(&display_handle);
         let input_method_state = crate::protocols::zwp_input_method_v2::input_method_global(&display_handle, &access);
         let virtual_keyboard_state =
@@ -693,6 +698,7 @@ impl State {
             xdg_toplevel_icon_manager,
             xdg_toplevel_tag_manager,
             fifo_manager_state,
+            alpha_modifier_state,
             output_controls: OutputControlState::new(gamma_global, power_global),
             output_manager,
             text_input_state,
@@ -1557,6 +1563,8 @@ impl State {
     /// attributes when it applies a commit, so the renderer's copy is the only one that
     /// still knows what the client drew.
     fn sync_content(&mut self, window: WindowId, surface: &WlSurface) {
+        let factor = crate::protocols::wp_alpha_modifier_v1::committed_factor(surface);
+        self.composer.set_window_surface_alpha(window, factor);
         let committed = with_renderer_surface_state(surface, |state| {
             let buffer = state.buffer()?.clone();
             let view = state.view()?;

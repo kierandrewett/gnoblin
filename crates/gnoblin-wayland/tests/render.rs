@@ -43,9 +43,10 @@ use std::time::{Duration, Instant};
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_types::{OutputId, Rect, WindowId};
 use gnoblin_wayland::{Config, ControlHandle, FrameStats, LoopError, ObservedWindow, Server, SessionSnapshot};
-use wayland_client::globals::{GlobalListContents, registry_queue_init};
+use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_protocols::wp::alpha_modifier::v1::client::{wp_alpha_modifier_surface_v1, wp_alpha_modifier_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 /// How long a test waits for the session to reach a state before failing.
@@ -210,6 +211,8 @@ struct Client {
     /// The buffers the client has attached, kept so the file stays mapped.
     #[allow(dead_code)]
     buffers: Vec<(wl_buffer::WlBuffer, wl_shm_pool::WlShmPool)>,
+    /// The global list the client bound its globals from, kept so a test can bind more.
+    globals: GlobalList,
 }
 
 /// The objects of one toplevel.
@@ -246,6 +249,7 @@ impl Client {
             shm,
             wm_base,
             buffers: Vec::new(),
+            globals,
         }
     }
 
@@ -537,6 +541,51 @@ fn a_half_transparent_window_blends_with_the_background() {
 }
 
 #[test]
+fn a_surface_alpha_factor_blends_with_the_background() {
+    for_each_renderer(|backend| {
+        let session = Session::start(backend);
+        session.run(|session| {
+            let mut client = Client::connect(session.socket());
+            let window = client.create_window("Alpha");
+            let manager: wp_alpha_modifier_v1::WpAlphaModifierV1 = client
+                .globals
+                .bind(&client.qh, 1..=1, ())
+                .expect("the session advertises wp_alpha_modifier_v1");
+            let modifier = manager.get_surface(&window.surface, &client.qh, ());
+            // The factor is a fraction of the full u32 range. It is committed with the
+            // buffer below, so the first frame that shows the window already blends it.
+            modifier.set_multiplier(u32::MAX / 2);
+            client.attach_solid(&window, 100, 100, RED);
+            let observation = session.wait_for(|observation| {
+                observation
+                    .only()
+                    .is_some_and(|window| window.mapped && window.geometry.width >= 100)
+            });
+            let geometry = observation.only().expect("one window").geometry;
+            let inside = centre(Rect::new(
+                geometry.x,
+                geometry.y,
+                geometry.width.min(100),
+                geometry.height.min(100),
+            ));
+            // Red at half alpha over an opaque black background is half red.
+            let deadline = Instant::now() + TIMEOUT;
+            loop {
+                let [red, green, blue, alpha] = session.probe(inside.x, inside.y);
+                if red.abs_diff(128) <= 2 && green == 0 && blue == 0 && alpha == 255 {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "the surface factor never blended: the probe is {red} {green} {blue} {alpha}"
+                );
+                thread::sleep(Duration::from_millis(5));
+            }
+        });
+    });
+}
+
+#[test]
 fn overlapping_windows_are_drawn_in_stacking_order() {
     for_each_renderer(|backend| {
         let session = Session::start(backend);
@@ -760,6 +809,8 @@ wayland_client::delegate_noop!(App: ignore wl_surface::WlSurface);
 wayland_client::delegate_noop!(App: ignore wl_shm::WlShm);
 wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);
+wayland_client::delegate_noop!(App: ignore wp_alpha_modifier_v1::WpAlphaModifierV1);
+wayland_client::delegate_noop!(App: ignore wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1);
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
     fn event(

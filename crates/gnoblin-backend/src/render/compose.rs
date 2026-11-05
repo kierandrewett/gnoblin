@@ -97,6 +97,9 @@ struct WindowNode {
     geometry: Rect,
     /// Its visual transform, kept across node recreation.
     transform: VisualTransform,
+    /// The client's `wp_alpha_modifier_v1` factor for its surface, one when it set none.
+    /// It multiplies the window's group opacity when the window is drawn.
+    surface_alpha: f32,
     /// Its effect chain, kept for the same reason and pushed to the node.
     effects: Effects,
     /// Whether the window is on screen at all (mapped, on the active workspace).
@@ -227,6 +230,7 @@ impl Composer {
                 effects: Effects::new(),
                 visible: true,
                 content: None,
+                surface_alpha: 1.0,
                 buffer: None,
             },
         );
@@ -287,6 +291,26 @@ impl Composer {
             return;
         }
         entry.transform.opacity = opacity;
+        self.sync(window, true);
+    }
+
+    /// Sets a window's `wp_alpha_modifier_v1` factor, which multiplies its group opacity.
+    ///
+    /// A factor outside zero to one, or not finite, is clamped the same way as the group
+    /// opacity, so a bad value cannot poison the blend.
+    pub fn set_window_surface_alpha(&mut self, window: WindowId, factor: f32) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        let factor = if factor.is_finite() {
+            factor.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        if entry.surface_alpha == factor {
+            return;
+        }
+        entry.surface_alpha = factor;
         self.sync(window, true);
     }
 
@@ -519,7 +543,7 @@ impl Composer {
                 src: content.src,
                 dst,
                 transform: content.transform,
-                opacity: entry.transform.opacity,
+                opacity: entry.transform.opacity * entry.surface_alpha,
                 tint: entry.transform.tint,
                 corner_radius: entry.transform.corner_radius,
                 effects: entry.effects.clone(),

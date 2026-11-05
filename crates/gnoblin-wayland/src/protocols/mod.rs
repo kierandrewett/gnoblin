@@ -51,7 +51,7 @@
 //! | [`wp_viewporter`] | `wp_viewporter` | creates the global; Smithay validates a viewport on commit |
 //! | [`gnoblin_window_frame_v1`] | `gnoblin_window_frame_manager_v1` | frames a decoration renderer draws, their configures, regions and errors |
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
-//! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | implemented, not advertised: the composer has one opacity per window, so a factor would be accepted and not drawn |
+//! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its window's opacity when the composer draws it; a factor on a subsurface has no effect because subsurfaces are not drawn |
 //! | [`wp_fifo_v1`] | `wp_fifo_manager_v1` | a client's commits are shown in order; barriers are released on each frame tick |
 //! | [`xdg_dialog_v1`] | `xdg_wm_dialog_v1` | a modal child takes focus from its parent and the parent's focus is redirected to it until unset; the window manager floats the dialog above its parent |
 //! | [`zxdg_foreign_v2`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
