@@ -234,28 +234,47 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
 }
 
 #[test]
-fn a_committed_configuration_outlives_the_connection() {
-    // Two runtime ends: the first commits, and its process then "dies"; the second is the
-    // restarted runtime, which must find the document the first one left.
-    let (session, mut ends) = Session::start_privileged(&["runtime", "runtime"]);
+fn a_restarted_runtime_rejoins_the_same_descriptor() {
+    // The failure this prevents: the runtime dies, the guardian starts a new one, and the
+    // compositor sees a second handshake on a stream it has already served — so the restarted
+    // runtime is refused for the rest of the session. The two ends here are the same
+    // descriptor: the first client commits and goes away, and the second one presents a fresh
+    // handshake on it, exactly as a restarted child does through the descriptor the guardian
+    // kept.
+    let (session, mut ends) = Session::start_privileged(&["runtime"]);
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
-    {
-        let mut runtime = role_client(&mut ends, "runtime");
-        assert_eq!(runtime.commit_config(&document).expect("the commit"), 1);
-        assert_eq!(
-            runtime.configuration().expect("the configuration"),
-            Some((1, document.clone()))
-        );
-    }
-    let mut restarted = role_client(&mut ends, "runtime");
+    let (_role, stream) = ends.pop().expect("the runtime's end");
+    // The guardian's copy of the child's end: it outlives every child, which is what keeps the
+    // pair open between two generations.
+    let guardian_side = stream.try_clone().expect("a duplicated end");
+
+    let mut first =
+        Client::connect(UnixTransport::from_stream(stream).expect("a transport"), version()).expect("the handshake");
+    assert_eq!(first.commit_config(&document).expect("the commit"), 1);
     assert_eq!(
-        restarted.configuration().expect("the configuration"),
+        first.configuration().expect("the configuration"),
+        Some((1, document.clone()))
+    );
+    // The child dies: the end it held closes, while the guardian's copy keeps the pair open, so
+    // the compositor never sees the stream end and the next generation rejoins it.
+    drop(first);
+    let mut again = Client::connect(
+        UnixTransport::from_stream(guardian_side).expect("a transport"),
+        version(),
+    )
+    .expect("the restarted runtime handshakes on the same descriptor");
+    assert!(
+        again.capabilities().contains(Capability::CommitConfig),
+        "the role keeps its grant across a restart"
+    );
+    assert_eq!(
+        again.configuration().expect("the configuration"),
         Some((1, document.clone())),
         "the compositor keeps the last document the runtime committed"
     );
     // The next commit is the second revision, not a restart of the count.
-    assert_eq!(restarted.commit_config(&document).expect("the commit"), 2);
-    drop(session);
+    assert_eq!(again.commit_config(&document).expect("the commit"), 2);
+    assert_eq!(session.ctl(&["session", "list"]).ok().code, 0);
 }
 
 #[test]

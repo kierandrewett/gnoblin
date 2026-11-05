@@ -151,7 +151,6 @@ impl Role {
                 reason: error.to_string(),
             })
         })?;
-        let _ = transport.read_timeout(Some(PUMP_TIMEOUT));
         let mut client =
             Client::connect(transport, client_version()).map_err(|error| RoleError::Connect(error.to_string()))?;
 
@@ -167,6 +166,9 @@ impl Role {
                 .map_err(|error| RoleError::Claim(error.to_string()))?;
         }
         let host = Host::new(client, self.deadline);
+        // From here on a read that times out is "nothing yet", which is what lets the role
+        // check its own signals in the same loop.
+        host.set_read_timeout(Some(PUMP_TIMEOUT));
 
         let agents = Agents::start(&host, self.deadline, self.buses);
         reporter.ready(&[]);
@@ -216,6 +218,11 @@ impl Host {
     /// The connection, with a poisoned lock recovered rather than propagated.
     fn lock(&self) -> MutexGuard<'_, Client<UnixTransport>> {
         self.client.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Give the connection the pump's read deadline, so an idle read is "nothing yet".
+    fn set_read_timeout(&self, timeout: Option<Duration>) {
+        let _ = self.lock().set_read_timeout(timeout);
     }
 
     /// The next event the connection delivered.

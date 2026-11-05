@@ -45,7 +45,7 @@ mod version;
 pub use capability::{Capabilities, Capability};
 pub use envelope::{FLAG_SENSITIVE, UNKNOWN_MEMBER};
 pub use error::CodecError;
-pub use frame::{LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_frame, write_frame};
+pub use frame::{Frame, LENGTH_PREFIX_LEN, MAX_FRAME_LEN, read_any, read_frame, write_frame};
 pub use generated::ipc::envelope::Kind;
 pub use generated::ipc::{Envelope, Error, Event, Reply, Request};
 pub use generated::{bsm_greeter, gnoblin};

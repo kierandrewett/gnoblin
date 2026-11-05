@@ -113,6 +113,17 @@ pub(crate) enum IpcEvent {
     },
     /// One frame a client sent.
     Request { client: ClientId, envelope: Envelope },
+    /// A privileged connection's child restarted and presented a new handshake on the same
+    /// descriptor. Everything the previous session held ends, and the connection is served
+    /// again with the same identity.
+    Restarted {
+        /// Which connection it is.
+        client: ClientId,
+        /// The writing half of the new session.
+        writer: UnixStream,
+        /// What the role grants, which is the same as the previous session's.
+        capabilities: Capabilities,
+    },
     /// A client's connection ended, cleanly or otherwise.
     Closed { client: ClientId },
     /// The session's snapshot may have changed.
@@ -221,7 +232,7 @@ impl IpcServer {
             let mut handles = lock(&readers);
             match std::thread::Builder::new()
                 .name(format!("gnoblin-ipc-{}", client.get()))
-                .spawn(move || serve(connection.stream, client, version, served, grants))
+                .spawn(move || serve_privileged(connection.stream, client, version, served, grants))
             {
                 Ok(handle) => {
                     handles.insert(client, handle);
@@ -385,6 +396,96 @@ fn serve(stream: UnixStream, client: ClientId, version: Version, events: Sender<
     let _ = events.send(IpcEvent::Closed { client });
 }
 
+/// Serves one privileged connection: a sequence of sessions on one stream.
+///
+/// The runtime and the services role are restartable, and the descriptor their role owns is
+/// one stream for the session's life — the guardian holds the child's end, so the pair
+/// outlives any one child. A restarted child therefore starts again with a handshake, and
+/// this loop accepts one whenever it arrives: the previous session's requests end, and the
+/// same identity serves the new one. A stream that ends is the guardian's exit.
+fn serve_privileged(
+    stream: UnixStream,
+    client: ClientId,
+    version: Version,
+    events: Sender<IpcEvent>,
+    capabilities: Capabilities,
+) {
+    let Ok(writer) = stream.try_clone() else {
+        debug!("[ipc] a privileged connection could not be duplicated");
+        return;
+    };
+    let mut reader = std::io::BufReader::new(stream);
+    let mut live = false;
+    loop {
+        // A new session begins with a handshake, so the deadline covers exactly the wait for
+        // one. Inside a session a read may wait as long as its child is idle: a deadline there
+        // would drop a healthy connection the first time the child paused.
+        let deadline = if live { None } else { Some(HANDSHAKE_TIMEOUT) };
+        if reader.get_ref().set_read_timeout(deadline).is_err() {
+            return;
+        }
+        let hello = match gnoblin_proto::read_any(&mut reader) {
+            Ok(Some(gnoblin_proto::Frame::Handshake(hello))) => hello,
+            // One frame into a session it is an ordinary request; before a handshake it is a
+            // peer that skipped the protocol.
+            Ok(Some(gnoblin_proto::Frame::Envelope(envelope))) if live => {
+                if events.send(IpcEvent::Request { client, envelope }).is_err() {
+                    return;
+                }
+                continue;
+            }
+            Ok(Some(gnoblin_proto::Frame::Envelope(_))) => {
+                debug!("[ipc] a privileged connection sent a frame before its handshake");
+                return;
+            }
+            // A stream that ends, between sessions or inside one, is the guardian's exit.
+            Ok(None) => return,
+            Err(error) => {
+                debug!(%error, "[ipc] a privileged connection sent something that did not decode");
+                return;
+            }
+        };
+        if hello.kind != HandshakeKind::Hello {
+            debug!(kind = ?hello.kind, "[ipc] a privileged connection did not start with a hello");
+            return;
+        }
+        let answer = match gnoblin_proto::check(version, hello.version) {
+            Ok(()) => Handshake::grant(version, capabilities),
+            Err(mismatch) => {
+                info!(%mismatch, "[ipc] refused a privileged client version");
+                let _ = write_handshake(&writer, &Handshake::refuse(version));
+                return;
+            }
+        };
+        if write_handshake(&writer, &answer).is_err() {
+            return;
+        }
+        if reader.get_ref().set_read_timeout(None).is_err() || writer.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
+            return;
+        }
+        let Ok(session) = writer.try_clone() else {
+            return;
+        };
+        let announced = if live {
+            events.send(IpcEvent::Restarted {
+                client,
+                writer: session,
+                capabilities,
+            })
+        } else {
+            events.send(IpcEvent::Accepted {
+                client,
+                writer: session,
+                capabilities,
+            })
+        };
+        live = true;
+        if announced.is_err() {
+            return;
+        }
+    }
+}
+
 /// Reads the fixed-layout handshake, or nothing when the peer never sent one.
 fn read_handshake(reader: &mut std::io::BufReader<UnixStream>) -> Option<Handshake> {
     let mut frame = [0u8; gnoblin_proto::HANDSHAKE_LEN];
@@ -498,6 +599,11 @@ impl Dispatcher {
                     );
                 }
                 IpcEvent::Request { client, envelope } => self.request(client, &envelope),
+                IpcEvent::Restarted {
+                    client,
+                    writer,
+                    capabilities,
+                } => self.restart(client, writer, capabilities),
                 IpcEvent::Closed { client } => self.close(client, false),
                 IpcEvent::Changed => {
                     self.pending.store(false, Ordering::Release);
@@ -977,6 +1083,34 @@ impl Dispatcher {
         for client in broken {
             self.close(client, false);
         }
+    }
+
+    /// Serve a privileged connection again: the child behind it restarted.
+    ///
+    /// What the previous session held and offered ends, because the process that offered it
+    /// is gone; the subscriptions end with it, for the same reason. The identity and the
+    /// capability set stay: they belong to the role, not to the child.
+    fn restart(&mut self, client: ClientId, writer: UnixStream, capabilities: Capabilities) {
+        if let Some(connection) = self.connections.remove(&client) {
+            for subscription in connection.subscriptions {
+                self.store.unsubscribe(subscription.id());
+            }
+            // Dropped, not shut down: the stream carries the next session, and shutting it
+            // down would take the restarted child's connection with the dead one's.
+            drop(connection.writer);
+        }
+        let departed = self.requests.departed(client);
+        self.deliver(departed);
+        self.connections.insert(
+            client,
+            Connection {
+                writer,
+                capabilities,
+                subscriptions: Vec::new(),
+                broken: false,
+            },
+        );
+        info!(client = client.get(), "[ipc] a privileged connection restarted");
     }
 
     /// Ends one connection: its subscriptions, its writer and its reader.

@@ -34,6 +34,7 @@ use std::io::{self, BufReader, Read, Write};
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use gnoblin_proto::{CodecError, Envelope, HANDSHAKE_LEN, Handshake, read_frame, write_frame};
 
@@ -147,6 +148,13 @@ impl Transport for UnixTransport {
             .flush()
             .map_err(|error| HandshakeError::Codec(CodecError::Io(error)))?;
         Ok(())
+    }
+
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<(), crate::ClientError> {
+        self.reader
+            .get_ref()
+            .set_read_timeout(timeout)
+            .map_err(|error| crate::ClientError::Codec(CodecError::Io(error)))
     }
 
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError> {

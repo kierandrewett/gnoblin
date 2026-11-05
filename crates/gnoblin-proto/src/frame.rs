@@ -181,3 +181,105 @@ mod tests {
         assert!(matches!(envelope.kind, Some(Kind::Event(_))));
     }
 }
+
+/// What one read from a *privileged* stream produced.
+///
+/// The runtime and the services role are restartable, and a restarted child reaches the
+/// compositor on the descriptor the guardian gave its role. That descriptor is one stream for
+/// the session's life, so a new child's first frame is a handshake again. A handshake and an
+/// envelope are told apart by their first four bytes — [`MAGIC`] against a length prefix — so
+/// the two can share one stream without a length change to either.
+#[derive(Debug)]
+pub enum Frame {
+    /// A new session starts here.
+    Handshake(crate::Handshake),
+    /// One envelope of the session in progress.
+    Envelope(crate::Envelope),
+}
+
+/// Read the next thing a privileged stream carries: a handshake or an envelope.
+///
+/// `Ok(None)` is a clean end: the peer closed between frames.
+///
+/// # Errors
+///
+/// The same refusals as [`read_frame`], plus a handshake of the wrong length.
+pub fn read_any(reader: &mut impl std::io::BufRead) -> Result<Option<Frame>, CodecError> {
+    let mut prefix = [0u8; LENGTH_PREFIX_LEN];
+    let mut filled = 0;
+    while filled < prefix.len() {
+        match std::io::Read::read(reader, &mut prefix[filled..]) {
+            Ok(0) if filled == 0 => return Ok(None),
+            Ok(0) => return Err(CodecError::Truncated),
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(CodecError::Io(error)),
+        }
+    }
+    if prefix == crate::MAGIC {
+        let mut rest = [0u8; crate::HANDSHAKE_LEN - LENGTH_PREFIX_LEN];
+        match std::io::Read::read_exact(reader, &mut rest) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => return Err(CodecError::Truncated),
+            Err(error) => return Err(CodecError::Io(error)),
+        }
+        let mut frame = [0u8; crate::HANDSHAKE_LEN];
+        frame[..LENGTH_PREFIX_LEN].copy_from_slice(&prefix);
+        frame[LENGTH_PREFIX_LEN..].copy_from_slice(&rest);
+        return crate::Handshake::decode(&frame).map(|handshake| Some(Frame::Handshake(handshake)));
+    }
+    let length = u32::from_be_bytes(prefix) as usize;
+    if length > MAX_FRAME_LEN {
+        return Err(CodecError::TooLarge { len: length });
+    }
+    let mut body = vec![0u8; length];
+    std::io::Read::read_exact(reader, &mut body).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::UnexpectedEof {
+            CodecError::Truncated
+        } else {
+            CodecError::Io(error)
+        }
+    })?;
+    use prost::Message as _;
+    Ok(Some(Frame::Envelope(crate::Envelope::decode(body.as_slice())?)))
+}
+
+#[cfg(test)]
+mod any_tests {
+    use super::{Frame, read_any};
+    use crate::{Envelope, Handshake, Version, write_frame};
+
+    fn version() -> Version {
+        Version::new(0, 2, 0)
+    }
+
+    #[test]
+    fn a_privileged_stream_carries_a_second_handshake_between_sessions() {
+        // The failure this prevents: a restarted child writes its hello and the compositor
+        // reads it as a frame body, so the connection it needs is dropped instead of served.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&Handshake::hello(version()).encode());
+        write_frame(
+            &mut bytes,
+            &Envelope::request("gnoblin", "object.subscribe", 1, Vec::new()),
+        )
+        .expect("a frame");
+        bytes.extend_from_slice(&Handshake::hello(version()).encode());
+
+        let mut reader = std::io::BufReader::new(&bytes[..]);
+        let mut kinds = Vec::new();
+        while let Some(frame) = read_any(&mut reader).expect("decodes") {
+            kinds.push(match frame {
+                Frame::Handshake(handshake) => format!("{:?}", handshake.kind),
+                Frame::Envelope(envelope) => envelope.member,
+            });
+        }
+        assert_eq!(kinds, vec!["Hello", "object.subscribe", "Hello"]);
+    }
+
+    #[test]
+    fn a_closed_stream_ends_without_a_frame() {
+        let mut reader = std::io::BufReader::new(&b""[..]);
+        assert!(read_any(&mut reader).expect("a clean end").is_none());
+    }
+}

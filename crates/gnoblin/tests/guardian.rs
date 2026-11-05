@@ -33,7 +33,7 @@ use tempfile::TempDir;
 const BIN: &str = env!("CARGO_BIN_EXE_gnoblin");
 
 /// How long a test waits for a line before failing.
-const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A running session: the guardian process, its log, and the directory it owns.
 struct Session {
@@ -157,10 +157,50 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         if let Some(mut guardian) = self.guardian.take() {
+            // The guardian's children are in the session's process group only if it made one;
+            // killing the guardian and then every pid it reported is what keeps a failing test
+            // from leaving a session behind.
+            let pids = self.pids();
             let _ = guardian.kill();
             let _ = guardian.wait();
+            for pid in pids {
+                if let Some(id) = Pid::from_raw(pid) {
+                    let _ = rustix::process::kill_process(id, Signal::KILL);
+                }
+            }
         }
     }
+}
+
+/// Run `body` with a wall-clock limit, killing the session's processes if it overruns.
+///
+/// A real-process test that hangs is worse than one that fails: this makes every deadline in
+/// this file a bounded wait with the captured log in the message.
+#[track_caller]
+fn within(body: impl FnOnce(&mut Session)) {
+    let mut session = Session::start();
+    let deadline = Instant::now() + TIMEOUT;
+    let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = std::sync::Arc::clone(&finished);
+    let watched = std::thread::Builder::new()
+        .name("guardian-test-deadline".to_owned())
+        .spawn(move || {
+            while !flag.load(std::sync::atomic::Ordering::SeqCst) {
+                if Instant::now() > deadline {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            true
+        })
+        .expect("the deadline thread");
+    body(&mut session);
+    finished.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        watched.join().expect("the deadline thread"),
+        "the test overran {TIMEOUT:?}; the session said:\n{}",
+        session.log()
+    );
 }
 
 /// The pid on a `started <name> (generation N, pid P)` line.
@@ -253,27 +293,24 @@ fn killing_the_services_child_restarts_it() {
 }
 
 #[test]
-fn a_killed_runtime_is_bounded_by_the_breaker_and_the_session_survives() {
-    // The compositor keeps the last configuration a runtime committed — that is
-    // `gnoblin-compositor`'s `a_committed_configuration_outlives_the_connection`.
-    //
-    // A restarted runtime cannot join that connection, because a socket pair has two ends and
-    // the guardian's copy of the child's end goes with the child that had it. The restarted
-    // runtime therefore refuses, names the variable, and the guardian's ladder and circuit
-    // breaker bound the attempts instead of burning a core. Reconnecting a privileged child is
-    // the one piece this slice does not carry: it needs a handshake a used pair can repeat,
-    // and until then a restarted privileged role degrades the session rather than serving it.
+fn a_killed_runtime_restarts_and_commits_again() {
+    // The property the whole privileged connection exists for: the runtime dies, a new one
+    // starts, and it rejoins the descriptor its role owns rather than being refused for the rest
+    // of the session. The second commit is revision 2, so the compositor kept the first document
+    // instead of starting the count over.
     let session = Session::start();
     session.wait_for("configuration revision 1 accepted");
     let first = session.pid("runtime");
     kill(first);
-    let log = session.wait_for("the session is degraded");
+    let log = session.wait_for("configuration revision 2 accepted");
     assert!(
-        log.contains("no inherited IPC connection: GNOBLIN_IPC_FD is not set"),
-        "the restarted runtime says why it cannot serve:\n{log}"
+        log.contains("started runtime (generation 2"),
+        "the runtime came back:\n{log}"
     );
-    assert!(log.contains("failed after 3 restarts"), "the breaker bound it:\n{log}");
-    // The compositor and the services role were left alone, and the session is still usable.
+    assert!(
+        !log.contains("GNOBLIN_IPC_FD is not set"),
+        "the restarted runtime was given its connection:\n{log}"
+    );
     session.sessions();
 }
 

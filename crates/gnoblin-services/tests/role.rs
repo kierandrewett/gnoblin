@@ -40,6 +40,9 @@ struct Peer {
 impl Peer {
     /// Answer the client's hello with the grant a services connection holds.
     fn accept(stream: UnixStream) -> Peer {
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("the peer's deadline");
         let mut peer = Peer {
             reader: BufReader::new(stream.try_clone().expect("a duplicated socket")),
             stream,
@@ -60,8 +63,12 @@ impl Peer {
     }
 
     /// The next frame, or `None` when the role closed the connection.
+    /// The next frame, or a failure naming what the role did instead of sending one.
     fn next(&mut self) -> Option<Envelope> {
-        read_frame(&mut self.reader).ok().flatten()
+        match read_frame(&mut self.reader) {
+            Ok(frame) => frame,
+            Err(error) => panic!("the role sent nothing before the peer's deadline: {error}"),
+        }
     }
 
     /// Answer one request frame with a payload.
@@ -158,8 +165,8 @@ fn the_role_refuses_without_a_privileged_connection() {
 #[test]
 fn the_role_claims_the_slots_the_plan_gives_it() {
     let (role_end, peer_end) = UnixStream::pair().expect("a socket pair");
-    let mut peer = Peer::accept(peer_end);
     let running = Running::start(role_end.into_raw_fd());
+    let mut peer = Peer::accept(peer_end);
     let mut claimed = claims(&mut peer);
     claimed.sort();
     assert_eq!(
@@ -180,8 +187,8 @@ fn an_offer_the_role_cannot_draw_is_declined_at_once() {
     // draws nothing, and the offer sits until its deadline so polkitd reports "Not
     // authorized" only after two minutes.
     let (role_end, peer_end) = UnixStream::pair().expect("a socket pair");
-    let mut peer = Peer::accept(peer_end);
     let running = Running::start(role_end.into_raw_fd());
+    let mut peer = Peer::accept(peer_end);
     claims(&mut peer);
 
     // A request the role is the provider of.
@@ -220,8 +227,8 @@ fn an_answer_reaches_the_agent_that_offered_the_request() {
     // only the role sees its value. An unknown request is refused by both agents, which is a
     // refusal and not a failure of the connection.
     let (role_end, peer_end) = UnixStream::pair().expect("a socket pair");
-    let mut peer = Peer::accept(peer_end);
     let running = Running::start(role_end.into_raw_fd());
+    let mut peer = Peer::accept(peer_end);
     claims(&mut peer);
 
     peer.send(&wire::answered(RequestId::new(99), b"alice"));

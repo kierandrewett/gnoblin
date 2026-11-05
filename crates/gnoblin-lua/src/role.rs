@@ -159,8 +159,9 @@ impl Role {
                 reason: error.to_string(),
             })
         })?;
-        // The reply to a subscribe or a commit is owed, so the deadline only decides how
-        // often the role looks at its own signals while it waits.
+        // The deadline is on from the first read: every wait this role does after the
+        // handshake is a wait for a frame that may not come, and a read that times out is
+        // "nothing yet" rather than a failure.
         let _ = transport.read_timeout(Some(PUMP_TIMEOUT));
         let client = Client::connect(transport, version()).map_err(|error| RoleError::Connect(error.to_string()))?;
         let mut host = Host::new(client, self.limits).map_err(|error| RoleError::Config(error.to_string()))?;
@@ -193,11 +194,14 @@ fn commit<T: Transport + 'static>(
         Ok(_) => report.document.to_json().to_string().into_bytes(),
         Err(problems) => {
             let reason = format!(
-                "the configuration in {} was not committed: {problems}",
+                "the configuration in {} was not committed, and the last accepted one stays in force: {problems}",
                 report.path.path().display()
             );
+            // The guardian's log and the recovery state both need this: a runtime that exits
+            // saying nothing leaves the session degraded with no reason in it.
+            tracing::error!("[runtime] {reason}");
             reporter.write(&report::config_rejected(0, &reason));
-            return Err(RoleError::Invalid(format!("{problems}")));
+            return Err(RoleError::Invalid(reason));
         }
     };
     let revision = match host.client_mut().commit_config(&document) {

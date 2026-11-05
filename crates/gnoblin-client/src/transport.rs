@@ -24,4 +24,19 @@ pub trait Transport: gnoblin_proto::Transport {
     /// peer that starts with an envelope has misunderstood the protocol, and a
     /// version mismatch after it would be unreadable.
     fn receive_handshake(&mut self) -> Result<Handshake, HandshakeError>;
+
+    /// Set the deadline one read waits for, or clear it.
+    ///
+    /// The default is "this transport cannot time out": a caller that needs a pump on a clock
+    /// gets a clear failure instead of a read that silently blocks, and the in-process link
+    /// (which always answers immediately) needs nothing.
+    ///
+    /// # Errors
+    ///
+    /// The transport's refusal.
+    fn set_read_timeout(&mut self, _timeout: Option<std::time::Duration>) -> Result<(), crate::ClientError> {
+        Err(crate::ClientError::Codec(gnoblin_proto::CodecError::Io(
+            std::io::Error::new(std::io::ErrorKind::Unsupported, "this transport has no read deadline"),
+        )))
+    }
 }

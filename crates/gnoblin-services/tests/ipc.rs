@@ -63,8 +63,15 @@ struct LoopbackHost {
 }
 
 impl Offerer for LoopbackHost {
-    fn offer(&mut self, _proposition: &Proposition, deadline: Tick) -> Result<gnoblin_model::RequestId, Refusal> {
-        Ok(self.server.offer(deadline))
+    fn offer(&mut self, proposition: &Proposition, deadline: Tick) -> Result<gnoblin_model::RequestId, Refusal> {
+        // The proposition is what the loopback announces with the offer, exactly as the real
+        // compositor announces what the privileged connection sent it.
+        Ok(self.server.offer(
+            proposition.slot.name(),
+            &proposition.request.action_id,
+            &proposition.request.message,
+            deadline,
+        ))
     }
 }
 
@@ -156,11 +163,18 @@ fn a_shell_claims_and_answers_an_offered_request() {
         .expect("the slot has a provider");
 
     let event = shell.next_event().expect("the offer reaches the shell");
-    let Event::RequestOffered { request, deadline } = event else {
+    let Event::RequestOffered {
+        request,
+        deadline,
+        slot,
+        ..
+    } = event
+    else {
         panic!("expected an offer, got {event:?}");
     };
     assert_eq!(request, offered.request);
     assert_eq!(deadline, Tick::new(15));
+    assert_eq!(slot, "auth.polkit");
     shell.claim(request).expect("the first claim wins");
     shell.answer(request, b"unix-user:1000").expect("the holder answers");
 
@@ -194,14 +208,20 @@ fn two_shells_cannot_claim_one_request() {
         first.next_event().expect("an offer"),
         Event::RequestOffered {
             request: offered.request,
-            deadline: Tick::new(15)
+            deadline: Tick::new(15),
+            slot: "auth.polkit".to_owned(),
+            title: "org.freedesktop.policykit.exec".to_owned(),
+            message: "Authentication is required".to_owned(),
         }
     );
     assert_eq!(
         second.next_event().expect("an offer"),
         Event::RequestOffered {
             request: offered.request,
-            deadline: Tick::new(15)
+            deadline: Tick::new(15),
+            slot: "auth.polkit".to_owned(),
+            title: "org.freedesktop.policykit.exec".to_owned(),
+            message: "Authentication is required".to_owned(),
         }
     );
     first.claim(offered.request).expect("the first claim wins");

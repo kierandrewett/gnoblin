@@ -332,6 +332,19 @@ impl<T: Transport> Client<T> {
         })
     }
 
+    /// Ask the transport for a read deadline, where it has one.
+    ///
+    /// A role pumps on a clock: it wants a read that returns when nothing has arrived yet
+    /// ([`ClientError::Idle`]) so it can check its own signals. A transport with no deadline
+    /// to set says so and the caller keeps a blocking read.
+    ///
+    /// # Errors
+    ///
+    /// The transport's refusal, or [`crate::WireError::Kind`]-shaped unsupported answer.
+    pub fn set_read_timeout(&mut self, timeout: Option<std::time::Duration>) -> Result<(), ClientError> {
+        self.transport.set_read_timeout(timeout)
+    }
+
     /// Give the connection back, for a caller that owns the socket.
     pub fn into_inner(self) -> T {
         self.transport

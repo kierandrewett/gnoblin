@@ -276,11 +276,13 @@ impl Supervisor {
         if let Ok(number) = inheritable(&writer) {
             command.env(report::READY_VARIABLE, number.to_string());
         }
-        // The privileged connection, for the role that owns one.
-        let mut privileged = self
-            .role_name(&spec)
-            .and_then(|role| self.pending.remove(&role).map(|fd| (role, fd)));
-        if let Some((_, fd)) = &privileged
+        // The privileged connection, for the role that owns one. The pair stays open in this
+        // process for the session's life: a restarted child presents a new handshake on the
+        // same stream, which is the only way a child that is not the pair's creator can
+        // rejoin it.
+        let privileged = self.role_name(&spec).filter(|role| self.pending.contains_key(role));
+        if let Some(role) = &privileged
+            && let Some(fd) = self.pending.get(role)
             && let Ok(number) = inheritable(fd)
         {
             command.env(privilege::FD_VARIABLE, number.to_string());
@@ -303,9 +305,10 @@ impl Supervisor {
         // the child's departure to the process at the other end of the pair.
         restore(&writer);
         drop(writer);
-        if let Some((_, fd)) = privileged.take() {
-            restore(&fd);
-            drop(fd);
+        if let Some(role) = &privileged
+            && let Some(fd) = self.pending.get(role)
+        {
+            restore(fd);
         }
         if spec.kind == ChildKind::Compositor {
             for (_, fd) in self.compositor.drain(..) {
