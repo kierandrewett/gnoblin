@@ -50,7 +50,7 @@
 //! - `gnoblin.configure`: the neutral [`gnoblin_config::Value`] tree, validated by
 //!   the configuration layer, so a problem arrives with its path.
 //! - the core object types on `gnoblin` (`gnoblin.window`), and `require` for extension
-//!   namespaces (`require("bsm.greeter")`): the generated bindings, one name per schema
+//!   namespaces (`require("example.ext")`): the generated bindings, one name per schema
 //!   member, with `gnoblin.d.lua` from the same schema.
 //! - [`Host::pump`]: the only thing that runs a handler, on the caller's ticks.
 //! - [`RoleRunner`]: the runtime role as a process — adopt the privileged connection, load and

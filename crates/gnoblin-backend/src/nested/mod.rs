@@ -1,9 +1,9 @@
 //! The nested backend: a session that is a Wayland client of the compositor hosting it.
 //!
 //! This is the production half of `design/rust-compositor.md`'s "Hosting sessions"
-//! (D4): bsm becomes a Gnoblin, and each signed-in user's session is a Gnoblin whose
+//! (D4): the display manager is a Gnoblin host, and each signed-in user's session is a Gnoblin whose
 //! outputs are surfaces of the host. One nested output is one `xdg_toplevel` on the
-//! parent, which is what makes a session a window of the greeter's screen rather than a
+//! parent, which is what makes a session a window of the login screen rather than a
 //! second display server.
 //!
 //! # The four directions of the wire
@@ -144,7 +144,7 @@ pub struct OutputSpec {
     pub connector: String,
     /// Whether to ask the parent to show the surface full screen.
     ///
-    /// A hosting compositor is a kiosk with one client, so bsm's sessions ask for this
+    /// A hosting compositor is a kiosk with one client, so a hosted session asks for this
     /// and the host's configuration decides what it means. It is off by default because
     /// the same backend also replaces the winit development window, and a development
     /// session is a window its host places. A parent that does not implement fullscreen

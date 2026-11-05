@@ -20,8 +20,8 @@
 //!
 //! The compositor's own object types sit directly on `gnoblin`, as `gnoblin.<type>`.
 //! An extension namespace is loaded with `require`, which returns a module table with
-//! one entry per object type: `local bsm = require("bsm.greeter")`, then
-//! `bsm.greeter.by_id(1)`. The namespace is quoted whole, so it is a wire identity and
+//! one entry per object type: `local ext = require("example.ext")`, then
+//! `ext.probe.by_id(1)`. The namespace is quoted whole, so it is a wire identity and
 //! never split into nested tables. `require` answers only for extension namespaces in
 //! the generated catalog; any other name is an error.
 //!
@@ -163,7 +163,7 @@ pub(super) struct ObjectSpec {
 /// One namespace and its object types.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct NamespaceSpec {
-    /// The namespace as the wire spells it, for example `bsm.greeter`.
+    /// The namespace as the wire spells it, for example `example.ext`.
     pub(super) name: &'static str,
     /// Its object types, in schema declaration order.
     pub(super) objects: &'static [ObjectSpec],

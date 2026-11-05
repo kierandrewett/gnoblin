@@ -156,14 +156,14 @@ fn require_answers_only_declared_extension_namespaces() {
     config.write(
         "init.lua",
         r#"
-local first = require("bsm.greeter")
-assert(first == require("bsm.greeter"), "require returns the same table twice")
-assert(first.greeter ~= nil, "the module exposes its object type")
+local ok, message = pcall(require, "example.ext")
+assert(not ok, "require loaded a namespace no host configuration declared")
+assert(string.match(tostring(message), "unknown module `example.ext`") ~= nil, "message was " .. tostring(message))
 assert(not pcall(function() return gnoblin.extensions end), "gnoblin.extensions must not exist")
 assert(not pcall(function() return gnoblin.objects end), "gnoblin.objects must not exist")
-local ok, message = pcall(require, "bsm.nothing")
-assert(not ok, "require loaded an undeclared namespace")
-assert(string.match(tostring(message), "unknown module `bsm.nothing`") ~= nil, "message was " .. tostring(message))
+local ok2, message2 = pcall(require, "other.nothing")
+assert(not ok2, "require loaded an undeclared namespace")
+assert(string.match(tostring(message2), "unknown module `other.nothing`") ~= nil, "message was " .. tostring(message2))
 "#,
     );
     let (_server, mut host) = pair();
@@ -522,67 +522,6 @@ end)
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
     let pumped = host.pump(Tick::new(1)).expect("a pump applies the diff");
     assert_eq!(pumped.handlers, 1);
-    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
-}
-
-#[test]
-fn a_refused_call_reaches_the_handler_as_an_error() {
-    let config = Config::new("refused");
-    config.write(
-        "init.lua",
-        r#"
-gnoblin.timers.after(1, function()
-    local greeter = require("bsm.greeter").greeter.by_id(1)
-    assert(greeter ~= nil, "the greeter is in the snapshot")
-    local ok, message = pcall(function() greeter:begin_auth("kieran") end)
-    assert(ok, "a declared method is callable: " .. tostring(message))
-    local wrong = pcall(function() greeter:begin_auth() end)
-    assert(not wrong, "a missing argument is refused")
-end)
-"#,
-    );
-    let (mut server, mut host) = pair();
-    server
-        .create(TypeKey::new("bsm.greeter", "greeter"), Fields::new())
-        .expect("the extension type is in the schema");
-    let report = host.run_config(&config.paths()).expect("the run starts");
-    assert!(report.errors.is_empty(), "{:#?}", report.errors);
-    let pumped = host.pump(Tick::new(1)).expect("the timer calls begin_auth");
-    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
-    assert_eq!(server.graph().pending().count(), 1);
-}
-
-#[test]
-fn a_signal_handler_receives_the_fields_the_schema_declares() {
-    let (mut server, mut host) = pair();
-    let greeter = server
-        .create(TypeKey::new("bsm.greeter", "greeter"), Fields::new())
-        .expect("the extension type is in the schema");
-    let config = Config::new("signal-fields");
-    config.write(
-        "init.lua",
-        &format!(
-            r#"
-local greeter = require("bsm.greeter").greeter.by_id({id})
-assert(greeter ~= nil, "the greeter is in the snapshot")
-local seen = 0
-greeter:on("prompt", function(fields)
-    seen = seen + 1
-    assert(fields.message == "Password:", "the field, was " .. tostring(fields.message))
-end)
-gnoblin.timers.after(1, function() assert(seen == 1, "the handler ran " .. seen .. " times") end)
-"#,
-            id = greeter.get()
-        ),
-    );
-    let report = host.run_config(&config.paths()).expect("the run starts");
-    assert!(report.errors.is_empty(), "{:#?}", report.errors);
-
-    let mut fields = Fields::new();
-    fields.insert("message".to_owned(), ModelValue::Text("Password:".to_owned()));
-    server.signal(greeter, "prompt", fields).expect("prompt is a signal");
-    let pumped = host.pump(Tick::new(1)).expect("the signal and the timer");
-    assert_eq!(pumped.handlers, 2);
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
 

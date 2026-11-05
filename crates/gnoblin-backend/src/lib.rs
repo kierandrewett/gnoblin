@@ -15,7 +15,7 @@
 //!   [`nested`] is the second: a Wayland *client* of a compositor that hosts the
 //!   session, with one `xdg_toplevel` per output, sized and scaled by the parent's
 //!   configure, drawn into shared memory and paced by the parent's frame
-//!   callbacks. It is how a signed-in session runs under bsm
+//!   callbacks. It is how a signed-in session runs under a display manager
 //!   (design/rust-compositor.md, "Hosting sessions").
 //! - **The render path they share.** [`render`] holds the frame description, the
 //!   Pixman renderer, the RGBA8 readback and the session scene that produces a

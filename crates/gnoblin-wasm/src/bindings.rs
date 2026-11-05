@@ -53,8 +53,6 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.lock": ObjectRep,
         "gnoblin:ipc/gnoblin.output": ObjectRep,
         "gnoblin:ipc/gnoblin.settings": ObjectRep,
-        "gnoblin:ipc/bsm-greeter.operation": ObjectRep,
-        "gnoblin:ipc/bsm-greeter.greeter": ObjectRep,
     },
     imports: { default: trappable },
 });
@@ -312,15 +310,6 @@ fn gnoblin_error(refusal: RefusalKind) -> gnoblin::ipc::gnoblin::ErrorCode {
         RefusalKind::UnknownObject => gnoblin::ipc::gnoblin::ErrorCode::UnknownObject,
         RefusalKind::UnknownMember => gnoblin::ipc::gnoblin::ErrorCode::UnknownMember,
         RefusalKind::Refused => gnoblin::ipc::gnoblin::ErrorCode::Refused,
-    }
-}
-
-fn greeter_error(refusal: RefusalKind) -> gnoblin::ipc::bsm_greeter::ErrorCode {
-    match refusal {
-        RefusalKind::Denied => gnoblin::ipc::bsm_greeter::ErrorCode::Denied,
-        RefusalKind::UnknownObject => gnoblin::ipc::bsm_greeter::ErrorCode::UnknownObject,
-        RefusalKind::UnknownMember => gnoblin::ipc::bsm_greeter::ErrorCode::UnknownMember,
-        RefusalKind::Refused => gnoblin::ipc::bsm_greeter::ErrorCode::Refused,
     }
 }
 
@@ -942,118 +931,6 @@ mod gnoblin_objects {
                 },
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
-        }
-    }
-}
-
-/// The same, for the `bsm.greeter` extension namespace.
-mod greeter_objects {
-    use super::gnoblin;
-    use super::{ObjectRep, Resource, StoreData, greeter_error};
-
-    impl gnoblin::ipc::bsm_greeter::Host for StoreData {
-        fn greeter_by_id(
-            &mut self,
-            id: u64,
-        ) -> wasmtime::Result<Result<Resource<ObjectRep>, gnoblin::ipc::bsm_greeter::ErrorCode>> {
-            Ok(match self.open(id, "greeter") {
-                Ok(handle) => Ok(handle),
-                Err(refusal) => Err(greeter_error(refusal)),
-            })
-        }
-    }
-
-    impl gnoblin::ipc::bsm_greeter::HostOperation for StoreData {
-        fn id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
-            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
-        }
-
-        fn state(
-            &mut self,
-            handle: Resource<ObjectRep>,
-        ) -> wasmtime::Result<gnoblin::ipc::bsm_greeter::OperationState> {
-            match self.operation_state(&handle) {
-                Ok(true) => Ok(gnoblin::ipc::bsm_greeter::OperationState::Succeeded),
-                Ok(false) => Ok(gnoblin::ipc::bsm_greeter::OperationState::Pending),
-                Err(_) => Ok(gnoblin::ipc::bsm_greeter::OperationState::Failed),
-            }
-        }
-
-        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
-            let _ = self.table.delete(handle);
-            Ok(())
-        }
-    }
-
-    impl gnoblin::ipc::bsm_greeter::HostGreeter for StoreData {
-        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
-            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
-        }
-
-        fn begin_auth(
-            &mut self,
-            handle: Resource<ObjectRep>,
-            user: String,
-        ) -> wasmtime::Result<Result<Resource<ObjectRep>, gnoblin::ipc::bsm_greeter::ErrorCode>> {
-            let object = self.object(&handle).expect("a handle this store issued");
-            let mut arguments = gnoblin_model::Fields::new();
-            arguments.insert("user".to_owned(), gnoblin_model::Value::Text(user));
-            Ok(match self.invoke(object, "greeter", "begin_auth", arguments) {
-                Ok(operation) => match self.operation(operation) {
-                    Ok(handle) => Ok(handle),
-                    Err(refusal) => Err(greeter_error(refusal)),
-                },
-                Err(refusal) => Err(greeter_error(refusal)),
-            })
-        }
-
-        fn auth_response(
-            &mut self,
-            handle: Resource<ObjectRep>,
-            response: String,
-        ) -> wasmtime::Result<Result<Resource<ObjectRep>, gnoblin::ipc::bsm_greeter::ErrorCode>> {
-            let object = self.object(&handle).expect("a handle this store issued");
-            let mut arguments = gnoblin_model::Fields::new();
-            arguments.insert("response".to_owned(), gnoblin_model::Value::Text(response));
-            Ok(match self.invoke(object, "greeter", "auth_response", arguments) {
-                Ok(operation) => match self.operation(operation) {
-                    Ok(handle) => Ok(handle),
-                    Err(refusal) => Err(greeter_error(refusal)),
-                },
-                Err(refusal) => Err(greeter_error(refusal)),
-            })
-        }
-
-        fn power(
-            &mut self,
-            handle: Resource<ObjectRep>,
-            action: String,
-        ) -> wasmtime::Result<Result<Resource<ObjectRep>, gnoblin::ipc::bsm_greeter::ErrorCode>> {
-            let object = self.object(&handle).expect("a handle this store issued");
-            let mut arguments = gnoblin_model::Fields::new();
-            arguments.insert("action".to_owned(), gnoblin_model::Value::Text(action));
-            Ok(match self.invoke(object, "greeter", "power", arguments) {
-                Ok(operation) => match self.operation(operation) {
-                    Ok(handle) => Ok(handle),
-                    Err(refusal) => Err(greeter_error(refusal)),
-                },
-                Err(refusal) => Err(greeter_error(refusal)),
-            })
-        }
-
-        fn watch(
-            &mut self,
-            handle: Resource<ObjectRep>,
-        ) -> wasmtime::Result<Result<bool, gnoblin::ipc::bsm_greeter::ErrorCode>> {
-            Ok(match self.watch(&handle) {
-                Ok(()) => Ok(true),
-                Err(refusal) => Err(greeter_error(refusal)),
-            })
-        }
-
-        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
-            let _ = self.table.delete(handle);
-            Ok(())
         }
     }
 }

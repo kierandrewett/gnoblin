@@ -13,10 +13,10 @@ use crate::{
 const COMPOSITOR: ChildId = ChildId::new(1);
 const SERVICES: ChildId = ChildId::new(2);
 const RUNTIME: ChildId = ChildId::new(3);
-const GREETER: ChildId = ChildId::new(4);
+const FRONT: ChildId = ChildId::new(4);
 const FIRST_APP: ChildId = ChildId::new(5);
 const SECOND_APP: ChildId = ChildId::new(6);
-const CHILDREN: [ChildId; 6] = [COMPOSITOR, SERVICES, RUNTIME, GREETER, FIRST_APP, SECOND_APP];
+const CHILDREN: [ChildId; 6] = [COMPOSITOR, SERVICES, RUNTIME, FRONT, FIRST_APP, SECOND_APP];
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
 /// every platform, so a failing seed replays exactly.
@@ -185,7 +185,7 @@ impl Harness {
     /// restarts and stops instead of spending its steps failing to start.
     fn bring_up(&mut self, guardian: &mut Guardian, seed: u64, now: &mut u64) {
         self.apply(guardian, Event::new(Tick::new(*now), EventKind::Start), seed, 0);
-        for child in [COMPOSITOR, SERVICES, RUNTIME, GREETER] {
+        for child in [COMPOSITOR, SERVICES, RUNTIME, FRONT] {
             *now += 10;
             let generation = guardian.status(child).expect("planned child").generation;
             self.apply(
@@ -419,7 +419,7 @@ fn invariants_hold_over_random_sequences() {
                 harness.observed.spawns[slot(child)]
             );
         }
-        for child in [GREETER, FIRST_APP, SECOND_APP] {
+        for child in [FRONT, FIRST_APP, SECOND_APP] {
             assert!(
                 harness.observed.spawns[slot(child)] <= 1,
                 "seed {seed}: {child:?} is not restartable"

@@ -3,7 +3,7 @@
 //! Design/rust-compositor.md, "Hosting sessions" primitive 3: the session lock
 //! covers every surface, and a host compositor that runs nested sessions must
 //! also be able to hide **one** client while the rest of the machine keeps
-//! working. bsm's rules become this machine's rules:
+//! working. The session host's rules become this machine's rules:
 //!
 //! - **Protect before reveal.** A client is never reported protected because
 //!   someone asked: the answer waits for a frame that was described *after* its

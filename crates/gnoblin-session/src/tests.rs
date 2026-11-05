@@ -16,7 +16,7 @@ use crate::{
 const COMPOSITOR: ChildId = ChildId::new(1);
 const SERVICES: ChildId = ChildId::new(2);
 const RUNTIME: ChildId = ChildId::new(3);
-const GREETER: ChildId = ChildId::new(4);
+const FRONT: ChildId = ChildId::new(4);
 const FIRST_APP: ChildId = ChildId::new(5);
 const SECOND_APP: ChildId = ChildId::new(6);
 
@@ -154,7 +154,7 @@ fn up() -> Guardian {
     ready(&mut guardian, COMPOSITOR, 1);
     ready(&mut guardian, SERVICES, 2);
     ready(&mut guardian, RUNTIME, 3);
-    ready(&mut guardian, GREETER, 4);
+    ready(&mut guardian, FRONT, 4);
     assert_eq!(guardian.session(), SessionState::Up);
     guardian
 }
@@ -317,7 +317,7 @@ fn dependants_stop_before_the_compositor() {
             reason: ShutdownReason::Logout,
         },
     )));
-    for child in [SECOND_APP, FIRST_APP, GREETER, RUNTIME, SERVICES, COMPOSITOR] {
+    for child in [SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES, COMPOSITOR] {
         now += 100;
         let instance = generation(&guardian, child);
         let effects = guardian.apply(at(
@@ -332,7 +332,7 @@ fn dependants_stop_before_the_compositor() {
     }
     assert_eq!(
         order,
-        vec![SECOND_APP, FIRST_APP, GREETER, RUNTIME, SERVICES, COMPOSITOR],
+        vec![SECOND_APP, FIRST_APP, FRONT, RUNTIME, SERVICES, COMPOSITOR],
         "a client is stopped before the server it talks to"
     );
     assert_eq!(guardian.session(), SessionState::Ended);
@@ -441,7 +441,7 @@ fn a_child_that_ignores_the_graceful_signal_is_killed() {
     // A second grace with no reported exit: the guardian assumes the kill worked
     // and moves on to the next rank instead of hanging the logout.
     let effects = tick(&mut guardian, 4100);
-    assert_eq!(signals(effects), vec![GREETER]);
+    assert_eq!(signals(effects), vec![FRONT]);
 }
 
 #[test]
@@ -477,16 +477,16 @@ fn a_failed_autostart_entry_does_not_end_the_session() {
 }
 
 #[test]
-fn a_greeter_that_dies_before_the_session_is_up_does_not_block_it() {
+fn a_front_that_dies_before_the_session_is_up_does_not_block_it() {
     let mut guardian = guardian();
     guardian.apply(at(0, EventKind::Start));
     ready(&mut guardian, COMPOSITOR, 1);
     ready(&mut guardian, SERVICES, 2);
     ready(&mut guardian, RUNTIME, 3);
-    assert_eq!(state(&guardian, GREETER), ChildState::Starting);
+    assert_eq!(state(&guardian, FRONT), ChildState::Starting);
 
-    exited(&mut guardian, GREETER, ExitStatus::Exited(1), 10);
-    assert_eq!(state(&guardian, GREETER), ChildState::Failed);
+    exited(&mut guardian, FRONT, ExitStatus::Exited(1), 10);
+    assert_eq!(state(&guardian, FRONT), ChildState::Failed);
     assert_eq!(guardian.session(), SessionState::Up);
     assert_eq!(state(&guardian, FIRST_APP), ChildState::Running);
     assert_eq!(state(&guardian, SECOND_APP), ChildState::Running);
@@ -591,7 +591,7 @@ fn safe_mode_is_requested_after_the_configured_failed_starts() {
     ready(&mut next, COMPOSITOR, 1);
     ready(&mut next, SERVICES, 2);
     ready(&mut next, RUNTIME, 3);
-    ready(&mut next, GREETER, 4);
+    ready(&mut next, FRONT, 4);
     assert_eq!(next.session(), SessionState::Up);
     assert_eq!(next.recovery().failed_starts, 0);
     assert!(next.recovery().safe_mode);
@@ -778,7 +778,7 @@ fn restart_policies_match_the_plan() {
         plan.spec(RUNTIME).expect("runtime").restart,
         Restart::Backoff(Backoff::guardian())
     );
-    assert_eq!(plan.spec(GREETER).expect("greeter").restart, Restart::Never);
+    assert_eq!(plan.spec(FRONT).expect("front").restart, Restart::Never);
     assert_eq!(plan.spec(FIRST_APP).expect("autostart").restart, Restart::Never);
     assert_eq!(plan.spec(FIRST_APP).expect("autostart").ready_within, None);
 

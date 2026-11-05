@@ -143,7 +143,7 @@ mod tests {
         );
 
         // Deny by default: every other role, including one a newer guardian invented.
-        for role in ["compositor", "greeter", "guardian", "runtime2", ""] {
+        for role in ["compositor", "invented", "guardian", "runtime2", ""] {
             assert_eq!(grants(role), gnoblin_proto::Capabilities::NONE, "`{role}`");
         }
     }

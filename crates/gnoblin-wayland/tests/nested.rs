@@ -2,8 +2,8 @@
 //!
 //! These tests put the two halves of "Hosting sessions" (design/rust-compositor.md,
 //! D4) on one socket: a real `gnoblin-wayland` [`Server`] playing the host with a
-//! headless output, and the real [`Nested`] backend connecting to it as bsm's
-//! sessions will. Nothing is simulated on either side of the wire — the host sends the
+//! headless output, and the real [`Nested`] backend connecting to it as a hosted
+//! session would. Nothing is simulated on either side of the wire — the host sends the
 //! configure, the nested backend draws, commits a `wl_shm` buffer and the host
 //! composes it — so what the assertions read from the host is what a person would see.
 //!

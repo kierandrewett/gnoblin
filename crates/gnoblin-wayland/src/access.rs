@@ -187,8 +187,7 @@ pub enum ClientRole {
     FrameRenderer,
     /// The connection the compositor brokered for one hosted session
     /// (design/rust-compositor.md, D4). It sees `gnoblin_session_host_v1` and nothing
-    /// else privileged, which is the rule bsm states for its bridge: the session never
-    /// sees another privileged global.
+    /// else privileged: the session never sees another privileged global.
     SessionHost,
     /// Accepted for an application sandbox through `wp_security_context_v1`.
     Sandboxed,

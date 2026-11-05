@@ -17,12 +17,12 @@ package gnoblin.ipc;
 // Where a message goes, what it is, and the kind-specific body.
 message Envelope {
   // The schema namespace the member belongs to, for example `gnoblin` or
-  // `bsm.greeter`. The compositor routes on this and never decodes a payload from
+  // `example.ext`. The compositor routes on this and never decodes a payload from
   // a namespace it does not serve itself.
   string namespace = 1;
 
   // The schema member: the method or signal name, such as `focus` or
-  // `auth_response`.
+  // `request.answer`.
   string member = 2;
 
   // Pairs a reply or an error with its request. Zero on events.

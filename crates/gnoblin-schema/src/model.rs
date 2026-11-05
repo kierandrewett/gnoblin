@@ -15,7 +15,7 @@ use crate::error::SchemaError;
 use gnoblin_types::Version;
 
 /// A schema namespace: `gnoblin` for the compositor's own objects, or a dotted
-/// extension name such as `bsm.greeter`.
+/// extension name such as `example.ext`.
 ///
 /// The namespace is the first field of every IPC frame, so it sorts as text and
 /// has to be stable across releases.
@@ -222,7 +222,7 @@ pub struct Method {
 impl Method {
     /// True when any frame carrying this method is secret.
     ///
-    /// A reply to `bsm.greeter.auth_response` may echo nothing, but the request
+    /// A reply to `request.answer` may echo nothing, but the request
     /// carries the password, so the envelope is flagged for the whole exchange.
     pub fn is_sensitive(&self) -> bool {
         self.secret || self.params.iter().any(|parameter| parameter.secret)
@@ -500,11 +500,11 @@ mod tests {
     #[test]
     fn checks_namespaces() {
         assert_eq!(
-            Namespace::parse("bsm.greeter").expect("namespace").as_str(),
-            "bsm.greeter"
+            Namespace::parse("example.ext").expect("namespace").as_str(),
+            "example.ext"
         );
         assert_eq!(Namespace::parse("gnoblin").expect("namespace").to_string(), "gnoblin");
-        for text in ["", "Bsm.greeter", "bsm.", "bsm..greeter", "bsm-greeter"] {
+        for text in ["", "Example.ext", "example.", "example..ext", "example-ext"] {
             assert!(Namespace::parse(text).is_err(), "{text}");
         }
     }

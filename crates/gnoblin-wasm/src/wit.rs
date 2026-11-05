@@ -12,8 +12,8 @@
 //! # Shape
 //!
 //! One interface per schema namespace, named after the namespace with its dots
-//! turned into dashes (`gnoblin` stays `gnoblin`, `bsm.greeter` becomes
-//! `bsm-greeter`). One interface per namespace and not one interface in total,
+//! turned into dashes (`gnoblin` stays `gnoblin`, `example.ext` becomes
+//! `example-ext`). One interface per namespace and not one interface in total,
 //! because two namespaces may declare the same object name and putting both in
 //! one interface would make the WIT ill-formed; the schema catalog permits the
 //! duplicate, so the generator has to as well.
@@ -561,8 +561,8 @@ mod tests {
             "gnoblin"
         );
         assert_eq!(
-            interface_name(&Namespace::parse("bsm.greeter").expect("namespace")),
-            "bsm-greeter"
+            interface_name(&Namespace::parse("example.ext").expect("namespace")),
+            "example-ext"
         );
     }
 

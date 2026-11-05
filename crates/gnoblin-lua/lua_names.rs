@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn a_required_module_has_no_hand_written_names_to_clash_with() {
-        let owners = owners(&[("bsm.greeter.timers", "timers")]);
-        assert!(check_lua_names("require(\"bsm.greeter\")", &owners, &[]).is_ok());
+        let owners = owners(&[("example.ext.probe", "probe")]);
+        assert!(check_lua_names("require(\"example.ext\")", &owners, &[]).is_ok());
     }
 }

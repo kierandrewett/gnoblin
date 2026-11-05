@@ -929,7 +929,7 @@ mod tests {
     fn an_unknown_member_is_dropped_rather_than_failing() {
         let envelope = Envelope::event(NAMESPACE, "object.invented", vec![1, 2, 3]);
         assert_eq!(decode(&envelope).expect("decodes"), None);
-        let other_namespace = Envelope::event("bsm.greeter", "prompt", Vec::new());
+        let other_namespace = Envelope::event("example.ext", "probe.question", Vec::new());
         assert_eq!(decode(&other_namespace).expect("decodes"), None);
     }
 

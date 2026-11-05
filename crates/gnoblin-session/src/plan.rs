@@ -26,8 +26,8 @@ pub enum ChildKind {
     Services,
     /// `gnoblin --role runtime`: the Lua configuration host.
     Runtime,
-    /// The greeter a session manager starts in front of the session.
-    Greeter,
+    /// The front a session manager starts in front of the session.
+    Front,
     /// One autostart application, whether from XDG or from configuration.
     Autostart,
 }
@@ -141,8 +141,8 @@ impl ChildSpec {
     /// A child with the policy its kind implies.
     ///
     /// The compositor ends the session when it exits; the runtime and services
-    /// restart with [`Backoff::guardian`]; the greeter and autostart
-    /// applications are not restarted, because the session manager owns greeter
+    /// restart with [`Backoff::guardian`]; the front and autostart
+    /// applications are not restarted, because the session manager owns front
     /// retries and a user application that dies is not the session's to raise.
     /// Every kind except autostart applications reports readiness within
     /// [`DEFAULT_READY_WITHIN`].
@@ -151,7 +151,7 @@ impl ChildSpec {
         let restart = match kind {
             ChildKind::Compositor => Restart::EndsSession,
             ChildKind::Runtime | ChildKind::Services => Restart::Backoff(Backoff::guardian()),
-            ChildKind::Greeter | ChildKind::Autostart => Restart::Never,
+            ChildKind::Front | ChildKind::Autostart => Restart::Never,
         };
         Self {
             id,
@@ -181,8 +181,8 @@ pub enum PlanError {
     CompositorNotFirst,
     /// A session has one compositor.
     SecondCompositor,
-    /// A session has at most one greeter; the session manager starts it.
-    SecondGreeter,
+    /// A session has at most one front; the session manager starts it.
+    SecondFront,
 }
 
 impl fmt::Display for PlanError {
@@ -194,7 +194,7 @@ impl fmt::Display for PlanError {
             Self::CompositorNotFirst => formatter
                 .write_str("the compositor must be the first child, because every other child needs its display"),
             Self::SecondCompositor => formatter.write_str("a session plan has one compositor"),
-            Self::SecondGreeter => formatter.write_str("a session plan has at most one greeter"),
+            Self::SecondFront => formatter.write_str("a session plan has at most one front"),
         }
     }
 }
@@ -237,21 +237,21 @@ impl Plan {
         {
             return Err(PlanError::SecondCompositor);
         }
-        if children.iter().filter(|child| child.kind == ChildKind::Greeter).count() > 1 {
-            return Err(PlanError::SecondGreeter);
+        if children.iter().filter(|child| child.kind == ChildKind::Front).count() > 1 {
+            return Err(PlanError::SecondFront);
         }
         Ok(Self { children })
     }
 
     /// The session Gnoblin starts today: compositor, services, runtime, then the
-    /// greeter when the session manager asks for one, then each autostart entry
+    /// front when the session manager asks for one, then each autostart entry
     /// in configuration order.
     ///
     /// Services start before the runtime because the runtime's user scripts can
     /// reach them during their own start, and because a session whose agents are
     /// missing must be visible before user policy runs. Identifiers are assigned
     /// `1..=n` in this order.
-    pub fn standard(greeter: bool, autostart: impl IntoIterator<Item = String>) -> Result<Self, PlanError> {
+    pub fn standard(front: bool, autostart: impl IntoIterator<Item = String>) -> Result<Self, PlanError> {
         let mut next = 1;
         let mut children = Vec::new();
         for (kind, name) in [
@@ -262,8 +262,8 @@ impl Plan {
             children.push(ChildSpec::new(ChildId::new(next), kind, name));
             next += 1;
         }
-        if greeter {
-            children.push(ChildSpec::new(ChildId::new(next), ChildKind::Greeter, "greeter"));
+        if front {
+            children.push(ChildSpec::new(ChildId::new(next), ChildKind::Front, "front"));
             next += 1;
         }
         for name in autostart {

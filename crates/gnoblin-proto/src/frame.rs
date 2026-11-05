@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn round_trips_every_kind() {
         let frames = [
-            Envelope::request("bsm.greeter", "greeter.auth_response", 9, b"payload".to_vec()),
+            Envelope::request("gnoblin", "request.answer", 9, b"payload".to_vec()),
             Envelope::reply("gnoblin", "focus", 9, b"ok".to_vec()),
             Envelope::event("gnoblin", "ready", b"ready".to_vec()),
             Envelope::error("gnoblin", "window", 9, "unknown-member", "no such member"),
@@ -102,8 +102,8 @@ mod tests {
         // A frame for a schema-secret member, built by hand with zero flags, as a
         // hostile or outdated peer would send it.
         let forged = Envelope {
-            namespace: "bsm.greeter".to_owned(),
-            member: "greeter.auth_response".to_owned(),
+            namespace: "gnoblin".to_owned(),
+            member: "request.answer".to_owned(),
             request_id: 1,
             flags: 0,
             kind: Some(Kind::Request(crate::Request {

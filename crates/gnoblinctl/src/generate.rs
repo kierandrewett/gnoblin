@@ -152,8 +152,8 @@ fn entries<'a>(catalog: &'a Catalog) -> Result<Vec<Entry<'a>>, Vec<String>> {
 /// An object name that is unique across the whole catalog is used as it stands, so
 /// `gnoblinctl window list` reads like the object it addresses. When two namespaces
 /// declare the same object name, both are qualified with the last segment of their
-/// namespace (`bsm.greeter` and `foo.greeter` become `greeter-greeter` and
-/// `foo-greeter`), which keeps the name derivable from the schema instead of
+/// namespace (`example.probe` and `other.probe` become `probe-probe` and
+/// `other-probe`), which keeps the name derivable from the schema instead of
 /// depending on declaration order.
 fn command_name(namespace: &str, object: &str, counts: &BTreeMap<&str, usize>) -> String {
     if counts.get(object).copied().unwrap_or(0) <= 1 {
@@ -274,9 +274,9 @@ mod tests {
     #[test]
     fn a_shared_object_name_is_qualified_by_its_namespace() {
         let mut counts = BTreeMap::new();
-        counts.insert("greeter", 2);
-        assert_eq!(command_name("bsm.greeter", "greeter", &counts), "greeter-greeter");
-        assert_eq!(command_name("foo.greeter", "greeter", &counts), "foo-greeter");
+        counts.insert("probe", 2);
+        assert_eq!(command_name("example.probe", "probe", &counts), "probe-probe");
+        assert_eq!(command_name("other.probe", "probe", &counts), "other-probe");
         let mut unique = BTreeMap::new();
         unique.insert("window", 1);
         assert_eq!(command_name("gnoblin", "window", &unique), "window");

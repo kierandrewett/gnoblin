@@ -19,11 +19,11 @@ use crate::generated::sensitive;
 /// The envelope flag that marks a frame as carrying secret material.
 ///
 /// The generated client sets it on any message with a field the schema marks
-/// `secret` (for example `greeter.auth_response`, the greeter's namespace being
-/// `bsm.greeter`). The member is the schema's qualified member path, so the request
-/// layer's own frames are named the same way (`request.answer`). Logs, the parity
-/// recorder and `gnoblinctl ipc dump` call [`Envelope::redact`] before they show
-/// anything, so none of them needs the extension's schema to keep the secret out.
+/// `secret` (for example `request.answer`, whose `answer` field carries a password).
+/// The member is the schema's qualified member path, so an extension's frames are
+/// named the same way. Logs, the parity recorder and `gnoblinctl ipc dump` call
+/// [`Envelope::redact`] before they show anything, so none of them needs the
+/// extension's schema to keep the secret out.
 pub const FLAG_SENSITIVE: u32 = 1 << 0;
 
 /// The error code a peer sends when it does not serve the requested member.
@@ -182,7 +182,7 @@ mod tests {
     use prost::Message as _;
 
     use super::{Envelope, Kind, UNKNOWN_MEMBER};
-    use crate::generated::bsm_greeter::greeter::AuthResponseArgs;
+    use crate::generated::gnoblin::request::AnswerArgs;
     use crate::generated::gnoblin::window::Properties;
 
     const SECRET: &str = "hunter2";
@@ -191,25 +191,26 @@ mod tests {
     fn a_schema_secret_member_is_always_flagged() {
         // Built through the public API with no extra call: the schema decides.
         let envelope = Envelope::request_message(
-            "bsm.greeter",
-            "greeter.auth_response",
+            "gnoblin",
+            "request.answer",
             7,
-            &AuthResponseArgs {
-                response: SECRET.to_owned(),
+            &AnswerArgs {
+                request: 1,
+                answer: SECRET.as_bytes().to_vec(),
             },
         );
         assert!(envelope.is_sensitive());
         assert_eq!(
-            envelope.payload_as::<AuthResponseArgs>().expect("payload").response,
-            SECRET
+            envelope.payload_as::<AnswerArgs>().expect("payload").answer,
+            SECRET.as_bytes()
         );
 
         // Every constructor, not only requests.
         for envelope in [
-            Envelope::request("bsm.greeter", "greeter.auth_response", 1, Vec::new()),
-            Envelope::reply("bsm.greeter", "greeter.auth_response", 1, Vec::new()),
-            Envelope::event("bsm.greeter", "greeter.auth_response", Vec::new()),
-            Envelope::error("bsm.greeter", "greeter.auth_response", 1, UNKNOWN_MEMBER, "no"),
+            Envelope::request("gnoblin", "request.answer", 1, Vec::new()),
+            Envelope::reply("gnoblin", "request.answer", 1, Vec::new()),
+            Envelope::event("gnoblin", "request.answer", Vec::new()),
+            Envelope::error("gnoblin", "request.answer", 1, UNKNOWN_MEMBER, "no"),
         ] {
             assert!(envelope.is_sensitive(), "{envelope:?}");
         }
@@ -243,11 +244,12 @@ mod tests {
     #[test]
     fn redaction_drops_the_secret_bytes() {
         let envelope = Envelope::request_message(
-            "bsm.greeter",
-            "greeter.auth_response",
+            "gnoblin",
+            "request.answer",
             7,
-            &AuthResponseArgs {
-                response: SECRET.to_owned(),
+            &AnswerArgs {
+                request: 1,
+                answer: SECRET.as_bytes().to_vec(),
             },
         );
         let encoded = envelope.encode_to_vec();
@@ -278,13 +280,7 @@ mod tests {
 
     #[test]
     fn an_error_redacts_to_its_code() {
-        let envelope = Envelope::error(
-            "bsm.greeter",
-            "greeter.auth_response",
-            3,
-            UNKNOWN_MEMBER,
-            "no such member",
-        );
+        let envelope = Envelope::error("gnoblin", "request.answer", 3, UNKNOWN_MEMBER, "no such member");
         let redacted = envelope.redact();
         assert_eq!(redacted.error_code(), Some("redacted"));
         assert!(matches!(redacted.kind, Some(Kind::Error(_))));

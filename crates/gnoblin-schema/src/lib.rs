@@ -21,7 +21,7 @@
 //! ```
 //!
 //! A namespace is `gnoblin` for the compositor's own objects, or an extension
-//! name such as `bsm.greeter`. An extension ships its own files in the same
+//! name such as `example.ext`. An extension ships its own files in the same
 //! format, in its own namespace; Gnoblin's schema never contains extension
 //! members. The same generator runs over both, which is why the format carries a
 //! namespace rather than assuming one.

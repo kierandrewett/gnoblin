@@ -42,27 +42,11 @@ fn private_directory() -> TempDir {
 }
 
 #[test]
-fn an_unimplemented_role_exits_78() {
-    // The greeter is the one role this build does not serve: bsm's extension namespace is
-    // not implemented, and a session manager that mistook the refusal for a crash would
-    // restart it for ever.
-    let output = gnoblin(&["--role", "greeter"]);
-    assert_eq!(code(&output), 78, "`greeter` reports EX_CONFIG: {}", stderr(&output));
-    assert!(stdout(&output).is_empty(), "nothing on standard output");
-    let message = stderr(&output);
-    assert!(
-        message.contains("the greeter role is not implemented in this build"),
-        "{message}"
-    );
-    assert!(message.contains("needs:"), "the refusal says what it needs: {message}");
-}
-
-#[test]
 fn an_unknown_role_is_a_command_line_error() {
     let output = gnoblin(&["--role", "daemon"]);
     assert_eq!(code(&output), 2, "a bad command line is exit 2");
     let message = stderr(&output);
-    for role in ["guardian", "compositor", "runtime", "services", "greeter"] {
+    for role in ["guardian", "compositor", "runtime", "services"] {
         assert!(message.contains(role), "the refusal lists `{role}`: {message}");
     }
 }

@@ -1,6 +1,6 @@
 //! The guardian role, as processes.
 //!
-//! Design/rust-compositor.md, "Process model": one executable, five roles, and a guardian
+//! Design/rust-compositor.md, "Process model": one executable, four roles, and a guardian
 //! that starts and supervises the others. These tests start the shipped binary and nothing
 //! else — no mocks, no fixtures — because the property under test is what happens between
 //! processes: a child that dies is restarted, a compositor that dies takes the session with

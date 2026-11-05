@@ -8,8 +8,8 @@ use gnoblin_schema::{Catalog, ObjectType};
 /// An object type's namespace and name.
 ///
 /// The namespace is part of the identity because the schema is namespaced:
-/// `gnoblin.window` and an extension's `bsm.greeter.prompt` are different types
-/// with different members, even if both were called `prompt`.
+/// `gnoblin.window` and an extension's `example.ext.probe` are different types
+/// with different members, even if both were called `answer`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeKey {
     namespace: String,

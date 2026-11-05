@@ -3,7 +3,7 @@
 //! This crate is the guardian of the process model in `design/rust-compositor.md`
 //! and the supervision policy of `design/lean-runtime.md`: one process lives for
 //! the login and owns the session, while the compositor, the runtime, the
-//! services role, the greeter and the autostart applications are children it
+//! services role, the front and the autostart applications are children it
 //! starts, watches and stops.
 //!
 //! The state machine is pure logic: [`Guardian::apply`] spawns no process, signals no
@@ -37,7 +37,7 @@
 //!   child that ignores the shutdown grace period, are killed, and a kill the
 //!   caller never reports does not hold the session open.
 //! - **The session ends in order.** Stop goes by rank in reverse start order
-//!   (autostart applications, greeter, runtime, services, compositor), so a
+//!   (autostart applications, front, runtime, services, compositor), so a
 //!   client is always stopped before the server it talks to. Everything in one
 //!   rank is signalled together, so a desktop with ten autostart applications
 //!   does not pay ten grace periods.
@@ -60,7 +60,7 @@
 //!    dependants first —
 //!    `a_compositor_crash_stops_every_other_child`.
 //! 4. Stop order leaves a client talking to a dead server: autostart
-//!    applications and the greeter stop before the runtime, services and
+//!    applications and the front stop before the runtime, services and
 //!    compositor they talk to —
 //!    `dependants_stop_before_the_compositor`.
 //! 5. A child never becomes ready: it is killed at its deadline and treated as
@@ -77,8 +77,8 @@
 //!    `an_unreaped_kill_does_not_hold_the_session`.
 //! 10. A failed autostart application ends the session —
 //!     `a_failed_autostart_entry_does_not_end_the_session`.
-//! 11. A greeter that dies before the session is up blocks the start sequence —
-//!     `a_greeter_that_dies_before_the_session_is_up_does_not_block_it`.
+//! 11. A front that dies before the session is up blocks the start sequence —
+//!     `a_front_that_dies_before_the_session_is_up_does_not_block_it`.
 //! 12. The compositor never becomes ready, or reports ready without the display
 //!     the session needs, and children still launch —
 //!     `an_unready_compositor_ends_the_session` and

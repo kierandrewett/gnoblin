@@ -3,16 +3,15 @@
 //! Design/rust-compositor.md, "Hosting sessions" primitive 2 and D4. A host
 //! Gnoblin runs on the real seat; each signed-in user's Gnoblin runs on the
 //! nested backend as a client of the host. This protocol is the conversation
-//! between the two, and it replaces the `bsm-host` bridge, bsm's own
-//! `bsm_session_host_v1` and bsm's `org.gnoblin.Hosted1`.
+//! between the two.
 //!
 //! ## Who may speak it
 //!
 //! Only the connection the compositor brokered for a session, which is a
 //! [`ClientRole::SessionHost`](crate::ClientRole) in the access roster and is
-//! recorded before its first request. A greeter, an application, or the
-//! session's own clients never see the global, so a lock, logout or power
-//! request cannot be forged from inside the session it would end.
+//! recorded before its first request. An application or the session's own
+//! clients never see the global, so a lock, logout or power request cannot be
+//! forged from inside the session it would end.
 //!
 //! ## The two barriers
 //!
@@ -35,7 +34,7 @@
 //! `lock`, `logout` and `power` are published as [`gnoblin_model`] `Request`
 //! objects, which is the IPC's one way to ask a provider to decide something.
 //! The compositor never locks the seat, ends a session or calls logind because a
-//! client asked: bsm's manager claims the request and answers it, and the
+//! client asked: the session manager claims the request and answers it, and the
 //! session keeps running until it does.
 //!
 //! ## Failure modes first

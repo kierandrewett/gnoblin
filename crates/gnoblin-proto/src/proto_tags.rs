@@ -187,15 +187,16 @@ fn generated_types_use_the_tags_the_proto_states() {
     // The descriptor test above proves the text matches the compile input; these
     // probes prove the generated Rust really carries those numbers, which is what
     // an old client decodes.
-    use crate::bsm_greeter::greeter::AuthResponseArgs;
+    use crate::gnoblin::request::AnswerArgs;
     use crate::gnoblin::window::Properties;
 
-    let encoded = AuthResponseArgs {
-        response: "x".to_owned(),
+    let encoded = AnswerArgs {
+        request: 1,
+        answer: b"x".to_vec(),
     }
     .encode_to_vec();
-    // Field 1, wire type 2 (length-delimited).
-    assert_eq!(encoded.first(), Some(&0x0A), "auth_response.response is tag 1");
+    // Field 1, wire type 0 (varint).
+    assert_eq!(encoded.first(), Some(&0x08), "request.answer.request is tag 1");
 
     let encoded = Properties {
         id: 1,

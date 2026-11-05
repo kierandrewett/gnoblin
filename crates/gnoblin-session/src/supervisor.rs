@@ -357,7 +357,7 @@ impl Supervisor {
     fn command(&self, spec: &ChildSpec) -> Command {
         match spec.kind {
             ChildKind::Autostart => Command::new(&spec.name),
-            ChildKind::Compositor | ChildKind::Runtime | ChildKind::Services | ChildKind::Greeter => {
+            ChildKind::Compositor | ChildKind::Runtime | ChildKind::Services | ChildKind::Front => {
                 let mut command = Command::new(&self.config.program);
                 let role = self.role_name(spec).unwrap_or_else(|| "guardian".to_owned());
                 command.arg("--role").arg(role);
@@ -372,7 +372,7 @@ impl Supervisor {
             ChildKind::Compositor => Some("compositor".to_owned()),
             ChildKind::Runtime => Some("runtime".to_owned()),
             ChildKind::Services => Some("services".to_owned()),
-            ChildKind::Greeter => Some("greeter".to_owned()),
+            ChildKind::Front => Some("front".to_owned()),
             ChildKind::Autostart => None,
         }
     }

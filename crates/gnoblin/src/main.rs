@@ -1,6 +1,6 @@
 //! Session entry point: the role this process plays.
 //!
-//! Design/rust-compositor.md, "Process model": one executable, five roles, and a
+//! Design/rust-compositor.md, "Process model": one executable, four roles, and a
 //! guardian that starts and supervises the others. `gnoblin` is that executable. It
 //! parses one flag, dispatches to exactly one role, and owns no policy of its own: a
 //! role that needs work done names the crate that does it, which is why this file is
@@ -12,16 +12,9 @@
 //! | `--role compositor`   | runs the compositor in the foreground, until it is stopped         |
 //! | `--role runtime`      | runs the Lua host: loads the configuration and serves its handlers |
 //! | `--role services`     | runs the D-Bus agents: polkit, the passphrase prompter and slots   |
-//! | `--role greeter`      | refused: exit 78, with what it would run                           |
 //!
 //! The guardian is the default because that is the process a session manager starts: it is
 //! the one that lives for the login, and every other role is a child of it.
-//!
-//! Exit 78 is `EX_CONFIG` from `sysexits.h`: the invocation is well formed and the
-//! process cannot do what it was asked on this build, which a supervisor must
-//! distinguish from a crash (a signal), a bug (1) and a bad command line (2). A
-//! supervisor that treats 78 as a crash loops forever on a build that will never
-//! serve the role.
 //!
 //! # Why the guardian's supervisor is in `gnoblin-session`
 //!
@@ -34,20 +27,17 @@
 //!
 //! # Failure modes first
 //!
-//! 1. **A build answers a role it cannot serve and the supervisor believes it.** Every
-//!    unimplemented role exits 78 with the reason on standard error, and the role it
-//!    would have run named: `tests/roles.rs::an_unimplemented_role_exits_78`.
-//! 2. **The compositor's failure is reported as success, or as a crash.** A refused
+//! 1. **The compositor's failure is reported as success, or as a crash.** A refused
 //!    start is exit 1 with the reason; the compositor's own loop failure is exit 1
 //!    too, because the session is over either way and the message says which:
 //!    `tests/roles.rs::the_compositor_reports_a_refused_start`.
-//! 3. **A flag nobody documented appears in `--help`.** The only flags are `--role`
+//! 2. **A flag nobody documented appears in `--help`.** The only flags are `--role`
 //!    and `--version`, and the test that walks the help checks that:
 //!    `tests/roles.rs::the_help_documents_only_the_flags_this_build_has`.
-//! 4. **`--version` prints a partial version.** It prints the full triple the IPC
+//! 3. **`--version` prints a partial version.** It prints the full triple the IPC
 //!    serves and the build it came from:
 //!    `tests/roles.rs::the_version_is_the_full_gnoblin_version`.
-//! 5. **A role name is accepted and silently ignored.** An unknown role is a command
+//! 4. **A role name is accepted and silently ignored.** An unknown role is a command
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
@@ -55,10 +45,6 @@ mod gcr;
 mod role;
 
 use std::process::ExitCode;
-
-/// What a refusal exits with: `EX_CONFIG`, "the invocation is fine, this build
-/// cannot serve it".
-const NOT_IMPLEMENTED: u8 = 78;
 
 fn main() -> ExitCode {
     // The program name is `gnoblin` and run() adds it back, so it is skipped here.
@@ -80,9 +66,8 @@ pub struct Exit(pub u8);
 ///
 /// # Errors
 ///
-/// [`Exit`] with 2 for a command line clap refuses, with [`NOT_IMPLEMENTED`] for a
-/// role this build does not serve, and with 1 when the compositor cannot start or
-/// stops with an error.
+/// [`Exit`] with 2 for a command line clap refuses, and with 1 when the compositor
+/// cannot start or stops with an error.
 pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), Exit> {
     let matches = match role::command()
         .try_get_matches_from(std::iter::once(std::ffi::OsString::from("gnoblin")).chain(arguments))
@@ -106,7 +91,6 @@ fn dispatch(role: role::Role) -> Result<(), Exit> {
         role::Role::Guardian => guardian(),
         role::Role::Runtime => runtime(),
         role::Role::Services => services(),
-        role::Role::Greeter => Err(refuse(role.name(), &role::not_implemented(role))),
     }
 }
 
@@ -189,29 +173,9 @@ fn never_stopped() -> bool {
     false
 }
 
-/// Reports a role this build does not serve.
-///
-/// The message names the role, the pieces it needs and the exit code, in that order:
-/// a person reads it once, and a supervisor's log keeps the reason next to the code.
-fn refuse(role: &str, needs: &[String]) -> Exit {
-    eprintln!("gnoblin: the {role} role is not implemented in this build ({NOT_IMPLEMENTED})");
-    for need in needs {
-        eprintln!("  needs: {need}");
-    }
-    Exit(NOT_IMPLEMENTED)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Exit, NOT_IMPLEMENTED, run};
-
-    #[test]
-    fn an_unimplemented_role_is_refused_with_ex_config() {
-        // The greeter is the one role this build does not serve. Every other name in the
-        // table starts a process, and a test that started one would run a whole session.
-        let exit = run(["--role", "greeter"].map(std::ffi::OsString::from)).expect_err("not implemented");
-        assert_eq!(exit, Exit(NOT_IMPLEMENTED), "`greeter` reports EX_CONFIG");
-    }
+    use super::{Exit, run};
 
     #[test]
     fn the_guardian_is_the_default_role() {

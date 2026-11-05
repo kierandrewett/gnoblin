@@ -1,13 +1,12 @@
-//! The roles this executable has, and what the ones this build does not serve need.
+//! The roles this executable has.
 //!
-//! Design/rust-compositor.md, "Process model", gives the executable five roles and
+//! Design/rust-compositor.md, "Process model", gives the executable four roles and
 //! keeps them in one binary. The command line is therefore one flag and nothing else:
 //! a role is a word a supervisor passes, not a configuration surface, and every
 //! other knob belongs to the configuration document a role reads.
 //!
-//! The refusals are data, not prose sprinkled at the call site: [`not_implemented`]
-//! and [`guardian_needs`] each return the list of what the role would run, so the
-//! message a supervisor logs and the list a later lane works from are the same list.
+//! A role name this build does not have is a command line error, the same as any
+//! other unknown word: the supervisor's exit 2 names the roles that exist.
 
 use clap::{Arg, ArgMatches, Command};
 
@@ -23,19 +22,11 @@ pub enum Role {
     Runtime,
     /// The D-Bus agents: polkit, GeoClue, prompts, privacy, screen saver, idle.
     Services,
-    /// The login greeter, which bsm drives.
-    Greeter,
 }
 
 impl Role {
     /// Every role, in the order the plan lists them.
-    pub const ALL: [Role; 5] = [
-        Role::Guardian,
-        Role::Compositor,
-        Role::Runtime,
-        Role::Services,
-        Role::Greeter,
-    ];
+    pub const ALL: [Role; 4] = [Role::Guardian, Role::Compositor, Role::Runtime, Role::Services];
 
     /// The word the command line uses.
     pub fn name(self) -> &'static str {
@@ -44,7 +35,6 @@ impl Role {
             Role::Compositor => "compositor",
             Role::Runtime => "runtime",
             Role::Services => "services",
-            Role::Greeter => "greeter",
         }
     }
 
@@ -72,7 +62,7 @@ pub fn command() -> Command {
                 .help(
                     "The role this process plays. The default, `guardian`, supervises the session; \
                      `compositor` runs it in the foreground; `runtime` serves the scripts and `services` \
-                     the D-Bus agents; `greeter` is a role this build does not serve yet.",
+                     the D-Bus agents.",
                 ),
         )
 }
@@ -88,14 +78,14 @@ pub fn command() -> Command {
 /// leaked string per `command()` call would be a leak in a process that builds the
 /// command line once.
 fn version_line() -> &'static str {
-    static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    VERSION.get_or_init(|| {
+    static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
         format!(
             "{} (build {})",
             gnoblin_compositor::version(),
             env!("CARGO_PKG_VERSION")
         )
-    })
+    });
+    VERSION.as_str()
 }
 
 /// The role the command line asked for.
@@ -114,26 +104,9 @@ pub fn from_matches(matches: &ArgMatches) -> Result<Role, String> {
     Role::from_name(name).ok_or_else(|| format!("`{name}` is not a role"))
 }
 
-/// What a role this build does not serve would run.
-pub fn not_implemented(role: Role) -> Vec<String> {
-    match role {
-        Role::Guardian | Role::Compositor | Role::Runtime | Role::Services => {
-            vec!["this build runs the role; the refusal is a bug".to_owned()]
-        }
-        Role::Greeter => vec![
-            "the IPC extension namespace `bsm.greeter`, which design/rust-compositor.md's \"IPC \
-             extensions\" describes and this build does not implement"
-                .to_owned(),
-            "a restricted connection from `bsm-helper` that grants that namespace and read-only \
-             appearance, and nothing else on the IPC"
-                .to_owned(),
-        ],
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Role, command, from_matches, not_implemented, version_line};
+    use super::{Role, command, from_matches, version_line};
 
     #[test]
     fn every_role_round_trips_through_its_name() {
@@ -191,14 +164,5 @@ mod tests {
                 "`{child}` is in the standard plan: {children:?}"
             );
         }
-    }
-
-    #[test]
-    fn every_unimplemented_role_says_what_it_would_run() {
-        // The greeter is the only one left, and a refusal without a reason would be a
-        // supervisor's dead end.
-        let needs = not_implemented(Role::Greeter);
-        assert!(!needs.is_empty(), "the greeter names what it needs");
-        assert!(needs.iter().all(|need| !need.is_empty()));
     }
 }

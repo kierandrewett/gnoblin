@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn one_file_per_namespace() {
         let names: Vec<String> = proto_files(&catalog()).into_iter().map(|(name, _)| name).collect();
-        assert_eq!(names, vec!["bsm_greeter.proto".to_owned(), "gnoblin.proto".to_owned()]);
+        assert_eq!(names, vec!["gnoblin.proto".to_owned()]);
     }
 
     #[test]
@@ -451,28 +451,32 @@ since = "1.0.0"
     #[test]
     fn the_sensitive_table_names_every_secret_member() {
         let text = sensitive_table(&catalog());
-        assert!(text.contains("(\"bsm.greeter\", \"greeter.auth_response\")"), "{text}");
+        assert!(text.contains("(\"gnoblin\", \"request.answer\")"), "{text}");
         // A member with no secret field is not listed.
-        assert!(!text.contains("begin_auth"), "{text}");
         assert!(!text.contains("focus"), "{text}");
         assert!(text.contains("#[rustfmt::skip]"), "{text}");
     }
 
     #[test]
     fn a_secret_field_is_marked_in_the_proto_text() {
-        let catalog = catalog();
-        let greeter = NameSpace::of(&catalog, "bsm.greeter");
-        let text = super::render(&catalog, &greeter, catalog.version(&greeter).expect("version"));
+        let fixture = parse_schema(
+            "example-ext.toml",
+            include_str!("../tests/fixtures/extensions/example-ext.toml"),
+        )
+        .expect("fixture parses");
+        let catalog = Catalog::new(vec![fixture]).expect("fixture catalog");
+        let probe = NameSpace::of(&catalog, "example.ext");
+        let text = super::render(&catalog, &probe, catalog.version(&probe).expect("version"));
 
-        assert!(text.contains("package bsm.greeter;"), "{text}");
-        assert!(text.contains("message BeginAuthArgs {"), "{text}");
+        assert!(text.contains("package example.ext;"), "{text}");
+        assert!(text.contains("message BeginArgs {"), "{text}");
         assert!(text.contains("string user = 1;"), "{text}");
         assert!(
             text.contains("string response = 1;") && text.contains("secret: every frame"),
             "{text}"
         );
-        assert!(text.contains("message PromptPayload {"), "{text}");
-        assert!(text.contains("BSM_GREETER_PROVIDER_GONE = 1;"), "{text}");
+        assert!(text.contains("message QuestionPayload {"), "{text}");
+        assert!(text.contains("EXAMPLE_EXT_PROVIDER_GONE = 1;"), "{text}");
     }
 
     #[test]

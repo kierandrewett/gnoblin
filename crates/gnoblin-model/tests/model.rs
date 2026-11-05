@@ -311,7 +311,7 @@ fn step(rng: &mut Rng, graph: &mut Graph, members: &[Members], live: &mut Vec<Ob
                 return Ok(());
             };
             let shape = shape_of(graph, members, object)?;
-            // The greeter sketch declares no properties, so there is nothing to set.
+            // An object type with no properties has nothing to set.
             if shape.properties.is_empty() {
                 return Ok(());
             }
