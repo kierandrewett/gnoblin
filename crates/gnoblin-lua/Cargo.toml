@@ -27,6 +27,9 @@ gnoblin-model = { path = "../gnoblin-model" }
 serde_json.workspace = true
 # The primitives the role loop names: the tick it pumps on.
 gnoblin-types.workspace = true
+# The layout host settles placements through the window manager's layout validator and
+# engine, so Lua layouts and built-in layouts share one set of rules.
+gnoblin-wm = { path = "../gnoblin-wm" }
 # The version the handshake advertises, which is the schema's and therefore the
 # compositor's. The runtime role is the second IPC peer in the workspace, and it has to
 # speak the same version rule as the compositor without depending on it.

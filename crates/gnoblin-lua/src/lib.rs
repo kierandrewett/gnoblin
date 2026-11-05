@@ -116,6 +116,7 @@ mod configure;
 mod error;
 mod glob;
 mod host;
+pub mod layout;
 mod loader;
 #[cfg(test)]
 #[path = "../lua_names.rs"]

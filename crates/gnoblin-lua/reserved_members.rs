@@ -5,4 +5,4 @@
 // One list, so the build check and the installer cannot disagree about what is taken.
 
 /// Names on the `gnoblin` table that are not generated object types.
-pub(crate) const HAND_WRITTEN: &[&str] = &["configure", "load", "timers"];
+pub(crate) const HAND_WRITTEN: &[&str] = &["configure", "layout", "load", "timers"];

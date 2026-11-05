@@ -274,6 +274,7 @@ pub(super) fn install<T: Transport + 'static>(
             ))
         })?,
     )?;
+    crate::layout::install(lua, &gnoblin)?;
     gnoblin.set_metatable(Some(meta))?;
     lua.globals().set("gnoblin", gnoblin)?;
     Ok(())

@@ -1,0 +1,335 @@
+//! The layout VM: its construction, the shape a layout module must have, the arrange
+//! snapshot `ctx`, and the calls into a layout. Everything here runs on the worker
+//! thread that owns the VM, because a Lua state is not `Send`.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use super::LayoutReason;
+use gnoblin_lua_sandbox::{self as sandbox, Guard, Limits, Profile};
+use gnoblin_wm::layout::{LayoutFailure, Reply};
+use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
+
+use super::data::Data;
+use super::reply;
+use super::require::{self, Modules, message, runtime};
+use super::snapshot::{LayoutRequest, LayoutSnapshot, SnapshotWindow};
+
+/// Why a VM call failed: the reason the host reports, and the Lua message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LayoutFault {
+    pub(crate) reason: LayoutReason,
+    pub(crate) message: String,
+}
+
+impl LayoutFault {
+    pub(crate) fn new(reason: impl Into<LayoutReason>, message: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            message: message.into(),
+        }
+    }
+}
+
+/// What the host asks a layout to do.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum LayoutCall {
+    /// The batch pass: `arrange(ctx)`.
+    Arrange,
+    /// A message: `on_added`, `on_removed`, `on_request` or `command[name]`.
+    Message(LayoutRequest),
+}
+
+/// One layout as the VM holds it.
+struct LayoutEntry {
+    value: RegistryKey,
+    hash: u64,
+    /// The layout's option defaults, with the user's values laid over them.
+    options: Data,
+}
+
+/// The result of one layout call: the reply, the module hash it ran under, and the
+/// `ctx.state` the layout left behind.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Ran {
+    pub(crate) reply: Reply,
+    pub(crate) hash: u64,
+    pub(crate) state: Data,
+}
+
+/// A layout VM. Its layouts are registered by name and survive across calls.
+pub(crate) struct Vm {
+    lua: Lua,
+    guard: Rc<Guard>,
+    limits: Limits,
+    modules: Rc<Modules>,
+    layouts: BTreeMap<String, LayoutEntry>,
+}
+
+impl Vm {
+    pub(crate) fn new(limits: Limits, module_dirs: Vec<PathBuf>) -> mlua::Result<Self> {
+        let guard = Rc::new(Guard::new());
+        let lua = sandbox::create(Profile::Layout, &limits, guard.clone())?;
+        let modules = Rc::new(Modules::new(module_dirs));
+        require::install(&lua, modules.clone())?;
+        Ok(Self {
+            lua,
+            guard,
+            limits,
+            modules,
+            layouts: BTreeMap::new(),
+        })
+    }
+
+    /// Load `module` afresh and register it as layout `name` with the user's
+    /// `options`. Returns the hash of the module's source.
+    pub(crate) fn load(&mut self, name: &str, module: &str, options: &Data) -> Result<u64, LayoutFault> {
+        self.guard.begin(&self.limits);
+        let (value, hash) = self
+            .modules
+            .reload(&self.lua, module)
+            .map_err(|error| self.fault(error, LayoutFailure::MissingModule))?;
+        let defaults = shape(&value).map_err(|error| self.fault(error, LayoutFailure::Error))?;
+        let options = merge(defaults, options)?;
+        let value = self
+            .lua
+            .create_registry_value(value)
+            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
+        self.layouts.insert(name.to_owned(), LayoutEntry { value, hash, options });
+        Ok(hash)
+    }
+
+    /// Run `call` on layout `name`. `state` is the persisted `ctx.state` and the module
+    /// hash it belongs to; it is used only when that hash is still the one loaded.
+    pub(crate) fn run(
+        &self,
+        name: &str,
+        call: &LayoutCall,
+        snapshot: &LayoutSnapshot,
+        state: Option<(u64, Data)>,
+    ) -> Result<Ran, LayoutFault> {
+        let entry = self
+            .layouts
+            .get(name)
+            .ok_or_else(|| LayoutFault::new(LayoutFailure::MissingModule, format!("layout `{name}` did not load")))?;
+        let state = match state {
+            Some((hash, state)) if hash == entry.hash => state,
+            _ => Data::table(),
+        };
+        let layout: LuaValue = self
+            .lua
+            .registry_value(&entry.value)
+            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
+        let handler = handler(&layout, call).map_err(|error| self.fault(error, LayoutFailure::Error))?;
+        let ctx = build_ctx(&self.lua, snapshot, &entry.options, &state)
+            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
+        let reply = match handler {
+            None => Reply::Declined,
+            Some(handler) => {
+                self.guard.begin(&self.limits);
+                let value =
+                    invoke(&self.lua, &handler, call, &ctx).map_err(|error| self.fault(error, LayoutFailure::Error))?;
+                reply::read(&value).map_err(|error| self.fault(error, LayoutFailure::Error))?
+            }
+        };
+        let state: LuaValue = ctx
+            .get("state")
+            .map_err(|error| self.fault(error, LayoutFailure::Error))?;
+        let state = Data::from_lua(&state).map_err(|error| LayoutFault::new(LayoutFailure::Error, error.0))?;
+        Ok(Ran {
+            reply,
+            hash: entry.hash,
+            state,
+        })
+    }
+
+    /// Classify a Lua error. A budget the hook stopped is a stall; a memory error is a
+    /// memory failure; anything else is `default`.
+    fn fault(&self, error: mlua::Error, default: LayoutFailure) -> LayoutFault {
+        let failure = if self.guard.aborted() {
+            LayoutFailure::Stalled
+        } else {
+            classify(&error, default)
+        };
+        LayoutFault::new(failure, message(error))
+    }
+}
+
+fn classify(error: &mlua::Error, default: LayoutFailure) -> LayoutFailure {
+    match error {
+        mlua::Error::MemoryError(_) => LayoutFailure::Memory,
+        mlua::Error::CallbackError { cause, .. } => classify(cause, default),
+        _ => default,
+    }
+}
+
+/// Check that a module returned a layout, and read its option defaults.
+///
+/// A layout is a function (the batch pass) or a table with an `arrange` function and
+/// optional `on_request`, `on_added`, `on_removed`, `command` (a table of functions)
+/// and `options` (plain data).
+fn shape(value: &LuaValue) -> mlua::Result<Data> {
+    let LuaValue::Table(table) = value else {
+        return match value {
+            LuaValue::Function(_) => Ok(Data::table()),
+            other => Err(runtime(format!(
+                "a layout must be a function or a table, not {}",
+                other.type_name()
+            ))),
+        };
+    };
+    if table.get::<Option<Function>>("arrange")?.is_none() {
+        return Err(runtime("a layout table needs an `arrange` function"));
+    }
+    for key in ["on_request", "on_added", "on_removed"] {
+        match table.get::<Option<LuaValue>>(key)? {
+            None | Some(LuaValue::Function(_)) => {}
+            Some(_) => return Err(runtime(format!("layout `{key}` must be a function"))),
+        }
+    }
+    if let Some(commands) = table.get::<Option<Table>>("command")? {
+        for pair in commands.pairs::<LuaValue, LuaValue>() {
+            let (key, value) = pair?;
+            if !matches!(value, LuaValue::Function(_)) {
+                return Err(runtime(format!(
+                    "layout command `{}` must be a function",
+                    key_name(&key)
+                )));
+            }
+        }
+    }
+    match table.get::<Option<LuaValue>>("options")? {
+        None => Ok(Data::table()),
+        Some(options @ LuaValue::Table(_)) => Data::from_lua(&options).map_err(|error| runtime(error.0)),
+        Some(_) => Err(runtime("layout `options` must be a table")),
+    }
+}
+
+fn key_name(key: &LuaValue) -> String {
+    match key {
+        LuaValue::String(text) => text.to_string_lossy(),
+        other => other.type_name().to_owned(),
+    }
+}
+
+/// The user's option values laid over the layout's defaults, one key at a time.
+fn merge(defaults: Data, values: &Data) -> Result<Data, LayoutFault> {
+    let mut merged = defaults;
+    let (Data::Table(base), Data::Table(user)) = (&mut merged, values) else {
+        return Err(LayoutFault::new(LayoutFailure::Error, "layout options must be a table"));
+    };
+    for (key, value) in user {
+        base.insert(key.clone(), value.clone());
+    }
+    Ok(merged)
+}
+
+/// The function that answers `call`, or `None` when the layout does not handle it.
+fn handler(layout: &LuaValue, call: &LayoutCall) -> mlua::Result<Option<Function>> {
+    match layout {
+        LuaValue::Function(function) => Ok(matches!(call, LayoutCall::Arrange).then(|| function.clone())),
+        LuaValue::Table(table) => match call {
+            LayoutCall::Arrange => table.get::<Option<Function>>("arrange"),
+            LayoutCall::Message(LayoutRequest::Place { .. }) => first(table, &["on_added", "on_request"]),
+            LayoutCall::Message(LayoutRequest::Remove { .. }) => first(table, &["on_removed", "on_request"]),
+            LayoutCall::Message(LayoutRequest::Command { name, .. }) => match table.get::<Option<Table>>("command")? {
+                Some(commands) => commands.get::<Option<Function>>(name.as_str()),
+                None => Ok(None),
+            },
+        },
+        other => Err(runtime(format!(
+            "the layout is a {}, not a function or table",
+            other.type_name()
+        ))),
+    }
+}
+
+fn first(table: &Table, keys: &[&str]) -> mlua::Result<Option<Function>> {
+    for key in keys {
+        if let Some(function) = table.get::<Option<Function>>(*key)? {
+            return Ok(Some(function));
+        }
+    }
+    Ok(None)
+}
+
+fn invoke(lua: &Lua, handler: &Function, call: &LayoutCall, ctx: &Table) -> mlua::Result<LuaValue> {
+    let ctx = ctx.clone();
+    match call {
+        LayoutCall::Arrange => handler.call::<LuaValue>((ctx,)),
+        LayoutCall::Message(LayoutRequest::Place { window }) => handler.call::<LuaValue>((ctx, event(lua, "place", window.get())?)),
+        LayoutCall::Message(LayoutRequest::Remove { window }) => {
+            handler.call::<LuaValue>((ctx, event(lua, "remove", window.get())?))
+        }
+        LayoutCall::Message(LayoutRequest::Command { params, .. }) => handler.call::<LuaValue>((ctx, params.to_lua(lua)?)),
+    }
+}
+
+fn event(lua: &Lua, kind: &str, window: u64) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    table.set("kind", kind)?;
+    table.set("window", lua_int(window)?)?;
+    Ok(table)
+}
+
+/// The `ctx` a layout is called with. It is rebuilt for every call; only `ctx.state`
+/// is read back after the call.
+fn build_ctx(lua: &Lua, snapshot: &LayoutSnapshot, options: &Data, state: &Data) -> mlua::Result<Table> {
+    let ctx = lua.create_table()?;
+
+    let area = lua.create_table()?;
+    area.set("x", snapshot.area.x)?;
+    area.set("y", snapshot.area.y)?;
+    area.set("width", snapshot.area.width)?;
+    area.set("height", snapshot.area.height)?;
+    ctx.set("area", area)?;
+
+    let output = lua.create_table()?;
+    output.set("id", lua_int(snapshot.output.id.get())?)?;
+    output.set("name", snapshot.output.name.as_str())?;
+    output.set("scale", snapshot.output.scale.as_f64())?;
+    ctx.set("output", output)?;
+
+    let windows = lua.create_table()?;
+    for (index, window) in snapshot.windows.iter().enumerate() {
+        windows.raw_set(index + 1, window_table(lua, window)?)?;
+    }
+    ctx.set("windows", windows)?;
+
+    let focus = snapshot.focus.map(|id| lua_int(id.get())).transpose()?;
+    ctx.set("focus", focus)?;
+
+    // The options come first, so a user option cannot shadow a gap.
+    let LuaValue::Table(params) = options.to_lua(lua)? else {
+        return Err(runtime("layout options are not a table"));
+    };
+    params.set("inner", snapshot.gaps.inner)?;
+    params.set("outer", snapshot.gaps.outer)?;
+    params.set("border", snapshot.gaps.border)?;
+    ctx.set("params", params)?;
+
+    ctx.set("state", state.to_lua(lua)?)?;
+    Ok(ctx)
+}
+
+fn window_table(lua: &Lua, window: &SnapshotWindow) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    table.set("id", lua_int(window.id.get())?)?;
+    table.set("app_id", window.app_id.as_str())?;
+    table.set("title", window.title.as_str())?;
+    table.set("width", window.width)?;
+    table.set("height", window.height)?;
+    table.set("state", "tiled")?;
+    let hints = lua.create_table()?;
+    hints.set("min_width", window.size_hints.min_width)?;
+    hints.set("min_height", window.size_hints.min_height)?;
+    hints.set("max_width", window.size_hints.max_width)?;
+    hints.set("max_height", window.size_hints.max_height)?;
+    table.set("size_hints", hints)?;
+    Ok(table)
+}
+
+fn lua_int(id: u64) -> mlua::Result<i64> {
+    i64::try_from(id).map_err(|_| runtime(format!("id {id} is too large for a layout")))
+}
