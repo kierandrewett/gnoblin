@@ -124,3 +124,37 @@ fn a_module_that_errors_falls_back_and_the_session_keeps_running() {
     let mut late = Client::connect(session.wayland());
     let _ = late.map_window("org.example.late", "late");
 }
+
+#[test]
+fn a_user_module_overrides_the_shipped_layout_of_the_same_name() {
+    // Every window takes the whole area, which the shipped master_stack never does for
+    // three windows. The user directory is listed first, so its module is the one that runs.
+    let modules = tempfile::tempdir().expect("a module directory");
+    let layouts = modules.path().join("gnoblin/layouts");
+    std::fs::create_dir_all(&layouts).expect("the layouts directory");
+    std::fs::write(
+        layouts.join("master_stack.lua"),
+        "local M = {}\n\
+         function M.arrange(ctx)\n\
+           local a = ctx.area\n\
+           local placements = {}\n\
+           for i, window in ipairs(ctx.windows) do\n\
+             placements[i] = { window = window.id, x = a.x, y = a.y, width = a.width, height = a.height }\n\
+           end\n\
+           return { placements = placements }\n\
+         end\n\
+         function M.on_request(_ctx) return nil end\n\
+         return M\n",
+    )
+    .expect("the user module");
+
+    let session = session_with(LayoutSettings {
+        default: "master_stack".to_owned(),
+        module_dirs: vec![modules.path().to_path_buf(), shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+
+    assert_eq!(settled_sizes(&mut client, &windows), vec![(1024, 768); 3]);
+}
