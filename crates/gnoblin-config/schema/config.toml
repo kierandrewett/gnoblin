@@ -113,6 +113,7 @@ variants = [
     { spelling = "kde-server-decoration", doc = "kde-server-decoration." },
     { spelling = "window-frame-renderer", doc = "The Gnoblin window frame renderer protocol." },
     { spelling = "wlr-screencopy", doc = "wlr-screencopy." },
+    { spelling = "ext-image-copy-capture", doc = "ext-image-copy-capture." },
     { spelling = "ext-background-effect-v1", doc = "ext-background-effect-v1." },
     { spelling = "blur-fade", doc = "blur-fade." },
     { spelling = "ext-data-control", doc = "ext-data-control." },

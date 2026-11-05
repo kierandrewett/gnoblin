@@ -47,12 +47,16 @@
 //!   accumulated once and consumed per output: taking it per output would clear the
 //!   other outputs' damage and leave them stale.
 //!
-//! # This slice uses no unsafe code
+//! # The one `unsafe` block
 //!
-//! The workspace forbids `unsafe` and this crate does not opt out. The safe API is
-//! enough for the headless backend, and the DRM backend — which must call libseat,
-//! libdrm and GBM — will opt out with `#[allow(unsafe_code)]` on named FFI shim
-//! modules when it lands, as `Cargo.toml` at the workspace root describes.
+//! Everything here uses the safe API except [`render::shm`], which turns Smithay's
+//! mapping of a client's `wl_shm` pool into a slice so a captured frame can be written
+//! into it. That is the only way to write a client's pixels in Rust without a GPU, and
+//! it is confined to one module with a `SAFETY:` comment on the block and the
+//! length and bounds checked first. The crate therefore restates the workspace's
+//! lint levels with `unsafe_code = "deny"`; the DRM backend — which must call libseat,
+//! libdrm and GBM — will add its own named shim module when it lands, as `Cargo.toml`
+//! at the workspace root describes.
 //!
 //! # Failure modes first
 //!

@@ -63,6 +63,11 @@ pub enum Global {
     DataControl,
     /// `zwlr_data_control_manager_v1`: the wlroots spelling of the same capability.
     WlrDataControl,
+    /// `zwlr_screencopy_manager_v1`: a client reads every other client's pixels.
+    Screencopy,
+    /// `ext_image_copy_capture_manager_v1` and the two capture-source managers that name
+    /// what it copies. They are one capability, so they are one global here.
+    ImageCopyCapture,
 }
 
 impl Global {
@@ -80,7 +85,9 @@ impl Global {
             | Self::ForeignToplevelManagement
             | Self::ForeignToplevelList
             | Self::DataControl
-            | Self::WlrDataControl => true,
+            | Self::WlrDataControl
+            | Self::Screencopy
+            | Self::ImageCopyCapture => true,
         }
     }
 
@@ -93,6 +100,8 @@ impl Global {
             Self::ForeignToplevelList => "ext_foreign_toplevel_list_v1",
             Self::DataControl => "ext_data_control_manager_v1",
             Self::WlrDataControl => "zwlr_data_control_manager_v1",
+            Self::Screencopy => "zwlr_screencopy_manager_v1",
+            Self::ImageCopyCapture => "ext_image_copy_capture_manager_v1",
         }
     }
 
@@ -109,6 +118,8 @@ impl Global {
             // The schema has one data-control name and it covers the family: a session
             // that turns data-control off means both spellings.
             Self::DataControl | Self::WlrDataControl => gnoblin_config::Protocol::ExtDataControl,
+            Self::Screencopy => gnoblin_config::Protocol::WlrScreencopy,
+            Self::ImageCopyCapture => gnoblin_config::Protocol::ExtImageCopyCapture,
         };
         protocols.toggles.get(&protocol).copied().unwrap_or(true)
     }
@@ -327,6 +338,8 @@ mod tests {
         Global::ForeignToplevelList,
         Global::DataControl,
         Global::WlrDataControl,
+        Global::Screencopy,
+        Global::ImageCopyCapture,
     ];
 
     #[test]

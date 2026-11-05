@@ -8,6 +8,7 @@
 //! | Module | Protocol | What it does here |
 //! |---|---|---|
 //! | [`activation`] | `xdg_activation_v1` | mints and redeems one-shot activation tokens |
+//! | [`capture`] | `ext_image_copy_capture_v1`, `ext_image_capture_source_v1`, `zwlr_screencopy_manager_v1` | frames of an output or a window, under the lock embargo and the access roster |
 //! | [`compositor`] | `wl_compositor`, `wl_subcompositor`, `wl_shm` | surfaces, subsurfaces, buffer commits and `wl_shm` pools |
 //! | [`decoration`] | `zxdg_decoration_manager_v1` | answers the client's preference (client-side, this slice draws no frames) |
 //! | [`foreign_toplevel`] | `zwlr_foreign_toplevel_manager_v1`, `ext_foreign_toplevel_list_v1` | the window list a taskbar reads and the requests it may make |
@@ -21,6 +22,7 @@
 //! | [`xdg_shell`] | `xdg_shell` | toplevels, popups, configure and ack |
 
 pub mod activation;
+pub mod capture;
 pub mod compositor;
 pub mod decoration;
 pub mod foreign_toplevel;

@@ -18,6 +18,12 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 /// compositor in behind itself. `gnoblin-types` joins them because it holds the
 /// primitives all of them pass around.
 ///
+/// `gnoblin-capture` joins them for the same reason as `gnoblin-output`: it holds the
+/// capture session rules and no mechanism at all. A frame's pixels reach it through the
+/// `CaptureSource` trait, which the engine implements, so the crate names no Smithay
+/// type, no device and no clock, and the plan's Renderer card is what makes it the
+/// *owner* of those sessions rather than a helper of the protocol layer.
+///
 /// `gnoblin-output` joins them for the same reason as `gnoblin-wm`: it is pure
 /// policy. It holds no Smithay, DRM, udev or Wayland type, reads no clock and
 /// touches no hardware — an output arrives as a descriptor and a configuration
@@ -27,6 +33,7 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 /// its outputs without an engine-to-engine edge, which is the edge the plan forbids.
 const FOUNDATION: &[&str] = &[
     "gnoblin-authority",
+    "gnoblin-capture",
     "gnoblin-client",
     "gnoblin-config",
     "gnoblin-lock",
@@ -41,12 +48,12 @@ const FOUNDATION: &[&str] = &[
 /// The shared primitives: the root of every other crate's dependency graph.
 const TYPES: &str = "gnoblin-types";
 
-/// The mechanism layer: Smithay glue, renderer, input, backends, capture and
-/// Xwayland. These reach the policy core through `gnoblin-model` and
-/// `gnoblin-output` types and each other through `gnoblin-backend` traits.
+/// The mechanism layer: Smithay glue, renderer, input, backends and Xwayland. These
+/// reach the policy core through `gnoblin-model` and `gnoblin-output` types and each
+/// other through `gnoblin-backend` traits. Capture is not here: it is pure policy, and
+/// [`FOUNDATION`] says why.
 const ENGINE: &[&str] = &[
     "gnoblin-backend",
-    "gnoblin-capture",
     "gnoblin-input",
     "gnoblin-render",
     "gnoblin-wayland",

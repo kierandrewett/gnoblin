@@ -190,6 +190,9 @@ pub fn render(
     stats: &Arc<Mutex<FrameStats>>,
     screenshots: &Screenshots,
 ) {
+    // Capture hears the turn before anything is drawn: a session the lock covers is
+    // stopped here, so no frame of it is produced for the iteration that follows.
+    state.poll_capture();
     state.begin_frame();
     let outputs: Vec<OutputId> = backend.outputs().iter().map(|output| output.id).collect();
     let mut drew = false;
@@ -214,6 +217,10 @@ pub fn render(
                 // frame reached the output: a lock waiting for a covering frame hears
                 // about it here and nowhere earlier.
                 state.cover_presented(output);
+                // A capture copies the frame that reached the screen, so the pixels are
+                // read back here.
+                state.capture_frame(backend, output);
+                state.note_capture_damage(output, damage.as_slice());
             }
         }
     }

@@ -6,8 +6,16 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+# The workspace table forbids `unsafe` outright, which cannot be lifted. This crate
+# needs one `unsafe` block that turns Smithay's mapping of a client's `wl_shm` pool
+# into a slice (`render/shm.rs`, the only writer of client pixels), so it restates the
+# workspace's levels with `deny` and confines the exemption to that module, exactly as
+# `Cargo.toml` at the workspace root describes.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
 
 [dependencies]
 # The event-loop handle the backend contract registers its sources with, and the

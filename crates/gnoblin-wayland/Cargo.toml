@@ -40,6 +40,10 @@ gnoblin-backend = { path = "../gnoblin-backend" }
 # The `protocols` configuration: which globals a session advertises is a document
 # value, and the `Protocol` enum is the schema's own list of names, so gating a
 # global cannot drift from what `gnoblin.configure` accepts.
+# The capture rules and every capture session: a protocol handler asks for a claim and
+# this crate decides whether a frame may exist at all (design/rust-compositor.md,
+# Renderer card, "session owner").
+gnoblin-capture = { path = "../gnoblin-capture" }
 gnoblin-config = { path = "../gnoblin-config" }
 # Activation authority: a token is minted once, redeemed once, refused when it
 # expired, reused or was never issued, and an app id alone never grants focus.

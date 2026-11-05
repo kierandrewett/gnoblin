@@ -812,6 +812,10 @@ dependencies = [
 [[package]]
 name = "gnoblin-capture"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-lock",
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-client"
@@ -1087,6 +1091,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-authority",
  "gnoblin-backend",
+ "gnoblin-capture",
  "gnoblin-config",
  "gnoblin-lock",
  "gnoblin-output",

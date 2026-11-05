@@ -54,6 +54,7 @@ use gnoblin_wm::{ActivationDecision, Effect, Event, WindowSpec, Wm, WmOptions};
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::observation::{LockObservation, ObservedWindow, Observer, SessionSnapshot};
 use crate::protocols::activation::Activation;
+use crate::protocols::capture::CaptureTables;
 use crate::protocols::foreign_toplevel::ForeignToplevels;
 use crate::protocols::layer_shell::Layers;
 use crate::protocols::selection::Selections;
@@ -273,6 +274,11 @@ pub struct State {
     /// cover generation and the presentation barrier.
     pub(crate) lock_tables: LockTables,
 
+    /// The capture sessions, the pixels a capture copies from and the capture globals.
+    /// It is one value so the compositor's own fields stay a short list, and so the whole
+    /// of the capture state reads in one place (`protocols::capture`).
+    pub(crate) capture: CaptureTables,
+
     /// The snapshot tests read.
     observation: Arc<Mutex<SessionSnapshot>>,
     /// A reader outside the loop that is told when the snapshot changed. It is the
@@ -367,11 +373,15 @@ impl State {
 
         // A global the configuration turned off is removed rather than skipped, so
         // every protocol state exists for its handler and no client sees it.
+        let capture = CaptureTables::new(&display_handle, &access);
         remove_disabled_globals(
             &display_handle,
             protocols,
             &[
                 (Global::LayerShell, layer_shell_state.shell_global()),
+                (Global::Screencopy, capture.screencopy_global()),
+                (Global::ImageCopyCapture, capture.image_copy_global()),
+                (Global::ForeignToplevelList, foreign_toplevel_list_state.global()),
                 (Global::ForeignToplevelList, foreign_toplevel_list_state.global()),
                 (Global::ForeignToplevelManagement, foreign_toplevel_global),
                 (Global::DataControl, ext_data_control_state.global()),
@@ -429,6 +439,7 @@ impl State {
             lock: Lock::new(),
             lock_embargo: Embargo::RELEASED,
             lock_tables: LockTables::default(),
+            capture,
             observation: Arc::new(Mutex::new(SessionSnapshot::default())),
             observer,
         };
@@ -848,6 +859,17 @@ impl State {
             .map(|entry| entry.rect)
     }
 
+    /// The scale an output composes at, as the backend reported it.
+    ///
+    /// A capture buffer is in physical pixels and every rectangle this crate keeps is
+    /// logical, so the capture path needs the factor that converts one to the other.
+    pub(crate) fn output_scale(&self, output: OutputId) -> Option<f64> {
+        self.outputs
+            .iter()
+            .find(|entry| entry.backend == output)
+            .map(|entry| entry.output.current_scale().fractional_scale())
+    }
+
     /// The output whose rectangle contains a global position.
     pub(crate) fn output_under(&self, position: SmithayPoint<f64, Logical>) -> Option<OutputId> {
         self.outputs
@@ -910,6 +932,9 @@ impl State {
             self.composer.remove_window(window);
             debug!(%window, "[window] closed");
         }
+        // The sessions that captured the window go with it: nothing may serve the pixels
+        // of a window that is no longer on screen, and each client hears `stopped`.
+        self.capture.window_closed(window);
         let effects = self.wm.apply(Event::WindowClosed { window });
         self.apply(effects);
         self.publish();
@@ -1199,6 +1224,7 @@ impl State {
                 state: self.lock.state(),
                 capture_allowed: !self.lock_embargo.capture,
             },
+            capture_sessions: self.capture.sessions(),
             layers: self.layers.observed(),
             activation_denied: self.activation.denied().cloned(),
             selection: self.clipboard_mime_types(),

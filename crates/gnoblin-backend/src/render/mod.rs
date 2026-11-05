@@ -39,6 +39,9 @@
 pub mod compose;
 pub mod frame;
 pub mod image;
+// The one module in this crate that needs `unsafe`: writing a frame into a client's
+// `wl_shm` pool. Its own documentation says why.
+pub mod shm;
 pub mod software;
 
 pub use compose::{Composer, Content};
@@ -47,6 +50,7 @@ pub use compose::{Composer, Content};
 pub use frame::{Layer, OutputFrame, Solid, Surface};
 pub use gnoblin_render::Color;
 pub use image::Image;
+pub use shm::copy_into as copy_into_shm;
 pub use software::Software;
 
 use std::fmt;

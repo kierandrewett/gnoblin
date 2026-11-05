@@ -902,3 +902,52 @@ left = "gnoblin-wayland::Handle"
 right = "gnoblin-xwayland::Handle"
 kind = "same-name"
 reason = "one wlr foreign-toplevel handle object with the manager that made it versus a cloneable handle to a supervised Xwayland session"
+
+# Capture's own vocabulary. Each of these names is the natural word in its own
+# domain and says something different from the crate it collides with: a capture
+# session table is not a nested backend's record table, a capture frame claim is not
+# an IPC frame, a capture refusal is not a compat caller's refusal, a capture stop is
+# not the session guardian's stop, and what a capture exports is not where an input
+# edge goes.
+
+[[allow]]
+left = "gnoblin-backend::Table"
+right = "gnoblin-capture::Table"
+kind = "same-name"
+reason = "a capture session table holds open capture sessions; the backend's table records a nested session's objects"
+
+[[allow]]
+left = "gnoblin-capture::Frame"
+right = "gnoblin-client::Frame"
+kind = "same-name"
+reason = "a capture frame is a single-use claim on one copy into a client buffer; an IPC frame is a wire message"
+
+[[allow]]
+left = "gnoblin-capture::Refusal"
+right = "gnoblin-compat-core::Refusal"
+kind = "same-name"
+reason = "a capture refusal says why no pixels were exposed; a compat refusal says why a caller may not call an adapter"
+
+[[allow]]
+left = "gnoblin-capture::Stop"
+right = "gnoblin-session::Stop"
+kind = "same-name"
+reason = "a capture stop ends one stream; a session stop ends the session's guardian"
+
+[[allow]]
+left = "gnoblin-capture::Target"
+right = "gnoblin-input::Target"
+kind = "same-name"
+reason = "a capture target is what is being exported; an input target is where an input edge goes"
+
+[[allow]]
+left = "gnoblin-backend::Outcome"
+right = "gnoblin-capture::Outcome"
+kind = "same-name"
+reason = "a capture outcome says whether a frame reached the client's buffer; the backend's says how an X11 request ended"
+
+[[allow]]
+left = "gnoblin-capture::Refusal"
+right = "gnoblin-services::Refusal"
+kind = "same-name"
+reason = "a capture refusal says why no pixels were exposed; a services refusal says why an agent request was declined"

@@ -101,9 +101,21 @@ pub struct SessionSnapshot {
     pub(crate) layers: Vec<ObservedLayer>,
     pub(crate) activation_denied: Option<ActivationDenial>,
     pub(crate) selection: Option<Vec<String>>,
+    /// How many capture sessions are open.
+    ///
+    /// The plan's capture card needs it: a session ends when the client that opened it
+    /// disconnects, so a crashed adapter leaves this at zero rather than leaving a stream
+    /// running that nothing can close.
+    pub(crate) capture_sessions: usize,
 }
 
 impl SessionSnapshot {
+    /// How many capture sessions are open.
+    #[must_use]
+    pub fn capture_sessions(&self) -> usize {
+        self.capture_sessions
+    }
+
     /// Every managed window, in policy identity order.
     pub fn windows(&self) -> impl Iterator<Item = &ObservedWindow> {
         self.windows.values()
@@ -244,6 +256,7 @@ impl SessionSnapshot {
             layers: Vec::new(),
             activation_denied: None,
             selection: None,
+            capture_sessions: 0,
         }
     }
 }
