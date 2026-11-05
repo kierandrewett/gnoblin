@@ -691,3 +691,151 @@ left = "gnoblin-a11y::Config"
 right = "gnoblin-compositor::Config"
 kind = "same-name"
 reason = "the accessibility settings a state machine holds versus the process invocation of the composition root; neither crate names the other"
+# The services role and the gcr prompter adapter (crates/gnoblin-services,
+# crates/compat/gnoblin-compat-gnome-keyring-prompter). Every entry is a homonym:
+# the words are each crate's own domain vocabulary and the types cannot be
+# substituted for one another.
+[[allow]]
+left = "gnoblin-a11y::Effect"
+right = "gnoblin-compat-gnome-keyring-prompter::Effect"
+kind = "same-name"
+reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "gnoblin-compat-gnome-keyring-prompter::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-a11y::Pending"
+right = "gnoblin-services::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-authority::Decision"
+right = "gnoblin-compat-gnome-keyring-prompter::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-authority::Decision"
+right = "gnoblin-services::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-authority::Effect"
+right = "gnoblin-compat-gnome-keyring-prompter::Effect"
+kind = "same-name"
+reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
+
+[[allow]]
+left = "gnoblin-authority::Pending"
+right = "gnoblin-compat-gnome-keyring-prompter::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-authority::Pending"
+right = "gnoblin-services::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-compat-core::Decision"
+right = "gnoblin-compat-gnome-keyring-prompter::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-compat-core::Decision"
+right = "gnoblin-services::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-compat-core::Refusal"
+right = "gnoblin-services::Refusal"
+kind = "same-name"
+reason = "why a slot request could not be offered or answered versus the compat frame's rule refusal; the compat one names a rule and this one names a slot or a request"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Decision"
+right = "gnoblin-input::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Decision"
+right = "gnoblin-services::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Effect"
+right = "gnoblin-lock::Effect"
+kind = "same-name"
+reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Effect"
+right = "gnoblin-output::Effect"
+kind = "same-name"
+reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Effect"
+right = "gnoblin-session::Effect"
+kind = "same-name"
+reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Effect"
+right = "gnoblin-wm::Effect"
+kind = "same-name"
+reason = "the bus work a state machine queued for its connection versus another crate's deferred effect; the variants name different work"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Pending"
+right = "gnoblin-lua::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Pending"
+right = "gnoblin-services::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::Waiting"
+right = "gnoblin-input::Waiting"
+kind = "same-name"
+reason = "a prompt waiting for an answer versus another crate's wait record; the two never meet and carry different identities"
+
+[[allow]]
+left = "gnoblin-input::Decision"
+right = "gnoblin-services::Decision"
+kind = "same-name"
+reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
+
+[[allow]]
+left = "gnoblin-lua::Pending"
+right = "gnoblin-services::Pending"
+kind = "same-name"
+reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
+
+[[allow]]
+left = "gnoblin-compat-gnome-keyring-prompter::EndedPrompt"
+right = "gnoblin-services::Finished"
+kind = "same-shape"
+reason = "one request that ended with a decision: the two crates' decisions are different types, so the records are separate vocabulary rather than one type"
+
+[[allow]]
+left = "gnoblin-parity::CommandTarget"
+right = "gnoblin-services::UnknownSlot"
+kind = "same-shape"
+reason = "a slot name that did not parse versus a parity command target; the only shared shape is a name string"
+>>>>>>> d4856a12 (feat(services): the slot registry and the polkit authentication agent)

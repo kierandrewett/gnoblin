@@ -6,5 +6,33 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[dependencies]
+# The services role is an IPC client (design/rust-compositor.md, "Providers and
+# slots"): it offers a request to the compositor and reads the one answer, so it
+# names the client and never an engine crate.
+gnoblin-client = { path = "../gnoblin-client" }
+# The request vocabulary the answer travels in: `Answer`, `RequestOutcome`, the
+# schema-addressed `Fields`, and the `Tick` a deadline is measured in.
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-types = { path = "../gnoblin-types" }
+# The polkit authentication agent is a D-Bus object on the system bus.
+zbus.workspace = true
+# Every refusal, cancellation and registration is logged once, and never with the
+# material of an answer.
+tracing.workspace = true
+# A `BeginAuthentication` reply waits for the provider's answer, so the waiting
+# handler holds a one-shot channel rather than a locked mutex.
+futures-channel.workspace = true
+
+[dev-dependencies]
+# The tests build the graph from the checked-in schema, so the slot property names
+# this crate publishes are checked against the contract rather than a fixture.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The private bus the D-Bus tests start for themselves, and the loopback IPC pair.
+gnoblin-proto = { path = "../gnoblin-proto" }
+# The tests run a served connection and its caller on one thread, which needs a
+# `join` and a yield rather than a runtime of their own.
+futures-lite.workspace = true
+
 [lints]
 workspace = true

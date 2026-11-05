@@ -181,3 +181,45 @@ wasmtime = { version = "50.0.1", default-features = false, features = [
     "cranelift",
     "component-model",
 ] }
+
+# D-Bus, for the services role and the compat adapters that serve an upstream bus
+# name (design/rust-compositor.md, "Providers and slots" and "Compatibility
+# adapters", rule 4). Only client-side crates may name it: the dependency rules in
+# `xtask/src/deps.rs` refuse `zbus` in a foundation crate, because the policy and
+# model layers must work with no bus at all.
+#
+# The default feature set is left on: it is the async-io stack, which needs no
+# tokio runtime in a process that already runs on calloop. `zbus::blocking` wraps
+# that same stack, so a `#[zbus::interface]` method may be synchronous and a
+# caller that wants to wait needs no runtime of its own.
+zbus = "6.2.1"
+
+# A small async facade: `StreamExt` for the effect channel and `join`/`yield_now` for
+# the tests that run a served connection and its caller on one thread.
+futures-lite = "2.6.1"
+# One-shot channels and queues between a handler and the loop that performs its
+# effects.
+futures-channel = "0.3.31"
+
+# Log lines. Every crate that logs names `tracing` directly rather than relying on
+# another crate's re-export, so a version bump is one line here.
+tracing = "0.1.37"
+
+# The gcr prompter's `prompt.secret` transport: `GcrSecretExchange` protocol 1 is
+# DH over the 1536-bit MODP group with HKDF-SHA256 and AES-128-CBC, so the adapter
+# can serve the interface without linking libgcr.
+#
+# The crate names below are the RustCrypto primitives that protocol is defined in
+# terms of, plus a bignum for the modular exponentiation: every one is MIT or
+# Apache-2.0, which is on the licence allow-list in deny.toml.
+sha2 = "0.11.1"
+hkdf = "0.13.0"
+aes = "0.9.4"
+cbc = { version = "0.2.1", features = ["alloc", "block-padding"] }
+# The key file the exchange string is: GLib's `GKeyFile` with base64 fields.
+base64 = "0.23.1"
+num-bigint = "0.5.1"
+# Randomness for the DH private key and the AES IV. `getrandom` is the same crate
+# `rand` uses underneath, and it needs no trait plumbing in a crate with no
+# dependency on a random-number generator.
+getrandom = "0.4.3"
