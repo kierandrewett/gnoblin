@@ -111,10 +111,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-clipboard"
-version = "0.2.0-alpha.0"
-
-[[package]]
 name = "gnoblin-compat-core"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -122,47 +118,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-displayconfig"
-version = "0.2.0-alpha.0"
-
-[[package]]
 name = "gnoblin-compat-gnome-keyring-prompter"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-gtk-dconf-settings"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-gtk-shell1"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-mutter-idlemonitor"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-mutter-inputcapture"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-mutter-inputmapping"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-qt-portal-settings"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-mutter-remotedesktop"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-mutter-screencast"
-version = "0.2.0-alpha.0"
-
-[[package]]
-name = "gnoblin-compat-mutter-servicechannel"
 version = "0.2.0-alpha.0"
 
 [[package]]
@@ -178,7 +134,51 @@ name = "gnoblin-compat-gnome-shell-screenshot"
 version = "0.2.0-alpha.0"
 
 [[package]]
+name = "gnoblin-compat-gtk-dconf-settings"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-gtk-shell1"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-clipboard"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-displayconfig"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-idlemonitor"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-inputcapture"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-inputmapping"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-remotedesktop"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-screencast"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-mutter-servicechannel"
+version = "0.2.0-alpha.0"
+
+[[package]]
 name = "gnoblin-compat-mutter-x11-interop"
+version = "0.2.0-alpha.0"
+
+[[package]]
+name = "gnoblin-compat-qt-portal-settings"
 version = "0.2.0-alpha.0"
 
 [[package]]
@@ -250,6 +250,9 @@ dependencies = [
 [[package]]
 name = "gnoblin-render"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-schema"
@@ -273,6 +276,10 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "serde_json",
 ]
+
+[[package]]
+name = "gnoblin-types"
+version = "0.2.0-alpha.0"
 
 [[package]]
 name = "gnoblin-wasm"
@@ -788,7 +795,12 @@ name = "xtask"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-schema",
+ "proc-macro2",
+ "quote",
+ "serde",
  "serde_json",
+ "syn 2.0.119",
+ "toml",
 ]
 
 [[package]]
