@@ -1591,7 +1591,7 @@ Each section below records the choice, its consequences, and the options conside
 | D19 | Portal fallback UI           | **Decided 2026-11-05:** every portal interface served; egui fallback when no handler is set                                                                                                                                     |
 | D15 | Night Light and app settings | **Decided:** services role; per-toolkit publish, on by default                                                                                                                                                                  |
 | D16 | IPC wire format              | **Decided:** binary, Protocol Buffers                                                                                                                                                                                           |
-| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback                                                                                                                     |
+| D17 | Layout engines               | **Decided:** layouts are sandboxed Lua modules in the compositor VM; messages, 3D placements, Rust fallback; `floating` (the default) is native Rust with no Lua engine, and equals the shipped module                          |
 | D18 | Renderer 3D pass             | **Proposed:** depth, perspective camera and 3D hit testing in 0.2.0 on GLES 3.1; `unsupported-3d` until then                                                                                                                    |
 | D19 | Portal fallback UI           | **Decided 2026-11-05:** gnoblin is the preferred portal backend; egui fallback UI when no handler is configured; consent stays compositor-drawn                                                                                 |
 | D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
@@ -1931,7 +1931,16 @@ Each workspace has one active layout. The layout owns the geometry of the tiled
 windows. Every request that would change a window's geometry reaches the layout
 as a message, and the layout answers HANDLED or DECLINED. Floating is the layout
 that declines every request, so the wm's existing floating logic applies
-unchanged. `gnoblin.layouts.floating` is the default and is that layout in Lua.
+unchanged. The name `floating` (the default, and the value of an unset workspace
+or output layout) is not loaded as a module and creates no Lua engine. The wm
+runs `FloatingEngine`, a native Rust layout in `gnoblin-compositor::layout` that
+gives the same reply as the shipped `gnoblin.layouts.floating` module: no
+placements, a `float` effect for every tiled window, and a declined geometry
+request. A test (`native_floating_matches_the_shipped_floating_module`) runs both
+and compares their replies. The default path therefore never touches the Lua
+sandbox. `gnoblin.layouts.floating` (`src/data/lua/gnoblin/layouts/floating.lua`)
+stays shipped with the same behaviour, for users who register it or compose it
+explicitly.
 
 Options considered:
 
@@ -2198,7 +2207,7 @@ as files under the shipped module path. A user copies one into the config
 directory, gives it a new name, and edits it. A user module with the same name
 shadows the shipped file. Layouts are not special-cased.
 
-- `floating`: declines every request and returns no placements.
+- `floating`: declines every request and returns no placements. The wm runs the native `FloatingEngine` for this name, so the module is not loaded; the module stays shipped for explicit use, with the same reply.
 - `kiosk`: one window fills the output, with `decorated = false`, and the others
   are `visible = false`. Decoration is a render hint, not a `WindowState` flag.
 - `monocle`: every window fills the area, the focused one on top, and the others
@@ -2219,10 +2228,14 @@ shadows the shipped file. Layouts are not special-cased.
   and passes the placements through.
 - `layout.per_output{ [name] = l, default = l2 }`: picks a layout by output name.
 
-**Selection and configuration.** `workspace:set_layout(name)`,
-`output:set_layout(name)`, the rule key `layout`, and `gnoblin.configure.layout`
-for the default layout and params. A workspace with no layout uses its output's
-layout, and an output with none uses `floating`.
+**Selection and configuration.** Configuration is the `layout` section, read from the last accepted document (`gnoblin.configure.layout`):
+
+- `default`: the layout of a workspace with no override. Default `floating`.
+- `workspaces`: a list of `{ workspace, layout }`, keyed by the decimal workspace id. These win over `outputs` and `default`.
+- `outputs`: a list of `{ output, layout }`, keyed by connector id. **Not applied yet:** the wayland factory receives only a `WorkspaceId`, so the override is logged at startup and otherwise ignored. Closing this gap means passing the output with the workspace to the factory. It is a known gap, not a design change.
+- `module-dirs`: extra directories searched for layout modules, before the installed ones. The first directory with the module wins, so a file here shadows the shipped module. The schema's description says "after the shipped ones"; that is wrong and is listed for fixing with the schema.
+
+The Lua surface `workspace:set_layout(name)`, `output:set_layout(name)` and the rule key `layout` select a layout at run time. A workspace with no layout uses its output's layout, and an output with none uses `floating`.
 
 **IPC and schema additions (all since 0.2.0).**
 
@@ -2295,6 +2308,8 @@ layout, and an output with none uses `floating`.
   VM is rebuilt from the last good module set.
 - An unknown or unregistered layout name: the workspace falls back to floating
   and keeps its windows.
+- A configured layout module that cannot be loaded at startup (missing, syntax error, load failure): a warning names the layout and the reason, and every workspace that asks for it floats. The session keeps running.
+- A configured `outputs` override: accepted and logged at startup, then ignored, because the factory receives only a workspace id. The output's workspaces use `default`. Known gap, listed for closing.
 - A reload removes a name that workspaces still use: those workspaces fall back to
   floating, with a notice.
 - A reload that changes a module's hash: the layout is reloaded and its `ctx.state`
@@ -2302,7 +2317,7 @@ layout, and an output with none uses `floating`.
 - A registration that collides with a shipped name: refused at registration.
 - Reduced motion during a running tween: the next arrange snaps to the target.
 
-**Parity.** Floating is the default, and it declines every request, so the parity
+**Parity.** Floating is the default. It is the native `FloatingEngine`, which declines every request and returns no placements, so the parity
 harness keeps its placement, stacking and focus scenarios against the Mutter
 reference, unchanged. Tiling, scrolling, 3D and Lua layouts have no Mutter
 equivalent. They are a new feature, not a divergence, so they do not go in
