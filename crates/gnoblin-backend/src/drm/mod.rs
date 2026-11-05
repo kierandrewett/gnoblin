@@ -39,24 +39,32 @@
 //! 5. **A gamma table does not fit.** [`gamma::GammaRamp::matches`] refuses it before the
 //!    ioctl and the refusal is logged, so the display keeps the table it had.
 
+pub mod frame;
 pub mod gamma;
 pub mod gpu;
 pub mod plan;
 pub mod present;
+pub(crate) mod scanout;
 
 use std::fmt;
 use std::io;
+
+use tracing::warn;
 
 use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::crtc;
 
+use crate::drm::frame::{Presented, present};
 use crate::drm::present::{OutputPresenter, Presenter, complete_flips};
+use crate::drm::scanout::{Buffers, Device as ScanoutDevice, Flip};
 use crate::libinput::Libinput;
 use crate::libinput::map::Screen;
 use crate::render::Image;
+use crate::render::OutputFrame;
 use crate::session::{SeatEvent, SeatState, Transition};
 use crate::{Backend, BackendError, BackendEvent, Host, InputEvent, InputSource, Output, Present, Target};
+use std::collections::HashMap;
 
 /// Why the hardware backend could not start.
 ///
@@ -107,6 +115,10 @@ pub struct Drm {
     outputs: Vec<Output>,
     /// Each connected output's presenter, keyed by the CRTC that scans it out.
     channels: Vec<OutputPresenter<crtc::Handle, OutputId>>,
+    /// The GBM device and EGL display every output's scan-out buffers are allocated on.
+    scanout: ScanoutDevice,
+    /// Each output's scan-out buffers, allocated on its first draw and dropped on resume.
+    buffers: HashMap<OutputId, Buffers>,
     input: Input,
     /// Whether the seat is ours, which decides whether the device may be used.
     seat: SeatState,
@@ -211,6 +223,7 @@ impl Drm {
                 })
             })
             .collect();
+        let scanout = ScanoutDevice::open(gpu.device_fd()).map_err(DrmError::Renderer)?;
         let input = match Libinput::open(gpu.seat().libseat()) {
             Ok(libinput) => Input::Live(Box::new(libinput)),
             Err(error) => {
@@ -224,6 +237,8 @@ impl Drm {
             gpu,
             outputs,
             channels,
+            scanout,
+            buffers: HashMap::new(),
             input,
             seat: SeatState::new(),
         })
@@ -270,6 +285,7 @@ impl Drm {
         for channel in &mut self.channels {
             channel.presenter.resume();
         }
+        self.buffers.clear();
         if let Input::Live(libinput) = &mut self.input {
             libinput.resume();
         }
@@ -307,11 +323,47 @@ impl<S: Host + 'static> Backend<S> for Drm {
         Ok(())
     }
 
-    fn render(&mut self, _host: &mut S, output: OutputId) -> Result<Present, BackendError> {
-        if !self.outputs.iter().any(|known| known.id == output) {
+    fn render(&mut self, host: &mut S, output: OutputId) -> Result<Present, BackendError> {
+        let Some(known) = self.outputs.iter().find(|known| known.id == output) else {
             return Err(BackendError::UnknownOutput(output));
+        };
+        let (scale, size) = (known.scale, known.mode);
+        let Some(index) = self.channels.iter().position(|channel| channel.id == output) else {
+            return Err(BackendError::Unpresentable(output));
+        };
+        let crtc = self.channels[index].crtc;
+        let mut frame = OutputFrame::new();
+        if host.frame(output, &mut frame) {
+            self.channels[index].presenter.mark_dirty();
         }
-        Err(BackendError::Unpresentable(output))
+        let buffers = match self.buffers.entry(output) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let formats = self
+                    .gpu
+                    .plane_formats(crtc)
+                    .ok_or(BackendError::Unpresentable(output))?;
+                let physical = gnoblin_types::Size::new(size.width, size.height);
+                let buffers = Buffers::new(&self.scanout, physical, &formats).map_err(BackendError::Render)?;
+                entry.insert(buffers)
+            }
+        };
+        let mut flip = Flip {
+            buffers,
+            gpu: &self.gpu,
+            crtc,
+            scale,
+        };
+        match present(&mut self.channels[index].presenter, &mut flip, &frame) {
+            Presented::Idle | Presented::Waiting => Ok(Present::Nothing),
+            Presented::Queued { .. } => Ok(Present::Rendered),
+            Presented::Refused { slot, first, error } => {
+                if first {
+                    warn!(output = %output, slot, %error, "[drm] a frame was refused; the output retries it");
+                }
+                Ok(Present::Nothing)
+            }
+        }
     }
 
     fn screenshot(&mut self, _output: OutputId) -> Option<Image> {

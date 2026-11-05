@@ -109,8 +109,18 @@ impl Device {
     /// # Errors
     ///
     /// [`RenderError::Unavailable`] when EGL offers no context on this machine.
+    #[cfg(test)]
     pub(crate) fn new() -> Result<Self, RenderError> {
-        let mut renderer = super::egl::context()?;
+        Self::on(super::egl::context()?)
+    }
+
+    /// The device on `renderer`'s context, which the caller has made current or will have
+    /// made current by the time this returns.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unavailable`] when the context cannot draw a 1×1 texture.
+    pub(crate) fn on(mut renderer: GlowRenderer) -> Result<Self, RenderError> {
         let white = renderer
             .with_context(|gl| unsafe {
                 // SAFETY: the context is current (that is what `with_context` establishes)
@@ -262,12 +272,11 @@ impl Device {
                 height: size.height,
             });
         }
-        self.renderer
+        let texture = self
+            .renderer
             .with_context(|gl| unsafe {
-                // SAFETY: every name created here belongs to this context and is stored in the
-                // returned `Framebuffer`, which the context outlives. The texture is a colour
-                // attachment; it is cleared once so a fresh target holds no defined pixel, the
-                // state a fresh pixman buffer is in.
+                // SAFETY: the name created here belongs to this context and is stored in the
+                // framebuffer that `framebuffer` builds over it, which the context outlives.
                 let texture = gl.create_texture().map_err(|error| {
                     debug!(%error, "[render] no target texture");
                     RenderError::Unavailable
@@ -291,7 +300,32 @@ impl Device {
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
                 gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
                 gl.bind_texture(glow::TEXTURE_2D, None);
+                Ok(texture)
+            })
+            .map_err(context_lost)??;
+        self.framebuffer(texture, width, height)
+    }
 
+    /// A target that draws into `texture`, an imported dmabuf: the scan-out buffer of an output.
+    ///
+    /// The caller keeps `texture` alive for as long as the framebuffer is used.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Unavailable`] when the texture has no GL name or the framebuffer is
+    /// incomplete.
+    pub(crate) fn framebuffer_over(&mut self, texture: &GlesTexture) -> Result<Framebuffer, RenderError> {
+        let handle = Texture::from_smithay(texture).ok_or(RenderError::Unavailable)?;
+        let (width, height) = handle.size;
+        self.framebuffer(handle.handle, width, height)
+    }
+
+    /// A depth-backed framebuffer over `texture`, cleared once.
+    fn framebuffer(&mut self, texture: glow::Texture, width: i32, height: i32) -> Result<Framebuffer, RenderError> {
+        self.renderer
+            .with_context(|gl| unsafe {
+                // SAFETY: every name created here belongs to this context and is stored in the
+                // returned `Framebuffer`, which the context outlives.
                 let framebuffer = gl.create_framebuffer().map_err(|error| {
                     debug!(%error, "[render] no target framebuffer");
                     RenderError::Unavailable

@@ -104,6 +104,8 @@ mod program;
 mod shaders;
 
 use smithay::backend::renderer::ImportMemWl;
+use smithay::backend::renderer::gles::GlesTexture;
+use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::utils::Rectangle;
 use tracing::warn;
 
@@ -196,6 +198,15 @@ struct Passes {
     blur: Program,
 }
 
+/// One scan-out buffer of an output: the dmabuf imported as a GL texture and the framebuffer
+/// that draws into it. Both are GL objects of the output's context, dropped with it.
+pub(crate) struct ScanBuffer {
+    /// The framebuffer the frame is drawn into.
+    framebuffer: Framebuffer,
+    /// The texture behind the framebuffer. Kept alive for as long as the framebuffer is used.
+    _texture: GlesTexture,
+}
+
 /// A registered user shader and the program it compiled to, if it compiled.
 struct Registered {
     /// The source and schema the caller registered.
@@ -214,13 +225,23 @@ impl Gles {
     /// EGL library, no surfaceless platform, or a driver that offers no GLES 3 context. The
     /// reason is logged where it happened.
     pub fn new(physical: Size) -> Result<Self, RenderError> {
+        Self::on(egl::context()?, physical)
+    }
+
+    /// A renderer on `renderer`'s context, with a target of `physical` pixels.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Degenerate`] for a size with no pixels on an axis, and
+    /// [`RenderError::Unavailable`] when the context cannot hold the target or the passes.
+    pub(crate) fn on(renderer: GlowRenderer, physical: Size) -> Result<Self, RenderError> {
         if physical.is_empty() {
             return Err(RenderError::Degenerate {
                 width: physical.width,
                 height: physical.height,
             });
         }
-        let mut device = Device::new()?;
+        let mut device = Device::on(renderer)?;
         let target = device.target(physical)?;
         let passes = Passes::new(&mut device)?;
         Ok(Self {
@@ -234,6 +255,19 @@ impl Gles {
             draws: 0,
             damage: Vec::new(),
         })
+    }
+
+    /// A renderer on a context made on `display`, with a target of `physical` pixels.
+    ///
+    /// The hardware path names the GBM display its scan-out buffers were allocated on; see
+    /// [`egl::gbm_display`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Gles::on`], plus [`RenderError::Unavailable`] when no GLES 3 context can be made on
+    /// `display`.
+    pub(crate) fn on_display(display: &smithay::backend::egl::EGLDisplay, physical: Size) -> Result<Self, RenderError> {
+        Self::on(egl::context_on(display)?, physical)
     }
 
     /// The target's size in physical pixels.
@@ -368,6 +402,52 @@ impl Gles {
         }
         let outcome = self.paint(frame, scale, &damage);
         self.damage = damage;
+        outcome?;
+        self.draws = self.draws.saturating_add(1);
+        Ok(())
+    }
+
+    /// Imports a dmabuf as a scan-out buffer this renderer can draw into.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when the driver cannot import the buffer, and
+    /// [`RenderError::Unavailable`] when the import has no GL name. The reason is logged.
+    pub(crate) fn import_scanout(
+        &mut self,
+        dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf,
+    ) -> Result<ScanBuffer, RenderError> {
+        use smithay::backend::renderer::ImportDma as _;
+        let texture = self.device.renderer().import_dmabuf(dmabuf, None).map_err(|error| {
+            warn!(%error, "[render] a scan-out buffer cannot be imported");
+            RenderError::Failed
+        })?;
+        let framebuffer = self.device.framebuffer_over(&texture)?;
+        Ok(ScanBuffer {
+            framebuffer,
+            _texture: texture,
+        })
+    }
+
+    /// Draws `frame` into a scan-out buffer, repainting all of it.
+    ///
+    /// A scan-out buffer holds the picture of an earlier flip, not the one this frame damaged, so
+    /// the whole output is painted and the frame's damage is not used. A frame with no layers paints
+    /// its background.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when the driver refuses an operation.
+    pub(crate) fn draw_scanout(
+        &mut self,
+        buffer: &mut ScanBuffer,
+        frame: &OutputFrame,
+        scale: Scale,
+    ) -> Result<(), RenderError> {
+        let full = [Rect::new(0, 0, self.physical.width, self.physical.height)];
+        std::mem::swap(&mut self.target, &mut buffer.framebuffer);
+        let outcome = self.paint(frame, scale, &full);
+        std::mem::swap(&mut self.target, &mut buffer.framebuffer);
         outcome?;
         self.draws = self.draws.saturating_add(1);
         Ok(())

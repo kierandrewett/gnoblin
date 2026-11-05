@@ -1,22 +1,29 @@
-//! The EGL bootstrap: a surfaceless GLES 3 context with no display and no session.
+//! The EGL bootstrap: a GLES 3 context on a surfaceless display or on a GBM device.
 //!
 //! This module is the crate's second FFI shim, and part of the reason the crate opts out
 //! of `unsafe_code = "forbid"`: every way to make an EGL display in Smithay is `unsafe`,
 //! because Smithay cannot check that the native display a caller names is valid and
 //! because it tracks displays process-wide — a second `eglTerminate` on a display this
 //! process does not own would invalidate every context on it. The rest of the crate
-//! never names this module: [`super::Gles::new`] is the only caller, so a session that
-//! runs the software path never touches EGL.
+//! never names this module: [`super::Gles::new`] and [`super::Gles::new_on`] are the only
+//! callers, so a session that runs the software path never touches EGL.
 //!
-//! # Why surfaceless
+//! # Why surfaceless, and why GBM on the hardware path
 //!
 //! A headless session has no window and no DRM device, and the GLES renderer draws into
 //! its own offscreen target — so the context needs no surface, only a display. Mesa's
 //! `EGL_MESA_platform_surfaceless` is exactly that: a display not tied to X11, Wayland, a
 //! GPU node or a seat, which is why a CI machine with llvmpipe and a developer's machine
 //! with a real GPU both work with no configuration.
+//!
+//! The hardware path is different: its scan-out buffers are allocated by GBM on the DRM
+//! node, so the context must be made on that same device or the buffers cannot be drawn
+//! into. [`gbm_display`] names that device, and [`context_on`] makes a context on any
+//! display the caller holds.
 #![allow(unsafe_code)]
 
+use smithay::backend::allocator::gbm::GbmDevice;
+use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::egl::context::{GlAttributes, PixelFormatRequirements};
 use smithay::backend::egl::native::EGLSurfacelessDisplay;
 use smithay::backend::egl::{EGLContext, EGLDisplay};
@@ -43,14 +50,43 @@ pub(super) fn context() -> Result<GlowRenderer, RenderError> {
         debug!(?error, "[render] no surfaceless EGL display");
         RenderError::Unavailable
     })?;
-    let context = match EGLContext::new_with_config(&display, gl_attributes(), requirements()) {
+    context_on(&display)
+}
+
+/// The EGL display of a GBM device: the display scan-out buffers are allocated for, and the
+/// one a context drawing into them must be made on.
+///
+/// The caller keeps the display for as long as any context made on it lives.
+///
+/// # Errors
+///
+/// [`RenderError::Unavailable`] when EGL cannot open the device. The reason is logged.
+pub(crate) fn gbm_display(device: &GbmDevice<DrmDeviceFd>) -> Result<EGLDisplay, RenderError> {
+    // SAFETY: `GbmDevice` names the DRM node this process holds as master, which the seat
+    // lent it and which outlives every context on this display because the backend holds
+    // the device and the display together and drops the contexts first. Nothing else in the
+    // process terminates this display: it is reached through Smithay alone.
+    unsafe { EGLDisplay::new(device.clone()) }.map_err(|error| {
+        debug!(?error, "[render] no EGL display on the GBM device");
+        RenderError::Unavailable
+    })
+}
+
+/// A GLES 3 context on `display`, wrapped in Smithay's Glow renderer.
+///
+/// # Errors
+///
+/// [`RenderError::Unavailable`] when the display offers no GLES 3 context. The reason is
+/// logged.
+pub(super) fn context_on(display: &EGLDisplay) -> Result<GlowRenderer, RenderError> {
+    let context = match EGLContext::new_with_config(display, gl_attributes(), requirements()) {
         Ok(context) => context,
         Err(error) => {
             // A driver without a renderable RGBA8 config may still offer a configless
             // context, which is enough here: every draw goes into a framebuffer object,
             // so no surface and no config are needed beyond colour depth on the texture.
             debug!(?error, "[render] no configured GLES 3 context; trying a configless one");
-            EGLContext::new(&display).map_err(|error| {
+            EGLContext::new(display).map_err(|error| {
                 debug!(?error, "[render] no GLES 3 context");
                 RenderError::Unavailable
             })?

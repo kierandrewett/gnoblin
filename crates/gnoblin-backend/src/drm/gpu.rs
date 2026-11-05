@@ -20,12 +20,14 @@ use std::sync::{Arc, Mutex};
 
 use gnoblin_output::{DisplayMode, Edid, VrrSupport};
 use gnoblin_types::{Orientation, OutputId};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmSurface, VrrSupport as KernelVrr};
+use smithay::backend::drm::{
+    DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmSurface, PlaneConfig, PlaneState, VrrSupport as KernelVrr,
+};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::drm::control::{
-    Device as ControlDevice, Mode, ModeTypeFlags, ResourceHandles, connector, crtc,
+    Device as ControlDevice, Mode, ModeTypeFlags, ResourceHandles, connector, crtc, framebuffer,
 };
-use smithay::utils::DeviceFd;
+use smithay::utils::{Buffer, DeviceFd, Physical, Rectangle, Size, Transform};
 
 use crate::drm::DrmError;
 use crate::drm::gamma::crtc_length;
@@ -359,6 +361,54 @@ impl Gpu {
             .iter()
             .find(|port| port.connector.id == output)
             .and_then(|port| port.crtc)
+    }
+
+    /// The formats the primary plane of `crtc` can scan out, with their modifiers.
+    #[must_use]
+    pub fn plane_formats(&self, crtc: crtc::Handle) -> Option<smithay::backend::allocator::format::FormatSet> {
+        let port = self.hardware.ports.iter().find(|port| port.crtc == Some(crtc))?;
+        port.surface().ok().map(|surface| surface.plane_info().formats.clone())
+    }
+
+    /// The device node's file descriptor, which buffers and framebuffers are created on.
+    #[must_use]
+    pub fn device_fd(&self) -> DrmDeviceFd {
+        self.hardware.device.device_fd().clone()
+    }
+
+    /// Queues a page flip on `crtc` that scans `framebuffer` out over the whole mode.
+    ///
+    /// The flip completes at the next vblank, which the notifier reports through [`Gpu::take_flips`].
+    ///
+    /// # Errors
+    ///
+    /// The reason the kernel refused the flip, or that no output is scanned out by `crtc`.
+    pub fn queue_flip(
+        &self,
+        crtc: crtc::Handle,
+        framebuffer: framebuffer::Handle,
+        size: Size<i32, Physical>,
+    ) -> Result<(), String> {
+        let port = self
+            .hardware
+            .ports
+            .iter()
+            .find(|port| port.crtc == Some(crtc))
+            .ok_or_else(|| format!("no output is scanned out by CRTC {crtc:?}"))?;
+        let surface = port.surface()?;
+        let plane = PlaneState {
+            handle: surface.plane(),
+            config: Some(PlaneConfig {
+                src: Rectangle::<f64, Buffer>::from_size((f64::from(size.w), f64::from(size.h)).into()),
+                dst: Rectangle::from_size(size),
+                transform: Transform::Normal,
+                alpha: 1.0,
+                damage_clips: None,
+                fb: framebuffer,
+                fence: None,
+            }),
+        };
+        surface.page_flip([plane], true).map_err(|error| error.to_string())
     }
 
     /// Applies a plan to the hardware, rolling back on the first refusal.
