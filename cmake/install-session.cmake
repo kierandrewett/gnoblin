@@ -175,6 +175,8 @@ gnoblin_install_file("${ROOT}/src/tools/gnoblin-seed-config" "${INSTALL_PREFIX}/
 gnoblin_install_file("${ROOT}/src/data/init.lua.example" "${INSTALL_PREFIX}/share/gnoblin/init.lua.example" MODE_644)
 file(COPY "${ROOT}/src/data/default-config/" DESTINATION "${INSTALL_PREFIX}/share/gnoblin/default-config"
   USE_SOURCE_PERMISSIONS)
+# Shipped layout modules load as require("gnoblin.layouts.<name>") from this root.
+include("${CMAKE_CURRENT_LIST_DIR}/install-lua-data.cmake")
 gnoblin_install_file("${ROOT}/src/data/gnoblin-portals.conf"
   "${INSTALL_PREFIX}/share/xdg-desktop-portal/gnoblin-portals.conf" MODE_644)
 
