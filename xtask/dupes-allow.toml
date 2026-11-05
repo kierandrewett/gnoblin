@@ -237,18 +237,6 @@ kind = "same-name"
 reason = "a deterministic test generator, kept local to each crate's model test so the test builds without the development-only test kit"
 
 [[allow]]
-left = "gnoblin-model::ErrorCode"
-right = "gnoblin-schema::ErrorCode"
-kind = "same-name"
-reason = "the schema's declaration carries a name and the version that added it; the validated code is the value the wire carries"
-
-[[allow]]
-left = "gnoblin-model::ErrorCode"
-right = "gnoblin-types::ErrorCode"
-kind = "same-name"
-reason = "the schema's declaration carries a name and the version that added it; the validated code is the value the wire carries"
-
-[[allow]]
 left = "gnoblin-model::Observation"
 right = "gnoblin-testkit::Observation"
 kind = "same-name"
@@ -411,36 +399,6 @@ kind = "same-name"
 reason = "the configuration document a session declares and the runtime state a state machine applies are two layers"
 
 [[allow]]
-left = "gnoblin-a11y::BounceKeys"
-right = "gnoblin-config::BounceKeys"
-kind = "same-name"
-reason = "the configuration node and the state machine that runs it share a name by design"
-
-[[allow]]
-left = "gnoblin-a11y::SlowKeys"
-right = "gnoblin-config::SlowKeys"
-kind = "same-name"
-reason = "the configuration node and the state machine that runs it share a name by design"
-
-[[allow]]
-left = "gnoblin-a11y::StickyKeys"
-right = "gnoblin-config::StickyKeys"
-kind = "same-name"
-reason = "the configuration node and the state machine that runs it share a name by design"
-
-[[allow]]
-left = "gnoblin-a11y::MouseKeys"
-right = "gnoblin-config::MouseKeys"
-kind = "same-name"
-reason = "the configuration node and the state machine that runs it share a name by design"
-
-[[allow]]
-left = "gnoblin-a11y::Monitors"
-right = "gnoblin-config::Monitors"
-kind = "same-name"
-reason = "the configuration node and the state machine that runs it share a name by design"
-
-[[allow]]
 left = "gnoblin-a11y::Pending"
 right = "gnoblin-authority::Pending"
 kind = "same-name"
@@ -517,12 +475,6 @@ left = "gnoblin-render::Hit"
 right = "xtask::Hit"
 kind = "same-name"
 reason = "a workspace tool's local types never cross into the product; the names coincide with the domain's vocabulary"
-
-[[allow]]
-left = "gnoblin-config::InputSource"
-right = "gnoblin-lock::InputSource"
-kind = "same-name"
-reason = "the configuration's declaration of an input source and the lock's runtime source are two layers"
 
 [[allow]]
 left = "gnoblin-config::Problem"
