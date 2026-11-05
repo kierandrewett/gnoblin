@@ -126,7 +126,7 @@ impl HeadlessRenderer {
     /// for the GLES path, no EGL library, no surfaceless platform or no GLES 3 context.
     fn build(self, physical: Size) -> Result<TargetRenderer, RenderError> {
         match self {
-            Self::Software => Software::new(physical).map(TargetRenderer::Software),
+            Self::Software => Software::new(physical).map(|software| TargetRenderer::Software(Box::new(software))),
             Self::Gles => Gles::new(physical).map(|gles| TargetRenderer::Gles(Box::new(gles))),
         }
     }
@@ -168,7 +168,7 @@ impl HeadlessConfig {
 /// output, so a second allocation there costs nothing a frame feels.
 enum TargetRenderer {
     /// Pixman, into an offscreen image buffer.
-    Software(Software),
+    Software(Box<Software>),
     /// GLES, into a texture on a surfaceless context.
     ///
     /// Boxed because a GLES renderer owns a context and four programs and is several times

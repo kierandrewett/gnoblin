@@ -102,6 +102,11 @@ pub struct Software {
     textures: Vec<Option<PixmanTexture>>,
     /// The overlay's texture for the frame being drawn, if it has one.
     overlay: Option<PixmanTexture>,
+    /// The pixels under the overlay as they were before it was drawn: packed rows of
+    /// the overlay's visible rectangle, so a capture can leave the overlay out.
+    under: Vec<u8>,
+    /// The overlay's visible rectangle in the last frame, or `None` when it had none.
+    under_rect: Option<Rectangle<i32, Physical>>,
     /// The bytes of a tinted layer, reused for the same reason.
     scratch: Vec<u8>,
     /// The frame's damage and the current layer's share of it, in physical pixels,
@@ -135,6 +140,8 @@ impl Software {
             physical,
             textures: Vec::new(),
             overlay: None,
+            under: Vec::new(),
+            under_rect: None,
             scratch: Vec::new(),
             damage: Vec::new(),
             clipped: Vec::new(),
@@ -218,10 +225,23 @@ impl Software {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn screenshot(&mut self) -> Result<Image, RenderError> {
+        self.readback(true)
+    }
+
+    /// The buffer as drawn, overlay included, for tests of the composed frame.
+    #[cfg(test)]
+    fn composed(&mut self) -> Result<Image, RenderError> {
+        self.readback(false)
+    }
+
+    /// Reads the buffer back, with the overlay's pixels put back when `hide_overlay`.
+    fn readback(&mut self, hide_overlay: bool) -> Result<Image, RenderError> {
         let Self {
             renderer,
             buffer,
             physical,
+            under,
+            under_rect,
             ..
         } = self;
         let size = PhysicalSize::from((physical.width as i32, physical.height as i32));
@@ -237,7 +257,11 @@ impl Software {
         // The mapping's stride is pixman's own and is not the packed width, so it
         // is measured from the slice rather than assumed.
         let stride = bytes.len() / height;
-        Image::new(Size::new(mapping.width(), mapping.height()), stride, bytes.to_vec()).ok_or(RenderError::Failed)
+        let mut bytes = bytes.to_vec();
+        if let (true, Some(rect)) = (hide_overlay, *under_rect) {
+            paste_under(&mut bytes, stride, rect, under);
+        }
+        Image::new(Size::new(mapping.width(), mapping.height()), stride, bytes).ok_or(RenderError::Failed)
     }
 
     /// Paints the layers into the bound buffer.
@@ -254,6 +278,8 @@ impl Software {
             physical,
             textures,
             overlay,
+            under,
+            under_rect,
             ..
         } = self;
         let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
@@ -294,7 +320,13 @@ impl Software {
         // cannot change while it is open, so the overlay is a pass of its own. The
         // overlay is a bitmap, so it scales with nearest neighbour; the default is
         // restored whether or not the draw succeeded.
+        *under_rect = None;
         if let (Some(overlay), Some(texture)) = (frame.overlay(), overlay.as_ref()) {
+            let bounds = Rectangle::new((0, 0).into(), (physical.width as i32, physical.height as i32).into());
+            if let Some(dst) = physical_rect(overlay.dst(), scale).intersection(bounds) {
+                capture_under(renderer, &target, dst, damage, under)?;
+                *under_rect = Some(dst);
+            }
             renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
             let drawn = draw_overlay(renderer, &mut target, output, overlay, texture, scale, damage, clipped);
             renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
@@ -386,6 +418,57 @@ fn draw_overlay(
         .map_err(failed)?;
     let _sync = pixman_frame.finish().map_err(failed)?;
     Ok(())
+}
+
+/// Keeps the pixels under the overlay's visible rectangle `dst`, read from the
+/// damaged parts of it, which the layers have just painted.
+fn capture_under(
+    renderer: &mut PixmanRenderer,
+    target: &PixmanTarget<'_>,
+    dst: Rectangle<i32, Physical>,
+    damage: &[Rectangle<i32, Physical>],
+    under: &mut Vec<u8>,
+) -> Result<(), RenderError> {
+    let width = dst.size.w as usize * 4;
+    under.resize(width * dst.size.h as usize, 0);
+    for rect in damage {
+        let Some(rect) = rect.intersection(dst) else {
+            continue;
+        };
+        let row = rect.size.w as usize * 4;
+        let x = (rect.loc.x - dst.loc.x) as usize * 4;
+        let y = (rect.loc.y - dst.loc.y) as usize;
+        let buffer: Rectangle<i32, BufferCoords> =
+            Rectangle::new((rect.loc.x, rect.loc.y).into(), (rect.size.w, rect.size.h).into());
+        let mapping = renderer
+            .copy_framebuffer(target, buffer, READBACK_FORMAT)
+            .map_err(failed)?;
+        let height = mapping.height() as usize;
+        if height == 0 {
+            return Err(RenderError::Failed);
+        }
+        let bytes = renderer.map_texture(&mapping).map_err(failed)?;
+        let stride = bytes.len() / height;
+        for (line, source) in bytes.chunks(stride).enumerate() {
+            let start = (y + line) * width + x;
+            under[start..start + row].copy_from_slice(&source[..row]);
+        }
+    }
+    Ok(())
+}
+
+/// Writes the captured pixels of the overlay's rectangle `rect` back over `bytes`,
+/// a readback of the whole buffer with the given row `stride`.
+fn paste_under(bytes: &mut [u8], stride: usize, rect: Rectangle<i32, Physical>, under: &[u8]) {
+    let row = rect.size.w as usize * 4;
+    if row == 0 {
+        return;
+    }
+    let x = rect.loc.x as usize * 4;
+    for (line, source) in under.chunks_exact(row).enumerate() {
+        let start = (rect.loc.y as usize + line) * stride + x;
+        bytes[start..start + row].copy_from_slice(source);
+    }
 }
 
 /// Creates an offscreen buffer.
@@ -705,7 +788,7 @@ mod tests {
         )));
         frame.set_overlay(Some(overlay));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
-        let image = software.screenshot().expect("a readback");
+        let image = software.composed().expect("a readback");
         // Half red over opaque blue: red 128 from the premultiplied overlay, blue 255 * (255 - 128) / 255.
         assert_eq!(
             image.colour_at(2, 2),
@@ -735,11 +818,42 @@ mod tests {
             Color::from_rgba8(0, 0, 255, 255),
         )));
         software.draw(&frame, Scale::IDENTITY).expect("the cleared frame");
-        let image = software.screenshot().expect("a readback");
+        let image = software.composed().expect("a readback");
         assert_eq!(
             image.colour_at(2, 2),
             Some([0, 0, 255, 255]),
             "clearing the frame removes the overlay"
+        );
+    }
+
+    #[test]
+    fn a_capture_leaves_the_overlay_out_and_keeps_the_layers_under_it() {
+        let mut software = Software::new(Size::new(6, 6)).expect("a software renderer");
+        let translucent_red = Image::new(Size::new(2, 2), 8, [255, 0, 0, 128].repeat(4)).expect("a 2x2 image");
+        let overlay = Overlay::new(Rect::new(2, 2, 2, 2), &translucent_red).expect("an overlay");
+        let mut frame = OutputFrame::new();
+        frame.push_damage(Rect::new(0, 0, 6, 6));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 6, 6),
+            Color::from_rgba8(0, 0, 255, 255),
+        )));
+        frame.set_overlay(Some(overlay));
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        assert_eq!(
+            image.colour_at(2, 2),
+            Some([0, 0, 255, 255]),
+            "a capture shows the blue layer under the overlay, not the overlay"
+        );
+        assert_eq!(
+            image.colour_at(3, 3),
+            Some([0, 0, 255, 255]),
+            "and at the overlay's far corner"
+        );
+        assert_eq!(
+            image.colour_at(1, 1),
+            Some([0, 0, 255, 255]),
+            "and the layer outside the overlay is unchanged"
         );
     }
 }

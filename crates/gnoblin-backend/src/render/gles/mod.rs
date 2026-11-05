@@ -106,7 +106,7 @@ mod shaders;
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
-use smithay::utils::Rectangle;
+use smithay::utils::{Physical, Rectangle};
 use tracing::warn;
 
 use gnoblin_render::{Color, Effects, Mat4, Pass, UniformSchema};
@@ -178,6 +178,11 @@ pub struct Gles {
     /// The frame's damage in physical pixels, reused across frames so a steady frame
     /// allocates nothing.
     damage: Vec<Rect>,
+    /// The pixels under the overlay as they were before it was drawn, top first over the
+    /// whole output, so a capture can leave the overlay out.
+    under: Vec<u8>,
+    /// The overlay's visible rectangle in the last frame, or `None` when it had none.
+    under_rect: Option<Rectangle<i32, Physical>>,
 }
 
 impl std::fmt::Debug for Gles {
@@ -255,6 +260,8 @@ impl Gles {
             physical,
             draws: 0,
             damage: Vec::new(),
+            under: Vec::new(),
+            under_rect: None,
         })
     }
 
@@ -476,6 +483,14 @@ impl Gles {
         // `glReadPixels` starts at the framebuffer's bottom-left corner, so the rows arrive
         // bottom first. An `Image` is top-left first.
         flip_rows(&mut bytes, stride);
+        if let Some(rect) = self.under_rect {
+            let x = rect.loc.x as usize * 4;
+            let width = rect.size.w as usize * 4;
+            for y in rect.loc.y as usize..(rect.loc.y + rect.size.h) as usize {
+                let start = y * stride + x;
+                bytes[start..start + width].copy_from_slice(&self.under[start..start + width]);
+            }
+        }
         Image::new(size, stride, bytes).ok_or(RenderError::Failed)
     }
 
@@ -504,8 +519,19 @@ impl Gles {
             user,
             error,
             physical,
+            under,
+            under_rect,
             ..
         } = self;
+        let output: Rectangle<i32, Physical> =
+            Rectangle::new((0, 0).into(), (physical.width as i32, physical.height as i32).into());
+        let overlay_rect = overlay
+            .as_ref()
+            .and_then(|(overlay, _)| physical_rect(overlay.dst(), scale).intersection(output));
+        *under_rect = overlay_rect;
+        if overlay_rect.is_some() {
+            under.resize(physical.width as usize * 4 * physical.height as usize, 0);
+        }
         let order = spatial_order(frame.layers(), *physical, scale);
         device.begin(target)?;
         let mut painter = Painter {
@@ -520,6 +546,7 @@ impl Gles {
             background,
             bytes: Vec::new(),
             clip: Rect::new(0, 0, 0, 0),
+            under,
         };
         for rect in damage {
             painter.clip = *rect;
@@ -541,6 +568,13 @@ impl Gles {
                 painter.layer(layer, texture, *placement)?;
             }
             if let Some((overlay, texture)) = overlay {
+                if let Some(dst) = overlay_rect {
+                    let damaged: Rectangle<i32, Physical> =
+                        Rectangle::new((rect.x, rect.y).into(), (rect.width as i32, rect.height as i32).into());
+                    if let Some(captured) = damaged.intersection(dst) {
+                        painter.capture_under(captured)?;
+                    }
+                }
                 painter.overlay(overlay, texture)?;
             }
             if let Some(cursor) = frame.cursor() {
@@ -633,6 +667,8 @@ struct Painter<'a> {
     bytes: Vec<u8>,
     /// The damage rectangle every pass is scissored to.
     clip: Rect,
+    /// The pre-overlay pixels, see [`Gles::screenshot`].
+    under: &'a mut Vec<u8>,
 }
 impl Painter<'_> {
     /// Fills the damage rectangle with the frame's background.
@@ -750,6 +786,25 @@ impl Painter<'_> {
             self.report(error);
         }
         drawn
+    }
+
+    /// Keeps the pixels of `rect` before the overlay is drawn over them, read back from
+    /// the target and stored top first in `under`.
+    fn capture_under(&mut self, rect: Rectangle<i32, Physical>) -> Result<(), RenderError> {
+        let stride = self.physical.width as usize * 4;
+        let rows = self.physical.height as usize;
+        let full = self.device.read(self.target)?;
+        if full.len() < stride * rows {
+            return Err(RenderError::Failed);
+        }
+        let x = rect.loc.x as usize * 4;
+        let width = rect.size.w as usize * 4;
+        for y in rect.loc.y as usize..(rect.loc.y + rect.size.h) as usize {
+            let source = (rows - 1 - y) * stride + x;
+            let start = y * stride + x;
+            self.under[start..start + width].copy_from_slice(&full[source..source + width]);
+        }
+        Ok(())
     }
 
     /// The overlay, above every layer and below the cursor.
