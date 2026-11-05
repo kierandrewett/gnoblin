@@ -170,14 +170,14 @@ flowchart LR
     Portal["xdg-desktop-portal-gnoblin"] -- "socket, capture and requests" --> Comp
 ```
 
-| Process                      | Owns                                                                                                                                      | Restart behaviour                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `gnoblin` (guardian)         | Session start and end, systemd targets, environment, child supervision, logs, recovery state                                              | Lives for the login. Never runs scripts or renders.                        |
-| `gnoblin --role compositor`  | Wayland, rendering, input, outputs, the policy core, the object store, the IPC socket, compositor-side D-Bus surfaces                     | A crash ends the session, so this process runs no scripts or D-Bus agents. |
-| `gnoblin --role runtime`     | Lua configuration, event handlers, requests, timers, tweens, input policy decisions                                                       | Restartable. The compositor keeps the last accepted configuration.         |
-| `gnoblin --role services`    | polkit agent, GeoClue agent, passphrase prompts (`prompt.secret`), PipeWire privacy monitor, `org.freedesktop.ScreenSaver`, idle, inhibit | Restartable. Requests fail closed while it is down.                        |
-| `xdg-desktop-portal-gnoblin` | Portal backend interfaces                                                                                                                 | D-Bus activated, independent package (as today).                           |
-| `gnoblinctl`                 | Command line client                                                                                                                       | Short-lived.                                                               |
+| Process                      | Owns                                                                                                                                      | Restart behaviour                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `gnoblin` (guardian)         | Session start and end, systemd targets, environment, child supervision, logs, recovery state                                              | Lives for the login. Never runs scripts or renders.                             |
+| `gnoblin --role compositor`  | Wayland, rendering, input, outputs, the policy core, the object store, the IPC socket, compositor-side D-Bus surfaces                     | A crash ends the session, so this process runs no scripts or D-Bus agents.      |
+| `gnoblin --role runtime`     | Lua configuration, event handlers, requests, timers, tweens, input policy decisions                                                       | Restartable. The compositor keeps the last accepted configuration.              |
+| `gnoblin --role services`    | polkit agent, GeoClue agent, passphrase prompts (`prompt.secret`), PipeWire privacy monitor, `org.freedesktop.ScreenSaver`, idle, inhibit | Restartable. Requests fail closed while it is down.                             |
+| `xdg-desktop-portal-gnoblin` | Portal interfaces (optional relay, D19); no policy, no UI                                                                                 | D-Bus activated, optional package; removal falls through to `gtk`, `kde` (D19). |
+| `gnoblinctl`                 | Command line client                                                                                                                       | Short-lived.                                                                    |
 
 This keeps today's proven guardian and supervisor model
 (`design/lean-runtime.md`, `design/startup-recovery.md`) and moves the D-Bus
@@ -1091,7 +1091,13 @@ failure-mode list that must be complete before isolated tests or code.
 
 - **Owns:** the guardian, autostart, logind and systemd integration, the
   built-in providers (see "Optional components and compatibility"), ScreenSaver
-  and idle names, inhibit, the portal backend.
+  and idle names, inhibit, portal negotiation and process providers (D19).
+- **Portal relay:** `xdg-desktop-portal-gnoblin` is an optional package that
+  serves the `org.freedesktop.impl.portal.*` names and speaks `portal-call` to
+  services. Nothing depends on it. Removing it makes `xdg-desktop-portal` fall
+  through to `gtk`, then `kde`, with no config change (D19, "Removability").
+- **UI:** the relay has no UI dependency. The built-in egui UI is in the
+  compositor (`gnoblin-diag` draws `gnoblin-portal-ui`, D19).
 - **Replaces:** `src/session`, `src/agents`, `src/idle.c`, `src/portal`,
   `subprojects/xdg-desktop-portal-gnome` and its patches.
 - **Keeps:** `org.freedesktop.ScreenSaver`, `org.gnome.ScreenSaver` forwarding,
@@ -2253,167 +2259,198 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 - **Verification:** screenshot parity of 2D scenes before and after the depth pass; property tests that a point inside a placed window's projected quad hits it and a point outside does not, under a random transform; a host test that a perspective camera refuses in the damage path until the tighter rule exists.
 - **Ledger:** new 0.2.0 scope, recorded in the ledger, not a divergence from Mutter.
 
-### D19: portal fallback UI and full portal coverage
+### D19: portal coverage, provider negotiation and built-in portal UI
 
-**Decided 2026-11-05, on Kieran's direction. A deliberate deviation from the plan:** Gnoblin serves every portal endpoint `portals.conf` routes, plus the other `org.freedesktop.impl.portal.*` backends a desktop needs. Where an interface needs a UI step, the compositor shows a basic egui fallback, but only when no handler is configured. This replaces D14's fail-closed rule for pickers and dialogs. Consent for capture and input keeps its own rule (see "Consent in the fallback").
+**Decided 2026-11-05, on Kieran's direction, and amended the same day.** A deliberate deviation from the plan: Gnoblin serves every `org.freedesktop.impl.portal.*` interface a desktop needs, not only the ones `portals.conf` routes today. Gnoblin core negotiates a UI provider per interface and per request. When no provider handles the request, the built-in portal UI (egui in the compositor) serves it. D14's fail-closed rule for pickers and dialogs is replaced. Fail-closed remains only where a safety rule below demands it.
+
+#### Layers
+
+- **`xdg-desktop-portal-gnoblin` (relay, optional):** owns the D-Bus names and the per-request `Request` and `Session` object paths, validates the call shape, forwards each call as one typed IPC message (`portal-call`) to the services role, and returns the reply. It has no policy and no UI, and holds no state beyond open calls.
+- **Negotiation (`gnoblin-services`, role services):** resolves the provider for the interface, runs it under a deadline, validates its reply, applies the fallback, and returns one outcome to the relay. The services role already owns prompts and is restartable, so it is the place for process supervision.
+- **Built-in UI (compositor):** `gnoblin-portal-ui` holds the pure state (queue, rate limit, per-interface payload and result types). `gnoblin-diag` draws it with egui in the compositor process. The services role reaches it through the `portal-ui` IPC request.
+- **Core without the relay:** negotiation, the built-in UI and the config live in core and keep working when the relay is absent. They have no portal caller then, and nothing else changes (see "Removability").
 
 #### Handler rule
 
-`gnoblin.configure.portals.<Interface> = <handler>` names the UI handler for one interface. A handler is a provider name that claims `portal.ui`, or `"builtin"` for the egui fallback. A UI step resolves in this order:
+`gnoblin.configure.portals.<Interface>` names the provider for one interface. It takes one of three forms:
 
-1. `"builtin"`: the egui fallback draws it.
-2. A provider name: the request goes to that provider. If it is not connected, the request fails with `handler-unavailable`. It never falls back to egui, because the user named a handler.
-3. Unset: a provider that claims `portal.ui` serves it if one exists. Otherwise the egui fallback serves it, if the interface is in the fallback set (every interface with a UI step in the table below). Otherwise the request fails closed with `not-supported`.
+- `"builtin"`: the built-in egui UI serves every request for this interface.
+- A string naming a shell that claims the `portal.ui` slot (the D14 path): the request goes over the existing claim.
+- A table `{ command = { "/path/to/binary", "fixed-arg", ... }, timeout = 120 }`: a process provider (protocol below). `command` is a list of strings, never a shell line.
 
-Secret is not in the fallback set, because Gnoblin cannot serve it (see its row).
+Unset means the provider is chosen per request: a `portal.ui` claimant if one exists, else `"builtin"`.
+
+#### Negotiation per request
+
+1. Resolve the provider for `(interface, request)`: the configured one, or the default when unset.
+2. Call it with the typed request and the deadline. Validate its reply (see the safety rules).
+3. Fall back to `"builtin"` only when the provider is absent, errors, times out, or returns a reply that fails validation. A configured provider that fails falls back the same way as an unset one.
+4. If the requester has gone away at any point (relay disconnect, `portal-cancel`), stop: no provider call, no fallback, no dialog. The outcome is discarded.
+5. Return the outcome: `accepted { result }`, `cancelled { reason }` or `error { code }`. The relay maps it to the portal response code (accepted `0`, cancelled `1`, error `2`) and answers the D-Bus call.
+
+The built-in UI is never reached for a request whose requester has left, and it never auto-accepts.
 
 #### Interfaces and their contracts
 
-Routing: every interface Gnoblin serves routes `gnoblin;gtk;*` in `portals.conf`, so an installed `gtk` backend still answers if Gnoblin's is absent. Secret, OpenURI and Trash stay on `gtk;*`. Versions are the `xdg-desktop-portal` interface versions [INFERENCE: check the installed `xdg-desktop-portal` headers at implementation].
+Every interface is served by Gnoblin. Each routes `gnoblin;gtk;kde;*` in `portals.conf` (see "Removability"). Versions are the `xdg-desktop-portal` interface versions [INFERENCE: check the installed `xdg-desktop-portal` headers at implementation].
 
-| Interface                        | D-Bus contract (version)                               | Behaviour provider                                                        | UI step                      |
-| -------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------- |
-| ScreenCast                       | `org.freedesktop.impl.portal.ScreenCast` (5)           | compositor capture sessions over IPC (`gnoblin-capture`)                  | yes: consent and source pick |
-| Screenshot                       | `org.freedesktop.impl.portal.Screenshot` (2)           | compositor capture over IPC                                               | yes: consent                 |
-| Screenshot, `PickColor`          | method of `org.freedesktop.impl.portal.Screenshot` (2) | compositor reads one pixel of the composed frame                          | yes: pick overlay            |
-| RemoteDesktop                    | `org.freedesktop.impl.portal.RemoteDesktop` (2)        | compositor input sessions (EIS) over IPC                                  | yes: consent and devices     |
-| InputCapture                     | `org.freedesktop.impl.portal.InputCapture` (1)         | compositor input barriers over IPC                                        | yes: consent                 |
-| GlobalShortcuts                  | `org.freedesktop.impl.portal.GlobalShortcuts` (1)      | compositor binding over IPC                                               | no                           |
-| Clipboard                        | `org.freedesktop.impl.portal.Clipboard` (1)            | compositor selection over IPC                                             | no                           |
-| Settings                         | `org.freedesktop.impl.portal.Settings` (2)             | compositor settings object (D15)                                          | no                           |
-| Inhibit                          | `org.freedesktop.impl.portal.Inhibit` (3)              | compositor inhibit and idle policy over IPC                               | no                           |
-| FileChooser                      | `org.freedesktop.impl.portal.FileChooser` (4)          | portal crate: file access, document-portal export                         | yes: open, save, folder      |
-| AppChooser                       | `org.freedesktop.impl.portal.AppChooser` (1)           | portal crate: `.desktop` entries and `mimeapps.list`                      | yes: list                    |
-| Print                            | `org.freedesktop.impl.portal.Print` (1)                | portal crate: CUPS through `lp`, or print-to-PDF file                     | yes: printer and copies      |
-| Account                          | `org.freedesktop.impl.portal.Account` (1)              | portal crate: passwd GECOS and `~/.face`                                  | yes: confirm                 |
-| Email                            | `org.freedesktop.impl.portal.Email` (2)                | portal crate: `xdg-open mailto:` with the composed URI                    | no                           |
-| Notification                     | `org.freedesktop.impl.portal.Notification` (1)         | portal crate forwards to the owner of `org.freedesktop.Notifications`     | no                           |
-| Wallpaper                        | `org.freedesktop.impl.portal.Wallpaper` (1)            | compositor background object over IPC                                     | yes: confirm                 |
-| Lockdown                         | `org.freedesktop.impl.portal.Lockdown` (1)             | portal crate reads `gnoblin.configure.lockdown`                           | no                           |
-| DynamicLauncher                  | `org.freedesktop.impl.portal.DynamicLauncher` (1)      | portal crate writes a `.desktop` file under `$XDG_DATA_HOME/applications` | yes: confirm                 |
-| Background (new to portals.conf) | `org.freedesktop.impl.portal.Background` (1)           | portal crate records a session-only grant                                 | yes: confirm                 |
-| Secret                           | `org.freedesktop.impl.portal.Secret` (1)               | none in Gnoblin                                                           | not served                   |
-| OpenURI, Trash                   | `org.freedesktop.impl.portal.OpenURI`, `Trash`         | none in Gnoblin; not routed                                               | not served, unchanged        |
+| Interface               | D-Bus contract (version)                               | Behaviour provider                                                    | UI step                              |
+| ----------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------ |
+| ScreenCast              | `org.freedesktop.impl.portal.ScreenCast` (5)           | compositor capture sessions over IPC (`gnoblin-capture`)              | yes: consent and source pick         |
+| Screenshot              | `org.freedesktop.impl.portal.Screenshot` (2)           | compositor capture over IPC                                           | yes: consent                         |
+| Screenshot, `PickColor` | method of `org.freedesktop.impl.portal.Screenshot` (2) | compositor reads one pixel of the composed frame                      | yes: pick overlay                    |
+| RemoteDesktop           | `org.freedesktop.impl.portal.RemoteDesktop` (2)        | compositor input sessions (EIS) over IPC                              | yes: consent and devices             |
+| InputCapture            | `org.freedesktop.impl.portal.InputCapture` (1)         | compositor input barriers over IPC                                    | yes: consent                         |
+| GlobalShortcuts         | `org.freedesktop.impl.portal.GlobalShortcuts` (1)      | compositor binding over IPC                                           | no                                   |
+| Clipboard               | `org.freedesktop.impl.portal.Clipboard` (1)            | compositor selection over IPC                                         | no                                   |
+| Settings                | `org.freedesktop.impl.portal.Settings` (2)             | compositor settings object (D15)                                      | no                                   |
+| Inhibit                 | `org.freedesktop.impl.portal.Inhibit` (3)              | compositor inhibit and idle policy over IPC                           | no                                   |
+| FileChooser             | `org.freedesktop.impl.portal.FileChooser` (4)          | services: file access and document-portal export                      | yes: open, save, folder              |
+| AppChooser              | `org.freedesktop.impl.portal.AppChooser` (1)           | services: `.desktop` entries and `mimeapps.list`                      | yes: list                            |
+| Print                   | `org.freedesktop.impl.portal.Print` (1)                | services: CUPS through `lp`, or print-to-PDF file                     | yes: printer and copies              |
+| Account                 | `org.freedesktop.impl.portal.Account` (1)              | services: passwd GECOS and `~/.face`                                  | yes: confirm                         |
+| Email                   | `org.freedesktop.impl.portal.Email` (2)                | services: `xdg-open mailto:` with the composed URI                    | no                                   |
+| Notification            | `org.freedesktop.impl.portal.Notification` (1)         | services forwards to the owner of `org.freedesktop.Notifications`     | no                                   |
+| Wallpaper               | `org.freedesktop.impl.portal.Wallpaper` (1)            | compositor background object over IPC                                 | yes: confirm                         |
+| Lockdown                | `org.freedesktop.impl.portal.Lockdown` (1)             | services reads `gnoblin.configure.lockdown`                           | no                                   |
+| DynamicLauncher         | `org.freedesktop.impl.portal.DynamicLauncher` (1)      | services writes a `.desktop` file under `$XDG_DATA_HOME/applications` | yes: confirm                         |
+| Background              | `org.freedesktop.impl.portal.Background` (1)           | services records a session-only grant                                 | yes: confirm                         |
+| Secret                  | `org.freedesktop.impl.portal.Secret` (1)               | store: open decision (see "Secret")                                   | yes: confirm first retrieval per app |
+| OpenURI, Trash          | `org.freedesktop.impl.portal.OpenURI`, `Trash`         | services: `xdg-open`; Trash via `gio trash`                           | no                                   |
 
-Secret is a deliberate gap. Its contract returns a per-application secret that must persist across sessions, and Gnoblin stores no secrets and depends on no keyring (see "Providers and slots"). It stays on `gtk;*`. Kieran has not decided whether to accept a store for it; this is a conflict with the plan, reported below.
+The "UI step" column is the built-in UI. A provider may replace it (handler rule).
 
-#### What each UI step does and does not do
+#### What each built-in UI step does and does not do
 
-The fallback supplies UI only. The behaviour is always the provider in the table.
+| Interface                               | The built-in UI does                                                                                                                  | It does not                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| FileChooser                             | open, save, folder; filters; single or multiple select; path bar; directory list; current folder; overwrite confirm                   | thumbnails, search, bookmarks, hidden-file toggle, drag and drop, rename, delete |
+| AppChooser                              | list with a filter; "remember choice" (services writes `mimeapps.list`)                                                               | add or edit applications; browse for an executable                               |
+| Print                                   | printer from `lpstat`, or print-to-PDF file; copies; page range. Without CUPS only print-to-PDF is offered, and the dialog says so    | paper size, duplex, preview, driver or printer settings                          |
+| Account                                 | confirm sharing name and avatar                                                                                                       | edit name or avatar; choose an online account                                    |
+| Email                                   | nothing: the composed `mailto:` goes to the default handler                                                                           | compose UI, attachments, address book                                            |
+| Notification                            | nothing: the owner of `org.freedesktop.Notifications` draws the toast. With no owner the request fails with `error { not-supported }` | draw toasts; Gnoblin owns no notification daemon                                 |
+| Wallpaper                               | confirm "set wallpaper to this file?", then set the compositor background                                                             | picker, slideshow, per-output wallpapers                                         |
+| Lockdown                                | nothing: values come from `gnoblin.configure.lockdown`                                                                                | edit values                                                                      |
+| Background                              | confirm "let this app run in the background?"; the grant lasts for the session                                                        | autostart: `EnableAutostart` returns an error and writes no file                 |
+| DynamicLauncher                         | confirm installing the launcher; services writes the `.desktop` file                                                                  | icon editing                                                                     |
+| ScreenCast, RemoteDesktop, InputCapture | consent, then a source or device choice; each request is a fresh consent                                                              | persistent per-app permission; "remember" for capture or input                   |
+| Screenshot                              | consent; full screen or an interactive region                                                                                         | annotate, save dialog, delay                                                     |
+| PickColor                               | full-screen pick overlay: a click picks the pixel's colour; Escape cancels. Same consent rules as Screenshot                          | magnifier, palette, pick history                                                 |
+| Secret                                  | confirm "let this app read its secret?" on first retrieval per app. Storage depends on the open store decision                        | store secrets itself until the store decision is made                            |
 
-| Interface                               | The fallback does                                                                                                                  | The fallback does not                                                            |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| FileChooser                             | open, save, folder; filters; single or multiple select; path bar; directory list; current folder; overwrite confirm                | thumbnails, search, bookmarks, hidden-file toggle, drag and drop, rename, delete |
-| AppChooser                              | list with a filter; "remember choice" (the portal crate writes `mimeapps.list`)                                                    | add or edit applications; browse for an executable                               |
-| Print                                   | printer from `lpstat`, or print-to-PDF file; copies; page range. Without CUPS only print-to-PDF is offered, and the dialog says so | paper size, duplex, preview, driver or printer settings                          |
-| Account                                 | confirm sharing name and avatar                                                                                                    | edit name or avatar; choose an online account                                    |
-| Email                                   | nothing: the composed `mailto:` goes to the default handler                                                                        | compose UI, attachments, address book                                            |
-| Notification                            | nothing: the owner of `org.freedesktop.Notifications` draws the toast (a shell, mako, swaync). With no owner the request fails     | draw toasts; Gnoblin owns no notification daemon                                 |
-| Wallpaper                               | confirm "set wallpaper to this file?", then set the compositor background                                                          | picker, slideshow, per-output wallpapers                                         |
-| Lockdown                                | nothing: values come from `gnoblin.configure.lockdown`                                                                             | edit values                                                                      |
-| Background                              | confirm "let this app run in the background?"; the grant lasts for the session                                                     | autostart: `EnableAutostart` returns an error and writes no file                 |
-| DynamicLauncher                         | confirm installing the launcher; the portal crate writes the `.desktop` file                                                       | icon editing                                                                     |
-| ScreenCast, RemoteDesktop, InputCapture | consent, then a source or device choice; each request is a fresh consent                                                           | persistent per-app permission; "remember" for capture or input                   |
-| Screenshot                              | consent; full screen or an interactive region                                                                                      | annotate, save dialog, delay                                                     |
-| PickColor                               | full-screen pick overlay: a click picks the pixel's colour; Escape cancels. Same consent rules as Screenshot                       | magnifier, palette, pick history                                                 |
+Settings, Clipboard, GlobalShortcuts and Inhibit have no UI step. OpenURI and Trash need no dialog.
 
-Settings, Clipboard, GlobalShortcuts and Inhibit have no UI step and are already served.
+#### Safety rules for the built-in UI and every consent
 
-#### Consent in the fallback
+These apply to the built-in UI and to any provider reply that grants capture, input or secret access. A provider cannot waive them.
 
-**Decision:** the egui fallback may serve capture and input consent (ScreenCast, Screenshot, RemoteDesktop, InputCapture) under every condition below:
+- **Unspoofable and above everything:** the dialog is drawn in the compositor's top layer. While it is open, pointer and keyboard go only to it, through a compositor grab. No client receives those events, so a client cannot draw over it or press its buttons.
+- **Identity from the compositor:** the requester's app id and name come from the compositor's own attribution of the caller (the client binding that services resolves from the caller's PID, which the relay gets from the bus). They never come from the request body, and the app's own title text is never shown as identity.
+- **Deny is the default:** Deny has focus. Escape and Enter on Deny deny. Allow is never focused by default.
+- **One gesture to allow:** Allow needs one deliberate pointer press and release on Allow, or Enter on a focused Allow. Key repeat does not count. Allow ignores input for 500 ms after the dialog appears (proposed), so a click already in progress cannot accept it.
+- **No remember for capture, input or secrets.** AppChooser's "remember" is the only remember, and it is the user's explicit choice.
+- **Lock embargo:** refused while the session is locked. If the lock engages with a dialog open, the dialog closes with `error { locked }`.
+- **Rate and queue caps:** at most 5 UI requests per app id per minute (proposed); at most eight queued in total and two per app id (proposed). Over the cap, `error { busy }`.
+- **A failing built-in UI cancels, never auto-accepts:** if the UI fails (panic, render failure, lost renderer), the request is cancelled with `cancelled { reason: ui-failed }`. A panic in a frame is caught and that frame is dropped. A panic that escapes ends the session, as any compositor panic does (D5).
+- **Replies are validated, never trusted:** a provider reply (process stdout or shell claim) is decoded and checked against the typed schema for the interface. Unknown fields, wrong types and out-of-range values fail validation. A failed validation is a provider error that falls back to the built-in UI.
+- **A reply cannot grant more than the request asked:** `multiple = false` allows one source; `interactive = false` forbids a region; `device_types` and `capabilities` must be a subset of those requested; `desktop_file_id` must be one of the offered choices; Print `copies` and `pages` stay within the requested bounds; ScreenCast `cursor_mode` must be one the request allowed. A reply that exceeds the request fails validation.
+- **Provider commands never take request-controlled arguments:** `command` is built from config only. The request reaches the process as typed data on stdin. No request field is used in argv, in an environment variable, in a file name or in a shell.
 
-- It is drawn in the compositor's top layer, above every client surface, so a client cannot draw over it.
-- While it is up, pointer and keyboard input go only to the dialog through the compositor's grab. No client receives those events, so a client cannot press Allow.
-- The requester is shown as the app id the compositor attributes to the caller. The app's own name text is never used.
-- Deny is the default focus. Allow needs a deliberate activation: a pointer press and release on Allow, or Enter on a focused Allow. Key repeat does not count. Allow ignores activation for 500 ms after the dialog appears (proposed), so a click already in progress cannot accept it.
-- There is no "remember" for capture or input.
-- It is refused while the session is locked (the lock embargo).
-- The answer is a typed response, and the portal validates it against the request it sent, as for any provider.
+#### Provider process protocol
 
-**Why this is safe:** the answer comes from compositor code that no client can draw over or inject input into, and it is bound to one request with one attributed requester.
+A process provider (`command = {...}`) is started by the services role for one request:
 
-**Trade-off against D14:** D14 kept consent UI out of the compositor, so a fault in UI code could not reach the session. D19 accepts a larger trusted base: the fallback is compositor code, and a panic in it ends the session. D5 already runs egui in-process, so this adds code to an existing failure domain, not a new one. D14's separate-client option still works: a shell or fallback client that claims `portal.ui` replaces the built-in (rule 3 above). Kieran has not chosen between the built-in and a separate client for consent; the default here is the built-in, as he asked.
+- **argv:** exactly the configured `command` list. No shell. Fixed working directory (`$HOME`). Fixed environment (`PATH`, `HOME`, the session's `XDG_*`, and `GNOBLIN_PORTAL_INTERFACE` set to the interface name). No request data goes in argv or environment.
+- **stdin:** one length-prefixed Protocol Buffers `portal-ui` request (`gnoblin-schema`, D16), then EOF.
+- **stdout:** exactly one length-prefixed `portal-provider-reply`, then exit 0. Stdout is capped at 1 MiB; beyond that the reply is an error.
+- **stderr:** captured to the journal; never parsed.
+- **deadline:** `timeout` seconds (default 120). At the deadline the process gets SIGTERM, then SIGKILL after 2 s. A timeout falls back to the built-in UI.
+- **exit:** a non-zero exit, a malformed reply or a validation failure is a provider error and falls back to the built-in UI.
+- **requester gone:** the process is killed at once, and no fallback runs.
 
-#### Request and response schema (`gnoblin-schema`)
+#### Secret: store decision (open, for Kieran)
 
-A new request kind, `portal-ui`, is added to the `Request` claim on the `portal.ui` slot. The portal crate sends it over the privileged IPC; the portal crate never names an egui or drawing type. It is versioned with the IPC schema (D3) and encoded as Protocol Buffers (D16).
+Secret cannot be served without a store. Gnoblin has no keyring dependency and stores no secrets today. The built-in Secret provider needs one of these options:
 
-`portal-ui` request fields:
+| Option                                   | What it is                                                                                                                                                               | Trade-off                                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Delegate to `org.freedesktop.secrets` | Gnoblin asks a running Secret Service (gnome-keyring, or KWallet's bridge) for the master secret. Gnoblin adds only the consent dialog.                                  | No new crypto in Gnoblin. Needs a provider on the bus; with none, Secret returns `error { not-supported }`. Adds a dependency Gnoblin does not have today. |
+| B. File store in the user data dir       | `$XDG_DATA_HOME/gnoblin/secrets`, each entry encrypted with an AEAD (XChaCha20-Poly1305) under a key held in the session keyring, or derived from the unlock passphrase. | Self-contained. Adds crypto code that needs review, and a key-loss story: a session without the key loses the secrets.                                     |
+| C. Stay on the next backend              | Gnoblin serves no Secret. `gtk`, then `kde`, answer.                                                                                                                     | Nothing new to build. Gnoblin does not serve this portal.                                                                                                  |
 
-| Field           | Type               | Meaning                                                                                       |
-| --------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| `request_id`    | string             | opaque, chosen by the portal crate, echoed in the response                                    |
-| `interface`     | enum               | one interface from the table with a UI step                                                   |
-| `method`        | enum per interface | for example `OpenFile`, `SaveFile`, `ChooseApplication`, `PreparePrint`, `Start`, `PickColor` |
-| `app_id`        | string             | compositor-attributed id of the caller; never self-reported                                   |
-| `parent_window` | string, optional   | the portal `parent_window` (`wayland:<handle>` or `x11:<id>`); used for the title only        |
-| `payload`       | typed union        | one variant per interface, below                                                              |
+Recommendation (not decided): B if Kieran accepts owning the crypto, otherwise A. This is an open decision for the user. Until it is decided, Secret falls through to the next backend (option C) and the built-in Secret row is not implemented.
 
-`payload` variants:
+#### Schema additions (`gnoblin-schema`)
 
-- `FileChooser`: `mode` (open, save, folder), `title`, `multiple`, `directories`, `filters` (each `name`, `globs`, `mimes`), `current_filter`, `current_folder`, `current_name`, `choices`.
-- `AppChooser`: `content_type`, `last_choice`, `filter_text`.
-- `Print`: `title`, `printers` (each `name`, `is_default`; empty means print-to-PDF only), `copies`, `pages`.
-- `Account`: `reason`, `name`, `avatar_uri`.
-- `Wallpaper`: `uri`, `options`.
-- `Background`: `reason`, `autostart_requested`.
-- `DynamicLauncher`: `name`, `icon`, `desktop_file_id`.
-- `ScreenCast`: `source_types`, `cursor_mode`, `multiple`.
-- `RemoteDesktop`: `device_types`.
-- `InputCapture`: `capabilities`.
-- `Screenshot`: `interactive`.
-- `PickColor`: no fields.
+All messages are Protocol Buffers (D16), versioned with the IPC schema (D3).
 
-`portal-ui-response` carries `request_id` and one outcome:
+- **`portal-call`** (relay to services): `request_id` (opaque, chosen by the relay), `interface`, `method`, `options` (typed per interface; the relay validates the D-Bus shape), `caller_pid` (from the bus credentials, never from the body). Reply: `portal-call-reply`.
+- **`portal-cancel`** (relay to services): `request_id`. Sent when the D-Bus caller disconnects or closes the `Request` object.
+- **`portal-call-reply`**: `request_id` and one outcome: `accepted { result }`; `cancelled { reason }`, `reason` one of `user`, `timeout`, `ui-failed`, `requester-gone`; or `error { code, message }`, `code` one of `no-ui`, `locked`, `busy`, `provider-failed`, `not-supported`, `unknown-app`.
+- **`portal-ui`** (services to compositor, built-in UI): `request_id`, `interface`, `method`, `app_id` (set by services from attribution), `deadline_ms`, and `payload`, a typed union with one variant per interface: FileChooser `{mode, title, multiple, directories, filters, current_filter, current_folder, current_name, choices}`; AppChooser `{content_type, last_choice, filter_text}`; Print `{title, printers, copies, pages}`; Account `{reason, name, avatar_uri}`; Wallpaper `{uri, options}`; Background `{reason, autostart_requested}`; DynamicLauncher `{name, icon, desktop_file_id}`; ScreenCast `{source_types, cursor_mode, multiple}`; RemoteDesktop `{device_types}`; InputCapture `{capabilities}`; Screenshot `{interactive}`; PickColor `{}`; Secret `{app_id, purpose}`. Reply: `portal-ui-response`, the same outcome shape as `portal-call-reply`, with `result` typed per interface.
+- **`portal-provider-reply`** (process stdout, and the shell claim): the `portal-ui-response` shape, validated by the safety rules above.
+- **Reply validator:** `gnoblin-schema` provides `validate_reply(request, reply)`. It is pure and used by both services and the compositor, so the rules are checked in one place.
 
-- `accepted { result }`, `result` typed per interface: FileChooser `{uris, current_filter}`; AppChooser `{desktop_file_id, remember}`; Print `{printer, copies, pages}`; Account, Wallpaper, Background, DynamicLauncher `{allowed}`; ScreenCast and RemoteDesktop `{selected sources or devices}`; InputCapture `{zones}`; Screenshot `{allowed, region}`; PickColor `{rgb}`.
-- `cancelled { reason }`, `reason` is `user` or `timeout`.
-- `error { code, message }`, `code` is `no-ui`, `locked`, `busy`, `handler-unavailable` or `not-supported`.
+#### Failure modes
 
-The portal crate maps the outcome to the portal response code: accepted `0`, cancelled `1`, error `2`.
+| Event                                                             | Result                                                                                                                              |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Relay (portal process) not running                                | No portal calls. Core keeps working (removability).                                                                                 |
+| Requester disconnects (relay closes the call, or `portal-cancel`) | Provider killed; built-in dialog closed; no fallback; outcome discarded                                                             |
+| User cancels (Cancel or Escape)                                   | `cancelled { user }`, portal code `1`                                                                                               |
+| Timeout (provider deadline, or built-in 120 s)                    | Provider: killed, then fall back to built-in. Built-in: `cancelled { timeout }`, portal code `1`; for consent this is a denial      |
+| Provider absent, errors, or replies invalidly                     | Fall back to built-in                                                                                                               |
+| Built-in UI fails                                                 | `cancelled { ui-failed }`, portal code `1`; never accepts                                                                           |
+| Lock engaged, or UI requested while locked                        | Refused: `error { locked }`, portal code `2`; an open dialog closes                                                                 |
+| Second request while one is open                                  | Queued (first in first out, eight total, two per app id); shown when the first closes. Queue full: `error { busy }`                 |
+| Headless or no GPU renderer                                       | Built-in unavailable: `error { no-ui }`, unless a provider handles the request. Consent is refused, with the missing renderer named |
+| Named shell provider not connected                                | Fall back to built-in                                                                                                               |
+| Services role down                                                | Portal calls fail with `error { not-supported }` until services returns (services is restartable, D4)                               |
+| Secret store undecided                                            | Secret falls through to the next backend (option C)                                                                                 |
+| Unknown `app_id` (no compositor attribution)                      | `error { unknown-app }`; no dialog                                                                                                  |
+| Relay binary removed                                              | `xdg-desktop-portal` uses the next backend in `portals.conf` (`gtk`, then `kde`). Verified as in "Removability"                     |
 
-#### Cancellation and failure modes
+Keyboard: Tab moves focus in order; Enter activates the focused default (Deny for consent); Escape cancels (`cancelled { user }`). The egui tree is exposed through AccessKit, as D5 requires. Motion: transitions are skipped when the Settings reduced-motion value is set (D15). Theme: the built-in UI draws only the accent colour and font size from `gnoblin.configure.portal_ui`.
 
-| Event                                                                      | Result                                                                                                      |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Requester disconnects (the portal crate's IPC drops)                       | the dialog closes; no response is sent; a queued entry for it is removed                                    |
-| User cancels (Cancel or Escape)                                            | `cancelled { user }`, portal code `1`                                                                       |
-| Timeout (120 s, proposed)                                                  | `cancelled { timeout }`, portal code `1`; for consent this is a denial                                      |
-| Lock engaged while the dialog is open                                      | the dialog closes; `error { locked }`, portal code `2`                                                      |
-| UI requested while locked                                                  | refused at once: `error { locked }`, portal code `2`; no dialog                                             |
-| Second request while one is open                                           | queued, first in first out; shown when the first closes; a queued request whose requester leaves is dropped |
-| Queue full (eight waiting, proposed)                                       | `error { busy }`, portal code `2`                                                                           |
-| Headless, or no GPU renderer                                               | fallback unavailable: `error { no-ui }`, portal code `2`; consent refused, with the missing renderer named  |
-| Named handler not connected                                                | `error { handler-unavailable }`, portal code `2`; no egui fallback                                          |
-| Unset handler, no `portal.ui` claimant, interface outside the fallback set | `error { not-supported }`, portal code `2`                                                                  |
+#### Removability
 
-Keyboard: Tab moves focus in order; Enter activates the focused default; Escape cancels (`cancelled { user }`). The egui tree is exposed through AccessKit, as D5 requires. Motion: transitions are skipped when the Settings reduced-motion value is set (D15). Theme: the fallback draws only the accent colour and font size from `gnoblin.configure.portal_ui`.
+`xdg-desktop-portal-gnoblin` is optional. The rules:
+
+1. **No hard dependency on the relay:** gnoblin core, the compositor, the session and every other component have no `Requires` on the portal binary. Packaging uses `Recommends` or `Suggests`. xtask dependency rule: nothing depends on the portal crate.
+2. **Core keeps working without it:** negotiation, the built-in UI and the config live in core. With the relay absent they have no portal caller and nothing else changes.
+3. **Automatic fallthrough:** `portals.conf` ships each interface as `gnoblin;gtk;kde;*` (an ordered list). When the relay is removed, `xdg-desktop-portal` moves to `gtk`, then `kde`, with no config change. The `.portal` file's `UseIn` and `Interfaces` list the interfaces the relay serves, so they stay accurate.
+4. **No stale activation:** the `.portal` file and the D-Bus service file ship in the same package as the binary and are removed with it. Core sets no env var that makes `xdg-desktop-portal` wait on a missing backend.
+5. **Verification step:** in a test session, uninstall the relay (or move its binary and `.portal` file aside), restart `xdg-desktop-portal`, and confirm a FileChooser request is served by the next backend in `portals.conf` (`gtk` or `kde`). Then reinstall and confirm `gnoblin` serves it again. Not yet run.
 
 #### Config surface
 
 ```lua
-gnoblin.configure.portals.FileChooser = "builtin"   -- or a provider name
+gnoblin.configure.portals.FileChooser = "builtin"                                  -- built-in UI
+gnoblin.configure.portals.Print = { command = { "/usr/lib/gnoblin/print-pick" }, timeout = 120 }
+gnoblin.configure.portal_routing = { FileChooser = { "gnoblin", "gtk", "kde" } }   -- routing, not handler
 gnoblin.configure.portal_ui = { accent = "#3584e4", font_size = 14 }
 ```
 
-Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts).
+Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts). `portals.<Interface>` is the provider, never routing.
 
-#### Crate placement
+#### Crate placement and dependency rules
 
-- `gnoblin-portal-ui`: pure state, depends on `gnoblin-types` and `gnoblin-schema` only.
-- `gnoblin-diag`: draws it with egui, depends on `gnoblin-portal-ui`.
-- `xdg-desktop-portal-gnoblin`: depends on `gnoblin-client` and `zbus`; names neither crate. It sends `portal.ui` requests and receives typed responses.
+- `xdg-desktop-portal-gnoblin` (relay): depends on `gnoblin-client`, `gnoblin-schema` and `zbus`. Names no compositor, UI or services crate. Optional; nothing depends on it.
+- `gnoblin-services` (negotiation, process providers): depends on `gnoblin-client`, `gnoblin-schema` and `zbus`, not on compositor crates. The built-in UI is reached over IPC (`portal-ui`).
+- `gnoblin-portal-ui` (compositor side, pure state): depends on `gnoblin-types` and `gnoblin-schema` only.
+- `gnoblin-diag` (compositor side): draws `gnoblin-portal-ui` with egui.
 
 #### Parity and ledger
 
-Mutter's portal setup delegates these toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger.
+Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger, with two open items: the Secret store decision, and the removability verification.
 
 #### Conflicts with the plan
 
-- **Phase 1 gate** (the line "FileChooser and Email route to `gtk`"): superseded by D19; those routes become `gnoblin;gtk;*`. Not edited here.
-- **Config key:** `gnoblin.configure.portals` is the plan's routing key, and D19 uses it for the handler. D19 moves routing to `gnoblin.configure.portal_routing`. Kieran needs to confirm.
-- **Secret:** the no-store rule means Secret cannot be served; it stays on `gtk;*` until Kieran decides on a store.
+- **Phase 1 gate** (the line "FileChooser and Email route to `gtk`"): superseded by D19; those routes become `gnoblin;gtk;kde;*`. Not edited here.
+- **Config keys:** `gnoblin.configure.portals.<Interface>` is the provider. Routing is `gnoblin.configure.portal_routing`. Kieran needs to confirm.
+- **Secret:** the store is undecided; Secret falls through to the next backend until decided.
+- **Relay optionality:** the plan's `xdg-desktop-portal-gnoblin` is a required package; D19 makes it optional. Packaging changes follow.
 - **`portals.conf`:** not edited by this decision. The implementation lane changes the routes and adds Background.
 
 ## Phase 0 checklist
