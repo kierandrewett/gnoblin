@@ -602,6 +602,7 @@ impl<'a> Reader<'a> {
 mod tests {
     use std::path::Path;
 
+    use gnoblin_model::OBJECT_GONE;
     use gnoblin_schema::Catalog;
 
     use super::*;
@@ -675,7 +676,7 @@ mod tests {
             Observation::Finished {
                 operation: OperationId::new(3),
                 object: ObjectId::new(1),
-                outcome: OperationOutcome::Failed(ErrorCode::parse("object-gone").expect("kebab-case")),
+                outcome: OperationOutcome::Failed(OBJECT_GONE),
                 revision: Revision::new(11),
             },
             Observation::Finished {

@@ -7,9 +7,9 @@
 use std::path::Path;
 
 use gnoblin_model::{
-    Answer, ErrorCode, Fields, Filter, Graph, ModelError, ObjectId, Observation, OperationOutcome, OwnerId,
-    RequestBroker, RequestError, RequestEvent, RequestOutcome, RequestState, Revision, Subscription, Tick, TypeKey,
-    Value,
+    Answer, ErrorCode, Fields, Filter, Graph, ModelError, OBJECT_GONE, ObjectId, Observation, OperationOutcome,
+    OwnerId, RequestBroker, RequestError, RequestEvent, RequestOutcome, RequestState, Revision, Subscription, Tick,
+    TypeKey, Value,
 };
 use gnoblin_schema::Catalog;
 
@@ -270,7 +270,7 @@ fn closing_an_object_finishes_its_pending_operations() {
     assert_eq!(outcomes.len(), 1, "the operation finished rather than dangling");
     assert_eq!(
         outcomes[0],
-        &OperationOutcome::Failed(ErrorCode::parse("object-gone").expect("kebab-case")),
+        &OperationOutcome::Failed(OBJECT_GONE),
         "and the client learns why"
     );
     assert!(matches!(observed.last(), Some(Observation::Closed { .. })));

@@ -44,12 +44,6 @@ pub enum ModelError {
     UnexpectedField { signal: String, field: String },
     /// The operation is not pending: never issued, or already completed.
     UnknownOperation { operation: OperationId },
-    /// A code this crate builds itself did not satisfy the kebab rule.
-    ///
-    /// Unreachable: every literal is written out in this crate and a test pins
-    /// them. It exists because validation returns an `Option` and the graph has no
-    /// panic path, so an impossible failure still has a shape.
-    InvalidErrorCode { text: String },
 }
 
 impl fmt::Display for ModelError {
@@ -98,10 +92,6 @@ impl fmt::Display for ModelError {
                     "{operation} is not pending; it was never issued or has completed"
                 )
             }
-            ModelError::InvalidErrorCode { text } => write!(
-                formatter,
-                "`{text}` is not a kebab-case error code, which is a bug in this crate"
-            ),
         }
     }
 }

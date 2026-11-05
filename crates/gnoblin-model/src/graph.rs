@@ -134,7 +134,7 @@ pub enum Observation {
         /// The operation the call returned.
         operation: OperationId,
         /// The object the method was called on. It may already have ended, which
-        /// is why the outcome can be [`ErrorCode::object_gone`].
+        /// is why the outcome can be [`OBJECT_GONE`].
         object: ObjectId,
         /// How the call ended.
         outcome: OperationOutcome,
@@ -451,7 +451,7 @@ impl Graph {
     /// End an object's life.
     ///
     /// Pending operations for the object are completed with
-    /// [`ErrorCode::object_gone`] first, so a client waiting for one learns the
+    /// [`OBJECT_GONE`] first, so a client waiting for one learns the
     /// reason instead of waiting for an answer that cannot come. The
     /// [`Observation::Closed`] observation follows, exactly once.
     pub fn close(&mut self, object: ObjectId) -> Result<Revision, ModelError> {
@@ -465,7 +465,7 @@ impl Graph {
             .map(|operation| operation.id())
             .collect();
         for operation in pending {
-            self.complete(operation, OperationOutcome::Failed(object_gone()?))?;
+            self.complete(operation, OperationOutcome::Failed(OBJECT_GONE))?;
         }
         self.objects.remove(&object);
         let revision = self.bump();
@@ -623,11 +623,9 @@ impl Graph {
 
 /// The code the graph reports for an operation whose object ended first.
 ///
-/// `object-gone` is a literal that satisfies the kebab rule, so validation cannot
-/// fail; the failure is reported as a [`ModelError`] rather than a panic because
-/// the graph has no panic path, and a test pins the literal.
-fn object_gone() -> Result<ErrorCode, ModelError> {
-    ErrorCode::parse("object-gone").ok_or_else(|| ModelError::InvalidErrorCode {
-        text: "object-gone".to_owned(),
-    })
-}
+/// It is not a schema member because the call never reached a method, and the
+/// client learns the object ended from [`Observation::Closed`] either way. The
+/// spelling is checked by [`ErrorCode::from_static`] when this constant is
+/// evaluated, so a non-kebab literal is a compile error and the graph needs no
+/// panic path to build it.
+pub const OBJECT_GONE: ErrorCode = ErrorCode::from_static("object-gone");
