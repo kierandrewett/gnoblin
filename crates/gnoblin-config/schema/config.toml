@@ -1914,7 +1914,7 @@ key = "module-dirs"
 kind = "text-list"
 accepted = "a list of directory paths"
 default = { list = [] }
-doc = "Extra directories searched for layout modules, before the installed ones. A module here overrides a shipped layout of the same name: the first directory that holds the name wins."
+doc = "Extra directories searched for layout modules, before the shipped ones. A module here overrides a shipped layout of the same name: the first directory that holds the name wins."
 since = "0.2.0"
 
 [[section]]

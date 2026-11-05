@@ -238,7 +238,7 @@ mod tests {
     use gnoblin_types::{OutputId, WindowId, WorkspaceId};
     use gnoblin_wm::layout::{Job, LayoutEngine, LayoutOutput, LayoutWindow, Params, Slot};
 
-    use super::FloatingEngine;
+    use super::{FLOATING, FloatingEngine, LayoutSettings, WorkspaceLayouts};
 
     /// The repository's shipped Lua layouts, which `gnoblin.layouts.floating` lives in.
     fn shipped_modules() -> PathBuf {
@@ -279,6 +279,31 @@ mod tests {
     /// The floating module is equivalent to the native `FloatingEngine`: both give the
     /// same arrange reply (no placements, a float per window) and decline geometry
     /// requests, so a floating workspace behaves the same with or without a Lua VM.
+    /// A module in a configured directory wins over the shipped layout of the same
+    /// name. The user copy here does not load, so the name fails: the shipped
+    /// `monocle` would load, and resolving to floating shows the user copy was read.
+    #[test]
+    fn a_configured_module_overrides_the_shipped_layout_of_the_same_name() {
+        let user = tempfile::tempdir().expect("a temporary module directory");
+        let layouts = user.path().join("gnoblin/layouts");
+        std::fs::create_dir_all(&layouts).expect("the layouts directory");
+        std::fs::write(layouts.join("monocle.lua"), "this is not lua (").expect("the broken module");
+        let settings = LayoutSettings {
+            default: "monocle".to_owned(),
+            module_dirs: vec![user.path().to_path_buf()],
+            ..LayoutSettings::default()
+        };
+        let layouts = WorkspaceLayouts::new(settings);
+        assert_eq!(layouts.resolve(WorkspaceId::new(1), None), FLOATING);
+
+        let shipped = WorkspaceLayouts::new(LayoutSettings {
+            default: "monocle".to_owned(),
+            module_dirs: vec![shipped_modules()],
+            ..LayoutSettings::default()
+        });
+        assert_eq!(shipped.resolve(WorkspaceId::new(1), None), "monocle");
+    }
+
     #[test]
     fn native_floating_matches_the_shipped_floating_module() {
         let params = params();
