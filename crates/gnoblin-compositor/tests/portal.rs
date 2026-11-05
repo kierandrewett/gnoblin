@@ -1,10 +1,10 @@
 //! Failure-mode tests for the D19 negotiation, queue and reply-validation rules.
 
-use gnoblin_portal_broker::{
+use gnoblin_compositor::portal::{
     CancelReason, Deviation, Effect, Event, InterfaceContract, Negotiation, PortalError, Provider, Queue, Refusal,
     Request, Stage, Verdict, validate_reply,
 };
-use gnoblin_portal_ui::{Grant, Interface};
+use gnoblin_diag::portal::{Grant, Interface};
 use gnoblin_types::{RequestId, Tick};
 
 const TIMEOUT_MS: u64 = 5_000;

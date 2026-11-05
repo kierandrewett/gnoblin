@@ -1,6 +1,6 @@
 //! Failure-mode tests for the built-in dialog models (D19 "UI step").
 
-use gnoblin_portal_ui::{AppChoice, AppChooser, Consent, ConsentDecision, ConsentInput, Key};
+use gnoblin_diag::portal::{AppChoice, AppChooser, Consent, ConsentDecision, ConsentInput, Key};
 use gnoblin_types::Tick;
 
 fn tick(raw: u64) -> Tick {
@@ -59,7 +59,7 @@ fn consent_enter_before_arm_delay_does_not_allow() {
 
 #[test]
 fn file_chooser_rejects_invalid_save_name_and_asks_before_overwrite() {
-    use gnoblin_portal_ui::{Confirmation, DialogError, FileChooser, FileChooserMode, FileEntry};
+    use gnoblin_diag::portal::{Confirmation, DialogError, FileChooser, FileChooserMode, FileEntry};
     let mut chooser = FileChooser::new(FileChooserMode::Save, false, "/home/u", Vec::new(), "notes.txt");
     chooser.set_name("bad/name");
     assert_eq!(chooser.confirm(), Err(DialogError::InvalidName));

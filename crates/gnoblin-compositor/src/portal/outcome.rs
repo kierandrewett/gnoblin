@@ -1,6 +1,6 @@
 //! What a provider or the built-in UI returns, and what the caller finally gets.
 
-use gnoblin_portal_ui::Grant;
+use gnoblin_diag::portal::Grant;
 
 /// The result a provider or the built-in UI returns for one request.
 #[derive(Clone, Debug, PartialEq, Eq)]

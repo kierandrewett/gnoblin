@@ -39,8 +39,6 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-lock",
     "gnoblin-model",
     "gnoblin-output",
-    "gnoblin-portal-broker",
-    "gnoblin-portal-ui",
     "gnoblin-proto",
     "gnoblin-schema",
     "gnoblin-types",
@@ -423,40 +421,18 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The portal split (design/rust-compositor.md, D19).
+/// The portal's dialog models (design/rust-compositor.md, D19).
 ///
-/// `gnoblin-portal-ui` is the egui dialogs' models and may name only the primitives and
-/// the schema. `gnoblin-portal-broker` is the negotiation core and may name only those
-/// plus the UI models. Only the broker may depend on the UI models, and the broker is
-/// used only by the compositor and the services role: negotiation is core logic, so the
-/// relay `xdg-desktop-portal-gnoblin` stays a thin, removable relay and names neither.
+/// `gnoblin-diag` holds the built-in dialog models (its `portal` module), which the
+/// compositor's negotiation answers with. Only the compositor may depend on it: the
+/// relay `xdg-desktop-portal-gnoblin` stays a thin, removable relay and names neither
+/// the compositor nor the models.
 fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
-    const PORTAL_UI: &str = "gnoblin-portal-ui";
-    const PORTAL_BROKER: &str = "gnoblin-portal-broker";
-    const BROKER_USERS: &[&str] = &["gnoblin-compositor", "gnoblin-services"];
-    const UI_USERS: &[&str] = &[PORTAL_BROKER, "gnoblin-diag"];
+    const DIAG: &str = "gnoblin-diag";
 
-    if package.name == PORTAL_UI && !matches!(dep.name.as_str(), "gnoblin-types" | "gnoblin-schema") {
+    if dep.name == DIAG && package.name != "gnoblin-compositor" {
         return Some(format!(
-            "gnoblin-portal-ui is the dialog models and depends only on gnoblin-types and gnoblin-schema; `{}` is outside them",
-            dep.name
-        ));
-    }
-    if package.name == PORTAL_BROKER && !matches!(dep.name.as_str(), "gnoblin-types" | "gnoblin-schema" | PORTAL_UI) {
-        return Some(format!(
-            "gnoblin-portal-broker depends only on gnoblin-types, gnoblin-schema and gnoblin-portal-ui; `{}` is outside them",
-            dep.name
-        ));
-    }
-    if dep.name == PORTAL_BROKER && !BROKER_USERS.contains(&package.name.as_str()) {
-        return Some(format!(
-            "negotiation runs in the compositor or the services role, not in `{}`; the portal relay must stay removable (D19)",
-            package.name
-        ));
-    }
-    if dep.name == PORTAL_UI && !UI_USERS.contains(&package.name.as_str()) {
-        return Some(format!(
-            "only the broker and the diagnostic harness draw the portal dialog models; `{}` may not depend on `{PORTAL_UI}`",
+            "the portal dialog models in `{DIAG}` are used only by the compositor, where portal.ui requests land (D19); `{}` may not depend on it",
             package.name
         ));
     }

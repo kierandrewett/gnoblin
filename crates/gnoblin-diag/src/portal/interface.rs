@@ -111,8 +111,8 @@ impl Interface {
     }
 }
 
-/// What the user granted. The dialogs fill it; the broker checks it against the
-/// request (`gnoblin_portal_broker::validate_reply`) before it can reach a caller.
+/// What the user granted. The dialogs fill it; the negotiation checks it against the
+/// request (`gnoblin_compositor::portal::validate_reply`) before it can reach a caller.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Grant {
     /// Consent given (Screenshot, Wallpaper, Background, Secret first use, ...).

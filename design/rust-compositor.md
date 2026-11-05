@@ -458,17 +458,15 @@ gnoblin/
       gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
       gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
       gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
-    gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem
+    gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem; `portal` module: provider negotiation, request queue, reply validation, outcomes (D19)
     gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; the `layout` module (Lua layout host, D17, in progress); extension Lua modules (D22); uses gnoblin-lua-sandbox
     gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset; a separate crate until the layout host lands, then folds into gnoblin-lua
     gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6); WASM extension tier (D22)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
     gnoblin-services/         D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit, idle
-    gnoblin-diag/             recovery and console overlay (see D5)
+    gnoblin-diag/             recovery and console overlay (see D5); `portal` module: built-in portal dialog models, pure and egui-free (D19)
     gnoblinctl/               command line client (binary)
     xdg-desktop-portal-gnoblin/  portal backend (binary)
-    gnoblin-portal-ui/           built-in egui dialog models: per-interface payload and result types, dialog state and events; no negotiation, no drawing (D19)
-    gnoblin-portal-broker/       portal negotiation: provider fallback, request queue, reply validation, outcomes; no drawing, no D-Bus (D19)
     gnoblin-testkit/          in-process fixture, test clients, input injection, observation recorder
     gnoblin-parity/           scenario runner, targets (Mutter reference, Rust candidate), normaliser, reports
     xtask/                    code generation: d.lua, API docs, schema dump, compatibility report
@@ -533,11 +531,8 @@ edge, so a violation names the edge and the rule:
 - `gnoblin-services`, every `gnoblin-compat-*` D-Bus crate and
   `xdg-desktop-portal-gnoblin` depend on `gnoblin-client` and `zbus`, not on
   compositor crates.
-- `gnoblin-portal-ui` depends on `gnoblin-types` and `gnoblin-schema` only.
-  `gnoblin-diag` depends on `gnoblin-portal-ui` and draws it.
-- `gnoblin-portal-broker` depends on `gnoblin-types`, `gnoblin-schema` and
-  `gnoblin-portal-ui` (for the payload and result types only). Compositor and
-  services crates may depend on it; nothing depends on `xdg-desktop-portal-gnoblin`.
+- `gnoblin-diag::portal` (dialog models) depends on `gnoblin-types` and `gnoblin-schema` only. The egui drawing code elsewhere in `gnoblin-diag` draws them.
+- `gnoblin-compositor::portal` (negotiation, queue, validation, outcomes) depends on `gnoblin-diag::portal` (payload and result types only), `gnoblin-types` and `gnoblin-schema`. Only `gnoblin-compositor` may depend on `gnoblin-diag`. Nothing depends on `xdg-desktop-portal-gnoblin`.
   `xdg-desktop-portal-gnoblin` depends on neither: it speaks `portal-call` over
   the privileged IPC.
 - A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client` and its
@@ -1135,7 +1130,7 @@ failure-mode list that must be complete before isolated tests or code.
   services. Nothing depends on it. Removing it makes `xdg-desktop-portal` fall
   through to `gtk`, then `kde`, with no config change (D19, "Removability").
 - **UI:** the relay has no UI dependency. The built-in egui UI is in the
-  compositor (`gnoblin-diag` draws `gnoblin-portal-ui`, D19).
+  compositor (the `portal` module of `gnoblin-diag` holds the models, D19).
 - **Replaces:** `src/session`, `src/agents`, `src/idle.c`, `src/portal`,
   `subprojects/xdg-desktop-portal-gnome` and its patches.
 - **Keeps:** `org.freedesktop.ScreenSaver`, `org.gnome.ScreenSaver` forwarding,
@@ -1143,7 +1138,7 @@ failure-mode list that must be complete before isolated tests or code.
   agent names. A nested session asks its host for logout and power through
   `gnoblin_session_host_v1` and never calls logind itself.
 
-### gnoblin-portal-ui: built-in portal UI models
+### `gnoblin-diag::portal`: built-in portal UI models
 
 - **Owns:** the typed `portal-ui` payload and result model for each interface
   (FileChooser, AppChooser, Print, Account and the rest), the dialog state and
@@ -1153,7 +1148,7 @@ failure-mode list that must be complete before isolated tests or code.
 - **Depends on:** `gnoblin-types` and `gnoblin-schema` only.
 - **Drawn by:** `gnoblin-diag`, with egui in the compositor process.
 
-### gnoblin-portal-broker: portal negotiation
+### `gnoblin-compositor::portal`: portal negotiation
 
 - **Owns:** per-request provider negotiation (`negotiate.rs`), the built-in UI
   request queue (first in first out, eight waiting, `queue.rs`), provider reply
@@ -1162,10 +1157,10 @@ failure-mode list that must be complete before isolated tests or code.
   logic, AppChooser filtering and Print printer and page checks are dialog rules
   and stay with the dialogs. No drawing and no D-Bus.
 - **Replaces:** the negotiation half of the original portal UI crate (D19).
-- **Depends on:** `gnoblin-portal-ui` (payload and result types), `gnoblin-types`
+- **Depends on:** `gnoblin-diag::portal` (payload and result types), `gnoblin-types`
   and `gnoblin-schema`.
-- **Used by:** the services role (`gnoblin-services`) and the compositor's
-  `portal-ui` IPC path. Nothing depends on `xdg-desktop-portal-gnoblin`.
+- **Used by:** the compositor's `portal-ui` IPC path. Nothing depends on
+  `xdg-desktop-portal-gnoblin`.
 - **Why core and not the portal process:** D19 keeps the relay thin and
   removable (see "Removability"). Negotiation needs the config, the built-in UI
   queue and the process supervisor, which all live in core. Moving it into the
@@ -2342,7 +2337,7 @@ Until D18's implementation lands, the renderer refuses any transform that is not
 
 - **`xdg-desktop-portal-gnoblin` (relay, optional):** owns the D-Bus names and the per-request `Request` and `Session` object paths, validates the call shape, forwards each call as one typed IPC message (`portal-call`) to the services role, and returns the reply. It has no policy and no UI, and holds no state beyond open calls.
 - **Negotiation (`gnoblin-services`, role services):** resolves the provider for the interface, runs it under a deadline, validates its reply, applies the fallback, and returns one outcome to the relay. The services role already owns prompts and is restartable, so it is the place for process supervision.
-- **Built-in UI (compositor):** `gnoblin-portal-ui` holds the per-interface payload and result types and the dialog state. `gnoblin-portal-broker` holds the negotiation, queue, reply validation and outcome rules. `gnoblin-diag` draws the dialogs with egui in the compositor process. The services role reaches the built-in UI through the `portal-ui` IPC request.
+- **Built-in UI (compositor):** the `portal` module of `gnoblin-diag` holds the per-interface payload and result types and the dialog state. The `portal` module of `gnoblin-compositor` holds the negotiation, queue, reply validation and outcome rules. `gnoblin-diag` draws the dialogs with egui in the compositor process. The services role reaches the built-in UI through the `portal-ui` IPC request.
 - **Core without the relay:** negotiation, the built-in UI and the config live in core and keep working when the relay is absent. They have no portal caller then, and nothing else changes (see "Removability").
 
 #### Handler rule
@@ -2527,9 +2522,9 @@ Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts).
 #### Crate placement and dependency rules
 
 - `xdg-desktop-portal-gnoblin` (relay): depends on `gnoblin-client`, `gnoblin-schema` and `zbus`. Names no compositor, UI or services crate. Optional; nothing depends on it.
-- `gnoblin-portal-broker` (negotiation, queue, validation, outcomes): depends on `gnoblin-portal-ui` (payload and result types only), `gnoblin-types` and `gnoblin-schema`. Compositor and services crates may depend on it. Nothing depends on `xdg-desktop-portal-gnoblin`.
-- `gnoblin-portal-ui` (compositor side, dialog models): depends on `gnoblin-types` and `gnoblin-schema` only.
-- `gnoblin-diag` (compositor side): draws `gnoblin-portal-ui` with egui.
+- `gnoblin-compositor::portal` (negotiation, queue, validation, outcomes): depends on `gnoblin-diag::portal` (payload and result types only), `gnoblin-types` and `gnoblin-schema`. Nothing depends on `xdg-desktop-portal-gnoblin`.
+- `gnoblin-diag::portal` (dialog models): depends on `gnoblin-types` and `gnoblin-schema` only. Only `gnoblin-compositor` may depend on `gnoblin-diag`.
+- `gnoblin-diag` (compositor side): draws the dialogs with egui.
 
 #### Parity and ledger
 

@@ -1478,241 +1478,241 @@ right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
 kind = "same-shape"
 reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
 
-# gnoblin-portal-broker and gnoblin-portal-ui (D19) reuse generic state-machine names; each keeps its own meaning.
+# gnoblin-compositor and gnoblin-diag (D19) reuse generic state-machine names; each keeps its own meaning.
 
 [[allow]]
 left = "gnoblin-a11y::Effect"
-right = "gnoblin-portal-broker::Effect"
+right = "gnoblin-compositor::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-a11y::Event"
-right = "gnoblin-portal-broker::Event"
+right = "gnoblin-compositor::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-a11y::Key"
-right = "gnoblin-portal-ui::Key"
+right = "gnoblin-diag::Key"
 kind = "same-name"
-reason = "a portal-ui Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-authority::Consent"
-right = "gnoblin-portal-ui::Consent"
+right = "gnoblin-diag::Consent"
 kind = "same-name"
-reason = "a portal-ui Consent is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Consent is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-authority::Effect"
-right = "gnoblin-portal-broker::Effect"
+right = "gnoblin-compositor::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-authority::Event"
-right = "gnoblin-portal-broker::Event"
+right = "gnoblin-compositor::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-authority::Grant"
-right = "gnoblin-portal-ui::Grant"
+right = "gnoblin-diag::Grant"
 kind = "same-name"
-reason = "a portal-ui Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-backend::Stage"
-right = "gnoblin-portal-broker::Stage"
+right = "gnoblin-compositor::Stage"
 kind = "same-name"
-reason = "a portal-broker Stage is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Stage is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-capture::Refusal"
-right = "gnoblin-portal-broker::Refusal"
+right = "gnoblin-compositor::Refusal"
 kind = "same-name"
-reason = "a portal-broker Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-client::Event"
-right = "gnoblin-portal-broker::Event"
+right = "gnoblin-compositor::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-core::Interface"
-right = "gnoblin-portal-ui::Interface"
+right = "gnoblin-diag::Interface"
 kind = "same-name"
-reason = "a portal-ui Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-core::Refusal"
-right = "gnoblin-portal-broker::Refusal"
+right = "gnoblin-compositor::Refusal"
 kind = "same-name"
-reason = "a portal-broker Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Admission"
-right = "gnoblin-portal-broker::Admission"
+right = "gnoblin-compositor::Admission"
 kind = "same-name"
-reason = "a portal-broker Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Effect"
-right = "gnoblin-portal-broker::Effect"
+right = "gnoblin-compositor::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-gtk-shell1::Admission"
-right = "gnoblin-portal-broker::Admission"
+right = "gnoblin-compositor::Admission"
 kind = "same-name"
-reason = "a portal-broker Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-compat-mutter-x11-interop::Admission"
-right = "gnoblin-portal-broker::Admission"
+right = "gnoblin-compositor::Admission"
 kind = "same-name"
-reason = "a portal-broker Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Admission is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-input::CancelReason"
-right = "gnoblin-portal-broker::CancelReason"
+right = "gnoblin-compositor::CancelReason"
 kind = "same-name"
-reason = "a portal-broker CancelReason is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal CancelReason is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-input::Event"
-right = "gnoblin-portal-broker::Event"
+right = "gnoblin-compositor::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-input::Grant"
-right = "gnoblin-portal-ui::Grant"
+right = "gnoblin-diag::Grant"
 kind = "same-name"
-reason = "a portal-ui Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-input::Key"
-right = "gnoblin-portal-ui::Key"
+right = "gnoblin-diag::Key"
 kind = "same-name"
-reason = "a portal-ui Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-input::Request"
-right = "gnoblin-portal-broker::Request"
+right = "gnoblin-compositor::Request"
 kind = "same-name"
-reason = "a portal-broker Request is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Request is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-lock::Effect"
-right = "gnoblin-portal-broker::Effect"
+right = "gnoblin-compositor::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-lock::Event"
-right = "gnoblin-portal-broker::Event"
+right = "gnoblin-compositor::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-model::Provider"
-right = "gnoblin-portal-broker::Provider"
+right = "gnoblin-compositor::Provider"
 kind = "same-name"
-reason = "a portal-broker Provider is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Provider is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-output::Effect"
-right = "gnoblin-portal-broker::Effect"
+right = "gnoblin-compositor::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-output::Event"
-right = "gnoblin-portal-broker::Event"
+right = "gnoblin-compositor::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-output::Verdict"
-right = "gnoblin-portal-broker::Verdict"
+right = "gnoblin-compositor::Verdict"
 kind = "same-name"
-reason = "a portal-broker Verdict is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Verdict is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-parity::Verdict"
-right = "gnoblin-portal-broker::Verdict"
+right = "gnoblin-compositor::Verdict"
 kind = "same-name"
-reason = "a portal-broker Verdict is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Verdict is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-broker::Effect"
+left = "gnoblin-compositor::Effect"
 right = "gnoblin-session::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-broker::Effect"
+left = "gnoblin-compositor::Effect"
 right = "gnoblin-wm::Effect"
 kind = "same-name"
-reason = "a portal-broker Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Effect is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-broker::Event"
+left = "gnoblin-compositor::Event"
 right = "gnoblin-session::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-broker::Event"
+left = "gnoblin-compositor::Event"
 right = "gnoblin-wm::Event"
 kind = "same-name"
-reason = "a portal-broker Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-ui::Interface"
+left = "gnoblin-diag::Interface"
 right = "xdg-desktop-portal-gnoblin::Interface"
 kind = "same-name"
-reason = "a portal-ui Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-ui::Interface"
+left = "gnoblin-diag::Interface"
 right = "xtask::Interface"
 kind = "same-name"
-reason = "a portal-ui Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-ui::Key"
+left = "gnoblin-diag::Key"
 right = "xdg-desktop-portal-gnoblin::Key"
 kind = "same-name"
-reason = "a portal-ui Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-broker::Refusal"
+left = "gnoblin-compositor::Refusal"
 right = "gnoblin-services::Refusal"
 kind = "same-name"
-reason = "a portal-broker Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-portal-broker::Refusal"
+left = "gnoblin-compositor::Refusal"
 right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
-reason = "a portal-broker Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
+reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-authority::Answer"
-right = "gnoblin-portal-ui::ConsentFocus"
+right = "gnoblin-diag::ConsentFocus"
 kind = "same-shape"
-reason = "a portal-ui consent value and an authority value share a shape but answer different questions"
+reason = "a portal consent value and an authority value share a shape but answer different questions"
 
 [[allow]]
 left = "gnoblin-authority::Decision"
-right = "gnoblin-portal-ui::ConsentDecision"
+right = "gnoblin-diag::ConsentDecision"
 kind = "same-shape"
-reason = "a portal-ui consent value and an authority value share a shape but answer different questions"
+reason = "a portal consent value and an authority value share a shape but answer different questions"
 [[allow]]
 left = "gnoblin-config::Origin"
 right = "gnoblin-wm::Origin"
@@ -1769,6 +1769,6 @@ reason = "a layout subject names a layout target; the lock subject names a lock-
 
 [[allow]]
 left = "gnoblin-wm::Request"
-right = "gnoblin-portal-broker::Request"
+right = "gnoblin-compositor::Request"
 kind = "same-name"
 reason = "a layout request asks the Lua layout provider; a portal UI request is a portal prompt"

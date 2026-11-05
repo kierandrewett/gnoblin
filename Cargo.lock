@@ -1193,6 +1193,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-backend",
  "gnoblin-client",
+ "gnoblin-diag",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
@@ -1228,6 +1229,10 @@ dependencies = [
 [[package]]
 name = "gnoblin-diag"
 version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-schema",
+ "gnoblin-types",
+]
 
 [[package]]
 name = "gnoblin-input"
@@ -1298,23 +1303,6 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
-]
-
-[[package]]
-name = "gnoblin-portal-broker"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-portal-ui",
- "gnoblin-schema",
- "gnoblin-types",
-]
-
-[[package]]
-name = "gnoblin-portal-ui"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-schema",
- "gnoblin-types",
 ]
 
 [[package]]

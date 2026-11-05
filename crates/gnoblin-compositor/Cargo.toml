@@ -31,6 +31,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # sides use one description of them.
 gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-client = { path = "../gnoblin-client" }
+# The portal's dialog models (payload and result types, dialog state). The negotiation
+# core names them; the models stay pure and draw nothing (D19).
+gnoblin-diag = { path = "../gnoblin-diag" }
 # Who this process is, for the IPC socket directory's ownership check.
 rustix.workspace = true
 # `[tag]` log lines, the same crate the Wayland engine logs through.

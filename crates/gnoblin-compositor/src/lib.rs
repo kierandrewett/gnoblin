@@ -83,6 +83,7 @@
 
 mod backend;
 mod ipc;
+pub mod portal;
 mod schema;
 
 use std::path::PathBuf;

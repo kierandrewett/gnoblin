@@ -5,12 +5,11 @@
 //! ([`gnoblin_types::Tick`]) and act on the [`Effect`]s that come back. The
 //! negotiation rules (fallback, requester-gone, first-terminal-wins), the queue
 //! caps and the reply validation live here so they can be tested without a
-//! session. The built-in dialogs they hand off to are in `gnoblin-portal-ui`.
+//! session. The built-in dialogs they hand off to are the models in
+//! [`gnoblin_diag::portal`].
 //!
-//! This crate is core logic, not part of the portal relay: the relay
+//! This module is core logic, not part of the portal relay: the relay
 //! (`xdg-desktop-portal-gnoblin`) stays a removable thin relay (D19).
-//!
-//! Depends only on `gnoblin-types`, `gnoblin-schema` and `gnoblin-portal-ui` (D19).
 
 mod negotiate;
 mod outcome;
