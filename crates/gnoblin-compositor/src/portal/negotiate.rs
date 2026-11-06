@@ -53,7 +53,7 @@ impl InterfaceContract for Interface {
 
 /// Who serves the request first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Provider {
+pub enum PortalProvider {
     /// The built-in UI serves it directly (the `"builtin"` handler form).
     Builtin,
     /// A configured provider (process or `portal.ui` claim) serves it first.
@@ -122,7 +122,7 @@ impl Negotiation {
     pub fn start(
         request: RequestId,
         interface: Interface,
-        provider: Provider,
+        provider: PortalProvider,
         now: Tick,
         timeout_ms: u64,
         ui_timeout_ms: u64,
@@ -135,14 +135,14 @@ impl Negotiation {
             ui_timeout_ms,
         };
         let effects = match provider {
-            Provider::Remote => {
+            PortalProvider::Remote => {
                 negotiation.stage = Stage::AwaitingProvider;
                 negotiation.deadline = now.saturating_add(timeout_ms);
                 vec![Effect::CallProvider {
                     deadline: negotiation.deadline,
                 }]
             }
-            Provider::Builtin => negotiation.enter_ui(now),
+            PortalProvider::Builtin => negotiation.enter_ui(now),
         };
         (negotiation, effects)
     }

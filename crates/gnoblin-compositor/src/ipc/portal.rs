@@ -27,6 +27,7 @@
 
 use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_client::wire::{self, PortalRequest};
+use gnoblin_portal::DialogScheme;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_proto::Envelope;
 use gnoblin_types::{ClientId, KeyState, OutputId, Rect, RequestId, Size, Tick};
@@ -84,6 +85,23 @@ impl PortalService {
             owners: Vec::new(),
             shown: None,
         }
+    }
+
+    /// Takes the dialog scheme from a committed configuration: `prefer-light` draws
+    /// light dialogs, and the default and `prefer-dark` draw dark ones. A configuration
+    /// that names no scheme draws dark, as the stock desktop does.
+    pub fn configure(&mut self, config: &gnoblin_config::Config) {
+        let scheme = match config
+            .appearance
+            .as_ref()
+            .and_then(|appearance| appearance.color_scheme)
+        {
+            Some(gnoblin_config::ColorScheme::PreferLight) => DialogScheme::Light,
+            Some(gnoblin_config::ColorScheme::Default | gnoblin_config::ColorScheme::PreferDark) | None => {
+                DialogScheme::Dark
+            }
+        };
+        self.ui.set_scheme(scheme);
     }
 
     /// `portal.ui`: admit a request from `client`, which is answered under

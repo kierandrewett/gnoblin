@@ -2,17 +2,19 @@
 //! looked at without a running session.
 //!
 //! `cargo run -p gnoblin-portal --example gallery -- <dir>` writes one PNG per
-//! state into `<dir>`, creating it if needed. Each image is the frame the compositor
-//! opens a portal dialog in: fitted to its content, within the 640x360 bounds of an
-//! output that size. The model has one palette (dark) and no scale, so every screen
-//! is drawn once, at 1x, in the default theme.
+//! state into `<dir>`, creating it if needed. Each dialog is drawn at its measured
+//! content size, within the 640x360 bounds of an output that size, exactly as the
+//! compositor fits it. The gallery then adds a plain neutral backdrop round it so the
+//! dialog's edge is visible; the backdrop exists only in these images, never in the
+//! product. The dark screens are written as `<name>.png`, and the screens that
+//! also have a light variant as `<name>-light.png`. Every screen is drawn once, at 1x.
 
 use std::error::Error;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
-use gnoblin_portal::{PortalScreen, Setup};
+use gnoblin_portal::{DialogScheme, PortalScreen, Setup};
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, DirectoryListing, FileChooser, FileChooserMode, FileEntry,
     FileFilter, ScreenKey,
@@ -27,14 +29,26 @@ const HEIGHT: usize = 360;
 /// The folder every FileChooser shows.
 const FOLDER: &str = "/home/u/Pictures";
 
+/// Transparent space between the dialog and the image edge, in pixels. The
+/// backdrop fills it, so the dialog's edge is visible against it.
+const BACKDROP_MARGIN: usize = 16;
+
+/// The neutral grey behind a dialog in the gallery. It is not a theme colour: it is a
+/// mid grey that reads against both the dark and the light dialog.
+const BACKDROP: [u8; 4] = [0x80, 0x80, 0x80, 0xff];
+
 /// A screen and the file name its image is written to, without `.png`.
 type Shot = (&'static str, PortalScreen);
 
-fn open_screen(dialog: Dialog, now: u64) -> PortalScreen {
+/// The screens that also have a light variant, drawn as `<name>-light.png`.
+const LIGHT: [&str; 3] = ["consent-armed", "file-chooser-open", "app-chooser"];
+
+fn open_screen(dialog: Dialog, now: u64, scheme: DialogScheme) -> PortalScreen {
     let setup = Setup {
         width: WIDTH,
         height: HEIGHT,
         reduced_motion: false,
+        scheme,
     };
     PortalScreen::new(dialog, setup, Tick::new(now))
 }
@@ -45,16 +59,17 @@ fn press(screen: &mut PortalScreen, keys: &[ScreenKey]) {
     }
 }
 
-fn consent(prompt: &str, now: u64) -> PortalScreen {
+fn consent(prompt: &str, now: u64, scheme: DialogScheme) -> PortalScreen {
     open_screen(
         Dialog::Consent(Consent::open("org.example.Recorder", prompt, Tick::new(now))),
         now,
+        scheme,
     )
 }
 
 /// Focus starts on Deny. Tab moves it to Allow, then `now` decides whether Allow is armed.
-fn consent_allow_focused(now: u64) -> PortalScreen {
-    let mut screen = consent("Share the contents of your screen?", 0);
+fn consent_allow_focused(now: u64, scheme: DialogScheme) -> PortalScreen {
+    let mut screen = consent("Share the contents of your screen?", 0, scheme);
     press(&mut screen, &[ScreenKey::Tab]);
     screen.tick(Tick::new(now));
     screen
@@ -114,9 +129,15 @@ fn filters() -> Vec<FileFilter> {
 }
 
 /// A FileChooser in `FOLDER` whose listing is already delivered.
-fn chooser(mode: FileChooserMode, multiple: bool, name: &str, entries: Vec<FileEntry>) -> PortalScreen {
+fn chooser(
+    mode: FileChooserMode,
+    multiple: bool,
+    name: &str,
+    entries: Vec<FileEntry>,
+    scheme: DialogScheme,
+) -> PortalScreen {
     let chooser = FileChooser::new(mode, multiple, FOLDER, filters(), name);
-    let mut screen = open_screen(Dialog::Files(chooser), 0);
+    let mut screen = open_screen(Dialog::Files(chooser), 0, scheme);
     assert!(
         screen.list(DirectoryListing {
             folder: FOLDER.to_owned(),
@@ -127,7 +148,7 @@ fn chooser(mode: FileChooserMode, multiple: bool, name: &str, entries: Vec<FileE
     screen
 }
 
-fn app_chooser(last: Option<&str>, filter_text: &str) -> PortalScreen {
+fn app_chooser(last: Option<&str>, filter_text: &str, scheme: DialogScheme) -> PortalScreen {
     let choices = [
         ("org.gnome.Loupe", "Loupe"),
         ("org.gimp.GIMP", "GIMP"),
@@ -143,10 +164,16 @@ fn app_chooser(last: Option<&str>, filter_text: &str) -> PortalScreen {
     })
     .collect();
     let chooser = AppChooser::new("image/png", choices, last.map(str::to_owned), filter_text);
-    open_screen(Dialog::App(chooser), 0)
+    open_screen(Dialog::App(chooser), 0, scheme)
 }
 
-fn shots() -> Vec<Shot> {
+/// Every screen, drawn in `scheme`. The helpers take the scheme explicitly; the
+/// closures below bind it, so each screen reads as it did before the scheme existed.
+fn shots(scheme: DialogScheme) -> Vec<Shot> {
+    let consent = |prompt: &str, now: u64| self::consent(prompt, now, scheme);
+    let consent_allow_focused = |now: u64| self::consent_allow_focused(now, scheme);
+    let chooser = |mode, multiple, name: &str, entries| self::chooser(mode, multiple, name, entries, scheme);
+    let app_chooser = |last: Option<&str>, filter_text: &str| self::app_chooser(last, filter_text, scheme);
     // Consent: Allow ignores input until ARM_DELAY_MS has passed.
     let mut shots: Vec<Shot> = vec![("consent-default", consent("Share the contents of your screen?", 0))];
     shots.push(("consent-disarmed", consent_allow_focused(ARM_DELAY_MS - 1)));
@@ -226,22 +253,48 @@ fn shots() -> Vec<Shot> {
     shots
 }
 
-/// Writes `frame` as an 8-bit RGBA PNG.
+/// `frame` with a `BACKDROP_MARGIN` border of `BACKDROP` round it. The dialog's pixels
+/// are copied row by row; the border is only ever in the gallery's images.
+fn with_backdrop(frame: &Frame) -> (usize, usize, Vec<u8>) {
+    let (width, height) = (frame.width(), frame.height());
+    let out_width = width + 2 * BACKDROP_MARGIN;
+    let out_height = height + 2 * BACKDROP_MARGIN;
+    let mut out = BACKDROP.repeat(out_width * out_height);
+    let row = width * 4;
+    for y in 0..height {
+        let src = &frame.bytes()[y * row..(y + 1) * row];
+        let start = ((y + BACKDROP_MARGIN) * out_width + BACKDROP_MARGIN) * 4;
+        out[start..start + row].copy_from_slice(src);
+    }
+    (out_width, out_height, out)
+}
+
+/// Writes `frame`, with its backdrop, as an 8-bit RGBA PNG.
 fn write_png(path: &Path, frame: &Frame) -> Result<(), Box<dyn Error>> {
+    let (width, height, pixels) = with_backdrop(frame);
     let writer = BufWriter::new(File::create(path)?);
-    let mut encoder = png::Encoder::new(writer, u32::try_from(frame.width())?, u32::try_from(frame.height())?);
+    let mut encoder = png::Encoder::new(writer, u32::try_from(width)?, u32::try_from(height)?);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header()?;
-    writer.write_image_data(frame.bytes())?;
+    writer.write_image_data(&pixels)?;
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let dir = PathBuf::from(std::env::args_os().nth(1).ok_or("usage: gallery <output-dir>")?);
     std::fs::create_dir_all(&dir)?;
-    for (name, mut screen) in shots() {
+    for (name, mut screen) in shots(DialogScheme::Dark) {
         let path = dir.join(format!("{name}.png"));
+        write_png(&path, &screen.render())?;
+        println!("{}", path.display());
+    }
+    // The light variants: only the screens in `LIGHT`, drawn with the light visuals.
+    for (name, mut screen) in shots(DialogScheme::Light) {
+        if !LIGHT.contains(&name) {
+            continue;
+        }
+        let path = dir.join(format!("{name}-light.png"));
         write_png(&path, &screen.render())?;
         println!("{}", path.display());
     }

@@ -1,6 +1,6 @@
 //! The portal screens driven by key events, through the same shell the compositor uses.
 
-use gnoblin_portal::{PortalScreen, Setup};
+use gnoblin_portal::{DialogScheme, PortalScreen, Setup};
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, FileChooser, FileChooserMode, Grant, ScreenKey, Settled,
 };
@@ -14,6 +14,7 @@ fn setup() -> Setup {
         width: WIDTH,
         height: HEIGHT,
         reduced_motion: true,
+        scheme: DialogScheme::Dark,
     }
 }
 

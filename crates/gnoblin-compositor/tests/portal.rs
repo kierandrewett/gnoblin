@@ -1,8 +1,8 @@
 //! Failure-mode tests for the D19 negotiation, queue and reply-validation rules.
 
 use gnoblin_compositor::portal::{
-    CancelReason, Deviation, Effect, Event, InterfaceContract, Negotiation, PortalError, Provider, Queue, Refusal,
-    Request, Stage, Verdict, validate_reply,
+    CancelReason, Deviation, Effect, Event, InterfaceContract, Negotiation, PortalError, PortalProvider, Queue,
+    Refusal, Request, Stage, Verdict, validate_reply,
 };
 use gnoblin_portal_core::model::{Grant, Interface};
 use gnoblin_types::{RequestId, Tick};
@@ -20,7 +20,15 @@ fn request(raw: u64) -> RequestId {
 }
 
 fn remote(interface: Interface, now: Tick) -> Negotiation {
-    Negotiation::start(request(1), interface, Provider::Remote, now, TIMEOUT_MS, UI_TIMEOUT_MS).0
+    Negotiation::start(
+        request(1),
+        interface,
+        PortalProvider::Remote,
+        now,
+        TIMEOUT_MS,
+        UI_TIMEOUT_MS,
+    )
+    .0
 }
 
 fn finished(effects: &[Effect]) -> Option<&Verdict> {

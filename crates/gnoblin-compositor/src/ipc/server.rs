@@ -1005,7 +1005,10 @@ impl Dispatcher {
         let config = gnoblin_config::Config::from_json_bytes(&document);
         let revision = self.requests.commit(document);
         match config {
-            Ok(config) => self.store.publish_settings(&config),
+            Ok(config) => {
+                self.store.publish_settings(&config);
+                self.portal.configure(&config);
+            }
             Err(reason) => {
                 warn!(revision, %reason, "[ipc] the committed configuration did not decode; the settings object keeps its last values")
             }

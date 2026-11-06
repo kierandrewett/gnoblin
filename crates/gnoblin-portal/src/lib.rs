@@ -3,5 +3,5 @@
 
 mod screen;
 
-pub use gnoblin_portal_core::ui::Setup;
+pub use gnoblin_portal_core::ui::{DialogScheme, Setup};
 pub use screen::{PortalScreen, ui_for};

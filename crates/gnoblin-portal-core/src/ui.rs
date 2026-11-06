@@ -7,8 +7,8 @@
 
 use egui::epaint::ClippedShape;
 use egui::{
-    CentralPanel, Context, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, Theme, ThemePreference, Ui,
-    Vec2, Visuals,
+    Context, Event, Frame as EguiFrame, Key, Modifiers, PointerButton, Pos2, RawInput, Rect, Theme, ThemePreference,
+    Ui, Vec2, Visuals,
 };
 use gnoblin_types::Tick;
 
@@ -21,7 +21,29 @@ const PIXELS_PER_POINT: f32 = 1.0;
 /// The narrowest a dialog frame is drawn, in pixels. A dialog with one short line
 /// would otherwise be a sliver. This is a floor on width only: height follows the
 /// content, and the bounds still win when they are narrower.
-const MIN_WIDTH: f32 = 320.0;
+const MIN_WIDTH: f32 = 360.0;
+
+/// The light or dark egui visuals a dialog is drawn with. The compositor maps its
+/// `appearance.color-scheme` onto this: `prefer-light` is [`DialogScheme::Light`],
+/// and the default and `prefer-dark` are [`DialogScheme::Dark`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DialogScheme {
+    /// egui's stock dark visuals.
+    #[default]
+    Dark,
+    /// egui's stock light visuals.
+    Light,
+}
+
+impl DialogScheme {
+    /// The egui theme and visuals this scheme draws with: the stock light or dark set.
+    fn theme(self) -> (Theme, Visuals) {
+        match self {
+            Self::Dark => (Theme::Dark, Visuals::dark()),
+            Self::Light => (Theme::Light, Visuals::light()),
+        }
+    }
+}
 
 /// The largest frame a dialog may be drawn into, in pixels. A dialog is drawn at
 /// its content's size, up to these bounds; the owner sets them to the output's size.
@@ -33,6 +55,8 @@ pub struct Setup {
     pub height: usize,
     /// Reduced motion: egui's animations finish at once.
     pub reduced_motion: bool,
+    /// The visuals the dialog is drawn with.
+    pub scheme: DialogScheme,
 }
 
 /// One dialog kind. A UI crate implements this around its model; the shell calls it.
@@ -57,6 +81,8 @@ pub trait DialogUi: Send {
 /// Draws one dialog at a time: runs egui frames for input and rasterises the output.
 pub struct DialogShell {
     ctx: Context,
+    /// The egui theme of `scheme`, which every style lookup uses.
+    theme: Theme,
     textures: Textures,
     setup: Setup,
     /// The surface size: the content's size, within the bounds.
@@ -64,19 +90,25 @@ pub struct DialogShell {
 }
 
 impl DialogShell {
-    /// A shell for frames of `setup`. The look is egui's stock dark visuals. The
-    /// surface starts at the bounds; the first render fits it to the content.
+    /// A shell for frames of `setup`. The look is egui's stock visuals for the
+    /// setup's scheme. The surface starts at the bounds; the first render fits it to
+    /// the content.
     #[must_use]
     pub fn new(setup: Setup) -> Self {
         let ctx = Context::default();
-        ctx.set_theme(ThemePreference::Dark);
-        ctx.set_visuals_of(Theme::Dark, Visuals::dark());
+        let (theme, visuals) = setup.scheme.theme();
+        ctx.set_theme(match theme {
+            Theme::Light => ThemePreference::Light,
+            Theme::Dark => ThemePreference::Dark,
+        });
+        ctx.set_visuals_of(theme, visuals);
         if setup.reduced_motion {
-            ctx.style_mut_of(Theme::Dark, |style| style.animation_time = 0.0);
+            ctx.style_mut_of(theme, |style| style.animation_time = 0.0);
         }
         let size = (setup.width, setup.height);
         Self {
             ctx,
+            theme,
             textures: Textures::default(),
             setup,
             size,
@@ -128,7 +160,7 @@ impl DialogShell {
         let mut frame = Frame::filled(
             self.size.0,
             self.size.1,
-            self.ctx.style_of(Theme::Dark).visuals.panel_fill.to_array(),
+            self.ctx.style_of(self.theme).visuals.panel_fill.to_array(),
         );
         rasterise(&mut frame, &self.textures, &primitives, PIXELS_PER_POINT);
         frame
@@ -162,18 +194,17 @@ impl DialogShell {
             events,
             ..RawInput::default()
         };
-        // The panel frame is egui's own central-panel frame, so the margin added to the
-        // measured content is the margin the panel really draws, not one of our own.
-        let panel_frame = egui::Frame::central_panel(&self.ctx.style_of(Theme::Dark));
-        let margin = panel_frame.inner_margin.sum();
+        // The panel frame is egui's stock window frame. A plain `Frame` sizes itself to
+        // its content, unlike `CentralPanel`, which always fills the surface: measuring
+        // the frame's own rect therefore gives the content's size, margin included.
+        let panel_frame = EguiFrame::window(&self.ctx.style_of(self.theme));
         let mut settled = None;
-        // The laid-out widgets' extent, plus the margin, is the content's size.
         let mut content = Vec2::ZERO;
         let mut output = self.ctx.run_ui(raw, |root| {
-            CentralPanel::default().frame(panel_frame).show(root, |panel| {
+            let framed = panel_frame.show(root, |panel| {
                 settled = dialog.show(panel, now);
-                content = panel.min_rect().size() + margin;
             });
+            content = framed.response.rect.size();
         });
         self.textures.update(&output.textures_delta);
         self.textures.free(&output.textures_delta);
@@ -285,6 +316,7 @@ mod tests {
             width: 320,
             height: 160,
             reduced_motion: false,
+            scheme: DialogScheme::Dark,
         }
     }
 

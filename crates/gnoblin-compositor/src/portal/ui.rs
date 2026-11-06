@@ -21,7 +21,7 @@
 //! - [`PortalUi::cancel`] is the requester going away. [`PortalUi::set_locked`]
 //!   is the session lock. Both are terminal for the request they touch.
 //!
-//! Each request runs through a [`Negotiation`] with [`Provider::Builtin`], so the
+//! Each request runs through a [`Negotiation`] with [`PortalProvider::Builtin`], so the
 //! first terminal verdict wins and every later event is ignored.
 //!
 //! # Dialog mapping
@@ -66,12 +66,12 @@
 
 use std::collections::VecDeque;
 
-use gnoblin_portal::{PortalScreen, Setup};
+use gnoblin_portal::{DialogScheme, PortalScreen, Setup};
 use gnoblin_portal_core::model::{Dialog, Interface, ScreenKey, Settled};
 use gnoblin_portal_core::paint::Frame;
 use gnoblin_types::{RequestId, Tick};
 
-use super::negotiate::{Effect, Event, Negotiation, Provider};
+use super::negotiate::{Effect, Event, Negotiation, PortalProvider};
 use super::outcome::{CancelReason, PortalError, Verdict};
 use super::queue::{Queue, Refusal};
 
@@ -127,8 +127,8 @@ pub struct PortalUi {
 }
 
 impl PortalUi {
-    /// A session that draws its dialogs at `width` by `height` pixels with the
-    /// default theme. Reduced motion is off.
+    /// A session that draws its dialogs at `width` by `height` pixels, dark. Reduced
+    /// motion is off.
     #[must_use]
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -138,6 +138,7 @@ impl PortalUi {
                 width,
                 height,
                 reduced_motion: false,
+                scheme: DialogScheme::Dark,
             },
             now: Tick::default(),
             active: None,
@@ -154,6 +155,12 @@ impl PortalUi {
             Some(active) => active.screen.size(),
             None => (self.setup.width, self.setup.height),
         }
+    }
+
+    /// Sets the visuals later dialogs are drawn with. An open dialog keeps the scheme
+    /// it opened with, so a configuration change never restyles a dialog mid-request.
+    pub fn set_scheme(&mut self, scheme: DialogScheme) {
+        self.setup.scheme = scheme;
     }
 
     /// Sets the largest frame a dialog may take, in pixels. The owner passes the size
@@ -348,7 +355,7 @@ impl PortalUi {
         let (negotiation, _) = Negotiation::start(
             pending.request,
             pending.interface,
-            Provider::Builtin,
+            PortalProvider::Builtin,
             self.now,
             0,
             pending.timeout_ms,
@@ -676,11 +683,14 @@ mod tests {
         let mut ui = PortalUi::new(640, 480);
         start_consent(&mut ui, 1, "org.example.App", at(0));
         ui.tick(at(600));
-        // A press and release outside any control does not settle the dialog.
+        // The dialog is sized to its content, so measure it before the pointer acts.
+        let size = ui.size();
+        // A press and release outside any control does not settle the dialog, and
+        // leaves its size alone.
         ui.pointer_press(-1.0, -1.0);
         ui.pointer_release(-1.0, -1.0);
         assert!(ui.take_outcomes().is_empty());
         assert_eq!(ui.active_request(), Some(id(1)));
-        assert_eq!(ui.size(), (640, 480));
+        assert_eq!(ui.size(), size);
     }
 }
