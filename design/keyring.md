@@ -1,9 +1,9 @@
 # Keyring service
 
-Status: **Decided 2026-11-06** (D27 in `rust-compositor.md`). The key source is
-an open problem, see "Key source: open problem". Kieran decided the service
-and its store. The key source and the three points under "Needs Kieran" are
-still to be chosen.
+Status: **Decided 2026-11-06** (D27 in `rust-compositor.md`). The key source
+is decided: the login password, handed over by a PAM module, with one unlock
+prompt when there is no password (see "Key source"). Two choices remain
+under "Needs Kieran".
 
 ## Summary
 
@@ -29,78 +29,96 @@ it (see "Coexistence").
   `Item`, `Session` and `Prompt` interfaces.
 - Gnoblin's prompt UI draws the `Prompt` objects, through the `prompt.secret`
   slot.
+- The key source is the login password, as in "Key source" below.
 
-## Key source: open problem
+## Key source
 
-The SQLCipher key must come from somewhere that survives reboot. Until one is
-chosen, the store cannot unlock at boot, and phases 3 and later cannot land.
-This is a risk to the schedule, not a reason to change the decision above.
+**Decided 2026-11-06 by Kieran.** The store is unlocked by the login password,
+handed over by a PAM module. This is what GNOME and KDE do. TPM sealing is not
+the default. It is an optional later add-on, with the facts in the appendix.
 
-Facts checked for this section. Upstream source is GNOME/gnome-keyring at
-master commit e970619, read from
-`https://raw.githubusercontent.com/GNOME/gnome-keyring/master/`. The
-`gitlab.gnome.org` raw URLs return HTTP 406.
+How it works:
 
-- `pam/gkr-pam-module.c` sets `PAM_AUTHTOK` in `prompt_password` (line 792)
-  and reads it in `pam_sm_authenticate` (line 879) and
-  `pam_chauthtok_update` (line 995). `auto_start` and `use_authtok` are parsed
-  in `parse_args` (lines 817 and 825).
-- The module starts the daemon with `--login` for a user login (line 528). It
-  writes the password to the daemon's stdin and closes it (lines 372 and 550).
-  `--login` is passed even when the password is NULL (lines 544-546).
-- The control socket is `$XDG_RUNTIME_DIR/keyring/control`, or
-  `$GNOME_KEYRING_CONTROL/control` when that variable is set (lines 615-625).
-  The operations are INITIALIZE, UNLOCK, CHANGE and QUIT
-  (`daemon/control/gkd-control-codes.h`).
-- Peer uid, checked in both directions. The daemon compares each client's uid
-  with its own and drops the connection on a mismatch
-  (`daemon/control/gkd-control-server.c` lines 294-301, credentials read by
-  `egg/egg-unix-credentials.c`). The PAM client checks the daemon's uid with
-  `SO_PEERCRED` (`pam/gkr-pam-client.c` lines 79-85).
-- Host configuration, not upstream source. I read `/etc/pam.d/` on this
-  machine: `gdm-password` has `auth optional`, `password optional ...
-use_authtok` and `session optional ... auto_start`. `greetd` and
-  `cosmic-greeter` have optional `auth` and `session ... auto_start` lines.
-  Distribution package defaults were not read.
-- The compositor is not a PAM peer. A keyring service started by PAM would be
-  one, as the gnome-keyring daemon is. The earlier objection applied to the
-  compositor process only.
-- The host runs systemd 258 with TPM2 support. `/dev/tpm0` and `/dev/tpmrm0`
-  are present. The tree has no TPM code.
+1. A PAM module, `pam_gnoblin_keyring`, runs in the login stack of each
+   greeter. It reads `PAM_AUTHTOK` and passes the password to the keyring
+   service on stdin, as `pam_gnome_keyring` does. The service derives the
+   SQLCipher key from it and unlocks the store.
+2. **No password (fingerprint login, autologin).** The PAM module gets no
+   password, so it cannot unlock. The service then shows **one** unlock prompt
+   per login session, through the portals prompt UI (D28), or the built-in egui
+   dialog if the portal is not running. The store stays unlocked until logout,
+   so the user is never asked twice in one session.
+3. **Password change.** A hook in the PAM password stage re-keys the store. If
+   the hook is missing, the store stays locked after a change. [INFERENCE] This
+   follows `pam_gnome_keyring`; it is not yet tested on greetd or
+   cosmic-greeter.
+4. **Screen lock does not lock the store by default.** Locking it on every
+   screen lock would ask the user again. The optional leaf
+   `keyring.lock-on-screen-lock` (default `false`, **PROPOSED**) would lock it.
+   The name follows the schema's kebab-case section and field pattern, as in
+   `prompts.enabled`. `crates/gnoblin-config/schema/config.toml` has no
+   `keyring` section yet; add one when the feature is built.
 
-| Option                               | How the key is obtained                                                                             | Survives reboot | Input needed                    |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------- | --------------- | ------------------------------- |
-| 1. Login passphrase via PAM hand-off | A PAM module starts the service with the login password on stdin, as `pam_gnome_keyring` does.      | Yes             | Login, already typed            |
-| 2. Separate passphrase at first use  | The service raises a `Prompt`. Gnoblin's prompt UI asks for a second passphrase once per session.   | Yes             | Second passphrase, each session |
-| 3. `systemd-creds` / TPM2 sealed key | A random key is sealed with `systemd-creds encrypt` and loaded by `LoadCredentialEncrypted=`.       | Yes             | None                            |
-| 4. Kernel session keyring cache      | The key lives only in the session keyring (`keyrings(7)`), for the life of the session.             | No              | Depends on another option       |
-| 5. Coexistence (bus rule, not a key) | Gnoblin's service does not take `org.freedesktop.secrets` when another provider owns it. See below. | Not applicable  | Not applicable                  |
+The service holds the derived key in process memory for the session. A
+restart of the service asks for the key again. That cost is accepted for now.
 
-Notes on each option:
+### Why not the other options
 
-1. **PAM hand-off.** Gives automatic unlock with no second password. It needs a
-   new PAM module, `pam_gnoblin_keyring`, in each greeter stack. A password
-   change needs a hook in the PAM password stage, or the store stays locked.
-   A mismatch leaves the store locked. [INFERENCE] The module design follows
-   `pam_gnome_keyring`; it is not yet tested on greetd or cosmic-greeter.
-2. **Second passphrase.** Needs no PAM work and no TPM. The store is locked
-   until the user types the passphrase after each login. It needs the
-   compositor running, so it cannot serve a boot-time unlock.
-3. **`systemd-creds`.** The `systemd-creds` man page says a `tpm2` key cannot
-   be used without the original TPM2 chip. The `host+tpm2` key also needs
-   `/var/lib/systemd/credential.secret`, which only root can read. `--user`
-   (systemd 256 and later) binds the credential to one user. The man page says
-   systemd 262 pins the credential to the TPM2 SRK, so credentials made with
-   262 may not decrypt on the host's 258. The protection is against offline
-   disk theft. A process running as the user can read the secret.
-4. **Kernel session keyring.** Never a root of trust. It lasts until logout or
-   reboot, so every secret in the store is lost with it. Use it only as a cache,
-   so a service restart in one session does not ask again. [INFERENCE] The
-   semantics come from `keyrings(7)`, not re-read for this document.
-5. **Coexistence.** Not a key source. See the next section.
+| Option                            | Why it is not the default                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Second passphrase at every login  | Asks the user twice: at login and at the store. The no-password prompt is asked once per session.              |
+| `systemd-creds` / TPM2 sealed key | Needs the same machine and TPM, and root-only host key data. Not used by Linux desktop keyrings. See appendix. |
+| Kernel session keyring cache      | Lost at logout. Not a root of trust. The service's memory already holds the key for the session.               |
+| Coexistence (bus rule, not a key) | Not a key source. See "Coexistence".                                                                           |
 
-Options 1 to 3 can be combined. For example, option 3 could hold the key and
-option 4 could cache it. The choice is recorded under "Needs Kieran".
+The table is the rationale. The chosen design is in "How it works" above.
+
+## Prior art: how other services handle a locked store
+
+The facts below were read from upstream source, unless marked otherwise. The
+design follows the results, so a client that works with GNOME, KWallet and
+KeePassXC also works with Gnoblin.
+
+- **GNOME (gnome-keyring).** `SearchItems` returns locked items with a
+  `locked` out-parameter (`daemon/secret-service/gkd-secret-service.c`
+  452-458; `gkd-secret-objects.c` 1277, 1346-1349, 619-650). The label and the
+  fields are readable while locked (`gkm-secret-object.c` 138-139;
+  `gkm-secret-item.c` 232-237). The secret value is lock-checked
+  (`gkm-secret-item.c` 217-219). Attributes are stored hashed on disk
+  (`gkm-secret-fields.c` 445-451).
+- **KWallet.** `SearchItems` works while locked. It reads a plain JSON file,
+  `<wallet>_attributes.json`, beside the encrypted wallet
+  (`kwalletfreedesktopattributes.cpp` 19-20, 31-50, 62-70; `collection.cpp`
+  240-252). An item reports locked when its collection is locked
+  (`item.cpp` 81-84). `GetSecret` needs the wallet open (`item.cpp` 116-135).
+  `CreateItem` is refused while locked (`collection.cpp` 107-111). The
+  attributes are plain text on disk.
+- **KeePassXC.** `SearchItems` covers only unlocked collections
+  (`kp-Service.cpp` 266-327). `Collection::searchItems` returns nothing while
+  the database is locked (`kp-Collection.cpp` 213-225). Attributes and the
+  label report `IS_LOCKED` (`kp-Item.cpp` 95-100, 175-187).
+- **PAM, GNOME.** `gkr-pam-module.c` reads `PAM_AUTHTOK` in the auth stage
+  (lines 851-890). With no password it returns `PAM_SUCCESS` and does not
+  unlock (lines 879-886). So a login without a password leaves the store
+  locked.
+- **PAM, KWallet.** `pam_kwallet.c` prompts for a password when no `authtok`
+  is set (lines 282-290). `open_session` needs the key data (lines 567-583).
+- **Arch Wiki, GNOME/Keyring.** `pam_fprintd` does not set `PAM_AUTHTOK`, so
+  a fingerprint login does not unlock the keyring. The page's workaround is a
+  blank keyring password, which leaves the store unencrypted. The Arch Wiki
+  fprint page says `pam_fprintd` is `sufficient`, and warns about CVE-2024-37408.
+  I did not read the advisory.
+
+Consequences for the design:
+
+- **Locked search.** The store is one SQLCipher file, so `SearchItems` cannot
+  read attributes while locked. Until unlock, a search returns the collection
+  as locked and no items. GNOME keeps hashed attributes outside its cipher so
+  search works while locked. That is a choice for Kieran (see "Needs Kieran").
+- **Plain-text attributes are a trap.** KWallet's attribute file is readable
+  without the wallet key. Gnoblin keeps attributes inside the cipher.
+- **Fingerprint login.** The no-password prompt path in "Key source" covers
+  this. The fingerprint finding is part of the decision, not a side note.
 
 ## Coexistence
 
@@ -162,6 +180,8 @@ written to disk.
 - **`gnoblin-service-keyring`** (services role, D4). It restarts without taking
   the compositor down. It owns the SQLCipher file and the bus name, or none of
   the bus name under coexistence.
+- **`pam_gnoblin_keyring`.** The PAM module that hands the login password to
+  the service. It is the only part outside the services role.
 - **Portal side:** `xdg-desktop-portal-gnoblin` routes `Secret` requests to the
   services role through the usual portal path. The compositor draws the consent
   step.
@@ -174,8 +194,10 @@ written to disk.
 | Event                                   | Result                                                                                 |
 | --------------------------------------- | -------------------------------------------------------------------------------------- |
 | Store locked (no key yet)               | Collections report locked. `Unlock` returns a `Prompt`. Portal: `error { locked }`     |
-| Unlock cancelled                        | `cancelled { user }`                                                                   |
+| No password at login                    | One unlock prompt per login session. Unlocked until logout. Never asked twice          |
+| Unlock cancelled                        | `cancelled { user }`. The store stays locked                                           |
 | Wrong key                               | SQLCipher refuses to open. Store stays locked. No data is touched                      |
+| Password changed, hook missing          | Store stays locked. The user unlocks with the old password, then re-keys               |
 | Provider refuses `dh-ietf1024`          | `error { not-supported }`. No `plain` fallback                                         |
 | Other provider owns the name            | Coexistence: the service does not take the name. Portal serves from the private name   |
 | Services role down                      | `error { not-supported }` until services returns, as for other services-hosted portals |
@@ -188,19 +210,19 @@ written to disk.
 - The master secret and the SQLCipher key live in the service process only.
   They are never logged, never sent to the compositor, and never put in argv or
   the environment.
+- The PAM module hands the password over once, on stdin, and does not keep it.
 - The compositor and the portal relay see only per-app secrets, and only after
   consent.
 - Buffers holding a key or a secret are cleared after use. [INFERENCE] Confirm
   the chosen crates clear their buffers; if not, zeroise at the call site.
 - A wrong key must not reveal the data. SQLCipher gives page-level encryption
   and an authenticated check on open.
-- If the key source is a passphrase, the KDF cost must be set explicitly. The
-  choice is part of the key-source decision.
+- The KDF cost for a key derived from a password must be set explicitly.
 
 ## Phased implementation
 
 Each phase is one commit. Each commit has Agent37 verification before the next
-phase starts. The phases after phase 2 depend on the key-source decision.
+phase starts.
 
 1. **Store.** Enable `bundled-sqlcipher` in the workspace. Add the crate skeleton
    and the SQLCipher schema: collections, items, attributes, aliases. Tests:
@@ -208,8 +230,9 @@ phase starts. The phases after phase 2 depend on the key-source decision.
 2. **Secret Service server.** The `Service`, `Collection`, `Item` and `Prompt`
    interfaces over zbus, with `dh-ietf1024` only. Bus name taken under the
    coexistence rule. Tests: method replies match the specification.
-3. **Key source.** Implement the option Kieran chooses. Blocked until then. It
-   changes only the unlock path.
+3. **Unlock path.** The PAM hand-off (`pam_gnoblin_keyring`), the password-change
+   hook, and the one-per-session unlock prompt for the no-password case. Tests:
+   login with a password unlocks; login without one prompts once.
 4. **Secret portal.** `RetrieveSecret`, the per-app derivation, the session grant
    in memory, consent through the compositor.
 5. **Prompt UI.** Gnoblin's prompt UI draws `Prompt` objects (`prompt.secret`).
@@ -226,14 +249,47 @@ Acceptance is compatibility with existing software:
 ## Out of scope
 
 - Migrating secrets from gnome-keyring or KWallet, unless Kieran says yes.
-- TPM or smartcard storage in the tree. Option 3 needs it, and it is not in
-  the tree today.
-- Keyring unlock at login, unless option 1 is chosen.
+- TPM sealing in the tree. It is an optional later add-on (appendix).
+- Locking the store on screen lock, unless `keyring.lock-on-screen-lock` is
+  built and turned on.
 
 ## Needs Kieran
 
 These are real choices. Each one changes the work.
 
-1. **Key source (open, `confirm`, lean, item 33):** PAM login passphrase first. A TPM-sealed key is the fallback. A prompt appears only if neither works, because a fingerprint gives no passphrase. Still open until Kieran confirms.
+1. **Locked search:** a locked store returns no items (the current design, as
+   KeePassXC does), or attributes are kept as hashed values outside the cipher
+   so search works while locked (as GNOME does). The second weakens what an
+   attacker learns from the file.
 2. **Import of an existing gnome-keyring file:** yes or no.
-3. **Coexistence (decided, item 35):** the config leaf `keyring.provider` chooses the provider. See "Coexistence".
+
+## Appendix: TPM2 sealing (optional later add-on)
+
+Not the default. Kept for when Kieran wants a disk-theft guard that needs no
+password. The facts below were read from the sources named.
+
+- **`systemd-creds` (man page).** A `tpm2` key cannot be used without the
+  original TPM2 chip. The `host+tpm2` key also needs
+  `/var/lib/systemd/credential.secret`, which only root can read. Systemd 256
+  added `--user`, which binds a credential to one user. Systemd 262 pins the
+  credential to the TPM2 SRK, so a credential made with 262 may not decrypt on
+  the host's systemd 258. A null key is refused when TPM and Secure Boot are both
+  in use.
+- **Protection.** Against offline disk theft. A process running as the user can
+  read the unsealed secret, so this does not protect against code already
+  running as the user.
+- **Host.** The host runs systemd 258 with TPM2 support. `/dev/tpm0` and
+  `/dev/tpmrm0` are present. The tree has no TPM code.
+- **Industry use.** TPM-bound keys are the norm for disks on Windows:
+  BitLocker "provides maximum protection when used with a Trusted Platform
+  Module (TPM)" ([Microsoft Learn: BitLocker](https://learn.microsoft.com/en-us/windows/security/operating-system-security/data-protection/bitlocker/)).
+  For LUKS2 on Linux, `systemd-cryptenroll` enrols a TPM2 token alongside a
+  passphrase or recovery key ([systemd-cryptenroll(1)](https://www.freedesktop.org/software/systemd/man/latest/systemd-cryptenroll.html)).
+  Android Keystore keys can be bound to secure hardware, a Trusted Execution
+  Environment (TEE) or a Secure Element (SE), not a TPM
+  ([Android Keystore](https://developer.android.com/privacy-and-security/keystore)).
+  Linux desktop keyrings (GNOME, KWallet) unlock from the login password, and
+  none of the three sources above is a desktop keyring.
+- **Answer to "is TPM the industry standard?"** It is the standard for disk
+  encryption on Windows and an option on LUKS. It is not the standard for a
+  desktop keyring, where the login password is the norm.
