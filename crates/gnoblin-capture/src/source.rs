@@ -4,8 +4,8 @@
 //! [`Target`], and the compositor answers three questions about it — how big it is,
 //! what changed, and copy it here. Keeping that behind a trait is what lets the
 //! rules in [`crate::table`] be tested without a device, a Wayland socket or a
-//! scene, and it is the seam a PipeWire producer plugs into when it lands
-//! ([`crate::lib`] states why it is not here yet).
+//! scene, and it is the seam a PipeWire producer plugs into when it lands. The crate
+//! root explains why that producer is not here yet.
 
 use gnoblin_types::Rect;
 
