@@ -336,6 +336,9 @@ pub struct State {
     /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the handler is in
     /// [`crate::protocols::zxdg_foreign_v2`].
     pub(crate) xdg_foreign_state: XdgForeignState,
+    /// The handle table for `zxdg_exporter_v2` and `zxdg_importer_v2`; the protocol is in
+    /// [`crate::protocols::xdg_foreign`].
+    pub(crate) xdg_foreign: crate::protocols::xdg_foreign::XdgForeign,
     /// Kept alive so `xdg_wm_dialog_v1` stays registered; the handler is in
     /// [`crate::protocols::xdg_dialog_v1`].
     #[allow(dead_code)]
@@ -720,6 +723,7 @@ impl State {
             idle_notify_global,
             background_effect_global,
             xdg_foreign_state,
+            xdg_foreign: Default::default(),
             xdg_dialog_state,
             xdg_toplevel_icon_manager,
             xdg_toplevel_tag_manager,

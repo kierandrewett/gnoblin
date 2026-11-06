@@ -70,6 +70,8 @@ gnoblin-authority = { path = "../gnoblin-authority" }
 wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
 # Log lines go through the `gnoblin-log` facade's macros, so each one carries this crate's component.
 gnoblin-log = { path = "../gnoblin-log" }
+# Random bytes for xdg-foreign handles, drawn from the kernel. Already in Cargo.lock.
+getrandom = { workspace = true }
 # The Gnoblin-owned protocols' server halves, generated from `protocols/` at compile
 # time. Checking the generated code in would let the XML and the code drift, which is
 # exactly what a wire-compatible port cannot afford.

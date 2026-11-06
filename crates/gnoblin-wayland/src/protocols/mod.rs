@@ -118,6 +118,8 @@ pub mod wp_viewporter;
 pub mod xdg_activation_v1;
 /// `xdg_wm_dialog_v1`: modal dialog relationships between toplevels.
 pub mod xdg_dialog_v1;
+/// `zxdg_exporter_v2` and `zxdg_importer_v2`: export a toplevel handle to another client.
+pub mod xdg_foreign;
 /// `xdg_shell`: toplevels, popups, configure and ack.
 pub mod xdg_shell;
 /// `xdg_toplevel_icon_v1`: toplevel icon names and buffers, stored but not drawn.

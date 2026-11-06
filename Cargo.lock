@@ -1833,6 +1833,7 @@ name = "gnoblin-wayland"
 version = "0.2.0-alpha.0"
 dependencies = [
  "bitflags",
+ "getrandom",
  "gnoblin-authority",
  "gnoblin-backend",
  "gnoblin-capture",
