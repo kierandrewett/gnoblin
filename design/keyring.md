@@ -36,15 +36,32 @@ The SQLCipher key must come from somewhere that survives reboot. Until one is
 chosen, the store cannot unlock at boot, and phases 3 and later cannot land.
 This is a risk to the schedule, not a reason to change the decision above.
 
-Facts checked for this section:
+Facts checked for this section. Upstream source is GNOME/gnome-keyring at
+master commit e970619, read from
+`https://raw.githubusercontent.com/GNOME/gnome-keyring/master/`. The
+`gitlab.gnome.org` raw URLs return HTTP 406.
 
-- `pam_gnome_keyring` reads `PAM_AUTHTOK` in the auth stage. It starts
-  `gnome-keyring-daemon --login` and writes the password on stdin. Its control
-  socket is `$XDG_RUNTIME_DIR/keyring/control`, with operations INITIALIZE,
-  UNLOCK, CHANGE and QUIT (`daemon/control/gkd-control-codes.h`). The client
-  checks the socket owner and the peer uid with `SO_PEERCRED`.
-- The host PAM stacks for `gdm-password`, greetd and cosmic-greeter run
-  `pam_gnome_keyring.so` in auth (optional) and session (`auto_start`).
+- `pam/gkr-pam-module.c` sets `PAM_AUTHTOK` in `prompt_password` (line 792)
+  and reads it in `pam_sm_authenticate` (line 879) and
+  `pam_chauthtok_update` (line 995). `auto_start` and `use_authtok` are parsed
+  in `parse_args` (lines 817 and 825).
+- The module starts the daemon with `--login` for a user login (line 528). It
+  writes the password to the daemon's stdin and closes it (lines 372 and 550).
+  `--login` is passed even when the password is NULL (lines 544-546).
+- The control socket is `$XDG_RUNTIME_DIR/keyring/control`, or
+  `$GNOME_KEYRING_CONTROL/control` when that variable is set (lines 615-625).
+  The operations are INITIALIZE, UNLOCK, CHANGE and QUIT
+  (`daemon/control/gkd-control-codes.h`).
+- Peer uid, checked in both directions. The daemon compares each client's uid
+  with its own and drops the connection on a mismatch
+  (`daemon/control/gkd-control-server.c` lines 294-301, credentials read by
+  `egg/egg-unix-credentials.c`). The PAM client checks the daemon's uid with
+  `SO_PEERCRED` (`pam/gkr-pam-client.c` lines 79-85).
+- Host configuration, not upstream source. I read `/etc/pam.d/` on this
+  machine: `gdm-password` has `auth optional`, `password optional ...
+use_authtok` and `session optional ... auto_start`. `greetd` and
+  `cosmic-greeter` have optional `auth` and `session ... auto_start` lines.
+  Distribution package defaults were not read.
 - The compositor is not a PAM peer. A keyring service started by PAM would be
   one, as the gnome-keyring daemon is. The earlier objection applied to the
   compositor process only.
