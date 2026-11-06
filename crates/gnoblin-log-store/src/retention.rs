@@ -7,8 +7,11 @@ use rusqlite::{Connection, params};
 
 const DAY_MS: i64 = 86_400_000;
 
-/// How many rows one statement deletes while the database is trimmed to its size limit.
-const TRIM_BATCH: i64 = 1000;
+/// Rows in the database, which the size trim needs to estimate how many rows a byte excess is.
+fn row_count(connection: &Connection) -> rusqlite::Result<u64> {
+    let rows: i64 = connection.query_row("SELECT COUNT(*) FROM log_records", [], |row| row.get(0))?;
+    Ok(u64::try_from(rows.max(0)).unwrap_or(0))
+}
 
 /// The limits on what the database keeps. A zero age or an absent size is no limit.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -26,10 +29,23 @@ pub(crate) fn apply(connection: &Connection, retention: Retention, now_ms: i64) 
         connection.execute("DELETE FROM log_records WHERE time_ms < ?1", params![cutoff])?;
     }
     if let Some(limit) = retention.max_bytes {
-        while used_bytes(connection)? > limit {
+        // Each pass deletes the oldest rows the excess bytes account for, rounded up, so the loop
+        // converges on the limit without emptying the table. Deleting rows only frees pages, so
+        // the bytes in use are read again after every pass.
+        loop {
+            let used = used_bytes(connection)?;
+            if used <= limit {
+                break;
+            }
+            let rows = row_count(connection)?;
+            if rows == 0 {
+                break;
+            }
+            let excess = used - limit;
+            let batch = rows.saturating_mul(excess).div_ceil(used).clamp(1, rows);
             let deleted = connection.execute(
                 "DELETE FROM log_records WHERE id IN (SELECT id FROM log_records ORDER BY id LIMIT ?1)",
-                params![TRIM_BATCH],
+                params![i64::try_from(batch).unwrap_or(i64::MAX)],
             )?;
             if deleted == 0 {
                 break;
