@@ -10,5 +10,5 @@ mod mirror;
 
 pub use error::{CallError, ModuleError};
 pub use host::{ModuleHost, ModuleState};
-pub use log::{Level, LogLine, Sink, StderrSink};
+pub use log::{Level, LogLine, LogSink, Sink};
 pub use manifest::{Budget, Grants, Manifest, ModuleLimits};

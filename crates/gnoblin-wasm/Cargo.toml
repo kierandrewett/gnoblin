@@ -12,6 +12,8 @@ publish.workspace = true
 # fault away from the session (design/rust-compositor.md, D6 and "Dependency
 # rules").
 gnoblin-client = { path = "../gnoblin-client" }
+# Log lines go through the `gnoblin-log` facade's macros, like every other crate.
+gnoblin-log = { path = "../gnoblin-log" }
 gnoblin-model = { path = "../gnoblin-model" }
 gnoblin-types = { path = "../gnoblin-types" }
 # The sandbox (D6). The feature set is picked in the workspace manifest.

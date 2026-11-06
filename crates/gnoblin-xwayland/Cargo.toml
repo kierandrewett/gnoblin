@@ -20,8 +20,6 @@ gnoblin-wm = { path = "../gnoblin-wm" }
 gnoblin-types.workspace = true
 # The `xwayland` section this crate applies, and its generated enum.
 gnoblin-config = { path = "../gnoblin-config" }
-# `[tag]` log lines. Smithay already brings `tracing` into the graph.
-tracing = "0.1.37"
 
 [dev-dependencies]
 # The real test: a headless `gnoblin-wayland` server with Xwayland inside it. A

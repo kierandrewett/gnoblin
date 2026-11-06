@@ -127,9 +127,9 @@ impl std::fmt::Debug for ModuleHost {
 }
 
 impl ModuleHost {
-    /// A host with no modules, reporting through standard error.
+    /// A host with no modules, reporting through the log.
     pub fn new() -> Result<ModuleHost, ModuleError> {
-        ModuleHost::with_sink(Box::new(log::StderrSink))
+        ModuleHost::with_sink(Box::new(log::LogSink))
     }
 
     /// A host reporting through `sink`.

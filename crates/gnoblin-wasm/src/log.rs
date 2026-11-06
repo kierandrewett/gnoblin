@@ -5,7 +5,7 @@
 //! `stderr` do not exist for it (design/rust-compositor.md, D6). What it has is the
 //! `log` host function, which writes one line to this sink, and the sink is the
 //! seam the compositor already needs for everything else it reports: the default
-//! writes to standard error, and a supervisor, a test or the console overlay
+//! writes into the log, and a supervisor, a test or the console overlay
 //! supplies its own.
 //!
 //! The sink is shared behind a lock rather than held by value because every
@@ -86,13 +86,22 @@ pub trait Sink: Send {
     fn write(&mut self, record: &LogLine<'_>);
 }
 
-/// The default: one line to standard error.
+/// The default: one line into the log, at the line's own level.
+///
+/// The module's name travels as a field, so the console and the database can filter by it.
 #[derive(Debug, Default)]
-pub struct StderrSink;
+pub struct LogSink;
 
-impl Sink for StderrSink {
+impl Sink for LogSink {
     fn write(&mut self, record: &LogLine<'_>) {
-        eprintln!("{record}");
+        let module = record.module;
+        let message = record.message;
+        match record.level {
+            Level::Error => gnoblin_log::error!(module = module, "{message}"),
+            Level::Warn => gnoblin_log::warn!(module = module, "{message}"),
+            Level::Info => gnoblin_log::info!(module = module, "{message}"),
+            Level::Debug => gnoblin_log::debug!(module = module, "{message}"),
+        }
     }
 }
 
