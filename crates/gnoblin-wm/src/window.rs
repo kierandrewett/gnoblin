@@ -1,4 +1,11 @@
 //! Managed windows and the states the window manager derives geometry from.
+//!
+//! A [`Window`] is the manager's record of one client toplevel: its identity, kind,
+//! output and workspace, its current geometry, the floating rectangle it returns
+//! to (`restore`), its [`WindowState`] flags and its placement under the active
+//! layout. Geometry is logical pixels. The record is owned by [`crate::Wm`]; readers
+//! borrow it and only events change it, so a state transition always goes through
+//! the state machine documented in [`crate::wm`].
 
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 

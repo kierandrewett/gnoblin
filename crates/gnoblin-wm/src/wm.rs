@@ -1,4 +1,59 @@
 //! The window management state machine: events in, effects out.
+//!
+//! [`Wm`] holds every fact the policy needs: the outputs and their work areas, the
+//! declared workspaces and which one is active, each managed [`Window`] with its
+//! geometry and [`WindowState`], the stack, the focus and its history, and the
+//! pointer-focus timer. [`Wm::apply`] is the only way to change any of it. It takes
+//! one [`Event`], mutates the state in one step and returns the [`Effect`]s the
+//! caller must carry out. The readers only borrow state, and nothing reads a
+//! clock: time arrives as a [`Tick`] on the events that need it.
+//!
+//! # Window states
+//!
+//! A window's state is a set of flags in [`WindowState`], not one enum, because the
+//! flags compose. A window can be minimised while fullscreen, and fullscreen can
+//! sit over maximise or a snap, which it returns to when it leaves fullscreen.
+//! Maximising a snapped window clears its snap. Each transition has one of three
+//! shapes:
+//!
+//! - **Enter a state** (maximise, fullscreen, snap) remembers the floating
+//!   rectangle in `restore` when the window is not already snapped (and, for
+//!   fullscreen, not maximised), then moves the window to the state's rectangle.
+//!   Minimise changes no geometry.
+//! - **Leave a state** (unmaximise, unfullscreen, unsnap) recomputes the rectangle
+//!   from the remaining flags through [`destination`], so the window lands where its
+//!   other states say, not where it was before the toggle.
+//! - **Change the work area or output** recomputes every rectangle through
+//!   [`reshape`], which applies the same precedence: fullscreen covers the monitor,
+//!   maximise covers the work area, a snap takes its zone, and a floating window is
+//!   clamped inside the work area.
+//!
+//! That precedence is why a fullscreen window survives a workspace switch and a
+//! snapped window follows its zone when a panel changes its reservation.
+//!
+//! # Focus and stacking
+//!
+//! Focus is one window or none. When the focused window is minimised or closed,
+//! focus moves to the most recently used window in the history that is still
+//! visible, so focus does not land on a window the user cannot see. The stack
+//! ([`Stack`]) is updated by the same events. Fullscreen windows sit in the
+//! fullscreen layer above all normal windows, and [`layer_of`] is the only place a
+//! state chooses a layer.
+//!
+//! # Layouts
+//!
+//! Layouts never run inside [`Wm::apply`]. A state change submits layout work, the
+//! result is collected on a later [`Event::Frame`] with a deadline, and a slow or
+//! wedged engine leaves the last good placements in force rather than blocking the
+//! frame. [`crate::arrange`] owns that protocol. This module only applies settled
+//! results.
+//!
+//! # Units
+//!
+//! Rectangles, sizes and insets are logical pixels in the compositor's global
+//! space, the units `gnoblin-types` uses. Physical pixels are a renderer concern
+//! and never reach this module. Time is a [`Tick`], one millisecond of the caller's
+//! clock. `auto_raise_delay` is in milliseconds, the same unit.
 
 use std::collections::BTreeMap;
 use std::time::Instant;

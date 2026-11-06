@@ -1,4 +1,14 @@
 //! Everything that can happen to the window manager.
+//!
+//! The composition root translates protocol events into these values and feeds
+//! them to [`crate::Wm::apply`] one at a time, in the order they happened. An event
+//! is a fact about the world (a window opened, an output moved) or a request the
+//! caller wants honoured (raise, minimise, move). The window manager answers each
+//! event with [`crate::Effect`]s and with rejections for events that name unknown
+//! objects, so a stale event from a closed window is harmless.
+//!
+//! Coordinates in events are logical pixels. Time-bearing events carry a
+//! [`gnoblin_types::Tick`] in milliseconds from the caller's clock.
 
 use gnoblin_types::{Insets, OutputId, Rect, Scale, WindowId, WorkspaceId};
 

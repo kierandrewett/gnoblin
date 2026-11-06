@@ -1,4 +1,11 @@
 //! Outputs as abstract rectangles and their work areas.
+//!
+//! An output is its monitor rectangle in logical pixels, its scale, and the insets
+//! panels have reserved along its edges. The work area is the monitor rectangle
+//! minus those insets, so maximised windows and smart placement avoid panels, while
+//! fullscreen windows use the whole monitor. An output can be connected, reserved
+//! and identified independently, and each change re-derives the work area here so
+//! no caller has to subtract insets itself.
 
 use gnoblin_types::{Insets, OutputId, Rect, Scale};
 
