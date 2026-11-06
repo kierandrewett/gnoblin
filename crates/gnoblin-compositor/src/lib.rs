@@ -286,7 +286,6 @@ impl Compositor {
         let prepared = ipc::SocketPath::prepare(&path, version).map_err(Error::Ipc)?;
         let (events, received) = ipc::events();
         let (observer, pending) = ipc::wake(events.clone());
-        store.ready();
 
         // The display name a client puts in `WAYLAND_DISPLAY` is the Wayland socket's file
         // name, and it has to be read before the configuration is moved into the server.
@@ -321,6 +320,16 @@ impl Compositor {
         server.install_layouts(layouts.clone());
         let control = server.control();
         let observation = server.observation();
+
+        // The EIS endpoint is bound first: the IPC socket is what a client connects to, and the
+        // session's ready signal goes out with it, so a client that sees either looks for
+        // `eis.sock` straight away and has to find it. Every connection on it waits for a grant.
+        let eis_gate = config.eis.clone();
+        eis_gate
+            .serve(&eis::socket_path(&path), control.input_sink())
+            .map_err(Error::Eis)?;
+        store.ready();
+
         let ipc = ipc::IpcServer::start(
             prepared,
             store,
@@ -333,13 +342,6 @@ impl Compositor {
             &config.extensions,
         )
         .map_err(Error::Ipc)?;
-
-        // Input is served only once the seat is up, and every connection waits for a grant.
-        let eis_gate = config.eis.clone();
-        if let Err(error) = eis_gate.serve(&eis::socket_path(&path), control.input_sink()) {
-            ipc.shutdown();
-            return Err(Error::Eis(error));
-        }
 
         // The guardian waits for this report before it starts anything else: the session's
         // later children need the display, and the plan ends the session when a required
