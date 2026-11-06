@@ -136,7 +136,7 @@ pub async fn export(connection: &Connection, service: &PromptService, names: Nam
                 name: (*name).to_owned(),
             })?;
     }
-    gnoblin_log::info!(names = ?names.as_slice(), "serving gcr prompts");
+    gnoblin_log::info_in!("compat-keyring", names = ?names.as_slice(), "serving gcr prompts");
     Ok(())
 }
 
@@ -155,7 +155,7 @@ pub async fn run(connection: Connection, service: PromptService) {
             // The caller has closed its prompt object, or the bus is gone. Either way
             // there is nobody left to answer, and the request itself was already
             // finished.
-            gnoblin_log::debug!(%error, "a prompt callback could not be delivered");
+            gnoblin_log::debug_in!("compat-keyring", %error, "a prompt callback could not be delivered");
         }
     }
 }

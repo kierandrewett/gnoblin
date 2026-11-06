@@ -282,13 +282,13 @@ fn a_passphrase_never_reaches_the_log() {
 
     let mut fixture = Fixture::new();
     let request = fixture.perform().expect("offered").request;
-    gnoblin_log::info!("answering the prompt");
+    gnoblin_log::info_in!("compat-keyring", "answering the prompt");
     fixture
         .prompter
         .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
         .expect("the request is pending");
     let effect = fixture.effect().expect("the caller is told");
-    gnoblin_log::debug!(?effect, "the effect was queued");
+    gnoblin_log::debug_in!("compat-keyring", ?effect, "the effect was queued");
 
     let lines = captured.lines();
     assert_eq!(lines.len(), 2, "the test's own lines were captured: {lines:?}");

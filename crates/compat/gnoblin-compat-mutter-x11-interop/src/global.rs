@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use gnoblin_wayland::{Dispatch2, Extension, ExtensionError, GlobalDispatch2, State, Surface, X11InteropHost};
 use wayland_server::{Client, DataInit, DisplayHandle, New};
 
@@ -133,7 +133,7 @@ impl GlobalDispatch2<mutter_x11_interop::MutterX11Interop, State> for InteropDat
         data_init: &mut DataInit<'_, State>,
     ) {
         data_init.init(resource, self.clone_data());
-        debug!(client = ?client.id(), "[x11-interop] a client bound the redirect");
+        debug_in!("compat-x11", client = ?client.id(), "[x11-interop] a client bound the redirect");
     }
 }
 
@@ -196,11 +196,18 @@ pub fn handle_request<H: X11InteropHost>(host: &mut H, data: &InteropData, reque
                 return;
             }
             let Surface::Window(child) = host.surface(&surface) else {
-                debug!("[x11-interop] the child surface is not a window of this session");
+                debug_in!(
+                    "compat-x11",
+                    "[x11-interop] the child surface is not a window of this session"
+                );
                 return;
             };
             let Some(parent) = host.window_for_x11(xwindow) else {
-                debug!(xwindow, "[x11-interop] the X11 window is not managed by this session");
+                debug_in!(
+                    "compat-x11",
+                    xwindow,
+                    "[x11-interop] the X11 window is not managed by this session"
+                );
                 return;
             };
             data.lock().record(child, parent);
@@ -209,7 +216,7 @@ pub fn handle_request<H: X11InteropHost>(host: &mut H, data: &InteropData, reque
             {
                 own.push(child);
             }
-            debug!(%child, %parent, xwindow, "[x11-interop] a parent relation was recorded");
+            debug_in!("compat-x11", %child, %parent, xwindow, "[x11-interop] a parent relation was recorded");
         }
     }
 }

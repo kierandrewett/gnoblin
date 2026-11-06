@@ -39,7 +39,7 @@
 gnoblin_log::component!("compat-xsettings");
 
 use gnoblin_compat_core::{DesktopSettings, Switch};
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use gnoblin_xwayland::xsettings::{Setting, XSettings};
 
 /// The checked-in declaration, compiled in so the file a reviewer approved is the one
@@ -161,7 +161,10 @@ impl Owner {
 impl XSettings for Owner {
     fn settings(&mut self) -> Vec<(String, Setting)> {
         if !self.switch.is_on() {
-            debug!("[xsettings] the target is off, so the property is emptied");
+            debug_in!(
+                "compat-xsettings",
+                "[xsettings] the target is off, so the property is emptied"
+            );
             return Vec::new();
         }
         publish(&self.settings)
@@ -169,8 +172,12 @@ impl XSettings for Owner {
 
     fn published(&mut self, result: Result<(), String>) {
         match result {
-            Ok(()) => debug!("[xsettings] the property was written"),
-            Err(reason) => debug!(reason, "[xsettings] the property could not be written"),
+            Ok(()) => debug_in!("compat-xsettings", "[xsettings] the property was written"),
+            Err(reason) => debug_in!(
+                "compat-xsettings",
+                reason,
+                "[xsettings] the property could not be written"
+            ),
         }
     }
 }

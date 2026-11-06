@@ -7,7 +7,7 @@
 use gnoblin_client::{Client, UnixTransport, socket_path};
 use gnoblin_compat_core::Mode;
 use gnoblin_config::{SearchPaths, Store};
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use gnoblin_proto::Version;
 
 use crate::{IntrospectError, IntrospectLink};
@@ -31,12 +31,12 @@ pub fn mode_from_environment() -> Mode {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => mode(stored.config.compat.as_ref()),
             Err(error) => {
-                warn!(%error, "[services] configuration not readable; compat stays at its default");
+                warn_in!("compat-introspect", %error, "[services] configuration not readable; compat stays at its default");
                 Mode::default()
             }
         },
         Err(error) => {
-            debug!(%error, "[services] no configuration file; compat stays at its default");
+            debug_in!("compat-introspect", %error, "[services] no configuration file; compat stays at its default");
             Mode::default()
         }
     }

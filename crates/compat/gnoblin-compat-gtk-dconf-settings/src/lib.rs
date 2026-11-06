@@ -54,7 +54,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gnoblin_compat_core::{DesktopSettings, Switch};
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 
 /// The checked-in declaration, compiled in so the file a reviewer approved is the one
 /// `cargo xtask compat-report` prints and this build honours.
@@ -248,7 +248,7 @@ impl Written {
 /// run.
 pub fn apply(actions: &[KeyWrite], switch: Switch, directory: &Path) -> std::io::Result<Written> {
     if !switch.is_on() {
-        debug!("[dconf] the target is off, so nothing is written");
+        debug_in!("compat-dconf", "[dconf] the target is off, so nothing is written");
         return Ok(Written::Skipped);
     }
     // `dconf compile` reads a directory of keyfiles, not one file, so the keyfile goes in its
@@ -281,7 +281,7 @@ pub fn apply(actions: &[KeyWrite], switch: Switch, directory: &Path) -> std::io:
         },
     };
     if !written.compiled() {
-        debug!("[dconf] the layer is written but not compiled");
+        debug_in!("compat-dconf", "[dconf] the layer is written but not compiled");
     }
     Ok(written)
 }

@@ -244,7 +244,7 @@ impl PromptService {
             path: callback.to_string(),
         };
         let prompt = Prompt::from_properties(kind, &key.path, &properties);
-        gnoblin_log::info!(
+        gnoblin_log::info_in!("compat-keyring",
             callback = %key.path,
             kind = kind.as_str(),
             title = %prompt.title,

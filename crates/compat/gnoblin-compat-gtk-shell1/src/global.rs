@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use gnoblin_wayland::{
     Activation, Dispatch2, Extension, ExtensionError, GlobalDispatch2, Shell1Host, State, Surface, Titlebar,
     TitlebarActions,
@@ -172,7 +172,7 @@ impl GlobalDispatch2<gtk_shell1::GtkShell1, State> for ShellData {
         // No global app menu and no global menu bar: this desktop draws neither, and a
         // client that is told otherwise exports an app menu nobody shows.
         shell.capabilities(0);
-        debug!(client = ?client.id(), "[gtk-shell] a client bound the redirect");
+        debug_in!("compat-gtk-shell", client = ?client.id(), "[gtk-shell] a client bound the redirect");
     }
 }
 
@@ -221,7 +221,11 @@ pub fn handle_shell_request<H>(
             // There is no startup-notification sequence table yet, so the id is recorded
             // in the log and completes nothing. The support matrix says so rather than
             // letting a client believe its launch was tracked.
-            debug!(?startup_id, "[gtk-shell] a client named its startup id");
+            debug_in!(
+                "compat-gtk-shell",
+                ?startup_id,
+                "[gtk-shell] a client named its startup id"
+            );
         }
         gtk_shell1::Request::SystemBell { surface } => {
             if !admit(admission, Call::SystemBell) {
@@ -280,8 +284,11 @@ pub fn handle_surface_request<H: Shell1Host>(
             }
             if let Some(app_id) = application_id {
                 match Shell1Host::set_app_id(state, data.surface(), &app_id) {
-                    Surface::Window(window) => debug!(%window, "[gtk-shell] an application id"),
-                    Surface::Gone => debug!("[gtk-shell] an application id for a window that is gone"),
+                    Surface::Window(window) => debug_in!("compat-gtk-shell", %window, "[gtk-shell] an application id"),
+                    Surface::Gone => debug_in!(
+                        "compat-gtk-shell",
+                        "[gtk-shell] an application id for a window that is gone"
+                    ),
                 }
             }
         }
@@ -292,13 +299,13 @@ pub fn handle_surface_request<H: Shell1Host>(
             // `gnoblin-wm` has no kind-change event, so the modality is recorded by the
             // protocol object and not by the window manager: the matrix says `partial`
             // and this is the line that keeps it visible.
-            debug!("[gtk-shell] a window declared itself modal");
+            debug_in!("compat-gtk-shell", "[gtk-shell] a window declared itself modal");
         }
         gtk_surface1::Request::UnsetModal => {
             if !admit(&data.admission, Call::UnsetModal) {
                 return;
             }
-            debug!("[gtk-shell] a window withdrew its modality");
+            debug_in!("compat-gtk-shell", "[gtk-shell] a window withdrew its modality");
         }
         gtk_surface1::Request::Present { time } => {
             if !admit(&data.admission, Call::Present) {
@@ -306,8 +313,10 @@ pub fn handle_surface_request<H: Shell1Host>(
             }
             if let Surface::Window(window) = state.surface(data.surface()) {
                 match Shell1Host::present(state, window, time) {
-                    Activation::Focused => debug!(%window, "[gtk-shell] presented"),
-                    Activation::Refused(reason) => debug!(%window, reason, "[gtk-shell] present refused"),
+                    Activation::Focused => debug_in!("compat-gtk-shell", %window, "[gtk-shell] presented"),
+                    Activation::Refused(reason) => {
+                        debug_in!("compat-gtk-shell", %window, reason, "[gtk-shell] present refused")
+                    }
                 }
             }
         }
@@ -317,8 +326,10 @@ pub fn handle_surface_request<H: Shell1Host>(
             }
             if let Surface::Window(window) = state.surface(data.surface()) {
                 match Shell1Host::request_focus(state, window, startup_id.as_deref()) {
-                    Activation::Focused => debug!(%window, "[gtk-shell] focus request honoured"),
-                    Activation::Refused(reason) => debug!(%window, reason, "[gtk-shell] focus request refused"),
+                    Activation::Focused => debug_in!("compat-gtk-shell", %window, "[gtk-shell] focus request honoured"),
+                    Activation::Refused(reason) => {
+                        debug_in!("compat-gtk-shell", %window, reason, "[gtk-shell] focus request refused")
+                    }
                 }
             }
         }
@@ -344,12 +355,16 @@ pub fn handle_surface_request<H: Shell1Host>(
                     );
                 }
                 (Ok(action), Surface::Window(window)) => match Shell1Host::titlebar(state, window, action) {
-                    Titlebar::Performed => debug!(%window, %action, "[gtk-shell] a titlebar action"),
+                    Titlebar::Performed => {
+                        debug_in!("compat-gtk-shell", %window, %action, "[gtk-shell] a titlebar action")
+                    }
                     Titlebar::Unavailable(reason) => {
-                        debug!(%window, %action, reason, "[gtk-shell] an action the engine lacks")
+                        debug_in!("compat-gtk-shell", %window, %action, reason, "[gtk-shell] an action the engine lacks")
                     }
                 },
-                (Ok(_), Surface::Gone) => debug!("[gtk-shell] a gesture for a window that is gone"),
+                (Ok(_), Surface::Gone) => {
+                    debug_in!("compat-gtk-shell", "[gtk-shell] a gesture for a window that is gone")
+                }
             }
         }
         gtk_surface1::Request::Release => {
@@ -382,7 +397,7 @@ pub fn handle_surface_request<H: Shell1Host>(
 fn admit(admission: &Admission, call: Call) -> bool {
     let gate = Gate::new(admission.mode(), CallerContext::UNSANDBOXED, LockState::Unlocked);
     if let Err(refusal) = admission.admit(call, gate) {
-        debug!(
+        debug_in!("compat-gtk-shell",
             interface = gnoblin_compat_core::Call::interface(&call),
             member = gnoblin_compat_core::Call::member(&call),
             %refusal,
