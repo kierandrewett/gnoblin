@@ -559,7 +559,7 @@ impl State {
         let origin = self
             .wm
             .window(window)
-            .map(|managed| managed.geometry)
+            .map(|managed| self.shown_geometry(managed))
             .unwrap_or_default();
         let local = (
             i32::try_from((position.x - f64::from(origin.x)).round() as i64).unwrap_or(i32::MAX),
@@ -650,7 +650,7 @@ impl State {
             if frame.closed || !frame.presented || frame.surface.is_none() {
                 continue;
             }
-            let geometry = managed.geometry;
+            let geometry = self.shown_geometry(managed);
             let inside = position.x >= f64::from(geometry.x)
                 && position.y >= f64::from(geometry.y)
                 && position.x < geometry.right() as f64
@@ -700,9 +700,10 @@ impl State {
                 })
                 .flatten()
             });
+        let shown = self.shown_geometry(&managed);
         let size = logical.unwrap_or((
-            i32::try_from(managed.geometry.width).unwrap_or(i32::MAX),
-            i32::try_from(managed.geometry.height).unwrap_or(i32::MAX),
+            i32::try_from(shown.width).unwrap_or(i32::MAX),
+            i32::try_from(shown.height).unwrap_or(i32::MAX),
         ));
         let focused = self.wm.focused() == Some(window);
         let mut state = FrameState::empty();

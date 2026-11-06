@@ -527,6 +527,7 @@ impl State {
             targets.outputs.insert(output, scale_size(rect.size(), scale));
         }
         for managed in self.wm().windows() {
+            let shown = self.shown_geometry(managed);
             let window = managed.id;
             let Some(output) = managed.output else {
                 continue;
@@ -539,10 +540,10 @@ impl State {
                 WindowPlacement {
                     output,
                     origin: Point::new(
-                        scale_axis(managed.geometry.x.saturating_sub(monitor.x), scale),
-                        scale_axis(managed.geometry.y.saturating_sub(monitor.y), scale),
+                        scale_axis(shown.x.saturating_sub(monitor.x), scale),
+                        scale_axis(shown.y.saturating_sub(monitor.y), scale),
                     ),
-                    size: scale_size(managed.geometry.size(), scale),
+                    size: scale_size(shown.size(), scale),
                 },
             );
         }
