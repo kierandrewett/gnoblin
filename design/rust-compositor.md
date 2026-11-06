@@ -3094,14 +3094,18 @@ Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are i
 
 **Core.** The `window` object gets one signal and one method:
 
-- Signal `menu_requested`, fields `x`, `y` (int), `width`, `height` (uint) in output logical coordinates, and `source` (string: `client`, `keyboard` or `extension`). A point has zero size.
+- Signal `menu_requested`, fields `x`, `y` (int), `width`, `height` (uint) in output logical coordinates, `source` (string: `client`, `keyboard` or `extension`) and `seat` (string). A point has zero size.
 - Method `request_menu(x, y, width, height)`. It emits `menu_requested` with `source = "extension"`, so a frame provider, a titlebar button or a script can ask for a menu without knowing who shows it.
 
 **Sources.** The compositor emits `menu_requested` from three places:
 
-- `xdg_toplevel.show_window_menu(seat, serial, x, y)`, with `source = "client"`. The protocol says the request must follow user action and the compositor may ignore it. The compositor ignores a stale serial, and converts the surface-local point to output coordinates ([protocol](https://wayland.app/protocols/xdg-shell#xdg_toplevel:request:show_window_menu)).
+- `xdg_toplevel.show_window_menu(seat, serial, x, y)`, with `source = "client"`. The protocol says the request must follow user action and the compositor may ignore it. The compositor checks the serial and drops a stale one, so a stale serial never reaches an extension. The point is converted from surface-local to output coordinates ([protocol](https://wayland.app/protocols/xdg-shell#xdg_toplevel:request:show_window_menu)).
 - The keybinding Alt+Space on the focused window, with `source = "keyboard"`. It is the default entry in the compositor's keybinding table and is configurable like every binding.
-- `request_menu`, as above.
+- `request_menu(x, y, width, height)`, as above.
+
+**Seat.** Each signal also carries `seat`, the name of the seat that made the request. For `client` it is the requesting seat. For `keyboard` it is the seat of the key event. For `extension` it is the default seat. A subscriber opens its popup grab on that seat.
+
+**Anchor.** For `client` the anchor is the client's point in output coordinates. For `keyboard` it is the focused window's top-left, the default anchor. For `request_menu` it is the anchor given.
 
 **Showing a menu.** Any extension may subscribe to `menu_requested` with its normal subscription. It needs no new power beyond reading windows and calling window methods. To show a menu it registers its own window-scope layer `<provider>.<local>` (layers.md) with input policy `grab`, draws with the draw-list rule, and dismisses on Escape, click outside, focus loss and target close. Each entry calls a normal window method.
 
