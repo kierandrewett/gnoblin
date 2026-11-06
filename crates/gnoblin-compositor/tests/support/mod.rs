@@ -304,6 +304,9 @@ impl Command {
     }
 }
 
+/// How long [`Wire::receive`] waits for a frame the session has yet to write.
+const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// One raw IPC connection, for the frames a client library would not send.
 pub struct Wire {
     stream: UnixStream,
@@ -406,8 +409,40 @@ impl Wire {
     }
 
     /// Reads one frame, or `None` when the session closed the connection.
+    ///
+    /// Waits up to [`FRAME_WAIT`] for the frame, so a reply the session has not
+    /// written yet is waited for. Panics naming the missing frame if none arrives.
     pub fn receive(&mut self) -> Option<gnoblin_proto::Envelope> {
+        self.await_frame(FRAME_WAIT);
         gnoblin_proto::read_frame(&mut self.reader).expect("a decodable frame")
+    }
+
+    /// Blocks until the reader holds bytes or the connection has closed, polling in
+    /// short steps. `fill_buf` consumes nothing, so a timed-out poll never loses
+    /// part of a frame the way a `read_exact` interrupted mid-frame would.
+    fn await_frame(&mut self, limit: std::time::Duration) {
+        const POLL: std::time::Duration = std::time::Duration::from_millis(20);
+        let previous = self.stream.read_timeout().expect("the read deadline");
+        self.stream.set_read_timeout(Some(POLL)).expect("a poll deadline");
+        let deadline = std::time::Instant::now() + limit;
+        loop {
+            match std::io::BufRead::fill_buf(&mut self.reader) {
+                Ok(_) => break,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    if std::time::Instant::now() >= deadline {
+                        self.stream.set_read_timeout(previous).expect("the read deadline");
+                        panic!("no frame arrived within {limit:?}: the session did not write the expected reply");
+                    }
+                }
+                Err(error) => panic!("a frame: {error}"),
+            }
+        }
+        self.stream.set_read_timeout(previous).expect("the read deadline");
     }
 
     /// Drops the connection the way a killed process does.
