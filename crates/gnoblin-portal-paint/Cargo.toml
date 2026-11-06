@@ -1,0 +1,13 @@
+[package]
+name = "gnoblin-portal-paint"
+description = "Headless CPU painter for egui output, used to draw the portal dialogs without a GPU."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
+
+[lints]
+workspace = true

@@ -1,12 +1,12 @@
 //! Headless checks for the portal dialog screens: structure, input outcomes,
 //! arm delay, cancellation, reduced motion, and rasterised pixels.
 
-use gnoblin_diag::paint::Frame;
 use gnoblin_diag::portal::{Label, PortalScreen, Setup, Theme};
 use gnoblin_portal_model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, DirectoryListing, FileChooser, FileChooserMode, FileEntry,
     FileFilter, Grant, ScreenKey, Settled,
 };
+use gnoblin_portal_paint::Frame;
 use gnoblin_types::Tick;
 
 const WIDTH: usize = 480;

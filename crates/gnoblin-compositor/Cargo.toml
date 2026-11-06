@@ -38,6 +38,7 @@ gnoblin-client = { path = "../gnoblin-client" }
 # core names them; the models stay pure and draw nothing (D19).
 gnoblin-diag = { path = "../gnoblin-diag" }
 gnoblin-portal-model = { path = "../gnoblin-portal-model" }
+gnoblin-portal-paint = { path = "../gnoblin-portal-paint" }
 gnoblin-input = { path = "../gnoblin-input" }
 # Who this process is, for the IPC socket directory's ownership check.
 rustix.workspace = true

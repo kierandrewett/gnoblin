@@ -36,9 +36,9 @@ use std::process::ExitCode;
 
 use futures_lite::future;
 use gnoblin_client::{Client, UnixTransport, inherited_stream, socket_path};
+use gnoblin_portal_backend::host::NoShell;
+use gnoblin_portal_backend::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Portal};
 use gnoblin_types::Version;
-use xdg_desktop_portal_gnoblin::host::NoShell;
-use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Portal};
 
 /// How long one consent prompt stays open, in milliseconds.
 ///

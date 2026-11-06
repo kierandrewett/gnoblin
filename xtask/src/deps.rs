@@ -103,7 +103,7 @@ const CLIENT_SIDE: &[&str] = &[
     "gnoblin-lua",
     "gnoblin-services",
     "gnoblin-wasm",
-    "xdg-desktop-portal-gnoblin",
+    "gnoblin-portal-backend",
 ];
 
 /// The binary whose own dependencies [`binary_roots`] constrains.
@@ -449,7 +449,7 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
 ///
 /// `gnoblin-diag` holds the built-in dialog models (its `portal` module), which the
 /// compositor's negotiation answers with. Only the compositor may depend on it: the
-/// relay `xdg-desktop-portal-gnoblin` stays a thin, removable relay and names neither
+/// relay `gnoblin-portal-backend` stays a thin, removable relay and names neither
 /// the compositor nor the models.
 fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
     const DIAG: &str = "gnoblin-diag";
@@ -506,10 +506,10 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
 /// or a git pin.
 ///
 /// The workspace's members are `gnoblin-*`, the session binary `gnoblin`, the portal
-/// `xdg-desktop-portal-gnoblin` and `xtask`; every other name in a member's dependency
+/// backend `gnoblin-portal-backend` and `xtask`; every other name in a member's dependency
 /// list comes from outside the workspace.
 fn is_workspace_crate(name: &str) -> bool {
-    name.starts_with("gnoblin") || name == "xdg-desktop-portal-gnoblin" || name == "xtask"
+    name.starts_with("gnoblin") || name == "xtask"
 }
 
 /// The logging stack sits beneath every process that logs, so each piece names only the pieces

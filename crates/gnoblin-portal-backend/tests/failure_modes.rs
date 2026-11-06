@@ -5,10 +5,10 @@
 
 use futures_channel::oneshot;
 use gnoblin_authority::Consent;
-use gnoblin_types::{ClientId, RequestId, Tick};
-use xdg_desktop_portal_gnoblin::consent::{
+use gnoblin_portal_backend::consent::{
     ConsentOutcome, Guard, Host, Interface, NewSession, Offer, Pending, PortalCapability, Prompt, Refusal,
 };
+use gnoblin_types::{ClientId, RequestId, Tick};
 
 const BUS: &str = ":1.42";
 const APP: &str = "org.example.Capture";

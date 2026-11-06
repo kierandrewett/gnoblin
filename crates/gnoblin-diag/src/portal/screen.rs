@@ -31,21 +31,23 @@ use gnoblin_portal_model::{
 };
 use gnoblin_types::Tick;
 
-use crate::paint::{Frame, Textures, rasterise};
+use gnoblin_portal_paint::{Frame, Textures, rasterise};
+use gnoblin_portal_theme::{Mode, Palette, RADII, SPACING, TYPE};
+use gnoblin_portal_widgets as widgets;
 
 /// One egui point is one frame pixel. The headless renderer does not scale.
 const PIXELS_PER_POINT: f32 = 1.0;
 /// Space between the frame edge and the card.
-const MARGIN: f32 = 24.0;
-const CARD_RADIUS: u8 = 12;
-const BUTTON_SIZE: Vec2 = Vec2::new(128.0, 40.0);
-const BUTTON_GAP: f32 = 16.0;
-const BUTTON_RADIUS: u8 = 8;
-const FOCUS_WIDTH: f32 = 2.0;
+const MARGIN: f32 = SPACING.margin;
+const CARD_RADIUS: u8 = RADII.card;
+const BUTTON_SIZE: Vec2 = Vec2::new(SPACING.button_width, SPACING.button_height);
+const BUTTON_GAP: f32 = SPACING.button_gap;
+const BUTTON_RADIUS: u8 = RADII.button;
+const FOCUS_WIDTH: f32 = SPACING.focus_width;
 /// Seconds a state change takes to animate when motion is allowed.
 const ANIMATION_SECONDS: f32 = 0.15;
 /// Space added under each list row and footer line, beyond the font size.
-const ROW_PADDING: f32 = 10.0;
+const ROW_PADDING: f32 = SPACING.row_padding;
 
 /// Colours and type size. Config wiring that fills this from the settings is a
 /// later lane; until then the screens use [`Theme::default`].
@@ -63,15 +65,16 @@ pub struct Theme {
 
 impl Default for Theme {
     fn default() -> Self {
+        let palette = Palette::for_mode(Mode::Dark);
         Self {
-            background: Color32::from_rgb(20, 22, 27),
-            card: Color32::from_rgb(34, 37, 44),
-            text: Color32::from_rgb(235, 236, 240),
-            muted: Color32::from_rgb(150, 155, 166),
-            accent: Color32::from_rgb(78, 140, 230),
-            button: Color32::from_rgb(58, 62, 72),
-            button_disarmed: Color32::from_rgb(46, 49, 58),
-            font_size: 16.0,
+            background: palette.background,
+            card: palette.card,
+            text: palette.text,
+            muted: palette.muted,
+            accent: palette.accent,
+            button: palette.button,
+            button_disarmed: palette.button_disarmed,
+            font_size: TYPE.body,
         }
     }
 }
@@ -86,13 +89,7 @@ pub struct Setup {
     pub reduced_motion: bool,
 }
 
-/// A text run the last layout drew: its text and the rectangle its galley
-/// occupies, in frame pixels.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Label {
-    pub text: String,
-    pub rect: Rect,
-}
+pub use gnoblin_portal_widgets::Label;
 
 /// The control a chooser's keys reach. Tab moves between the ones a dialog has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -603,8 +600,7 @@ fn draw_consent(ui: &Ui, consent: &Consent, setup: &Setup, now: Tick, drawn: &mu
     drawn.hits.push((ConsentTarget::Allow, allow_rect));
 }
 
-/// Lays out and draws one text run at `pos`, recording its label. Returns the
-/// rectangle the galley occupies.
+/// Lays out and draws one text run at `pos`, recording its label.
 fn draw_text(
     painter: &Painter,
     drawn: &mut Drawn,
@@ -614,26 +610,12 @@ fn draw_text(
     wrap: f32,
     pos: Pos2,
 ) -> Rect {
-    let galley = painter.layout(text.to_owned(), font, color, wrap);
-    let rect = Rect::from_min_size(pos, galley.size());
-    painter.galley(pos, galley, color);
-    drawn.labels.push(Label {
-        text: text.to_owned(),
-        rect,
-    });
-    rect
+    widgets::text(painter, &mut drawn.labels, text, font, color, wrap, pos)
 }
 
 /// Draws `text` centred in `area`.
 fn draw_centred(painter: &Painter, drawn: &mut Drawn, text: &str, area: Rect, font: FontId, color: Color32) {
-    let galley = painter.layout(text.to_owned(), font, color, area.width());
-    let pos = area.center() - galley.size() / 2.0;
-    let rect = Rect::from_min_size(pos, galley.size());
-    painter.galley(pos, galley, color);
-    drawn.labels.push(Label {
-        text: text.to_owned(),
-        rect,
-    });
+    widgets::centred(painter, &mut drawn.labels, text, area, font, color);
 }
 
 /// The cursor and focus a dialog opens with. An AppChooser starts in its filter
@@ -826,12 +808,7 @@ fn draw_list(painter: &Painter, drawn: &mut Drawn, theme: &Theme, font: &FontId,
 
 /// Outlines the control that has focus.
 fn focus_outline(painter: &Painter, theme: &Theme, rect: Rect) {
-    painter.rect_stroke(
-        rect,
-        CornerRadius::same(BUTTON_RADIUS / 2),
-        Stroke::new(FOCUS_WIDTH, theme.accent),
-        StrokeKind::Inside,
-    );
+    widgets::focus_outline(painter, rect, theme.accent);
 }
 
 /// Draws a FileChooser: title, folder, status line, listing, the save name and

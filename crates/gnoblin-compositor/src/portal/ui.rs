@@ -66,9 +66,9 @@
 
 use std::collections::VecDeque;
 
-use gnoblin_diag::paint::Frame;
 use gnoblin_diag::portal::{PortalScreen, Setup, Theme};
 use gnoblin_portal_model::{Dialog, Interface, ScreenKey, Settled};
+use gnoblin_portal_paint::Frame;
 use gnoblin_types::{RequestId, Tick};
 
 use super::negotiate::{Effect, Event, Negotiation, Provider};

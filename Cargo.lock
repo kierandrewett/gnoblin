@@ -1479,6 +1479,8 @@ dependencies = [
  "gnoblin-input",
  "gnoblin-lua",
  "gnoblin-model",
+ "gnoblin-portal-model",
+ "gnoblin-portal-paint",
  "gnoblin-proto",
  "gnoblin-schema",
  "gnoblin-types",
@@ -1519,6 +1521,10 @@ name = "gnoblin-diag"
 version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
+ "gnoblin-portal-model",
+ "gnoblin-portal-paint",
+ "gnoblin-portal-theme",
+ "gnoblin-portal-widgets",
  "gnoblin-schema",
  "gnoblin-types",
 ]
@@ -1610,6 +1616,55 @@ dependencies = [
  "toml",
  "wayland-client",
  "wayland-protocols",
+]
+
+[[package]]
+name = "gnoblin-portal-backend"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "async-io",
+ "futures-channel",
+ "futures-lite",
+ "gnoblin-authority",
+ "gnoblin-capture",
+ "gnoblin-client",
+ "gnoblin-log",
+ "gnoblin-model",
+ "gnoblin-proto",
+ "gnoblin-schema",
+ "gnoblin-types",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
+name = "gnoblin-portal-model"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-schema",
+ "gnoblin-types",
+]
+
+[[package]]
+name = "gnoblin-portal-paint"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+]
+
+[[package]]
+name = "gnoblin-portal-theme"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+]
+
+[[package]]
+name = "gnoblin-portal-widgets"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+ "gnoblin-portal-theme",
 ]
 
 [[package]]
@@ -4479,25 +4534,6 @@ name = "xcursor"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "163b33ed8786455e2fa5d72f554057ce3f3182425434f756cd39c99839d88e23"
-
-[[package]]
-name = "xdg-desktop-portal-gnoblin"
-version = "0.2.0-alpha.0"
-dependencies = [
- "async-io",
- "futures-channel",
- "futures-lite",
- "gnoblin-authority",
- "gnoblin-capture",
- "gnoblin-client",
- "gnoblin-log",
- "gnoblin-model",
- "gnoblin-proto",
- "gnoblin-schema",
- "gnoblin-types",
- "tracing",
- "zbus",
-]
 
 [[package]]
 name = "xkbcommon"
