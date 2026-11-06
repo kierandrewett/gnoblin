@@ -189,12 +189,12 @@ fn runtime() -> Result<(), Exit> {
 /// adapters (dconf layer, DisplayConfig, IdleMonitor and introspection) when the mode is on. An `off`
 /// mode serves no compat adapter; the GeoClue agent is not a compat adapter and always links.
 fn linked_agents_for(mode: Mode, prompts: bool) -> Vec<Box<dyn gnoblin_services::link::LinkedAgent>> {
-    let policy = gnoblin_location_service::policy_from_environment();
+    let location = gnoblin_services::location_agent();
     let mut agents: Vec<Box<dyn gnoblin_services::link::LinkedAgent>> = Vec::new();
     if prompts {
         agents.push(Box::new(gcr::GcrPrompter::new()));
     }
-    agents.push(Box::new(gnoblin_location_service::LocationAgent::new(policy)));
+    agents.push(location);
     if mode != Mode::Off {
         agents.push(Box::new(dconf::DconfLayer::new(mode)));
         agents.push(Box::new(displayconfig::MutterDisplayConfig::new(mode)));

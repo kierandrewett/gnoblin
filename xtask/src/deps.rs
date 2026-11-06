@@ -332,7 +332,7 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
 /// The runtime, the services role and the portal are IPC clients: they may not
 /// link the compositor or the engine.
 fn client_side_isolation(package: &Package, dep: &Dep) -> Option<String> {
-    if !CLIENT_SIDE.contains(&package.name.as_str()) {
+    if !is_client_side(&package.name) {
         return None;
     }
     if dep.name == "gnoblin-compositor" || is_engine(&dep.name) {
@@ -342,6 +342,17 @@ fn client_side_isolation(package: &Package, dep: &Dep) -> Option<String> {
         ));
     }
     None
+}
+
+/// Whether `name` is an IPC client under [`client_side_isolation`]: a listed crate, or any
+/// service crate. The `*-service` crates are the agents the services role serves, and
+/// `gnoblin-service-core` and `gnoblin-service-testkit` are the shared frame and the test
+/// kit under them, so they run in the same client process and get the same rule.
+fn is_client_side(name: &str) -> bool {
+    CLIENT_SIDE.contains(&name)
+        || name == "gnoblin-service-core"
+        || name == "gnoblin-service-testkit"
+        || (name.starts_with("gnoblin-") && name.ends_with("-service"))
 }
 
 /// A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client` and
@@ -594,6 +605,19 @@ mod tests {
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
             reported[0].starts_with("gnoblin-services -> gnoblin-wayland [client-side-isolation]"),
+            "unexpected violation: {}",
+            reported[0]
+        );
+    }
+
+    #[test]
+    fn a_service_crate_may_not_depend_on_the_engine() {
+        // Each `*-service` crate is a role's agent, served in the services process, so it is a
+        // client like `gnoblin-services` and may not link the engine.
+        let reported = violations(&[("gnoblin-polkit-service", &["gnoblin-wayland"])]);
+        assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
+        assert!(
+            reported[0].starts_with("gnoblin-polkit-service -> gnoblin-wayland [client-side-isolation]"),
             "unexpected violation: {}",
             reported[0]
         );

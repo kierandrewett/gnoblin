@@ -28,6 +28,8 @@ gnoblin-service-core = { path = "../gnoblin-service-core" }
 gnoblin-polkit-service = { path = "../gnoblin-polkit-service" }
 # The ScreenSaver agent: the role serves it and offers its inhibits.
 gnoblin-screensaver-service = { path = "../gnoblin-screensaver-service" }
+# The GeoClue agent: the services role links it, and the session binary reaches it through there.
+gnoblin-location-service = { path = "../gnoblin-location-service" }
 # The D-Bus agents are objects on the system bus, served through zbus.
 zbus.workspace = true
 # One blocking wait per bus registration: the role has no async runtime of its own, and

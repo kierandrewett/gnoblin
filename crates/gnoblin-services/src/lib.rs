@@ -25,3 +25,11 @@ pub mod prompts;
 pub mod role;
 
 pub use role::{Buses, Role, RoleError};
+
+/// The GeoClue agent, with the `location` table of the configuration as its policy. The
+/// services role links it as a linked agent; the session binary reaches it only through here.
+pub fn location_agent() -> Box<dyn link::LinkedAgent> {
+    Box::new(gnoblin_location_service::LocationAgent::new(
+        gnoblin_location_service::policy_from_environment(),
+    ))
+}
