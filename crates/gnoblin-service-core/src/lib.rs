@@ -43,11 +43,18 @@
 
 #![forbid(unsafe_code)]
 
+/// The request state machine shared by every agent that offers a request.
 pub mod agent;
+/// The privileged connection agents offer through, and the linked-agent seam.
 pub mod host;
+/// The slot registry: each optional capability has one provider.
 pub mod slot;
 
+/// Agent types, re-exported from [`agent`]: an agent, its decision and its refusal.
 pub use agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Proposition, Refusal};
+/// Request identity and outcome vocabulary, re-exported from `gnoblin-model`.
 pub use gnoblin_model::{RequestId, RequestOutcome, Tick};
+/// The host connection and its failure type, re-exported from [`host`].
 pub use host::{Host, LinkedAgent, OfferFailure};
+/// Slot types, re-exported from [`slot`].
 pub use slot::{CapabilitySlot, ClaimError, Provider, Slots, UnknownSlot};
