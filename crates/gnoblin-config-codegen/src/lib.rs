@@ -21,6 +21,25 @@
 //! is not a variant of its setting, an alias spelling that is already current (so
 //! the alias could never fire), a reference to a record declared later, or a hook
 //! named on a field (a hook belongs to a whole table) are all errors here.
+//!
+//! # Adding a setting
+//!
+//! 1. Add a `[[section.field]]` (or `[[record.field]]`) to `config.toml` with
+//!    `key`, `kind`, `since` (a full `x.y.z`), `doc` and, where it applies,
+//!    `min`/`max`, `default`, `enum`, `record` or `inherit`.
+//! 2. If the value needs a rule no data can state (a cross-field conflict),
+//!    name a hook on the enclosing section or record and define it in
+//!    `crates/gnoblin-config/src/hooks.rs`. Fields may not name hooks.
+//! 3. Build. `build.rs` calls [`generate`], which fails on any schema error
+//!    above, so a mistake shows up as a build error, not a runtime one.
+//! 4. Run `cargo xtask gen-config` to refresh the reference tables and Lua stubs.
+//!
+//! Pipeline: `config.toml` is deserialised into the private `Schema` model,
+//! checked by `check_schema`, then rendered by `render_rust`, `render_table`,
+//! `render_docs`, `render_lua` and `render_settings_json`. Each renderer is a
+//! pure function of the checked schema, so the outputs cannot drift apart.
+//! Field names are the key with `-` replaced by `_`; Rust keywords get a raw
+//! identifier (`r#type`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
