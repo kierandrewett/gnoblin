@@ -43,6 +43,7 @@
 
 mod displayconfig;
 mod gcr;
+mod idlemonitor;
 mod role;
 
 use gnoblin_compat_core::Mode;
@@ -184,6 +185,7 @@ fn linked_agents_for(mode: Mode) -> Vec<Box<dyn gnoblin_services::LinkedAgent>> 
     ];
     if mode != Mode::Off {
         agents.push(Box::new(displayconfig::MutterDisplayConfig::new(mode)));
+        agents.push(Box::new(idlemonitor::MutterIdleMonitor::new(mode)));
     }
     agents
 }
@@ -218,15 +220,15 @@ mod tests {
         // The role claims the location.agent slot as the services provider, so the GeoClue agent
         // has to be in the list it starts, next to the prompt adapter and the two compat adapters
         // that are on in the default mode.
-        assert_eq!(linked_agents().len(), 3);
+        assert_eq!(linked_agents().len(), 4);
     }
 
     #[test]
     fn the_compat_adapters_are_served_when_the_mode_is_on() {
         // Portal is the default and Unmediated is the other mode that serves reads: both add the
         // DisplayConfig and IdleMonitor adapters to the prompter and the GeoClue agent.
-        assert_eq!(linked_agents_for(Mode::Portal).len(), 3);
-        assert_eq!(linked_agents_for(Mode::Unmediated).len(), 3);
+        assert_eq!(linked_agents_for(Mode::Portal).len(), 4);
+        assert_eq!(linked_agents_for(Mode::Unmediated).len(), 4);
     }
 
     #[test]
