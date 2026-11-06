@@ -474,9 +474,9 @@ gnoblin/
     gnoblin-services/         services role: serves the agents and links the GeoClue agent (`location_agent`); polkit, prompter, PipeWire privacy, inhibit, idle
     gnoblin-service-core/     the services role's shared machinery: slot registry, request state machine, the connection agents offer through
     gnoblin-service-testkit/  private message bus for one test (dev-dependency only)
-    gnoblin-polkit-service/   polkit authentication agent (D-Bus client of the system bus)
-    gnoblin-screensaver-service/  org.freedesktop.ScreenSaver agent and its inhibits
-    gnoblin-location-service/ GeoClue agent and location policy
+    gnoblin-service-polkit/   polkit authentication agent (D-Bus client of the system bus)
+    gnoblin-service-screensaver/  org.freedesktop.ScreenSaver agent and its inhibits
+    gnoblin-service-location/ GeoClue agent and location policy
     gnoblin-diag/             recovery and console overlay (see D5); `portal` module: built-in portal dialog models, pure and egui-free (D19)
     gnoblinctl/               command line client (binary)
     xdg-desktop-portal-gnoblin/  portal backend (binary)
