@@ -41,6 +41,7 @@
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
+mod dconf;
 mod displayconfig;
 mod gcr;
 mod idlemonitor;
@@ -145,6 +146,9 @@ fn guardian() -> Result<(), Exit> {
     // The settings targets are exported into the session every child inherits; a switched-off mode exports nothing.
     let mode = gnoblin_compat_gnome_shell_introspect::mode_from_environment();
     settings::export_qt_settings(&mut config.rules.environment.session, mode);
+    if let Some(directory) = dconf::profile_directory() {
+        settings::export_dconf_profile(&mut config.rules.environment.session, mode, &directory);
+    }
     match gnoblin_session::run_guardian(config) {
         Ok(0) => Ok(()),
         Ok(status) => Err(Exit(status)),
@@ -175,8 +179,8 @@ fn runtime() -> Result<(), Exit> {
 
 /// The agents the services role links in for `mode`: the prompt adapter, the GeoClue agent,
 /// which takes the `location` table of the configuration as its policy, and the compat adapters
-/// (DisplayConfig, IdleMonitor and introspection) when the mode is on. An `off` mode serves no
-/// compat adapter; the prompt adapter and the GeoClue agent are not compat adapters and always link.
+/// (dconf layer, DisplayConfig, IdleMonitor and introspection) when the mode is on. An `off` mode
+/// serves no compat adapter; the prompt adapter and the GeoClue agent are not compat adapters and always link.
 fn linked_agents_for(mode: Mode) -> Vec<Box<dyn gnoblin_services::LinkedAgent>> {
     let policy = gnoblin_services::location::policy_from_environment();
     let mut agents: Vec<Box<dyn gnoblin_services::LinkedAgent>> = vec![
@@ -184,6 +188,7 @@ fn linked_agents_for(mode: Mode) -> Vec<Box<dyn gnoblin_services::LinkedAgent>> 
         Box::new(gnoblin_services::location::LocationAgent::new(policy)),
     ];
     if mode != Mode::Off {
+        agents.push(Box::new(dconf::DconfLayer::new(mode)));
         agents.push(Box::new(displayconfig::MutterDisplayConfig::new(mode)));
         agents.push(Box::new(idlemonitor::MutterIdleMonitor::new(mode)));
         agents.push(Box::new(introspect::Introspection::new(mode)));
@@ -221,15 +226,15 @@ mod tests {
         // The role claims the location.agent slot as the services provider, so the GeoClue agent
         // has to be in the list it starts, next to the prompt adapter and the compat adapters
         // that are on in the default mode.
-        assert_eq!(linked_agents_for(Mode::default()).len(), 5);
+        assert_eq!(linked_agents_for(Mode::default()).len(), 6);
     }
 
     #[test]
     fn the_compat_adapters_are_served_when_the_mode_is_on() {
         // Portal is the default and Unmediated is the other mode that serves reads: both add the
-        // DisplayConfig, IdleMonitor and introspection adapters to the prompter and GeoClue agent.
-        assert_eq!(linked_agents_for(Mode::Portal).len(), 5);
-        assert_eq!(linked_agents_for(Mode::Unmediated).len(), 5);
+        // dconf layer, DisplayConfig, IdleMonitor and introspection to the prompter and GeoClue agent.
+        assert_eq!(linked_agents_for(Mode::Portal).len(), 6);
+        assert_eq!(linked_agents_for(Mode::Unmediated).len(), 6);
     }
 
     #[test]

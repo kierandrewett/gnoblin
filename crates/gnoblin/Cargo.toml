@@ -35,6 +35,8 @@ gnoblin-compat-mutter-displayconfig = { path = "../compat/gnoblin-compat-mutter-
 gnoblin-compat-mutter-idlemonitor = { path = "../compat/gnoblin-compat-mutter-idlemonitor" }
 # The Qt settings adapter: the guardian exports the platform theme that points Qt at the portal.
 gnoblin-compat-qt-portal-settings = { path = "../compat/gnoblin-compat-qt-portal-settings" }
+# The dconf settings adapter: the services role writes the layer GTK reads, and the guardian points dconf at it.
+gnoblin-compat-gtk-dconf-settings = { path = "../compat/gnoblin-compat-gtk-dconf-settings" }
 zbus.workspace = true
 futures-lite.workspace = true
 tracing.workspace = true

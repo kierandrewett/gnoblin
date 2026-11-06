@@ -1,9 +1,26 @@
 //! The desktop settings the compat adapters publish, and the session environment they need.
 //!
 //! The Qt adapter is exported into the guardian's session environment, because a Qt
-//! application inherits that environment and reads its platform theme from it.
+//! application inherits that environment and reads its platform theme from it. The dconf
+//! layer is exported the same way: `DCONF_PROFILE` points every child at the profile the
+//! services role wrote, so GTK reads the configuration's values.
+
+use std::path::Path;
 
 use gnoblin_compat_core::{Mode, Switch};
+
+use crate::dconf;
+
+/// Exports `DCONF_PROFILE` into `environment` when the dconf target is on.
+///
+/// The layer lives in `directory`, the session's dconf profile directory. A switched-off mode
+/// exports nothing, so dconf reads the user's database as it did before Gnoblin.
+pub fn export_dconf_profile(environment: &mut gnoblin_session::Environment, mode: Mode, directory: &Path) {
+    if mode == Mode::Off {
+        return;
+    }
+    environment.set("DCONF_PROFILE", directory.join(dconf::PROFILE).display().to_string());
+}
 
 /// Exports the Qt platform theme into `environment` when the Qt target is on.
 ///
@@ -26,7 +43,7 @@ pub fn export_qt_settings(environment: &mut gnoblin_session::Environment, mode: 
 
 #[cfg(test)]
 mod tests {
-    use super::export_qt_settings;
+    use super::{export_dconf_profile, export_qt_settings};
     use gnoblin_compat_core::Mode;
     use gnoblin_session::Environment;
 
@@ -43,6 +60,37 @@ mod tests {
         let mut environment = Environment::default();
         export_qt_settings(&mut environment, Mode::Portal);
         assert_eq!(platform_theme(&environment), Some("xdgdesktopportal"));
+    }
+
+    fn dconf_profile(environment: &Environment) -> Option<&str> {
+        environment
+            .set
+            .iter()
+            .find(|(key, _)| key == "DCONF_PROFILE")
+            .map(|(_, value)| value.as_str())
+    }
+
+    /// The guardian points dconf at the layer the services role wrote, when the mode is on.
+    #[test]
+    fn the_dconf_profile_is_exported_when_the_mode_is_on() {
+        let mut environment = Environment::default();
+        let directory = std::path::Path::new("/run/user/1000/gnoblin/dconf");
+        export_dconf_profile(&mut environment, Mode::Portal, directory);
+        assert_eq!(
+            dconf_profile(&environment),
+            Some("/run/user/1000/gnoblin/dconf/profile")
+        );
+    }
+
+    #[test]
+    fn the_dconf_profile_is_absent_when_the_mode_is_off() {
+        let mut environment = Environment::default();
+        export_dconf_profile(
+            &mut environment,
+            Mode::Off,
+            std::path::Path::new("/run/user/1000/gnoblin/dconf"),
+        );
+        assert_eq!(dconf_profile(&environment), None);
     }
 
     #[test]

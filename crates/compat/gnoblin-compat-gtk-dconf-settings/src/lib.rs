@@ -241,11 +241,18 @@ pub fn apply(actions: &[KeyWrite], switch: Switch, directory: &Path) -> std::io:
         debug!("[dconf] the target is off, so nothing is written");
         return Ok(Written::Skipped);
     }
-    std::fs::create_dir_all(directory)?;
-    let path = directory.join("gnoblin");
+    // `dconf compile` reads a directory of keyfiles, not one file, so the keyfile goes in its
+    // own subdirectory and the database is compiled beside it.
+    let keyfiles = directory.join("keyfiles");
+    std::fs::create_dir_all(&keyfiles)?;
+    let path = keyfiles.join("gnoblin");
     std::fs::write(&path, keyfile(actions))?;
     let database = directory.join("gnoblin.db");
-    let result = Command::new("dconf").arg("compile").arg(&database).arg(&path).output();
+    let result = Command::new("dconf")
+        .arg("compile")
+        .arg(&database)
+        .arg(&keyfiles)
+        .output();
     let written = match result {
         Ok(output) if output.status.success() => Written::Keyfile {
             path,
