@@ -8,15 +8,16 @@ on configuration reload. Omitted values keep the defaults shown below.
 Animations run only when selected through animation declarations or window
 rules. See the [animation guide](/guides/animations).
 
-| Key                  | Values                                  | Default              | Effect                                                            |
-| -------------------- | --------------------------------------- | -------------------- | ----------------------------------------------------------------- |
-| `locate_pointer`     | Boolean                                 | `false`              | Sends `gnoblin.pointer.locate-requested` when the key is pressed. |
-| `locate_pointer_key` | Mutter key name, `"disabled"`, or `""`  | `"Control_L"`        | Key that triggers the pointer locator.                            |
-| `visual_bell`        | Boolean                                 | `false`              | Flashes the screen when an app requests the visual bell.          |
-| `audible_bell`       | Boolean                                 | `true`               | Plays a sound when an app requests the audible bell.              |
-| `blur`               | `"auto"`, `"on"`, or `"off"`            | `"auto"`             | Controls compositor background blur.                              |
-| `debug`              | Boolean                                 | `false`              | Shows a mostly opaque FPS, frame-time, CPU and memory overlay.    |
-| `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"` | `"fullscreen-flash"` | Flash the full screen or the focused window.                      |
+| Key                  | Values                                          | Default              | Effect                                                            |
+| -------------------- | ----------------------------------------------- | -------------------- | ----------------------------------------------------------------- |
+| `locate_pointer`     | Boolean                                         | `false`              | Sends `gnoblin.pointer.locate-requested` when the key is pressed. |
+| `locate_pointer_key` | Mutter key name, `"disabled"`, or `""`          | `"Control_L"`        | Key that triggers the pointer locator.                            |
+| `visual_bell`        | Boolean                                         | `false`              | Flashes the screen when an app requests the visual bell.          |
+| `audible_bell`       | Boolean                                         | `true`               | Plays a sound when an app requests the audible bell.              |
+| `blur`               | `"auto"`, `"on"`, or `"off"`                    | `"auto"`             | Controls compositor background blur.                              |
+| `renderer`           | `"auto"`, `"vulkan"`, `"gles"`, or `"software"` | `"auto"`             | Chooses the renderer that draws frames.                           |
+| `debug`              | Boolean                                         | `false`              | Shows a mostly opaque FPS, frame-time, CPU and memory overlay.    |
+| `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"`         | `"fullscreen-flash"` | Flash the full screen or the focused window.                      |
 
 `blur = "auto"` enables blur when Mutter reports hardware accelerated rendering and disables it otherwise. `"on"` always enables blur; `"off"` disables blur for panels, window rules, and shell-requested background effects. The setting applies on configuration reload.
 
@@ -45,6 +46,23 @@ side, such as `"Control"`, matches both left and right keys.
 Use `"disabled"` or an empty string to remove the trigger. The key only has an
 effect while `locate_pointer = true`.
 
+## Choosing the renderer
+
+`renderer = "auto"` keeps the renderer the selected backend draws with today: software
+for the headless and nested backends, and GLES for the DRM backend. The other values
+choose one explicitly:
+
+- `"vulkan"` draws with Vulkan. It needs a Vulkan loader and a device, and a software
+  driver such as lavapipe is accepted.
+- `"gles"` draws with OpenGL ES on a surfaceless context.
+- `"software"` draws on the CPU and needs no GPU.
+
+A named renderer is never replaced by another. A session that cannot create it is
+refused with a message that names the setting, for example
+`compositor.renderer = vulkan: no Vulkan loader`. The nested backend draws in software
+only, so it refuses `"vulkan"` and `"gles"` the same way. The renderer is chosen when
+the session starts, so a change needs a restart and is not applied on reload.
+
 Guide: [session settings](/guides/session_settings).
 
 ## Type definition
@@ -61,6 +79,7 @@ gnoblin.configure {
         audible_bell = boolean?,
         debug = boolean?,
         blur = "auto" | "on" | "off"?,
+        renderer = "auto" | "vulkan" | "gles" | "software"?,
         visual_bell_type = "fullscreen-flash" | "frame-flash"?,
     },
 }

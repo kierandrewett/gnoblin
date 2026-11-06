@@ -9,6 +9,12 @@
 - The services role starts the GeoClue agent next to the polkit agent, with the policy of the `location` table
   in the configuration. Until now the role claimed the `location.agent` slot but never served it. With no system
   bus the agent is skipped and the role carries on.
+- A Vulkan renderer for the Rust compositor (`gnoblin-backend`, feature `vulkan`), drawn with `ash` and the shared WGSL
+  passes compiled by `naga`: solid and `wl_shm` surface layers, opacity, tint, corner radius, the portal overlay and
+  the cursor, readable back as an image and compared pixel for pixel with the software renderer. It runs on a GPU or
+  on a software driver such as lavapipe. Presentation, dmabuf import and effects are not done yet. The new
+  `compositor.renderer` setting (`auto`, `vulkan`, `gles` or `software`) chooses the renderer; `auto` keeps today's
+  choice, and a named renderer the session cannot create is refused with the setting named.
 
 ### Changed
 

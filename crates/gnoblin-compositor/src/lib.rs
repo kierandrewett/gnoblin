@@ -90,6 +90,7 @@ mod ipc;
 mod layout;
 mod monitors;
 pub mod portal;
+mod renderer;
 mod schema;
 mod session_tables;
 mod window_management;
@@ -122,6 +123,10 @@ pub use monitors::{
     configure_from_environment as configure_monitors_from_environment,
     configure_from_store as configure_monitors_from_store,
 };
+pub use renderer::{
+    configure_from_environment as configure_renderer_from_environment,
+    configure_from_store as configure_renderer_from_store,
+};
 pub use schema::catalog;
 pub use session_tables::{
     configure_from_environment as configure_session_tables_from_environment,
@@ -148,6 +153,12 @@ use gnoblin_schema::SchemaError;
 pub struct SessionConfig {
     /// The backend the session drives.
     pub backend: Backend,
+    /// The renderer the `compositor.renderer` setting names, or [`None`] for `auto`, which is the
+    /// renderer the backend draws with by default.
+    ///
+    /// [`configure_renderer_from_store`] fills it from the accepted document. A renderer the
+    /// backend cannot use is refused at startup with [`Error::RendererRefused`].
+    pub renderer: Option<gnoblin_config::RendererChoice>,
     /// The X11 session, or [`None`] for a session that starts no X server.
     ///
     /// [`None`] is the default. [`Some`] starts Xwayland under `gnoblin-xwayland`'s
@@ -299,7 +310,9 @@ impl Compositor {
                 |name| name.to_string_lossy().into_owned(),
             );
         let backend_name = config.backend.name();
-        let backend = config.backend.build()?;
+        let backend = config
+            .backend
+            .build(config.renderer.unwrap_or(gnoblin_config::RendererChoice::Auto))?;
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
             ..config.wayland
@@ -404,6 +417,19 @@ pub enum Error {
         /// Why this build cannot start it.
         reason: &'static str,
     },
+    /// The renderer the `compositor.renderer` setting names cannot be used by the selected
+    /// backend. The setting is named, and the session does not start with another renderer in
+    /// its place.
+    RendererRefused {
+        /// The setting, as the configuration spells it.
+        leaf: &'static str,
+        /// The renderer the setting names.
+        renderer: &'static str,
+        /// The backend's name, as [`Backend::name`] reports it.
+        backend: &'static str,
+        /// Why the backend cannot draw with it.
+        reason: &'static str,
+    },
 }
 
 impl std::fmt::Display for Error {
@@ -420,6 +446,15 @@ impl std::fmt::Display for Error {
             Error::BackendRefused { backend, reason } => {
                 write!(formatter, "the {backend} backend cannot start: {reason}")
             }
+            Error::RendererRefused {
+                leaf,
+                renderer,
+                backend,
+                reason,
+            } => write!(
+                formatter,
+                "{leaf} = {renderer}: the {backend} backend cannot draw with it: {reason}"
+            ),
         }
     }
 }

@@ -38,6 +38,17 @@ variants = [
 ]
 
 [[enum]]
+name = "RendererChoice"
+setting = "renderer"
+doc = "Which renderer draws the compositor's frames."
+variants = [
+    { spelling = "auto", doc = "The renderer the selected backend draws with by default." },
+    { spelling = "vulkan", doc = "The Vulkan renderer. A session that cannot create it is refused." },
+    { spelling = "gles", doc = "The OpenGL ES renderer. A session that cannot create it is refused." },
+    { spelling = "software", doc = "The CPU renderer, which needs no GPU." },
+]
+
+[[enum]]
 name = "VisualBellType"
 setting = "visual-bell-type"
 doc = "Which part of the screen the visual bell flashes."
@@ -1449,6 +1460,15 @@ enum = "Blur"
 accepted = "one of auto, on, off"
 default = { enum = "auto" }
 doc = "Background blur policy."
+since = "0.2.0"
+
+[[section.field]]
+key = "renderer"
+kind = "enum"
+enum = "RendererChoice"
+accepted = "one of auto, vulkan, gles, software"
+default = { enum = "auto" }
+doc = "Which renderer draws the compositor's frames."
 since = "0.2.0"
 
 [[section]]

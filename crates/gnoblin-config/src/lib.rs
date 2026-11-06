@@ -78,9 +78,9 @@ pub use generated::{
     Gesture, GestureAction, GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource,
     InputSourceType, InputSources, Keyboard, LayerShell, Layout, LayoutOutput, LayoutWorkspace, Location,
     LocationAccuracy, Monitors, Mouse, MouseKeys, NewWindowPlacement, PadButton, PadButtonAction, PointingStick,
-    Prompts, Protocol, Protocols, ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet,
-    TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualBellType,
-    WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    Prompts, Protocol, Protocols, RendererChoice, ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction,
+    StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad,
+    Trackball, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
 };
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 pub use locate::{ConfigPath, LocateError, Origin, SearchPaths, locate};
