@@ -10,9 +10,9 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use gnoblin_log::__tracing::field::{Field, Visit};
+use gnoblin_log::__tracing::{Event, Subscriber};
 use rusqlite::{Connection, params};
-use tracing::field::{Field, Visit};
-use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -50,7 +50,8 @@ pub(crate) struct LogRecord {
     /// Milliseconds since the Unix epoch.
     pub(crate) time_ms: i64,
     pub(crate) level: &'static str,
-    pub(crate) component: &'static str,
+    /// The process role that logged the event, stored in the `component` column.
+    pub(crate) role: &'static str,
     pub(crate) target: String,
     pub(crate) message: String,
     /// The event's fields other than `message`, as `name=value` pairs.
@@ -66,14 +67,14 @@ pub(crate) enum Message {
 
 /// The writer's queue, and the count of records it could not take.
 #[derive(Clone)]
-pub(crate) struct Sink {
+pub struct Sink {
     sender: SyncSender<Message>,
     dropped: Arc<AtomicU64>,
 }
 
 impl Sink {
     /// Waits, for a bounded time, until the writer has stored everything logged so far.
-    pub(crate) fn flush(&self) {
+    pub fn flush(&self) {
         let (acknowledge, acknowledged) = mpsc::sync_channel(1);
         if self.sender.send(Message::Flush(acknowledge)).is_ok() {
             let _ = acknowledged.recv_timeout(FLUSH_TIMEOUT);
@@ -90,7 +91,7 @@ fn create_private_directory(directory: &Path) -> std::io::Result<()> {
 }
 
 /// Opens the database at `path`, starts its writer thread and returns the queue into it.
-pub(crate) fn open(path: &Path, component: &'static str) -> Result<Sink, String> {
+pub fn open(path: &Path, role: &'static str) -> Result<Sink, String> {
     if let Some(parent) = path.parent() {
         create_private_directory(parent).map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
     }
@@ -102,20 +103,20 @@ pub(crate) fn open(path: &Path, component: &'static str) -> Result<Sink, String>
     let writer_dropped = Arc::clone(&dropped);
     thread::Builder::new()
         .name("gnoblin-log".to_owned())
-        .spawn(move || write_loop(connection, receiver, component, &writer_dropped))
+        .spawn(move || write_loop(connection, receiver, role, &writer_dropped))
         .map_err(|error| format!("cannot start the log writer: {error}"))?;
     Ok(Sink { sender, dropped })
 }
 
 /// The layer that turns each event into a [`LogRecord`] and queues it without blocking.
-pub(crate) struct DatabaseLayer {
+pub struct DatabaseLayer {
     sink: Sink,
-    component: &'static str,
+    role: &'static str,
 }
 
 impl DatabaseLayer {
-    pub(crate) fn new(sink: Sink, component: &'static str) -> Self {
-        Self { sink, component }
+    pub fn new(sink: Sink, role: &'static str) -> Self {
+        Self { sink, role }
     }
 }
 
@@ -130,7 +131,7 @@ where
         let record = LogRecord {
             time_ms: now_ms(),
             level: metadata.level().as_str(),
-            component: self.component,
+            role: self.role,
             target: metadata.target().to_owned(),
             message: fields.message,
             fields: fields.rest,
@@ -179,7 +180,7 @@ impl Visit for FieldCollector {
 
 /// Stores records in batches until its queue closes, and acknowledges each flush after the
 /// batch before it is written.
-fn write_loop(mut connection: Connection, receiver: Receiver<Message>, component: &'static str, dropped: &AtomicU64) {
+fn write_loop(mut connection: Connection, receiver: Receiver<Message>, role: &'static str, dropped: &AtomicU64) {
     let mut records = Vec::with_capacity(BATCH_LIMIT);
     let mut acknowledgements = Vec::new();
     while let Ok(first) = receiver.recv() {
@@ -191,7 +192,7 @@ fn write_loop(mut connection: Connection, receiver: Receiver<Message>, component
         }
         let lost = dropped.swap(0, Ordering::Relaxed);
         if lost > 0 {
-            records.push(dropped_record(component, lost));
+            records.push(dropped_record(role, lost));
         }
         if !records.is_empty()
             && let Err(error) = insert_batch(&mut connection, &records)
@@ -206,11 +207,11 @@ fn write_loop(mut connection: Connection, receiver: Receiver<Message>, component
 }
 
 /// The record that says how many events the full queue discarded.
-fn dropped_record(component: &'static str, lost: u64) -> LogRecord {
+fn dropped_record(role: &'static str, lost: u64) -> LogRecord {
     LogRecord {
         time_ms: now_ms(),
         level: "WARN",
-        component,
+        role,
         target: module_path!().to_owned(),
         message: format!("dropped {lost} log records because the queue was full"),
         fields: String::new(),
@@ -233,7 +234,7 @@ fn insert_batch(connection: &mut Connection, records: &[LogRecord]) -> rusqlite:
             statement.execute(params![
                 record.time_ms,
                 record.level,
-                record.component,
+                record.role,
                 record.target,
                 record.message,
                 record.fields,
@@ -259,7 +260,7 @@ mod tests {
         LogRecord {
             time_ms: 1_000,
             level: "INFO",
-            component: "compositor",
+            role: "compositor",
             target: "gnoblin::main".to_owned(),
             message: message.to_owned(),
             fields: fields.to_owned(),

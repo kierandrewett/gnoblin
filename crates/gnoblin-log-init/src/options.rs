@@ -3,6 +3,9 @@
 use std::path::PathBuf;
 
 /// The environment variable that holds the `tracing` filter, in `EnvFilter` syntax.
+///
+/// Event targets are component names, so `GNOBLIN_LOG=wayland=debug,warn` shows the debug lines
+/// of the `wayland` component and warnings from everywhere else.
 pub const FILTER_VARIABLE: &str = "GNOBLIN_LOG";
 
 /// The environment variable that names the database file, or `off` to keep no database.
@@ -28,7 +31,7 @@ pub struct LogOptions {
 
 impl LogOptions {
     /// Reads the options from the process environment.
-    pub fn from_env() -> Self {
+    pub fn from_environment() -> Self {
         Self::from_lookup(|key| std::env::var(key).ok())
     }
 

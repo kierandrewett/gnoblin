@@ -1,15 +1,13 @@
 [package]
 name = "gnoblin-log"
-description = "Console and database logging for every gnoblin process, built on tracing."
+description = "The logging facade every gnoblin crate depends on: macros, components and roles, built on tracing."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-rusqlite.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

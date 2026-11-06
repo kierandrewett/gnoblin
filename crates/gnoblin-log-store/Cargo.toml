@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-log-store"
+description = "The database sink of the gnoblin log: one SQLite row per event."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-log = { path = "../gnoblin-log" }
+rusqlite.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

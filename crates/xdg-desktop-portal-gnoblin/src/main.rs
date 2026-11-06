@@ -47,7 +47,8 @@ use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Por
 const CONSENT_LIFETIME: u64 = 120_000;
 
 fn main() -> ExitCode {
-    let _log = gnoblin_log::init("portal");
+    let options = gnoblin_log_init::LogOptions::from_environment();
+    let _log = gnoblin_log_init::init(gnoblin_log::Role::Portal, &options);
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

@@ -89,7 +89,8 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
         }
     };
     let role = role::from_matches(&matches).map_err(|_| Exit(2))?;
-    let _log = gnoblin_log::init(component(&role));
+    let options = gnoblin_log_init::LogOptions::from_environment();
+    let _log = gnoblin_log_init::init(log_role(&role), &options);
     dispatch(role)
 }
 
@@ -103,13 +104,13 @@ fn dispatch(role: role::Role) -> Result<(), Exit> {
     }
 }
 
-/// The name the role's log lines carry.
-fn component(role: &role::Role) -> &'static str {
+/// The process role the log records for this role.
+fn log_role(role: &role::Role) -> gnoblin_log::Role {
     match role {
-        role::Role::Compositor => "compositor",
-        role::Role::Guardian => "guardian",
-        role::Role::Runtime => "runtime",
-        role::Role::Services => "services",
+        role::Role::Compositor => gnoblin_log::Role::Compositor,
+        role::Role::Guardian => gnoblin_log::Role::Guardian,
+        role::Role::Runtime => gnoblin_log::Role::Runtime,
+        role::Role::Services => gnoblin_log::Role::Services,
     }
 }
 

@@ -141,10 +141,13 @@ const BINARY_ROOTS: &[&str] = &[
     "gnoblin-services",
 ];
 
-/// The logging crate: the subscriber every role installs. It is the one workspace edge the
-/// session binary may take beyond the list above, and it names no workspace crate itself (see
-/// [`log_isolation`]), so it cannot become a second composition root.
+/// The logging facade: the macros every crate logs through. It names no workspace crate (see
+/// [`log_isolation`]), so it cannot become a second composition root; every crate may depend on it.
 const LOG_CRATE: &str = "gnoblin-log";
+
+/// The logging composition: the sinks wired up for one process. Only a binary may name it (see
+/// [`log_init_roots`]), and the session binary is the one that does.
+const LOG_INIT_CRATE: &str = "gnoblin-log-init";
 
 /// The shared compat frame every compat crate depends on.
 const COMPAT_CORE: &str = "gnoblin-compat-core";
@@ -210,6 +213,10 @@ const RULES: &[Rule] = &[
     Rule {
         id: "log-isolation",
         check: log_isolation,
+    },
+    Rule {
+        id: "log-init-roots",
+        check: log_init_roots,
     },
 ];
 
@@ -476,7 +483,11 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
     if package.name != SESSION_BINARY || dep.kind == DepKind::Dev {
         return None;
     }
-    if BINARY_ROOTS.contains(&dep.name.as_str()) || dep.name == LOG_CRATE || is_compat(&dep.name) {
+    if BINARY_ROOTS.contains(&dep.name.as_str())
+        || dep.name == LOG_CRATE
+        || dep.name == LOG_INIT_CRATE
+        || is_compat(&dep.name)
+    {
         return None;
     }
     // Only the workspace's own crates can be a second composition root; `clap` and
@@ -501,16 +512,39 @@ fn is_workspace_crate(name: &str) -> bool {
     name.starts_with("gnoblin") || name == "xdg-desktop-portal-gnoblin" || name == "xtask"
 }
 
-/// The logging crate sits beneath every process that logs, so it names no workspace crate: a
-/// dependency on one would drag that crate's whole graph into every role that installs the
-/// subscriber, and the logging layer would no longer be a leaf.
+/// The logging stack sits beneath every process that logs, so each piece names only the pieces
+/// beneath it: the facade names no workspace crate, each sink names the facade, and the
+/// composition names the facade and both sinks. A wider edge would drag that crate's graph into
+/// every role that logs.
 fn log_isolation(package: &Package, dep: &Dep) -> Option<String> {
-    if package.name != LOG_CRATE || !is_workspace_crate(&dep.name) {
+    let allowed: &[&str] = match package.name.as_str() {
+        LOG_CRATE => &[],
+        "gnoblin-log-console" | "gnoblin-log-store" => &[LOG_CRATE],
+        LOG_INIT_CRATE => &[LOG_CRATE, "gnoblin-log-console", "gnoblin-log-store"],
+        _ => return None,
+    };
+    if !is_workspace_crate(&dep.name) || allowed.contains(&dep.name.as_str()) {
         return None;
     }
     Some(format!(
-        "`{LOG_CRATE}` is a leaf of the logging stack and may not depend on the workspace crate `{}`",
-        dep.name
+        "`{}` is part of the logging stack and may not depend on the workspace crate `{}`",
+        package.name, dep.name
+    ))
+}
+
+/// The composition installs the log for a process, so only a binary may depend on it: a library
+/// that installed a subscriber would decide the log for a process it does not own.
+fn log_init_roots(package: &Package, dep: &Dep) -> Option<String> {
+    if dep.name != LOG_INIT_CRATE
+        || dep.kind == DepKind::Dev
+        || package.name == SESSION_BINARY
+        || package.name == "xdg-desktop-portal-gnoblin"
+    {
+        return None;
+    }
+    Some(format!(
+        "`{LOG_INIT_CRATE}` installs the log for a process and may only be depended on by a binary, not by `{}`",
+        package.name
     ))
 }
 
@@ -568,21 +602,46 @@ mod tests {
     }
 
     #[test]
-    fn the_session_binary_may_depend_on_the_logging_crate() {
+    fn the_session_binary_may_depend_on_the_logging_facade_and_composition() {
         assert_eq!(
-            violations(&[
-                ("gnoblin", &["gnoblin-compositor", "gnoblin-log"]),
-                ("gnoblin-log", &["rusqlite"])
-            ]),
+            violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-log", "gnoblin-log-init"])]),
             Vec::<String>::new()
         );
     }
 
     #[test]
-    fn the_logging_crate_may_not_depend_on_a_workspace_crate() {
+    fn the_logging_facade_may_not_depend_on_a_workspace_crate() {
+        let found = violations(&[("gnoblin-log", &["gnoblin-types"])]);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].contains("[log-isolation]"), "{found:?}");
+    }
+
+    #[test]
+    fn the_sinks_may_depend_on_the_facade_alone() {
         assert_eq!(
-            violations(&[("gnoblin-log", &["gnoblin-types"])]),
-            vec!["gnoblin-log -> gnoblin-types [log-isolation]: `gnoblin-log` is a leaf of the logging stack and may not depend on the workspace crate `gnoblin-types`".to_owned()]
+            violations(&[
+                ("gnoblin-log-console", &["gnoblin-log"]),
+                ("gnoblin-log-store", &["gnoblin-log"]),
+            ]),
+            Vec::<String>::new()
+        );
+        let found = violations(&[("gnoblin-log-store", &["gnoblin-types"])]);
+        assert!(
+            found.iter().any(|message| message.contains("[log-isolation]")),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn only_a_binary_may_depend_on_the_log_composition() {
+        let found = violations(&[("gnoblin-wayland", &["gnoblin-log-init"])]);
+        assert!(
+            found.iter().any(|message| message.contains("[log-init-roots]")),
+            "{found:?}"
+        );
+        assert_eq!(
+            violations(&[("xdg-desktop-portal-gnoblin", &["gnoblin-log-init"])]),
+            Vec::<String>::new()
         );
     }
 
