@@ -780,6 +780,35 @@ fn a_toplevel_is_exported_and_imported_as_a_parent() {
 }
 
 #[test]
+fn an_exported_handle_is_128_bits_of_lowercase_hex() {
+    Session::start().run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (surface, _, _toplevel) = client.titled_toplevel("handle shape");
+        let exporter: zxdg_exporter_v2::ZxdgExporterV2 = client
+            .globals
+            .bind(&client.qh, 1..=1, ())
+            .expect("the session advertises zxdg_exporter_v2");
+        // The handle is what an importer must present, so it is unguessable: 128 random bits
+        // rendered as 32 lowercase hex digits, and nothing else.
+        let _exported = exporter.export_toplevel(&surface, &client.qh, ());
+        client.roundtrip();
+        let handle = client
+            .state
+            .exported_handles
+            .first()
+            .cloned()
+            .expect("the export names the toplevel with a handle");
+        assert_eq!(handle.len(), 32, "the handle is 32 hex digits: {handle}");
+        assert!(
+            handle
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "the handle is lowercase hex: {handle}"
+        );
+    });
+}
+
+#[test]
 fn a_handle_that_was_never_minted_imports_nothing() {
     Session::start().run(|session| {
         let mut client = Client::connect(session.socket());
