@@ -65,8 +65,11 @@ pub(crate) struct OutputKey(pub usize);
 /// and a release for the pool that was replaced must not free a slot of the new one.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct SlotKey {
+    /// The record index of the output the buffer is drawn for.
     pub index: usize,
+    /// The pool generation the slot belongs to.
     pub generation: u32,
+    /// The slot within that pool.
     pub slot: u8,
 }
 
@@ -76,30 +79,48 @@ pub(crate) struct Objects {
     pub surface: wl_surface::WlSurface,
     /// The viewport a fractional scale is applied through, if the parent has one.
     pub viewport: Option<wp_viewport::WpViewport>,
+    /// The xdg surface that gives the output's surface its window role.
     xdg_surface: xdg_surface::XdgSurface,
+    /// The toplevel the parent shows for the output, which carries its title and app id.
     toplevel: xdg_toplevel::XdgToplevel,
+    /// The fractional scale object, present only when the parent offers the protocol.
     fractional: Option<wp_fractional_scale_v1::WpFractionalScaleV1>,
 }
 
 /// The state every event on the parent connection is dispatched into.
 pub(crate) struct Handler {
+    /// The per-output records and the parent connection state.
     table: Table,
+    /// The proxies for each output, by output index; [`None`] once the output is closed.
     objects: Vec<Option<Objects>>,
+    /// The parent's compositor global, used to create each output's surface.
     pub(crate) compositor: wl_compositor::WlCompositor,
+    /// The parent's shared-memory global, used to create buffer pools.
     pub(crate) shm: wl_shm::WlShm,
+    /// The parent's window manager base, used to give each surface an xdg role.
     wm_base: xdg_wm_base::XdgWmBase,
+    /// The parent's seat, which the pointer, keyboard and touch objects come from.
     seat_global: wl_seat::WlSeat,
+    /// The parent's fractional scale manager, if it offers one.
     fractional_manager: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    /// The parent's viewporter, if it offers one, used to apply a fractional scale.
     viewporter: Option<wp_viewporter::WpViewporter>,
+    /// The seat's pointer, present while the seat advertises pointer.
     pointer: Option<wl_pointer::WlPointer>,
+    /// The seat's keyboard, present while the seat advertises keyboard.
     keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// The seat's touch device, present while the seat advertises touch.
     touch: Option<wl_touch::WlTouch>,
+    /// The XKB keymap the parent sent for the keyboard, or [`None`] until one arrives.
     keymap: Option<String>,
+    /// The shared-memory pixel format, chosen from the parent's formats with ARGB preferred.
     format: Option<wl_shm::Format>,
     /// The integer scale of the parent's output, the fallback for a parent that has
     /// no fractional-scale protocol.
     integer_scale: i32,
+    /// The parent output's refresh rate in millihertz, or zero when the parent has not said.
     refresh_mhz: u32,
+    /// The app id set on every toplevel.
     app_id: String,
 }
 

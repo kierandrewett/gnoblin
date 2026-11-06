@@ -75,9 +75,13 @@
 //!    [`crate::Backend::render`] does not even describe a frame:
 //!    `gnoblin-wayland`'s `tests/nested.rs::a_frame_waits_for_the_hosts_frame_callback`.
 
+/// The parent-facing protocol handler: state and event dispatch.
 mod handler;
+/// Translation of the parent's pointer, keyboard and touch events.
 mod input;
+/// Per-output records and the table the parent's events update.
 mod records;
+/// Each nested output's surface, pool and frame presentation.
 mod surface;
 
 use std::io;
@@ -259,8 +263,11 @@ impl std::error::Error for NestedError {
 
 /// A session hosted by another compositor: one toplevel per output.
 pub struct Nested {
+    /// The Wayland connection to the parent compositor.
     connection: Connection,
+    /// The event queue the parent's events are read into before dispatch.
     queue: EventQueue<Handler>,
+    /// The state that events from the parent are dispatched into.
     handler: Handler,
     /// The target for each output index, or [`None`] for an output the parent has not
     /// configured yet or has closed.

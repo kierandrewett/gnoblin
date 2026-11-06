@@ -102,7 +102,9 @@ enum ParentConnection {
 /// One nested output's protocol state.
 #[derive(Debug)]
 struct Record {
+    /// The output's id in the backend's contract.
     output: OutputId,
+    /// The connector name the output is reported under, such as `NESTED-1`.
     connector: String,
     /// The size and scale the backend has been told about.
     applied: Option<(Size, Scale)>,
@@ -112,15 +114,20 @@ struct Record {
     scale: Scale,
     /// Where the parent's request to close the output has got to.
     state: OutputState,
+    /// Whether the parent has finished a frame for this output that has not been reported yet.
     frame_done: bool,
+    /// Buffers the parent released that have not been reported yet, as generation and slot.
     released: Vec<(u32, u8)>,
 }
 
 /// The parent-facing state of every nested output, plus the seat.
 #[derive(Debug)]
 pub(crate) struct Table {
+    /// One record per nested output, indexed by output index.
     records: Vec<Record>,
+    /// The seat's input state, shared by all the outputs.
     seat: Seat,
+    /// Whether the connection to the parent is up, and whether its loss has been reported.
     connection: ParentConnection,
 }
 

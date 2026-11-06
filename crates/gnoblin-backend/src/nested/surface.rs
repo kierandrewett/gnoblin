@@ -93,6 +93,7 @@ static POOL_COUNTER: AtomicU32 = AtomicU32::new(0);
 /// it is done with it.
 #[derive(Debug)]
 pub(crate) struct Ring {
+    /// Whether each slot is free to draw into, indexed by slot.
     free: Vec<bool>,
 }
 
@@ -218,12 +219,17 @@ struct Pool {
     file: File,
     /// The pool object, kept so it can be destroyed when a resize replaces it.
     pool: wl_shm_pool::WlShmPool,
+    /// The buffer objects, one per slot, in slot order.
     buffers: Vec<wl_buffer::WlBuffer>,
     /// Which pool this is, so a release for an older one is identifiable.
     generation: u32,
+    /// Bytes from one row of pixels to the next.
     stride: usize,
+    /// The width of each buffer, in physical pixels.
     width: u32,
+    /// The height of each buffer, in physical pixels.
     height: u32,
+    /// Bytes from one slot's start to the next, padded to the pool's slot alignment.
     slot_bytes: usize,
 }
 
@@ -322,20 +328,29 @@ pub struct NestedTarget {
     /// The output this target presents. Its mode is physical, so its logical size is
     /// the size the parent configured.
     output: Output,
+    /// The software renderer that draws the output's pixels.
     software: Software,
+    /// The parent's surface the output is presented on.
     surface: wl_surface::WlSurface,
+    /// The viewport that scales the buffer to the surface's logical size, if the parent has one.
     viewport: Option<WpViewport>,
+    /// The parent's shared-memory global, used to create pools.
     shm: wl_shm::WlShm,
+    /// The queue handle, used to create pools and buffers.
     qh: QueueHandle<Handler>,
     /// The record index, which is what the frame callback and the buffers carry.
     index: usize,
+    /// The shared-memory pool the slots live in.
     pool: Pool,
+    /// Which slots are free to draw into.
     ring: Ring,
     /// Whether a frame is on the wire and its callback has not arrived.
     frame: FrameWait,
     /// The damage that has not reached the parent yet, in the output's logical space.
     damage: Vec<Rect>,
+    /// How many frames the target has presented.
     presents: u64,
+    /// The shared-memory pixel format of the buffers.
     format: wl_shm::Format,
     /// The buffer scale last stated to the parent, so a steady frame repeats nothing.
     buffer_scale: BufferScaleState,
