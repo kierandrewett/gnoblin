@@ -681,7 +681,7 @@ pub fn run(config: SupervisorConfig) -> Result<u8, SupervisorError> {
     let (sender, receiver) = channel();
     let start = Instant::now();
     let (raw_sink, raw_receiver, raw_dropped) = raw::RawSink::channel();
-    std::thread::Builder::new()
+    let logger = std::thread::Builder::new()
         .name("gnoblin-raw-log".to_owned())
         .spawn(move || raw::run_logger(&raw_receiver, &raw_dropped))
         .map_err(SupervisorError::Descriptors)?;
@@ -756,6 +756,10 @@ pub fn run(config: SupervisorConfig) -> Result<u8, SupervisorError> {
             reason.map_or("unknown", StopReason::as_str)
         ),
     );
+    // The logger prints what the children wrote before they died. Dropping the last sender lets
+    // it finish, so the guardian's exit does not cut those lines off.
+    let Supervisor { raw, .. } = supervisor;
+    raw::finish(logger, raw);
     Ok(match reason {
         Some(StopReason::Signal | StopReason::Logout) => 0,
         _ => 1,

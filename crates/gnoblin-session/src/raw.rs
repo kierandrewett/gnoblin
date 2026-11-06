@@ -14,7 +14,7 @@
 //! best effort: heuristics cannot recognise every secret, so it never guarantees that a line is
 //! free of secrets. Only capture the output of a child that does not print secrets.
 
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
@@ -103,6 +103,19 @@ pub fn capture(role: &str, stream: Stream, reader: impl Read + Send + 'static, s
     }
 }
 
+/// Writes a structured line to the guardian's stream of the same name, unchanged. A failed
+/// write is ignored: the guardian's own output is not worth stopping the session for.
+fn forward(stream: Stream, line: &[u8]) {
+    match stream {
+        Stream::Stdout => {
+            let _ = std::io::stdout().lock().write_all(line);
+        }
+        Stream::Stderr => {
+            let _ = std::io::stderr().lock().write_all(line);
+        }
+    }
+}
+
 /// Reads lines until the end of `reader`, sending the raw ones to `sink`.
 pub fn read_lines(role: &str, stream: Stream, reader: impl Read, sink: &RawSink) {
     let mut reader = BufReader::new(reader);
@@ -117,6 +130,8 @@ pub fn read_lines(role: &str, stream: Stream, reader: impl Read, sink: &RawSink)
         let line = String::from_utf8_lossy(&buffer);
         let text = bound(&redactor.redact(line.trim_end_matches(['\n', '\r'])));
         if is_structured(&text) {
+            // The child formatted this line itself, so it goes out as the child wrote it.
+            forward(stream, &buffer);
             continue;
         }
         sink.send(RawLine {
@@ -165,6 +180,22 @@ pub fn run_logger(receiver: &Receiver<RawLine>, dropped: &AtomicU64) {
             reported = total;
         }
     }
+}
+
+/// How long the guardian waits for the logger to print what the children wrote before exiting.
+const FLUSH_WAIT: Duration = Duration::from_secs(2);
+
+/// Drops this sender and waits, for at most [`FLUSH_WAIT`], until the logger has printed every
+/// line already sent. A reader still holding a pipe (a grandchild kept it open) cannot hold the
+/// guardian's exit past the bound.
+pub fn finish(logger: std::thread::JoinHandle<()>, sink: RawSink) {
+    drop(sink);
+    let (done, waited) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = logger.join();
+        let _ = done.send(());
+    });
+    let _ = waited.recv_timeout(FLUSH_WAIT);
 }
 
 fn log_line(line: &RawLine) {
