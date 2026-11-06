@@ -1,6 +1,6 @@
 # Runtime data
 
-`src/data/` contains files installed with the standalone Gnoblin session.
+`data/` contains files installed with the standalone Gnoblin session.
 
 - `default-config/` is the complete config tree embedded into the session
   binaries. `gnoblinctl init` writes it explicitly; recovery evaluates it

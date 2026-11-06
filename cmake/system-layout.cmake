@@ -90,13 +90,13 @@ endif()
 # The optional GeoClue agent authorisation. Only a recipe with a separate package for it asks for the file, because a
 # package that does not list it would fail as having unpackaged files.
 if("$ENV{GNOBLIN_LAYOUT_GEOCLUE}" STREQUAL "1")
-    publish("${root}/src/data/geoclue/50-gnoblin.conf" "${stage}${sysconfdir}/geoclue/conf.d")
+    publish("${root}/data/geoclue/50-gnoblin.conf" "${stage}${sysconfdir}/geoclue/conf.d")
 endif()
 
 # The optional ananicy-cpp rules, which rank the session above the background class that gdm gives its children.
 if("$ENV{GNOBLIN_LAYOUT_ANANICY}" STREQUAL "1")
-    publish("${root}/src/data/ananicy/99-gnoblin.types" "${stage}${sysconfdir}/ananicy.d")
-    publish("${root}/src/data/ananicy/99-gnoblin.rules" "${stage}${sysconfdir}/ananicy.d")
+    publish("${root}/data/ananicy/99-gnoblin.types" "${stage}${sysconfdir}/ananicy.d")
+    publish("${root}/data/ananicy/99-gnoblin.rules" "${stage}${sysconfdir}/ananicy.d")
 endif()
 
 # The schema cache is generated on the target, after the package is installed, so the package must not carry one.

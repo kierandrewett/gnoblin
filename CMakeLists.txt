@@ -80,7 +80,7 @@ target_link_libraries(lua-pattern-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME lua-pattern COMMAND lua-pattern-test)
 if(GNOBLIN_LUA_FOUND)
   set(GNOBLIN_DEFAULT_CONFIG_SOURCE
-    "${PROJECT_SOURCE_DIR}/src/data/default-config")
+    "${PROJECT_SOURCE_DIR}/data/default-config")
   file(GLOB_RECURSE GNOBLIN_DEFAULT_CONFIG_FILES CONFIGURE_DEPENDS
     "${GNOBLIN_DEFAULT_CONFIG_SOURCE}/*")
   set(GNOBLIN_DEFAULT_CONFIG_C

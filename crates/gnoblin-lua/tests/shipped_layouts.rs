@@ -1,4 +1,4 @@
-//! Integration tests for the shipped layout modules in `src/data/lua/gnoblin/layouts/`.
+//! Integration tests for the shipped layout modules in `data/lua/gnoblin/layouts/`.
 //!
 //! Every test loads a shipped file through the real `Host` and `LuaEngine`, then settles
 //! the reply with the wm validator, the same path `tests/layout.rs` uses.
@@ -37,7 +37,7 @@ use gnoblin_wm::layout::{
     Placement, Reply, Transform3, settle,
 };
 
-const SHIPPED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/data/lua");
+const SHIPPED: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/lua");
 const LAYOUTS: [&str; 8] = [
     "floating",
     "kiosk",
@@ -529,7 +529,7 @@ fn copy_tree(from: &Path, to: &Path) {
 
 #[test]
 fn installed_layouts_load_from_their_prefix() {
-    // Install the shipped tree the way the CMake install step does: src/data/lua/ to
+    // Install the shipped tree the way the CMake install step does: data/lua/ to
     // share/gnoblin/lua under the prefix. The source tree is not on the module path.
     let prefix = scratch_dir("install-prefix");
     copy_tree(Path::new(SHIPPED), &installed_module_dir(&prefix));

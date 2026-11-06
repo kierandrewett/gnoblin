@@ -189,7 +189,7 @@ sudo apt install gnoblin-ananicy-rules        # Debian
 sudo pacman -S gnoblin-ananicy-rules          # Arch Linux
 ```
 
-On another system, copy `99-gnoblin.types` and `99-gnoblin.rules` from the `src/data/ananicy/` folder of the source
+On another system, copy `99-gnoblin.types` and `99-gnoblin.rules` from the `data/ananicy/` folder of the source
 to `/etc/ananicy.d/`. Then run `sudo systemctl restart ananicy-cpp`.
 
 Log out and back in, then check the policy again. To go back to the daemon's defaults, remove the two files or the

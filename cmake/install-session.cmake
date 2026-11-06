@@ -20,7 +20,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 get_filename_component(ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-set(SRC "${ROOT}/src/data/session")
+set(SRC "${ROOT}/data/session")
 
 if(NOT GNOBLIN_PREFIX)
   message(FATAL_ERROR "usage: cmake -DGNOBLIN_PREFIX=<prefix> -P install-session.cmake")
@@ -172,12 +172,12 @@ gnoblin_remove(
   ${LIBDIR}/mutter-51/plugins/libgnoblin.so)
 
 gnoblin_install_file("${ROOT}/src/tools/gnoblin-seed-config" "${INSTALL_PREFIX}/libexec/gnoblin-seed-config" MODE_755)
-gnoblin_install_file("${ROOT}/src/data/init.lua.example" "${INSTALL_PREFIX}/share/gnoblin/init.lua.example" MODE_644)
-file(COPY "${ROOT}/src/data/default-config/" DESTINATION "${INSTALL_PREFIX}/share/gnoblin/default-config"
+gnoblin_install_file("${ROOT}/data/init.lua.example" "${INSTALL_PREFIX}/share/gnoblin/init.lua.example" MODE_644)
+file(COPY "${ROOT}/data/default-config/" DESTINATION "${INSTALL_PREFIX}/share/gnoblin/default-config"
   USE_SOURCE_PERMISSIONS)
 # Shipped layout modules load as require("gnoblin.layouts.<name>") from this root.
 include("${CMAKE_CURRENT_LIST_DIR}/install-lua-data.cmake")
-gnoblin_install_file("${ROOT}/src/data/gnoblin-portals.conf"
+gnoblin_install_file("${ROOT}/data/gnoblin-portals.conf"
   "${INSTALL_PREFIX}/share/xdg-desktop-portal/gnoblin-portals.conf" MODE_644)
 
 # The login manager runs the Exec line, so it must name the installed binary.

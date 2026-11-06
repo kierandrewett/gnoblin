@@ -323,7 +323,7 @@ mod tests {
 
     /// The repository's shipped Lua layouts, which `gnoblin.layouts.floating` lives in.
     fn shipped_modules() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/data/lua")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/lua")
     }
 
     fn params() -> Params {

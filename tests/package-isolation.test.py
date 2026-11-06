@@ -330,7 +330,7 @@ exit 0
                 isolation.validate(name, path, "", "", "")
 
     def test_geoclue_agent_authorization_keeps_the_stock_agents(self):
-        whitelist = (ROOT / "src/data/geoclue/50-gnoblin.conf").read_text()
+        whitelist = (ROOT / "data/geoclue/50-gnoblin.conf").read_text()
         for agent_id in (
             "geoclue-demo-agent",
             "gnome-shell",

@@ -10,7 +10,7 @@ home="$tmp/home"
 config_home="$tmp/xdg-config"
 mkdir -p "$prefix/libexec" "$prefix/share/gnoblin" "$home"
 install -m 755 "$ROOT/src/tools/gnoblin-seed-config" "$prefix/libexec/gnoblin-seed-config"
-install -m 644 "$ROOT/src/data/init.lua.example" "$prefix/share/gnoblin/init.lua.example"
+install -m 644 "$ROOT/data/init.lua.example" "$prefix/share/gnoblin/init.lua.example"
 
 # The first login seeds a private Lua config with safe permissions.
 env -u GNOBLIN_CONFIG HOME="$home" XDG_CONFIG_HOME="$config_home" \

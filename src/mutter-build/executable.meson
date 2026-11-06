@@ -41,16 +41,16 @@ endif
 
 gnoblin_default_config = custom_target('gnoblin-default-config',
   input: files(
-    gnoblin_root / 'src/data/default-config/init.lua',
-    gnoblin_root / 'src/data/default-config/config/10-windows.lua',
-    gnoblin_root / 'src/data/default-config/config/20-input.lua',
-    gnoblin_root / 'src/data/default-config/config/30-session.lua',
-    gnoblin_root / 'src/data/default-config/config/40-shortcuts.lua',
-    gnoblin_root / 'src/data/default-config/config/50-pointer.lua',
+    gnoblin_root / 'data/default-config/init.lua',
+    gnoblin_root / 'data/default-config/config/10-windows.lua',
+    gnoblin_root / 'data/default-config/config/20-input.lua',
+    gnoblin_root / 'data/default-config/config/30-session.lua',
+    gnoblin_root / 'data/default-config/config/40-shortcuts.lua',
+    gnoblin_root / 'data/default-config/config/50-pointer.lua',
   ),
   output: 'gnoblin-default-config.c',
   command: [gnoblin_python, gnoblin_root / 'scripts/embed-config.py',
-            gnoblin_root / 'src/data/default-config', '@OUTPUT@'],
+            gnoblin_root / 'data/default-config', '@OUTPUT@'],
 )
 
 gnoblin_config_sources = files(

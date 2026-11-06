@@ -1975,7 +1975,7 @@ gives the same reply as the shipped `gnoblin.layouts.floating` module: no
 placements, a `float` effect for every tiled window, and a declined geometry
 request. A test (`native_floating_matches_the_shipped_floating_module`) runs both
 and compares their replies. The default path therefore never touches the Lua
-sandbox. `gnoblin.layouts.floating` (`src/data/lua/gnoblin/layouts/floating.lua`)
+sandbox. `gnoblin.layouts.floating` (`data/lua/gnoblin/layouts/floating.lua`)
 stays shipped with the same behaviour, for users who register it or compose it
 explicitly.
 

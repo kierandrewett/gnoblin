@@ -387,7 +387,7 @@ privacy state transitions without changing the host graph.
    actions, and command shortcuts that request Shell input capture. This
    avoids a second config file while making the unavailable behavior visible.
    A rebuilt binary on Fedora 45 loaded the repository's full
-   `src/data/init.lua.example`, logged which Shell-only settings it skipped,
+   `data/init.lua.example`, logged which Shell-only settings it skipped,
    and answered `gnoblinctl ping` without Shell. Unknown sections remain fatal.
    It still lacks the full control service, session lifecycle, and lock UI, so
    the login path remains on Shell.

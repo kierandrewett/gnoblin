@@ -15,7 +15,7 @@ use support::{Client, Command, Session, Window, wait_for, wait_for_listed_id};
 
 /// The repository's shipped Lua layouts, the directory an installed prefix provides.
 fn shipped_modules() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/data/lua")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/lua")
 }
 
 /// A session configured with `settings`, which is every layout test's only difference.

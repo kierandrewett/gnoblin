@@ -11,7 +11,7 @@ out="$run/input-source-shortcut-$(date -u +%Y%m%dT%H%M%SZ).txt"
 {
     echo "command: tests/qemu-e2e/run-input-source-shortcut.sh"
     scp -q -P "$port" -o UserKnownHostsFile="$run/known_hosts" \
-        "$root/src/data/default-config/config/40-shortcuts.lua" luna@127.0.0.1:/tmp/40-shortcuts.lua
+        "$root/data/default-config/config/40-shortcuts.lua" luna@127.0.0.1:/tmp/40-shortcuts.lua
     scripts/qemu-e2e guest "$run" -- env GNOBLIN_PREFIX="$prefix" bash -s < "$here/guest-input-source-shortcut.sh"
 } 2>&1 | tee "$out"
 echo "saved: $out"

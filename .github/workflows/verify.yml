@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      - "data/**"
       - "cmake/**"
       - "CMakeLists.txt"
       - "build.sh"
@@ -18,6 +19,7 @@ on:
   pull_request:
     paths:
       - "src/**"
+      - "data/**"
       - "cmake/**"
       - "CMakeLists.txt"
       - "build.sh"
