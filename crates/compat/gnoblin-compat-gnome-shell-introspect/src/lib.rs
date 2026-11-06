@@ -65,17 +65,29 @@
 
 #![forbid(unsafe_code)]
 
+/// Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.
 pub mod compat;
+/// What the adapter needs from its process: the compositor socket and the `compat` gate.
 pub mod environment;
+/// Why an introspection call could not be answered.
 pub mod error;
+/// The IPC client half: one subscription, folded into the window list and the screen size.
 pub mod link;
+/// The served interface: `org.gnome.Shell.Introspect`.
 pub mod service;
+/// The window list and the screen size the adapter reports, read from the object graph.
 pub mod state;
 
+/// Builds the compositor link and the compat mode from the process environment.
 pub use environment::{link_from_environment, mode_from_environment};
 
+/// The admission check, the call it gates, the support matrix and the adapter's name and bus names.
 pub use compat::{IntrospectAdmission, IntrospectCall, MATRIX, NAME, NAMES};
+/// Why an introspection call could not be answered.
 pub use error::IntrospectError;
+/// One subscription to the compositor, and the state it has delivered so far.
 pub use link::IntrospectLink;
+/// The bus name, interface, object path and version, plus the exportable service and its export helper.
 pub use service::{BUS_NAME, INTERFACE, IntrospectService, PATH, VERSION, export};
+/// Every window the graph publishes, and one window's record as the interface describes it.
 pub use state::{IntrospectState, WindowInfo};
