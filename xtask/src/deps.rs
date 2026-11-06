@@ -199,6 +199,10 @@ const RULES: &[Rule] = &[
         check: portal_layering,
     },
     Rule {
+        id: "portal-crates",
+        check: portal_crates,
+    },
+    Rule {
         id: "dev-crates",
         check: dev_crates,
     },
@@ -463,6 +467,31 @@ fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
     None
 }
 
+/// The portal's UI crates, each with the only dependencies it may name (the crates of
+/// the `gnoblin-portal-*` family). The model is pure data, so it names no egui and no
+/// engine crate; the theme and the paint are egui only; the widgets name egui and the
+/// theme. An allowlist, not a denylist, so a new edge is a decision rather than a leak.
+const PORTAL_ALLOWED: &[(&str, &[&str])] = &[
+    ("gnoblin-portal-model", &["gnoblin-schema", "gnoblin-types"]),
+    ("gnoblin-portal-theme", &["egui"]),
+    ("gnoblin-portal-paint", &["egui", "gnoblin-types"]),
+    ("gnoblin-portal-widgets", &["egui", "gnoblin-portal-theme"]),
+];
+
+/// Each portal UI crate names only the dependencies in [`PORTAL_ALLOWED`].
+fn portal_crates(package: &Package, dep: &Dep) -> Option<String> {
+    let (_, allowed) = PORTAL_ALLOWED.iter().find(|(name, _)| *name == package.name)?;
+    if allowed.contains(&dep.name.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "`{}` may depend only on {}; `{}` is not one of them",
+        package.name,
+        allowed.join(", "),
+        dep.name
+    ))
+}
+
 /// What one process may name.
 ///
 /// The rule is about a process's *own* dependencies, not about the dependencies of the
@@ -538,7 +567,7 @@ fn log_init_roots(package: &Package, dep: &Dep) -> Option<String> {
     if dep.name != LOG_INIT_CRATE
         || dep.kind == DepKind::Dev
         || package.name == SESSION_BINARY
-        || package.name == "xdg-desktop-portal-gnoblin"
+        || package.name == "gnoblin-portal-backend"
     {
         return None;
     }
@@ -610,6 +639,43 @@ mod tests {
     }
 
     #[test]
+    fn the_portal_model_may_not_name_egui() {
+        let found = violations(&[("gnoblin-portal-model", &["gnoblin-types", "egui"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+    }
+
+    #[test]
+    fn the_portal_theme_may_name_only_egui() {
+        assert_eq!(violations(&[("gnoblin-portal-theme", &["egui"])]), Vec::<String>::new());
+        let found = violations(&[("gnoblin-portal-theme", &["egui", "gnoblin-types"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+    }
+
+    #[test]
+    fn the_portal_paint_may_name_egui_and_types_only() {
+        assert_eq!(
+            violations(&[("gnoblin-portal-paint", &["egui", "gnoblin-types"])]),
+            Vec::<String>::new()
+        );
+        let found = violations(&[("gnoblin-portal-paint", &["egui", "gnoblin-portal-model"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+    }
+
+    #[test]
+    fn the_portal_widgets_may_name_egui_and_the_theme_only() {
+        assert_eq!(
+            violations(&[("gnoblin-portal-widgets", &["egui", "gnoblin-portal-theme"])]),
+            Vec::<String>::new()
+        );
+        let found = violations(&[("gnoblin-portal-widgets", &["gnoblin-portal-paint"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+    }
+
+    #[test]
     fn the_logging_facade_may_not_depend_on_a_workspace_crate() {
         let found = violations(&[("gnoblin-log", &["gnoblin-types"])]);
         assert_eq!(found.len(), 1);
@@ -640,7 +706,7 @@ mod tests {
             "{found:?}"
         );
         assert_eq!(
-            violations(&[("xdg-desktop-portal-gnoblin", &["gnoblin-log-init"])]),
+            violations(&[("gnoblin-portal-backend", &["gnoblin-log-init"])]),
             Vec::<String>::new()
         );
     }

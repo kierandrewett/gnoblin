@@ -14,7 +14,7 @@
 #
 # The property names are the settings' own names with `-` turned into `_`, because a
 # schema property name cannot contain a dash. The portal's translation table in
-# `crates/xdg-desktop-portal-gnoblin/src/settings.rs` is the one place the two
+# `crates/gnoblin-portal-backend/src/settings.rs` is the one place the two
 # vocabularies meet.
 namespace = "gnoblin"
 version = "0.2.0"
