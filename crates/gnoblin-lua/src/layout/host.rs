@@ -14,7 +14,7 @@ use gnoblin_lua_sandbox::Limits;
 
 use super::LayoutReason;
 use super::data::Data;
-use super::lua::{LayoutCall, LayoutFault, Manifest};
+use super::lua::{LayoutCall, LayoutFault, LayoutManifest};
 use super::snapshot::LayoutSnapshot;
 use super::worker::{Done, LayoutFinished, Spawn, Worker, WorkerJob};
 
@@ -83,7 +83,7 @@ pub struct HostFailure {
 struct RegisteredLayout {
     module: String,
     options: Data,
-    manifest: Manifest,
+    manifest: LayoutManifest,
 }
 
 /// The layout host. One per compositor; it owns the worker and the layout registry.
@@ -137,7 +137,7 @@ impl Host {
 
     /// The manifest of layout `name`, read when it loaded. `None` when no layout of that
     /// name is registered.
-    pub(crate) fn manifest(&self, name: &str) -> Option<&Manifest> {
+    pub(crate) fn manifest(&self, name: &str) -> Option<&LayoutManifest> {
         self.registered.get(name).map(|layout| &layout.manifest)
     }
 

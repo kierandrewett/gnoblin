@@ -2,20 +2,20 @@
 //! glyphs, and widths 80 and 40, plus properties that must hold for all of them.
 
 use gnoblin_cli_ui::{
-    ErrorReport, Status, Theme, Token, badge, clear_waiting, definition_list, error_block, event_line, identifier,
-    kv_list, section, status_line, strip_ansi, table, waiting_line, width,
+    ColourToken, ErrorReport, LineOutcome, OutputTheme, badge, clear_waiting, definition_list, error_block, event_line,
+    identifier, kv_list, section, status_line, strip_ansi, table, waiting_line, width,
 };
 
-fn plain(width: usize) -> Theme {
-    Theme::new(false, false, width)
+fn plain(width: usize) -> OutputTheme {
+    OutputTheme::new(false, false, width)
 }
 
-fn unicode(width: usize) -> Theme {
-    Theme::new(false, true, width)
+fn unicode(width: usize) -> OutputTheme {
+    OutputTheme::new(false, true, width)
 }
 
-fn coloured(width: usize) -> Theme {
-    Theme::new(true, true, width)
+fn coloured(width: usize) -> OutputTheme {
+    OutputTheme::new(true, true, width)
 }
 
 fn rows(data: &[&[&str]]) -> Vec<Vec<String>> {
@@ -67,15 +67,15 @@ fn kv_list_aligns_keys_and_wraps_values() {
 #[test]
 fn status_line_uses_glyph_in_unicode_and_word_in_ascii() {
     assert_eq!(
-        status_line(&unicode(80), Status::Ok, "window 12  focused"),
+        status_line(&unicode(80), LineOutcome::Ok, "window 12  focused"),
         "\u{2714} ok  window 12  focused"
     );
     assert_eq!(
-        status_line(&plain(80), Status::Ok, "window 12  focused"),
+        status_line(&plain(80), LineOutcome::Ok, "window 12  focused"),
         "ok  window 12  focused"
     );
     assert_eq!(
-        status_line(&plain(80), Status::Fail, "socket missing"),
+        status_line(&plain(80), LineOutcome::Fail, "socket missing"),
         "fail  socket missing"
     );
 }
@@ -136,16 +136,19 @@ fn waiting_is_plain_text_off_a_terminal() {
 #[test]
 fn colour_wraps_only_the_styled_text() {
     assert_eq!(
-        status_line(&coloured(80), Status::Ok, "window 12"),
+        status_line(&coloured(80), LineOutcome::Ok, "window 12"),
         "\x1b[32m\u{2714} ok\x1b[0m  window 12"
     );
     assert_eq!(identifier(&coloured(80), "12"), "\x1b[36m12\x1b[0m");
-    assert_eq!(badge(&coloured(80), Token::Warning, "stale"), "\x1b[33m[stale]\x1b[0m");
+    assert_eq!(
+        badge(&coloured(80), ColourToken::Warning, "stale"),
+        "\x1b[33m[stale]\x1b[0m"
+    );
 }
 
 /// Every sample output, rendered at one theme. Includes wide characters, so
 /// callers must not assume ASCII.
-fn samples(theme: &Theme) -> Vec<String> {
+fn samples(theme: &OutputTheme) -> Vec<String> {
     let table_rows = rows(&[
         &[
             "12",
@@ -181,7 +184,7 @@ fn samples(theme: &Theme) -> Vec<String> {
         ),
         status_line(
             theme,
-            Status::Warn,
+            LineOutcome::Warn,
             "a long status detail that the terminal width has to wrap",
         ),
         error_block(theme, &report),
@@ -192,7 +195,7 @@ fn samples(theme: &Theme) -> Vec<String> {
             Some(("an old title that is long", "a new title that is also long")),
         ),
         waiting_line(theme, 2, "waiting for the compositor"),
-        badge(theme, Token::Danger, "failed"),
+        badge(theme, ColourToken::Danger, "failed"),
         identifier(theme, "window.focus"),
     ]
 }
@@ -202,7 +205,7 @@ fn no_line_is_wider_than_the_terminal() {
     for columns in [40, 80] {
         for colour in [false, true] {
             for unicode_glyphs in [false, true] {
-                let theme = Theme::new(colour, unicode_glyphs, columns);
+                let theme = OutputTheme::new(colour, unicode_glyphs, columns);
                 for block in samples(&theme) {
                     for line in block.lines() {
                         assert!(
@@ -220,8 +223,8 @@ fn no_line_is_wider_than_the_terminal() {
 fn stripping_colour_gives_the_plain_output() {
     for columns in [40, 80] {
         for unicode_glyphs in [false, true] {
-            let styled = samples(&Theme::new(true, unicode_glyphs, columns));
-            let bare = samples(&Theme::new(false, unicode_glyphs, columns));
+            let styled = samples(&OutputTheme::new(true, unicode_glyphs, columns));
+            let bare = samples(&OutputTheme::new(false, unicode_glyphs, columns));
             assert_eq!(styled.len(), bare.len());
             for (with, without) in styled.iter().zip(&bare) {
                 assert_eq!(strip_ansi(with), *without);

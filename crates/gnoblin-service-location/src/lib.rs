@@ -194,7 +194,7 @@ pub fn grant(outcome: &RequestOutcome, requested: u32, ceiling: u32) -> (bool, u
 /// Whether GeoClue has accepted this agent, and the `InUse` value GeoClue last reported
 /// while it has. See the module's agent-state table for the transitions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AgentState {
+enum GeoClueAgentState {
     /// GeoClue has not accepted the registration: it is absent, refused the agent or has
     /// left the bus.
     Offline,
@@ -202,36 +202,36 @@ enum AgentState {
     Available { in_use: bool },
 }
 
-impl AgentState {
+impl GeoClueAgentState {
     /// The state after GeoClue accepts a registration. Already registered: unchanged.
-    fn start(self, in_use: bool) -> AgentState {
+    fn start(self, in_use: bool) -> GeoClueAgentState {
         match self {
-            AgentState::Offline => AgentState::Available { in_use },
-            available @ AgentState::Available { .. } => available,
+            GeoClueAgentState::Offline => GeoClueAgentState::Available { in_use },
+            available @ GeoClueAgentState::Available { .. } => available,
         }
     }
 
     /// The state after GeoClue goes away. Clears `in_use` with the registration.
-    fn stop(self) -> AgentState {
-        AgentState::Offline
+    fn stop(self) -> GeoClueAgentState {
+        GeoClueAgentState::Offline
     }
 
     /// The state after GeoClue reports `InUse`. Ignored while offline.
-    fn watch_in_use(self, in_use: bool) -> AgentState {
+    fn watch_in_use(self, in_use: bool) -> GeoClueAgentState {
         match self {
-            AgentState::Offline => AgentState::Offline,
-            AgentState::Available { .. } => AgentState::Available { in_use },
+            GeoClueAgentState::Offline => GeoClueAgentState::Offline,
+            GeoClueAgentState::Available { .. } => GeoClueAgentState::Available { in_use },
         }
     }
 
     /// Whether this agent is registered and answers offers.
     fn is_available(self) -> bool {
-        matches!(self, AgentState::Available { .. })
+        matches!(self, GeoClueAgentState::Available { .. })
     }
 
     /// Whether GeoClue reports a client using location. Always `false` while offline.
     fn in_use(self) -> bool {
-        matches!(self, AgentState::Available { in_use: true })
+        matches!(self, GeoClueAgentState::Available { in_use: true })
     }
 }
 
@@ -240,7 +240,7 @@ struct LocationState {
     offerer: Box<dyn Offerer + Send>,
     waiting: BTreeMap<RequestId, oneshot::Sender<RequestOutcome>>,
     policy: Policy,
-    state: AgentState,
+    state: GeoClueAgentState,
 }
 
 /// The agent object, clonable so the connection's object server and the watchers share
@@ -271,7 +271,7 @@ impl Location {
                 offerer: Box::new(offerer),
                 waiting: BTreeMap::new(),
                 policy,
-                state: AgentState::Offline,
+                state: GeoClueAgentState::Offline,
             })),
             deadline,
         }
@@ -636,55 +636,64 @@ mod tests {
 
     #[test]
     fn starting_an_offline_agent_registers_it_with_the_reported_in_use() {
-        assert_eq!(AgentState::Offline.start(true), AgentState::Available { in_use: true });
         assert_eq!(
-            AgentState::Offline.start(false),
-            AgentState::Available { in_use: false }
+            GeoClueAgentState::Offline.start(true),
+            GeoClueAgentState::Available { in_use: true }
+        );
+        assert_eq!(
+            GeoClueAgentState::Offline.start(false),
+            GeoClueAgentState::Available { in_use: false }
         );
     }
 
     #[test]
     fn starting_a_registered_agent_keeps_its_registration() {
-        let registered = AgentState::Available { in_use: true };
+        let registered = GeoClueAgentState::Available { in_use: true };
         assert_eq!(registered.start(false), registered);
     }
 
     #[test]
     fn stopping_an_available_agent_takes_it_offline() {
-        assert_eq!(AgentState::Available { in_use: false }.stop(), AgentState::Offline);
+        assert_eq!(
+            GeoClueAgentState::Available { in_use: false }.stop(),
+            GeoClueAgentState::Offline
+        );
     }
 
     #[test]
     fn stopping_an_available_agent_clears_in_use() {
-        assert!(!AgentState::Available { in_use: true }.stop().in_use());
+        assert!(!GeoClueAgentState::Available { in_use: true }.stop().in_use());
     }
 
     #[test]
     fn stopping_an_offline_agent_changes_nothing() {
-        assert_eq!(AgentState::Offline.stop(), AgentState::Offline);
+        assert_eq!(GeoClueAgentState::Offline.stop(), GeoClueAgentState::Offline);
     }
 
     #[test]
     fn watching_in_use_updates_an_available_agent() {
         assert_eq!(
-            AgentState::Available { in_use: false }.watch_in_use(true),
-            AgentState::Available { in_use: true }
+            GeoClueAgentState::Available { in_use: false }.watch_in_use(true),
+            GeoClueAgentState::Available { in_use: true }
         );
         assert_eq!(
-            AgentState::Available { in_use: true }.watch_in_use(false),
-            AgentState::Available { in_use: false }
+            GeoClueAgentState::Available { in_use: true }.watch_in_use(false),
+            GeoClueAgentState::Available { in_use: false }
         );
     }
 
     #[test]
     fn watching_in_use_on_an_offline_agent_records_nothing() {
-        assert_eq!(AgentState::Offline.watch_in_use(true), AgentState::Offline);
-        assert!(!AgentState::Offline.watch_in_use(true).in_use());
+        assert_eq!(
+            GeoClueAgentState::Offline.watch_in_use(true),
+            GeoClueAgentState::Offline
+        );
+        assert!(!GeoClueAgentState::Offline.watch_in_use(true).in_use());
     }
 
     #[test]
     fn only_a_registered_agent_is_available_for_offers() {
-        assert!(!AgentState::Offline.is_available());
-        assert!(AgentState::Available { in_use: false }.is_available());
+        assert!(!GeoClueAgentState::Offline.is_available());
+        assert!(GeoClueAgentState::Available { in_use: false }.is_available());
     }
 }

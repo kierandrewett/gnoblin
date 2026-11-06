@@ -97,7 +97,7 @@ const fn strip_prefix(package: &'static str) -> &'static str {
 /// The console and the database both record the role, so one log tells the compositor's lines
 /// from the guardian's even though both are written by the same binary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Role {
+pub enum ProcessRole {
     /// The compositor, running in the foreground.
     Compositor,
     /// The guardian, which spawns the other roles and keeps the session alive.
@@ -110,7 +110,7 @@ pub enum Role {
     Portal,
 }
 
-impl Role {
+impl ProcessRole {
     /// The role's name as recorded in the log.
     pub const fn name(self) -> &'static str {
         match self {
@@ -287,13 +287,13 @@ mod tests {
     #[test]
     fn each_role_has_a_distinct_name() {
         let names = [
-            Role::Compositor,
-            Role::Guardian,
-            Role::Runtime,
-            Role::Services,
-            Role::Portal,
+            ProcessRole::Compositor,
+            ProcessRole::Guardian,
+            ProcessRole::Runtime,
+            ProcessRole::Services,
+            ProcessRole::Portal,
         ]
-        .map(Role::name);
+        .map(ProcessRole::name);
         for (index, name) in names.iter().enumerate() {
             assert!(!names[..index].contains(name), "{name} is named twice");
         }

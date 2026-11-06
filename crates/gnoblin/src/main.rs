@@ -105,12 +105,12 @@ fn dispatch(role: role::Role) -> Result<(), Exit> {
 }
 
 /// The process role the log records for this role.
-fn log_role(role: &role::Role) -> gnoblin_log::Role {
+fn log_role(role: &role::Role) -> gnoblin_log::ProcessRole {
     match role {
-        role::Role::Compositor => gnoblin_log::Role::Compositor,
-        role::Role::Guardian => gnoblin_log::Role::Guardian,
-        role::Role::Runtime => gnoblin_log::Role::Runtime,
-        role::Role::Services => gnoblin_log::Role::Services,
+        role::Role::Compositor => gnoblin_log::ProcessRole::Compositor,
+        role::Role::Guardian => gnoblin_log::ProcessRole::Guardian,
+        role::Role::Runtime => gnoblin_log::ProcessRole::Runtime,
+        role::Role::Services => gnoblin_log::ProcessRole::Services,
     }
 }
 

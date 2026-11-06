@@ -11,9 +11,9 @@ pub mod theme;
 pub mod time;
 
 pub use components::{
-    ErrorReport, Status, badge, clear_waiting, definition_list, error_block, event_line, identifier, kv_list, section,
-    status_line, table, waiting_line,
+    ErrorReport, LineOutcome, badge, clear_waiting, definition_list, error_block, event_line, identifier, kv_list,
+    section, status_line, table, waiting_line,
 };
 pub use text::{strip_ansi, width};
-pub use theme::{ColorChoice, Environment, Glyph, Theme, Token};
+pub use theme::{ColorChoice, ColourToken, Glyph, OutputEnvironment, OutputTheme};
 pub use time::{clock_utc, now_utc};

@@ -1,8 +1,8 @@
 //! Colour, glyph and width decisions shared by every Gnoblin command-line tool.
 //!
-//! A `Theme` is resolved once per process from the `--color` flag and the
-//! environment. Components take a `&Theme` and never read the environment
-//! themselves, so tests can build any combination with `Theme::new`.
+//! An `OutputTheme` is resolved once per process from the `--color` flag and the
+//! environment. Components take a `&OutputTheme` and never read the environment
+//! themselves, so tests can build any combination with `OutputTheme::new`.
 
 use std::io::IsTerminal;
 
@@ -36,7 +36,7 @@ impl ColorChoice {
 
 /// The facts about the process that decide how output looks.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Environment {
+pub struct OutputEnvironment {
     /// Whether the stream the output goes to is a terminal.
     pub is_terminal: bool,
     /// `NO_COLOR` is set to a non-empty value.
@@ -51,7 +51,7 @@ pub struct Environment {
     pub columns: Option<usize>,
 }
 
-impl Environment {
+impl OutputEnvironment {
     /// Reads this process's environment. `is_terminal` says whether the stream
     /// the output goes to is a terminal.
     pub fn detect(is_terminal: bool) -> Self {
@@ -75,7 +75,7 @@ impl Environment {
 /// A semantic colour. Each maps to one of the 16 ANSI colours, so the user's
 /// terminal theme decides the actual shade.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Token {
+pub enum ColourToken {
     /// Identifiers and the names of things: window ids, property names.
     Accent,
     /// Good news: an operation finished, a value is as wanted.
@@ -92,7 +92,7 @@ pub enum Token {
     Strong,
 }
 
-impl Token {
+impl ColourToken {
     /// The SGR parameter for this colour.
     fn code(self) -> &'static str {
         match self {
@@ -153,14 +153,14 @@ const SPINNER_ASCII: [&str; 4] = ["|", "/", "-", "\\"];
 
 /// What the output looks like: colour, Unicode glyphs, animation and width.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Theme {
+pub struct OutputTheme {
     colour: bool,
     unicode: bool,
     animate: bool,
     width: usize,
 }
 
-impl Theme {
+impl OutputTheme {
     /// Decides the theme from `--color` and the environment.
     ///
     /// Colour is off when the output is `TERM=dumb`, when `NO_COLOR` is set
@@ -168,7 +168,7 @@ impl Theme {
     /// `--color=always` or `CLICOLOR_FORCE` is set). Unicode glyphs need a UTF-8
     /// locale, a stream that is a terminal (or `--color=always`), and a
     /// `TERM` other than `dumb`. Animation needs a terminal.
-    pub fn resolve(choice: ColorChoice, env: &Environment) -> Self {
+    pub fn resolve(choice: ColorChoice, env: &OutputEnvironment) -> Self {
         let dumb = env.term.as_deref() == Some("dumb");
         let colour = !dumb
             && match choice {
@@ -222,7 +222,7 @@ impl Theme {
 
     /// Wraps `text` in the colour for `token`, or returns it unchanged when
     /// colour is off.
-    pub fn paint(&self, token: Token, text: &str) -> String {
+    pub fn paint(&self, token: ColourToken, text: &str) -> String {
         if !self.colour || text.is_empty() {
             return text.to_string();
         }
@@ -249,28 +249,28 @@ impl Theme {
 mod tests {
     use super::*;
 
-    fn env(is_terminal: bool) -> Environment {
-        Environment {
+    fn env(is_terminal: bool) -> OutputEnvironment {
+        OutputEnvironment {
             is_terminal,
             locale: Some("en_GB.UTF-8".to_string()),
-            ..Environment::default()
+            ..OutputEnvironment::default()
         }
     }
 
     #[test]
     fn colour_follows_the_stream_under_auto() {
-        assert!(!Theme::resolve(ColorChoice::Auto, &env(false)).colour());
-        assert!(Theme::resolve(ColorChoice::Auto, &env(true)).colour());
+        assert!(!OutputTheme::resolve(ColorChoice::Auto, &env(false)).colour());
+        assert!(OutputTheme::resolve(ColorChoice::Auto, &env(true)).colour());
     }
 
     #[test]
     fn no_color_and_dumb_terminals_turn_colour_off() {
         let mut no_color = env(true);
         no_color.no_color = true;
-        assert!(!Theme::resolve(ColorChoice::Auto, &no_color).colour());
+        assert!(!OutputTheme::resolve(ColorChoice::Auto, &no_color).colour());
         let mut dumb = env(true);
         dumb.term = Some("dumb".to_string());
-        let theme = Theme::resolve(ColorChoice::Always, &dumb);
+        let theme = OutputTheme::resolve(ColorChoice::Always, &dumb);
         assert!(!theme.colour());
         assert!(!theme.unicode());
         assert!(!theme.animate());
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn always_forces_colour_and_unicode_through_a_pipe() {
-        let theme = Theme::resolve(ColorChoice::Always, &env(false));
+        let theme = OutputTheme::resolve(ColorChoice::Always, &env(false));
         assert!(theme.colour());
         assert!(theme.unicode());
         assert!(!theme.animate());
@@ -288,24 +288,24 @@ mod tests {
     fn ascii_locale_gets_ascii_glyphs() {
         let mut ascii = env(true);
         ascii.locale = Some("C".to_string());
-        let theme = Theme::resolve(ColorChoice::Auto, &ascii);
+        let theme = OutputTheme::resolve(ColorChoice::Auto, &ascii);
         assert_eq!(theme.glyph(Glyph::Ellipsis), "...");
     }
 
     #[test]
     fn width_defaults_and_has_a_floor() {
-        assert_eq!(Theme::resolve(ColorChoice::Auto, &env(false)).width(), 80);
+        assert_eq!(OutputTheme::resolve(ColorChoice::Auto, &env(false)).width(), 80);
         let mut narrow = env(false);
         narrow.columns = Some(20);
-        assert_eq!(Theme::resolve(ColorChoice::Auto, &narrow).width(), 40);
-        assert_eq!(Theme::new(false, false, 10).width(), 40);
+        assert_eq!(OutputTheme::resolve(ColorChoice::Auto, &narrow).width(), 40);
+        assert_eq!(OutputTheme::new(false, false, 10).width(), 40);
     }
 
     #[test]
     fn paint_is_identity_without_colour() {
-        assert_eq!(Theme::new(false, false, 80).paint(Token::Danger, "x"), "x");
+        assert_eq!(OutputTheme::new(false, false, 80).paint(ColourToken::Danger, "x"), "x");
         assert_eq!(
-            Theme::new(true, false, 80).paint(Token::Danger, "x"),
+            OutputTheme::new(true, false, 80).paint(ColourToken::Danger, "x"),
             "\x1b[31mx\x1b[0m"
         );
     }

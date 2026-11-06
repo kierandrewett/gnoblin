@@ -35,7 +35,7 @@ impl LayoutFault {
 /// What a layout module declares about itself. It is read once, when the module
 /// loads, and the wm's layout contract is answered from it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Manifest {
+pub(crate) struct LayoutManifest {
     pub(crate) kind: LayoutKind,
     pub(crate) extent: LayoutExtent,
     /// The standard commands the layout's `command` table names.
@@ -97,7 +97,7 @@ impl Vm {
 
     /// Load `module` afresh and register it as layout `name` with the user's
     /// `options`. Returns the manifest the module declares.
-    pub(crate) fn load(&mut self, name: &str, module: &str, options: &Data) -> Result<Manifest, LayoutFault> {
+    pub(crate) fn load(&mut self, name: &str, module: &str, options: &Data) -> Result<LayoutManifest, LayoutFault> {
         self.guard.begin(&self.limits);
         let (value, hash) = self
             .modules
@@ -184,7 +184,7 @@ fn classify(error: &mlua::Error, default: LayoutReason) -> LayoutReason {
 /// `kiosk`) and optionally an `extent` (`output`, the default, or `unbounded`). It may
 /// also have `on_request`, `on_added`, `on_removed`, `command` (a table of functions)
 /// and `options` (plain data). A bare function declares no kind, so it is refused.
-fn shape(value: &LuaValue) -> mlua::Result<(Data, Manifest)> {
+fn shape(value: &LuaValue) -> mlua::Result<(Data, LayoutManifest)> {
     let LuaValue::Table(table) = value else {
         return Err(runtime(format!(
             "a layout must be a table declaring its `kind`, not {}",
@@ -231,7 +231,7 @@ fn shape(value: &LuaValue) -> mlua::Result<(Data, Manifest)> {
         Some(options @ LuaValue::Table(_)) => Data::from_lua(&options).map_err(|error| runtime(error.0))?,
         Some(_) => return Err(runtime("layout `options` must be a table")),
     };
-    Ok((options, Manifest { kind, extent, commands }))
+    Ok((options, LayoutManifest { kind, extent, commands }))
 }
 
 fn key_name(key: &LuaValue) -> String {

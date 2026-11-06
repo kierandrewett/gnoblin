@@ -8,8 +8,8 @@
 use std::fmt::Write as _;
 
 use gnoblin_cli_ui::{
-    ColorChoice, Environment, ErrorReport, Status, Theme, Token, badge, definition_list, error_block, event_line,
-    identifier, kv_list, section, status_line, table, waiting_line,
+    ColorChoice, ColourToken, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, badge, definition_list,
+    error_block, event_line, identifier, kv_list, section, status_line, table, waiting_line,
 };
 
 /// The 16 ANSI colours as the HTML page draws them. This is presentation only;
@@ -20,7 +20,7 @@ const PALETTE: [&str; 16] = [
 ];
 
 /// Every component, rendered at one theme.
-fn blocks(theme: &Theme) -> Vec<(&'static str, String)> {
+fn blocks(theme: &OutputTheme) -> Vec<(&'static str, String)> {
     let report = ErrorReport {
         summary: "the compositor did not answer within the timeout of five seconds".to_string(),
         why: Some("it may be busy or the socket belongs to a different session".to_string()),
@@ -65,10 +65,10 @@ fn blocks(theme: &Theme) -> Vec<(&'static str, String)> {
         (
             "status lines",
             [
-                status_line(theme, Status::Ok, "window 12  focused"),
-                status_line(theme, Status::Warn, "output DP-2 is disabled"),
-                status_line(theme, Status::Fail, "socket missing"),
-                status_line(theme, Status::Info, "using the default socket"),
+                status_line(theme, LineOutcome::Ok, "window 12  focused"),
+                status_line(theme, LineOutcome::Warn, "output DP-2 is disabled"),
+                status_line(theme, LineOutcome::Fail, "socket missing"),
+                status_line(theme, LineOutcome::Info, "using the default socket"),
             ]
             .join("\n"),
         ),
@@ -86,16 +86,16 @@ fn blocks(theme: &Theme) -> Vec<(&'static str, String)> {
             format!(
                 "{}\n{}",
                 waiting_line(theme, 0, "calling window.focus 12"),
-                status_line(theme, Status::Ok, "window.focus 12 done")
+                status_line(theme, LineOutcome::Ok, "window.focus 12 done")
             ),
         ),
         (
             "badges and identifiers",
             format!(
                 "{} {} {} {}",
-                badge(theme, Token::Success, "live"),
-                badge(theme, Token::Warning, "stale"),
-                badge(theme, Token::Danger, "failed"),
+                badge(theme, ColourToken::Success, "live"),
+                badge(theme, ColourToken::Warning, "stale"),
+                badge(theme, ColourToken::Danger, "failed"),
                 identifier(theme, "window.focus")
             ),
         ),
@@ -195,7 +195,7 @@ fn html_page(sections: &[(String, String)]) -> String {
 fn html_sections() -> Vec<(String, String)> {
     let mut sections = Vec::new();
     for (columns, unicode) in [(80, true), (40, true), (80, false), (40, false)] {
-        let theme = Theme::new(true, unicode, columns);
+        let theme = OutputTheme::new(true, unicode, columns);
         let glyphs = if unicode { "Unicode" } else { "ASCII" };
         for (name, block) in blocks(&theme) {
             sections.push((format!("{name}: {columns} columns, {glyphs}"), block));
@@ -209,7 +209,7 @@ fn main() {
         print!("{}", html_page(&html_sections()));
         return;
     }
-    let theme = Theme::resolve(ColorChoice::Auto, &Environment::detect_stdout());
+    let theme = OutputTheme::resolve(ColorChoice::Auto, &OutputEnvironment::detect_stdout());
     for (_, block) in blocks(&theme) {
         println!("{block}\n");
     }

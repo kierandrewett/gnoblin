@@ -11,7 +11,7 @@ use gnoblin_lua_sandbox::Limits;
 use super::LayoutReason;
 use super::data::Data;
 use super::host::WedgeHook;
-use super::lua::{LayoutCall, LayoutFault, Manifest, Ran, Vm};
+use super::lua::{LayoutCall, LayoutFault, LayoutManifest, Ran, Vm};
 use super::require::message;
 use super::snapshot::LayoutSnapshot;
 
@@ -44,7 +44,7 @@ impl WorkerJob {
 /// What a successful job produced.
 pub(crate) enum LayoutFinished {
     /// A layout module was loaded and registered on the worker.
-    Loaded(Manifest),
+    Loaded(LayoutManifest),
     /// A layout call's reply, its module hash and its persisted state.
     Ran(Box<Ran>),
 }

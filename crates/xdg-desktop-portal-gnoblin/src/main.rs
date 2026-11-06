@@ -48,7 +48,7 @@ const CONSENT_LIFETIME: u64 = 120_000;
 
 fn main() -> ExitCode {
     let options = gnoblin_log_init::LogOptions::from_environment();
-    let _log = gnoblin_log_init::init(gnoblin_log::Role::Portal, &options);
+    let _log = gnoblin_log_init::init(gnoblin_log::ProcessRole::Portal, &options);
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

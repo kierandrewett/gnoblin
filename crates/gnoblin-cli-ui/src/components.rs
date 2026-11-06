@@ -1,9 +1,9 @@
 //! The building blocks of human output. Every function takes plain text, uses
-//! the `Theme` for colour and glyphs, and returns a string without a trailing
+//! the `OutputTheme` for colour and glyphs, and returns a string without a trailing
 //! newline. None of them reads the environment, so tests compare exact output.
 
 use crate::text::{pad, truncate, width, wrap};
-use crate::theme::{Glyph, Theme, Token};
+use crate::theme::{ColourToken, Glyph, OutputTheme};
 
 /// Gap between table columns and between a label and its value.
 const GAP: usize = 2;
@@ -12,7 +12,7 @@ const LABEL_COLUMN: usize = 7;
 
 /// The outcome shown by a status line.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Status {
+pub enum LineOutcome {
     /// Finished as wanted.
     Ok,
     /// Finished, but something needs a look.
@@ -23,7 +23,7 @@ pub enum Status {
     Info,
 }
 
-impl Status {
+impl LineOutcome {
     fn word(self) -> &'static str {
         match self {
             Self::Ok => "ok",
@@ -42,12 +42,12 @@ impl Status {
         }
     }
 
-    fn token(self) -> Token {
+    fn token(self) -> ColourToken {
         match self {
-            Self::Ok => Token::Success,
-            Self::Warn => Token::Warning,
-            Self::Fail => Token::Danger,
-            Self::Info => Token::Info,
+            Self::Ok => ColourToken::Success,
+            Self::Warn => ColourToken::Warning,
+            Self::Fail => ColourToken::Danger,
+            Self::Info => ColourToken::Info,
         }
     }
 }
@@ -83,19 +83,19 @@ fn indented(first: &str, rest: &str, text: &str, max: usize) -> Vec<String> {
 }
 
 /// A section heading: the title in strong text with a rule under it.
-pub fn section(theme: &Theme, title: &str) -> String {
+pub fn section(theme: &OutputTheme, title: &str) -> String {
     let rule = theme.glyph(Glyph::Rule).repeat(width(title).max(1));
     format!(
         "{}\n{}",
-        theme.paint(Token::Strong, title),
-        theme.paint(Token::Muted, &rule)
+        theme.paint(ColourToken::Strong, title),
+        theme.paint(ColourToken::Muted, &rule)
     )
 }
 
 /// A table with a header row. Columns are sized to their widest cell. When the
 /// table is wider than the theme allows, the widest column shrinks and its
 /// cells end with an ellipsis, so every row stays aligned.
-pub fn table(theme: &Theme, headers: &[&str], rows: &[Vec<String>]) -> String {
+pub fn table(theme: &OutputTheme, headers: &[&str], rows: &[Vec<String>]) -> String {
     let columns = headers.len();
     if columns == 0 {
         return String::new();
@@ -139,8 +139,8 @@ pub fn table(theme: &Theme, headers: &[&str], rows: &[Vec<String>]) -> String {
         .collect();
     let rule_cells: Vec<String> = widths.iter().map(|&w| theme.glyph(Glyph::Rule).repeat(w)).collect();
     let mut lines = vec![
-        theme.paint(Token::Strong, render(header_cells).trim_end()),
-        theme.paint(Token::Muted, render(rule_cells).trim_end()),
+        theme.paint(ColourToken::Strong, render(header_cells).trim_end()),
+        theme.paint(ColourToken::Muted, render(rule_cells).trim_end()),
     ];
     for row in rows {
         let cells: Vec<String> = (0..columns)
@@ -156,14 +156,14 @@ pub fn table(theme: &Theme, headers: &[&str], rows: &[Vec<String>]) -> String {
 
 /// Key-value pairs, with the keys aligned in one column. Long values wrap under
 /// the value column.
-pub fn kv_list(theme: &Theme, pairs: &[(&str, &str)]) -> String {
+pub fn kv_list(theme: &OutputTheme, pairs: &[(&str, &str)]) -> String {
     let key_width = pairs.iter().map(|(key, _)| width(key)).max().unwrap_or(0);
     let mut lines = Vec::new();
     for (key, value) in pairs {
         let lead = " ".repeat(key_width + GAP);
         let first = format!(
             "{}{}",
-            theme.paint(Token::Accent, key),
+            theme.paint(ColourToken::Accent, key),
             " ".repeat(key_width - width(key) + GAP)
         );
         if value.is_empty() {
@@ -181,10 +181,10 @@ pub fn kv_list(theme: &Theme, pairs: &[(&str, &str)]) -> String {
 
 /// Terms, each followed by its description indented beneath it. Used for
 /// `--help` option and command lists.
-pub fn definition_list(theme: &Theme, items: &[(&str, &str)]) -> String {
+pub fn definition_list(theme: &OutputTheme, items: &[(&str, &str)]) -> String {
     let mut lines = Vec::new();
     for (term, description) in items {
-        lines.push(theme.paint(Token::Accent, term));
+        lines.push(theme.paint(ColourToken::Accent, term));
         if !description.is_empty() {
             lines.extend(indented("    ", "    ", description, theme.width()));
         }
@@ -194,7 +194,7 @@ pub fn definition_list(theme: &Theme, items: &[(&str, &str)]) -> String {
 
 /// One line that says how something went: a glyph and a word, then the detail.
 /// In ASCII the word alone leads the line.
-pub fn status_line(theme: &Theme, status: Status, text: &str) -> String {
+pub fn status_line(theme: &OutputTheme, status: LineOutcome, text: &str) -> String {
     let lead = if theme.unicode() {
         format!("{} {}", theme.glyph(status.glyph()), status.word())
     } else {
@@ -212,34 +212,35 @@ pub fn status_line(theme: &Theme, status: Status, text: &str) -> String {
 }
 
 /// An error: what happened, why, and what to try next, each with a label.
-pub fn error_block(theme: &Theme, report: &ErrorReport) -> String {
+pub fn error_block(theme: &OutputTheme, report: &ErrorReport) -> String {
     let mut lines = Vec::new();
-    let label =
-        |text: &str, token: Token| format!("{}{}", theme.paint(token, text), " ".repeat(LABEL_COLUMN - width(text)));
+    let label = |text: &str, token: ColourToken| {
+        format!("{}{}", theme.paint(token, text), " ".repeat(LABEL_COLUMN - width(text)))
+    };
     let blank = " ".repeat(LABEL_COLUMN);
-    let mut push = |text: &str, label_text: &str, token: Token| {
+    let mut push = |text: &str, label_text: &str, token: ColourToken| {
         let first = label(label_text, token);
         let body = indented(&first, &blank, text, theme.width());
         lines.extend(body);
     };
-    push(&report.summary, "error:", Token::Danger);
+    push(&report.summary, "error:", ColourToken::Danger);
     if let Some(why) = &report.why {
-        push(why, "why:", Token::Muted);
+        push(why, "why:", ColourToken::Muted);
     }
     for hint in &report.hints {
-        push(hint, "hint:", Token::Accent);
+        push(hint, "hint:", ColourToken::Accent);
     }
     join(&lines)
 }
 
 /// One line of a `watch` stream: a timestamp, the changed subject and, when
 /// known, the old and new values. Values are cut to fit the width.
-pub fn event_line(theme: &Theme, timestamp: &str, subject: &str, change: Option<(&str, &str)>) -> String {
+pub fn event_line(theme: &OutputTheme, timestamp: &str, subject: &str, change: Option<(&str, &str)>) -> String {
     let head = format!(
         "{}{}{}",
-        theme.paint(Token::Muted, timestamp),
+        theme.paint(ColourToken::Muted, timestamp),
         " ".repeat(GAP),
-        theme.paint(Token::Accent, subject)
+        theme.paint(ColourToken::Accent, subject)
     );
     let Some((old, new)) = change else {
         return head;
@@ -260,9 +261,9 @@ pub fn event_line(theme: &Theme, timestamp: &str, subject: &str, change: Option<
 
 /// The line shown while an operation waits. On a terminal it is a spinner
 /// frame; elsewhere it is a plain `text...` line that is never rewritten.
-pub fn waiting_line(theme: &Theme, tick: usize, text: &str) -> String {
+pub fn waiting_line(theme: &OutputTheme, tick: usize, text: &str) -> String {
     if theme.animate() {
-        format!("{} {text}", theme.paint(Token::Accent, theme.spinner(tick)))
+        format!("{} {text}", theme.paint(ColourToken::Accent, theme.spinner(tick)))
     } else {
         format!("{text}...")
     }
@@ -270,16 +271,16 @@ pub fn waiting_line(theme: &Theme, tick: usize, text: &str) -> String {
 
 /// The escape sequence that erases a waiting line before the result is
 /// printed. Empty when the output is not animated.
-pub fn clear_waiting(theme: &Theme) -> &'static str {
+pub fn clear_waiting(theme: &OutputTheme) -> &'static str {
     if theme.animate() { "\r\x1b[2K" } else { "" }
 }
 
 /// A short label in a token colour, such as `[running]`.
-pub fn badge(theme: &Theme, token: Token, text: &str) -> String {
+pub fn badge(theme: &OutputTheme, token: ColourToken, text: &str) -> String {
     theme.paint(token, &format!("[{text}]"))
 }
 
 /// A name that the user may copy: a window id, an object or a property name.
-pub fn identifier(theme: &Theme, text: &str) -> String {
-    theme.paint(Token::Accent, text)
+pub fn identifier(theme: &OutputTheme, text: &str) -> String {
+    theme.paint(ColourToken::Accent, text)
 }

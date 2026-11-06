@@ -12,7 +12,7 @@ mod options;
 
 use std::panic;
 
-use gnoblin_log::Role;
+use gnoblin_log::ProcessRole;
 use gnoblin_log_console::ConsoleFormat;
 use gnoblin_log_store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
@@ -45,7 +45,7 @@ impl Drop for LogGuard {
 /// before the previous panic hook runs.
 ///
 /// Calling this after another subscriber is installed leaves that subscriber in place.
-pub fn init(role: Role, options: &LogOptions) -> LogGuard {
+pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     let role = role.name();
     let mut problems = Vec::new();
 

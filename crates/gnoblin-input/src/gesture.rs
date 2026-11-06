@@ -359,7 +359,7 @@ impl Default for GestureConfig {
 
 /// A recognised gesture in progress.
 #[derive(Clone, Debug)]
-struct Stream {
+struct ActiveGesture {
     kind: GestureKind,
     fingers: u8,
     edge: Option<Edge>,
@@ -382,13 +382,13 @@ struct Stream {
 /// `Gathering` and `Streaming` are exclusive: a stream never coexists with a
 /// gather, so the finger count of a stream is always the one it began with.
 #[derive(Clone, Debug)]
-enum Phase {
+enum RecogniserPhase {
     /// No contact is down.
     Idle,
     /// Contacts are down and may still cross a threshold to become a gesture.
     Gathering,
     /// A gesture is in progress.
-    Streaming(Stream),
+    Streaming(ActiveGesture),
 }
 
 /// The gesture recogniser.
@@ -398,7 +398,7 @@ pub struct Recogniser {
     contacts: BTreeMap<u8, (f64, f64)>,
     start: BTreeMap<u8, (f64, f64)>,
     last_activity: Tick,
-    phase: Phase,
+    phase: RecogniserPhase,
 }
 
 impl Recogniser {
@@ -409,7 +409,7 @@ impl Recogniser {
             contacts: BTreeMap::new(),
             start: BTreeMap::new(),
             last_activity: Tick::ZERO,
-            phase: Phase::Idle,
+            phase: RecogniserPhase::Idle,
         }
     }
 
@@ -425,14 +425,14 @@ impl Recogniser {
 
     /// Whether a gesture is in progress.
     pub const fn is_active(&self) -> bool {
-        matches!(self.phase, Phase::Streaming(_))
+        matches!(self.phase, RecogniserPhase::Streaming(_))
     }
 
     /// The gesture in progress, if one is.
-    fn stream(&self) -> Option<&Stream> {
+    fn stream(&self) -> Option<&ActiveGesture> {
         match &self.phase {
-            Phase::Streaming(stream) => Some(stream),
-            Phase::Idle | Phase::Gathering => None,
+            RecogniserPhase::Streaming(stream) => Some(stream),
+            RecogniserPhase::Idle | RecogniserPhase::Gathering => None,
         }
     }
 
@@ -466,8 +466,8 @@ impl Recogniser {
                     }
                     self.contacts.insert(contact.slot, (contact.x, contact.y));
                     self.start.insert(contact.slot, (contact.x, contact.y));
-                    if matches!(self.phase, Phase::Idle) {
-                        self.phase = Phase::Gathering;
+                    if matches!(self.phase, RecogniserPhase::Idle) {
+                        self.phase = RecogniserPhase::Gathering;
                     }
                 }
                 ContactPhase::Update | ContactPhase::End => {
@@ -514,12 +514,12 @@ impl Recogniser {
         if self.contacts.len() > usize::from(MAX_FINGERS) {
             self.contacts.clear();
             self.start.clear();
-            self.phase = Phase::Idle;
+            self.phase = RecogniserPhase::Idle;
             return None;
         }
         if self.contacts.is_empty() {
             self.start.clear();
-            self.phase = Phase::Idle;
+            self.phase = RecogniserPhase::Idle;
         }
         self.maybe_begin(tick)
     }
@@ -543,7 +543,8 @@ impl Recogniser {
                 reason: CancelReason::Stale,
             });
         }
-        if matches!(self.phase, Phase::Gathering) && tick.since(self.last_activity) >= self.config.stale_ticks {
+        if matches!(self.phase, RecogniserPhase::Gathering) && tick.since(self.last_activity) >= self.config.stale_ticks
+        {
             self.reset();
         }
         None
@@ -568,7 +569,7 @@ impl Recogniser {
     fn reset(&mut self) {
         self.contacts.clear();
         self.start.clear();
-        self.phase = Phase::Idle;
+        self.phase = RecogniserPhase::Idle;
     }
 
     /// Recognise a gesture if the movement has crossed a threshold.
@@ -615,7 +616,7 @@ impl Recogniser {
         path.push((0.0, 0.0));
         push_path(&mut path, (current.0 - start.0, current.1 - start.1));
         let angles = angles(&self.contacts, current);
-        self.phase = Phase::Streaming(Stream {
+        self.phase = RecogniserPhase::Streaming(ActiveGesture {
             kind,
             fingers: fingers as u8,
             edge,
@@ -642,7 +643,7 @@ impl Recogniser {
     /// Returns the movement since the previous position, which the caller reports as an
     /// update or, at the end of a stream, keeps without reporting.
     fn progress(&mut self, tick: Tick) -> Option<(f64, f64, f64, f64)> {
-        let Phase::Streaming(stream) = &mut self.phase else {
+        let RecogniserPhase::Streaming(stream) = &mut self.phase else {
             return None;
         };
         let current = centroid(&self.contacts)?;
@@ -667,7 +668,7 @@ impl Recogniser {
 
     /// Finish a gesture and forget every contact.
     fn finish(&mut self, tick: Tick) -> Option<GestureEvent> {
-        let Phase::Streaming(stream) = std::mem::replace(&mut self.phase, Phase::Idle) else {
+        let RecogniserPhase::Streaming(stream) = std::mem::replace(&mut self.phase, RecogniserPhase::Idle) else {
             return None;
         };
         let scale = if stream.start_spread > SPREAD_EPSILON {
