@@ -11,7 +11,7 @@
 //! extension may only add items whose ids are in its own namespace, which
 //! [`Contribution::new`] checks.
 
-use crate::item::{Action, IdKind, ItemId, ItemIdError, check_extension_name};
+use crate::item::{IdKind, ItemId, ItemIdError, MenuAction, check_extension_name};
 
 /// The label of each built-in action, in English.
 ///
@@ -32,7 +32,7 @@ const LABEL_CLOSE: &str = "Close";
 /// Built by the compositor from the live window. The menu is only as current as
 /// this value, so it must be rebuilt when the window changes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct WindowState {
+pub struct MenuWindowState {
     /// The window is maximised. Enables Restore and turns Maximize off.
     pub maximised: bool,
     /// The window is minimised. Turns Minimize off.
@@ -53,14 +53,14 @@ pub struct WindowState {
 ///
 /// Workspace numbers are 1-based, as in the item ids.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Workspaces {
+pub struct MenuWorkspaces {
     /// The number of workspaces. At least one.
     count: u32,
     /// The workspace the window is on, from 1 to `count`.
     current: u32,
 }
 
-impl Workspaces {
+impl MenuWorkspaces {
     /// Makes a workspace set, or `None` when `count` is zero or `current` is
     /// outside `1..=count`.
     #[must_use]
@@ -267,31 +267,37 @@ fn check_items(extension: &str, items: &[MenuItem]) -> Result<(), ContributionEr
 /// `closable`. The two toggles are always enabled, and their check mark follows
 /// the state. A workspace submenu item is disabled for the current workspace.
 #[must_use]
-pub fn build_menu(state: &WindowState, workspaces: &Workspaces, contributions: &[Contribution]) -> Menu {
+pub fn build_menu(state: &MenuWindowState, workspaces: &MenuWorkspaces, contributions: &[Contribution]) -> Menu {
     let mut items = Vec::new();
 
     if state.maximised {
-        items.push(MenuItem::action(Action::Restore.id(), LABEL_RESTORE));
+        items.push(MenuItem::action(MenuAction::Restore.id(), LABEL_RESTORE));
     }
-    items.push(enabled(MenuItem::action(Action::Move.id(), LABEL_MOVE), state.movable));
     items.push(enabled(
-        MenuItem::action(Action::Resize.id(), LABEL_RESIZE),
+        MenuItem::action(MenuAction::Move.id(), LABEL_MOVE),
+        state.movable,
+    ));
+    items.push(enabled(
+        MenuItem::action(MenuAction::Resize.id(), LABEL_RESIZE),
         state.resizable,
     ));
     items.push(enabled(
-        MenuItem::action(Action::Minimize.id(), LABEL_MINIMIZE),
+        MenuItem::action(MenuAction::Minimize.id(), LABEL_MINIMIZE),
         !state.minimised,
     ));
     items.push(enabled(
-        MenuItem::action(Action::Maximize.id(), LABEL_MAXIMIZE),
+        MenuItem::action(MenuAction::Maximize.id(), LABEL_MAXIMIZE),
         state.resizable && !state.maximised,
     ));
     items.push(checked(
-        MenuItem::action(Action::ToggleAbove.id(), LABEL_TOGGLE_ABOVE),
+        MenuItem::action(MenuAction::ToggleAbove.id(), LABEL_TOGGLE_ABOVE),
         state.always_on_top,
     ));
     items.push(checked(
-        MenuItem::action(Action::ToggleVisibleOnAllWorkspaces.id(), LABEL_TOGGLE_ALL_WORKSPACES),
+        MenuItem::action(
+            MenuAction::ToggleVisibleOnAllWorkspaces.id(),
+            LABEL_TOGGLE_ALL_WORKSPACES,
+        ),
         state.on_all_workspaces,
     ));
     if workspaces.count() > 1 {
@@ -299,7 +305,7 @@ pub fn build_menu(state: &WindowState, workspaces: &Workspaces, contributions: &
     }
     items.push(MenuItem::separator());
     items.push(enabled(
-        MenuItem::action(Action::Close.id(), LABEL_CLOSE),
+        MenuItem::action(MenuAction::Close.id(), LABEL_CLOSE),
         state.closable,
     ));
 
@@ -312,10 +318,10 @@ pub fn build_menu(state: &WindowState, workspaces: &Workspaces, contributions: &
 }
 
 /// The move-to-workspace submenu: one item per workspace, the current one disabled.
-fn move_to_workspace(workspaces: &Workspaces) -> MenuItem {
+fn move_to_workspace(workspaces: &MenuWorkspaces) -> MenuItem {
     let children = (1..=workspaces.count())
         .map(|number| {
-            let item = MenuItem::action(Action::MoveToWorkspace(number).id(), format!("Workspace {number}"));
+            let item = MenuItem::action(MenuAction::MoveToWorkspace(number).id(), format!("Workspace {number}"));
             enabled(item, number != workspaces.current())
         })
         .collect();

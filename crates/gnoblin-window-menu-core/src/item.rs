@@ -4,7 +4,7 @@
 //! it is the trust boundary of the menu. Its text is parsed once, at the edge,
 //! into one of three shapes, and nothing downstream re-reads the string:
 //!
-//! - a compositor action, such as `window.close`, which [`Action`] names;
+//! - a compositor action, such as `window.close`, which [`MenuAction`] names;
 //! - the group `window.move-to-workspace`, which is a submenu and never a choice;
 //! - an extension item, `<extension>.<id>`, which routes to that extension.
 //!
@@ -25,10 +25,10 @@ const MOVE_TO_WORKSPACE_PREFIX: &str = "window.move-to-workspace.";
 
 /// A compositor-owned window action.
 ///
-/// Each variant has exactly one id, given by [`Action::id`]. The compositor, not
+/// Each variant has exactly one id, given by [`MenuAction::id`]. The compositor, not
 /// a provider, decides what each action does once the menu has closed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Action {
+pub enum MenuAction {
     /// Restore a maximised window to its previous size.
     Restore,
     /// Start a keyboard-driven move of the window.
@@ -49,7 +49,7 @@ pub enum Action {
     Close,
 }
 
-impl Action {
+impl MenuAction {
     /// The id this action is written as on the wire and in the menu.
     ///
     /// Stable: a provider stores these strings, so they must not change once
@@ -117,7 +117,7 @@ impl std::error::Error for ItemIdError {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IdKind<'a> {
     /// A compositor action, which [`ItemId::action`] returns.
-    Action(Action),
+    Action(MenuAction),
     /// A group of actions, such as the move-to-workspace submenu. Never a choice.
     Group,
     /// An extension item, with the extension name and the id it chose.
@@ -193,7 +193,7 @@ impl ItemId {
 
     /// The id of a compositor action.
     #[must_use]
-    pub fn action(action: Action) -> Self {
+    pub fn action(action: MenuAction) -> Self {
         action.id()
     }
 
@@ -243,19 +243,19 @@ impl ItemId {
 
     /// The compositor action this id names. `None` for the group and for extension ids.
     #[must_use]
-    pub fn action_name(&self) -> Option<Action> {
+    pub fn action_name(&self) -> Option<MenuAction> {
         Some(match self.0.as_str() {
-            "window.restore" => Action::Restore,
-            "window.move" => Action::Move,
-            "window.resize" => Action::Resize,
-            "window.minimize" => Action::Minimize,
-            "window.maximize" => Action::Maximize,
-            "window.toggle-above" => Action::ToggleAbove,
-            "window.toggle-visible-on-all-workspaces" => Action::ToggleVisibleOnAllWorkspaces,
-            "window.close" => Action::Close,
+            "window.restore" => MenuAction::Restore,
+            "window.move" => MenuAction::Move,
+            "window.resize" => MenuAction::Resize,
+            "window.minimize" => MenuAction::Minimize,
+            "window.maximize" => MenuAction::Maximize,
+            "window.toggle-above" => MenuAction::ToggleAbove,
+            "window.toggle-visible-on-all-workspaces" => MenuAction::ToggleVisibleOnAllWorkspaces,
+            "window.close" => MenuAction::Close,
             other => {
                 let number = other.strip_prefix(MOVE_TO_WORKSPACE_PREFIX)?;
-                Action::MoveToWorkspace(number.parse().ok()?)
+                MenuAction::MoveToWorkspace(number.parse().ok()?)
             }
         })
     }

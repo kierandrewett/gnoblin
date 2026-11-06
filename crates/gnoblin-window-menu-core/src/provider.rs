@@ -60,7 +60,7 @@ pub struct OpenRequest {
     pub menu: Menu,
     /// The rectangle the menu opens from: a button, or a point as a zero-size rectangle.
     pub anchor: Rect,
-    /// The output's work area, outside exclusive zones. Placement is clamped into it.
+    /// The output's work area, outside exclusive zones. MenuPlacement is clamped into it.
     pub work_area: Rect,
 }
 
@@ -127,7 +127,7 @@ pub trait MenuProvider {
 
 /// Which provider serves a request, decided once at open time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Source {
+pub enum ProviderSource {
     /// The configured provider opened the menu.
     Configured,
     /// The built-in provider opened the menu, because of the given error.
@@ -140,10 +140,10 @@ pub enum Source {
 /// open it. Once a menu is open, the fallback never applies: a disconnect closes
 /// the menu, and the built-in does not take over.
 #[must_use]
-pub fn source_for(open: Result<(), OpenError>) -> Source {
+pub fn source_for(open: Result<(), OpenError>) -> ProviderSource {
     match open {
-        Ok(()) => Source::Configured,
-        Err(error) => Source::Builtin(error),
+        Ok(()) => ProviderSource::Configured,
+        Err(error) => ProviderSource::Builtin(error),
     }
 }
 

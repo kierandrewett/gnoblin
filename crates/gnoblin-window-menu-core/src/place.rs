@@ -16,7 +16,7 @@ use gnoblin_types::{Point, Rect, Size};
 
 /// Where a menu opens, and whether it flipped above its anchor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Placement {
+pub struct MenuPlacement {
     /// The top-left corner of the menu, in the same space as the anchor.
     pub origin: Point,
     /// True when the menu opened above the anchor rather than below it.
@@ -31,7 +31,7 @@ pub struct Placement {
 ///
 /// Edges are computed in 64 bits, so an anchor near `i32::MAX` does not wrap.
 #[must_use]
-pub fn place(anchor: Rect, menu_size: Size, work_area: Rect) -> Placement {
+pub fn place(anchor: Rect, menu_size: Size, work_area: Rect) -> MenuPlacement {
     let menu_width = i64::from(menu_size.width);
     let menu_height = i64::from(menu_size.height);
     let anchor_bottom = i64::from(anchor.y) + i64::from(anchor.height);
@@ -52,7 +52,7 @@ pub fn place(anchor: Rect, menu_size: Size, work_area: Rect) -> Placement {
     );
     let top = clamp_axis(top, menu_height, i64::from(work_area.y), work_area.bottom());
 
-    Placement {
+    MenuPlacement {
         origin: Point::new(narrow(left), narrow(top)),
         flipped,
     }

@@ -6,9 +6,9 @@
 //! window, the output, the sockets and the layer, and calls into this crate.
 //! Each part is in its own module:
 //!
-//! - [`item`]: [`ItemId`] and the compositor's named [`Action`]s. An id is
+//! - [`item`]: [`ItemId`] and the compositor's named [`MenuAction`]s. An id is
 //!   the trust boundary, so it is parsed once, at the edge.
-//! - [`menu`]: [`Menu`] and [`MenuItem`], the [`WindowState`] it is built
+//! - [`menu`]: [`Menu`] and [`MenuItem`], the [`MenuWindowState`] it is built
 //!   from, extension [`Contribution`]s, and [`build_menu`].
 //! - [`choice`]: [`validate_choice`], which checks a provider's reply against
 //!   the menu it was sent and says where it routes.
@@ -27,12 +27,14 @@ pub mod nav;
 pub mod place;
 pub mod provider;
 
-pub use choice::{ChoiceError, Routed, validate_choice};
-pub use item::{Action, IdKind, ItemId, ItemIdError};
-pub use menu::{Contribution, ContributionError, ItemKind, Menu, MenuItem, WindowState, Workspaces, build_menu};
-pub use nav::{Key, NavState, Navigator, Outcome, Refusal};
-pub use place::{Placement, place};
+pub use choice::{MenuChoiceError, MenuRouted, validate_choice};
+pub use item::{IdKind, ItemId, ItemIdError, MenuAction};
+pub use menu::{
+    Contribution, ContributionError, ItemKind, Menu, MenuItem, MenuWindowState, MenuWorkspaces, build_menu,
+};
+pub use nav::{MenuKey, NavOutcome, NavRefusal, NavState, Navigator};
+pub use place::{MenuPlacement, place};
 pub use provider::{
-    DismissReason, MenuProvider, OpenError, OpenRequest, ProviderEvent, REPLY_TIMEOUT, Source, reply_overdue,
+    DismissReason, MenuProvider, OpenError, OpenRequest, ProviderEvent, ProviderSource, REPLY_TIMEOUT, reply_overdue,
     source_for,
 };

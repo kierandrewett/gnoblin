@@ -11,7 +11,7 @@
 //! not a separator and is enabled. Highlight never rests on an item that is not
 //! selectable.
 //!
-//! | State  | Key            | Condition                | Result |
+//! | State  | MenuKey            | Condition                | Result |
 //! |--------|----------------|--------------------------|--------|
 //! | Closed | any            | always                   | refuse `Closed` |
 //! | Open   | Down           | a selectable item exists | highlight next selectable, wrapping |
@@ -38,7 +38,7 @@ use crate::provider::DismissReason;
 
 /// A key the navigator understands. The compositor maps real key events onto these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Key {
+pub enum MenuKey {
     /// Move the highlight up, wrapping at the top.
     Up,
     /// Move the highlight down, wrapping at the bottom.
@@ -49,7 +49,7 @@ pub enum Key {
     End,
     /// Choose the highlighted item, or enter a highlighted submenu.
     Enter,
-    /// The same as [`Key::Enter`].
+    /// The same as [`MenuKey::Enter`].
     Space,
     /// Enter the highlighted submenu.
     Right,
@@ -76,7 +76,7 @@ pub enum NavState {
 
 /// What a handled key did.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Outcome {
+pub enum NavOutcome {
     /// The highlight moved, or stayed where it was.
     Highlighted,
     /// A submenu was entered.
@@ -91,7 +91,7 @@ pub enum Outcome {
 
 /// Why a key was refused. The state did not change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Refusal {
+pub enum NavRefusal {
     /// The key was pressed while no menu was open.
     Closed,
     /// [`Navigator::open`] was called while a menu was already open.
@@ -106,7 +106,7 @@ pub enum Refusal {
     AtRoot,
 }
 
-impl std::fmt::Display for Refusal {
+impl std::fmt::Display for NavRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Closed => "the menu is closed",
@@ -119,7 +119,7 @@ impl std::fmt::Display for Refusal {
     }
 }
 
-impl std::error::Error for Refusal {}
+impl std::error::Error for NavRefusal {}
 
 /// Owns a menu and runs the keyboard state machine over it.
 #[derive(Clone, Debug)]
@@ -160,10 +160,10 @@ impl Navigator {
     ///
     /// # Errors
     ///
-    /// Refuses with [`Refusal::AlreadyOpen`] when the menu is open.
-    pub fn open(&mut self, select_first: bool) -> Result<(), Refusal> {
+    /// Refuses with [`NavRefusal::AlreadyOpen`] when the menu is open.
+    pub fn open(&mut self, select_first: bool) -> Result<(), NavRefusal> {
         if self.state != NavState::Closed {
-            return Err(Refusal::AlreadyOpen);
+            return Err(NavRefusal::AlreadyOpen);
         }
         let highlight = if select_first {
             first_selectable(&self.menu.items)
@@ -183,23 +183,23 @@ impl Navigator {
     ///
     /// # Errors
     ///
-    /// Returns a [`Refusal`] for a key that cannot act in the current state. The
+    /// Returns a [`NavRefusal`] for a key that cannot act in the current state. The
     /// state is unchanged in that case.
-    pub fn handle(&mut self, key: Key) -> Result<Outcome, Refusal> {
+    pub fn handle(&mut self, key: MenuKey) -> Result<NavOutcome, NavRefusal> {
         let NavState::Open { trail, highlight } = &self.state else {
-            return Err(Refusal::Closed);
+            return Err(NavRefusal::Closed);
         };
         let items = level(&self.menu.items, trail);
         let (next, outcome) = match key {
-            Key::Down => move_highlight(trail, *highlight, items, true)?,
-            Key::Up => move_highlight(trail, *highlight, items, false)?,
-            Key::Home => jump(trail, first_selectable(items))?,
-            Key::End => jump(trail, last_selectable(items))?,
-            Key::Enter | Key::Space => activate(trail, *highlight, items)?,
-            Key::Right => enter_submenu(trail, *highlight, items)?,
-            Key::Left => leave_submenu(trail)?,
-            Key::Escape if trail.is_empty() => (NavState::Closed, Outcome::Dismissed(DismissReason::Escape)),
-            Key::Escape => leave_submenu(trail)?,
+            MenuKey::Down => move_highlight(trail, *highlight, items, true)?,
+            MenuKey::Up => move_highlight(trail, *highlight, items, false)?,
+            MenuKey::Home => jump(trail, first_selectable(items))?,
+            MenuKey::End => jump(trail, last_selectable(items))?,
+            MenuKey::Enter | MenuKey::Space => activate(trail, *highlight, items)?,
+            MenuKey::Right => enter_submenu(trail, *highlight, items)?,
+            MenuKey::Left => leave_submenu(trail)?,
+            MenuKey::Escape if trail.is_empty() => (NavState::Closed, NavOutcome::Dismissed(DismissReason::Escape)),
+            MenuKey::Escape => leave_submenu(trail)?,
         };
         self.state = next;
         Ok(outcome)
@@ -212,28 +212,32 @@ fn move_highlight(
     highlight: Option<usize>,
     items: &[MenuItem],
     forward: bool,
-) -> Result<(NavState, Outcome), Refusal> {
-    let next = step(items, highlight, forward).ok_or(Refusal::NothingSelectable)?;
-    Ok((open(trail, Some(next)), Outcome::Highlighted))
+) -> Result<(NavState, NavOutcome), NavRefusal> {
+    let next = step(items, highlight, forward).ok_or(NavRefusal::NothingSelectable)?;
+    Ok((open(trail, Some(next)), NavOutcome::Highlighted))
 }
 
 /// Highlights a known item, or refuses when there is none.
-fn jump(trail: &[usize], target: Option<usize>) -> Result<(NavState, Outcome), Refusal> {
-    let index = target.ok_or(Refusal::NothingSelectable)?;
-    Ok((open(trail, Some(index)), Outcome::Highlighted))
+fn jump(trail: &[usize], target: Option<usize>) -> Result<(NavState, NavOutcome), NavRefusal> {
+    let index = target.ok_or(NavRefusal::NothingSelectable)?;
+    Ok((open(trail, Some(index)), NavOutcome::Highlighted))
 }
 
 /// Chooses an enabled action, or enters a submenu.
-fn activate(trail: &[usize], highlight: Option<usize>, items: &[MenuItem]) -> Result<(NavState, Outcome), Refusal> {
-    let index = highlight.ok_or(Refusal::NothingHighlighted)?;
-    let item = items.get(index).ok_or(Refusal::NothingHighlighted)?;
+fn activate(
+    trail: &[usize],
+    highlight: Option<usize>,
+    items: &[MenuItem],
+) -> Result<(NavState, NavOutcome), NavRefusal> {
+    let index = highlight.ok_or(NavRefusal::NothingHighlighted)?;
+    let item = items.get(index).ok_or(NavRefusal::NothingHighlighted)?;
     match item.kind {
         ItemKind::Action => {
-            let id = item.id.clone().ok_or(Refusal::NothingHighlighted)?;
-            Ok((NavState::Closed, Outcome::Chose(id)))
+            let id = item.id.clone().ok_or(NavRefusal::NothingHighlighted)?;
+            Ok((NavState::Closed, NavOutcome::Chose(id)))
         }
         ItemKind::Submenu => enter_submenu(trail, highlight, items),
-        ItemKind::Separator => Err(Refusal::NothingHighlighted),
+        ItemKind::Separator => Err(NavRefusal::NothingHighlighted),
     }
 }
 
@@ -242,21 +246,24 @@ fn enter_submenu(
     trail: &[usize],
     highlight: Option<usize>,
     items: &[MenuItem],
-) -> Result<(NavState, Outcome), Refusal> {
-    let index = highlight.ok_or(Refusal::NotASubmenu)?;
-    let item = items.get(index).ok_or(Refusal::NotASubmenu)?;
+) -> Result<(NavState, NavOutcome), NavRefusal> {
+    let index = highlight.ok_or(NavRefusal::NotASubmenu)?;
+    let item = items.get(index).ok_or(NavRefusal::NotASubmenu)?;
     if item.kind != ItemKind::Submenu {
-        return Err(Refusal::NotASubmenu);
+        return Err(NavRefusal::NotASubmenu);
     }
     let mut deeper = trail.to_vec();
     deeper.push(index);
-    Ok((open(&deeper, first_selectable(&item.children)), Outcome::SubmenuEntered))
+    Ok((
+        open(&deeper, first_selectable(&item.children)),
+        NavOutcome::SubmenuEntered,
+    ))
 }
 
 /// Leaves the current submenu, highlighting it in the parent level.
-fn leave_submenu(trail: &[usize]) -> Result<(NavState, Outcome), Refusal> {
-    let (&left, parent) = trail.split_last().ok_or(Refusal::AtRoot)?;
-    Ok((open(parent, Some(left)), Outcome::SubmenuLeft))
+fn leave_submenu(trail: &[usize]) -> Result<(NavState, NavOutcome), NavRefusal> {
+    let (&left, parent) = trail.split_last().ok_or(NavRefusal::AtRoot)?;
+    Ok((open(parent, Some(left)), NavOutcome::SubmenuLeft))
 }
 
 /// An open state at `trail` with `highlight`.
