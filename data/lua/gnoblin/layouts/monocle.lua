@@ -9,7 +9,7 @@
 --   next: show the next window in stacking order (wraps).
 --   prev: show the previous window in stacking order (wraps).
 --
--- Usage: gnoblin.layout.register("monocle", "gnoblin.layouts.monocle")
+-- Usage: select it by name, "monocle", in the layout settings.
 
 local M = {}
 M.kind = "tiling"

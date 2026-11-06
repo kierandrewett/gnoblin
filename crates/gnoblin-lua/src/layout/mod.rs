@@ -1,7 +1,7 @@
 //! The layout host: Lua layouts run on a worker thread that owns their VM.
 //!
-//! A layout is a Lua module that the configuration registers with
-//! `gnoblin.layout.register(name, module)`. The host runs it on the worker, and
+//! A layout is a Lua module that the host loads by name, through
+//! [`Host::register`]. The host runs it on the worker, and
 //! [`LuaEngine`] drives it through the wm's [`gnoblin_wm::layout::LayoutEngine`]
 //! contract: a run is submitted without waiting and collected against the frame deadline.
 //! Every failure becomes a [`gnoblin_wm::layout::LayoutFailure`], so the slot falls back
@@ -24,7 +24,7 @@
 //! - `missing-module` / `invalid-layout`: a module that cannot load, or does not
 //!   define a layout, is refused at registration.
 //! - Require sandbox: path traversal is refused; only the configured directory loads.
-//! - LayoutRegistration: a duplicate name is refused, and a failed re-register restores the
+//! - Registration: a duplicate name is refused, and a failed re-register restores the
 //!   previous registration.
 //! - Determinism: the same snapshot yields the same placements.
 //! - State persistence: `data` values persist across calls on one worker.
@@ -42,7 +42,6 @@ mod worker;
 use std::collections::BTreeMap;
 
 use gnoblin_wm::layout::Arg;
-use mlua::{Lua, Table};
 
 pub use data::{Data, DataError, LayoutKey};
 pub use engine::LuaEngine;
@@ -119,53 +118,4 @@ impl LayoutReason {
             LayoutReason::InvalidLayout => "invalid-layout",
         }
     }
-}
-
-/// One `gnoblin.layout.register` call, as the configuration made it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LayoutRegistration {
-    /// The name the layout is registered under.
-    pub name: String,
-    /// The module the layout is loaded from, as `require` would name it.
-    pub module: String,
-}
-
-const REGISTRATIONS: &str = "gnoblin.layout.registrations";
-
-/// Installs `gnoblin.layout.register` on the configuration VM's `gnoblin` table.
-pub fn install(lua: &Lua, gnoblin: &Table) -> mlua::Result<()> {
-    lua.set_named_registry_value(REGISTRATIONS, lua.create_table()?)?;
-    let layout = lua.create_table()?;
-    layout.set(
-        "register",
-        lua.create_function(|lua, (name, module): (String, String)| {
-            if name.is_empty() {
-                return Err(require::runtime("layout name must not be empty"));
-            }
-            if !require::is_module_name(&module) {
-                return Err(require::runtime(format!(
-                    "`{module}` is not a valid layout module name"
-                )));
-            }
-            let registrations: Table = lua.named_registry_value(REGISTRATIONS)?;
-            if registrations.contains_key(name.as_str())? {
-                return Err(require::runtime(format!("layout `{name}` is already registered")));
-            }
-            registrations.set(name, module)
-        })?,
-    )?;
-    gnoblin.set("layout", layout)
-}
-
-/// Takes the registrations the configuration made, in name order, and clears them.
-pub fn take_registrations(lua: &Lua) -> mlua::Result<Vec<LayoutRegistration>> {
-    let registrations: Table = lua.named_registry_value(REGISTRATIONS)?;
-    let mut taken = Vec::new();
-    for pair in registrations.pairs::<String, String>() {
-        let (name, module) = pair?;
-        taken.push(LayoutRegistration { name, module });
-    }
-    taken.sort_by(|a, b| a.name.cmp(&b.name));
-    lua.set_named_registry_value(REGISTRATIONS, lua.create_table()?)?;
-    Ok(taken)
 }

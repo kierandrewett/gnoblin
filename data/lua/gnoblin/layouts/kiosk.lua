@@ -7,7 +7,7 @@
 -- options: none.
 -- commands: none.
 --
--- Usage: gnoblin.layout.register("kiosk", "gnoblin.layouts.kiosk")
+-- Usage: select it by name, "kiosk", in the layout settings.
 
 local M = {}
 M.kind = "kiosk"

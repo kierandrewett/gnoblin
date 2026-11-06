@@ -10,9 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, WedgeHook, install, take_registrations,
-};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, WedgeHook};
 use gnoblin_types::{OutputId, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Collected, Generation, Job, Layout, LayoutEngine, LayoutExtent, LayoutFailure, LayoutOutcome, LayoutOutput,
@@ -153,25 +151,13 @@ fn expect_geometry(layout: &Layout, expected: &[(u64, f64, f64, f64, f64)]) {
 }
 
 #[test]
-fn e2e_config_registers_a_lua_layout_driven_through_the_slot() {
-    // The configuration chunk registers the layout exactly as a user's config would.
-    let lua = mlua::Lua::new();
-    let gnoblin = lua.create_table().expect("a gnoblin table");
-    install(&lua, &gnoblin).expect("the layout API installs");
-    lua.globals().set("gnoblin", gnoblin).expect("the global");
-    lua.load(r#"gnoblin.layout.register("master", "master")"#)
-        .exec()
-        .expect("the config chunk runs");
-    let registrations = take_registrations(&lua).expect("registrations");
-    assert_eq!(registrations.len(), 1);
-
+fn e2e_host_loads_a_lua_layout_by_name_and_drives_it_through_the_slot() {
+    // The host loads the layout by name, as the configuration's layout selection will.
     let dir = modules("e2e", &[("master", MASTER_STACK)]);
     let host = host(dir);
-    for registration in &registrations {
-        host.borrow_mut()
-            .register(&registration.name, &registration.module, no_options())
-            .expect("the registered layout loads");
-    }
+    host.borrow_mut()
+        .register("master", "master", no_options())
+        .expect("the registered layout loads");
 
     // Three windows on a 1000x600 area: master left half, two stacked on the right.
     let mut slot = Slot::new(Box::new(engine(&host, "master")));

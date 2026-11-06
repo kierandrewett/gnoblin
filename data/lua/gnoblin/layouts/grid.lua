@@ -8,7 +8,7 @@
 --          then right). Default "row".
 -- commands: none.
 --
--- Usage: gnoblin.layout.register("grid", "gnoblin.layouts.grid")
+-- Usage: select it by name, "grid", in the layout settings.
 
 local M = {}
 M.kind = "tiling"

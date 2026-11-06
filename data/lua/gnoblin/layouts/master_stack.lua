@@ -17,7 +17,7 @@
 --   rotate         shift the window order by args.step (default 1)
 -- state: master_count and ratio overrides from commands, and the window order.
 --
--- Usage: gnoblin.layout.register("master_stack", "gnoblin.layouts.master_stack")
+-- Usage: select it by name, "master_stack", in the layout settings.
 
 local M = {}
 M.kind = "tiling"

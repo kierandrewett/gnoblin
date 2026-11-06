@@ -241,7 +241,6 @@ pub(super) fn install<T: Transport + 'static>(
     }
     gnoblin.set("timers", timers)?;
 
-    crate::layout::install(lua, &gnoblin)?;
     // Core object types sit directly on `gnoblin`. The build refuses a core type named
     // like a declared member, so the two never share a key. Extension namespaces are
     // not generated here: `extension_bindings` builds them from the loaded schema.

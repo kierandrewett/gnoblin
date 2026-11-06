@@ -39,13 +39,3 @@ kind = "function"
 doc = "The caller's current tick."
 returns = ["integer"]
 
-[[member]]
-name = "layout"
-kind = "table"
-doc = "Register Lua layout modules with the compositor."
-
-[[member.members]]
-name = "register"
-kind = "function"
-doc = "Register the Lua module `module` as the layout `name`. Names are unique."
-params = [{ name = "name", type = "string" }, { name = "module", type = "string" }]

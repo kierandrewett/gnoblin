@@ -22,7 +22,7 @@
 --   rotate(step): move the front by step cards (default 1, negative goes back).
 --                 Returns the id of the new front window, or nil with no windows.
 --
--- Usage: gnoblin.layout.register("carousel3d", "gnoblin.layouts.carousel3d")
+-- Usage: select it by name, "carousel3d", in the layout settings.
 
 local M = {}
 M.kind = "tiling"
