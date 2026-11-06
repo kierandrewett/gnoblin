@@ -1633,7 +1633,7 @@ Each section below records the choice, its consequences, and the options conside
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
 | D28 | Layer registry               | **Proposed 2026-11-06:** layer registry; owned names; closed bands. `secure` defaults off unless declared; config overrides. Captures mask secure nodes by default.                                                             |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
-| D30 | Store                        | **Proposed 2026-11-06:** one `gnoblin-store` API, one SQLite file per owner; extensions never open SQLite (`design/store.md`).                                                                                                  |
+| D30 | Store                        | **Proposed 2026-11-06:** one store abstraction; keyring, logs and extension state are kinds (`design/store.md`).                                                                                                                |
 
 ### D1: where scripts run
 
@@ -3038,6 +3038,8 @@ Consequences:
 - Acceptance is compatibility: a libsecret `secret-tool` round trip, the portal `Retrieve` call, and an existing Secret Service client needing no change.
 - Migration from gnome-keyring or KWallet is not offered, unless Kieran says yes (`design/keyring.md`, "Needs Kieran").
 
+**Store provider.** The keyring is a provider of kind `secret` in the store abstraction (D30). It speaks the provider interface, so `gnoblinctl store list` shows it. Its decisions here are unchanged.
+
 ### D28: layer registry
 
 **Proposed 2026-11-06: layers are runtime objects in one registry. Gnoblin and extensions register them, and the compositor attributes each to its provider. A closed band set orders them and nothing else.** The full design is in `design/layers.md`.
@@ -3056,6 +3058,7 @@ Consequences:
 - `layers.list` keeps its wlr record shape. Registered layers appear in the same list, with `band`, `scope`, `target`, `provider` and `state` properties.
 - Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, count limits, and the `secure` owner check. Per-layer options (scope, order, input, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
 - Name ownership: a layer name belongs to its first registrant, and built-in names are reserved for their providers. `secure` defaults to off only where a layer declares no value. `portals` declares `secure = true`. The user overrides `secure` per layer name or window rule, in either direction, including built-ins. The lock surface is fixed secure.
+- Shape: stores (D30) use the same registry, provider, grant and lifecycle pattern. `design/store.md`, "Platform pattern", names it. Each decision stays in its own design file.
 - Secure content is never drawn into any capture. Under `capture.secure-treatment` (default `mask`) a secure node becomes a neutral silhouette in a capture, or nothing under `omit`. The capture paths and their gaps are in `design/layers.md`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
 - Tests (not run): band order; window-layer stacking and follow rules; one live `portals` per output; name collision and reserved built-in names; end on provider disconnect, target close and output removal; the lock; the capture filter under `mask` (a shaped window captures as its silhouette) and `omit` (underlay shows by design); a config override flips a layer both ways, including `portals`; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
@@ -3148,25 +3151,39 @@ Needs Kieran:
 
 ### D30: store
 
-**Proposed 2026-11-06: runtime state goes through one store API, `gnoblin-store`, with one SQLite file per owner. An owner is a Gnoblin crate or an extension, named by the compositor. Extensions never open SQLite. Secrets never enter the store (D27).** The design, invariants and options are in `design/store.md`.
+**Proposed 2026-11-06: a store is the one storage abstraction. The keyring (D27), the logs, extension state and later storage are kinds of store. A store has a common core, and capabilities are discovered at runtime.** The design, invariants and options are in `design/store.md`.
 
 **Today.** Persisted state is small. The log store writes `$XDG_STATE_HOME/gnoblin/logs.sqlite3` (`gnoblin-log/src/store.rs:103-113`). Session recovery lives under `state_home` (`gnoblin-session/src/supervisor.rs:136`). The last accepted configuration is `last-good-config.json` (`gnoblin-config/src/last_good.rs:45`). Extensions have no storage, because the wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`).
 
-**Decision.** Each owner's file is `$XDG_DATA_HOME/gnoblin/store/<namespace>.sqlite3`, with WAL and migrations owned by the owner. Values are a subset of `gnoblin_model::Value` (`gnoblin-model/src/value.rs:19`). The API is key-value with prefix listing, batches, compare-and-set, optional TTL, quotas and change signals. Logs (D23) and recovery keep their own files.
+**Core.** Every store has an identity, a lifecycle state, usage, a capability set, a change signal, an export policy and access grants. The states are `opening`, `ready`, `locked`, `unavailable`, `quarantined` and `closing`. Only the registry moves a store between them.
 
-**Access.** The `store` power (D22) gives an extension its own namespace only. Reads and writes of another namespace are named grants in host configuration. A crate namespace is readable by an extension only under a grant. Uninstalled data is kept, listed by `gnoblinctl store usage`, and removed only by `gnoblinctl store purge`.
+**Capabilities and kinds.** Capabilities are traits: `Items`, `Search`, `Append`, `Lock`, `Watch` and `Transact`. A kind is a named bundle of them with a policy: `kv`, `log` and `secret`. A consumer may call a method only when the capability and its grant allow it.
 
-**Surfaces.** The IPC `store` object, Lua `gnoblin.store`, a WASM host import, and `gnoblinctl store`. Rust crates use the `gnoblin-store` library, which joins the foundation set in `xtask/src/deps.rs`.
+**Item model.** Key-value and the Secret Service share one item: a key, attributes, a value and a revision. It breaks for logs, which are sequences and use `Append`, and for Secret Service collections, which are stores, not items.
 
-**Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal and read-only boot.
+**Registration.** A provider registers a store the way a layer registers (D28). The compositor sets the provider, owns the name and enforces the bounds that the kind gives. Layers, stores and later registries share this shape, described in `design/store.md`, "Platform pattern".
 
-Needs Kieran (details in `design/store.md`):
+**Access.** Extensions get their own store through the `store` power (D22). Reads and writes of another owner's store need a named grant in host configuration. Crate stores are readable only under a grant, never written by an extension. Uninstalled data is kept until `gnoblinctl store purge`.
 
-1. Collections (indexed records) in v1, or key-value only with collections later.
-2. One file per namespace, or one file with namespaced tables.
-3. Whether logs are exposed through the store API.
-4. Default quota and value size.
-5. Whether an owner may run a read-only query over its own namespace.
+**Surfaces.** One API serves Lua `gnoblin.store.open`, the IPC `store` object, wasm host imports and `gnoblinctl store`. The Secret Service and Secret portal are adapters over a `secret` store. Rust crates use the `gnoblin-store` library, which joins the foundation set in `xtask/src/deps.rs`.
+
+**Backends.** Backends are a provider's detail: one SQLite file per store by default, SQLCipher for `secret`, and the existing `logs.sqlite3` for `log`. The file layout is not a v1 contract.
+
+**Keyring.** The keyring stays a separate service with its own SQLCipher file (D27). It is a provider of kind `secret`. Its decisions are unchanged.
+
+**Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal, read-only boot and a locked `secret` read.
+
+Needs Kieran (details and pros and cons in `design/store.md`):
+
+1. Which capabilities ship first (option, proposed: `kv` gets Items, Search, Transact and Watch; `log` adopts Append; `secret` adopts Lock with the keyring).
+2. Whether an extension may define a new kind (option, proposed no).
+3. Whether `secret` attributes are readable while locked (option).
+4. A `writable` flag, or a seventh lifecycle state (option, proposed flag).
+5. Logs through the store API as the `log` kind, or keep `logs.sqlite3` (option).
+6. Default quota, TTL and retention per kind (option).
+7. Query operators beyond key prefix, attribute equality and time range (option).
+8. Backend layout: one file per store, or one per kind (option, backend detail).
+9. The `secret` unlock credential, and whether a D28 prompt layer supplies it (option).
 
 ## Phase 0 checklist
 
