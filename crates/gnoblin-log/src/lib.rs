@@ -210,6 +210,64 @@ macro_rules! trace {
 
 component!("log");
 
+/// Emits one `tracing` event at `$level` for `$component`, if that call site is enabled.
+///
+/// Every expansion owns a `static` [`filter::Component`], so the enabled check is one relaxed
+/// load and a disabled call formats nothing. The event targets `gnoblin::<component>`, so an
+/// `EnvFilter` built from the specification selects it, and it carries a `component` field that
+/// the sinks read.
+///
+/// This is an internal entry point; call the level macros below instead.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __emit {
+    ($component:literal, $level:ident, $($rest:tt)+) => {{
+        static SITE: $crate::filter::Component =
+            $crate::filter::Component::new($crate::__checked_component($component));
+        if SITE.enabled($crate::__tracing::Level::$level) {
+            $crate::__tracing::event!(
+                target: concat!("gnoblin::", $component),
+                $crate::__tracing::Level::$level,
+                component = $component,
+                $($rest)+
+            );
+        }
+    }};
+}
+
+/// Logs at `ERROR` for a component: `error_in!("wayland", surfaces = n, "mapped")`.
+///
+/// The first argument is the component literal, checked at compile time: 1 to 24 bytes of
+/// `a-z`, `0-9` and `-`, with no leading or trailing `-`. The rest are the `tracing` arguments.
+#[macro_export]
+macro_rules! error_in {
+    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, ERROR, $($rest)+) };
+}
+
+/// Logs at `WARN` for a component. See [`error_in!`] for the argument shape.
+#[macro_export]
+macro_rules! warn_in {
+    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, WARN, $($rest)+) };
+}
+
+/// Logs at `INFO` for a component. See [`error_in!`] for the argument shape.
+#[macro_export]
+macro_rules! info_in {
+    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, INFO, $($rest)+) };
+}
+
+/// Logs at `DEBUG` for a component. See [`error_in!`] for the argument shape.
+#[macro_export]
+macro_rules! debug_in {
+    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, DEBUG, $($rest)+) };
+}
+
+/// Logs at `TRACE` for a component. See [`error_in!`] for the argument shape.
+#[macro_export]
+macro_rules! trace_in {
+    ($component:literal, $($rest:tt)+) => { $crate::__emit!($component, TRACE, $($rest)+) };
+}
+
 #[cfg(test)]
 mod tests {
     use super::event::capture::logged;
@@ -264,5 +322,15 @@ mod tests {
         for (index, name) in names.iter().enumerate() {
             assert!(!names[..index].contains(name), "{name} is named twice");
         }
+    }
+
+    #[test]
+    fn logger_macros_tag_events_with_their_component_and_target() {
+        let events = logged(|| {
+            info_in!("logger-test", "hello {}", 1);
+        });
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].component, "logger-test");
+        assert_eq!(events[0].message, "hello 1");
     }
 }
