@@ -47,13 +47,13 @@ pub trait DialogUi: Send {
 }
 
 /// Draws one dialog at a time: runs egui frames for input and rasterises the output.
-pub struct Shell {
+pub struct DialogShell {
     ctx: Context,
     textures: Textures,
     setup: Setup,
 }
 
-impl Shell {
+impl DialogShell {
     /// A shell for frames of `setup`. The look is egui's stock dark visuals.
     #[must_use]
     pub fn new(setup: Setup) -> Self {
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn shell_drives_any_dialog_kind_through_the_trait() {
-        let mut shell = Shell::new(setup());
+        let mut shell = DialogShell::new(setup());
         let mut escapable = Escapable;
         let mut clickable = Clickable;
         {

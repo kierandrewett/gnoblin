@@ -4,7 +4,7 @@
 //!   no drawing, no clock, no D-Bus. The compositor links this module for its
 //!   negotiation types.
 //! - [`ui`]: the [`ui::DialogUi`] trait each dialog kind implements, and the
-//!   [`ui::Shell`] that runs egui frames for it.
+//!   [`ui::DialogShell`] that runs egui frames for it.
 //! - [`paint`]: the headless CPU painter for egui output.
 //!
 //! The crate names no engine crate. It may name egui and the primitive and schema

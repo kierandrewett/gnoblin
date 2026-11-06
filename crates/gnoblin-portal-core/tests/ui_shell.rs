@@ -2,7 +2,7 @@
 
 use egui::{Key, Ui};
 use gnoblin_portal_core::model::{ScreenKey, Settled};
-use gnoblin_portal_core::ui::{DialogUi, Setup, Shell, key_events};
+use gnoblin_portal_core::ui::{DialogShell, DialogUi, Setup, key_events};
 use gnoblin_types::Tick;
 
 /// A dialog kind the shell has never heard of: it settles as denied on Escape.
@@ -19,8 +19,8 @@ impl DialogUi for Probe {
     }
 }
 
-fn shell() -> Shell {
-    Shell::new(Setup {
+fn shell() -> DialogShell {
+    DialogShell::new(Setup {
         width: 320,
         height: 160,
         reduced_motion: true,

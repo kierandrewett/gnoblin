@@ -6,7 +6,7 @@ use gnoblin_portal_appchooser::AppChooserUi;
 use gnoblin_portal_consent::ConsentUi;
 use gnoblin_portal_core::model::{Dialog, DirectoryListing, ScreenKey, Settled};
 use gnoblin_portal_core::paint::Frame;
-use gnoblin_portal_core::ui::{DialogUi, Setup, Shell, key_events, press_events, release_events};
+use gnoblin_portal_core::ui::{DialogShell, DialogUi, Setup, key_events, press_events, release_events};
 use gnoblin_portal_filechooser::FileChooserUi;
 use gnoblin_types::Tick;
 
@@ -23,7 +23,7 @@ pub fn ui_for(dialog: Dialog) -> Box<dyn DialogUi> {
 
 /// One dialog on screen. The shell runs the frames; the UI crate draws the model.
 pub struct PortalScreen {
-    shell: Shell,
+    shell: DialogShell,
     ui: Box<dyn DialogUi>,
     now: Tick,
     settled: Option<Settled>,
@@ -33,7 +33,7 @@ impl PortalScreen {
     /// A screen for `dialog`, laid out once at `now`.
     #[must_use]
     pub fn new(dialog: Dialog, setup: Setup, now: Tick) -> Self {
-        let mut shell = Shell::new(setup);
+        let mut shell = DialogShell::new(setup);
         let mut ui = ui_for(dialog);
         shell.layout(&mut *ui, now);
         Self {
