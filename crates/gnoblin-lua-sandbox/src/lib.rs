@@ -14,19 +14,33 @@
 //! Two profiles choose the stdlib each state loads:
 //!
 //! - [`Profile::Config`] is the runtime's configuration VM: `string`, `table`,
-//!   `math`, `utf8`, `coroutine` and the base library. `io`, `os`, `debug` and `package`
-//!   are not opened, and the base functions that read files (`dofile`,
-//!   `loadfile`) and the loader (`require`) are cleared.
+//!   `math`, `utf8`, `coroutine` and the base library, plus the time half of `os`.
+//!   `io`, `debug` and `package` are not opened, and the base functions that read
+//!   files (`dofile`, `loadfile`) and the loader (`require`) are cleared. `os` is
+//!   replaced by a table with `time`, `date`, `clock` and `difftime`. The clock
+//!   functions read the host's clock, which is the only way a config learns the time.
 //! - [`Profile::Layout`] is the pure subset a layout runs under (D17). The base
-//!   library is cut to an allowlist. `string` keeps `len`, `sub`, `byte`, `char` and a
+//!   library is cut to an allowlist that keeps `pcall`, `xpcall` and `coroutine`; the
+//!   hook bounds all three. `string` keeps `len`, `sub`, `byte`, `char` and a
 //!   `format` that refuses a width or precision above 99. `table` keeps `sort`, whose
 //!   comparator is Lua code and so runs under the instruction hook. `math` loses
 //!   `random`. `string.rep` is absent because the stock C version cannot be stopped by
-//!   the count hook.
+//!   the count hook. `os` keeps only the pure parts: `time(table)`, `date(format,
+//!   time)` and `difftime`. Calls that would read the clock are refused.
 //! - In the configuration profile `string.find`, `match`, `gmatch` and `gsub` are
 //!   replaced by a Rust matcher in [`pattern`] that spends the same step budget, with
-//!   output identical to stock Lua 5.5 (`tests/pattern_parity.rs`). `pcall`, `xpcall`
-//!   and `coroutine` are wrapped or opened so the limits cannot be caught or bypassed.
+//!   output identical to stock Lua 5.5 (`tests/pattern_parity.rs`). `pcall` and
+//!   `xpcall` are wrapped in both profiles so a limit cannot be caught. A coroutine
+//!   here is only control flow inside one entry, so the same hook bounds it.
+//!
+//! Coroutines run inside one `arrange` call or one config entry. Scheduling a layout
+//! across frames is a separate design, and is not what this crate provides.
+//!
+//! The sandbox keeps `io`, `os.execute`, `os.remove`, `os.rename`, `os.getenv`,
+//! `os.tmpname`, `os.exit`, `package`, `debug`, `dofile` and `loadfile` out of both
+//! profiles for good. They reach the host system, which is the sandbox boundary. This
+//! is the one deliberate exception to "full Lua": every other standard library
+//! function a script can name is either present or refused by a documented rule.
 //!
 //! Binary Lua bytecode is never loaded. In the configuration profile `load` is
 //! wrapped so its mode is always text, because crafted bytecode can crash the
@@ -34,7 +48,7 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mlua::{Error, Function, HookTriggers, Lua, LuaOptions, MultiValue, StdLib, Table, Value, VmState};
 
@@ -166,12 +180,15 @@ impl Guard {
 
 /// Create a sandboxed Lua state for `profile` under `limits`.
 ///
-/// The returned state has no file, process or clock access for either profile.
+/// The returned state has no file, process or environment access in either profile. The
+/// configuration profile reads the host clock through `os`; the layout profile does not.
 /// The caller arms `guard` with [`Guard::begin`] before each entry.
 pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua, Error> {
     let libraries = match profile {
-        Profile::Config => StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH | StdLib::COROUTINE,
-        Profile::Layout => StdLib::TABLE | StdLib::STRING | StdLib::MATH,
+        Profile::Config => {
+            StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH | StdLib::COROUTINE | StdLib::OS
+        }
+        Profile::Layout => StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::COROUTINE | StdLib::OS,
     };
     let lua = Lua::new_with(libraries, LuaOptions::default())?;
     lua.set_memory_limit(limits.memory_bytes)?;
@@ -179,6 +196,7 @@ pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua
         Profile::Config => clear_config(&lua)?,
         Profile::Layout => restrict_layout(&lua)?,
     }
+    restrict_os(&lua, profile)?;
     if profile == Profile::Config {
         // Stock Lua seeds `math.random` from the clock and a stack address when a state
         // opens, so two identical configs would draw different numbers. A fixed seed
@@ -190,9 +208,7 @@ pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua
     }
 
     install_hook(&lua, limits, Rc::clone(&guard))?;
-    if profile == Profile::Config {
-        guard_protected_calls(&lua, guard)?;
-    }
+    guard_protected_calls(&lua, guard)?;
     Ok(lua)
 }
 
@@ -255,7 +271,7 @@ fn rethrow_if_aborted(results: MultiValue, guard: &Guard) -> Result<MultiValue, 
 /// can read.
 fn clear_config(lua: &Lua) -> Result<(), Error> {
     let globals = lua.globals();
-    for name in ["dofile", "loadfile", "require", "os", "io", "debug", "package"] {
+    for name in ["dofile", "loadfile", "require", "io", "debug", "package"] {
         globals.set(name, Value::Nil)?;
     }
     text_only_load(lua)
@@ -288,8 +304,22 @@ fn text_only_load(lua: &Lua) -> Result<(), Error> {
 fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     let globals = lua.globals();
     let keep = [
-        "assert", "error", "ipairs", "next", "pairs", "select", "tonumber", "tostring", "type", "math", "string",
+        "assert",
+        "error",
+        "ipairs",
+        "next",
+        "pairs",
+        "pcall",
+        "select",
+        "tonumber",
+        "tostring",
+        "type",
+        "xpcall",
+        "math",
+        "string",
         "table",
+        "coroutine",
+        "os",
     ];
     let names: Vec<Value> = globals
         .pairs::<Value, Value>()
@@ -334,6 +364,96 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     math.set("random", Value::Nil)?;
     math.set("randomseed", Value::Nil)?;
     Ok(())
+}
+
+/// Replace `os` with a table that holds only the time functions.
+///
+/// Stock `os` reaches the host (files, processes and environment variables), so the table
+/// is rebuilt from the functions that do not. The layout profile keeps the pure parts:
+/// `time` with a table, `date` with an explicit time, and `difftime`. Layouts must replay
+/// identically, so a call that would read the clock is refused. The configuration profile
+/// reads the host clock through its own functions, so `time()`, `date(format)` and
+/// `clock()` work there. The stock functions are captured here and dropped with the old
+/// table.
+fn restrict_os(lua: &Lua, profile: Profile) -> Result<(), Error> {
+    let stock: Table = lua.globals().get("os")?;
+    let stock_time: Function = stock.get("time")?;
+    let stock_date: Function = stock.get("date")?;
+    let os = lua.create_table()?;
+    os.set("difftime", stock.get::<Function>("difftime")?)?;
+    match profile {
+        Profile::Layout => {
+            os.set(
+                "time",
+                lua.create_function(move |_, args: MultiValue| {
+                    let values: Vec<Value> = args.into_iter().collect();
+                    if !matches!(values.first(), Some(Value::Table(_))) {
+                        return Err(Error::runtime(
+                            "os.time() without a table reads the clock, which a layout cannot do",
+                        ));
+                    }
+                    stock_time.call::<MultiValue>(values.into_iter().collect::<MultiValue>())
+                })?,
+            )?;
+            os.set(
+                "date",
+                lua.create_function(move |_, args: MultiValue| {
+                    let values: Vec<Value> = args.into_iter().collect();
+                    if !matches!(values.get(1), Some(Value::Integer(_) | Value::Number(_))) {
+                        return Err(Error::runtime(
+                            "os.date() without an explicit time reads the clock, which a layout cannot do",
+                        ));
+                    }
+                    stock_date.call::<MultiValue>(values.into_iter().collect::<MultiValue>())
+                })?,
+            )?;
+        }
+        Profile::Config => {
+            // The clock is read when the state opens, not at each call, so `clock()` counts
+            // from the state's start and never from the process's start.
+            let started = Instant::now();
+            os.set(
+                "time",
+                lua.create_function(move |_, args: MultiValue| {
+                    let values: Vec<Value> = args.into_iter().collect();
+                    if matches!(values.first(), None | Some(Value::Nil)) {
+                        return Ok(vec![Value::Integer(host_now_secs())]
+                            .into_iter()
+                            .collect::<MultiValue>());
+                    }
+                    stock_time.call::<MultiValue>(values.into_iter().collect::<MultiValue>())
+                })?,
+            )?;
+            os.set(
+                "date",
+                lua.create_function(move |_, args: MultiValue| {
+                    let mut values: Vec<Value> = args.into_iter().collect();
+                    if values.len() < 2 {
+                        values.resize(2, Value::Nil);
+                    }
+                    if matches!(values[1], Value::Nil) {
+                        values[1] = Value::Integer(host_now_secs());
+                    }
+                    stock_date.call::<MultiValue>(values.into_iter().collect::<MultiValue>())
+                })?,
+            )?;
+            os.set(
+                "clock",
+                lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64()))?,
+            )?;
+        }
+    }
+    lua.globals().set("os", os)
+}
+
+/// The host's wall clock as whole seconds since the Unix epoch.
+///
+/// A clock set before 1970 reads as zero rather than a negative time, which keeps the
+/// value a plain Lua integer.
+fn host_now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// Refuse a `string.format` template whose width or precision exceeds the limit.
@@ -441,9 +561,7 @@ mod tests {
     #[test]
     fn layout_profile_drops_every_global_outside_the_allowlist() {
         let lua = lua(Profile::Layout);
-        for name in [
-            "os", "io", "debug", "package", "require", "load", "dofile", "pcall", "print", "utf8",
-        ] {
+        for name in ["io", "debug", "package", "require", "load", "dofile", "print", "utf8"] {
             let value: Value = lua.globals().get(name).expect("a global reads");
             assert!(
                 matches!(value, Value::Nil),
@@ -499,7 +617,7 @@ mod tests {
     #[test]
     fn config_profile_keeps_its_stdlib_and_clears_file_access() {
         let lua = lua(Profile::Config);
-        for name in ["os", "io", "require", "dofile", "package"] {
+        for name in ["io", "require", "dofile", "package", "debug"] {
             let value: Value = lua.globals().get(name).expect("a global reads");
             assert!(
                 matches!(value, Value::Nil),
@@ -508,6 +626,40 @@ mod tests {
         }
         assert!(lua.load("return utf8.char(65)").eval::<String>().is_ok());
         assert!(lua.load("return string.find('abc', 'b')").eval::<i64>().is_ok());
+    }
+
+    #[test]
+    fn os_keeps_only_host_clock_functions_in_both_profiles() {
+        for profile in [Profile::Config, Profile::Layout] {
+            let lua = lua(profile);
+            let ok: bool = lua
+                .load("return os.execute == nil and os.remove == nil and os.rename == nil and os.getenv == nil and os.tmpname == nil and os.exit == nil and os.difftime ~= nil")
+                .eval()
+                .expect("the os table reads");
+            assert!(ok, "{profile:?} keeps a host-reaching os function");
+        }
+        let lua = lua(Profile::Layout);
+        assert!(lua.load("return os.clock == nil").eval::<bool>().expect("reads"));
+        assert!(
+            lua.load("return os.time()").exec().is_err(),
+            "a layout must not read the clock"
+        );
+        assert!(
+            lua.load("return os.date('%Y')").exec().is_err(),
+            "a layout must not read the clock"
+        );
+        assert!(
+            lua.load("return os.time({year = 2000, month = 1, day = 1, hour = 12})")
+                .eval::<i64>()
+                .is_ok()
+        );
+        assert!(lua.load("return os.date('!%Y', 0)").eval::<String>().is_ok());
+        let lua = lua(Profile::Config);
+        assert!(
+            lua.load("return type(os.time()) == 'number' and type(os.clock()) == 'number'")
+                .eval::<bool>()
+                .expect("reads")
+        );
     }
 
     #[test]
@@ -566,6 +718,10 @@ mod tests {
 
     fn coroutine_state(limits: &Limits) -> (Lua, Rc<Guard>) {
         armed(Profile::Config, limits)
+    }
+
+    fn layout_state(limits: &Limits) -> (Lua, Rc<Guard>) {
+        armed(Profile::Layout, limits)
     }
 
     fn small_budget() -> Limits {
@@ -661,6 +817,40 @@ mod tests {
         );
         // Hook counts are reported per thread the hook saw. mlua's current-thread query can
         // report only the main state, so this asserts the bound (`aborted`), not the count.
+    }
+
+    #[test]
+    fn layout_coroutine_wrap_loop_is_bounded_by_the_budget() {
+        let outcome = capped(
+            layout_state,
+            small_budget(),
+            "local co = coroutine.wrap(function() while true do end end) co()",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
+    }
+
+    #[test]
+    fn layout_pcall_around_a_coroutine_cannot_swallow_the_budget() {
+        let outcome = capped(
+            layout_state,
+            small_budget(),
+            "while true do pcall(coroutine.wrap(function() while true do end end)) end",
+        );
+        assert!(
+            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            "{}",
+            outcome.error
+        );
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
     #[test]

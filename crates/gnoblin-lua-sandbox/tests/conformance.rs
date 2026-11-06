@@ -121,14 +121,14 @@ const CASES: &[Case] = &[
     ),
     case("utf8 escapes in strings", "return #'\\u{20AC}' == 3", true, true),
     // Base library.
-    case("pcall", "return pcall(error, 'x') == false", true, false),
+    case("pcall", "return pcall(error, 'x') == false", true, true),
     case(
         "xpcall",
         "return xpcall(error, function() return 1 end, 'x') == false",
         true,
-        false,
+        true,
     ),
-    case("error and assert", "return not pcall(assert, false)", true, false),
+    case("error and assert", "return not pcall(assert, false)", true, true),
     case(
         "select, type, tostring, tonumber",
         "return select('#', 1, 2) == 2 and type(nil) == 'nil' and tostring(1) == '1' and tonumber('2') == 2",
@@ -158,9 +158,16 @@ const CASES: &[Case] = &[
     ),
     case("print", "return type(print) == 'function'", true, false),
     // Coroutines (section 2.6, the coroutine library).
-    case("coroutine library", "return type(coroutine) == 'table'", false, false),
-    // Other libraries (absent by design).
-    case("os", "return os == nil", true, true),
+    case("coroutine library", "return type(coroutine) == 'table'", true, true),
+    // The os library keeps its host-clock and pure-time functions. The layout profile
+    // refuses the clock reads, so `os.clock` is absent there.
+    case("os.clock absent in layout", "return os.clock == nil", false, true),
+    case(
+        "os host-reaching functions",
+        "return os.execute == nil and os.remove == nil and os.rename == nil and os.getenv == nil and os.tmpname == nil and os.exit == nil",
+        true,
+        true,
+    ),
     case("io", "return io == nil", true, true),
     case("debug", "return debug == nil", true, true),
     case(
@@ -231,7 +238,7 @@ const CASES: &[Case] = &[
         "table.sort",
         "local t = {2, 1} table.sort(t) return t[1] == 1",
         true,
-        false,
+        true,
     ),
     // The math library.
     case(
@@ -257,12 +264,10 @@ fn outcome(profile: Profile, snippet: &str) -> bool {
 
 #[test]
 fn every_case_matches_its_expected_outcome_in_each_profile() {
-    let mut matrix = String::from("| Feature | Config | Layout |\n|---|---|---|\n");
     let mut mismatches = Vec::new();
     for case in CASES {
         let config = outcome(Profile::Config, case.snippet);
         let layout = outcome(Profile::Layout, case.snippet);
-        matrix.push_str(&format!("| {} | {} | {} |\n", case.feature, mark(config), mark(layout)));
         if config != case.config {
             mismatches.push(format!(
                 "{} in Config: expected {}, got {}",
@@ -276,8 +281,43 @@ fn every_case_matches_its_expected_outcome_in_each_profile() {
             ));
         }
     }
-    println!("{matrix}");
     assert!(mismatches.is_empty(), "conformance drifted:\n{}", mismatches.join("\n"));
+}
+
+/// Render the support page from the probe results. The page is generated, never hand
+/// edited: the probe is the source, so the docs cannot drift from the VM.
+fn render_page() -> String {
+    let mut page = String::from(
+        "# Lua language and library support\n\n\
+         This page is generated from `crates/gnoblin-lua-sandbox/tests/conformance.rs`. \
+         Regenerate it with `GNOBLIN_WRITE_LUA_DOCS=1 cargo test -p gnoblin-lua-sandbox \
+         --test conformance`.\n\n\
+         A yes means the probe snippet returns `true` in that profile. The sandbox removes \
+         `io`, `package`, `debug`, `require`, `dofile` and `loadfile` in both profiles, and \
+         removes `os.execute`, `os.remove`, `os.rename`, `os.getenv`, `os.tmpname` and \
+         `os.exit` in both profiles. This is the only deliberate exception to full Lua: \
+         those functions reach the host system, which is the sandbox boundary.\n\n",
+    );
+    page.push_str("| Feature | Config | Layout |\n|---|---|---|\n");
+    for case in CASES {
+        let config = outcome(Profile::Config, case.snippet);
+        let layout = outcome(Profile::Layout, case.snippet);
+        page.push_str(&format!("| {} | {} | {} |\n", case.feature, mark(config), mark(layout)));
+    }
+    page
+}
+
+/// The generated page must match the committed copy. Set `GNOBLIN_WRITE_LUA_DOCS=1` to
+/// rewrite the committed page instead.
+#[test]
+fn support_page_is_current_with_the_probe() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../", "docs/lua-language-support.md");
+    let page = render_page();
+    if std::env::var_os("GNOBLIN_WRITE_LUA_DOCS").is_some() {
+        std::fs::write(path, &page).expect("the support page writes");
+    }
+    let committed = std::fs::read_to_string(path).unwrap_or_default();
+    assert_eq!(committed, page, "docs/lua-language-support.md is stale; regenerate it");
 }
 
 /// The matrix cell for a yes or no outcome.
