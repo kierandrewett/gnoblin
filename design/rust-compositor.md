@@ -2910,6 +2910,20 @@ Consequences:
 - A test that runs a binary sets `GNOBLIN_LOG_DB=off`, or points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's database.
 - Each binary names its component once, at start, and every event carries that name.
 
+#### Amendment: `logger!` (moz_log style)
+
+**Amended 2026-11-06: a crate defines its loggers once, and the level macros are bound to them. The crate-root `component!` macro and the global `info!`-style macros are removed.**
+
+A crate writes `gnoblin_log::logger!(log = "wayland");` at its module or crate root. That defines a module named `log`, which holds `error!`, `warn!`, `info!`, `debug!` and `trace!` bound to the component `wayland`, and `enabled!(Level)`. Call sites read `log::info!("surface {id} mapped", id = 3)`.
+
+Visibility goes before the name: `logger!(pub(crate) log = "wayland")`. The module name `log` is the convention. A subsystem inside a crate takes its own name and component, such as `logger!(wire = "wayland-wire")`, which gives `wire::info!`.
+
+Component ids are checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading or trailing dash. A bad id fails the build with a message that names it.
+
+The handle is a `static` inside the generated module. It registers itself on first use in a global registry, which `gnoblin_log::components()` lists in process. Each component holds one atomic level. A disabled call does one relaxed load and formats nothing, so the call site needs no cache of its own.
+
+The level comes from the `logging` configuration and from `GNOBLIN_LOG`, which takes `wayland:debug,compositor:info,*:warn`. A bad spec is refused with a named error. No IPC subcommand is added for listing components.
+
 ### D24: blur and opacity
 
 **Decided 2026-11-06: blur follows the opacity of the node it belongs to, as CSS `backdrop-filter` does under `opacity`. A node's effects form an ordered stack, drawn inside the node's opacity group.** A window that fades takes its blur with it, so a panel's fade-in and fade-out need no client help and no Gnoblin protocol. `gnoblin_blur_fade_v1` is removed and nothing replaces it. Blur, tint, shadow and corner rounding compose in the order the stack lists them, as `effect.rs` already models. The Lua and config shape of the stack is being redesigned and is decided separately; this decision fixes only the semantics.

@@ -60,3 +60,29 @@ gnoblinctl log --role compositor --level warn --limit 50
 ```
 
 `--database PATH` reads another file, and `--json` prints one JSON object per line. The command opens the database read-only, so it works while the session is down.
+
+## Adding logging to a crate
+
+Every crate logs through `gnoblin-log`, and never through `tracing` directly. A crate defines its component once, at module or crate root:
+
+```rust
+gnoblin_log::logger!(log = "wayland");
+
+log::info!("surface {id} mapped", id = 3);
+```
+
+The name `log` is the convention, so call sites read `log::warn!` and `log::debug!` everywhere in the crate. A subsystem with its own name gets a second logger beside it, such as `logger!(wire = "wayland-wire")`. Use `pub(crate)` before the name to share the module across the crate.
+
+Fields follow the message as `key = value`, and `%` or `?` select `Display` or `Debug`. Secrets are redacted before any sink sees the event, so a field needs no special handling.
+
+Guard expensive argument building with `log::enabled!(Level::DEBUG)`. It returns whether that level is on for the component, and costs one relaxed atomic load.
+
+Levels are filtered per component with `GNOBLIN_LOG`, a comma-separated list of `component:level` pairs. A `*` names every component that has no entry of its own:
+
+```sh
+GNOBLIN_LOG=wayland:debug,compositor:info,*:warn
+```
+
+A bad entry is refused with a named error and the default applies. The `logging` configuration table sets the same levels, and `GNOBLIN_LOG` overrides it.
+
+Component ids are 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading or trailing dash. The build fails on a bad id. A disabled call formats nothing, and the first call to a component registers it, so `gnoblin_log::components()` lists every component that has logged.
