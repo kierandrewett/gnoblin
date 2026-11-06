@@ -826,6 +826,7 @@ wires the roles together.
 
 These run as parallel lanes and merge as each reaches its gate.
 
+- Shaped windows (D26 amendment): shadow, border, blur and tint follow the window's alpha silhouette. Lands before stacking, so the stack samples one mask.
 - Visuals: shadows, rounded corners, opacity, tint, blur with background effect
   that follows window opacity, user shaders, native frames and the frame protocol, open,
   close, minimise and workspace animations, runtime tweens and window visual
@@ -2954,6 +2955,53 @@ Needs Kieran:
 3. Whether the flat `blur` and `shader` rule keys are removed, as proposed, or kept as one-entry shorthand after `effects`.
 4. Whether a pass the active renderer cannot draw is refused at add time, as proposed, or kept and reported.
 5. Whether `gnoblinctl window effects <id>` lists the stack with a drawn or not-drawn flag. Proposed: yes.
+
+#### Shaped windows (amendment)
+
+**Amended 2026-11-06: every effect follows the real outline of a window, not its bounding box.** A shadow, border, blur or tint on a shaped window hugs the silhouette. Today every effect assumes a rounded rectangle, so an oval, a ring or a sliver gets a rectangular shadow and a square blur.
+
+What the code does today. The shared SDF in `shader/wgsl/preamble.wgsl:74` (`gnoblin_sdf`) is a rounded box with one radius. `shadow.wgsl:11` builds the shadow from that box. `surface.wgsl:12` and `solid.wgsl:11` clip with `gnoblin_corner`. The window's own pixels already keep the buffer's alpha (`surface.wgsl:13`), so the content is shaped but the effects are not.
+
+A known defect, read from code and not yet observed: the blur group and its fade are drawn with a zero corner (`gles/mod.rs:1019`, `:1076`), so a rounded window's blur fills the square corners. The mask below fixes it. Nothing in `crates/` reads a surface's opaque region, input region or window geometry (grep, this branch).
+
+Sources of "shape", with trade-offs:
+
+| Source                | Pros                                         | Cons and failure modes                                                            |
+| --------------------- | -------------------------------------------- | --------------------------------------------------------------------------------- |
+| Buffer alpha          | True silhouette; the content already uses it | Needs a per-commit mask; semi-transparent edges need a soft or thresholded choice |
+| Opaque region         | Cheap; says where the client is opaque       | A hint only, and marking transparent content opaque causes artefacts              |
+| Input region          | Already sent by clients                      | Describes hit testing, not the look; a small or empty region hides the shadow     |
+| Corner radius (today) | No new work                                  | One rounded box; cannot express ovals, rings or slivers                           |
+| X11 Shape (Xwayland)  | Would give the bounding shape                | Inference: unknown whether it reaches Wayland; test before relying on it          |
+
+Decision (proposed): the silhouette is the committed buffer's alpha. The window's own pixels use it as coverage, as now. Border uses it thresholded at 0.5, and shadow and blur use it soft. Opaque and input regions are never trusted for looks. A buffer without alpha (XRGB) is a full rectangle.
+
+Per-effect rule, applied to one silhouette mask so that effects stack over the same shape:
+
+- **Shadow:** the silhouette blurred, offset and drawn behind the window, with the blur radius as its falloff.
+- **Border:** the distance inside the silhouette edge, width in logical pixels. A shape thinner than twice the width is filled. Holes get their own edge.
+- **Blur:** the backdrop, clipped to the silhouette's coverage.
+- **Tint:** multiplied by the same coverage, so it never leaves the outline.
+
+Cost and caching: the mask is an R8 texture at physical size, rebuilt only when the buffer commits or the size or scale changes. Shadow and blur use a half-resolution mask. A 4096 by 4096 window costs about 16 MiB at full size. Above the cap the window falls back to its rectangle, logged once. A fully transparent window draws no effect.
+
+Renderer support:
+
+| Renderer          | Effects on a shaped window                         |
+| ----------------- | -------------------------------------------------- |
+| GLES              | Full mask: shadow, border, blur and tint           |
+| Vulkan            | None yet; the mask pass belongs in the shared WGSL |
+| Software (Pixman) | Rectangle only; the rule is reported as not drawn  |
+
+Tests (not run): golden images on GLES for a circle, a ring with a hole, two disconnected squares, a 1 px sliver, and an empty window. Each golden also checks that a rectangle-only renderer reports the effect as not drawn.
+
+Ordering: shaped windows land before stacking. The stack then samples one mask per window, rather than each pass gaining its own shape handling.
+
+Needs Kieran:
+
+1. Confirm the buffer alpha as the silhouette, against the input-region alternative.
+2. Whether `corner_radius` still clips a shaped window (proposed: intersect with the alpha).
+3. The mask cap, proposed 4096 pixels on the long side.
 
 ### D27: keyring service
 
