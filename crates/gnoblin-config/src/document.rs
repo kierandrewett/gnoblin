@@ -100,6 +100,21 @@ pub struct Config {
 }
 
 impl Config {
+    /// Decode and validate a document the runtime committed as JSON bytes.
+    ///
+    /// The runtime validates a document before it commits it, so a refusal here means the
+    /// bytes were not that document; the message names the decode or validation failure.
+    ///
+    /// # Errors
+    ///
+    /// A message when the bytes are not JSON, are not a configuration tree, or fail
+    /// validation.
+    pub fn from_json_bytes(bytes: &[u8]) -> Result<Config, String> {
+        let json: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+        let value = Value::from_json(&json).ok_or_else(|| "the document is not a configuration tree".to_owned())?;
+        Config::from_value(value).map_err(|report| report.to_string())
+    }
+
     /// Validate a document tree, reporting every problem at once.
     ///
     /// The tree is taken by value and rewritten in place where a deprecated

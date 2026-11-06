@@ -1002,7 +1002,14 @@ impl Dispatcher {
                 return;
             }
         };
+        let config = gnoblin_config::Config::from_json_bytes(&document);
         let revision = self.requests.commit(document);
+        match config {
+            Ok(config) => self.store.publish_settings(&config),
+            Err(reason) => {
+                warn!(revision, %reason, "[ipc] the committed configuration did not decode; the settings object keeps its last values")
+            }
+        }
         info!(
             revision,
             "[ipc] the runtime committed a configuration document; it stays in force until the next one"
