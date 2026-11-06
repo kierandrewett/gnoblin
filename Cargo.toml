@@ -128,6 +128,12 @@ protox = "0.10.0"
 # same module to SPIR-V. Validation is part of the crate, so no feature selects
 # it. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
 naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
+# The Vulkan bindings of the Vulkan renderer (`gnoblin-backend`, feature `vulkan`),
+# chosen in `design/vulkan-backend.md`. `loaded` opens the Vulkan loader with `dlopen`
+# at run time, so a machine without one still builds and starts and the renderer
+# reports a named error instead. `debug` is the debug-utils extension the validation
+# layer reports through. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
+ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
 # The safe OpenGL ES API Smithay's `renderer_glow` feature is built on. The same
 # 0.16 the pinned Smithay revision depends on, so the two cannot resolve to
 # different contexts.

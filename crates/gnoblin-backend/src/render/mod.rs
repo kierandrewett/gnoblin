@@ -10,6 +10,7 @@
 //! | [`frame`]           | what an output draws, in numbers and client buffers, no renderer   |
 //! | [`software`]        | Pixman: the frame into an offscreen buffer, damage-only            |
 //! | [`gles`]            | Smithay's GLES renderer: the same frame with effects and shaders   |
+//! | `vulkan`            | `ash`: the same frame on a GPU or lavapipe, no effects yet         |
 //! | [`image`]           | the RGBA8 readback a screenshot, capture and the parity probes use |
 //! | [`compose`]         | the session's `gnoblin_render::Scene` and the frame it produces    |
 //!
@@ -45,6 +46,10 @@ pub mod image;
 // `wl_shm` pool. Its own documentation says why.
 pub mod shm;
 pub mod software;
+// The Vulkan renderer: the same frame drawn through `ash`, with its own `unsafe` shim
+// modules. See `design/vulkan-backend.md`.
+#[cfg(feature = "vulkan")]
+pub mod vulkan;
 
 pub use compose::{Composer, Content};
 // The colour a frame is described with, so a caller that paints a surface the scene
@@ -56,6 +61,8 @@ pub use gnoblin_render::{Color, Mat4};
 pub use image::Image;
 pub use shm::copy_into as copy_into_shm;
 pub use software::Software;
+#[cfg(feature = "vulkan")]
+pub use vulkan::Vulkan;
 
 use smithay::utils::{Physical, Rectangle};
 
@@ -104,6 +111,11 @@ pub enum RenderError {
     },
     /// The renderer refused a drawing operation.
     Failed,
+    /// The device behind the renderer is gone, so the frame was dropped.
+    ///
+    /// Nothing the renderer created can be used again: the caller builds a new renderer
+    /// and damages the whole output. Only a GPU renderer reports it.
+    Lost,
 }
 
 impl fmt::Display for RenderError {
@@ -112,6 +124,7 @@ impl fmt::Display for RenderError {
             Self::Unavailable => write!(formatter, "the renderer could not be created"),
             Self::Degenerate { width, height } => write!(formatter, "a {width}x{height} target covers no pixels"),
             Self::Failed => write!(formatter, "the renderer refused a drawing operation"),
+            Self::Lost => write!(formatter, "the renderer's device was lost"),
         }
     }
 }

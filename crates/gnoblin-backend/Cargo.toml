@@ -7,24 +7,35 @@ license.workspace = true
 publish.workspace = true
 
 # The workspace table forbids `unsafe` outright, which cannot be lifted, and this crate
-# needs two things it does not offer:
+# needs three things it does not offer:
 #
 # - one block that turns Smithay's mapping of a client's `wl_shm` pool into a slice
 #   (`render/shm.rs`, the only writer of client pixels);
 # - the EGL and GL calls a GLES context and its draws are made of. Smithay's
 #   `EGLDisplay::new` and `GlowRenderer::new` are `unsafe` because it cannot check a native
 #   display or that a context is idle on another thread, and `glow`'s calls are `unsafe`
-#   because a GL call changes process-wide state.
+#   because a GL call changes process-wide state;
+# - the Vulkan calls the Vulkan renderer is made of: `ash` is a raw binding, so opening the
+#   loader and every call into a driver is `unsafe`.
 #
 # So the crate restates the workspace's levels with `deny` and confines the exemption to
 # named FFI shim modules, each opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment
-# per block: `render/shm.rs`, `render/gles/egl.rs` and `render/gles/gl.rs`. Nothing else in
-# the crate may contain `unsafe`, and a session on the software path reaches none of them.
+# per block: `render/shm.rs`, `render/gles/egl.rs`, `render/gles/gl.rs` and the three files of
+# `render/vulkan/` that call `ash` (`context.rs`, `pipeline.rs` and `frame.rs`). Nothing else
+# in the crate may contain `unsafe`, and a session on the software path reaches none of them.
 [lints.rust]
 unsafe_code = "deny"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
+
+[features]
+# The Vulkan renderer (`render::vulkan`). On by default because the Vulkan loader is
+# opened with `dlopen` when a renderer is created, not linked: a machine without one
+# builds, starts and runs the Vulkan tests as skips. `naga/spv-out` is the SPIR-V
+# writer the renderer compiles the shared WGSL passes with.
+default = ["vulkan"]
+vulkan = ["dep:ash", "naga/spv-out"]
 
 [dependencies]
 # The event-loop handle the backend contract registers its sources with, and the
@@ -84,3 +95,6 @@ naga.workspace = true
 # no `gl::` call is written here by hand and the only `unsafe` in the crate is the
 # EGL bootstrap in `render/gles/egl.rs`.
 glow.workspace = true
+# The Vulkan bindings (feature `vulkan`). Every call is `unsafe`, so the renderer's
+# modules in `render/vulkan/` are the third exemption listed under `[lints.rust]`.
+ash = { workspace = true, optional = true }
