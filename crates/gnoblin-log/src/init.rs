@@ -63,7 +63,10 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     if options.console {
         layers.push(
             tracing_subscriber::fmt::layer()
-                .event_format(ConsoleFormat { role })
+                .event_format(ConsoleFormat {
+                    role,
+                    colour: std::io::IsTerminal::is_terminal(&std::io::stderr()),
+                })
                 .with_writer(std::io::stderr)
                 .with_filter(filter.clone())
                 .boxed(),

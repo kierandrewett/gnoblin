@@ -40,6 +40,11 @@ pub mod console;
 #[cfg(feature = "store")]
 pub mod store;
 
+/// The journald sink: one structured entry per event in the systemd journal. Needs the `journal`
+/// feature.
+#[cfg(feature = "journal")]
+pub mod journal;
+
 /// Installs the process-wide subscriber for a binary. Needs the `init` feature.
 #[cfg(feature = "init")]
 pub mod init;

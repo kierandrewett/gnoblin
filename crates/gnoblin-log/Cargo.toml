@@ -14,7 +14,8 @@ rusqlite = { workspace = true, optional = true }
 [features]
 console = ["dep:tracing-subscriber"]
 store = ["dep:rusqlite", "dep:tracing-subscriber"]
-init = ["console", "store"]
+journal = ["dep:tracing-subscriber"]
+init = ["console", "store", "journal"]
 
 [lints]
 workspace = true

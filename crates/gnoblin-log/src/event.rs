@@ -6,8 +6,10 @@
 
 use std::fmt::{Debug, Write as _};
 
-use tracing::Event;
 use tracing::field::{Field, Visit};
+use tracing::{Event, Level};
+
+use crate::redact::Redactor;
 
 /// The field that carries an event's component.
 ///
@@ -39,7 +41,8 @@ pub struct Logged {
 }
 
 impl Logged {
-    /// Reads `event` into its parts.
+    /// Reads `event` into its parts. The message and each field are redacted with
+    /// [`Redactor`], so every sink stores and prints the same redacted text.
     pub fn from_event(event: &Event<'_>) -> Self {
         let mut collector = Collector::default();
         event.record(&mut collector);
@@ -51,11 +54,36 @@ impl Logged {
                 FOREIGN_COMPONENT.to_owned()
             }
         };
+        let mut redactor = Redactor::new();
+        let message = collector
+            .message
+            .split('\n')
+            .map(|line| redactor.redact(line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let fields = collector
+            .fields
+            .into_iter()
+            .map(|(name, value)| {
+                let prefix = format!("{name}=");
+                let pair = format!("{prefix}{value}");
+                let redacted = pair
+                    .split('\n')
+                    .map(|line| redactor.redact(line))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let value = redacted
+                    .strip_prefix(prefix.as_str())
+                    .unwrap_or(redacted.as_str())
+                    .to_owned();
+                (name, value)
+            })
+            .collect();
         Self {
             component,
-            message: collector.message,
+            message,
             target,
-            fields: collector.fields,
+            fields,
         }
     }
 
@@ -69,6 +97,34 @@ impl Logged {
             let _ = write!(line, "{name}={value}");
         }
         line
+    }
+
+    /// The event as one line for a stream that `systemd` reads a priority from:
+    /// `<N>component: message field=value`. A newline is written as `\n`, so the line is one
+    /// record.
+    pub fn stream_line(&self, level: Level) -> String {
+        let mut line = format!("<{}>{}: {}", syslog_priority(level), self.component, self.message);
+        let fields = self.fields_line();
+        if !fields.is_empty() {
+            line.push(' ');
+            line.push_str(&fields);
+        }
+        line.replace('\n', "\\n")
+    }
+}
+
+/// The syslog priority of a level, as `journald` reads it from a `<N>` prefix or from the
+/// `PRIORITY` field: 3 for an error, 4 for a warning, 6 for information, and 7 for debug and
+/// trace.
+pub fn syslog_priority(level: Level) -> u8 {
+    if level == Level::ERROR {
+        3
+    } else if level == Level::WARN {
+        4
+    } else if level == Level::INFO {
+        6
+    } else {
+        7
     }
 }
 
