@@ -128,14 +128,17 @@ impl PortalService {
         }
     }
 
-    /// `portal.key`: route one key to the open dialog.
-    pub fn key(&mut self, name: &str, repeat: bool) -> Result<Vec<Reply>, PortalRefusal> {
+    /// `portal.key`: route one key to the open dialog at `now`. The clock is advanced
+    /// first, because input arrives between idle ticks and the dialog's arming and
+    /// animations judge the key against the time it was read, not the last tick.
+    pub fn key(&mut self, name: &str, repeat: bool, now: Tick) -> Result<Vec<Reply>, PortalRefusal> {
         let Some(key) = parse_key(name) else {
             return Err(PortalRefusal {
                 code: UNKNOWN_KEY,
                 message: format!("`{name}` is not a key the portal dialog takes"),
             });
         };
+        self.ui.tick(now);
         self.ui.key(key, repeat);
         Ok(self.settle())
     }

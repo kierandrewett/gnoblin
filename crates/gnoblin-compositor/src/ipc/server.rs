@@ -772,7 +772,7 @@ impl Dispatcher {
                 return;
             }
         };
-        match self.portal.key(&key, repeat) {
+        match self.portal.key(&key, repeat, self.now()) {
             Ok(replies) => {
                 self.reply(client, envelope);
                 self.deliver_replies(replies);
