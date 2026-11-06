@@ -1,15 +1,34 @@
-//! Tests of the Vulkan renderer's creation.
+//! Tests of the Vulkan renderer.
 //!
-//! A test that needs a Vulkan device and cannot create a renderer because there is no loader or no
-//! device prints why and returns, so the workspace's tests pass on a machine without Vulkan. Any
-//! other failure to create one is a test failure. The instances the lane is gated on have no GPU
-//! and use the software driver `lavapipe`.
+//! Every test that draws needs a Vulkan device, and the machines these run on may have none:
+//! the instances the lane is gated on have no GPU and use the software driver `lavapipe`, and a
+//! developer's laptop may have nothing at all. A test that cannot create a renderer because
+//! there is no loader or no device prints why and returns, so the workspace's tests pass on a
+//! machine without Vulkan. Any other failure to create one is a test failure.
+//!
+//! # Parity with the software renderer
+//!
+//! A frame is drawn by [`Software`] and by [`Vulkan`] and the two readbacks are compared pixel
+//! by pixel. The tolerance is stated per test:
+//!
+//! - **0** where both renderers only copy or fill: opaque solids, an unscaled opaque surface,
+//!   a bitmap drawn one to one.
+//! - **[`BLEND`]** (1 per channel) where a blend or a multiplication rounds: Pixman works in
+//!   8-bit integers and the GPU in floating point, so the two can land one step apart.
+//!
+//! The validation layer is on whenever it is installed, and a drawing test fails on anything it
+//! reports.
 
 use ash::vk;
-use gnoblin_types::Size;
+use gnoblin_render::{Color, Effects};
+use gnoblin_types::{Rect, RectF, Scale, Size};
+use smithay::utils::Transform;
 
+use super::harness::{BufferSpec, ShmClient};
 use super::pipeline::ShaderSources;
 use super::*;
+use crate::render::frame::{Layer, Model, Overlay, Solid, Surface};
+use crate::render::image::Image;
 
 /// A renderer, or [`None`] with a printed reason when this machine has no Vulkan.
 fn renderer(size: Size) -> Option<Vulkan> {
@@ -31,13 +50,227 @@ fn renderer(size: Size) -> Option<Vulkan> {
     }
 }
 
+/// Fails if the validation layer reported anything.
+fn clean(vulkan: &Vulkan) {
+    let messages = vulkan.take_validation_messages();
+    assert!(messages.is_empty(), "the validation layer reported: {messages:#?}");
+}
+
+fn colour(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+    Color::from_rgba8(red, green, blue, alpha)
+}
+
+/// A frame with a background and damage over the whole `size`.
+fn frame(background: Color, size: Size) -> OutputFrame {
+    let mut frame = OutputFrame::new();
+    frame.set_background(background);
+    frame.push_damage(Rect::new(0, 0, size.width, size.height));
+    frame
+}
+
+fn solid(frame: &mut OutputFrame, rect: Rect, colour: Color) {
+    frame.push_layer(Layer::Solid(Solid::new(rect, colour)));
+}
+
+/// A surface layer drawing `src` of `buffer` at `dst`.
+fn surface(buffer: &ShmClient, index: usize, src: RectF, dst: Rect, opacity: f32, tint: Color) -> Layer {
+    Layer::Surface(Surface {
+        buffer: buffer.buffer(index),
+        src,
+        dst,
+        transform: Transform::Normal,
+        opacity,
+        tint,
+        corner_radius: 0.0,
+        effects: Effects::new(),
+        model: None,
+    })
+}
+
+/// A bitmap of straight `[r, g, b, a]` pixels.
+fn bitmap(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Image {
+    let mut data = Vec::new();
+    for y in 0..height {
+        for x in 0..width {
+            data.extend_from_slice(&pixel(x, y));
+        }
+    }
+    Image::new(Size::new(width, height), width as usize * 4, data).expect("a bitmap")
+}
+
 const SIZE: Size = Size::new(64, 48);
+
+/// A frame with the overlay and the cursor over a layer, the cursor's left edge at `cursor_x`.
+///
+/// The overlay covers x 10 to 22. A cursor at 16 sits on it, which is the case where a capture
+/// without the overlay also restores the pixels under the cursor, as the other renderers do.
+fn decorated(size: Size, cursor_x: i32) -> OutputFrame {
+    let mut frame = frame(colour(30, 60, 90, 255), size);
+    solid(&mut frame, Rect::new(4, 4, 40, 30), colour(255, 128, 0, 255));
+    let overlay = bitmap(12, 12, |x, y| [200, 40, 40, (x * 20 + y * 5).min(255) as u8]);
+    frame.set_overlay(Overlay::new(Rect::new(10, 10, 12, 12), &overlay));
+    let cursor = bitmap(6, 6, |x, y| if x == y { [255, 255, 255, 255] } else { [0, 0, 0, 160] });
+    frame.set_cursor_image(Overlay::new(Rect::new(cursor_x, 14, 6, 6), &cursor));
+    frame
+}
+
+#[test]
+fn a_capture_leaves_the_overlay_out_and_the_cursor_when_asked() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    vulkan.draw(&decorated(SIZE, 30), Scale::IDENTITY).expect("the frame");
+    let orange = Some([255, 128, 0, 255]);
+    let without = vulkan.capture(false).expect("a capture");
+    assert_eq!(without.colour_at(12, 12), orange, "the overlay is not in a capture");
+    assert_eq!(
+        without.colour_at(30, 14),
+        orange,
+        "the cursor is out unless it is asked for"
+    );
+    let with = vulkan.capture(true).expect("a capture");
+    assert_eq!(with.colour_at(12, 12), orange, "the overlay is still out");
+    assert_eq!(with.colour_at(30, 14), Some([255, 255, 255, 255]), "the cursor is in");
+    let composed = vulkan.read_target(false, true).expect("a composed readback");
+    assert_ne!(
+        composed.colour_at(12, 12),
+        orange,
+        "the composed frame does show the overlay"
+    );
+    clean(&vulkan);
+}
+
+#[test]
+fn damage_limits_what_is_repainted() {
+    let Some(mut vulkan) = renderer(Size::new(16, 16)) else {
+        return;
+    };
+    let whole = Rect::new(0, 0, 16, 16);
+    let mut first = OutputFrame::new();
+    first.set_background(colour(255, 0, 0, 255));
+    first.push_damage(whole);
+    solid(&mut first, whole, colour(0, 0, 255, 255));
+    vulkan.draw(&first, Scale::IDENTITY).expect("the first frame");
+    // The second frame repaints only the left half with a green background.
+    let mut second = OutputFrame::new();
+    second.set_background(colour(0, 255, 0, 255));
+    second.push_damage(Rect::new(0, 0, 8, 16));
+    vulkan.draw(&second, Scale::IDENTITY).expect("the second frame");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(2, 8),
+        Some([0, 255, 0, 255]),
+        "the damaged half is repainted"
+    );
+    assert_eq!(
+        image.colour_at(12, 8),
+        Some([0, 0, 255, 255]),
+        "the undamaged half keeps the first frame"
+    );
+    clean(&vulkan);
+}
+
+#[test]
+fn a_surface_scaled_up_is_filtered_and_covers_its_destination() {
+    let client = ShmClient::new(vec![BufferSpec::argb(4, 4, |_, _| [20, 120, 220, 255])]);
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(0.0, 0.0, 4.0, 4.0),
+        Rect::new(8, 8, 32, 32),
+        1.0,
+        Color::WHITE,
+    ));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    for (x, y) in [(8, 8), (23, 23), (39, 39)] {
+        assert_eq!(
+            image.colour_at(x, y),
+            Some([20, 120, 220, 255]),
+            "inside the scaled surface at ({x}, {y})"
+        );
+    }
+    assert_eq!(image.colour_at(40, 40), Some([0, 0, 0, 255]), "and nothing beyond it");
+    clean(&vulkan);
+}
+
+#[test]
+fn a_rounded_corner_shows_what_is_behind() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(colour(0, 0, 255, 255), SIZE);
+    let mut rounded = Solid::new(Rect::new(8, 8, 32, 32), colour(255, 0, 0, 255));
+    rounded.corner_radius = 12.0;
+    frame.push_layer(Layer::Solid(rounded));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(8, 8),
+        Some([0, 0, 255, 255]),
+        "the corner is the background"
+    );
+    assert_eq!(
+        image.colour_at(24, 24),
+        Some([255, 0, 0, 255]),
+        "the middle is the layer"
+    );
+    assert_eq!(
+        image.colour_at(24, 8),
+        Some([255, 0, 0, 255]),
+        "the straight edge is the layer"
+    );
+    clean(&vulkan);
+}
+
+#[test]
+fn a_readback_is_top_left_first() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    solid(&mut frame, Rect::new(0, 0, 8, 8), colour(255, 0, 0, 255));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(1, 1),
+        Some([255, 0, 0, 255]),
+        "the drawn rectangle is at the top left, so the image is not upside down"
+    );
+    assert_eq!(
+        image.colour_at(1, 46),
+        Some([0, 0, 0, 255]),
+        "and the bottom left is the background"
+    );
+    assert_eq!(
+        image.colour_at(62, 1),
+        Some([0, 0, 0, 255]),
+        "and the top right is the background"
+    );
+    clean(&vulkan);
+}
+
+#[test]
+fn an_empty_frame_draws_nothing() {
+    let Some(mut vulkan) = renderer(Size::new(8, 8)) else {
+        return;
+    };
+    let mut frame = OutputFrame::new();
+    frame.set_background(colour(1, 2, 3, 255));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("nothing drawn");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(0, 0),
+        Some([0, 0, 0, 0]),
+        "an undamaged frame paints no pixel, not even the background"
+    );
+    clean(&vulkan);
+}
 
 #[test]
 fn a_resize_replaces_the_target() {
     let Some(mut vulkan) = renderer(Size::new(8, 8)) else {
         return;
     };
+    let mut frame = frame(colour(255, 0, 0, 255), Size::new(8, 8));
+    solid(&mut frame, Rect::new(0, 0, 8, 8), colour(255, 0, 0, 255));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the first frame");
     vulkan.resize(Size::new(32, 16)).expect("a bigger target");
     assert_eq!(vulkan.size(), Size::new(32, 16));
     let image = vulkan.screenshot().expect("a readback");
@@ -45,35 +278,61 @@ fn a_resize_replaces_the_target() {
     assert_eq!(
         image.colour_at(0, 0),
         Some([0, 0, 0, 0]),
-        "a replaced target holds no pixels"
+        "a replaced target holds no pixels, so the caller damages everything"
     );
     assert_eq!(
         vulkan.resize(Size::new(0, 4)),
         Err(RenderError::Degenerate { width: 0, height: 4 })
     );
-    let messages = vulkan.take_validation_messages();
-    assert!(messages.is_empty(), "the validation layer reported: {messages:#?}");
+    clean(&vulkan);
+}
+
+#[test]
+fn a_layer_with_a_model_is_not_drawn() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    let mut tilted = Solid::new(Rect::new(0, 0, 16, 16), colour(255, 0, 0, 255));
+    tilted.model = Some(Model {
+        matrix: gnoblin_render::Mat4::IDENTITY,
+        opaque: true,
+    });
+    frame.push_layer(Layer::Solid(tilted));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(4, 4),
+        Some([0, 0, 0, 255]),
+        "the depth pass is not here, so the layer is left out"
+    );
+    clean(&vulkan);
+}
+
+#[test]
+fn a_frame_with_more_textures_than_one_descriptor_pool_holds_is_drawn() {
+    // 300 surfaces is more than the 256 sets of a pool, so the arena has to open a second one.
+    let client = ShmClient::new(vec![BufferSpec::argb(2, 2, |_, _| [200, 100, 50, 255])]);
+    let Some(mut vulkan) = renderer(Size::new(64, 64)) else {
+        return;
+    };
+    let mut frame = frame(Color::BLACK, Size::new(64, 64));
+    for index in 0..300 {
+        frame.push_layer(surface(
+            &client,
+            0,
+            RectF::new(0.0, 0.0, 2.0, 2.0),
+            Rect::new((index % 30) * 2, (index / 30) * 2, 2, 2),
+            1.0,
+            Color::WHITE,
+        ));
+    }
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the frame");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(image.colour_at(1, 1), Some([200, 100, 50, 255]), "the first surface");
+    assert_eq!(image.colour_at(59, 19), Some([200, 100, 50, 255]), "the last surface");
+    clean(&vulkan);
 }
 
 // Failure modes.
-
-#[test]
-fn a_new_target_reads_back_transparent_black() {
-    let Some(mut vulkan) = renderer(Size::new(8, 4)) else {
-        return;
-    };
-    let image = vulkan.screenshot().expect("a readback");
-    assert_eq!(image.size(), Size::new(8, 4));
-    for (x, y) in [(0, 0), (7, 3), (3, 2)] {
-        assert_eq!(
-            image.colour_at(x, y),
-            Some([0, 0, 0, 0]),
-            "({x}, {y}) holds no pixel yet"
-        );
-    }
-    let messages = vulkan.take_validation_messages();
-    assert!(messages.is_empty(), "the validation layer reported: {messages:#?}");
-}
 
 #[test]
 fn a_missing_loader_is_a_named_error() {
@@ -117,6 +376,117 @@ fn a_broken_shader_is_a_startup_error() {
         VulkanError::Shader { pass, .. } => assert_eq!(pass, "solid"),
         other => panic!("expected a shader error, got {other}"),
     }
+}
+
+#[test]
+fn a_lost_device_drops_the_frame_and_is_reported() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    solid(&mut frame, Rect::new(0, 0, 8, 8), colour(255, 0, 0, 255));
+    vulkan.draw(&frame, Scale::IDENTITY).expect("a frame before the loss");
+    vulkan.context.faults.submit.set(Some(vk::Result::ERROR_DEVICE_LOST));
+    assert_eq!(
+        vulkan.draw(&frame, Scale::IDENTITY),
+        Err(RenderError::Lost),
+        "the frame is dropped and reported as lost"
+    );
+    assert!(vulkan.is_lost());
+    // Nothing touches the device again: every call answers at once.
+    assert_eq!(vulkan.draw(&frame, Scale::IDENTITY), Err(RenderError::Lost));
+    assert_eq!(vulkan.capture(false).err(), Some(RenderError::Lost));
+    assert_eq!(vulkan.resize(Size::new(16, 16)), Err(RenderError::Lost));
+    drop(vulkan);
+    // The caller recreates the renderer and carries on.
+    let mut again = renderer(SIZE).expect("a new renderer");
+    again
+        .draw(&frame, Scale::IDENTITY)
+        .expect("a frame on the new renderer");
+    assert_eq!(
+        again.screenshot().expect("a readback").colour_at(1, 1),
+        Some([255, 0, 0, 255])
+    );
+    clean(&again);
+}
+
+#[test]
+fn a_texture_that_cannot_be_allocated_skips_its_layer() {
+    let client = ShmClient::new(vec![
+        BufferSpec::argb(8, 8, |_, _| [255, 0, 0, 255]),
+        BufferSpec::argb(8, 8, |_, _| [0, 255, 0, 255]),
+    ]);
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    for (index, x) in [(0, 0), (1, 16)] {
+        frame.push_layer(surface(
+            &client,
+            index,
+            RectF::new(0.0, 0.0, 8.0, 8.0),
+            Rect::new(x, 0, 8, 8),
+            1.0,
+            Color::WHITE,
+        ));
+    }
+    // The first texture runs out of memory; the second is made.
+    vulkan
+        .context
+        .faults
+        .texture_allocation
+        .set(Some((0, vk::Result::ERROR_OUT_OF_DEVICE_MEMORY)));
+    vulkan
+        .draw(&frame, Scale::IDENTITY)
+        .expect("the frame is drawn without the first layer");
+    assert!(
+        !vulkan.is_lost(),
+        "running out of memory for a texture is not a lost device"
+    );
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(2, 2),
+        Some([0, 0, 0, 255]),
+        "the layer without a texture is skipped"
+    );
+    assert_eq!(
+        image.colour_at(18, 2),
+        Some([0, 255, 0, 255]),
+        "the other layer is drawn"
+    );
+    clean(&vulkan);
+}
+
+#[test]
+fn a_destroyed_buffer_skips_its_layer() {
+    let mut client = ShmClient::new(vec![
+        BufferSpec::argb(8, 8, |_, _| [255, 0, 0, 255]),
+        BufferSpec::argb(8, 8, |_, _| [0, 255, 0, 255]),
+    ]);
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut frame = frame(Color::BLACK, SIZE);
+    for (index, x) in [(0, 0), (1, 16)] {
+        frame.push_layer(surface(
+            &client,
+            index,
+            RectF::new(0.0, 0.0, 8.0, 8.0),
+            Rect::new(x, 0, 8, 8),
+            1.0,
+            Color::WHITE,
+        ));
+    }
+    client.destroy(0);
+    vulkan
+        .draw(&frame, Scale::IDENTITY)
+        .expect("the frame is drawn without the destroyed buffer");
+    let image = vulkan.screenshot().expect("a readback");
+    assert_eq!(
+        image.colour_at(2, 2),
+        Some([0, 0, 0, 255]),
+        "the destroyed buffer's layer is skipped"
+    );
+    assert_eq!(
+        image.colour_at(18, 2),
+        Some([0, 255, 0, 255]),
+        "the live buffer is drawn"
+    );
+    clean(&vulkan);
 }
 
 #[test]

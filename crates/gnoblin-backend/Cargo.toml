@@ -98,3 +98,7 @@ glow.workspace = true
 # The Vulkan bindings (feature `vulkan`). Every call is `unsafe`, so the renderer's
 # modules in `render/vulkan/` are the third exemption listed under `[lints.rust]`.
 ash = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The shared-memory files of the Vulkan tests' in-process client (`render/vulkan/harness.rs`).
+tempfile = "3.23.0"

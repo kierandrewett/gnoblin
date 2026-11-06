@@ -33,7 +33,7 @@
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_shm;
-use smithay::wayland::shm::{BufferData, with_buffer_contents_mut};
+use smithay::wayland::shm::{BufferAccessError, BufferData, with_buffer_contents, with_buffer_contents_mut};
 
 use gnoblin_types::{Point, Rect};
 
@@ -65,6 +65,131 @@ impl std::fmt::Display for ShmError {
 }
 
 impl std::error::Error for ShmError {}
+
+/// What a shared-memory buffer holds, read from its metadata alone.
+///
+/// A GPU renderer sizes its texture and its staging space from this before it reads a
+/// single pixel, so a buffer it cannot use is refused without touching the pool.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ShmShape {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// Whether the layout is `xrgb8888`, whose fourth byte carries no alpha.
+    pub opaque: bool,
+}
+
+impl ShmShape {
+    /// The bytes of the buffer's pixels with the rows packed.
+    pub(crate) fn packed_bytes(self) -> usize {
+        self.width as usize * self.height as usize * 4
+    }
+}
+
+/// The shape of a client's shared-memory buffer.
+///
+/// # Errors
+///
+/// [`ShmError`] when the buffer is not shared memory, its format is not one of the packed
+/// 32-bit layouts, its rows do not fit its stride or it reaches past its pool.
+pub(crate) fn shape(buffer: &WlBuffer) -> Result<ShmShape, ShmError> {
+    if !buffer.is_alive() {
+        return Err(ShmError::NotShared);
+    }
+    with_buffer_contents(buffer, |_pointer, length, data| checked_shape(length, &data)).map_err(access_error)?
+}
+
+/// Copies a client's pixels into `out` with the rows packed, in the buffer's own byte order.
+///
+/// `out` must be exactly [`ShmShape::packed_bytes`] long. The bytes of an `argb8888` or
+/// `xrgb8888` pixel on a little-endian machine are blue, green, red, then alpha or padding,
+/// which is what Vulkan's `B8G8R8A8_UNORM` reads, so no pixel is converted on the way.
+///
+/// # Errors
+///
+/// The same as [`shape`], and [`ShmError::Outside`] when `out` is the wrong length.
+pub(crate) fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmError> {
+    if !buffer.is_alive() {
+        return Err(ShmError::NotShared);
+    }
+    with_buffer_contents(buffer, |pointer, length, data| {
+        let shape = checked_shape(length, &data)?;
+        if pointer.is_null() || out.len() != shape.packed_bytes() {
+            return Err(ShmError::Outside);
+        }
+        // The checks above and in `checked_shape` bound every row inside `length`.
+        copy_rows(
+            pointer,
+            usize::try_from(data.offset).map_err(|_| ShmError::Outside)?,
+            usize::try_from(data.stride).map_err(|_| ShmError::Outside)?,
+            out,
+            shape.width as usize * 4,
+        );
+        Ok(shape)
+    })
+    .map_err(access_error)?
+}
+
+/// The one error a refused mapping becomes.
+fn access_error(error: BufferAccessError) -> ShmError {
+    match error {
+        BufferAccessError::NotManaged => ShmError::NotShared,
+        _ => ShmError::Unmapped,
+    }
+}
+
+/// The checked part of [`shape`]: everything that is decided from the buffer's metadata.
+fn checked_shape(length: usize, data: &BufferData) -> Result<ShmShape, ShmError> {
+    let opaque = match data.format {
+        wl_shm::Format::Argb8888 => false,
+        wl_shm::Format::Xrgb8888 => true,
+        _ => return Err(ShmError::UnsupportedFormat),
+    };
+    let width = u32::try_from(data.width).ok().filter(|width| *width > 0);
+    let height = u32::try_from(data.height).ok().filter(|height| *height > 0);
+    let (Some(width), Some(height)) = (width, height) else {
+        return Err(ShmError::Outside);
+    };
+    let row = width as usize * 4;
+    let stride = usize::try_from(data.stride).map_err(|_| ShmError::Outside)?;
+    if stride < row {
+        return Err(ShmError::Outside);
+    }
+    let offset = usize::try_from(data.offset).map_err(|_| ShmError::Outside)?;
+    // The last byte the buffer addresses, so a buffer larger than its pool is refused before
+    // a row is read.
+    let end = stride
+        .checked_mul(height as usize - 1)
+        .and_then(|rows| rows.checked_add(offset))
+        .and_then(|start| start.checked_add(row))
+        .ok_or(ShmError::Outside)?;
+    if end > length {
+        return Err(ShmError::Unmapped);
+    }
+    Ok(ShmShape { width, height, opaque })
+}
+
+/// Copies `out.len() / row` rows of `row` bytes from the pool, `stride` bytes apart.
+///
+/// The rows are copied with `ptr::copy_nonoverlapping` and no reference to the pool is
+/// ever made: the client may write the memory at any time, and a slice over it would be
+/// undefined behaviour while it does.
+///
+/// # Safety
+///
+/// The caller has checked that `offset + stride * (rows - 1) + row` is within the mapping
+/// that starts at `pointer` ([`checked_shape`]) and that `out` holds `rows * row` bytes.
+#[allow(unsafe_code)]
+fn copy_rows(pointer: *const u8, offset: usize, stride: usize, out: &mut [u8], row: usize) {
+    for (index, destination) in out.chunks_exact_mut(row).enumerate() {
+        // SAFETY: the source row lies inside the mapping by the caller's bound, and the
+        // destination is a distinct `row`-byte chunk of `out`, so the ranges cannot overlap.
+        unsafe {
+            std::ptr::copy_nonoverlapping(pointer.add(offset + index * stride), destination.as_mut_ptr(), row);
+        }
+    }
+}
 
 /// Copies the part of `image` that starts at `from` into `buffer`.
 ///

@@ -65,23 +65,27 @@
 mod context;
 mod error;
 mod frame;
+#[cfg(test)]
+mod harness;
 mod pipeline;
+mod plan;
 mod shader;
 #[cfg(test)]
 mod tests;
 
 use std::rc::Rc;
 
-use gnoblin_types::Size;
+use gnoblin_types::{Scale, Size};
 
 pub use context::{DeviceChoice, DeviceInfo, DeviceKind, Loader, Validation, VulkanOptions};
 pub use error::VulkanError;
 
 use context::VkContext;
-use frame::{FrameRecorder, RenderTarget};
+use frame::{FrameRecorder, RenderTarget, Saved};
 use pipeline::{Compiled, Pipelines, ShaderSources};
 
 use crate::render::RenderError;
+use crate::render::frame::OutputFrame;
 use crate::render::image::Image;
 
 /// A Vulkan renderer and the offscreen image it draws into.
@@ -90,9 +94,15 @@ pub struct Vulkan {
     recorder: FrameRecorder,
     pipelines: Pipelines,
     target: RenderTarget,
+    /// The pixels the overlay covers, saved for a capture that leaves it out.
+    overlay_under: Saved,
+    /// The pixels the cursor covers, saved for a capture that leaves it out.
+    cursor_under: Saved,
     physical: Size,
     /// Set when the device was lost; every call after that returns [`RenderError::Lost`].
     lost: bool,
+    /// Whether the 3D warning has been logged, so a steady session logs it once.
+    warned_models: bool,
     context: Rc<VkContext>,
 }
 
@@ -139,8 +149,11 @@ impl Vulkan {
             recorder,
             pipelines,
             target,
+            overlay_under: Saved::default(),
+            cursor_under: Saved::default(),
             physical,
             lost: false,
+            warned_models: false,
             context,
         })
     }
@@ -176,17 +189,48 @@ impl Vulkan {
         self.context.take_messages()
     }
 
-    /// Reads the target back as an [`Image`].
+    /// Draws `frame`, repainting only what it damaged.
+    ///
+    /// `scale` is the output's compositing scale: a frame's rectangles are logical and the
+    /// target is physical.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Lost`] when the device is gone, which is permanent for this renderer, and
+    /// [`RenderError::Failed`] when the driver refused the frame. A client buffer that cannot
+    /// be read or a texture that cannot be allocated is not an error: that layer is skipped and
+    /// the rest of the frame is drawn.
+    pub fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
+        if self.lost {
+            return Err(RenderError::Lost);
+        }
+        if frame.is_empty() {
+            return Ok(());
+        }
+        self.paint(frame, scale).map_err(|result| self.fail(result))
+    }
+
+    /// Reads the target back as an [`Image`], without the cursor.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Vulkan::capture`].
+    pub fn screenshot(&mut self) -> Result<Image, RenderError> {
+        self.capture(false)
+    }
+
+    /// Reads the target back as an [`Image`], with the cursor composed in when `with_cursor`.
+    /// The overlay is always left out.
     ///
     /// # Errors
     ///
     /// [`RenderError::Lost`] when the device is gone and [`RenderError::Failed`] when the
     /// readback is refused.
-    pub fn screenshot(&mut self) -> Result<Image, RenderError> {
+    pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
         if self.lost {
             return Err(RenderError::Lost);
         }
-        self.read_target().map_err(|result| self.fail(result))
+        self.read_target(true, with_cursor).map_err(|result| self.fail(result))
     }
 
     /// Replaces the target with one of `physical` pixels.
@@ -217,6 +261,8 @@ impl Vulkan {
         }
         self.target = target;
         self.physical = physical;
+        self.overlay_under.rect = None;
+        self.cursor_under.rect = None;
         Ok(())
     }
 }

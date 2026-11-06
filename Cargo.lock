@@ -1259,6 +1259,7 @@ dependencies = [
  "gnoblin-wm",
  "naga",
  "smithay",
+ "tempfile",
  "tracing",
  "wayland-client",
  "wayland-protocols",
