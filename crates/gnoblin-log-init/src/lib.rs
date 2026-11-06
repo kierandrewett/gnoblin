@@ -20,7 +20,8 @@ use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
-pub use options::{DATABASE_VARIABLE, FILTER_VARIABLE, LogOptions};
+pub use gnoblin_log_store::Retention;
+pub use options::{DATABASE_VARIABLE, FILTER_VARIABLE, LogOptions, LogSettings};
 
 /// Keeps the database writer alive. Dropping it waits, for a bounded time, for pending
 /// records to reach the database, so a process should hold it until it is done logging.
@@ -57,17 +58,20 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
         }
     };
 
-    let mut layers: Vec<Box<dyn Layer<Registry> + Send + Sync>> = vec![
-        tracing_subscriber::fmt::layer()
-            .event_format(ConsoleFormat { role })
-            .with_writer(std::io::stderr)
-            .with_filter(filter.clone())
-            .boxed(),
-    ];
+    let mut layers: Vec<Box<dyn Layer<Registry> + Send + Sync>> = Vec::new();
+    if options.console {
+        layers.push(
+            tracing_subscriber::fmt::layer()
+                .event_format(ConsoleFormat { role })
+                .with_writer(std::io::stderr)
+                .with_filter(filter.clone())
+                .boxed(),
+        );
+    }
 
     let mut sink = None;
     if let Some(path) = &options.database {
-        match gnoblin_log_store::open(path, role) {
+        match gnoblin_log_store::open(path, role, options.retention) {
             Ok(opened) => {
                 layers.push(DatabaseLayer::new(opened.clone(), role).with_filter(filter).boxed());
                 sink = Some(opened);

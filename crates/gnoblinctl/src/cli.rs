@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use clap::builder::{PossibleValue, PossibleValuesParser};
 use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 
+use gnoblin_log_store::Query;
 use gnoblin_model::Fields;
 
 use crate::args;
@@ -26,6 +27,9 @@ use crate::tree::{self, CliObject};
 
 /// The shells `completions` writes a script for.
 pub(crate) const SHELLS: &[&str] = &["bash", "zsh", "fish"];
+
+/// The levels `log --level` accepts, as the writer names them.
+pub(crate) const LEVELS: &[&str] = &["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 /// What one command line asked for.
 #[derive(Debug)]
@@ -40,6 +44,12 @@ pub(crate) enum Invocation {
     IpcDump { source: DumpSource },
     /// Write a completion script.
     Completions { shell: Shell, output: Option<PathBuf> },
+    /// Print the stored log records.
+    Log {
+        database: Option<PathBuf>,
+        query: Query,
+        json: bool,
+    },
 }
 
 /// The action taken on an object.
@@ -137,7 +147,9 @@ pub(crate) fn command_tree() -> Command {
     for object in tree::OBJECTS {
         root = root.subcommand(object_command(object));
     }
-    root.subcommand(ipc_command()).subcommand(completions_command())
+    root.subcommand(ipc_command())
+        .subcommand(completions_command())
+        .subcommand(log_command())
 }
 
 /// One object's subcommands.
@@ -277,6 +289,47 @@ fn completions_command() -> Command {
         )
 }
 
+/// `log [--database PATH] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]`.
+fn log_command() -> Command {
+    Command::new("log")
+        .about("Print the stored log records, oldest first, from the log database.")
+        .arg(
+            Arg::new("database")
+                .long("database")
+                .value_name("PATH")
+                .value_parser(value_parser!(PathBuf))
+                .help("The database to read; defaults to $XDG_STATE_HOME/gnoblin/logs.sqlite3."),
+        )
+        .arg(
+            Arg::new("level")
+                .long("level")
+                .value_name("LEVEL")
+                .ignore_case(true)
+                .value_parser(PossibleValuesParser::new(LEVELS))
+                .help("Only records at this level or above."),
+        )
+        .arg(
+            Arg::new("role")
+                .long("role")
+                .value_name("ROLE")
+                .help("Only records written by this process role."),
+        )
+        .arg(
+            Arg::new("target")
+                .long("target")
+                .value_name("TARGET")
+                .help("Only records whose event target matches exactly."),
+        )
+        .arg(
+            Arg::new("limit")
+                .long("limit")
+                .value_name("N")
+                .default_value("100")
+                .value_parser(value_parser!(u32).range(1..))
+                .help("The most records to print, newest last."),
+        )
+}
+
 /// Parse one command line, without the program name.
 pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, Usage> {
     let matches = match command_tree().try_get_matches_from(args) {
@@ -296,6 +349,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Invocati
     let invocation = match name {
         "ipc" => ipc_invocation(sub)?,
         "completions" => completions_invocation(sub)?,
+        "log" => log_invocation(sub, json)?,
         command => {
             let object = tree::CliObject::find(command).expect("every subcommand comes from the generated tree");
             object_invocation(object, sub, json)?
@@ -320,6 +374,23 @@ fn completions_invocation(matches: &ArgMatches) -> Result<Invocation, Usage> {
     let shell = Shell::parse(matches.get_one::<String>("shell").expect("clap requires the shell"));
     let output = matches.get_one::<PathBuf>("output").cloned();
     Ok(Invocation::Completions { shell, output })
+}
+
+/// The `log` subcommand.
+fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
+    let database = matches.get_one::<PathBuf>("database").cloned();
+    let query = Query {
+        min_level: matches
+            .get_one::<String>("level")
+            .map(|level| level.to_ascii_uppercase()),
+        role: matches.get_one::<String>("role").cloned(),
+        target: matches.get_one::<String>("target").cloned(),
+        limit: *matches
+            .get_one::<u32>("limit")
+            .expect("clap supplies the default limit"),
+        ..Query::default()
+    };
+    Ok(Invocation::Log { database, query, json })
 }
 
 /// One object's action.

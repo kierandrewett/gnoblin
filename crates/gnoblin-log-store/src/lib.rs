@@ -3,7 +3,7 @@
 
 use std::fmt::{self, Debug, Write as _};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -15,6 +15,12 @@ use gnoblin_log::__tracing::{Event, Subscriber};
 use rusqlite::{Connection, params};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
+
+mod query;
+mod retention;
+
+pub use query::{Entry, Query, read_entries};
+pub use retention::Retention;
 
 /// How many records may wait for the writer before new ones are counted as dropped.
 const QUEUE_CAPACITY: usize = 4096;
@@ -82,6 +88,23 @@ impl Sink {
     }
 }
 
+/// The subdirectory of the state home that holds the database.
+const STATE_DIRECTORY: &str = "gnoblin";
+
+/// The database file name inside [`STATE_DIRECTORY`].
+const DATABASE_FILE: &str = "logs.sqlite3";
+
+/// The default database path: `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, falling back to
+/// `$HOME/.local/state`. `None` when neither home is set. An empty variable counts as unset.
+pub fn default_database_path(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    let non_empty = |value: Option<String>| value.filter(|value| !value.is_empty());
+    let state_home = match non_empty(lookup("XDG_STATE_HOME")) {
+        Some(state_home) => PathBuf::from(state_home),
+        None => PathBuf::from(non_empty(lookup("HOME"))?).join(".local").join("state"),
+    };
+    Some(state_home.join(STATE_DIRECTORY).join(DATABASE_FILE))
+}
+
 /// Creates `directory` and any missing parents, private to the user. The configuration reader
 /// refuses a state directory that others can open, so the log must not create it more open.
 fn create_private_directory(directory: &Path) -> std::io::Result<()> {
@@ -91,12 +114,14 @@ fn create_private_directory(directory: &Path) -> std::io::Result<()> {
 }
 
 /// Opens the database at `path`, starts its writer thread and returns the queue into it.
-pub fn open(path: &Path, role: &'static str) -> Result<Sink, String> {
+pub fn open(path: &Path, role: &'static str, retention: Retention) -> Result<Sink, String> {
     if let Some(parent) = path.parent() {
         create_private_directory(parent).map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
     }
     let mut connection = Connection::open(path).map_err(|error| format!("cannot open {}: {error}", path.display()))?;
     prepare(&mut connection).map_err(|error| format!("cannot prepare {}: {error}", path.display()))?;
+    retention::apply(&connection, retention, now_ms())
+        .map_err(|error| format!("cannot trim {}: {error}", path.display()))?;
 
     let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
     let dropped = Arc::new(AtomicU64::new(0));

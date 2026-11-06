@@ -89,8 +89,17 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
         }
     };
     let role = role::from_matches(&matches).map_err(|_| Exit(2))?;
-    let options = gnoblin_log_init::LogOptions::from_environment();
+    // The configuration is read before the log exists, so a problem with it is reported once
+    // the log is installed. The defaults apply meanwhile.
+    let (logging, problem) = match gnoblin_compositor::logging_from_environment() {
+        Ok(logging) => (logging, None),
+        Err(problem) => (gnoblin_compositor::Logging::default(), Some(problem)),
+    };
+    let options = gnoblin_log_init::LogOptions::from_environment(&log_settings(&logging));
     let _log = gnoblin_log_init::init(log_role(&role), &options);
+    if let Some(problem) = problem {
+        gnoblin_log::warn!("[logging] {problem}; the default logging is used");
+    }
     dispatch(role)
 }
 
@@ -111,6 +120,33 @@ fn log_role(role: &role::Role) -> gnoblin_log::ProcessRole {
         role::Role::Guardian => gnoblin_log::ProcessRole::Guardian,
         role::Role::Runtime => gnoblin_log::ProcessRole::Runtime,
         role::Role::Services => gnoblin_log::ProcessRole::Services,
+    }
+}
+
+/// The log settings the `logging` section asks for. An unset field keeps the default the log
+/// uses with no configuration.
+fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log_init::LogSettings {
+    let defaults = gnoblin_log_init::LogSettings::default();
+    gnoblin_log_init::LogSettings {
+        console: !matches!(logging.console, Some(gnoblin_compositor::LogConsole::Off)),
+        level: logging.level.clone().unwrap_or(defaults.level),
+        store: logging.store.unwrap_or(defaults.store),
+        store_path: logging
+            .store_path
+            .as_deref()
+            .filter(|path| !path.is_empty())
+            .map(std::path::PathBuf::from),
+        retention: gnoblin_log_init::Retention {
+            max_age_days: logging
+                .store_max_age_days
+                .and_then(|days| u32::try_from(days).ok())
+                .unwrap_or(0),
+            max_bytes: logging
+                .store_max_size_mb
+                .and_then(|megabytes| u64::try_from(megabytes).ok())
+                .filter(|&megabytes| megabytes > 0)
+                .map(|megabytes| megabytes * 1024 * 1024),
+        },
     }
 }
 

@@ -59,6 +59,7 @@ pub mod extensions;
 pub mod hooks;
 pub mod last_good;
 pub mod locate;
+mod logging;
 pub mod merge;
 pub mod model;
 pub mod path;
@@ -77,13 +78,14 @@ pub use generated::{
     Compositor, Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers,
     Gesture, GestureAction, GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource,
     InputSourceType, InputSources, Keyboard, LayerShell, Layout, LayoutOutput, LayoutWorkspace, Location,
-    LocationAccuracy, Monitors, Mouse, MouseKeys, NewWindowPlacement, PadButton, PadButtonAction, PointingStick,
-    Prompts, Protocol, Protocols, RendererChoice, ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction,
-    StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad,
-    Trackball, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, NewWindowPlacement, PadButton, PadButtonAction,
+    PointingStick, Prompts, Protocol, Protocols, RendererChoice, ScrollMethod, SlowKeys, StickyKeys, Stylus,
+    StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys,
+    Touchpad, Trackball, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
 };
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 pub use locate::{ConfigPath, LocateError, Origin, SearchPaths, locate};
+pub use logging::logging_from_environment;
 pub use merge::{merge, merge_layers};
 pub use model::{Default, Deprecation, EnumParse, EnumSpec, Inherit, Kind, Setting, SettingEnum};
 pub use path::{Path, Segment};

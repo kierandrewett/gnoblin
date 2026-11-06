@@ -588,7 +588,7 @@ fn the_command_tree_matches_the_schema() {
     let mut present: Vec<String> = tree
         .get_subcommands()
         .map(|subcommand| subcommand.get_name().to_owned())
-        .filter(|name| name != "ipc" && name != "completions" && name != "help")
+        .filter(|name| name != "ipc" && name != "completions" && name != "log" && name != "help")
         .collect();
     present.sort();
     expected.sort();

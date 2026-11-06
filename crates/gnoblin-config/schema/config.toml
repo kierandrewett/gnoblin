@@ -330,6 +330,15 @@ variants = [
     { spelling = "ibus", doc = "An IBus input method." },
 ]
 
+[[enum]]
+name = "LogConsole"
+setting = "log-console"
+doc = "What the process prints on standard error."
+variants = [
+    { spelling = "pretty", doc = "One human-readable line per event." },
+    { spelling = "off", doc = "Print nothing; the database still records events." },
+]
+
 # --- Deprecated spellings ----------------------------------------------------
 # One table, accepted until `removed_in`. A spelling must not also be a current
 # variant: the generator refuses that, because an alias that is already current
@@ -2014,6 +2023,65 @@ doc = "The gesture bindings."
 key = "animations"
 doc = "Named animation declarations."
 carried = true
+
+[[section]]
+key = "logging"
+type = "Logging"
+doc = "What the process logs, where the database is, and how long it is kept."
+
+[[section.field]]
+key = "console"
+kind = "enum"
+enum = "LogConsole"
+accepted = "one of pretty, off"
+default = { enum = "pretty" }
+doc = "Whether events are printed on standard error."
+since = "0.2.0"
+
+[[section.field]]
+key = "level"
+kind = "text"
+nonempty = true
+accepted = "a nonempty filter in EnvFilter syntax, such as info or gnoblin=debug,warn"
+default = { text = "info" }
+doc = "Which events are recorded, by level and by target."
+since = "0.2.0"
+
+[[section.field]]
+key = "store"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Whether events are written to the log database."
+since = "0.2.0"
+
+[[section.field]]
+key = "store-path"
+kind = "text"
+accepted = "a file path, or an empty string for the default"
+default = { text = "" }
+doc = "The database file. Empty means the state directory's gnoblin/logs.sqlite3."
+since = "0.2.0"
+
+[[section.field]]
+key = "store-max-age-days"
+kind = "int"
+min = 0
+max = 36500
+accepted = "an integer from 0 to 36500; 0 keeps every record"
+default = { int = 0 }
+doc = "Delete records older than this many days when the database opens."
+since = "0.2.0"
+
+[[section.field]]
+key = "store-max-size-mb"
+kind = "int"
+min = 0
+max = 1048576
+accepted = "an integer from 0 to 1048576; 0 means no limit"
+default = { int = 0 }
+doc = "Delete the oldest records when the database file exceeds this many megabytes."
+since = "0.2.0"
 
 [[section]]
 key = "autostart"

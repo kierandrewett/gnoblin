@@ -111,6 +111,7 @@ pub use cursor::{
 };
 pub use eis::EisGate;
 pub use extensions::{configure_from_environment, configure_from_store};
+pub use gnoblin_config::{LogConsole, Logging, logging_from_environment};
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot};
 pub use gnoblin_xwayland::xsettings::XSettings;
