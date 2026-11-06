@@ -53,6 +53,7 @@ fn kind_from_byte(byte: u8) -> Option<HandshakeKind> {
 /// One fixed-layout handshake frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Handshake {
+    /// Which side of the handshake sent the frame.
     pub kind: HandshakeKind,
     /// The sender's full IPC version.
     pub version: Version,
