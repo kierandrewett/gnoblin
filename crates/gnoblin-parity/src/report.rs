@@ -41,10 +41,12 @@ pub enum Verdict {
 }
 
 impl Report {
+    /// An empty report, with no scenarios recorded yet.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Record one scenario's outcome.
     pub fn push(&mut self, scenario: ScenarioReport) {
         self.scenarios.push(scenario);
     }
@@ -54,14 +56,17 @@ impl Report {
         &self.scenarios
     }
 
+    /// Number of scenarios whose verdict is a pass.
     pub fn passed(&self) -> usize {
         self.count(|verdict| matches!(verdict, Verdict::Pass { .. }))
     }
 
+    /// Number of scenarios whose verdict is a failure.
     pub fn failed(&self) -> usize {
         self.count(|verdict| matches!(verdict, Verdict::Fail { .. }))
     }
 
+    /// Number of scenarios that were skipped.
     pub fn skipped(&self) -> usize {
         self.count(|verdict| matches!(verdict, Verdict::Skipped { .. }))
     }
@@ -79,6 +84,7 @@ impl Report {
 }
 
 impl ScenarioReport {
+    /// Build one scenario's result. `name` and `target` are stored as owned strings.
     pub fn new(name: impl Into<String>, target: impl Into<String>, verdict: Verdict) -> Self {
         Self {
             name: name.into(),
@@ -87,14 +93,17 @@ impl ScenarioReport {
         }
     }
 
+    /// The scenario's name, as printed in the report.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The target the scenario ran against.
     pub fn target(&self) -> &str {
         &self.target
     }
 
+    /// The outcome of the scenario.
     pub fn verdict(&self) -> &Verdict {
         &self.verdict
     }

@@ -73,8 +73,10 @@ pub struct CommandStep {
     /// Program to run. Resolved through `PATH`, never through a shell, so a
     /// scenario cannot smuggle in quoting or a pipeline.
     pub program: String,
+    /// Arguments passed verbatim, without shell expansion.
     #[serde(default)]
     pub args: Vec<String>,
+    /// How the standard output is turned into an observation.
     #[serde(default)]
     pub format: OutputFormat,
 }

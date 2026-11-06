@@ -64,6 +64,7 @@ impl Diff {
         &self.lines
     }
 
+    /// Append one difference, keeping report order.
     pub fn push(&mut self, line: DiffLine) {
         self.lines.push(line);
     }
