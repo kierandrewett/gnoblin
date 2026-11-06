@@ -2018,12 +2018,18 @@ D18, which is new scope and not a divergence from Mutter.
 - a table `{ arrange = fn, on_request = fn, command = { name = fn, ... },
 options = schema }` for a stateful or message-driven layout.
 
-Layouts live in modules, and registration names the module:
-`gnoblin.layout.register("name", "my.layout")`. The value is a module name, not
-a closure. A closure cannot cross from the runtime role into the compositor, so
-the runtime sends the module name and the hash of its source, and the compositor
-VM loads that module through its own sandboxed `require`. A layout defined
-inline in the config file is not supported. Move it into a module.
+Layouts live in modules. `require("my.layout")` in the configuration returns a
+layout reference, not the module's code. The reference is an immutable value
+with two fields: `module`, the module name, and `hash`, the 64-bit FNV-1a hash
+of the module's source as a decimal string. The runtime reads the source to take
+the hash and never runs it.
+
+The reference is passed to `workspace:set_layout(ref)` or `output:set_layout(ref)`.
+A closure cannot cross from the runtime role into the compositor, so the
+reference travels as the module name and hash. The compositor VM loads the
+module through its own sandboxed `require` and refuses it when the hash differs.
+Shipped layouts use the same form: `require("gnoblin.layouts.grid")`. A layout
+defined inline in the config file is not supported. Move it into a module.
 
 **Authority and messages.** `gnoblin-wm` forwards every geometry-affecting
 request to the layout before it applies its own default:
@@ -2272,12 +2278,11 @@ shadows the shipped file. Layouts are not special-cased.
 - `outputs`: a list of `{ output, layout }`, keyed by connector id. **Not applied yet:** the wayland factory receives only a `WorkspaceId`, so the override is logged at startup and otherwise ignored. Closing this gap means passing the output with the workspace to the factory. It is a known gap, not a design change.
 - `module-dirs`: extra directories searched for layout modules, before the installed ones. The first directory with the module wins, so a file here shadows the shipped module. The schema's description says "after the shipped ones"; that is wrong and is listed for fixing with the schema.
 
-The Lua surface `workspace:set_layout(name)`, `output:set_layout(name)` and the rule key `layout` select a layout at run time. A workspace with no layout uses its output's layout, and an output with none uses `floating`.
+The Lua surface `workspace:set_layout(ref)`, `output:set_layout(ref)` and the rule key `layout` select a layout at run time. `ref` is a layout reference from `require`; a plain string is refused, because the module it names would not be pinned by hash. A workspace with no layout uses its output's layout, and an output with none uses `floating`.
 
 **IPC and schema additions (all since 0.2.0).**
 
-- `workspace.layout`: a string, one of the shipped names or a registered name.
-  Settable. When unset, the workspace uses its output's layout.
+- `workspace.layout`: a string: the module name of the layout the workspace runs, such as `gnoblin.layouts.grid` or the name of a user module. Settable. When unset, the workspace uses its output's layout.
 - `output.layout`: the default for the output's workspaces that set no layout.
   Settable.
 - `workspace` operation `layout.command`: takes a command name and parameters and
@@ -2291,18 +2296,15 @@ The Lua surface `workspace:set_layout(name)`, `output:set_layout(name)` and the 
 - `window.column`: read-only, `{ index, position }` on a scrolling workspace,
   otherwise null.
 - Rule keys: `layout`, `float`, `column-width`.
-- Internal runtime-to-compositor path: `layout.register` carries the module name
-  and source hash. It is refused with `missing-module` or `invalid-layout`.
+- Internal runtime-to-compositor path: `set_layout` on `workspace` and `output` carries the module name and the source hash of a layout reference. The compositor refuses a module it cannot load with `missing-module`, a module that does not define a layout with `invalid-layout`, and a hash that differs from its own source with `invalid-layout`.
 
 **Lua surface.**
 
-- `gnoblin.layout.register(name, module)`: `module` is a module name, as above. A
-  name may not shadow a shipped layout, so the call is refused at registration.
-  Re-registering on reload replaces the layout.
+- The configuration has no layout-registration call. A layout is a module: `require("my.layout")` returns its reference, and a reload re-requires it so a changed module is the one that runs. A shadowed shipped name is a module-dirs concern (`module-dirs`), not a registration error.
 - `require("gnoblin.layouts.<name>")`: the shipped modules, for copying and
   composing.
 - `layout.stack`, `layout.with_gaps` and `layout.per_output`, as above.
-- `workspace:set_layout(name)`, `workspace:layout()`,
+- `workspace:set_layout(ref)`, `workspace:layout()`,
   `workspace:layout_command(name, params)` and `window:set_floating(bool)`.
 - `gnoblin.events.on("layout-failed", fn)`: failures reach the runtime as events,
   so config can react to them.
@@ -2714,7 +2716,7 @@ protocols = ["example_ext_v1.xml"]
 
 [powers.hooks]                # (f) hooks; each names an entry in the package
 window_rules = ["rules"]
-layouts = ["grid"]            # registered by name (D17)
+layouts = ["grid"]            # layout modules, referenced with require (D17)
 bindings = ["keys"]
 config = "config.toml"        # settings under gnoblin.configure.<namespace>
 # cursor (D20), portal (D19) and passes (render.pass) entries follow the same shape.
@@ -2734,7 +2736,7 @@ Every power is a named capability. None is granted by default. A capability the 
 | ----------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `ipc.provide:<ns>`                  | provide one namespace listed in host configuration                            | Decided (D21)                                                     |
 | `ipc.call:<ns>/<object>`            | call members of a namespace or a core object                                  | Decided (D21)                                                     |
-| `layout.register:<name>`            | register a layout by name (D17)                                               | Decided in principle; WASM layouts Proposed                       |
+| `layout.provide:<name>`             | ship a layout module under this name, referenced with `require` (D17)         | Decided in principle; WASM layouts Proposed                       |
 | `portal.provide:<iface>`            | serve a portal interface (D19)                                                | Decided in principle                                              |
 | `cursor.provide`                    | serve cursor themes (D20)                                                     | Deferred: D20 defines no extension cursor provider                |
 | `config.schema`                     | add settings under `gnoblin.configure.<namespace>`                            | Decided                                                           |
@@ -2785,7 +2787,7 @@ Decided in principle. Gated by the prototype, like the rest of the WASM tier.
 - Host calls are the one place where neither epochs nor fuel bounds time. Each host function is asynchronous or does bounded work. A host function that waits on the compositor (an IPC round trip, a file read) runs on the worker against its own deadline and returns an error on expiry. No host call blocks the frame thread. [INFERENCE: confirm async host function support at the pinned wasmtime version.]
 - Hot-path hooks (per-frame, per-input) run with a tight budget, starting at 1 ms [INFERENCE]. Three consecutive overruns drop the hook, reported as `hook-dropped`.
 - A wedged worker (no return past the hard limit) is abandoned and replaced, as D17 does for Lua. Leaked threads are counted. After three leaked workers in one session, the WASM tier is disabled and its powers report `tier-wedged`.
-- WASM layouts. The WIT world exports `arrange(ctx) -> placements`, `request(ctx, req)` returning `handled` or `declined`, `on-added`, `on-removed`, `command`, and an options schema. It uses the same snapshot, reply and validator as Lua layouts, and the same deadline. A WASM layout registers by name in the same registry as Lua layouts (`gnoblin-wm::layout`). A trap disables that layout only. A Lua and a WASM layout with one name are refused, unless host configuration names the winner. Lua remains the default for layouts.
+- WASM layouts. The WIT world exports `arrange(ctx) -> placements`, `request(ctx, req)` returning `handled` or `declined`, `on-added`, `on-removed`, `command`, and an options schema. It uses the same snapshot, reply and validator as Lua layouts, and the same deadline. A WASM layout is a module named like a Lua layout and set with `require` and a reference, so both tiers share one name space (`gnoblin-wm::layout`). A trap disables that layout only. A Lua and a WASM layout with one module name are refused, unless host configuration names the winner. Lua remains the default for layouts.
 
 #### Wayland dynamic globals
 
