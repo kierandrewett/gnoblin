@@ -37,16 +37,9 @@ marks a claim not checked against code or a primary source.
 
 ### xdg-foreign and the handle
 
-- xdg-foreign is served: `zxdg_exporter_v2` and `zxdg_importer_v2`, from Smithay's
-  `XdgForeignState` (`crates/gnoblin-wayland/src/protocols/zxdg_foreign_v2.rs:1-38`;
-  `state.rs:323-325`, `:651`, `:704`). `xdg_dialog_v1` is served too (`state.rs:327-329`).
-- A parent relation reaches the WM as `WindowRoleChanged`. The WM floats an imported
-  dialog above its parent (`crates/gnoblin-wm/src/wm.rs:994-998`).
-- **`wayland:<handle>` has no route to a window today.** Smithay mints the handle in
-  its exporter (`smithay/src/wayland/xdg_foreign/handlers.rs:65-75`, pinned rev
-  `65aa86f`). The map `exported` is private to `XdgForeignState` (`mod.rs:98`).
-  The only lookup is the importer's `import_toplevel`, which needs a client to set its
-  own surface's parent (`handlers.rs:146-156`).
+- xdg-foreign is served: `zxdg_exporter_v2` and `zxdg_importer_v2`, from `crates/gnoblin-wayland/src/protocols/xdg_foreign.rs`. The handle table is `State::xdg_foreign`. `xdg_dialog_v1` is served too.
+- A parent relation reaches the WM as `WindowRoleChanged`. The WM floats an imported dialog above its parent (`crates/gnoblin-wm/src/wm.rs:994-998`).
+- **`wayland:<handle>` has a lookup, but no route to a window yet.** The table mints each handle from 128 kernel random bits and maps it to the exported surface. `XdgForeign::exported_surface` is the lookup. No caller outside the protocol exists in `crates/` (grep), so the portal `parent_window` mapping does not resolve `wayland:` handles.
 - `x11:<XID>`: Gnoblin has `gnoblin-xwayland` (`xtask/src/deps.rs:61`). XID lookup
   against its window map is possible [INFERENCE: not checked].
 

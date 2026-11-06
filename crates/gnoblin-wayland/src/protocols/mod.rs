@@ -53,7 +53,7 @@
 //! | [`wp_alpha_modifier_v1`] | `wp_alpha_modifier_v1` | the factor a surface commits multiplies its window's opacity when the composer draws it; a factor on a subsurface has no effect because subsurfaces are not drawn |
 //! | [`wp_fifo_v1`] | `wp_fifo_manager_v1` | a client's commits are shown in order; barriers are released on each frame tick |
 //! | [`xdg_dialog_v1`] | `xdg_wm_dialog_v1` | a modal child takes focus from its parent and the parent's focus is redirected to it until unset; the window manager floats the dialog above its parent |
-//! | [`zxdg_foreign_v2`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
+//! | [`xdg_foreign`] | `zxdg_exporter_v2`, `zxdg_importer_v2` | names a toplevel by handle; the parent reaches the window manager as a role change, which floats the child and stacks it above the parent |
 //! | [`xdg_toplevel_icon_v1`] | `xdg_toplevel_icon_manager_v1` | the icon's name and buffer count are stored per window and exposed in the session snapshot; not drawn |
 //! | [`xdg_toplevel_tag_v1`] | `xdg_toplevel_tag_manager_v1` | the tag is stored per window and exposed in the session snapshot; placement does not read it |
 
@@ -160,5 +160,3 @@ pub mod zwp_text_input_v3;
 pub mod zwp_virtual_keyboard_v1;
 /// `zxdg_decoration_manager_v1`: the client's server-side decoration preference.
 pub mod zxdg_decoration_v1;
-/// `zxdg_exporter_v2` and `zxdg_importer_v2`: toplevels named by handle across clients.
-pub mod zxdg_foreign_v2;

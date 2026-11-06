@@ -55,7 +55,6 @@ use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState;
 use smithay::wayland::xdg_activation::XdgActivationState;
-use smithay::wayland::xdg_foreign::XdgForeignState;
 use smithay::wayland::xdg_toplevel_icon::{ToplevelIconCachedState, XdgToplevelIconManager};
 use smithay::wayland::xdg_toplevel_tag::{XdgToplevelTagManager, XdgToplevelTagSurfaceData};
 use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
@@ -333,9 +332,10 @@ pub struct State {
     /// [`crate::protocols::wp_tearing_control_v1`] records the hints.
     #[allow(dead_code)]
     pub(crate) tearing_control_global: GlobalId,
-    /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the handler is in
-    /// [`crate::protocols::zxdg_foreign_v2`].
-    pub(crate) xdg_foreign_state: XdgForeignState,
+    /// Kept alive so `zxdg_exporter_v2` and `zxdg_importer_v2` stay registered; the protocol,
+    /// including the handle table, is in [`crate::protocols::xdg_foreign`].
+    #[allow(dead_code)]
+    pub(crate) xdg_foreign_globals: (GlobalId, GlobalId),
     /// The handle table for `zxdg_exporter_v2` and `zxdg_importer_v2`; the protocol is in
     /// [`crate::protocols::xdg_foreign`].
     pub(crate) xdg_foreign: crate::protocols::xdg_foreign::XdgForeign,
@@ -669,7 +669,7 @@ impl State {
         let single_pixel_buffer_state = crate::protocols::wp_single_pixel_buffer_v1::global(&display_handle);
         let tearing_control_global = crate::protocols::wp_tearing_control_v1::global(&display_handle);
         let idle_notify_global = crate::protocols::ext_idle_notify_v1::global(&display_handle, &access);
-        let xdg_foreign_state = crate::protocols::zxdg_foreign_v2::global(&display_handle);
+        let xdg_foreign_globals = crate::protocols::xdg_foreign::global(&display_handle);
         let xdg_dialog_state = crate::protocols::xdg_dialog_v1::global(&display_handle);
         let xdg_toplevel_icon_manager = crate::protocols::xdg_toplevel_icon_v1::global(&display_handle);
         let xdg_toplevel_tag_manager = crate::protocols::xdg_toplevel_tag_v1::global(&display_handle);
@@ -722,7 +722,7 @@ impl State {
             tearing_control_global,
             idle_notify_global,
             background_effect_global,
-            xdg_foreign_state,
+            xdg_foreign_globals,
             xdg_foreign: Default::default(),
             xdg_dialog_state,
             xdg_toplevel_icon_manager,
