@@ -178,6 +178,7 @@
 
 mod access;
 mod clock;
+mod effects;
 mod frame;
 mod keyboard;
 mod liveness;

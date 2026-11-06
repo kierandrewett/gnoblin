@@ -1819,14 +1819,21 @@ impl State {
                 "too-many-passes: {used} of {budget} passes are in use and this effect needs {cost}"
             ));
         }
-        if spec.kind == "shader" && spec.source.is_empty() {
-            spec.active = false;
-            spec.reason = "no shader source".to_owned();
-        } else {
-            spec.active = true;
-            spec.reason.clear();
+        match crate::effects::inactive_reason(&spec) {
+            Some(reason) => {
+                spec.active = false;
+                spec.reason = reason;
+            }
+            None => {
+                spec.active = true;
+                spec.reason.clear();
+            }
         }
         entry.effects.push(spec);
+        // The scene draws the chain of active, enabled effects; push it on every change so
+        // the renderer never lags the stack the client can read back.
+        self.composer
+            .set_window_effects(window, crate::effects::chain(&entry.effects));
         self.publish();
         Ok(())
     }
