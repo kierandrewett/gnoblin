@@ -24,7 +24,7 @@
 --   resize_ratio   args.delta: move the focused window's split boundary (grows the
 --                  focused side).
 --
--- Usage: select it by name, "dwindle", in the layout settings.
+-- Usage: require("gnoblin.layouts.dwindle"):with({ split = "horizontal" })
 
 local M = {}
 M.kind = "tiling"

@@ -8,7 +8,7 @@
 --          then right). Default "row".
 -- commands: none.
 --
--- Usage: select it by name, "grid", in the layout settings.
+-- Usage: require("gnoblin.layouts.grid"):with({ fill = "column" })
 
 local M = {}
 M.kind = "tiling"

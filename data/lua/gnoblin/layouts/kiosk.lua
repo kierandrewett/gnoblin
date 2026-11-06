@@ -7,7 +7,7 @@
 -- options: none.
 -- commands: none.
 --
--- Usage: select it by name, "kiosk", in the layout settings.
+-- Usage: require("gnoblin.layouts.kiosk")
 
 local M = {}
 M.kind = "kiosk"

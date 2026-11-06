@@ -5,7 +5,7 @@
 -- options: none.
 -- commands: none.
 --
--- Usage: select it by name, "floating", in the layout settings.
+-- Usage: require("gnoblin.layouts.floating")
 
 local M = {}
 M.kind = "floating"

@@ -38,7 +38,7 @@
 --                 changes. The view is clamped to the strip, so an x past either end
 --                 stops at that end.
 --
--- Usage: select it by name, "scrolling", in the layout settings.
+-- Usage: require("gnoblin.layouts.scrolling"):with({ column_width = 0.5 })
 
 local M = {}
 M.kind = "tiling"

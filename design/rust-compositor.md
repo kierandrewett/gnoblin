@@ -2272,13 +2272,11 @@ shadows the shipped file. Layouts are not special-cased.
 - `carousel` (3D example): windows on a ring in 3D space with a perspective
   camera. It is a worked example of `transform` and `camera`.
 
-**Composition.** Layouts are values, so these combinators are ordinary functions:
+**Composition (planned, not implemented).** Layouts are values, so these combinators are intended as ordinary functions. None exists in the Lua API today; do not write a config that calls them.
 
-- `layout.stack{ base, overlay }`: runs both on the same windows. For each
-  window, a placement from `overlay` replaces the one from `base`.
-- `layout.with_gaps(l)`: shrinks the area by the outer gap before it calls `l`,
-  and passes the placements through.
-- `layout.per_output{ [name] = l, default = l2 }`: picks a layout by output name.
+- `layout.stack{ base, overlay }`: planned. Would run both on the same windows, with a placement from `overlay` replacing the one from `base`.
+- `layout.with_gaps(l)`: planned. Would shrink the area by the outer gap before calling `l`.
+- `layout.per_output{ [name] = l, default = l2 }`: planned. Would pick a layout by output name.
 
 **Selection and configuration.** Configuration is the `layout` section, read from the last accepted document (`gnoblin.configure.layout`):
 
@@ -2308,10 +2306,10 @@ The Lua surface `workspace:set_layout(ref)`, `output:set_layout(ref)` and the ru
 
 **Lua surface.**
 
-- The configuration has no layout-registration call. A layout is a module: `require("layouts.mine")` returns its reference. A reload re-requires it, so a changed module is the one that runs. A name with the `gnoblin.` prefix always selects the shipped root; any other name selects the user root, so a user module cannot shadow a shipped one.
+- The configuration has no layout-registration call; `gnoblin.layout.register` is removed. A layout is a module: `require("layouts.mine")` returns its reference. A reload re-requires it, so a changed module is the one that runs. A name with the `gnoblin.` prefix always selects the shipped root; any other name selects the user root, so a user module cannot shadow a shipped one.
 - `require("gnoblin.layouts.<name>")`: the shipped modules, for copying and
   composing.
-- `layout.stack`, `layout.with_gaps` and `layout.per_output`, as above.
+- `layout.stack`, `layout.with_gaps` and `layout.per_output`: planned, not implemented (see Composition above).
 - `workspace:set_layout(ref)`, `workspace:layout()`,
   `workspace:layout_command(name, params)` and `window:set_floating(bool)`.
 - `gnoblin.events.on("layout-failed", fn)`: failures reach the runtime as events,
