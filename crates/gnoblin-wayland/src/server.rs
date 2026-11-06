@@ -44,6 +44,7 @@ use tracing::{debug, info, warn};
 
 use crate::modal::{Modal, ModalEvent};
 use gnoblin_backend::render::Image;
+use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
 use gnoblin_backend::{Backend, BackendEvent, Host, InputEvent};
 
 use crate::output_config::OutputConfigHost;
@@ -76,6 +77,31 @@ pub const DEFAULT_SOCKET_NAME: &str = "gnoblin-wayland.sock";
 /// delay and not work; the limit exists so a stopped loop answers "no" instead of
 /// hanging the caller.
 pub const FOCUS_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// The pointer cursor a session draws: the theme name, its logical size and the
+/// providers searched for it, in order.
+///
+/// The composition root fills it from the `cursor` section of the configuration. The
+/// default is the built-in theme at the default size with the default provider order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CursorSettings {
+    /// The theme name a provider looks up.
+    pub theme: String,
+    /// The logical size in pixels.
+    pub size: u16,
+    /// The providers, searched in order. The built-in arrow is always the last resort.
+    pub providers: Vec<ProviderKind>,
+}
+
+impl Default for CursorSettings {
+    fn default() -> Self {
+        Self {
+            theme: DEFAULT_CURSOR_THEME.to_owned(),
+            size: DEFAULT_CURSOR_SIZE,
+            providers: ProviderKind::DEFAULT_ORDER.to_vec(),
+        }
+    }
+}
 
 /// How a session is configured.
 #[derive(Clone, Debug)]
@@ -121,6 +147,9 @@ pub struct Config {
     /// these three, and the session is what it asks, so the values travel with the
     /// session rather than with the adapter: one session, one set of actions.
     pub titlebar_actions: TitlebarActions,
+    /// The pointer cursor the document declares: the theme, its logical size and the
+    /// providers searched in order.
+    pub cursor: CursorSettings,
     /// The redirect adapters this session serves.
     ///
     /// Each one registers its globals before the loop runs. An empty list is a session
@@ -142,6 +171,7 @@ impl Default for Config {
             input_sources: None,
             keyboard: None,
             titlebar_actions: TitlebarActions::default(),
+            cursor: CursorSettings::default(),
             extensions: Vec::new(),
         }
     }
@@ -217,6 +247,7 @@ impl Server {
             config.observer,
             &config.protocols,
             config.titlebar_actions,
+            config.cursor,
             &config.extensions,
         )?;
         // The host's per-output controls are learnt before any client connects, so an

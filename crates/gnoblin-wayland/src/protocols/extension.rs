@@ -434,6 +434,7 @@ mod tests {
             None,
             &Protocols::default(),
             TitlebarActions::default(),
+            crate::server::CursorSettings::default(),
             &[],
         )
         .expect("a state for the default output")

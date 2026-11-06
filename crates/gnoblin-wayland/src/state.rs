@@ -420,6 +420,8 @@ pub struct State {
     pub(crate) announced_text_inputs: HashSet<ObjectId>,
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
+    /// The logical cursor size in pixels, from the configuration.
+    pub(crate) cursor_size: u16,
     /// The cursor chain that resolves a named shape to the image drawn for it.
     pub(crate) cursor_chain: gnoblin_backend::render::cursor::CursorChain,
     /// The tearing hints clients set, keyed by surface.
@@ -525,6 +527,7 @@ impl State {
         observer: Option<Arc<dyn Observer>>,
         protocols: &Protocols,
         titlebar_actions: TitlebarActions,
+        cursor: crate::server::CursorSettings,
         extensions: &[Arc<dyn Extension>],
     ) -> Result<Self, StartupError> {
         let display_handle = display.handle();
@@ -729,13 +732,16 @@ impl State {
             cursor_image: CursorImageStatus::default_named(),
             cursor_chain: gnoblin_backend::render::cursor::CursorChain::new(
                 std::sync::Arc::new(gnoblin_backend::render::cursor::FsFiles::from_environment()),
-                gnoblin_backend::render::cursor::DEFAULT_CURSOR_THEME,
-                gnoblin_backend::render::cursor::ProviderKind::DEFAULT_ORDER
-                    .into_iter()
+                &cursor.theme,
+                cursor
+                    .providers
+                    .iter()
+                    .copied()
                     .map(gnoblin_backend::render::cursor::ProviderKind::provider)
                     .collect(),
                 crate::protocols::wp_cursor_shape_v1::CURSOR_CACHE_BYTES,
             ),
+            cursor_size: cursor.size,
             tearing: Vec::new(),
             clock: Tick::ZERO,
             activity: Activity::new(),

@@ -82,6 +82,7 @@
 //!   the connection that provides the slot, and both sides learn its one completion.
 
 mod backend;
+mod cursor;
 mod extensions;
 mod ipc;
 mod layout;
@@ -96,6 +97,10 @@ use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 use tracing::info;
 
 pub use backend::Backend;
+pub use cursor::{
+    configure_from_environment as configure_cursor_from_environment,
+    configure_from_store as configure_cursor_from_store,
+};
 pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Observer, SessionSnapshot};

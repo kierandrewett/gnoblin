@@ -274,6 +274,7 @@ mod tests {
             None,
             &gnoblin_config::Protocols::default(),
             crate::protocols::extension::TitlebarActions::default(),
+            crate::server::CursorSettings::default(),
             &[],
         )
         .expect("a state for the default output");
@@ -524,6 +525,7 @@ mod tests {
             None,
             &gnoblin_config::Protocols::default(),
             crate::protocols::extension::TitlebarActions::default(),
+            crate::server::CursorSettings::default(),
             &[],
         )
         .expect("a state for the default output");

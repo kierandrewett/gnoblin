@@ -70,11 +70,7 @@ impl State {
             return None;
         }
         let output_scale = gnoblin_types::Scale::new((scale * 1000.0).round() as u32, 1000);
-        let images = self.cursor_chain.lookup(
-            icon.name(),
-            gnoblin_backend::render::cursor::DEFAULT_CURSOR_SIZE,
-            output_scale,
-        );
+        let images = self.cursor_chain.lookup(icon.name(), self.cursor_size, output_scale);
         let at = (pointer.x - f64::from(rect.x), pointer.y - f64::from(rect.y));
         cursor_overlay(&images, at, scale)
     }
