@@ -59,7 +59,6 @@ use crate::frame::{FrameStats, Screenshots};
 use crate::observation::{Observer, SessionSnapshot};
 use crate::protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
 use crate::protocols::extension::{Extension, ExtensionError, TitlebarActions};
-use crate::protocols::gnoblin_blur_fade_v1::GnoblinBlurFadeV1Fade;
 use crate::protocols::gnoblin_session_host_v1::{GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1Request};
 use crate::protocols::gnoblin_window_frame_v1::GnoblinWindowFrameV1Frame;
 use crate::protocols::wl_compositor::WlCompositorClientState;
@@ -390,9 +389,6 @@ impl Server {
                             }
                             Command::HostRequests { reply } => {
                                 let _ = reply.send(state.host_requests());
-                            }
-                            Command::BlurFades { window, reply } => {
-                                let _ = reply.send(state.window_blur_fades(window));
                             }
                             Command::BlurRegion { window, reply } => {
                                 let _ = reply.send(state.window_blur_region(window));
@@ -825,17 +821,6 @@ impl ControlHandle {
         self.control.push(Command::ReducedMotion(reduced));
     }
 
-    /// The fade metadata a window's surface committed, as a renderer reads it.
-    ///
-    /// [`None`] means the window has no surface or has committed no metadata; an
-    /// empty vector is metadata that was explicitly cleared.
-    #[must_use]
-    pub fn blur_fades(&self, window: WindowId) -> Option<Option<Vec<GnoblinBlurFadeV1Fade>>> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::BlurFades { window, reply });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
     /// The committed blur region a window's surface has, as the renderer's blur pass
     /// reads it.
     ///
@@ -1052,11 +1037,6 @@ enum Command {
     SelectSource(usize),
     /// A key binding, written as the configuration writes it.
     Bind { name: String, chord: String },
-    /// The fade metadata a window's surface committed.
-    BlurFades {
-        window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<Vec<GnoblinBlurFadeV1Fade>>>,
-    },
     /// The committed blur region a window's surface has.
     BlurRegion {
         window: WindowId,

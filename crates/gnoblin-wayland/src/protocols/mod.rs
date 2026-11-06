@@ -8,7 +8,6 @@
 //! | Module | Interfaces | What it does here |
 //! |---|---|---|
 //! | [`xdg_activation_v1`] | `xdg_activation_v1` | mints and redeems one-shot activation tokens |
-//! | [`gnoblin_blur_fade_v1`] | `gnoblin_blur_fade_v1` | fade metadata for a surface's own items, applied with its commit |
 //! | [`gnoblin_session_host_v1`] | `gnoblin_session_host_v1` | the host's channel to one hosted session: readiness, protection, logout and power requests |
 //! | [`ext_image_copy_capture_v1`] | `ext_image_copy_capture_v1` | frames of an output or a window, streamed under the lock embargo and the access roster |
 //! | [`ext_image_capture_source_v1`] | `ext_image_capture_source_v1` | names what an image-copy session captures: an output or a toplevel |
@@ -68,7 +67,6 @@ pub mod ext_image_copy_capture_v1;
 pub mod ext_session_lock_v1;
 pub mod extension;
 pub mod foreign_toplevel_shared;
-pub mod gnoblin_blur_fade_v1;
 pub mod gnoblin_session_host_v1;
 pub mod gnoblin_window_frame_v1;
 /// The generated halves of the Gnoblin-owned protocols; see the module for why the

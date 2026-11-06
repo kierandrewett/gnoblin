@@ -1,7 +1,7 @@
 //! A session on a socket of its own, and a real client, for the Gnoblin-owned
 //! protocols.
 //!
-//! The three test files (`window_frame.rs`, `blur_fade.rs` and `session_host.rs`)
+//! The two test files (`window_frame.rs` and `session_host.rs`)
 //! share this harness rather than the `session` one, because these protocols need
 //! two things the general harness does not offer: a connection whose role the
 //! compositor promised *before* it connected, and a client with no globals bound
@@ -347,24 +347,6 @@ pub mod protocols {
         use self::__interfaces::*;
 
         wayland_scanner::generate_client_code!("../../protocols/gnoblin-window-frame-v1.xml");
-    }
-
-    /// `gnoblin_blur_fade_v1`.
-    pub mod gnoblin_blur_fade_v1 {
-        use wayland_client;
-        use wayland_client::protocol::wl_surface;
-
-        pub mod __interfaces {
-            use super::wayland_client::backend as wayland_backend;
-            use super::wayland_client::protocol::__interfaces::*;
-
-            wayland_scanner::generate_interfaces!("../../protocols/gnoblin-blur-fade-v1.xml");
-        }
-
-        #[allow(unused_imports)]
-        use self::__interfaces::*;
-
-        wayland_scanner::generate_client_code!("../../protocols/gnoblin-blur-fade-v1.xml");
     }
 
     /// `gnoblin_session_host_v1`.

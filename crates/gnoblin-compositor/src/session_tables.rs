@@ -123,7 +123,6 @@ mod tests {
             "wlr-screencopy",
             "ext-image-copy-capture",
             "ext-background-effect-v1",
-            "blur-fade",
             "ext-data-control",
             "ext-idle-notify",
             "wlr-gamma-control",

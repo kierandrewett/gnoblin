@@ -617,9 +617,6 @@ impl State {
         let capture = CaptureTables::new(&display_handle, &access);
         let frame_tables = GnoblinWindowFrameV1Tables::new(&display_handle, &access);
         let session_host = GnoblinSessionHostV1Tables::new(&display_handle, &access);
-        // Nothing decides who may see the fade metadata: it describes the client's
-        // own surface, so the handle is only kept alive by the global itself.
-        let _blur_fade_global = crate::protocols::gnoblin_blur_fade_v1::global(&display_handle);
         remove_disabled_globals(
             &display_handle,
             protocols,

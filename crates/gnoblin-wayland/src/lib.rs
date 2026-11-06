@@ -224,7 +224,6 @@ pub use xwayland::XwaylandSession;
 
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
 pub use protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
-pub use protocols::gnoblin_blur_fade_v1::GnoblinBlurFadeV1Fade;
 pub use protocols::gnoblin_session_host_v1::{
     GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1OutputHint, GnoblinSessionHostV1PowerAction,
     GnoblinSessionHostV1Request, GnoblinSessionHostV1RequestKind,

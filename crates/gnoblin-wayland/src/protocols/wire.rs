@@ -1,6 +1,6 @@
 //! The generated halves of the Gnoblin-owned protocols.
 //!
-//! `protocols/` at the repository root is the only source of these three
+//! `protocols/` at the repository root is the only source of these two
 //! protocols, and `wayland-scanner` reads it at compile time: the interface
 //! descriptors, the object types and the request and event enums below are
 //! generated, so nothing is checked in and a change to an XML cannot reach the
@@ -8,7 +8,7 @@
 //! file.
 //!
 //! Each protocol is generated once here and used by its module
-//! ([`crate::protocols::gnoblin_window_frame_v1`], [`crate::protocols::gnoblin_blur_fade_v1`] and
+//! ([`crate::protocols::gnoblin_window_frame_v1`] and
 //! [`crate::protocols::gnoblin_session_host_v1`]), so no protocol has a second,
 //! hand-written idea of its own wire.
 //!
@@ -39,25 +39,6 @@ pub(crate) mod window_frame {
     use self::__interfaces::*;
 
     wayland_scanner::generate_server_code!("../../protocols/gnoblin-window-frame-v1.xml");
-}
-
-/// `gnoblin_blur_fade_v1`: animation opacity kept apart from glass alpha.
-pub(crate) mod blur_fade {
-    use smithay::reexports::wayland_server;
-    use wayland_server::backend as wayland_backend;
-    use wayland_server::protocol::wl_surface;
-
-    pub(crate) mod __interfaces {
-        use super::wayland_backend;
-        use super::wayland_server::protocol::__interfaces::*;
-
-        wayland_scanner::generate_interfaces!("../../protocols/gnoblin-blur-fade-v1.xml");
-    }
-
-    #[allow(unused_imports)]
-    use self::__interfaces::*;
-
-    wayland_scanner::generate_server_code!("../../protocols/gnoblin-blur-fade-v1.xml");
 }
 
 /// `gnoblin_session_host_v1`: the host compositor's channel to one session.

@@ -735,6 +735,11 @@ impl Painter<'_> {
     }
 
     /// Draws a layer: its shadow, its backdrop effect, then its own pixels.
+    ///
+    /// A layer with a blur is drawn as a group. The blur and the layer's pixels are composed at
+    /// full opacity inside the group, and the finished group is faded over the frame by the
+    /// layer's opacity, so the blur fades with the layer as a browser's `backdrop-filter` does
+    /// under `opacity`.
     fn layer(&mut self, layer: &Layer, texture: Option<Texture>, placement: Placement) -> Result<(), RenderError> {
         let (dst, corner_radius, effects, colour, tint, opacity, src) = match layer {
             Layer::Solid(solid) => (
@@ -762,6 +767,7 @@ impl Painter<'_> {
             return Ok(());
         }
         let radius = (corner_radius * self.scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
+        let mut grouped = false;
         for pass in effects.passes() {
             match pass {
                 Pass::Shadow(_) | Pass::Blur(_) if placement.clip.is_some() => {
@@ -771,10 +777,16 @@ impl Painter<'_> {
                     self.shadow(quad, radius, shadow)?;
                 }
                 Pass::Blur(blur) if blur.radius > 0.0 => {
-                    self.blur(quad, blur.radius * self.scale.as_f64() as f32)?;
+                    let blurred = self.blur(quad, blur.radius * self.scale.as_f64() as f32, grouped)?;
+                    grouped |= blurred;
                 }
                 Pass::Shadow(_) | Pass::Blur(_) | Pass::Shader(_) => {}
             }
+        }
+        // A grouped layer is drawn at full opacity into its group, which then fades as one.
+        let (opacity, fade) = if grouped { (1.0, Some(opacity)) } else { (opacity, None) };
+        if grouped {
+            self.enter_group()?;
         }
         let uniforms = match (colour, texture) {
             (Some(colour), _) => {
@@ -834,7 +846,10 @@ impl Painter<'_> {
         if let Some(error) = refusal {
             self.report(error);
         }
-        drawn
+        match (drawn, fade) {
+            (Ok(()), Some(factor)) => self.fade_group(quad, factor),
+            (drawn, _) => drawn,
+        }
     }
 
     /// Keeps the pixels of `rect` before the overlay is drawn over them, read back from
@@ -902,21 +917,21 @@ impl Painter<'_> {
         device.draw(&passes.shadow, bytes, quad, None, Placement::FLAT)
     }
 
-    /// Blurs the pixels the layer is about to cover.
+    /// Blurs the pixels behind a layer into the layer's group, and reports whether it did.
     ///
-    /// Two passes of the separable Gaussian in [`shaders::BLUR`]: horizontal into a scratch
-    /// target, vertical back into the frame. Both read the *backdrop* — the pixels already
-    /// drawn — so what a window shows behind itself is what was behind it, not what it
-    /// covers.
+    /// The first blur of a layer copies the frame's backdrop into the group. A later blur reads
+    /// what the group already holds, so stacked blurs compound in order. Two passes of the
+    /// separable Gaussian in [`shaders::BLUR`]: horizontal into the second scratch target,
+    /// vertical back into the group. The backdrop is what was drawn before the layer, not what
+    /// it covers.
     ///
-    /// The copied region is the layer's rectangle grown by the kernel's reach, so the taps
-    /// near the layer's edge read blurred pixels rather than the scratch target's clearing
-    /// colour; the final write is scissored to the layer's rectangle, so that ring is the
-    /// only price of it.
-    fn blur(&mut self, dst: Rect, radius: f32) -> Result<(), RenderError> {
+    /// The copied region is the layer's rectangle grown by the kernel's reach, so the taps near
+    /// the layer's edge read blurred pixels rather than the scratch target's clearing colour;
+    /// the group keeps that whole region, so that ring is the only price of it.
+    fn blur(&mut self, dst: Rect, radius: f32, grouped: bool) -> Result<bool, RenderError> {
         let radius = radius.clamp(1.0, MAX_RADIUS);
         let Some(rect) = dst.intersection(Rect::new(0, 0, self.physical.width, self.physical.height)) else {
-            return Ok(());
+            return Ok(false);
         };
         let reach = (radius / 3.0 * 4.0).ceil() as u32 + 1;
         let region = Rect::new(
@@ -940,12 +955,14 @@ impl Painter<'_> {
             ..
         } = self;
         let Some([first, second]) = scratch.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
-        // The scratch target starts as the frame's background everywhere the copy does not
-        // reach, so a blur that samples past the output repeats a colour the frame defined.
-        device.clear(first, *background);
-        device.copy(target, first, region)?;
+        if !grouped {
+            // The scratch target starts as the frame's background everywhere the copy does not
+            // reach, so a blur that samples past the output repeats a colour the frame defined.
+            device.clear(first, *background);
+            device.copy(target, first, region)?;
+        }
         let step = (radius / 3.0).max(0.5);
         let mut uniforms = Uniforms::surface(region, flipped_mapping(region, *physical), Color::WHITE, 1.0, 0.0);
         uniforms.params = [step / physical.width as f32, 0.0, 0.0, 0.0];
@@ -954,12 +971,10 @@ impl Painter<'_> {
         passes.blur.pack_fixed(&uniforms, bytes);
         device.draw(&passes.blur, bytes, region, Some(first.texture()), Placement::FLAT)?;
         device.end()?;
-        // The vertical pass writes back into the frame, scissored to the layer's rectangle:
-        // that is the region the pass is for, and the ring exists only to give its taps a
-        // neighbourhood.
-        device.begin(target)?;
-        let write = rect.intersection(*clip).unwrap_or(rect);
-        device.scissor(Some(write));
+        // The vertical pass writes back into the group over the same region, so a stacked blur
+        // reads all of it. The write is scissored to the damage, which the frame expects.
+        device.begin(first)?;
+        device.scissor(Some(region.intersection(*clip).unwrap_or(region)));
         let uniforms = Uniforms {
             params: [0.0, step / physical.height as f32, 0.0, 0.0],
             ..uniforms
@@ -968,7 +983,49 @@ impl Painter<'_> {
         device.draw(&passes.blur, bytes, region, Some(second.texture()), Placement::FLAT)?;
         // Back to the damage scissor, which the rest of this rectangle's passes expect.
         device.scissor(Some(*clip));
+        Ok(true)
+    }
+
+    /// Starts the layer's group: the layer's own pixels are drawn over the blur it holds.
+    fn enter_group(&mut self) -> Result<(), RenderError> {
+        let Self {
+            device, scratch, clip, ..
+        } = self;
+        let Some([group, _]) = scratch.as_mut() else {
+            return Err(RenderError::Failed);
+        };
+        device.begin(group)?;
+        device.scissor(Some(*clip));
         Ok(())
+    }
+
+    /// Composes the finished group over the frame at the layer's opacity, `group * opacity +
+    /// frame * (1 - opacity)`, so the blur and the layer's pixels fade together.
+    fn fade_group(&mut self, dst: Rect, opacity: f32) -> Result<(), RenderError> {
+        let Some(rect) = dst.intersection(Rect::new(0, 0, self.physical.width, self.physical.height)) else {
+            return Ok(());
+        };
+        let Self {
+            device,
+            target,
+            scratch,
+            passes,
+            bytes,
+            physical,
+            clip,
+            ..
+        } = self;
+        let Some([group, _]) = scratch.as_ref() else {
+            return Err(RenderError::Failed);
+        };
+        device.begin(target)?;
+        device.scissor(Some(*clip));
+        device.blend_group(opacity)?;
+        let uniforms = Uniforms::surface(rect, flipped_mapping(rect, *physical), Color::WHITE, 1.0, 0.0);
+        passes.surface.pack_fixed(&uniforms, bytes);
+        let drawn = device.draw(&passes.surface, bytes, rect, Some(group.texture()), Placement::FLAT);
+        device.blend_premultiplied()?;
+        drawn
     }
 
     /// The two scratch targets a blur needs, made on first use and after a resize.
