@@ -93,6 +93,8 @@ pub enum ChordKind {
     Pointer,
 }
 
+/// Per-kind wording, so a keyboard error and a pointer error each name their own example.
+///
 impl ChordKind {
     /// The example chord written in error messages for this kind.
     pub const fn example(self) -> &'static str {
@@ -149,6 +151,8 @@ pub struct Symbol {
     name: String,
 }
 
+/// Constructors and accessors. The name is kept only for display and never compared.
+///
 impl Symbol {
     /// Build a symbol from a keysym and its canonical name.
     pub fn new(symbol: Keysym, name: &str) -> Self {
@@ -169,6 +173,7 @@ impl Symbol {
     }
 }
 
+/// Identity is the keysym alone, so a name written two ways is one symbol.
 impl PartialEq for Symbol {
     fn eq(&self, other: &Self) -> bool {
         self.symbol == other.symbol
@@ -177,12 +182,14 @@ impl PartialEq for Symbol {
 
 impl Eq for Symbol {}
 
+/// Hashes the keysym only, matching [`PartialEq`] so equal symbols hash equally.
 impl Hash for Symbol {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.symbol.hash(state);
     }
 }
 
+/// Orders by keysym only, consistent with [`PartialEq`] and [`Ord`].
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -217,6 +224,7 @@ pub enum Key {
     BareSuper,
 }
 
+/// The written form of a key, in the form a chord would spell it.
 impl fmt::Display for Key {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -236,6 +244,8 @@ pub struct Chord {
     key: Key,
 }
 
+/// Parsing, and the accessors that matching uses.
+///
 impl Chord {
     /// Parse `text` as a chord of `kind`.
     ///
@@ -260,6 +270,8 @@ impl Chord {
         {
             return Err(fail(Reason::Whitespace));
         }
+        // `Super` alone has no angle brackets, so it is recognised before the bracket loop
+        // would look for a modifier that is not there.
         if kind == ChordKind::Key && text == "Super" {
             return Ok(Self {
                 modifiers: Modifiers::SUPER,
@@ -305,6 +317,8 @@ impl Chord {
             return Err(fail(Reason::MoreThanOneKey));
         }
 
+        // Pointer chords use their own button table, so a key name never reaches the
+        // pointer path and a button name never reaches the keyboard path.
         if kind == ChordKind::Pointer {
             let Some(button) = button_named(rest) else {
                 return Err(fail(Reason::NotAButton));
@@ -318,12 +332,16 @@ impl Chord {
             });
         }
 
+        // Above_Tab is layout independent, so it is matched by name before keysym
+        // resolution. A table lookup would make its meaning depend on the keymap.
         if rest.eq_ignore_ascii_case("above_tab") {
             return Ok(Self {
                 modifiers,
                 key: Key::AboveTab,
             });
         }
+        // Key codes are tried before keysyms: `0x3f` is not a keysym name, and the table
+        // should never be asked to resolve hexadecimal text.
         if let Some(code) = key_code(rest) {
             if code == 0 {
                 return Err(fail(Reason::ZeroKeyCode));
@@ -333,6 +351,8 @@ impl Chord {
                 key: Key::KeyCode(KeyCode::new(u32::from(code))),
             });
         }
+        // Length is checked after the cheap forms and before the table, so an over-long
+        // name never reaches the keysym table.
         if rest.len() > MAX_KEY_NAME_LENGTH {
             return Err(fail(Reason::KeyNameTooLong { length: rest.len() }));
         }
@@ -389,6 +409,7 @@ impl Chord {
     }
 }
 
+/// The written form: the bare `Super`, or the modifiers in [`WRITTEN_ORDER`] then the key.
 impl fmt::Display for Chord {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_bare_super() {
@@ -460,6 +481,7 @@ impl ParseError {
     }
 }
 
+/// Displays the same message as [`ParseError::message`].
 impl fmt::Display for ParseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.message())
@@ -523,6 +545,8 @@ pub enum Reason {
     ZeroKeyCode,
 }
 
+/// One clause per refusal, used in the long message.
+///
 impl Reason {
     /// One clause describing the refusal.
     fn explain(&self) -> String {
@@ -667,6 +691,8 @@ fn suggest(text: &str, kind: ChordKind) -> Option<String> {
 /// resulting chord is only ever formatted.
 struct PlaceholderKeysyms;
 
+/// Accepts any printable name, so suggestions can be formatted without xkbcommon.
+///
 impl Keysyms for PlaceholderKeysyms {
     fn resolve(&self, name: &str) -> Option<Symbol> {
         if name.is_empty() || name.len() > MAX_KEY_NAME_LENGTH {

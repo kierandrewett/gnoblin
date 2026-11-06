@@ -325,6 +325,8 @@ impl Router {
         inhibit: ShortcutInhibit,
     ) -> Routed {
         let pressed = Pressed::Key(key_code);
+        // An autorepeat is not a new press, so it must follow the press it repeats. If no
+        // press is recorded the key is treated as an orphan and routed by priority.
         if repeat {
             self.stats.repeats += 1;
             return match self.owned.get(&pressed).copied() {
@@ -349,6 +351,7 @@ impl Router {
                 }
             };
         }
+        // A release follows the press it owns, so a grab or reload cannot split the pair.
         match state {
             KeyState::Pressed => {
                 self.stats.presses += 1;
@@ -405,6 +408,7 @@ impl Router {
         inhibit: ShortcutInhibit,
     ) -> Routed {
         let pressed = Pressed::Button(button);
+        // Buttons use the same ownership rule as keys: the release follows its press.
         match state {
             ButtonState::Pressed => {
                 self.stats.presses += 1;
@@ -453,6 +457,7 @@ impl Router {
         }
     }
 
+    /// The target the priority order picks for a key press, used when no press is owned.
     /// The target the priority order picks for a key press.
     fn key_priority(&self, symbol: Keysym, modifiers: Modifiers, inhibit: ShortcutInhibit) -> Target {
         if let Some(id) = self.top_grab(Scope::Keyboard) {
@@ -517,6 +522,8 @@ impl Router {
             .find(|binding| binding.chord().matches_button(button, modifiers) && allowed(binding, inhibit))
     }
 
+    /// The binding whose release edge this is, if the binding still exists. A binding
+    /// removed by a reload returns `None`, so its release is dropped rather than fired.
     /// The binding whose release edge this is, if the binding still exists.
     fn release_fire(&self, target: Target) -> Option<BindingId> {
         let Target::Binding(id) = target else {
@@ -535,6 +542,7 @@ impl Router {
             .map(|grab| grab.id)
     }
 
+    /// Counts one delivery against the target it went to.
     fn count(&mut self, target: Target) {
         match target {
             Target::Grab(_) => self.stats.grab_deliveries += 1,

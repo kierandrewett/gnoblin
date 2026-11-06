@@ -159,6 +159,8 @@ pub struct GestureBinding {
     action: GestureAction,
 }
 
+/// Accessors and the two match tests for one validated binding.
+///
 impl GestureBinding {
     /// The declared name.
     pub const fn name(&self) -> &Name {
@@ -221,6 +223,9 @@ impl GestureBinding {
                 *travel >= self.threshold && path_matches(points, path.points(), *tolerance)
             }
             Matcher::Direction(direction) => {
+                // A pinch is judged on its scale change, not its path: the fingers gathering or
+                // spreading against the starting spread. The threshold is a fraction of that
+                // spread, so a resting hand never fires.
                 let delta = scale - 1.0;
                 if delta.abs() < self.threshold {
                     return false;
@@ -279,6 +284,8 @@ pub struct GestureSpec {
     pub action: Option<GestureAction>,
 }
 
+/// Turns the loose configuration fields into one checked binding.
+///
 impl GestureSpec {
     /// Validate the entry into a binding, or say precisely what is wrong.
     pub fn validate(self) -> Result<GestureBinding, GestureError> {
@@ -331,6 +338,8 @@ impl GestureSpec {
             (GestureKind::Swipe, None) => DEFAULT_SWIPE_THRESHOLD,
             (GestureKind::Pinch, None) => DEFAULT_PINCH_THRESHOLD,
             (GestureKind::Swipe, Some(threshold)) => {
+                // Swipe thresholds are in caller units, so their range is wider than a pinch's
+                // fraction of the starting spread.
                 if !(16.0..=240.0).contains(&threshold) {
                     return Err(GestureError::ThresholdOutOfRange { threshold });
                 }
@@ -446,6 +455,8 @@ pub enum GestureError {
     },
 }
 
+/// Human-readable messages, each saying what to write instead.
+///
 impl fmt::Display for GestureError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -546,6 +557,8 @@ pub struct GestureRouter {
     stats: GestureStats,
 }
 
+/// Router state: the validated bindings plus at most one reservation.
+///
 impl GestureRouter {
     /// Build a router, refusing bindings that would compete for one gesture.
     pub fn new(bindings: Vec<GestureBinding>) -> Result<Self, GestureError> {
@@ -591,6 +604,8 @@ impl GestureRouter {
     pub fn observe(&mut self, event: &GestureEvent, context: Context) -> GestureRoute {
         match event.phase() {
             GesturePhase::Begin => {
+                // At most one binding can match: construction refuses two overlapping bindings
+                // of the same kind and finger count, so `position` cannot hide a tie.
                 let candidate = self
                     .bindings
                     .iter()
@@ -607,11 +622,15 @@ impl GestureRouter {
                     }
                 }
             }
+            // Movement keeps the reservation and never re-decides it, so a gesture cannot
+            // switch to another binding half way through.
             GesturePhase::Update => match self.claim {
                 Some(binding) => GestureRoute::Reserved { binding },
                 None => GestureRoute::Unclaimed,
             },
             GesturePhase::End => {
+                // Taking the claim ends the reservation, so a second End for the same gesture
+                // is counted as unclaimed rather than fired twice.
                 let Some(binding) = self.claim.take() else {
                     self.stats.unclaimed += 1;
                     return GestureRoute::Unclaimed;
@@ -629,6 +648,8 @@ impl GestureRouter {
                 }
             }
             GesturePhase::Cancel => {
+                // A cancel releases a reservation without firing, even if the movement so far
+                // would have matched.
                 let binding = self.claim.take();
                 if binding.is_some() {
                     self.stats.cancelled += 1;

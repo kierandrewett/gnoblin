@@ -97,10 +97,14 @@ struct Channel {
 }
 
 impl Channel {
+    /// Whether the caller asked the endpoint to stop. The thread checks this between
+    /// polls, so a stop takes effect within one wake.
     fn stopped(&self) -> bool {
         self.stop.load(Ordering::SeqCst)
     }
 
+    /// Queue a request for the endpoint's thread. The lock keeps the critical section
+    /// to a single push, so the caller never waits on the protocol.
     fn push(&self, request: Request) {
         self.requests
             .lock()
@@ -108,6 +112,8 @@ impl Channel {
             .push(request);
     }
 
+    /// Take every queued request, leaving the queue empty. Poisoning is ignored because
+    /// the queue holds plain values that remain valid after a panic elsewhere.
     fn take(&self) -> Vec<Request> {
         std::mem::take(&mut *self.requests.lock().unwrap_or_else(PoisonError::into_inner))
     }
@@ -179,6 +185,8 @@ impl Endpoint {
         self.stop_inner();
     }
 
+    /// Queue a request and wake the thread. A stopped endpoint drops it, which is the
+    /// only correct answer: there is no thread left to apply it.
     fn request(&self, request: Request) {
         if self.shared.stopped() {
             return;
@@ -187,6 +195,8 @@ impl Endpoint {
         wake(&self.wake);
     }
 
+    /// Ask the thread to stop, wake it, and wait for it to exit. The join is what makes
+    /// the socket removal in the thread happen before `stop` returns.
     fn stop_inner(&mut self) {
         self.shared.stop.store(true, Ordering::SeqCst);
         wake(&self.wake);
@@ -196,12 +206,15 @@ impl Endpoint {
     }
 }
 
+/// Stopping on drop means a test that forgets to call [`Endpoint::stop`] still removes
+/// its socket and joins its thread.
 impl Drop for Endpoint {
     fn drop(&mut self) {
         self.stop_inner();
     }
 }
 
+/// Shows only the socket path. The thread and channel hold no state worth printing.
 impl std::fmt::Debug for Endpoint {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -225,6 +238,7 @@ enum Progress {
     Connected(Connected),
 }
 
+/// One accepted socket and where it is in its life: still shaking hands, or connected.
 struct Peer {
     socket: eis::Context,
     state: Progress,
@@ -251,6 +265,7 @@ impl Connected {
     }
 }
 
+/// Peer state helpers, used by the poll loop to find the context a request belongs to.
 impl Peer {
     /// The context this session belongs to, if the handshake finished.
     fn context(&self) -> Option<ContextId> {

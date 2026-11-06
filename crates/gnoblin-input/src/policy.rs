@@ -113,7 +113,7 @@ pub struct PolicyStats {
     pub retired: u64,
 }
 
-/// One waiting request.
+/// A request as the queue remembers it: its identity and the tick it must be decided by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Waiting {
     id: RequestId,
@@ -121,6 +121,8 @@ struct Waiting {
 }
 
 /// The queue of events waiting for a script decision.
+///
+/// The queue keeps request identities and deadlines only. Events stay with the caller.
 #[derive(Clone, Debug)]
 pub struct PolicyQueue {
     capacity: usize,
@@ -129,6 +131,7 @@ pub struct PolicyQueue {
     stats: PolicyStats,
 }
 
+/// The default queue uses [`MAX_PENDING`], the same bound the C tree enforces.
 impl Default for PolicyQueue {
     fn default() -> Self {
         Self::new(MAX_PENDING)
