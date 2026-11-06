@@ -1,6 +1,6 @@
 # Layers
 
-Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers its own layers: `portals`, `alerts` and `window_menu`. A built-in Wayland provider registers the client surfaces: `surface_toplevel`, `surface_layer_shell` and `surface_x11`. Extensions register theirs. Decisions live in the main document; this file holds the detail.
+Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers `gnoblin.portals`, `gnoblin.alerts` and `gnoblin.window_menu`, and a Wayland provider registers the client surfaces (`gnoblin.surface_*`). Extensions register under `ext.<id>.`. Decisions live in the main document; this file holds the detail.
 
 Status: proposed. Nothing here is implemented.
 
@@ -100,21 +100,23 @@ A layer is a runtime object with an identity and a lifetime. `register` creates 
 the same registry as an extension claim. The compositor enforces the same rules,
 with trust levels only where stated.
 
-| Field      | Meaning                                                                           |
-| ---------- | --------------------------------------------------------------------------------- |
-| `name`     | Unique while live. Gnoblin names are bare. Extensions use `ext.<id>.`.            |
-| `provider` | Set by the compositor from the registering crate or extension id. Read-only.      |
-| `scope`    | `output` or `window`. A `window` layer names one target.                          |
-| `target`   | Window id for `window` scope. Read-only. The layer follows it.                    |
-| `band`     | Ordering substrate: one of the closed bands below.                                |
-| `order`    | `above` or `below` a named layer in the same band.                                |
-| `input`    | `passive`, `modal-to-target`, `modal-to-output` or `grab`.                        |
-| `focus`    | `takes` or `none`.                                                                |
-| `secure`   | `false` (default) or `true`. Secure content is never captured. See Capture paths. |
-| `lock`     | `hide` (removed on lock) or `keep`. Gnoblin providers only.                       |
-| `effects`  | `inherit` or `none`, per D24 and D26.                                             |
-| `content`  | A surface the provider owns, or a named compositor painter.                       |
-| `state`    | `mapped`, `hidden` or `ended`, with a reason when ended.                          |
+In prose, a bare name such as `portals` means `gnoblin.portals`. The registry builds the full name from the provider; the provider supplies only the local part.
+
+| Field      | Meaning                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| `name`     | Full name `<provider>.<local>`, unique while live. Built-ins: `gnoblin.`. Extensions: `ext.<id>.`. |
+| `provider` | Namespace: `gnoblin` for built-ins, `ext.<id>` for extensions. Set by the compositor. Read-only.   |
+| `scope`    | `output` or `window`. A `window` layer names one target.                                           |
+| `target`   | Window id for `window` scope. Read-only. The layer follows it.                                     |
+| `band`     | Ordering substrate: one of the closed bands below.                                                 |
+| `order`    | `above` or `below` a named layer in the same band.                                                 |
+| `input`    | `passive`, `modal-to-target`, `modal-to-output` or `grab`.                                         |
+| `focus`    | `takes` or `none`.                                                                                 |
+| `secure`   | `false` (default) or `true`. Secure content is never captured. See Capture paths.                  |
+| `lock`     | `hide` (removed on lock) or `keep`. Gnoblin providers only.                                        |
+| `effects`  | `inherit` or `none`, per D24 and D26.                                                              |
+| `content`  | A surface the provider owns, or a named compositor painter.                                        |
+| `state`    | `mapped`, `hidden` or `ended`, with a reason when ended.                                           |
 
 ### Bands: ordering substrate, not identity
 
@@ -143,7 +145,7 @@ Every client surface that takes a place on screen is a layer record. A built-in 
 | `surface_layer_shell` | `output` | `background` to `overlay`, by layer | `gnoblin-wayland`  | One zwlr_layer_surface_v1               |
 | `surface_x11`         | `window` | `windows`                           | `gnoblin-xwayland` | One managed or override-redirect window |
 
-**Names.** Built-in per-object records are named `<kind>:<key>`. The key is the window id for `surface_toplevel` and `surface_x11`, and the client namespace for `surface_layer_shell`, as in `surface_layer_shell:org.gnoblin.TestBar`. A second live surface with the same namespace gets `#2`. The parity test changes its lookup key only, not its assertions [INFERENCE: check the lookup in `tests/layer_shell.rs`].
+**Names.** Built-in per-object records are named `gnoblin.<kind>:<key>`. The key is the window id for `surface_toplevel` and `surface_x11`, and the client namespace for `surface_layer_shell`, as in `gnoblin.surface_layer_shell:org.gnoblin.TestBar`. A second live surface with the same namespace gets `#2`. The parity test changes its lookup key only, not its assertions [INFERENCE: check the lookup in `tests/layer_shell.rs`].
 
 **Four wlr layers are four bands.** A record has one band, and the band is the trust boundary. So `surface_layer_shell` is four band positions, not one record across four bands. The closed band set already holds the four wlr layers in the same order, so nothing sorts inside the kind. `layers.list` reports the wlr layer as `band`, which keeps the parity test's `layer = "top"`.
 
@@ -194,14 +196,16 @@ Fullscreen aside, the wlr bands match wlr's own order.
 
 Three Gnoblin claims and three built-in surface kinds use the registry. Each replaces existing code or is new.
 
-| Layer                 | Scope                                      | Band and order                         | Input                        | Provider                                                                              | Replaces or adds                                                                            |
-| --------------------- | ------------------------------------------ | -------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `portals`             | `window` if parent resolves, else `output` | `windows`, above target; else `system` | `modal-to-output` (Kieran 1) | `gnoblin-portal`, registered by the compositor's portal service, with `secure = true` | `Modal` and overlay slot (`modal.rs`, `frame.rs:236`); `dialog_placement` (`portal.rs:310`) |
-| `alerts`              | `window`                                   | `windows`, above target                | `modal-to-target`            | `gnoblin-compositor` [INFERENCE]; content per Kieran 4                                | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
-| `window_menu`         | `window`                                   | `windows`, above target                | `grab`                       | `gnoblin-window-menu` (D29), or a claimant                                            | New in Rust. Replaces Bingux `WindowMenu.qml`.                                              |
-| `surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wayland`            | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
-| `surface_layer_shell` | `output`                                   | `background` to `overlay`              | `gnoblin-wayland`            | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface.      |
-| `surface_x11`         | `window`                                   | `windows`, X stacking                  | `gnoblin-xwayland`           | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.              |
+| Layer                         | Scope                                      | Band and order                         | Input                        | Registered by                                                                         | Replaces or adds                                                                            |
+| ----------------------------- | ------------------------------------------ | -------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `gnoblin.portals`             | `window` if parent resolves, else `output` | `windows`, above target; else `system` | `modal-to-output` (Kieran 1) | `gnoblin-portal`, registered by the compositor's portal service, with `secure = true` | `Modal` and overlay slot (`modal.rs`, `frame.rs:236`); `dialog_placement` (`portal.rs:310`) |
+| `gnoblin.alerts`              | `window`                                   | `windows`, above target                | `modal-to-target`            | `gnoblin-compositor` [INFERENCE]; content per Kieran 4                                | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
+| `gnoblin.window_menu`         | `window`                                   | `windows`, above target                | `grab`                       | `gnoblin-window-menu` (D29), or a claimant                                            | New in Rust. Replaces Bingux `WindowMenu.qml`.                                              |
+| `gnoblin.surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wayland`            | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
+| `gnoblin.surface_layer_shell` | `output`                                   | `background` to `overlay`              | `gnoblin-wayland`            | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface.      |
+| `gnoblin.surface_x11`         | `window`                                   | `windows`, X stacking                  | `gnoblin-xwayland`           | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.              |
+
+Every built-in uses namespace `gnoblin`. The column names the crate that registers the layer.
 
 ### portals
 
@@ -253,7 +257,7 @@ service registers `portals`, so the portal-layering rule holds (`xtask/src/deps.
 `gnoblin-wayland` and `gnoblin-xwayland` also depend on it, to register the surface kinds [INFERENCE: check that `xtask/src/deps.rs` allows the edge].
 
 ```rust
-// gnoblin-compositor only. The registry sets `provider` from the crate.
+// gnoblin-compositor only. The spec gives the local name; the registry adds the namespace.
 let spec = LayerSpec {
     name: "portals".into(),
     scope: Scope::Window(parent),          // or Scope::Output(output) when no parent resolves
@@ -262,13 +266,12 @@ let spec = LayerSpec {
     input: InputPolicy::ModalToOutput,
     ..LayerSpec::default()
 };
-let handle = registry.register(Provider::Gnoblin("gnoblin-portal"), spec)?;
+let handle = registry.register(Provider::Gnoblin, spec)?; // handle.name is "gnoblin.portals"
 ```
 
 ### Lua
 
-`gnoblin.layers.register{...}` returns a handle object, with the object model's three
-kinds of member:
+`gnoblin.layers.register{...}` returns a handle object. Its `name` is the full name: an extension `example` that passes `name = "note"` reads back `ext.example.note`. The handle has the object model's three kinds of member:
 
 - Properties, read-only: `name`, `provider`, `band`, `scope`, `target`, `state`.
 - Signals: `closed(layer, reason)` and `changed(layer, property)`.
@@ -278,11 +281,11 @@ The pattern matches `LayerSurface` (`docs/public/gnoblin.d.lua:758`).
 
 ```lua
 local note = gnoblin.layers.register {
-  name = "ext.example.note",
+  name = "note",
   scope = "window",
   target = gnoblin.windows.focused(),
   input = "passive",
-  order = { above = "ext.example.base" },
+  order = { above = "base" },
 }
 print(note.name, note.provider, note.state)
 note:on("closed", function(layer, reason)
@@ -304,7 +307,7 @@ a subset.
 
 ```toml
 [powers.layers]
-names = ["ext.example.panel"]        # must start with ext.<id>.
+names = ["panel"]                    # local names; full name is ext.<id>.<local>
 band_max = "top"                     # "top" (default) or "overlay" for output scope
 window_scope = true                  # may register window-scope layers in `windows`
 input = ["passive"]                  # "modal-to-target" only by host grant
@@ -324,21 +327,21 @@ Who may register above whom:
 
 ## Failure modes
 
-| Case                               | Behaviour                                                                       |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| Provider crash or disconnect       | Its layers end `provider-gone`. Pending portal requests settle `error(...)`.    |
-| Extension unload                   | As a disconnect. All its layers end in one step.                                |
-| Name collision                     | `register` refuses with `name-taken`. Names are global while live.              |
-| Parent never maps                  | Unresolved `wayland:` or `x11:` falls back to output scope, logged.             |
-| Parent closes, dialog open         | Layer ends `target-gone`. Request continues on output scope.                    |
-| Parent closes, alert open          | Layer ends `target-gone`. No alert remains.                                     |
-| Target unresponsive, then responds | `alerts` ends with reason `target-responsive`.                                  |
-| Target moves to another output     | Window-scope layers move with it.                                               |
-| Layer requested above the lock     | Refused. Nothing registers in `lock`.                                           |
-| Session locks                      | `hide` layers are removed. Pending portal requests settle `error(locked)`.      |
-| Client surface destroyed           | Its record ends `surface-gone`. Its popups end with it.                         |
-| Many simultaneous requests         | One live `portals` per output. Others queue.                                    |
-| Limits                             | Proposed: 32 live layers per provider, 8 per target. [INFERENCE: not measured.] |
+| Case                                | Behaviour                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| Provider crash or disconnect        | Its layers end `provider-gone`. Pending portal requests settle `error(...)`.    |
+| Extension unload                    | As a disconnect. All its layers end in one step.                                |
+| Repeated local name in one provider | `register` refuses with `name-taken`. Other providers are unaffected.           |
+| Parent never maps                   | Unresolved `wayland:` or `x11:` falls back to output scope, logged.             |
+| Parent closes, dialog open          | Layer ends `target-gone`. Request continues on output scope.                    |
+| Parent closes, alert open           | Layer ends `target-gone`. No alert remains.                                     |
+| Target unresponsive, then responds  | `alerts` ends with reason `target-responsive`.                                  |
+| Target moves to another output      | Window-scope layers move with it.                                               |
+| Layer requested above the lock      | Refused. Nothing registers in `lock`.                                           |
+| Session locks                       | `hide` layers are removed. Pending portal requests settle `error(locked)`.      |
+| Client surface destroyed            | Its record ends `surface-gone`. Its popups end with it.                         |
+| Many simultaneous requests          | One live `portals` per output. Others queue.                                    |
+| Limits                              | Proposed: 32 live layers per provider, 8 per target. [INFERENCE: not measured.] |
 
 ## Security
 
@@ -347,7 +350,7 @@ Who may register above whom:
 - The compositor draws the attribution label ("requested by ...") in its own frame,
   on every `modal-*` and `grab` layer. Provider content sits in its own surface and
   cannot cover the label [INFERENCE: not built yet].
-- `portals`, `alerts`, `window_menu` and the `surface_` prefix are reserved. The `ext.<id>.` prefix stops an extension from claiming the first three. Only built-in kinds use `surface_`.
+- `gnoblin` is the only reserved provider id. An extension with that id is refused at load, so no extension name starts `gnoblin.`. Local names such as `surface_toplevel` are ordinary under an extension's own namespace.
 - `parent_window` is a client's hint. The compositor places a portal dialog over a
   resolved window only when that window belongs to the requesting client (proposed;
   Kieran 9). Otherwise it falls back to output scope.
@@ -401,7 +404,7 @@ Two kinds of rule. An invariant is enforced by the compositor, and no provider o
 - **Consent blocks its output.** A `portals` layer blocks its whole output, so a consent dialog cannot be bypassed by clicking elsewhere (Kieran 1).
 - **Secure content is never captured.** A layer with `secure = true` is never drawn into any capture, on any path in Capture paths. No grant, manifest power, provider or config setting turns that off. The user's display still shows it.
 - **Only the owner or the user changes `secure`.** The provider sets it on its own layer. The user sets it in config, per layer name or per window rule, in either direction. That includes built-in layers such as `portals`; config is the only way to change a provider's declared value. No provider can change another provider's layer, and an extension cannot set it on a Gnoblin layer.
-- **Layer names are owned.** A name belongs to its first registrant. The built-in names `portals`, `alerts`, `window_menu`, `surface_toplevel`, `surface_layer_shell`, `surface_x11` and the lock layer are reserved for their built-in providers. An extension cannot register or re-register them.
+- **Names are namespaced by provider.** A full name is `<provider>.<local>`, so collisions across providers are impossible by construction. Within one provider, a repeated local name is refused with `name-taken`. The provider `gnoblin` is reserved, and an extension with that id is refused.
 - **The lock surface is secure.** It is the one built-in exception to the default of `false`, because it is compositor-owned and shows the unlock prompt over the locked session. No provider or config can remove it from capture.
 - **Lock.** Nothing draws above the lock except the compositor's allow-list. Extensions cannot join it.
 - **Count limits.** Each provider and each target has a maximum number of live layers. The numbers are proposed; the limits themselves are not optional.
@@ -419,11 +422,15 @@ Two kinds of rule. An invariant is enforced by the compositor, and no provider o
 
 An option never widens an invariant. A request outside the grant is refused and logged.
 
-**Config shape (proposed).** `config.toml` gets a `layers` section: a `record-map` keyed by layer name, each record with one `secure` bool, so `[layers.portals] secure = false`. The schema's record-map ids are `hex-pair`, `renderer` and `serial`, so layer names need a new id kind. A window rule takes `secure = true|false`, spelled as in `docs/config/window_rule.md`, which uses snake_case rule keys.
+**Config shape (proposed).** `config.toml` gets a `layers` section: a `record-map` keyed by full layer name, each record with one `secure` bool. A dotted name must be quoted, or TOML reads it as nested tables: `[layers."gnoblin.portals"]` with `secure = false`. This document writes the path as `layers."gnoblin.portals".secure`.
+
+The schema's record-map ids are `hex-pair`, `renderer` and `serial`. None takes dots, so layer names need a new id kind, `layer-name`, with the grammar `<provider>.<local>`. [INFERENCE: grep found no Rust id validator under `crates/gnoblin-config/src`.]
+
+A window rule takes `secure = true|false`, spelled as in `docs/config/window_rule.md`, which uses snake_case rule keys.
 
 **Capture config (proposed).** A `capture` section holds one leaf, `secure-treatment = "mask" | "omit"`, default `mask`. Schema field keys are kebab-case (`delay-ms`, `privacy-screen`), so the leaf is spelled `secure-treatment`, not `secure_treatment`.
 
-**Default.** `secure = false` applies only to a layer that does not declare a value. The portal crates declare `secure = true` on `portals` when they register it. The lock surface is fixed `true`, and config cannot change it.
+**Default.** `secure = false` applies only to a layer that does not declare a value. The portal crates declare `secure = true` on `gnoblin.portals` when they register it. The lock surface is fixed `true`, and config cannot change it.
 
 ## Cutover
 
@@ -460,15 +467,17 @@ Each path below moves to the registry, with no shim.
 - A window-scope layer follows its target through move, minimise, workspace switch
   and close, and ends `target-gone`.
 - One live `portals` dialog per output; a second request queues.
-- A name collision is refused with `name-taken`.
+- A repeated local name within one provider is refused with `name-taken`.
 - A provider disconnect ends its layers and sends `closed`.
 - `secure` defaults to `false` for every layer, extension layers included.
 - A `secure = true` layer is replaced under each path in Capture paths by the `secure-treatment` option, and still drawn on the display.
-- A config override flips a layer both ways: `layers.<name>.secure` hides a `false` layer, and `false` shows a `true` layer such as `portals`.
+- A config override flips a layer both ways: `layers."<full name>".secure` hides a `false` layer, and `false` shows a `true` layer such as `gnoblin.portals`.
 - A window rule's `secure` flips a window or layer surface both ways.
 - A provider cannot change another provider's layer's `secure`. An extension cannot set it on a Gnoblin layer.
-- The lock surface stays secure. A config override on it is refused and logged.
-- A layer name is owned by its first registrant. An extension cannot register or re-register a built-in name, and one provider cannot change another provider's layer.
+- The lock surface stays secure. A config override on `gnoblin.lock` is refused and logged.
+- Two providers may register the same local name: `ext.a.note` and `ext.b.note` both live.
+- An extension with id `gnoblin` is refused at load. No extension can register under `gnoblin.`.
+- One provider cannot change another provider's layer.
 - Mask follows a shaped window: a secure window with an oval alpha silhouette captures as a filled oval in the neutral colour. Pixels outside the oval match the underlay.
 - Omit reveals underlay by design: a secure node over a non-secure window captures that window where the node sat. The test asserts it, so the trade-off stays visible.
 - Under `mask`, a capture differs from the display only inside secure silhouettes.
@@ -491,9 +500,9 @@ Each path below moves to the registry, with no shim.
 3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy. The capture view masks or omits secure nodes (`capture.secure-treatment`) and replaces the pre-overlay readback (Capture paths).
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
-6. `window_menu` (D29), built in.
-7. `alerts`, with its content provider.
-8. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by layer name, and a `capture` section with `secure-treatment`.
+6. `gnoblin.window_menu` (D29), built in.
+7. `gnoblin.alerts`, with its content provider.
+8. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by full layer name, with a new `layer-name` id kind, and a `capture` section with `secure-treatment`.
 9. Extension `[powers.layers]` through D22.
 
 Each phase names the tests that fail without its rule.
