@@ -248,7 +248,7 @@ impl Software {
 
     /// The buffer as drawn, overlay and cursor included, for tests of the composed frame.
     #[cfg(test)]
-    fn composed(&mut self) -> Result<Image, RenderError> {
+    pub(crate) fn composed(&mut self) -> Result<Image, RenderError> {
         self.readback(false, true)
     }
 

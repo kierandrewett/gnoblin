@@ -28,7 +28,10 @@ use super::harness::{BufferSpec, ShmClient};
 use super::pipeline::ShaderSources;
 use super::*;
 use crate::render::frame::{Layer, Model, Overlay, Solid, Surface};
-use crate::render::image::Image;
+use crate::render::{Software, image::Image};
+
+/// The largest per-channel difference accepted where a blend rounds.
+const BLEND: u8 = 1;
 
 /// A renderer, or [`None`] with a printed reason when this machine has no Vulkan.
 fn renderer(size: Size) -> Option<Vulkan> {
@@ -54,6 +57,10 @@ fn renderer(size: Size) -> Option<Vulkan> {
 fn clean(vulkan: &Vulkan) {
     let messages = vulkan.take_validation_messages();
     assert!(messages.is_empty(), "the validation layer reported: {messages:#?}");
+}
+
+fn software(size: Size) -> Software {
+    Software::new(size).expect("a software renderer")
 }
 
 fn colour(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
@@ -99,6 +106,260 @@ fn bitmap(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Image
 }
 
 const SIZE: Size = Size::new(64, 48);
+
+/// The largest per-channel difference between two readbacks, and where it is.
+fn worst_difference(left: &Image, right: &Image) -> (u8, (i32, i32)) {
+    assert_eq!(left.size(), right.size(), "the readbacks are the same size");
+    let size = left.size();
+    let mut worst = (0, (0, 0));
+    for y in 0..size.height as i32 {
+        for x in 0..size.width as i32 {
+            let a = left.colour_at(x, y).expect("a pixel");
+            let b = right.colour_at(x, y).expect("a pixel");
+            let difference = a.iter().zip(&b).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
+            if difference > worst.0 {
+                worst = (difference, (x, y));
+            }
+        }
+    }
+    worst
+}
+
+/// Asserts two readbacks agree to within `tolerance` per channel, and prints how far they do.
+fn assert_close(what: &str, software: &Image, vulkan: &Image, tolerance: u8) {
+    let (worst, at) = worst_difference(software, vulkan);
+    println!("{what}: largest channel difference {worst} at {at:?} (tolerance {tolerance})");
+    assert!(
+        worst <= tolerance,
+        "{what}: the renderers differ by {worst} at {at:?}: software {:?}, vulkan {:?}",
+        software.colour_at(at.0, at.1),
+        vulkan.colour_at(at.0, at.1)
+    );
+}
+
+/// Draws `frames` in order on both renderers at `scale` and compares what each captures.
+fn compare(what: &str, size: Size, scale: Scale, frames: &[OutputFrame], tolerance: u8) -> Option<(Image, Image)> {
+    let mut vulkan = renderer(size)?;
+    let mut software = software(size);
+    for frame in frames {
+        software.draw(frame, scale).expect("the software frame");
+        vulkan.draw(frame, scale).expect("the Vulkan frame");
+    }
+    let expected = software.capture(true).expect("a software readback");
+    let actual = vulkan.capture(true).expect("a Vulkan readback");
+    assert_close(what, &expected, &actual, tolerance);
+    clean(&vulkan);
+    Some((expected, actual))
+}
+
+#[test]
+fn solid_colours_match_the_software_renderer() {
+    let mut frame = frame(colour(10, 20, 30, 255), SIZE);
+    solid(&mut frame, Rect::new(2, 2, 20, 20), colour(255, 0, 0, 255));
+    solid(&mut frame, Rect::new(12, 12, 20, 20), colour(0, 255, 0, 255));
+    solid(&mut frame, Rect::new(40, 4, 10, 30), colour(0, 0, 255, 255));
+    compare("solid colours", SIZE, Scale::IDENTITY, &[frame], 0);
+}
+
+#[test]
+fn overlapping_translucent_layers_match_the_software_renderer() {
+    let mut frame = frame(colour(200, 100, 50, 255), SIZE);
+    solid(&mut frame, Rect::new(4, 4, 30, 30), colour(255, 0, 0, 255));
+    solid(&mut frame, Rect::new(16, 10, 30, 30), colour(0, 255, 0, 128));
+    solid(&mut frame, Rect::new(24, 20, 30, 24), colour(0, 0, 255, 64));
+    compare(
+        "two overlapping translucent layers",
+        SIZE,
+        Scale::IDENTITY,
+        &[frame],
+        BLEND,
+    );
+}
+
+/// A pattern whose every pixel differs, so a wrong crop, offset or channel order shows.
+fn pattern(x: i32, y: i32) -> [u8; 4] {
+    [
+        (x * 15 % 256) as u8,
+        (y * 15 % 256) as u8,
+        ((x + y) * 7 % 256) as u8,
+        255,
+    ]
+}
+
+#[test]
+fn a_textured_surface_matches_the_software_renderer() {
+    let client = ShmClient::new(vec![BufferSpec::argb(16, 16, pattern)]);
+    let mut frame = frame(colour(10, 20, 30, 255), SIZE);
+    // Whole, and a crop of the middle placed elsewhere.
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(0.0, 0.0, 16.0, 16.0),
+        Rect::new(8, 4, 16, 16),
+        1.0,
+        Color::WHITE,
+    ));
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(4.0, 4.0, 8.0, 8.0),
+        Rect::new(40, 20, 8, 8),
+        1.0,
+        Color::WHITE,
+    ));
+    compare(
+        "a textured surface and a crop of it",
+        SIZE,
+        Scale::IDENTITY,
+        &[frame],
+        0,
+    );
+}
+
+#[test]
+fn an_xrgb_buffer_is_drawn_opaque() {
+    // The fourth byte of an xrgb pixel is padding. Here it is zero, which would make every
+    // pixel transparent if it were read as alpha.
+    let client = ShmClient::new(vec![BufferSpec::xrgb(16, 16, |x, y| {
+        let [red, green, blue, _] = pattern(x, y);
+        [red, green, blue, 0]
+    })]);
+    let mut frame = frame(colour(90, 90, 90, 255), SIZE);
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(0.0, 0.0, 16.0, 16.0),
+        Rect::new(8, 8, 16, 16),
+        1.0,
+        Color::WHITE,
+    ));
+    let (_, vulkan) = compare("an xrgb surface", SIZE, Scale::IDENTITY, &[frame], 0).unzip();
+    if let Some(vulkan) = vulkan {
+        assert_eq!(
+            vulkan.colour_at(8, 8),
+            Some([0, 0, 0, 255]),
+            "the first pixel is opaque"
+        );
+    }
+}
+
+#[test]
+fn a_translucent_buffer_blends_with_what_is_behind_it() {
+    // Premultiplied, as a shm buffer's pixels are: no channel exceeds the alpha.
+    let client = ShmClient::new(vec![BufferSpec::argb(16, 16, |x, y| {
+        let alpha = ((x + y) * 8).min(255) as u8;
+        [alpha / 2, alpha / 3, alpha / 4, alpha]
+    })]);
+    let mut frame = frame(colour(40, 80, 120, 255), SIZE);
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(0.0, 0.0, 16.0, 16.0),
+        Rect::new(8, 8, 16, 16),
+        1.0,
+        Color::WHITE,
+    ));
+    compare("a translucent buffer", SIZE, Scale::IDENTITY, &[frame], BLEND);
+}
+
+#[test]
+fn a_layer_opacity_of_a_half_matches_the_software_renderer() {
+    let client = ShmClient::new(vec![BufferSpec::argb(16, 16, pattern)]);
+    let mut frame = frame(colour(200, 50, 50, 255), SIZE);
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(0.0, 0.0, 16.0, 16.0),
+        Rect::new(8, 8, 16, 16),
+        0.5,
+        Color::WHITE,
+    ));
+    compare("a surface at opacity 0.5", SIZE, Scale::IDENTITY, &[frame], BLEND);
+}
+
+#[test]
+fn a_tint_matches_the_software_renderer() {
+    let client = ShmClient::new(vec![BufferSpec::argb(16, 16, pattern)]);
+    let mut frame = frame(colour(20, 20, 20, 255), SIZE);
+    frame.push_layer(surface(
+        &client,
+        0,
+        RectF::new(0.0, 0.0, 16.0, 16.0),
+        Rect::new(8, 8, 16, 16),
+        1.0,
+        Color::new(0.5, 1.0, 0.25, 1.0),
+    ));
+    compare("a tinted surface", SIZE, Scale::IDENTITY, &[frame], BLEND);
+}
+
+#[test]
+fn the_overlay_and_the_cursor_match_the_software_renderer() {
+    let Some(mut vulkan) = renderer(SIZE) else { return };
+    let mut software = software(SIZE);
+    let frame = decorated(SIZE, 16);
+    software.draw(&frame, Scale::IDENTITY).expect("the software frame");
+    vulkan.draw(&frame, Scale::IDENTITY).expect("the Vulkan frame");
+    // Both with the overlay drawn and with it left out, with and without the cursor.
+    let composed = vulkan.read_target(false, true).expect("a composed readback");
+    assert_close(
+        "the overlay and the cursor, composed",
+        &software.composed().expect("a composed readback"),
+        &composed,
+        BLEND,
+    );
+    for with_cursor in [false, true] {
+        let expected = software.capture(with_cursor).expect("a software capture");
+        let actual = vulkan.capture(with_cursor).expect("a Vulkan capture");
+        assert_close(
+            if with_cursor {
+                "a capture with the cursor"
+            } else {
+                "a capture without the cursor"
+            },
+            &expected,
+            &actual,
+            BLEND,
+        );
+    }
+    clean(&vulkan);
+}
+
+#[test]
+fn overlapping_damage_blends_a_translucent_layer_once() {
+    let mut frame = OutputFrame::new();
+    frame.set_background(colour(255, 255, 255, 255));
+    frame.push_damage(Rect::new(0, 0, 40, 40));
+    frame.push_damage(Rect::new(20, 20, 40, 40));
+    solid(&mut frame, Rect::new(0, 0, 64, 48), colour(0, 0, 0, 128));
+    compare(
+        "overlapping damage under a translucent layer",
+        SIZE,
+        Scale::IDENTITY,
+        &[frame],
+        BLEND,
+    );
+}
+
+#[test]
+fn a_scale_converts_the_frame_to_physical_pixels() {
+    let size = Size::new(32, 32);
+    let mut frame = OutputFrame::new();
+    frame.push_damage(Rect::new(0, 0, 16, 16));
+    solid(&mut frame, Rect::new(0, 0, 4, 4), colour(255, 0, 0, 255));
+    let (_, vulkan) = compare("a layer at scale 2", size, Scale::integral(2), &[frame], 0).unzip();
+    if let Some(vulkan) = vulkan {
+        assert_eq!(
+            vulkan.colour_at(7, 7),
+            Some([255, 0, 0, 255]),
+            "the layer covers 8 pixels"
+        );
+        assert_eq!(
+            vulkan.colour_at(8, 8),
+            Some([0, 0, 0, 255]),
+            "and stops at the scaled edge"
+        );
+    }
+}
 
 /// A frame with the overlay and the cursor over a layer, the cursor's left edge at `cursor_x`.
 ///
