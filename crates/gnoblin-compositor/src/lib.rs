@@ -88,6 +88,7 @@ mod ipc;
 mod layout;
 pub mod portal;
 mod schema;
+mod session_tables;
 mod window_management;
 
 use std::path::PathBuf;
@@ -111,6 +112,10 @@ pub use layout::{
     configure_from_store as configure_layouts_from_store,
 };
 pub use schema::catalog;
+pub use session_tables::{
+    configure_from_environment as configure_session_tables_from_environment,
+    configure_from_store as configure_session_tables_from_store,
+};
 pub use window_management::{
     configure_from_environment as configure_window_management_from_environment,
     configure_from_store as configure_window_management_from_store,
