@@ -236,8 +236,18 @@ impl Host {
 
     /// Calls a declared method on an object and waits for the operation's outcome.
     pub(crate) fn call_operation(&self, object: ObjectId, method: &str) -> Result<OperationOutcome, ClientError> {
+        self.call_operation_with(object, method, &Fields::new())
+    }
+
+    /// Calls a declared method with `arguments` and waits for the operation's outcome.
+    pub(crate) fn call_operation_with(
+        &self,
+        object: ObjectId,
+        method: &str,
+        arguments: &Fields,
+    ) -> Result<OperationOutcome, ClientError> {
         let mut client = self.lock();
-        let operation = client.call(object, method, &Fields::new())?;
+        let operation = client.call(object, method, arguments)?;
         client.await_operation(operation)
     }
 

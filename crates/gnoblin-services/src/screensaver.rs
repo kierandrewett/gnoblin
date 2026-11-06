@@ -2,24 +2,32 @@
 //!
 //! Clients such as media players call `Inhibit` while they play, and screen lockers
 //! and idle daemons ask `GetActive` and `GetSessionIdleTime`. The service answers from
-//! the compositor's `idle` and `lock` objects. It keeps the inhibit table itself,
-//! because the schema has no inhibit member.
+//! the compositor's `idle` and `lock` objects. It keeps the inhibit table itself, so a
+//! cookie is checked here before the compositor's hold is released.
+//!
+//! # Holds in the compositor
+//!
+//! Each `Inhibit` records a hold named `<sender>:<cookie>` through the idle object's
+//! `inhibit` method, and `UnInhibit`, or the sender leaving the bus, releases it through
+//! `uninhibit`. While any hold is set the compositor does not fire idle notifications.
+//! A hold the compositor refuses fails the `Inhibit` call and is not recorded here.
 //!
 //! # What the compositor does not read yet
 //!
-//! Inhibits are recorded here but the compositor's idle policy does not read them, so an
-//! inhibit does not yet stop the screen from blanking. `GetActive` reports the lock object
-//! only. `Lock` asks the compositor and succeeds only once the compositor confirms the
-//! session locked, within its bound; a refusal, a failed cover or a timeout is a D-Bus
-//! error. `SimulateUserActivity` is refused, since the schema declares no member for it.
-//! `ActiveChanged` is declared but not emitted, since no lock change is watched.
+//! `GetActive` reports the lock object only. `Lock` asks the compositor and succeeds only
+//! once the compositor confirms the session locked, within its bound; a refusal, a failed
+//! cover or a timeout is a D-Bus error. `SimulateUserActivity` is refused, since the schema
+//! declares no member for it. `ActiveChanged` is declared but not emitted, since no lock
+//! change is watched.
 //!
 //! # Failure modes first
 //!
 //! 1. **An `UnInhibit` for a cookie nobody holds** is a no-op, and so is one for a cookie
 //!    that a different sender owns: `tests::an_unknown_or_foreign_cookie_is_a_no_op`.
-//! 2. **A sender leaves the bus** and its inhibits go with it, so a crashed player cannot
-//!    hold the screen awake: `tests::a_departed_sender_releases_its_inhibits`.
+//! 2. **A sender leaves the bus** and its inhibits go with it, in the table and in the
+//!    compositor, so a crashed player cannot hold the screen awake:
+//!    `tests::a_departed_sender_releases_its_inhibits` and
+//!    `tests::a_departed_sender_releases_its_holds_in_the_compositor`.
 //! 3. **A sender holds 64 inhibits** and asks for a 65th: refused with `LimitsExceeded`,
 //!    and the other senders are unaffected: `tests::the_65th_inhibit_from_one_sender_is_refused`.
 //! 4. **`Lock` is called** and reaches the compositor's lock method exactly once:
@@ -31,13 +39,16 @@
 //! 6. **The compositor's idle or lock object is missing**: the call fails rather than
 //!    reporting zero idle time, which would say the user is active when nothing told us:
 //!    `tests::a_missing_idle_object_fails_closed`.
+//! 7. **The compositor refuses a hold** (its cap is reached): the `Inhibit` call fails and
+//!    no inhibit is recorded, so the sender's cookie count is not inflated:
+//!    `tests::a_refused_inhibit_leaves_no_entry`.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use futures_lite::StreamExt;
-use gnoblin_model::{TypeKey, Value};
+use gnoblin_model::{Fields, TypeKey, Value};
 use tracing::{info, warn};
 use zbus::fdo;
 use zbus::message::Header;
@@ -64,6 +75,11 @@ pub trait Compositor: Send + Sync {
     /// means the compositor has proven the session locked; an error means it refused, the
     /// cover failed, or it did not confirm within its bound.
     fn lock(&self) -> Result<(), String>;
+    /// Hold the session awake under `holder`, a name unique among the service's holders.
+    /// `Ok` means the compositor recorded the hold.
+    fn inhibit(&self, holder: &str) -> Result<(), String>;
+    /// Release the hold `holder` names. Releasing a name nothing holds is `Ok`.
+    fn uninhibit(&self, holder: &str) -> Result<(), String>;
 }
 
 /// One inhibit a client holds.
@@ -106,16 +122,23 @@ impl Inhibitors {
         Ok(cookie)
     }
 
-    /// Drop `cookie` if `sender` owns it. Anything else is a no-op.
-    fn uninhibit(&mut self, sender: &str, cookie: u32) {
-        if self.table.get(&cookie).is_some_and(|held| held.sender == sender) {
-            self.table.remove(&cookie);
-        }
+    /// Whether `sender` owns `cookie`. Anything it does not own is treated as unheld.
+    fn owned_by(&self, sender: &str, cookie: u32) -> bool {
+        self.table.get(&cookie).is_some_and(|held| held.sender == sender)
     }
 
-    /// Drop every inhibit `sender` holds, when it leaves the bus.
-    fn release_sender(&mut self, sender: &str) {
-        self.table.retain(|_, held| held.sender != sender);
+    /// Every cookie `sender` holds, for releasing a departed sender's holds.
+    fn cookies_of(&self, sender: &str) -> Vec<u32> {
+        self.table
+            .iter()
+            .filter(|(_, held)| held.sender == sender)
+            .map(|(cookie, _)| *cookie)
+            .collect()
+    }
+
+    /// Drop `cookie` from the table. Callers check ownership first.
+    fn forget(&mut self, cookie: u32) {
+        self.table.remove(&cookie);
     }
 }
 
@@ -147,17 +170,47 @@ impl ScreenSaver {
         self.inner.inhibitors.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Record an inhibit and hold the session awake in the compositor under its holder
+    /// name. The table lock is held across the compositor call, so a release of the same
+    /// cookie cannot interleave. A refused hold leaves no entry behind.
     fn add_inhibit(&self, sender: &str, application: &str, reason: &str) -> Result<u32, fdo::Error> {
-        self.inhibitors().inhibit(sender, application, reason)
+        let mut table = self.inhibitors();
+        let cookie = table.inhibit(sender, application, reason)?;
+        if let Err(error) = self.inner.compositor.inhibit(&holder_name(sender, cookie)) {
+            table.forget(cookie);
+            return Err(fdo::Error::Failed(format!(
+                "the compositor refused the inhibit: {error}"
+            )));
+        }
+        Ok(cookie)
     }
 
-    fn remove_inhibit(&self, sender: &str, cookie: u32) {
-        self.inhibitors().uninhibit(sender, cookie);
+    /// Release a hold `sender` owns, in the compositor first. If the compositor refuses the
+    /// release the entry stays, so the client can retry. Anything not owned is a no-op.
+    fn remove_inhibit(&self, sender: &str, cookie: u32) -> Result<(), fdo::Error> {
+        let mut table = self.inhibitors();
+        if !table.owned_by(sender, cookie) {
+            return Ok(());
+        }
+        self.inner
+            .compositor
+            .uninhibit(&holder_name(sender, cookie))
+            .map_err(|error| fdo::Error::Failed(format!("the compositor refused the release: {error}")))?;
+        table.forget(cookie);
+        Ok(())
     }
 
-    /// Called when `sender` leaves the bus.
+    /// Called when `sender` leaves the bus: releases every hold it owns in the compositor,
+    /// so a vanished player cannot keep the session awake. A refusal is logged, since no
+    /// client remains to retry it.
     pub fn release_sender(&self, sender: &str) {
-        self.inhibitors().release_sender(sender);
+        let mut table = self.inhibitors();
+        for cookie in table.cookies_of(sender) {
+            if let Err(error) = self.inner.compositor.uninhibit(&holder_name(sender, cookie)) {
+                warn!(sender, cookie, %error, "the compositor refused to release a departed sender's hold");
+            }
+            table.forget(cookie);
+        }
     }
 
     fn request_lock(&self) -> Result<(), fdo::Error> {
@@ -245,8 +298,7 @@ impl ScreenSaver {
     /// Release the inhibit `cookie`. Unknown or foreign cookies are ignored.
     async fn un_inhibit(&self, cookie: u32, #[zbus(header)] header: Header<'_>) -> fdo::Result<()> {
         let sender = sender_of(&header)?;
-        self.remove_inhibit(&sender, cookie);
-        Ok(())
+        self.remove_inhibit(&sender, cookie)
     }
 
     /// Whether the session is locked.
@@ -295,6 +347,12 @@ fn sender_of(header: &Header<'_>) -> fdo::Result<String> {
         .ok_or_else(|| fdo::Error::Failed("the call has no sender".to_owned()))
 }
 
+/// The hold name the compositor records for an inhibit: `<sender>:<cookie>`, unique per
+/// sender because cookies are never reused within the table.
+fn holder_name(sender: &str, cookie: u32) -> String {
+    format!("{sender}:{cookie}")
+}
+
 /// The compositor, reached through the services role's connection.
 impl Compositor for Host {
     fn idle_ms(&self) -> Result<u64, String> {
@@ -340,6 +398,35 @@ impl Compositor for Host {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    fn inhibit(&self, holder: &str) -> Result<(), String> {
+        self.call_idle("inhibit", holder)
+    }
+
+    fn uninhibit(&self, holder: &str) -> Result<(), String> {
+        self.call_idle("uninhibit", holder)
+    }
+}
+
+impl Host {
+    /// Call `method` on the compositor's idle object with the hold name `holder`.
+    fn call_idle(&self, method: &str, holder: &str) -> Result<(), String> {
+        let snapshot = self.snapshot().map_err(|error| error.to_string())?;
+        let view = snapshot
+            .objects()
+            .iter()
+            .find(|view| view.ty() == &TypeKey::gnoblin("idle"))
+            .ok_or_else(|| "the compositor publishes no idle object".to_owned())?;
+        let mut arguments = Fields::new();
+        arguments.insert("holder".to_owned(), Value::Text(holder.to_owned()));
+        match self.call_operation_with(view.id(), method, &arguments) {
+            Ok(gnoblin_model::OperationOutcome::Done) => Ok(()),
+            Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
+                Err(format!("the compositor refused {method}: {}", code.as_str()))
+            }
+            Err(error) => Err(error.to_string()),
+        }
+    }
 }
 
 /// Start the screensaver service on the session bus, or log why it is not served.
@@ -371,6 +458,10 @@ mod tests {
         /// What the compositor answers a lock with: `Ok` once it has confirmed the lock.
         lock: Result<(), String>,
         locks: Mutex<u32>,
+        /// The holder names currently set in the fake compositor.
+        holds: Mutex<Vec<String>>,
+        /// Whether the fake refuses every new hold, as a compositor at its cap would.
+        refuse_inhibit: bool,
     }
 
     impl Compositor for Arc<Fake> {
@@ -384,6 +475,17 @@ mod tests {
             *self.locks.lock().unwrap() += 1;
             self.lock.clone()
         }
+        fn inhibit(&self, holder: &str) -> Result<(), String> {
+            if self.refuse_inhibit {
+                return Err("too-many-inhibitors".to_owned());
+            }
+            self.holds.lock().unwrap().push(holder.to_owned());
+            Ok(())
+        }
+        fn uninhibit(&self, holder: &str) -> Result<(), String> {
+            self.holds.lock().unwrap().retain(|held| held != holder);
+            Ok(())
+        }
     }
 
     fn fake(idle: Result<u64, String>) -> (Arc<Fake>, ScreenSaver) {
@@ -392,6 +494,8 @@ mod tests {
             locked: Ok(false),
             lock: Ok(()),
             locks: Mutex::new(0),
+            holds: Mutex::new(Vec::new()),
+            refuse_inhibit: false,
         });
         (fake.clone(), ScreenSaver::new(Box::new(fake)))
     }
@@ -400,10 +504,10 @@ mod tests {
     fn an_unknown_or_foreign_cookie_is_a_no_op() {
         let (_, service) = fake(Ok(0));
         let cookie = service.add_inhibit(":1.5", "player", "playing").unwrap();
-        service.remove_inhibit(":1.5", cookie + 100);
-        service.remove_inhibit(":1.9", cookie);
+        service.remove_inhibit(":1.5", cookie + 100).unwrap();
+        service.remove_inhibit(":1.9", cookie).unwrap();
         assert_eq!(service.inhibitors().table.len(), 1);
-        service.remove_inhibit(":1.5", cookie);
+        service.remove_inhibit(":1.5", cookie).unwrap();
         assert!(service.inhibitors().table.is_empty());
     }
 
@@ -443,6 +547,8 @@ mod tests {
             locked: Ok(false),
             lock: Err("the compositor did not lock the session: not-locked".to_owned()),
             locks: Mutex::new(0),
+            holds: Mutex::new(Vec::new()),
+            refuse_inhibit: false,
         });
         let service = ScreenSaver::new(Box::new(fake.clone()));
         assert!(matches!(service.request_lock(), Err(fdo::Error::Failed(_))));
@@ -472,5 +578,30 @@ mod tests {
     fn a_missing_idle_object_fails_closed() {
         let (_, service) = fake(Err("the compositor publishes no idle object".to_owned()));
         assert!(service.idle_seconds().is_err());
+    }
+
+    #[test]
+    fn a_departed_sender_releases_its_holds_in_the_compositor() {
+        let (fake, service) = fake(Ok(0));
+        let cookie = service.add_inhibit(":1.5", "player", "playing").unwrap();
+        assert_eq!(*fake.holds.lock().unwrap(), vec![format!(":1.5:{cookie}")]);
+        service.release_sender(":1.5");
+        assert!(fake.holds.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_refused_inhibit_leaves_no_entry() {
+        let fake = Arc::new(Fake {
+            idle: Ok(0),
+            locked: Ok(false),
+            lock: Ok(()),
+            locks: Mutex::new(0),
+            holds: Mutex::new(Vec::new()),
+            refuse_inhibit: true,
+        });
+        let service = ScreenSaver::new(Box::new(fake.clone()));
+        assert!(service.add_inhibit(":1.5", "player", "playing").is_err());
+        assert!(service.inhibitors().cookies_of(":1.5").is_empty());
+        assert!(fake.holds.lock().unwrap().is_empty());
     }
 }

@@ -739,3 +739,38 @@ fn the_unresponsive_member_round_trips_through_the_graph() {
         Some(Value::Bool(true))
     );
 }
+
+// 12. The idle object's inhibitor count, which the host's `inhibitors` getter reads, is
+// published by the compositor and read back through the graph. The `inhibit` and
+// `uninhibit` methods have no fixture here; the compositor's IPC tests cover them.
+#[test]
+fn the_inhibitors_member_round_trips_through_the_graph() {
+    let (mut server, _window) = server();
+    let idle = server
+        .create(
+            TypeKey::gnoblin("idle"),
+            Fields::from([
+                ("idle_ms".to_owned(), Value::Uint(0)),
+                ("inhibitors".to_owned(), Value::Uint(0)),
+            ]),
+        )
+        .expect("the graph takes an idle object");
+    assert_eq!(
+        server
+            .graph()
+            .object(idle)
+            .and_then(|object| object.property("inhibitors").cloned()),
+        Some(Value::Uint(0))
+    );
+
+    server
+        .set(idle, "inhibitors", Value::Uint(2))
+        .expect("the graph takes an inhibitor count");
+    assert_eq!(
+        server
+            .graph()
+            .object(idle)
+            .and_then(|object| object.property("inhibitors").cloned()),
+        Some(Value::Uint(2))
+    );
+}
