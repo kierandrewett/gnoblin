@@ -2190,6 +2190,7 @@ impl State {
         let output_layouts = self.observed_outputs();
         let mut snapshot = SessionSnapshot {
             outputs: self.outputs.iter().map(|entry| entry.backend).collect(),
+            stack: self.wm.stack().to_vec(),
             workspaces,
             output_layouts,
             output_rects: self

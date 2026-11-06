@@ -1095,6 +1095,9 @@ enum Shape {
     /// Window `i` is at `(100 + 500 * i, 100)`, 300 by 200: the windows sit side by side with
     /// a gap between them.
     Pair,
+    /// Window `i` is at `(100 + 100 * i, 100)`, 300 by 200: each window overlaps the one
+    /// below it, so the lower window keeps a strip that nothing covers.
+    Overlap,
     /// The flat rectangle, rotated 40 degrees about Y and lifted 200 units in depth.
     Tilt,
     /// Every window is flat at `(100 * count, 0)`, 300 by 200: a placement moves
@@ -1143,6 +1146,11 @@ impl ScriptedEngine {
                 .iter()
                 .enumerate()
                 .map(|(index, window)| Placement::rect(window.id, 100.0 + 500.0 * index as f64, 100.0, 300.0, 200.0))
+                .collect(),
+            Shape::Overlap => windows
+                .iter()
+                .enumerate()
+                .map(|(index, window)| Placement::rect(window.id, 100.0 + 100.0 * index as f64, 100.0, 300.0, 200.0))
                 .collect(),
             Shape::Tilt => windows
                 .iter()
@@ -1854,5 +1862,188 @@ fn a_client_round_trip_does_not_advance_the_session_clock() {
         );
         clock.advance(Duration::from_millis(POINTER_REST));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+    });
+}
+
+/// The auto-raise delay the session's window manager uses, in milliseconds.
+const AUTO_RAISE_DELAY: u64 = 500;
+
+/// A session whose two windows overlap. `Left` maps first and lies below `Right`, and the part
+/// of `Left` that `Right` does not cover is where a press reaches `Left` alone.
+fn overlap_session(wm: WmOptions, clock: Arc<ManualClock>) -> Session {
+    scripted_with(wm, Shape::Overlap, clock)
+}
+
+/// A session where the pointer focuses the window it enters, and an auto-raise follows after
+/// `AUTO_RAISE_DELAY` on a clock the test moves.
+fn auto_raise_session() -> Session {
+    overlap_session(
+        WmOptions {
+            focus_mode: FocusMode::Hover,
+            auto_raise: true,
+            auto_raise_delay: AUTO_RAISE_DELAY,
+            ..WmOptions::default()
+        },
+        Arc::new(ManualClock::new()),
+    )
+}
+
+/// The title of the topmost window: the first window of the stacking order.
+fn topmost(observation: &SessionSnapshot) -> Option<&str> {
+    let top = observation.stacking().first()?;
+    observation
+        .windows()
+        .find(|window| window.id == *top)
+        .map(|window| window.title.as_str())
+}
+
+#[test]
+fn raise_on_click_raises_the_window_pressed_in_its_exposed_part() {
+    let session = overlap_session(WmOptions::default(), Arc::new(ManualClock::new()));
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let _lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+
+        // Right covers the overlap, so a press there reaches Right until Left is raised.
+        client.click(session, Point::new(250, 150));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+
+        client.click(session, only_point_of(session, "Left"));
+        session.wait_for(|observation| topmost(observation) == Some("Left"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+
+        // Left now lies above Right, so the same overlap point is Left's.
+        client.click(session, Point::new(250, 150));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+        assert_eq!(
+            topmost(&session.windows()),
+            Some("Left"),
+            "the overlap press changed the stacking"
+        );
+    });
+}
+
+#[test]
+fn raise_on_click_off_focuses_the_window_without_raising_it() {
+    let session = overlap_session(
+        WmOptions {
+            raise_on_click: false,
+            ..WmOptions::default()
+        },
+        Arc::new(ManualClock::new()),
+    );
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let _lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+        let before = session.windows().stacking().to_vec();
+
+        client.click(session, only_point_of(session, "Left"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+        let after = session.windows().stacking().to_vec();
+        assert_eq!(after, before, "a press without raise_on_click changed the stacking");
+    });
+}
+
+#[test]
+fn auto_raise_raises_the_window_the_pointer_rests_on_after_the_delay() {
+    let session = auto_raise_session();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let _lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+        // Enter Right first, so the pointer's move onto Left is a real enter that arms the raise.
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+        client.move_pointer(session, only_point_of(session, "Left"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+
+        session.control.advance(AUTO_RAISE_DELAY - 1);
+        settle(session);
+        assert_eq!(
+            topmost(&session.windows()),
+            Some("Right"),
+            "the window rose before its delay ran out"
+        );
+        session.control.advance(1);
+        session.wait_for(|observation| topmost(observation) == Some("Left"));
+    });
+}
+
+#[test]
+fn auto_raise_is_cancelled_when_the_pointer_leaves_before_the_delay() {
+    let session = auto_raise_session();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let _lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+        client.move_pointer(session, only_point_of(session, "Left"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+
+        session.control.advance(AUTO_RAISE_DELAY - 1);
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+        session.control.advance(1);
+        settle(session);
+        assert_eq!(
+            topmost(&session.windows()),
+            Some("Right"),
+            "a window the pointer left was raised after the delay"
+        );
+    });
+}
+
+#[test]
+fn auto_raise_does_nothing_once_its_window_is_closed() {
+    let session = auto_raise_session();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+        client.move_pointer(session, only_point_of(session, "Left"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+
+        client.destroy(lower);
+        session.wait_for(|observation| observation.titled("Left").is_none());
+        session.control.advance(AUTO_RAISE_DELAY);
+        settle(session);
+        assert_eq!(
+            topmost(&session.windows()),
+            Some("Right"),
+            "the closed window's auto-raise changed the stacking"
+        );
+    });
+}
+
+#[test]
+fn auto_raise_ignores_the_pointer_while_a_button_holds_its_grab() {
+    let session = auto_raise_session();
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let _lower = client.map_window("org.gnoblin.Left", "Left");
+        let _upper = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| topmost(observation) == Some("Right"));
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+
+        // The press holds a grab on Right, so the pointer crossing into Left must not arm a raise.
+        client.left_button(session, true);
+        client.inject_motion(session, only_point_of(session, "Left"));
+        session.control.advance(AUTO_RAISE_DELAY);
+        settle(session);
+        assert_eq!(
+            topmost(&session.windows()),
+            Some("Right"),
+            "a pointer grab let an auto-raise reorder the stacking"
+        );
+        client.left_button(session, false);
     });
 }

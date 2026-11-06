@@ -136,6 +136,8 @@ pub struct SessionSnapshot {
     /// Each workspace whose last layout run failed, with the reason it failed.
     pub(crate) layout_failures: Vec<(WorkspaceId, &'static str)>,
     pub(crate) focus: Option<WindowId>,
+    /// The windows in stacking order, topmost first. A raise moves a window to index 0.
+    pub(crate) stack: Vec<WindowId>,
     pub(crate) lock: LockObservation,
     pub(crate) layers: Vec<ObservedLayer>,
     pub(crate) activation_denied: Option<ActivationDenial>,
@@ -217,6 +219,12 @@ impl SessionSnapshot {
     #[must_use]
     pub fn focus(&self) -> Option<WindowId> {
         self.focus
+    }
+
+    /// The windows in stacking order, topmost first.
+    #[must_use]
+    pub fn stacking(&self) -> &[WindowId] {
+        &self.stack
     }
 
     /// The outputs the server presents on.
@@ -362,6 +370,7 @@ impl SessionSnapshot {
             output_rects: Vec::new(),
             layout_failures: Vec::new(),
             focus,
+            stack: Vec::new(),
             lock: LockObservation::default(),
             layers: Vec::new(),
             activation_denied: None,
