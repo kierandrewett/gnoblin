@@ -2901,7 +2901,7 @@ Every layout module returns a table with a `kind`. The kind sets the default pla
 - `floating`: every window is free.
 - `tiling` and `kiosk`: every window is managed, except a transient, which is free.
 
-The `extent` says where placements may lie. `output` (the default) keeps them in the work area. `unbounded` lets them lie anywhere in layout space; the renderer clips to the output. A scrolling layout is `tiling` with extent `unbounded` and a viewport, a finite offset that picks the visible part.
+The `extent` says where placements may lie. `output` (the default) keeps them in the work area. `unbounded` lets them lie anywhere in layout space; the renderer clips to the output. A scrolling layout is `tiling` with extent `unbounded` and a viewport: a finite offset into its strip that picks the visible part. The viewport is module state (`state.view`), not a field on the workspace.
 
 Removed: the `floating` property and `set_floating` method on `window`, with their IPC handler and wasm binding. Migration: remove calls to `set_floating` and reads of `floating`. To float windows, put their workspace on the `floating` layout.
 
@@ -2909,7 +2909,9 @@ The names `workspace.layout_kind`, `window.workspace`, `window.placement` and `l
 
 Failure modes, each refused when the module loads: a bare function, a table without `kind`, an unknown `kind` or `extent`, a `command` table whose names are not strings or whose values are not functions, and `options` that are not a table. A failed load runs the workspace floating, as `layout-failed` reports.
 
-Status: the `kind` and `extent` fields and the window placement landed in `79ad3bf9`. The viewport flag and `workspace:scroll_to` are the scrolling layout's remaining work.
+Status: the `kind` and `extent` fields and the window placement landed in `79ad3bf9`. The scrolling viewport landed with its module: `scroll_to` is reached as `workspace.layout_command` with `{"x": n}`, and the offset is clamped to the strip. There is no viewport flag.
+
+Not done: the wm does not enforce `extent`. Placements are applied as the layout gives them, so an `output` layout can place a window outside the work area.
 
 ### D26: stackable surface effects
 
