@@ -132,7 +132,9 @@ mod tests {
 
     fn database() -> Connection {
         let connection = Connection::open_in_memory().expect("an in-memory database");
-        connection.execute_batch(crate::SCHEMA).expect("the schema is valid");
+        connection
+            .execute_batch(crate::store::SCHEMA)
+            .expect("the schema is valid");
         connection
     }
 

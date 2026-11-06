@@ -9,9 +9,11 @@ publish.workspace = true
 [dependencies]
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
 
 [features]
 console = ["dep:tracing-subscriber"]
+store = ["dep:rusqlite", "dep:tracing-subscriber"]
 
 [lints]
 workspace = true

@@ -14,7 +14,7 @@ clap_complete.workspace = true
 gnoblin-client = { path = "../gnoblin-client" }
 # The log database's reader, for `gnoblinctl log`: the same query the writer's
 # schema defines, so the two cannot disagree about a column.
-gnoblin-log-store = { path = "../gnoblin-log-store" }
+gnoblin-log = { path = "../gnoblin-log", features = ["store"] }
 # The vocabulary a caller sees: identities, values, observations, operations.
 gnoblin-model = { path = "../gnoblin-model" }
 # The wire, for the handshake version and for `ipc dump`'s frame decoding.

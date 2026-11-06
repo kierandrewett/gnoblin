@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use gnoblin_log_store::{Retention, default_database_path};
+use gnoblin_log::store::{Retention, default_database_path};
 
 /// The environment variable that holds the `tracing` filter, in `EnvFilter` syntax.
 ///

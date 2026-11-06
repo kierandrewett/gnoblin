@@ -12,8 +12,8 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use gnoblin_log::__tracing::{Event, Subscriber};
-use gnoblin_log::event::Logged;
+use crate::__tracing::{Event, Subscriber};
+use crate::event::Logged;
 use rusqlite::{Connection, TransactionBehavior, params};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;

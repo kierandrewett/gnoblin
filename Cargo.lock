@@ -1560,6 +1560,7 @@ dependencies = [
 name = "gnoblin-log"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "rusqlite",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1569,16 +1570,6 @@ name = "gnoblin-log-init"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
- "gnoblin-log-store",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "gnoblin-log-store"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-log",
- "rusqlite",
  "tracing-subscriber",
 ]
 
@@ -1893,7 +1884,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "gnoblin-client",
- "gnoblin-log-store",
+ "gnoblin-log",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",

@@ -46,7 +46,6 @@ members = [
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
     "crates/gnoblin-log-init",
-    "crates/gnoblin-log-store",
     "crates/gnoblin-lua",
     "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-model",

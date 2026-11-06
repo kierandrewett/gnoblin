@@ -1,6 +1,6 @@
 //! `log`: print the records the log database holds, oldest first.
 //!
-//! The database is the one the compositor and the portal write (`gnoblin-log-store`),
+//! The database is the one the compositor and the portal write (`gnoblin-log`'s `store`),
 //! read back through the query the store defines. It is opened read-only, and this
 //! command needs no compositor: it works while the session is down, which is when
 //! the log is most wanted.
@@ -8,7 +8,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use gnoblin_log_store::{LogRecord, Query, default_database_path, read_entries};
+use gnoblin_log::store::{LogRecord, Query, default_database_path, read_entries};
 
 /// Print the records matching `query` from `database`, or from the default database when none
 /// is given. Text is one line per record; `--json` prints one JSON object per line.

@@ -16,13 +16,13 @@ use std::panic;
 
 use gnoblin_log::ProcessRole;
 use gnoblin_log::console::ConsoleFormat;
-use gnoblin_log_store::{DatabaseLayer, Sink};
+use gnoblin_log::store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
-pub use gnoblin_log_store::Retention;
+pub use gnoblin_log::store::Retention;
 pub use options::{DATABASE_VARIABLE, FILTER_VARIABLE, LogOptions, LogSettings};
 
 /// Keeps the database writer alive. Dropping it waits, for a bounded time, for pending
@@ -73,7 +73,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
 
     let mut sink = None;
     if let Some(path) = &options.database {
-        match gnoblin_log_store::open(path, role, options.retention) {
+        match gnoblin_log::store::open(path, role, options.retention) {
             Ok(opened) => {
                 layers.push(DatabaseLayer::new(opened.clone(), role).with_filter(filter).boxed());
                 sink = Some(opened);

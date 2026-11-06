@@ -36,6 +36,10 @@ pub mod event;
 #[cfg(feature = "console")]
 pub mod console;
 
+/// The database sink: one SQLite row per event. Needs the `store` feature.
+#[cfg(feature = "store")]
+pub mod store;
+
 /// The `tracing` crate, for the sinks and the composition, which need its subscriber types.
 ///
 /// Crates other than this one must not use it to log; they use the macros.

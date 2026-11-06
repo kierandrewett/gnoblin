@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use clap::builder::{PossibleValue, PossibleValuesParser};
 use clap::{Arg, ArgAction, ArgMatches, Command, value_parser};
 
-use gnoblin_log_store::Query;
+use gnoblin_log::store::Query;
 use gnoblin_model::Fields;
 
 use crate::args;
