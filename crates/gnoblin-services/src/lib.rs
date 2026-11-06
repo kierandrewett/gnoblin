@@ -69,6 +69,7 @@ pub mod agent;
 pub mod location;
 pub mod polkit;
 pub mod role;
+pub mod screensaver;
 pub mod slot;
 pub mod subject;
 

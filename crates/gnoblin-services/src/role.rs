@@ -48,13 +48,14 @@ use std::time::Duration;
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
-use gnoblin_model::{CapabilitySlot, RequestCompletion, RequestId, RequestOutcome, Tick};
+use gnoblin_model::{CapabilitySlot, Filter, RequestCompletion, RequestId, RequestOutcome, Snapshot, Tick};
 use gnoblin_types::Version;
 use tracing::{info, warn};
 use zbus::Connection;
 
 use crate::agent::{Proposition, Refusal};
 use crate::polkit::{AGENT_PATH, Polkit};
+use crate::screensaver::ScreenSaver;
 use crate::slot::Provider;
 
 /// How long one read waits before the role looks at its own signals.
@@ -170,6 +171,7 @@ impl Role {
         info!(
             slots = ?holding.iter().map(|slot| slot.name()).collect::<Vec<_>>(),
             polkit = agents.polkit.is_some(),
+            screensaver = agents.screensaver.is_some(),
             linked = agents.linked.len(),
             "[services] serving"
         );
@@ -223,6 +225,11 @@ impl Host {
     /// The next event the connection delivered.
     fn next_event(&self) -> Result<gnoblin_client::Event, ClientError> {
         self.lock().next_event()
+    }
+
+    /// A snapshot of the compositor's objects, which the screensaver service reads.
+    pub fn snapshot(&self) -> Result<Snapshot, ClientError> {
+        self.lock().subscribe(Filter::All)
     }
 
     /// Claim a request this role was offered, so it can end it.
@@ -312,6 +319,7 @@ pub trait LinkedAgent {
 #[derive(Default)]
 struct Agents {
     polkit: Option<(Polkit, Connection)>,
+    screensaver: Option<(ScreenSaver, Connection)>,
     linked: Vec<Box<dyn LinkedAgent>>,
 }
 
@@ -324,6 +332,7 @@ impl Agents {
         let tick = Tick::new(u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX));
         Agents {
             polkit: start_polkit(host, tick),
+            screensaver: crate::screensaver::start(host),
             linked: start_linked(host, tick, linked),
         }
     }
