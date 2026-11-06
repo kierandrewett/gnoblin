@@ -59,6 +59,8 @@ pub enum Setting {
     /// A `d`, such as the text scaling factor.
     Double(f64),
     /// A `(ddd)`, the accent colour's red, green and blue in sRGB, each in [0, 1].
+    /// A component outside [0, 1] (the compositor's `-1.0`) means the accent is unset:
+    /// the spec's sentinel, published as-is.
     Color(f64, f64, f64),
 }
 
@@ -282,10 +284,11 @@ impl Table {
             return Vec::new();
         };
         let component = *component;
-        if !component.is_finite() || !(0.0..=1.0).contains(&component) {
-            // The interface's own rule: an out-of-range component means the accent colour
-            // is unset, so it is not published rather than clamped to something the user
-            // did not choose.
+        // The Settings portal's rule: an out-of-range component means the accent colour is
+        // unset. The compositor sends -1.0 for "no accent", so it is published as the sentinel
+        // triple and a toolkit reads "no accent" rather than a colour. A missing property is
+        // still not published. https://flatpak.github.io/xdg-desktop-portal/docs/org.freedesktop.impl.portal.Settings.html
+        if !component.is_finite() {
             return Vec::new();
         }
         self.accent[index] = Some(component);
