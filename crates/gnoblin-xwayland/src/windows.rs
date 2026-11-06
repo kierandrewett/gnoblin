@@ -356,15 +356,7 @@ impl Windows for Xwm {
     }
 
     fn grab_allowed(&self, class: &str, instance: &str) -> bool {
-        if !self.allow_grabs {
-            return false;
-        }
-        if self.grab_access_rules.is_empty() {
-            return true;
-        }
-        self.grab_access_rules
-            .iter()
-            .any(|rule| rule == class || rule == instance)
+        crate::settings::grab_permitted(self.allow_grabs, &self.grab_access_rules, class, instance)
     }
 }
 

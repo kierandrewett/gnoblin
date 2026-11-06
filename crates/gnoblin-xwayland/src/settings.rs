@@ -114,15 +114,121 @@ impl Settings {
     /// configuration that lets it through.
     #[must_use]
     pub fn grab_allowed(&self, class: &str, instance: &str) -> bool {
-        if !self.allow_grabs {
+        grab_permitted(self.allow_grabs, &self.grab_access_rules, class, instance)
+    }
+}
+
+/// Whether a client named `class` or `instance` may take a keyboard grab.
+///
+/// This is the rule `grab_access_rules` documents. Nothing is allowed unless `allow_grabs` is
+/// set. Each rule is a glob over `*` (any run of characters) and `?` (any one character),
+/// matched case-sensitively against the class and the instance. A rule prefixed with `!` denies.
+/// A deny match wins over any allow match. An empty rule list allows every client, because the
+/// document then removes only user rules and Mutter's compiled rules still apply. A name that is
+/// empty matches no rule.
+#[must_use]
+pub fn grab_permitted(allow_grabs: bool, rules: &[String], class: &str, instance: &str) -> bool {
+    if !allow_grabs {
+        return false;
+    }
+    let named = |text: &str| !text.is_empty();
+    let matches = |pattern: &str| {
+        (named(class) && glob_matches(pattern, class)) || (named(instance) && glob_matches(pattern, instance))
+    };
+    if rules.iter().any(|rule| rule.strip_prefix('!').is_some_and(matches)) {
+        return false;
+    }
+    rules.is_empty() || rules.iter().any(|rule| !rule.starts_with('!') && matches(rule))
+}
+
+/// Whether `text` matches `pattern`, where `*` matches any run of characters and `?` one.
+fn glob_matches(pattern: &str, text: &str) -> bool {
+    let pattern: Vec<char> = pattern.chars().collect();
+    let text: Vec<char> = text.chars().collect();
+    let (mut p, mut t) = (0, 0);
+    // The pattern position after the last `*` seen, and the text position it was tried at.
+    let mut star: Option<(usize, usize)> = None;
+    while t < text.len() {
+        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == text[t]) {
+            p += 1;
+            t += 1;
+        } else if p < pattern.len() && pattern[p] == '*' {
+            star = Some((p + 1, t));
+            p += 1;
+        } else if let Some((star_p, star_t)) = star {
+            // Let the last `*` absorb one more character and retry from there.
+            p = star_p;
+            t = star_t + 1;
+            star = Some((star_p, star_t + 1));
+        } else {
             return false;
         }
-        if self.grab_access_rules.is_empty() {
-            return true;
-        }
-        self.grab_access_rules
-            .iter()
-            .any(|rule| rule == class || rule == instance)
+    }
+    pattern[p..].iter().all(|&c| c == '*')
+}
+
+#[cfg(test)]
+mod grab_rule_tests {
+    use super::grab_permitted;
+
+    fn rules(list: &[&str]) -> Vec<String> {
+        list.iter().map(|rule| (*rule).to_owned()).collect()
+    }
+
+    #[test]
+    fn an_exact_name_matches_its_class_or_instance() {
+        assert!(grab_permitted(true, &rules(&["Gnome-terminal"]), "Gnome-terminal", "x"));
+        assert!(grab_permitted(true, &rules(&["gnome"]), "Other", "gnome"));
+        assert!(!grab_permitted(true, &rules(&["gnome"]), "Gnome-terminal", "x"));
+    }
+
+    #[test]
+    fn a_star_matches_any_run_of_characters() {
+        assert!(grab_permitted(true, &rules(&["Gnome-*"]), "Gnome-terminal", "x"));
+        assert!(grab_permitted(true, &rules(&["*term*"]), "Gnome-terminal", "x"));
+        assert!(!grab_permitted(true, &rules(&["Gnome-*"]), "Kate", "x"));
+    }
+
+    #[test]
+    fn a_question_mark_matches_exactly_one_character() {
+        assert!(grab_permitted(true, &rules(&["app?"]), "app1", "x"));
+        assert!(!grab_permitted(true, &rules(&["app?"]), "app", "x"));
+        assert!(!grab_permitted(true, &rules(&["app?"]), "app12", "x"));
+    }
+
+    #[test]
+    fn matching_is_case_sensitive() {
+        assert!(!grab_permitted(true, &rules(&["gnome"]), "Gnome", "x"));
+    }
+
+    #[test]
+    fn a_deny_rule_beats_an_allow_rule() {
+        let list = rules(&["*", "!blocked-*"]);
+        assert!(grab_permitted(true, &list, "fine", "x"));
+        assert!(!grab_permitted(true, &list, "blocked-app", "x"));
+        assert!(!grab_permitted(true, &rules(&["blocked", "!blocked"]), "blocked", "x"));
+    }
+
+    #[test]
+    fn a_deny_with_a_wildcard_denies_every_match() {
+        assert!(!grab_permitted(true, &rules(&["*", "!?"]), "a", ""));
+        assert!(grab_permitted(true, &rules(&["*", "!?"]), "ab", ""));
+    }
+
+    #[test]
+    fn an_empty_rule_list_allows_every_client() {
+        assert!(grab_permitted(true, &[], "anything", "anything"));
+    }
+
+    #[test]
+    fn allow_grabs_false_denies_everything() {
+        assert!(!grab_permitted(false, &rules(&["*"]), "anything", "anything"));
+        assert!(!grab_permitted(
+            false,
+            &rules(&["Gnome-terminal"]),
+            "Gnome-terminal",
+            "x"
+        ));
     }
 }
 
