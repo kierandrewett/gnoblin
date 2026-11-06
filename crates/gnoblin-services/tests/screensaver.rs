@@ -1,20 +1,18 @@
 //! The ScreenSaver service over a private bus: a real D-Bus client calls `Inhibit` and
 //! `UnInhibit`, and the compositor seam records what the service tells it.
 //!
-//! Every test starts its own `dbus-daemon` (see `support/bus.rs`), so nothing here can
+//! Every test starts its own `dbus-daemon` (see `gnoblin-service-testkit`), so nothing here can
 //! reach the developer's session bus. The caller is a real client connection, so the
 //! method names, the argument signatures and the sender a call is attributed to are the
 //! ones a media player or a video player uses. The compositor is the [`Compositor`] seam:
 //! a recorder standing in for the compositor's `idle` object.
 
-mod support;
-
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gnoblin_service_testkit::Bus;
 use gnoblin_services::screensaver::{BUS_NAME, Compositor, PATHS, ScreenSaver};
-use support::bus::Bus;
 use zbus::Connection;
 use zbus::connection::Builder;
 

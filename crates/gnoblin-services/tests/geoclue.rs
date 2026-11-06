@@ -1,10 +1,8 @@
 //! The GeoClue agent over a private bus: a fake manager registers it, a client calls
 //! `AuthorizeApp`, and the offer is answered from the test.
 //!
-//! Every test starts its own `dbus-daemon` (see `support/bus.rs`), so nothing here can
+//! Every test starts its own `dbus-daemon` (see `gnoblin-service-testkit`), so nothing here can
 //! reach the developer's system bus or a real GeoClue.
-
-mod support;
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -13,8 +11,8 @@ use std::time::{Duration, Instant};
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Refusal};
+use gnoblin_service_testkit::Bus;
 use gnoblin_services::location::{AGENT_INTERFACE, AGENT_PATH, GEOCLUE_SERVICE, Location, MANAGER_PATH, Policy};
-use support::bus::Bus;
 use zbus::connection::Builder;
 use zbus::{Connection, Proxy, fdo};
 

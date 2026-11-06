@@ -1,0 +1,12 @@
+[package]
+name = "gnoblin-service-testkit"
+description = "A private D-Bus bus for one test, shared by the service crates' tests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

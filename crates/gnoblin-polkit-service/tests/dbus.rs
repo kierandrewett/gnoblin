@@ -1,7 +1,7 @@
 //! The polkit agent over a private bus: a fake polkitd registers it and asks it to
 //! authenticate.
 //!
-//! Every test starts its own `dbus-daemon` (see `support/bus.rs`), so nothing here can
+//! Every test starts its own `dbus-daemon` (see `gnoblin-service-testkit`), so nothing here can
 //! reach the developer's system bus — which matters more than usual for this adapter: the
 //! real polkitd's agent slot is a per-session resource, and a test that registered on the
 //! running session would take it from the desktop.
@@ -11,18 +11,15 @@
 //! provider side is the [`Offerer`] seam: a host that records the offer and answers it,
 //! standing in for the shell that would draw the dialog.
 
-mod support;
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
+use gnoblin_polkit_service::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE, Polkit};
 use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Provider, Refusal};
-use gnoblin_services::Polkit;
-use gnoblin_services::polkit::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE};
+use gnoblin_service_testkit::Bus;
 use gnoblin_types::OwnerId;
-use support::bus::Bus;
 use zbus::connection::Builder;
 use zbus::{Connection, ObjectPath, OwnedVariant, fdo};
 

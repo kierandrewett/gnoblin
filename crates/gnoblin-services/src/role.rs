@@ -48,12 +48,12 @@ use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
 use gnoblin_model::{CapabilitySlot, RequestCompletion, RequestId, RequestOutcome, Tick};
+use gnoblin_polkit_service::{AGENT_PATH, Polkit};
 use gnoblin_service_core::{Host, LinkedAgent, Provider};
 use gnoblin_types::Version;
 use tracing::{info, warn};
 use zbus::Connection;
 
-use crate::polkit::{AGENT_PATH, Polkit};
 use crate::screensaver::ScreenSaver;
 
 /// How long one read waits before the role looks at its own signals.

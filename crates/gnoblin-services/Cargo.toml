@@ -25,7 +25,9 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 # The shared agent machinery: the offerer, the slots and the host the agents reach the
 # compositor through, so each service crate depends on them rather than on this crate.
 gnoblin-service-core = { path = "../gnoblin-service-core" }
-# The polkit authentication agent is a D-Bus object on the system bus.
+# The polkit authentication agent: the role serves it and offers its requests.
+gnoblin-polkit-service = { path = "../gnoblin-polkit-service" }
+# The D-Bus agents are objects on the system bus, served through zbus.
 zbus.workspace = true
 # One blocking wait per bus registration: the role has no async runtime of its own, and
 # `zbus` runs its connection on its own thread.
@@ -41,7 +43,8 @@ futures-channel.workspace = true
 # The tests build the graph from the checked-in schema, so the slot property names
 # this crate publishes are checked against the contract rather than a fixture.
 gnoblin-schema = { path = "../gnoblin-schema" }
-# The private bus the D-Bus tests start for themselves.
+# The private bus the D-Bus tests start for themselves, shared with the other service crates.
+gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
 # The role test serves a real socketpair, so the shipped loop is exercised rather
 # than a copy of it.
 tempfile = "3.23.0"

@@ -44,6 +44,10 @@
 //!    "allowed":
 //!    `the_reply_carries_no_identity`.
 
+#![forbid(unsafe_code)]
+
+pub mod subject;
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -53,7 +57,6 @@ use gnoblin_types::OwnerId;
 use zbus::proxy;
 use zbus::{Connection, ObjectPath, OwnedVariant, Variant, fdo};
 
-use crate::subject;
 use gnoblin_service_core::agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Refusal};
 use gnoblin_service_core::slot::{CapabilitySlot, Provider, Slots};
 
