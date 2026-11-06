@@ -41,6 +41,7 @@
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
+mod compat;
 mod dconf;
 mod displayconfig;
 mod gcr;
@@ -119,6 +120,11 @@ fn compositor() -> Result<(), Exit> {
     };
     // A refused extension is logged and left out; the session starts either way.
     gnoblin_compositor::configure_from_environment(&mut config);
+    // The compat adapters are served with the session's default mode until a configuration
+    // key selects one. A failure to build them starts the session without them.
+    if let Err(error) = compat::configure(&mut config, gnoblin_compat_core::Mode::default()) {
+        eprintln!("gnoblin: compositor: compat adapters not loaded, starting without them: {error:?}");
+    }
     gnoblin_compositor::configure_layouts_from_environment(&mut config);
     gnoblin_compositor::configure_cursor_from_environment(&mut config);
     gnoblin_compositor::configure_window_management_from_environment(&mut config);

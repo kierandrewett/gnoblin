@@ -32,6 +32,9 @@ gnoblin-compat-gnome-shell-introspect = { path = "../compat/gnoblin-compat-gnome
 gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
 # The display configuration adapter, served by the services role on its own compositor link.
 gnoblin-compat-mutter-displayconfig = { path = "../compat/gnoblin-compat-mutter-displayconfig" }
+# The gtk_shell1 redirect and the X11 interop protocol, served by the compositor role.
+gnoblin-compat-gtk-shell1 = { path = "../compat/gnoblin-compat-gtk-shell1" }
+gnoblin-compat-mutter-x11-interop = { path = "../compat/gnoblin-compat-mutter-x11-interop" }
 gnoblin-compat-mutter-idlemonitor = { path = "../compat/gnoblin-compat-mutter-idlemonitor" }
 # The Qt settings adapter: the guardian exports the platform theme that points Qt at the portal.
 gnoblin-compat-qt-portal-settings = { path = "../compat/gnoblin-compat-qt-portal-settings" }
@@ -56,3 +59,5 @@ gnoblinctl = { path = "../gnoblinctl" }
 gnoblin-compositor = { path = "../gnoblin-compositor" }
 # A test kills a child the way a crash does, which is one signal to one process group.
 rustix = { workspace = true, features = ["process"] }
+# The probe's real client, so the test reads what the session advertises on its socket.
+wayland-client = "0.31.14"

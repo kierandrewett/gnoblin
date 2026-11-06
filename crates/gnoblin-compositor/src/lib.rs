@@ -82,6 +82,7 @@
 //!   the connection that provides the slot, and both sides learn its one completion.
 
 mod backend;
+mod compat;
 mod cursor;
 mod eis;
 mod extensions;
@@ -101,6 +102,7 @@ use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 use tracing::info;
 
 pub use backend::Backend;
+pub use compat::configure_compat_extensions;
 pub use cursor::{
     configure_from_environment as configure_cursor_from_environment,
     configure_from_store as configure_cursor_from_store,
@@ -108,7 +110,7 @@ pub use cursor::{
 pub use eis::EisGate;
 pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_types::Version;
-pub use gnoblin_wayland::{Observer, SessionSnapshot};
+pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot};
 pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync};
 pub use layout::{
     LayoutSettings, configure_from_environment as configure_layouts_from_environment,
