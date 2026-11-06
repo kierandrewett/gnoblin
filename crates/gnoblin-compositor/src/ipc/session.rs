@@ -104,31 +104,47 @@ mod member {
 /// What the graph last published for one workspace.
 #[derive(Clone, Debug, PartialEq)]
 struct PublishedWorkspace {
+    /// The `workspace` object's identity.
     object: ObjectId,
+    /// The layout name last published for this workspace.
     layout: String,
+    /// Why the workspace's layout failed to apply, if it did, so a client can show the reason.
     failure: Option<&'static str>,
 }
 
 /// What the graph last published for one output.
 #[derive(Clone, Debug, PartialEq)]
 struct PublishedOutput {
+    /// The `output` object's identity.
     object: ObjectId,
+    /// Connector name the backend reports for this output.
     name: String,
+    /// The layout name last published for this output.
     layout: String,
 }
 
 /// What the graph last published for one window.
 #[derive(Clone, Debug, PartialEq)]
 struct PublishedWindow {
+    /// The `window` object's identity.
     object: ObjectId,
+    /// Title last published for this window.
     title: String,
+    /// App id last published for this window.
     app_id: String,
+    /// Whether the window held focus in the last published snapshot.
     focused: bool,
+    /// Icon name last published for this window.
     icon: String,
+    /// Tag last published for this window.
     tag: String,
+    /// Whether the window was modal in the last published snapshot.
     modal: bool,
+    /// Whether the window was unresponsive in the last published snapshot.
     unresponsive: bool,
+    /// Geometry last published for this window, in the compositor's logical coordinates.
     geometry: Rect,
+    /// Effect objects of this window, each with the parameters last published for it.
     effects: Vec<PublishedEffect>,
 }
 
@@ -144,7 +160,10 @@ struct PublishedEffect {
 /// The live object graph of one compositor process.
 #[derive(Debug)]
 pub struct SessionSync {
+    /// The graph the snapshot is applied to. Every write goes through it, so every write
+    /// yields a diff that subscribers see.
     graph: Graph,
+    /// The `session` object, which carries the slot properties and the schema version.
     session: ObjectId,
     /// The `lock` object, whose `locked` property `apply` writes from the snapshot.
     lock: ObjectId,
@@ -155,8 +174,12 @@ pub struct SessionSync {
     /// How many bells the last snapshot counted, so `apply` raises the signal once per
     /// ring rather than once per snapshot.
     bells: u64,
+    /// Last published state per window, kept so each new snapshot is diffed against it and
+    /// unchanged properties are not rewritten.
     windows: BTreeMap<WindowId, PublishedWindow>,
+    /// Last published state per workspace, diffed the same way as `windows`.
     workspaces: BTreeMap<WorkspaceId, PublishedWorkspace>,
+    /// Last published state per output, keyed by the engine's output id.
     outputs: BTreeMap<OutputId, PublishedOutput>,
 }
 
