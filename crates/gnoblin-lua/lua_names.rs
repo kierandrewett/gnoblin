@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 /// Check the keys one Lua table would take from the object types declared for it.
 ///
 /// `owners` pairs each object type's schema name with the key it takes in `table`;
-/// `reserved` are keys `table` already has by hand. A clash names both sides, so the
+/// `reserved` are keys `table` already declares. A clash names both sides, so the
 /// refusal says which declaration to rename.
 fn check_lua_names(table: &str, owners: &[(String, String)], reserved: &[&str]) -> Result<(), String> {
     let mut taken: BTreeMap<&str, &str> = BTreeMap::new();
@@ -31,7 +31,7 @@ fn check_lua_names(table: &str, owners: &[(String, String)], reserved: &[&str]) 
 #[cfg(test)]
 mod tests {
     use super::check_lua_names;
-    use crate::bindings::HAND_WRITTEN;
+    use crate::bindings::HOST_NAMES;
 
     fn owners(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
@@ -43,13 +43,13 @@ mod tests {
     #[test]
     fn distinct_names_outside_the_hand_written_set_are_accepted() {
         let owners = owners(&[("gnoblin.window", "window"), ("gnoblin.session", "session")]);
-        assert!(check_lua_names("gnoblin", &owners, HAND_WRITTEN).is_ok());
+        assert!(check_lua_names("gnoblin", &owners, HOST_NAMES).is_ok());
     }
 
     #[test]
     fn an_object_named_like_a_hand_written_member_is_refused_naming_both() {
         let owners = owners(&[("gnoblin.timers", "timers")]);
-        let error = check_lua_names("gnoblin", &owners, HAND_WRITTEN).expect_err("timers is taken");
+        let error = check_lua_names("gnoblin", &owners, HOST_NAMES).expect_err("timers is taken");
         assert!(error.contains("gnoblin.timers"), "{error}");
         assert!(error.contains("`timers`"), "{error}");
         assert!(error.contains("`gnoblin`"), "{error}");
@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn two_object_types_with_one_key_are_refused_naming_both() {
         let owners = owners(&[("gnoblin.window", "window"), ("gnoblin.window_two", "window")]);
-        let error = check_lua_names("gnoblin", &owners, HAND_WRITTEN).expect_err("window is taken twice");
+        let error = check_lua_names("gnoblin", &owners, HOST_NAMES).expect_err("window is taken twice");
         assert!(error.contains("gnoblin.window and gnoblin.window_two"), "{error}");
     }
 

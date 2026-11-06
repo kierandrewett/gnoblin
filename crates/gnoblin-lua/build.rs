@@ -6,10 +6,13 @@
 //! member exists in Lua because a schema file declares it, which is what keeps the
 //! runtime bindings, the type stubs and the IPC from drifting into three dialects.
 //!
-//! Two files are written into `OUT_DIR`, which is inside the gitignored `target/`:
+//! Three files are written into `OUT_DIR`, which is inside the gitignored `target/`:
 //!
 //! - `bindings.rs`, `include!`d by `src/bindings.rs`: one static per namespace
 //!   with its objects, read-only properties, methods and signals.
+//! - `host_members.rs`, `include!`d by `src/bindings.rs`: the names and tree of the
+//!   host-only members `host_members.toml` declares, which the startup check compares
+//!   against the hand-written installers.
 //! - `gnoblin.d.lua`, the LuaCATS stub `src/bindings.rs` embeds with `include_str!`
 //!   and [`crate::write_stub`] copies out for an editor. `tests/bindings.rs`
 //!   re-reads the schema and checks both against it, so a generator that dropped a
@@ -26,11 +29,15 @@ use std::process::ExitCode;
 
 use gnoblin_schema::{Catalog, Field, Namespace, ObjectType, Type};
 
-include!("reserved_members.rs");
+use serde::Deserialize;
+
 include!("lua_names.rs");
 
 /// The schema directory, relative to this crate.
 const SCHEMA_DIR: &str = "../gnoblin-schema/schema";
+
+/// The host-only members, declared in the crate's manifest.
+const HOST_MEMBERS_FILE: &str = "host_members.toml";
 
 /// The namespace the compositor itself serves.
 const OWN_NAMESPACE: &str = "gnoblin";
@@ -66,7 +73,8 @@ fn run() -> Result<(), String> {
         .map_err(|error| format!("cannot load the schema in {}: {error}", schema_dir.display()))?;
 
     check_reserved(&catalog)?;
-    check_names(&catalog)?;
+    let host = load_host_members(&manifest.join(HOST_MEMBERS_FILE))?;
+    check_names(&catalog, &host)?;
     // The version the runtime advertises in the IPC handshake is the schema's, which is
     // the version the compositor serves: the two sides are built from one tree, so a
     // literal here would be a second place to forget to bump.
@@ -78,7 +86,9 @@ fn run() -> Result<(), String> {
     println!("cargo:rustc-env=GNOBLIN_IPC_VERSION={version}");
     fs::write(out_dir.join("bindings.rs"), rust_bindings(&catalog))
         .map_err(|error| format!("cannot write bindings.rs: {error}"))?;
-    fs::write(out_dir.join("gnoblin.d.lua"), lua_stub(&catalog))
+    fs::write(out_dir.join("host_members.rs"), rust_host_members(&host))
+        .map_err(|error| format!("cannot write host_members.rs: {error}"))?;
+    fs::write(out_dir.join("gnoblin.d.lua"), lua_stub(&catalog, &host))
         .map_err(|error| format!("cannot write gnoblin.d.lua: {error}"))?;
     Ok(())
 }
@@ -109,11 +119,12 @@ fn check_reserved(catalog: &Catalog) -> Result<(), String> {
 
 /// Refuse a schema whose object types would take a name the Lua tables already have.
 ///
-/// The core objects are keys of the `gnoblin` table, beside the hand-written members,
+/// The core objects are keys of the `gnoblin` table, beside the declared host members,
 /// so a type named `timers` would replace the timer API. An extension namespace is
-/// reached through its own module table, which has no hand-written members, so only
+/// reached through its own module table, which has no declared members, so only
 /// duplicate keys can clash there.
-fn check_names(catalog: &Catalog) -> Result<(), String> {
+fn check_names(catalog: &Catalog, host: &[HostMember]) -> Result<(), String> {
+    let host_names: Vec<&str> = host.iter().map(|member| member.name.as_str()).collect();
     for namespace in catalog.namespaces() {
         let mut owners = Vec::new();
         for object in catalog.objects(&namespace) {
@@ -123,12 +134,166 @@ fn check_names(catalog: &Catalog) -> Result<(), String> {
             ));
         }
         if namespace.as_str() == OWN_NAMESPACE {
-            check_lua_names(OWN_NAMESPACE, &owners, HAND_WRITTEN)?;
+            check_lua_names(OWN_NAMESPACE, &owners, &host_names)?;
         } else {
             check_lua_names(&format!("require(\"{}\")", namespace.as_str()), &owners, &[])?;
         }
     }
     Ok(())
+}
+
+/// One host-only member declaration file, as `host_members.toml` is written.
+#[derive(Deserialize)]
+struct HostFile {
+    member: Vec<HostMember>,
+}
+
+/// One member: a function, or a table whose `members` are its children.
+#[derive(Deserialize)]
+struct HostMember {
+    name: String,
+    kind: Kind,
+    doc: String,
+    #[serde(default)]
+    params: Vec<Param>,
+    #[serde(default)]
+    returns: Vec<String>,
+    #[serde(default)]
+    members: Vec<HostMember>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Kind {
+    Function,
+    Table,
+}
+
+/// A typed parameter, spelled as LuaCATS.
+#[derive(Deserialize)]
+struct Param {
+    name: String,
+    #[serde(rename = "type")]
+    ty: String,
+}
+
+/// Read the host-only members. A manifest the bindings could not be built from is refused
+/// here, at build time, instead of surfacing as a broken `gnoblin` table at startup.
+fn load_host_members(path: &Path) -> Result<Vec<HostMember>, String> {
+    println!("cargo:rerun-if-changed={}", path.display());
+    let text = fs::read_to_string(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let file: HostFile = toml::from_str(&text).map_err(|error| format!("cannot parse {}: {error}", path.display()))?;
+    validate_host_members(&file.member, None)?;
+    Ok(file.member)
+}
+
+/// Refuse a name that is not a Lua identifier, a name declared twice, a function with
+/// members, or a table without them. `parent` is the dotted path of the table above.
+fn validate_host_members(members: &[HostMember], parent: Option<&str>) -> Result<(), String> {
+    let mut seen: Vec<&str> = Vec::new();
+    for member in members {
+        let path = match parent {
+            Some(parent) => format!("{parent}.{}", member.name),
+            None => member.name.clone(),
+        };
+        if !is_lua_identifier(&member.name) {
+            return Err(format!("host member `{path}` is not a Lua identifier"));
+        }
+        if seen.contains(&member.name.as_str()) {
+            return Err(format!("host member `{path}` is declared twice"));
+        }
+        seen.push(member.name.as_str());
+        match member.kind {
+            Kind::Function if !member.members.is_empty() => {
+                return Err(format!("host member `{path}` is a function, so it cannot have members"));
+            }
+            Kind::Function => {}
+            Kind::Table if member.members.is_empty() => {
+                return Err(format!("host member `{path}` is a table with no members"));
+            }
+            Kind::Table if !member.params.is_empty() || !member.returns.is_empty() => {
+                return Err(format!(
+                    "host member `{path}` is a table, so it cannot take params or returns"
+                ));
+            }
+            Kind::Table => validate_host_members(&member.members, Some(&path))?,
+        }
+    }
+    Ok(())
+}
+
+/// Whether `name` is a plain Lua identifier that is not a keyword, so `gnoblin.<name>` is a
+/// valid key and a valid stub line.
+fn is_lua_identifier(name: &str) -> bool {
+    const KEYWORDS: &[&str] = &[
+        "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in", "local", "nil",
+        "not", "or", "repeat", "return", "then", "true", "until", "while",
+    ];
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !KEYWORDS.contains(&name)
+}
+
+/// The Rust tables `src/bindings.rs` includes. `HOST_NAMES` lists the top-level names, which
+/// the unknown-key error reports; `HOST_MEMBERS` is the declared tree the startup check
+/// compares against the installed `gnoblin` table.
+fn rust_host_members(host: &[HostMember]) -> String {
+    let mut text = String::from("// Generated by build.rs from host_members.toml. Do not edit.\n\n");
+    text.push_str("pub(crate) const HOST_NAMES: &[&str] = &[\n");
+    for member in host {
+        let _ = writeln!(text, "    {:?},", member.name);
+    }
+    text.push_str("];\n\n");
+    text.push_str("pub(crate) const HOST_MEMBERS: &[HostMemberSpec] = &[\n");
+    for member in host {
+        write_spec(&mut text, member, 1);
+    }
+    text.push_str("];\n");
+    text
+}
+
+/// Write one declared member as a `HostMemberSpec` literal, nested to match its tree.
+fn write_spec(text: &mut String, member: &HostMember, depth: usize) {
+    let indent = "    ".repeat(depth);
+    let _ = writeln!(text, "{indent}HostMemberSpec {{");
+    let _ = writeln!(text, "{indent}    name: {:?},", member.name);
+    let _ = writeln!(text, "{indent}    members: &[");
+    for child in &member.members {
+        write_spec(text, child, depth + 1);
+    }
+    let _ = writeln!(text, "{indent}    ],");
+    let _ = writeln!(text, "{indent}}},");
+}
+
+/// Write the LuaCATS text for `members`, which live under `prefix` in the stub.
+fn stub_host_members(text: &mut String, members: &[HostMember], prefix: &str) {
+    for member in members {
+        match member.kind {
+            Kind::Function => stub_function(text, member, prefix),
+            Kind::Table => {
+                let _ = writeln!(text, "--- {}", member.doc);
+                stub_host_members(text, &member.members, &format!("{prefix}.{}", member.name));
+            }
+        }
+    }
+}
+
+/// Write one function's LuaCATS declaration: its doc, typed params and returns, and a stub
+/// body that names its key under `prefix`.
+fn stub_function(text: &mut String, member: &HostMember, prefix: &str) {
+    let _ = writeln!(text, "--- {}", member.doc);
+    for param in &member.params {
+        let _ = writeln!(text, "---@param {} {}", param.name, param.ty);
+    }
+    for ret in &member.returns {
+        let _ = writeln!(text, "---@return {ret}");
+    }
+    let names: Vec<&str> = member.params.iter().map(|param| param.name.as_str()).collect();
+    let _ = writeln!(text, "function {prefix}.{}({}) end", member.name, names.join(", "));
+    text.push('\n');
 }
 
 /// Ask cargo to rerun when any schema file changes.
@@ -250,7 +415,7 @@ fn text_literal(text: &str) -> String {
 }
 
 /// The LuaCATS stub for an editor: the same members, spelled for Lua.
-fn lua_stub(catalog: &Catalog) -> String {
+fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     let mut text = String::new();
     text.push_str("---@meta\n\n");
     text.push_str("--- The Gnoblin Lua API, generated from `crates/gnoblin-schema/schema` by\n");
@@ -273,20 +438,7 @@ fn lua_stub(catalog: &Catalog) -> String {
     text.push_str("local Timer = {}\n");
     text.push_str("--- Cancel the timer.\n");
     text.push_str("function Timer:cancel() end\n\n");
-    text.push_str("--- Declare configuration. Validated immediately; every problem is raised.\n");
-    text.push_str("---@param settings table\n");
-    text.push_str("function gnoblin.configure(settings) end\n\n");
-    text.push_str("--- Evaluate another configuration file, relative to the calling file.\n");
-    text.push_str("---@param path_or_glob string\n");
-    text.push_str("---@return boolean\n");
-    text.push_str("function gnoblin.load(path_or_glob) end\n\n");
-    text.push_str("--- Timers run on the caller's tick, never on a clock of their own.\n");
-    text.push_str("---@param ticks integer\n");
-    text.push_str("---@param callback fun()\n");
-    text.push_str("---@return gnoblin.Timer\n");
-    text.push_str("function gnoblin.timers.after(ticks, callback) end\n");
-    text.push_str("---@return integer\n");
-    text.push_str("function gnoblin.timers.now() end\n");
+    stub_host_members(&mut text, host, "gnoblin");
 
     for namespace in catalog.namespaces() {
         for object in catalog.objects(&namespace) {

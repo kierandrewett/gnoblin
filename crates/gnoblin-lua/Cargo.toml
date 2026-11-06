@@ -44,6 +44,8 @@ gnoblin-log = { path = "../gnoblin-log" }
 # The Lua tables and `gnoblin.d.lua` are generated from the schema, so a schema
 # member is the only way to add one.
 gnoblin-schema = { path = "../gnoblin-schema" }
+serde.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 # The tests drive the host through the in-process loopback against a real graph

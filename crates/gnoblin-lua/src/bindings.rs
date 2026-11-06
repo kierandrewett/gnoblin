@@ -170,7 +170,17 @@ pub(super) struct NamespaceSpec {
     pub(super) objects: &'static [ObjectSpec],
 }
 
-include!("../reserved_members.rs");
+/// One host-only member as `host_members.toml` declares it. A member with no `members` is
+/// a function; one with children is a table.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HostMemberSpec {
+    /// The key on its table.
+    pub(crate) name: &'static str,
+    /// The children of a table; empty for a function.
+    pub(crate) members: &'static [HostMemberSpec],
+}
+
+include!(concat!(env!("OUT_DIR"), "/host_members.rs"));
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 /// Install the `gnoblin` global into a fresh Lua state.
@@ -231,17 +241,21 @@ pub(super) fn install<T: Transport + 'static>(
     }
     gnoblin.set("timers", timers)?;
 
+    crate::layout::install(lua, &gnoblin)?;
     // Core object types sit directly on `gnoblin`. The build refuses a core type named
-    // like a hand-written member, so the two never share a key. Extension namespaces are
+    // like a declared member, so the two never share a key. Extension namespaces are
     // not generated here: `extension_bindings` builds them from the loaded schema.
-    let mut accepted: Vec<&'static str> = HAND_WRITTEN.to_vec();
+    let mut core: Vec<&'static str> = Vec::new();
     for namespace in NAMESPACES.iter().filter(|namespace| namespace.name == "gnoblin") {
         for spec in namespace.objects {
             install_instance_meta(lua, &shared, namespace.name, spec)?;
             gnoblin.set(spec.name, install_class(lua, &shared, namespace.name, spec)?)?;
-            accepted.push(spec.name);
+            core.push(spec.name);
         }
     }
+    check_installed(&gnoblin, "gnoblin", HOST_MEMBERS, &core)?;
+    let mut accepted: Vec<&'static str> = HOST_NAMES.to_vec();
+    accepted.extend(core.iter().copied());
 
     let meta = lua.create_table()?;
     meta.set(
@@ -258,9 +272,47 @@ pub(super) fn install<T: Transport + 'static>(
             ))
         })?,
     )?;
-    crate::layout::install(lua, &gnoblin)?;
     gnoblin.set_metatable(Some(meta))?;
     lua.globals().set("gnoblin", gnoblin)?;
+    Ok(())
+}
+
+/// Check an installed table against its declared members: each declared member must be
+/// installed as a function or table of the declared shape, and no key may be installed
+/// without a declaration. `extra` are keys that may stand beside the declared ones.
+pub(crate) fn check_installed(
+    table: &Table,
+    path: &str,
+    declared: &[HostMemberSpec],
+    extra: &[&str],
+) -> mlua::Result<()> {
+    for member in declared {
+        let key = format!("{path}.{}", member.name);
+        let value: Value = table.raw_get(member.name)?;
+        if member.members.is_empty() {
+            if !matches!(value, Value::Function(_)) {
+                return Err(Error::runtime(format!(
+                    "`{key}` is declared in host_members.toml as a function, but is not installed as one"
+                )));
+            }
+        } else {
+            let Value::Table(child) = value else {
+                return Err(Error::runtime(format!(
+                    "`{key}` is declared in host_members.toml as a table, but is not installed as one"
+                )));
+            };
+            check_installed(&child, &key, member.members, &[])?;
+        }
+    }
+    for pair in table.clone().pairs::<String, Value>() {
+        let (name, _) = pair?;
+        let declared_here = declared.iter().any(|member| member.name == name.as_str());
+        if !declared_here && !extra.contains(&name.as_str()) {
+            return Err(Error::runtime(format!(
+                "`{path}.{name}` is installed but not declared in host_members.toml"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -811,5 +863,59 @@ impl<T: Transport + 'static> UserData for Timer<T> {
             forget(lua, this.timer);
             Ok(())
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mlua::{Lua, Table};
+
+    use super::{HostMemberSpec, check_installed};
+
+    const DECLARED: &[HostMemberSpec] = &[
+        HostMemberSpec {
+            name: "run",
+            members: &[],
+        },
+        HostMemberSpec {
+            name: "timers",
+            members: &[HostMemberSpec {
+                name: "now",
+                members: &[],
+            }],
+        },
+    ];
+
+    fn load(lua: &Lua, script: &str) -> Table {
+        lua.load(script).eval().expect("the test table evaluates")
+    }
+
+    #[test]
+    fn a_declared_member_without_an_installer_is_refused() {
+        let lua = Lua::new();
+        let table = load(&lua, "return { timers = { now = function() end } }");
+        let error = check_installed(&table, "gnoblin", DECLARED, &[]).expect_err("run is missing");
+        assert!(error.to_string().contains("gnoblin.run"), "{error}");
+    }
+
+    #[test]
+    fn an_installer_without_a_declaration_is_refused() {
+        let lua = Lua::new();
+        let table = load(
+            &lua,
+            "return { run = function() end, timers = { now = function() end }, stray = function() end }",
+        );
+        let error = check_installed(&table, "gnoblin", DECLARED, &[]).expect_err("stray is undeclared");
+        assert!(error.to_string().contains("gnoblin.stray"), "{error}");
+    }
+
+    #[test]
+    fn a_complete_table_with_core_types_beside_it_is_accepted() {
+        let lua = Lua::new();
+        let table = load(
+            &lua,
+            "return { run = function() end, timers = { now = function() end }, Window = {} }",
+        );
+        check_installed(&table, "gnoblin", DECLARED, &["Window"]).expect("declared plus core is accepted");
     }
 }
