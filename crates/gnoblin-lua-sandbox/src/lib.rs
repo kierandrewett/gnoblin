@@ -217,16 +217,14 @@ fn abort_or(error: Error, guard: &Guard) -> Error {
 }
 
 /// Pass a protected call's results through, or rethrow them if a limit aborted.
+///
+/// Once the latch is set the caught value is ignored: a message handler may return nil,
+/// which Lua turns into the text '<no error object>', so the stored budget message is the
+/// only reliable thing to rethrow.
 fn rethrow_if_aborted(results: MultiValue, guard: &Guard) -> Result<MultiValue, Error> {
     let failed = matches!(results.front(), Some(Value::Boolean(false)));
     if failed && guard.aborted() {
-        // The stored message names the exhausted budget. A caught value that is not text,
-        // such as the xpcall '<no error object>' case, is replaced by it.
-        let message = match results.get(1) {
-            Some(Value::String(text)) => text.to_str()?.to_owned(),
-            _ => guard.abort_message(),
-        };
-        return Err(Error::runtime(message));
+        return Err(Error::runtime(guard.abort_message()));
     }
     Ok(results)
 }
@@ -389,9 +387,9 @@ fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Erro
     // coroutine that `lua_newthread` creates, so no thread escapes the budgets.
     lua.set_global_hook(
         HookTriggers::new().every_nth_instruction(HOOK_INSTRUCTIONS),
-        move |lua, _| {
+        move |_lua, _| {
             #[cfg(test)]
-            guard.record_hook_call(lua);
+            guard.record_hook_call(_lua);
             if guard.aborted.get() {
                 return Err(Error::runtime(guard.abort_message()));
             }
