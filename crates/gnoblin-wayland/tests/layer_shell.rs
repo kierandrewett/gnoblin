@@ -216,10 +216,11 @@ fn a_zero_size_surface_with_no_anchors_is_a_client_error() {
                 }
             }
         }
-        assert!(
-            session.windows().layers().is_empty(),
-            "the refused surface never reached the session"
-        );
+        // The client sees its error before the server has finished tearing the refused surface
+        // down: the layer is removed from `layer_destroyed`, which runs on the server thread once
+        // the disconnect is processed. So wait for the entry to go rather than reading it once,
+        // which raced that teardown. A surface that is never removed times out with its state.
+        session.wait_for(|observation| observation.layers().is_empty());
 
         // The session and every other client keep working.
         let mut app = Client::connect(session.socket());
