@@ -15,6 +15,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 gnoblin-types.workspace = true
 # Protocol Buffers messages (design/rust-compositor.md, D16).
 prost.workspace = true
+# The handover's `SCM_RIGHTS` send and receive (privilege.rs), which is the one socket
+# call this crate makes. The safe wrappers keep the crate free of `unsafe`.
+rustix = { workspace = true, features = ["net"] }
 
 [build-dependencies]
 # build.rs renders the .proto documents and the sensitive table from the schema,

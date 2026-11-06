@@ -95,9 +95,10 @@ pub type Environment = Box<dyn Fn(&str) -> Option<String> + Send>;
 ///
 /// `env` is passed in so a caller can read the environment once and so the failures
 /// can be tested without a process-global read, which the tests share with every other
-/// test in the binary. The variable is a parameter because there are two spellings of
-/// the same mechanism: a role child reads [`privilege::FD_VARIABLE`], and the
-/// compositor reads one [`privilege::owner_variable`] per child.
+/// test in the binary. The variable is a parameter because a role child reads
+/// [`privilege::FD_VARIABLE`], which the guardian sets for one spawn; the compositor reads
+/// [`privilege::CONTROL_VARIABLE`] instead, and only once, because every later
+/// privileged stream reaches it as a handover message.
 ///
 /// # Errors
 ///
