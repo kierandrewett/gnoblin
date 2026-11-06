@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
-use serde::Deserialize;
 
+use crate::allow;
 use crate::metadata::{self, Graph};
 
 const ALLOW_FILE: &str = "xtask/logging-allow.toml";
@@ -44,21 +44,6 @@ const PRINT_MACROS: &[&str] = &["println", "print", "eprintln", "eprint", "dbg"]
 pub struct Hit {
     pub line: usize,
     pub what: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AllowFile {
-    #[serde(default)]
-    allow: Vec<Allow>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Allow {
-    /// A file or directory, relative to the repository root, with `/` separators.
-    path: String,
-    reason: String,
 }
 
 /// Run every logging check on the tree the command was run in.
@@ -114,7 +99,7 @@ pub fn check_dependencies(graph: &Graph) -> Vec<String> {
 
 /// Scan every crate's `src` tree, applying the allow-list, and report stale entries.
 fn check_sources(root: &Path) -> Result<Vec<String>, String> {
-    let allow = load_allow_list(root)?;
+    let allow = allow::load(root, ALLOW_FILE)?;
     let mut used: BTreeSet<usize> = BTreeSet::new();
     let mut violations = Vec::new();
     for file in library_sources(root)? {
@@ -126,7 +111,7 @@ fn check_sources(root: &Path) -> Result<Vec<String>, String> {
         let source = fs::read_to_string(&file).map_err(|error| format!("could not read {relative}: {error}"))?;
         let hits = scan_source(&source).map_err(|error| format!("{relative}: {error}"))?;
         for hit in hits {
-            match allow.iter().position(|entry| covers(&entry.path, &relative)) {
+            match allow.iter().position(|entry| allow::covers(&entry.path, &relative)) {
                 Some(index) => {
                     used.insert(index);
                 }
@@ -148,24 +133,6 @@ fn check_sources(root: &Path) -> Result<Vec<String>, String> {
     Ok(violations)
 }
 
-fn covers(entry: &str, relative: &str) -> bool {
-    let entry = entry.trim_end_matches('/');
-    relative == entry || relative.starts_with(&format!("{entry}/"))
-}
-
-fn load_allow_list(root: &Path) -> Result<Vec<Allow>, String> {
-    let path = root.join(ALLOW_FILE);
-    let text = fs::read_to_string(&path).map_err(|error| format!("could not read {}: {error}", path.display()))?;
-    let file: AllowFile =
-        toml::from_str(&text).map_err(|error| format!("invalid TOML in {}: {error}", path.display()))?;
-    for entry in &file.allow {
-        if entry.reason.trim().is_empty() {
-            return Err(format!("{ALLOW_FILE}: `{}` has no reason", entry.path));
-        }
-    }
-    Ok(file.allow)
-}
-
 /// Every `.rs` file under `crates/*/src`, skipping the exempt test-only files.
 fn library_sources(root: &Path) -> Result<Vec<PathBuf>, String> {
     let crates = root.join("crates");
@@ -182,7 +149,7 @@ fn library_sources(root: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn collect_rust_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+pub(crate) fn collect_rust_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     let entries =
         fs::read_dir(directory).map_err(|error| format!("could not read {}: {error}", directory.display()))?;
     for entry in entries {
@@ -415,23 +382,6 @@ mod tests {
                 what: "`print!`".to_owned()
             }]
         );
-    }
-
-    #[test]
-    fn an_allow_entry_covers_its_file_or_its_directory_only() {
-        assert!(covers("crates/gnoblin-parity", "crates/gnoblin-parity/src/main.rs"));
-        assert!(covers(
-            "crates/gnoblin-parity/src/main.rs",
-            "crates/gnoblin-parity/src/main.rs"
-        ));
-        assert!(!covers(
-            "crates/gnoblin-parity",
-            "crates/gnoblin-parity-extra/src/lib.rs"
-        ));
-        assert!(!covers(
-            "crates/gnoblin/src/compat.rs",
-            "crates/gnoblin/src/compat_report.rs"
-        ));
     }
 
     #[test]

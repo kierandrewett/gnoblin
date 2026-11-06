@@ -39,6 +39,11 @@ deps:
 logging:
     cargo xtask logging
 
+# Forbid a Rust string literal that names the retired src/data tree: the Lua runtime and its assets
+# live under data/. `xtask/layout-allow.toml` lists the exceptions.
+layout:
+    cargo xtask layout
+
 # Write the generated .proto text and sensitive table to target/gen-proto, for
 # reading. The build generates them itself, in OUT_DIR, so this is a convenience:
 # nothing it writes is checked in.
@@ -66,4 +71,4 @@ deny:
     cargo deny check
 
 # The whole gate, in the order that fails fastest.
-ci: fmt-check build clippy test deps logging deny
+ci: fmt-check build clippy test deps logging layout deny

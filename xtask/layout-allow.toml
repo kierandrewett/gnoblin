@@ -1,0 +1,6 @@
+# Reviewed exceptions for `cargo xtask layout`: Rust sources allowed to name the retired src/data tree.
+# Each entry names a file or a directory (prefix match) and why it is not a live path.
+
+[[allow]]
+path = "xtask/src/layout.rs"
+reason = "the rule's own tests spell the retired path as the input they check the scanner against; no code opens it"
