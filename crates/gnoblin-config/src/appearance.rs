@@ -97,7 +97,7 @@ impl Accent {
         NAMED_ACCENTS
             .iter()
             .find(|(name, _)| *name == text)
-            .map(|(name, _)| Self::Named(*name))
+            .map(|(name, _)| Self::Named(name))
             .ok_or_else(|| format!("{text:?} is not one of {}, or #rrggbb", named_list()))
     }
 

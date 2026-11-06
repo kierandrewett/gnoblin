@@ -72,6 +72,11 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the appearance section: the colour scheme and accent published to dconf and the portal; the C core had no single table for them",
     ),
+    (
+        "logging",
+        "0.2.0",
+        "the logging section: the log store and retention settings, loaded by gnoblin_config::logging",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.
