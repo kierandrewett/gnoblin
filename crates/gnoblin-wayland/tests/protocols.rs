@@ -1238,6 +1238,21 @@ fn a_keymap_change_under_a_held_key_keeps_its_target() {
     });
 }
 
+/// A point inside `target` that none of `others` covers, scanned from the top left.
+fn point_only_in(target: gnoblin_types::Rect, others: &[gnoblin_types::Rect]) -> Point {
+    for y in (i64::from(target.y)..target.bottom()).step_by(8) {
+        for x in (i64::from(target.x)..target.right()).step_by(8) {
+            let covered = others.iter().any(|other| {
+                x >= i64::from(other.x) && x < other.right() && y >= i64::from(other.y) && y < other.bottom()
+            });
+            if !covered {
+                return Point::new(x as i32, y as i32);
+            }
+        }
+    }
+    panic!("the window has no point that no other window covers");
+}
+
 #[test]
 fn a_window_remembers_its_layout() {
     let config = Config {
@@ -1294,13 +1309,27 @@ fn a_window_remembers_its_layout() {
         );
         let observation = session.wait_for(|observation| observation.windows().count() == 2);
         let windows: Vec<_> = observation.windows().collect();
-        let target = windows
-            .iter()
-            .find(|window| window.app_id == "org.gnoblin.Second")
-            .expect("the second window")
-            .geometry;
+        let geometry_of = |app_id: &str| {
+            windows
+                .iter()
+                .find(|window| window.app_id == app_id)
+                .expect("the window")
+                .geometry
+        };
+        let first_geometry = geometry_of("org.gnoblin.First");
+        let second_geometry = geometry_of("org.gnoblin.Second");
+        // The second window is mapped last, so it is topmost and focused. Each click lands
+        // on a point only its own window covers, so the click reaches the window it names.
+        let first_only = point_only_in(first_geometry, &[second_geometry]);
+        let second_only = point_only_in(second_geometry, &[first_geometry]);
+
+        // Focus the first window, then the second, which has no layout of its own: it keeps
+        // the active one and sends no keymap.
         let enters = client.state.keyboard_enters;
-        session.click(centre(target));
+        session.click(first_only);
+        client.wait_for(|state| state.keyboard_enters > enters);
+        let enters = client.state.keyboard_enters;
+        session.click(second_only);
         client.wait_for(|state| state.keyboard_enters > enters);
         assert_eq!(
             client.state.last_keymap(),
@@ -1313,13 +1342,8 @@ fn a_window_remembers_its_layout() {
         let sent = client.state.keymaps.len();
         session.control.select_input_source(0);
         client.wait_for(|state| state.keymaps.len() > sent);
-        let first_target = windows
-            .iter()
-            .find(|window| window.app_id == "org.gnoblin.First")
-            .expect("the first window")
-            .geometry;
         let sent = client.state.keymaps.len();
-        session.click(centre(first_target));
+        session.click(first_only);
         let state = client.wait_for(|state| state.keymaps.len() > sent);
         assert_eq!(
             state.last_keymap(),

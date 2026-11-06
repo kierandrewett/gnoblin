@@ -212,8 +212,13 @@ wayland_client::delegate_noop!(App: ignore wl_shm::WlShm);
 wayland_client::delegate_noop!(App: ignore wl_shm_pool::WlShmPool);
 wayland_client::delegate_noop!(App: ignore wl_buffer::WlBuffer);
 
-/// An ordinary client that maps one window.
+/// An ordinary client that maps one window, titled `decorated`.
 fn map_app_window(handle: &Handle) -> Connected<App> {
+    map_titled_window(handle, "decorated")
+}
+
+/// An ordinary client that maps one window with the given title.
+fn map_titled_window(handle: &Handle, title: &str) -> Connected<App> {
     let mut client = Connected::connect(handle.socket(), App::default());
     let wm_base: xdg_wm_base::XdgWmBase = client
         .globals
@@ -222,7 +227,7 @@ fn map_app_window(handle: &Handle) -> Connected<App> {
     let surface = client.compositor.create_surface(&client.qh, ());
     let xdg = wm_base.get_xdg_surface(&surface, &client.qh, ());
     let toplevel = xdg.get_toplevel(&client.qh, ());
-    toplevel.set_title("decorated".to_owned());
+    toplevel.set_title(title.to_owned());
     toplevel.set_app_id("org.example.Decorated".to_owned());
     surface.commit();
     client.roundtrip();
@@ -452,16 +457,7 @@ fn hovering_a_region_is_reported_to_the_renderer() {
 
         // The frame covers the window, so a global position inside a region is a
         // frame-local one too once the window is placed.
-        let deadline = Instant::now() + TIMEOUT;
-        while handle
-            .control
-            .window_frame(window())
-            .flatten()
-            .is_none_or(|frame| !frame.presented)
-        {
-            assert!(Instant::now() < deadline, "the frame was never presented");
-            thread::sleep(Duration::from_millis(5));
-        }
+        wait_presented(handle, window());
         handle.control.move_window(window(), Rect::new(50, 50, 200, 150));
         handle.control.inject_input(gnoblin_backend::InputEvent::PointerMotion {
             output: gnoblin_types::OutputId::new(0),
@@ -484,6 +480,112 @@ fn hovering_a_region_is_reported_to_the_renderer() {
                 .iter()
                 .any(|(action, pressed)| *action == 2 && *pressed)
         });
+    });
+}
+
+/// Attaches, configures and presents the frame of the window titled `title`, with one
+/// region at frame-local `(x, y, width, height)`.
+fn present_titled(
+    renderer: &mut Renderer,
+    frame: &gnoblin_window_frame_v1::GnoblinWindowFrameV1,
+    title: &str,
+    action: gnoblin_window_frame_v1::Action,
+    region: (i32, i32, i32, i32),
+) {
+    let surface = renderer.client.compositor.create_surface(&renderer.client.qh, ());
+    frame.attach_surface(&surface);
+    renderer.client.roundtrip();
+    wait_renderer(renderer, "a configure for the frame", |state| {
+        state.configures.iter().any(|configure| configure.title == title)
+    });
+    let serial = renderer
+        .client
+        .state
+        .configures
+        .iter()
+        .rev()
+        .find(|configure| configure.title == title)
+        .expect("the window's frame was configured")
+        .serial;
+    frame.region(action, region.0, region.1, region.2, region.3);
+    let buffer = renderer.client.buffer(200, 150);
+    frame.ack_configure(serial);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage(0, 0, 200, 150);
+    surface.commit();
+    renderer.client.roundtrip();
+}
+
+/// Waits until the frame of `window` is presented.
+fn wait_presented(handle: &Handle, window: WindowId) {
+    let deadline = Instant::now() + TIMEOUT;
+    while handle
+        .control
+        .window_frame(window)
+        .flatten()
+        .is_none_or(|frame| !frame.presented)
+    {
+        assert!(Instant::now() < deadline, "a frame was never presented");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_pointer_over_overlapping_windows_reaches_the_topmost_frame() {
+    let session = Session::start(Some(ClientRole::FrameRenderer));
+    session.run(|handle| {
+        let mut renderer = Renderer::start(handle);
+        // The second window is mapped last, so it is the topmost of the two.
+        let _bottom = map_titled_window(handle, "bottom");
+        wait_renderer(&mut renderer, "the first frame", |state| state.frames.len() == 1);
+        let _top = map_titled_window(handle, "top");
+        wait_renderer(&mut renderer, "the second frame", |state| state.frames.len() == 2);
+        let bottom_frame = renderer.client.state.frames[0].clone();
+        let top_frame = renderer.client.state.frames[1].clone();
+        // Both frames cover their windows. The bottom frame's region covers the whole
+        // window, so a pointer that reached it would report Minimize, not Close.
+        present_titled(
+            &mut renderer,
+            &bottom_frame,
+            "bottom",
+            gnoblin_window_frame_v1::Action::Minimize,
+            (0, 0, 200, 150),
+        );
+        present_titled(
+            &mut renderer,
+            &top_frame,
+            "top",
+            gnoblin_window_frame_v1::Action::Close,
+            (0, 0, 40, 20),
+        );
+        wait_presented(handle, WindowId::new(1));
+        wait_presented(handle, WindowId::new(2));
+
+        handle.control.move_window(WindowId::new(1), Rect::new(0, 0, 200, 150));
+        handle
+            .control
+            .move_window(WindowId::new(2), Rect::new(50, 50, 200, 150));
+        // (60, 60) lies in both windows. In the top window that is frame-local (10, 10),
+        // inside its Close region; the bottom window's Minimize region covers it too.
+        handle.control.inject_input(gnoblin_backend::InputEvent::PointerMotion {
+            output: gnoblin_types::OutputId::new(0),
+            position: gnoblin_types::Point::new(60, 60),
+        });
+        wait_renderer(&mut renderer, "a hovered region", |state| {
+            state
+                .interactions
+                .iter()
+                .any(|(action, pressed)| *action == 2 && !*pressed)
+        });
+        assert!(
+            !renderer
+                .client
+                .state
+                .interactions
+                .iter()
+                .any(|(action, _)| *action == 4),
+            "the window underneath must not receive the pointer"
+        );
     });
 }
 
