@@ -1628,6 +1628,7 @@ Each section below records the choice, its consequences, and the options conside
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
 | D28 | Layer registry               | **Proposed 2026-11-06:** runtime layer registry; named, attributed layers; a closed band set orders them. Client surfaces are layers. `secure` defaults off.                                                                    |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
+| D30 | Store                        | **Proposed 2026-11-06:** one `gnoblin-store` API, one SQLite file per owner; extensions never open SQLite (`design/store.md`).                                                                                                  |
 
 ### D1: where scripts run
 
@@ -3137,6 +3138,28 @@ Needs Kieran:
 5. The fallback timeout: 2 seconds (proposed).
 6. Whether the window menu declares `secure`, which keeps it out of captures (B, proposed: no; `design/layers.md`, Options).
 7. Accept the accessibility gap until `gnoblin-a11y` has an AT-SPI tree, or block cutover on it.
+
+### D30: store
+
+**Proposed 2026-11-06: runtime state goes through one store API, `gnoblin-store`, with one SQLite file per owner. An owner is a Gnoblin crate or an extension, named by the compositor. Extensions never open SQLite. Secrets never enter the store (D27).** The design, invariants and options are in `design/store.md`.
+
+**Today.** Persisted state is small. The log store writes `$XDG_STATE_HOME/gnoblin/logs.sqlite3` (`gnoblin-log/src/store.rs:103-113`). Session recovery lives under `state_home` (`gnoblin-session/src/supervisor.rs:136`). The last accepted configuration is `last-good-config.json` (`gnoblin-config/src/last_good.rs:45`). Extensions have no storage, because the wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`).
+
+**Decision.** Each owner's file is `$XDG_DATA_HOME/gnoblin/store/<namespace>.sqlite3`, with WAL and migrations owned by the owner. Values are a subset of `gnoblin_model::Value` (`gnoblin-model/src/value.rs:19`). The API is key-value with prefix listing, batches, compare-and-set, optional TTL, quotas and change signals. Logs (D23) and recovery keep their own files.
+
+**Access.** The `store` power (D22) gives an extension its own namespace only. Reads and writes of another namespace are named grants in host configuration. A crate namespace is readable by an extension only under a grant. Uninstalled data is kept, listed by `gnoblinctl store usage`, and removed only by `gnoblinctl store purge`.
+
+**Surfaces.** The IPC `store` object, Lua `gnoblin.store`, a WASM host import, and `gnoblinctl store`. Rust crates use the `gnoblin-store` library, which joins the foundation set in `xtask/src/deps.rs`.
+
+**Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal and read-only boot.
+
+Needs Kieran (details in `design/store.md`):
+
+1. Collections (indexed records) in v1, or key-value only with collections later.
+2. One file per namespace, or one file with namespaced tables.
+3. Whether logs are exposed through the store API.
+4. Default quota and value size.
+5. Whether an owner may run a read-only query over its own namespace.
 
 ## Phase 0 checklist
 
