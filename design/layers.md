@@ -2,7 +2,7 @@
 
 Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers `gnoblin.portals`, `gnoblin.alerts` and `gnoblin.window_menu`, and a Wayland provider registers the client surfaces (`gnoblin.surface_*`). Extensions register under `ext.<id>.`. Decisions live in the main document; this file holds the detail.
 
-Status: proposed. Nothing here is implemented.
+Status: proposed. Phase 1 (the `gnoblin-layers` crate: names, bands, scopes, registry, paint order, lifecycle, owner-only secure flag) is implemented and unit-tested. Wiring into the compositor and Lua is not started.
 
 Citations are `path:line`, checked in this lane on 2026-11-06. `[INFERENCE]`
 marks a claim not checked against code or a primary source.
