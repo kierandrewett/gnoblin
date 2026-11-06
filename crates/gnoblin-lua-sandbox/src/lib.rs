@@ -20,10 +20,12 @@
 //! - [`Profile::Layout`] is the pure subset a layout runs under (D17). The base
 //!   library is cut to an allowlist, `string` to `len`, `sub`, `byte`, `char` and a
 //!   `format` that refuses a width or precision above 99, `table` without `sort`,
-//!   and `math` without `random`. `string.find`, `match`, `gmatch`, `gsub` and `rep`
-//!   are absent because they can run without bound inside C, where the hook cannot
-//!   reach them. `pcall`, `coroutine`, `load` and `collectgarbage` are absent so the
-//!   limits cannot be caught or bypassed.
+//!   and `math` without `random`. In the configuration profile `string.find`, `match`,
+//!   `gmatch` and `gsub` are replaced by a Rust matcher in [`pattern`] that spends the
+//!   same step budget, with output identical to stock Lua 5.5 (`tests/pattern_parity.rs`).
+//!   `rep` is absent because the stock C version cannot be stopped by the count hook.
+//!   `pcall`, `coroutine`, `load` and `collectgarbage` are absent so the limits cannot
+//!   be caught or bypassed.
 //!
 //! Binary Lua bytecode is never loaded. In the configuration profile `load` is
 //! wrapped so its mode is always text, because crafted bytecode can crash the
@@ -34,6 +36,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use mlua::{Error, Function, HookTriggers, Lua, LuaOptions, MultiValue, StdLib, Table, Value, VmState};
+
+mod pattern;
+mod strlib;
 
 /// How many instructions pass between two hook calls.
 ///
@@ -172,6 +177,9 @@ pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua
     match profile {
         Profile::Config => clear_config(&lua)?,
         Profile::Layout => restrict_layout(&lua)?,
+    }
+    if profile == Profile::Config {
+        strlib::install(&lua, Rc::clone(&guard), limits.instructions)?;
     }
     install_hook(&lua, limits, Rc::clone(&guard))?;
     if profile == Profile::Config {
@@ -376,6 +384,15 @@ fn format_refused() -> Error {
     ))
 }
 
+/// The message the budget abort raises. The budget is the instruction count the entry
+/// was armed with, so the text names the same number whichever path ran out.
+pub(crate) fn budget_message(budget: u64) -> String {
+    format!(
+        "the Lua instruction budget ({budget} instructions) is exhausted; a handler must \
+         finish inside its budget"
+    )
+}
+
 /// Install the count hook that enforces the instruction and deadline budgets.
 fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Error> {
     // The closure outlives this call, so the numbers it names are copied in.
@@ -396,10 +413,7 @@ fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Erro
             let remaining = guard.remaining.get();
             if remaining <= u64::from(HOOK_INSTRUCTIONS) {
                 guard.remaining.set(0);
-                return Err(guard.latch(format!(
-                    "the Lua instruction budget ({budget} instructions) is exhausted; a handler must \
-                     finish inside its budget"
-                )));
+                return Err(guard.latch(budget_message(budget)));
             }
             guard.remaining.set(remaining - u64::from(HOOK_INSTRUCTIONS));
             if let Some(started) = guard.started.get()

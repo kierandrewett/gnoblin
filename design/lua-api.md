@@ -326,6 +326,14 @@ a failed validation leaves the last active config in place. The standalone
 Mutter open-animation path uses this matcher and keeps malformed-pattern and
 limit errors distinct from an ordinary non-match.
 
+The Lua `string.find`, `string.match`, `string.gmatch` and `string.gsub` functions
+run a Rust matcher in the configuration VM, so each step counts against the
+instruction budget. Their results, captures, error messages, `init` handling and
+`gmatch` iteration match stock Lua 5.5 exactly. A differential test in
+`crates/gnoblin-lua-sandbox/tests/pattern_parity.rs` checks a hand-written corpus
+and 100,000 seeded random cases against the C implementation. The only allowed
+difference is the budget, so the test compares only cases the C version finishes.
+
 ## Target Lua API
 
 All names in this section are **proposed** unless they are also listed in the
