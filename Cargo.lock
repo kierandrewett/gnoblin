@@ -1658,6 +1658,7 @@ dependencies = [
  "gnoblin-portal-filechooser",
  "gnoblin-schema",
  "gnoblin-types",
+ "png",
 ]
 
 [[package]]

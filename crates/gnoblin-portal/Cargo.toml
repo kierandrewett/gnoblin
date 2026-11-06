@@ -15,5 +15,8 @@ gnoblin-portal-filechooser.workspace = true
 gnoblin-portal-appchooser.workspace = true
 egui.workspace = true
 
+[dev-dependencies]
+png.workspace = true
+
 [lints]
 workspace = true
