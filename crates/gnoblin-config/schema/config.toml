@@ -2016,14 +2016,6 @@ accepted = "a list of workspace layout tables"
 doc = "Layout overrides by workspace id. These win over the output and default layouts."
 since = "0.2.0"
 
-[[section.field]]
-key = "module-dirs"
-kind = "text-list"
-accepted = "a list of directory paths"
-default = { list = [] }
-doc = "Extra directories searched for layout modules, before the shipped ones. A module here overrides a shipped layout of the same name: the first directory that holds the name wins."
-since = "0.2.0"
-
 [[section]]
 key = "workspaces"
 type = "Workspaces"

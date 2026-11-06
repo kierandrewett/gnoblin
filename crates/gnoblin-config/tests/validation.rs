@@ -391,7 +391,6 @@ fn a_layout_section_loads_with_defaults_and_overrides() {
                 "workspaces",
                 list(vec![table([("workspace", text("main")), ("layout", text("floating"))])]),
             ),
-            ("module-dirs", list(vec![text("/opt/layouts")])),
         ]),
     )]);
     let config = Config::from_value(document).expect("a layout section validates");
@@ -402,7 +401,6 @@ fn a_layout_section_loads_with_defaults_and_overrides() {
     assert_eq!(outputs[0].layout.as_deref(), Some("columns"));
     let workspaces = layout.workspaces.as_ref().expect("workspaces");
     assert_eq!(workspaces[0].workspace.as_deref(), Some("main"));
-    assert_eq!(layout.module_dirs.as_deref(), Some(&["/opt/layouts".to_string()][..]));
 }
 
 #[test]
@@ -413,7 +411,7 @@ fn an_empty_layout_section_sets_nothing() {
         layout.default.is_none(),
         "the floating default is applied by the layout host, not here"
     );
-    assert!(layout.outputs.is_none() && layout.workspaces.is_none() && layout.module_dirs.is_none());
+    assert!(layout.outputs.is_none() && layout.workspaces.is_none());
 }
 
 #[test]
@@ -428,6 +426,4 @@ fn an_unknown_layout_key_is_refused() {
 fn a_layout_of_the_wrong_type_is_refused() {
     let found = problems(table([("layout", table([("default", int(3))]))]));
     assert_eq!(found[0].0, "layout.default");
-    let found = problems(table([("layout", table([("module-dirs", text("/opt"))]))]));
-    assert_eq!(found[0].0, "layout.module-dirs");
 }
