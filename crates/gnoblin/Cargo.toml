@@ -33,9 +33,6 @@ gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
 # The display configuration adapter, served by the services role on its own compositor link.
 gnoblin-compat-mutter-displayconfig = { path = "../compat/gnoblin-compat-mutter-displayconfig" }
 gnoblin-compat-mutter-idlemonitor = { path = "../compat/gnoblin-compat-mutter-idlemonitor" }
-gnoblin-client = { path = "../gnoblin-client" }
-gnoblin-proto = { path = "../gnoblin-proto" }
-gnoblin-model = { path = "../gnoblin-model" }
 zbus.workspace = true
 futures-lite.workspace = true
 tracing.workspace = true
