@@ -66,6 +66,10 @@ struct ExtIdleNotifyV1Notification {
     idled: bool,
 }
 
+/// The most named idle holders the session keeps at once. A holder is one ScreenSaver
+/// inhibit, so this bounds what one D-Bus caller can pile up.
+pub(crate) const IDLE_HOLDER_CAP: usize = 256;
+
 /// The idle notifications and inhibitors the session holds.
 #[derive(Default, Debug)]
 pub(crate) struct ExtIdleNotifyV1Tables {
@@ -73,6 +77,12 @@ pub(crate) struct ExtIdleNotifyV1Tables {
     notifications: Vec<ExtIdleNotifyV1Notification>,
     /// The surfaces whose clients asked that the session never idle.
     inhibits: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+    /// The named holders the session's own clients (the ScreenSaver bridge) asked to keep
+    /// it awake. A holder is an opaque name; adding a held name again changes nothing.
+    holders: std::collections::BTreeSet<String>,
+    /// The idle state last published to the observation snapshot: idle seconds and the
+    /// inhibitor count. The snapshot is republished when either moves, not on every turn.
+    published: Option<(u64, usize)>,
 }
 
 impl ExtIdleNotifyV1Tables {
@@ -228,8 +238,32 @@ impl State {
     /// would keep the session awake for ever.
     #[must_use]
     pub(crate) fn idle_inhibited(&mut self) -> bool {
+        self.idle_inhibitors() > 0
+    }
+
+    /// How many inhibitors currently hold idle off: inhibiting surfaces and named holders.
+    #[must_use]
+    pub(crate) fn idle_inhibitors(&mut self) -> usize {
         self.idle_tables.inhibits.retain(|surface| surface.is_alive());
-        !self.idle_tables.inhibits.is_empty()
+        self.idle_tables.inhibits.len() + self.idle_tables.holders.len()
+    }
+
+    /// Adds (`held` true) or removes one named idle holder. Adding a name already held and
+    /// removing one not held change nothing. `Ok` carries whether the set changed; `Err`
+    /// refuses a new name once [`IDLE_HOLDER_CAP`] names are held.
+    pub(crate) fn idle_hold(&mut self, holder: String, held: bool) -> Result<bool, String> {
+        let changed = if held {
+            if !self.idle_tables.holders.contains(&holder) && self.idle_tables.holders.len() >= IDLE_HOLDER_CAP {
+                return Err(format!("at most {IDLE_HOLDER_CAP} idle inhibitors may be held at once"));
+            }
+            self.idle_tables.holders.insert(holder)
+        } else {
+            self.idle_tables.holders.remove(&holder)
+        };
+        if changed {
+            self.refresh_idle();
+        }
+        Ok(changed)
     }
 
     /// Records or drops one inhibitor.
@@ -277,6 +311,14 @@ impl State {
                 debug!(instance = ?resource.id(), "[idle] the session resumed");
                 resource.resumed();
             }
+        }
+        // The observation snapshot reports idle time and the inhibitor count, so it is
+        // republished when either changes. Idle time moves every tick, so it is keyed to
+        // whole seconds: a reader sees the count move each second, not every turn.
+        let key = (self.activity.idle_ticks(self.clock) / 1000, self.idle_inhibitors());
+        if self.idle_tables.published != Some(key) {
+            self.idle_tables.published = Some(key);
+            self.publish();
         }
     }
 

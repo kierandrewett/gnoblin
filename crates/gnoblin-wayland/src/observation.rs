@@ -153,6 +153,10 @@ pub struct SessionSnapshot {
     /// disconnects, so a crashed adapter leaves this at zero rather than leaving a stream
     /// running that nothing can close.
     pub(crate) capture_sessions: usize,
+    /// Milliseconds since the last input event, as the `idle` object's `idle_ms` reports.
+    pub(crate) idle_ms: u64,
+    /// How many idle inhibitors hold idle off, as the `idle` object's `inhibitors` reports.
+    pub(crate) inhibitors: usize,
 }
 
 impl SessionSnapshot {
@@ -166,6 +170,18 @@ impl SessionSnapshot {
     #[must_use]
     pub fn capture_sessions(&self) -> usize {
         self.capture_sessions
+    }
+
+    /// Milliseconds since the last input event.
+    #[must_use]
+    pub fn idle_ms(&self) -> u64 {
+        self.idle_ms
+    }
+
+    /// How many idle inhibitors hold idle off.
+    #[must_use]
+    pub fn inhibitors(&self) -> usize {
+        self.inhibitors
     }
 
     /// Every managed window, in policy identity order.
@@ -352,6 +368,8 @@ impl SessionSnapshot {
             selection: None,
             bells: 0,
             capture_sessions: 0,
+            idle_ms: 0,
+            inhibitors: 0,
         }
     }
 }

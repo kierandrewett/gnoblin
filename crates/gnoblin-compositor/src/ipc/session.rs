@@ -80,6 +80,10 @@ mod member {
     pub const LAYOUT_FAILED: &str = "layout_failed";
     /// The `lock` object's locked property: whether the lock is holding the desktop.
     pub const LOCKED: &str = "locked";
+    /// The `idle` object's idle_ms property: milliseconds since the last input event.
+    pub const IDLE_MS: &str = "idle_ms";
+    /// The `idle` object's inhibitors property: how many holds keep the session awake.
+    pub const INHIBITORS: &str = "inhibitors";
 }
 
 /// What the graph last published for one workspace.
@@ -120,6 +124,8 @@ pub struct SessionSync {
     session: ObjectId,
     /// The `lock` object, whose `locked` property `apply` writes from the snapshot.
     lock: ObjectId,
+    /// The `idle` object, whose idle_ms and inhibitors properties `apply` writes from the snapshot.
+    idle: ObjectId,
     /// How many bells the last snapshot counted, so `apply` raises the signal once per
     /// ring rather than once per snapshot.
     bells: u64,
@@ -146,10 +152,16 @@ impl SessionSync {
         let session = graph.create(TypeKey::gnoblin("session"), properties)?;
         let lock_properties = Fields::from([(member::LOCKED.to_owned(), Value::Bool(false))]);
         let lock = graph.create(TypeKey::gnoblin("lock"), lock_properties)?;
+        let idle_properties = Fields::from([
+            (member::IDLE_MS.to_owned(), Value::Uint(0)),
+            (member::INHIBITORS.to_owned(), Value::Uint(0)),
+        ]);
+        let idle = graph.create(TypeKey::gnoblin("idle"), idle_properties)?;
         Ok(SessionSync {
             graph,
             session,
             lock,
+            idle,
             bells: 0,
             windows: BTreeMap::new(),
             workspaces: BTreeMap::new(),
@@ -233,6 +245,7 @@ impl SessionSync {
         self.apply_outputs(snapshot, &mut failures);
         self.apply_workspaces(snapshot, &mut failures);
         self.publish_lock(snapshot.lock_active());
+        self.publish_idle(snapshot.idle_ms(), snapshot.inhibitors());
         if failures.is_empty() {
             Ok(())
         } else {
@@ -247,6 +260,23 @@ impl SessionSync {
     fn publish_lock(&mut self, locked: bool) {
         if let Err(error) = self.graph.set(self.lock, member::LOCKED, Value::Bool(locked)) {
             error!(%error, "[ipc] the lock object declares no locked property");
+        }
+    }
+
+    /// Writes the `idle` object's idle_ms and inhibitors properties from the snapshot.
+    ///
+    /// These are what `IdleMonitor.GetIdletime` and the ScreenSaver inhibit count read, so a
+    /// reader that finds no `idle` object fails closed rather than reporting zero idle time.
+    fn publish_idle(&mut self, idle_ms: u64, inhibitors: usize) {
+        let inhibitors = u64::try_from(inhibitors).unwrap_or(u64::MAX);
+        let fields = Fields::from([
+            (member::IDLE_MS.to_owned(), Value::Uint(idle_ms)),
+            (member::INHIBITORS.to_owned(), Value::Uint(inhibitors)),
+        ]);
+        for (property, value) in fields {
+            if let Err(error) = self.graph.set(self.idle, &property, value) {
+                error!(%error, "[ipc] the idle object declares no such property");
+            }
         }
     }
 

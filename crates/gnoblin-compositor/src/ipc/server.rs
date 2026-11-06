@@ -1116,6 +1116,9 @@ impl Dispatcher {
             (Some(ty), _, _, _) if ty == "lock" && method == "lock_session" => {
                 self.lock_call(client, envelope, object, &method, &arguments);
             }
+            (Some(ty), _, _, _) if ty == "idle" && (method == "inhibit" || method == "uninhibit") => {
+                self.idle_call(client, envelope, object, &method, &arguments);
+            }
             (None, _, _, _) => self.refuse(
                 client,
                 envelope,
@@ -1217,6 +1220,38 @@ impl Dispatcher {
             Some(true) => OperationOutcome::Done,
             Some(false) | None => OperationOutcome::Failed(NOT_LOCKED),
         };
+        self.finish(object, &operation, Some(outcome));
+    }
+
+    /// Serves `idle.inhibit` and `idle.uninhibit`: one named hold on idle notifications is
+    /// added or removed. The hold is recorded on the compositor's idle tables, so the next
+    /// snapshot publishes the new `inhibitors` count.
+    fn idle_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+    ) {
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        let outcome = match text_argument(arguments, "holder") {
+            Some(holder) => match self.control.idle_hold(&holder, method == "inhibit") {
+                Some(Ok(_)) => OperationOutcome::Done,
+                Some(Err(_)) => OperationOutcome::Failed(TOO_MANY_INHIBITORS),
+                None => OperationOutcome::Failed(IDLE_UNAVAILABLE),
+            },
+            None => OperationOutcome::Failed(IDLE_UNAVAILABLE),
+        };
+        self.sync();
         self.finish(object, &operation, Some(outcome));
     }
 
@@ -1703,6 +1738,12 @@ fn refusal_code(error: &ModelError) -> &'static str {
 
 /// The code a `lock` call completes with when the session is not confirmed locked.
 const NOT_LOCKED: ErrorCode = ErrorCode::from_static("not-locked");
+
+/// The code an `idle.inhibit` call completes with when the holder cap is full.
+const TOO_MANY_INHIBITORS: ErrorCode = ErrorCode::from_static("too-many-inhibitors");
+
+/// The code an idle hold call completes with when the compositor is not serving the idle state.
+const IDLE_UNAVAILABLE: ErrorCode = ErrorCode::from_static("idle-unavailable");
 
 /// A locked map, with a poisoned lock read as its contents rather than a panic.
 fn lock<T>(map: &Arc<Mutex<T>>) -> MutexGuard<'_, T> {

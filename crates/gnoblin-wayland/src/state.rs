@@ -2195,6 +2195,8 @@ impl State {
                 capture_allowed: !self.lock_embargo.capture,
             },
             capture_sessions: self.capture.sessions(),
+            idle_ms: self.activity.idle_ticks(self.clock),
+            inhibitors: self.idle_inhibitors(),
             layers: self.layers.observed(),
             activation_denied: self.activation.denied().cloned(),
             bells: self.bells,

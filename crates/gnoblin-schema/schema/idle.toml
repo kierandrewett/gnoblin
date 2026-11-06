@@ -27,3 +27,45 @@ since = "0.2.0"
 name = "idle_ms"
 type = "uint"
 since = "0.2.0"
+
+# How many holds keep the session awake: the Wayland `zwp_idle_inhibit_v1` surfaces
+# plus the holders `inhibit` has recorded. While it is non-zero no idle notification
+# fires, and an idle one is resumed. Read-only: the compositor sets it.
+[[object.property]]
+name = "inhibitors"
+type = "uint"
+since = "0.2.0"
+
+# Hold the session awake under `holder`, a name the caller chooses and that is unique
+# among its holders. Holding again under the same name changes nothing. The holders
+# are capped; past the cap the operation fails with `too-many-inhibitors`.
+[[object.method]]
+name = "inhibit"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "holder"
+type = "string"
+since = "0.2.0"
+
+# Release the hold `holder` names. A name that holds nothing is a no-op, and the
+# operation is `done` either way.
+[[object.method]]
+name = "uninhibit"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "holder"
+type = "string"
+since = "0.2.0"
+
+# The idle object already holds the most inhibitors it can. The new hold was not
+# recorded, and the session may go idle as if the caller had not asked.
+[[error]]
+name = "too-many-inhibitors"
+since = "0.2.0"
+
+# The compositor is not serving its idle state, so the hold could not be recorded.
+[[error]]
+name = "idle-unavailable"
+since = "0.2.0"

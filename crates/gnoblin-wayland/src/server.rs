@@ -417,6 +417,9 @@ impl Server {
                             } => {
                                 let _ = reply.send(state.set_floating(window, floating));
                             }
+                            Command::IdleHold { holder, held, reply } => {
+                                let _ = reply.send(state.idle_hold(holder, held));
+                            }
                             Command::WindowProcess { window, reply } => {
                                 let process = state.window_process(window);
                                 let process = match (process, window_process_override) {
@@ -698,6 +701,19 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Adds (`held` true) or removes one named idle holder. `None` when the loop did not
+    /// answer in time; otherwise `Err` when adding would exceed the holder cap, and `Ok`
+    /// with whether the set changed (adding a held name, or removing one that was held).
+    pub fn idle_hold(&self, holder: &str, held: bool) -> Option<Result<bool, String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::IdleHold {
+            holder: holder.to_owned(),
+            held,
+            reply,
+        });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// The process behind a window's client. `None` when the loop did not answer in time;
     /// otherwise `None` when no such window exists, and the window's process otherwise.
     pub fn window_process(&self, window: WindowId) -> Option<Option<crate::WindowProcess>> {
@@ -962,6 +978,12 @@ enum Command {
         window: WindowId,
         floating: bool,
         reply: std::sync::mpsc::SyncSender<bool>,
+    },
+    /// Adds or removes one idle holder; see `ControlHandle::idle_hold`.
+    IdleHold {
+        holder: String,
+        held: bool,
+        reply: std::sync::mpsc::SyncSender<Result<bool, String>>,
     },
     /// The process behind a window's client; see `ControlHandle::window_process`.
     WindowProcess {

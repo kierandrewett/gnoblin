@@ -773,6 +773,33 @@ mod gnoblin_objects {
             Ok(self.uint(object, "idle_ms"))
         }
 
+        fn inhibitors(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "inhibitors"))
+        }
+
+        fn inhibit(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            holder: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("holder".to_owned(), Value::Text(holder));
+            self.method(object, "idle", "inhibit", arguments)
+        }
+
+        fn uninhibit(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            holder: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("holder".to_owned(), Value::Text(holder));
+            self.method(object, "idle", "uninhibit", arguments)
+        }
+
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
             Ok(match self.watch(&handle) {
                 Ok(()) => Ok(true),
