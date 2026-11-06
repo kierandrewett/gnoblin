@@ -1,6 +1,6 @@
 # Layers
 
-Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers `gnoblin.portals`, `gnoblin.alerts` and `gnoblin.window_menu`, and a Wayland provider registers the client surfaces (`gnoblin.surface_*`). Extensions register under `ext.<id>.`. Decisions live in the main document; this file holds the detail.
+Companion to D28 and D29 in [rust-compositor.md](rust-compositor.md). It defines a runtime layer registry. Gnoblin registers `gnoblin.portals` and `gnoblin.alerts`, and a Wayland provider registers the client surfaces (`gnoblin.surface_*`). Extensions register under `ext.<id>.`, and the window menu is one of them (D29). Decisions live in the main document; this file holds the detail.
 
 Status: proposed. Phase 1 (the `gnoblin-layers` crate: names, bands, scopes, registry, paint order, lifecycle, owner-only secure flag) is implemented and unit-tested. Wiring into the compositor and Lua is not started.
 
@@ -71,8 +71,7 @@ marks a claim not checked against code or a primary source.
 - `window.kill` sends SIGKILL through a pidfd (`crates/gnoblin-compositor/src/ipc/server.rs:1260-1343`).
 - No Rust code draws a not-responding dialog. `design/gnome-parity.md:13` says Bingux
   draws it, with Wait and Force Quit. That code is out of tree.
-- The window menu: Mutter's hook is `patches/mutter/gnoblin-plugin.c:389`
-  (`show_window_menu`). Bingux draws it in `WindowMenu.qml`. No Rust code draws it.
+- The window menu is a signal, `menu_requested`, on the `window` object, with a `request_menu` method (D29). Any extension may subscribe and show it. The shipped extension `gnoblin.window_menu` is one such subscriber, and it is enabled by default.
 
 ### Object model and Lua
 
@@ -205,15 +204,15 @@ The built-in frame is the default. Any provider may register its own frame throu
 
 Four Gnoblin claims and three built-in surface kinds use the registry. Each replaces existing code or is new.
 
-| Layer                         | Scope                                      | Band and order                         | Input                                                                   | Registered by                                                                         | Replaces or adds                                                                            |
-| ----------------------------- | ------------------------------------------ | -------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `gnoblin.portals`             | `window` if parent resolves, else `output` | `windows`, above target; else `system` | `modal-to-target` if parent resolves, else `modal-to-output` (Kieran 1) | `gnoblin-portal`, registered by the compositor's portal service, with `secure = true` | `Modal` and overlay slot (`modal.rs`, `frame.rs:236`); `dialog_placement` (`portal.rs:310`) |
-| `gnoblin.alerts`              | `window`                                   | `windows`, above target                | `modal-to-target`                                                       | `gnoblin-compositor` [INFERENCE]; content per Kieran 4                                | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
-| `gnoblin.window_menu`         | `window`                                   | `windows`, above target                | `grab`                                                                  | `gnoblin-window-menu` (D29), or a claimant                                            | New in Rust. Replaces Bingux `WindowMenu.qml`.                                              |
-| `gnoblin.window_frame`        | `window`                                   | `windows`, above target, below `top`   | Paint and input areas (see Window frames)                               | `gnoblin-compositor`; any provider may register its own (Kieran 14)                   | New. Frames are not in the layer model today.                                               |
-| `gnoblin.surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wm`                                                            | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
-| `gnoblin.surface_layer_shell` | `output`                                   | `background` to `overlay`              | `gnoblin-wayland`                                                       | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface.      |
-| `gnoblin.surface_x11`         | `window`                                   | `windows`, X stacking                  | `gnoblin-xwayland`                                                      | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.              |
+| Layer                         | Scope                                                                 | Band and order                         | Input                                                                   | Registered by                                                                         | Replaces or adds                                                                            |
+| ----------------------------- | --------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `gnoblin.portals`             | `window` if parent resolves, else `output`                            | `windows`, above target; else `system` | `modal-to-target` if parent resolves, else `modal-to-output` (Kieran 1) | `gnoblin-portal`, registered by the compositor's portal service, with `secure = true` | `Modal` and overlay slot (`modal.rs`, `frame.rs:236`); `dialog_placement` (`portal.rs:310`) |
+| `gnoblin.alerts`              | `window`                                                              | `windows`, above target                | `modal-to-target`                                                       | `gnoblin-compositor` [INFERENCE]; content per Kieran 4                                | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
+| `gnoblin.window_menu`         | none in core; an extension's window-scope layer, `<provider>.<local>` | `windows`, above target                | `grab`                                                                  | Extension (D29). Shipped default: `gnoblin.window_menu`, Lua                          | New. Replaces Bingux `WindowMenu.qml` (which subscribes to the signal).                     |
+| `gnoblin.window_frame`        | `window`                                                              | `windows`, above target, below `top`   | Paint and input areas (see Window frames)                               | `gnoblin-compositor`; any provider may register its own (Kieran 14)                   | New. Frames are not in the layer model today.                                               |
+| `gnoblin.surface_toplevel`    | `window`                                                              | `windows`, one per window              | `gnoblin-wm`                                                            | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
+| `gnoblin.surface_layer_shell` | `output`                                                              | `background` to `overlay`              | `gnoblin-wayland`                                                       | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface.      |
+| `gnoblin.surface_x11`         | `window`                                                              | `windows`, X stacking                  | `gnoblin-xwayland`                                                      | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.              |
 
 Every built-in uses namespace `gnoblin`. The column names the crate that registers the layer.
 
@@ -246,10 +245,9 @@ Every built-in uses namespace `gnoblin`. The column names the crate that registe
 
 ### window_menu
 
-- The layer hosts the D29 model. The layer does not change what a menu contains,
-  only where it sits and what it blocks. The built-in provider is stock egui (D29), with no custom painting or theme.
-- `grab` on the target until dismissed. The Mutter hook (`gnoblin-plugin.c:389`)
-  becomes a request for this layer.
+- The core has no window-menu layer. It emits `menu_requested` (D29), and a subscribing extension registers a window-scope layer above the target, with input policy `grab` until dismissed.
+- The shipped extension is `gnoblin.window_menu`, enabled by default. Disable it in the extension configuration (D22) to replace it.
+- Two enabled subscribers both show a menu. Users enable one.
 
 ## Registration
 
@@ -468,8 +466,7 @@ Each path below moves to the registry, with no shim.
 - Docs: `docs/shell-api/layer-surfaces.md` (the `gnoblin.layers` section) and
   `docs/public/gnoblin.d.lua` (`register` and the handle). `layers.list` keeps its
   record shape, plus a `band` filter (Kieran 7).
-- Bingux, out of tree: `WindowMenu.qml` and the not-responding dialog move to
-  providers.
+- Bingux, out of tree: `WindowMenu.qml` and the not-responding dialog move to subscribers and providers.
 
 ## Tests
 
@@ -515,7 +512,7 @@ Each path below moves to the registry, with no shim.
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
 6. `gnoblin.window_frame`, built in, with its paint and input areas (see Window frames).
-7. `gnoblin.window_menu` (D29), built in.
+7. `menu_requested` signal and `request_menu` on `window` (D29). The shipped `gnoblin.window_menu` extension follows, enabled by default. No core menu layer.
 8. `gnoblin.alerts`, with its content provider.
 9. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by full layer name, with a new `layer-name` id kind, and a `capture` section with `secure-treatment`.
 10. Extension `[powers.layers]` through D22.
