@@ -119,7 +119,7 @@ section.
   name. Secret Service clients keep talking to the other provider. The two
   stores are then separate, and the consent text must say so.
 
-Kieran chooses whether that default stands ("Needs Kieran").
+Decided 2026-11-06 (item 35): a config leaf chooses the keyring provider. The proposed name is `keyring.provider` (to be checked against `crates/gnoblin-config/schema`). Its default is `gnoblin`. Other values name another program, such as `gnome-keyring` or `keepassxc`. Gnoblin takes `org.freedesktop.secrets` only when it is the configured provider. If the configured provider is missing, or the name is owned by another program, the same on-screen warning used for config problems appears. That warning is built in `src/session/gnoblin-runtime-diagnostics.c` (`append_config_warning_notice`).
 
 ## Secret Service API
 
@@ -234,11 +234,6 @@ Acceptance is compatibility with existing software:
 
 These are real choices. Each one changes the work.
 
-1. **Key source (open, `confirm`):** option 1, 2 or 3, alone or combined, with
-   option 4 as cache. Lean: option 1 (PAM hand-off) first, so login unlocks the
-   store with no second password. It needs a new PAM module in each greeter
-   stack and is untested on greetd and cosmic-greeter. The key source stays open
-   until Kieran confirms it.
+1. **Key source (open, `confirm`, lean, item 33):** PAM login passphrase first. A TPM-sealed key is the fallback. A prompt appears only if neither works, because a fingerprint gives no passphrase. Still open until Kieran confirms.
 2. **Import of an existing gnome-keyring file:** yes or no.
-3. **Coexistence default:** keep the safe default above, or take the name when
-   free and fall back otherwise.
+3. **Coexistence (decided, item 35):** the config leaf `keyring.provider` chooses the provider. See "Coexistence".
