@@ -504,6 +504,16 @@ mod gnoblin_objects {
             arguments.insert("floating".to_owned(), Value::Bool(floating));
             self.method(object, "window", "set_floating", arguments)
         }
+
+        fn unresponsive(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "unresponsive"))
+        }
+
+        fn kill(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "window", "kill", gnoblin_model::Fields::new())
+        }
         fn icon(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "icon"))

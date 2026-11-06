@@ -672,3 +672,28 @@ fn the_layout_and_floating_members_round_trip_through_the_graph() {
         Some(Value::Bool(true))
     );
 }
+
+// 11. The liveness member the compositor sets is read back through the graph.
+// The host's `kill` method has no fixture yet: it is covered only by the WIT check.
+#[test]
+fn the_unresponsive_member_round_trips_through_the_graph() {
+    let (mut server, window) = server();
+    assert_eq!(
+        server
+            .graph()
+            .object(window)
+            .and_then(|object| object.property("unresponsive").cloned()),
+        Some(Value::Bool(false))
+    );
+
+    server
+        .set(window, "unresponsive", Value::Bool(true))
+        .expect("the graph takes an unresponsive change");
+    assert_eq!(
+        server
+            .graph()
+            .object(window)
+            .and_then(|object| object.property("unresponsive").cloned()),
+        Some(Value::Bool(true))
+    );
+}
