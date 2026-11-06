@@ -12,4 +12,5 @@
 //! keysym, owner and output comes from the compositor, which is what makes
 //! [`crate::A11y::apply`] replayable from an event log.
 
+/// Output and owner identifiers plus key codes and keysyms, re-exported from `gnoblin-types`.
 pub use gnoblin_types::{KeyCode, Keysym, OutputId, OwnerId};

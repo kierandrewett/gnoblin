@@ -118,7 +118,9 @@ mod a11y;
 mod config;
 mod effect;
 mod event;
+/// Magnifier view geometry: points, sizes, rectangles and scale, shared with the renderer.
 pub mod geometry;
+/// Identifiers the accessibility machines key their tables by (outputs and owners).
 pub mod ids;
 mod keyboard;
 mod magnifier;
@@ -130,11 +132,17 @@ mod model;
 #[cfg(test)]
 mod tests;
 
+/// The accessibility state machines: feed them [`Event`]s, apply their [`Effect`]s.
 pub use a11y::A11y;
+/// Settings under `accessibility`, one struct per feature, read from configuration.
 pub use config::{
     BounceKeysConfig, Config, Follow, MagnifierConfig, Mode, MouseKeysConfig, SlowKeysConfig, StickyKeysConfig,
 };
+/// What the machines emit: the decisions, views and published flags the compositor acts on.
 pub use effect::{Appearance, BeepReason, Effect, KeyDecision, KeyRouting, PointerButton, Published, View};
+/// Inputs to the machines (key, pointer and output events) and the keystroke type they use.
 pub use event::{Event, Key, Keystroke, Output};
+/// Shared input enums (button and key state, modifiers), re-exported from `gnoblin-types`.
 pub use gnoblin_types::{ButtonState, KeyState, Modifiers};
+/// The latched-modifier state that sticky keys reports to the compositor.
 pub use keyboard::Sticky;

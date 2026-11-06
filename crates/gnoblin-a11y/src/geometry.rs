@@ -15,6 +15,7 @@
 //! hands this crate the projection, exactly as it hands it an output's bounds
 //! today.
 
+/// Points, sizes, rectangles and scale: the shared geometry types, re-exported from `gnoblin-types`.
 pub use gnoblin_types::{Point, Rect, Scale, Size};
 
 /// The area of `bounds` a magnifier at `scale` shows.
