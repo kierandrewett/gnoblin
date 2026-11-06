@@ -258,8 +258,16 @@ impl SessionSync {
     /// This is `ScreenSaver.GetActive`, true from the moment a lock is asked for. It is not
     /// the confirmation a `lock` call waits for: that is the operation's own outcome.
     fn publish_lock(&mut self, locked: bool) {
-        if let Err(error) = self.graph.set(self.lock, member::LOCKED, Value::Bool(locked)) {
-            error!(%error, "[ipc] the lock object declares no locked property");
+        self.set_if_changed(self.lock, member::LOCKED, Value::Bool(locked));
+    }
+
+    /// Writes one property only when its value differs, so a repeat snapshot publishes nothing.
+    fn set_if_changed(&mut self, object: ObjectId, property: &str, value: Value) {
+        if self.graph.object(object).and_then(|live| live.property(property)) == Some(&value) {
+            return;
+        }
+        if let Err(error) = self.graph.set(object, property, value) {
+            error!(%error, property, "[ipc] an object declares no such property");
         }
     }
 
@@ -274,9 +282,7 @@ impl SessionSync {
             (member::INHIBITORS.to_owned(), Value::Uint(inhibitors)),
         ]);
         for (property, value) in fields {
-            if let Err(error) = self.graph.set(self.idle, &property, value) {
-                error!(%error, "[ipc] the idle object declares no such property");
-            }
+            self.set_if_changed(self.idle, &property, value);
         }
     }
 

@@ -328,3 +328,69 @@ fn the_session_object_carries_the_ipc_version() {
     assert_eq!(printed.out.trim(), format!("{:?}", version().to_string()));
     session.stop().expect("the session stops cleanly");
 }
+
+/// The `idle` object's identity, read from a fresh snapshot.
+#[track_caller]
+fn idle_id(session: &Session) -> u64 {
+    let mut client = ipc(session);
+    let snapshot = client.subscribe(Filter::All).expect("the snapshot");
+    snapshot
+        .objects()
+        .iter()
+        .find(|view| view.ty() == &gnoblin_model::TypeKey::gnoblin("idle"))
+        .map(|view| view.id().get())
+        .expect("the idle object")
+}
+
+/// The `inhibitors` count the compositor publishes, read from a fresh snapshot.
+#[track_caller]
+fn inhibitors(session: &Session) -> u64 {
+    let mut client = ipc(session);
+    let snapshot = client.subscribe(Filter::All).expect("the snapshot");
+    let idle = snapshot
+        .objects()
+        .iter()
+        .find(|view| view.ty() == &gnoblin_model::TypeKey::gnoblin("idle"))
+        .expect("the idle object");
+    match idle.property("inhibitors") {
+        Some(gnoblin_model::Value::Uint(count)) => *count,
+        other => panic!("inhibitors is not a uint: {other:?}"),
+    }
+}
+
+#[test]
+fn an_inhibit_is_counted_until_it_is_released() {
+    let session = Session::start();
+    let idle = idle_id(&session).to_string();
+    assert_eq!(inhibitors(&session), 0);
+
+    session.ctl(&["idle", "call", &idle, "inhibit", "holder=a"]).ok();
+    assert_eq!(inhibitors(&session), 1);
+
+    // Holding again under the same name changes nothing.
+    session.ctl(&["idle", "call", &idle, "inhibit", "holder=a"]).ok();
+    assert_eq!(inhibitors(&session), 1);
+
+    session.ctl(&["idle", "call", &idle, "uninhibit", "holder=a"]).ok();
+    assert_eq!(inhibitors(&session), 0);
+    session.stop().expect("the session stops cleanly");
+}
+
+#[test]
+fn the_holder_cap_refuses_the_257th_inhibit() {
+    let session = Session::start();
+    let idle = idle_id(&session).to_string();
+    for holder in 0..256 {
+        session
+            .ctl(&["idle", "call", &idle, "inhibit", &format!("holder={holder}")])
+            .ok();
+    }
+    assert_eq!(inhibitors(&session), 256);
+
+    let refusal = session.ctl(&["idle", "call", &idle, "inhibit", "holder=overflow"]);
+    assert_eq!(refusal.code, 1, "a refused call exits 1: {}", refusal.out);
+    let said = format!("{}{}", refusal.out, refusal.err);
+    assert!(said.contains("too-many-inhibitors"), "{said}");
+    assert_eq!(inhibitors(&session), 256, "the refused hold was not recorded");
+    session.stop().expect("the session stops cleanly");
+}
