@@ -639,7 +639,7 @@ impl State {
     /// The topmost window whose presented frame covers a global position.
     fn frame_window_at(&self, position: SmithayPoint<f64, Logical>) -> Option<WindowId> {
         let active = self.wm.active_workspace();
-        for window in self.wm.stack().iter().rev() {
+        for window in self.wm.stack().iter() {
             let Some(managed) = self.wm.window(*window) else {
                 continue;
             };

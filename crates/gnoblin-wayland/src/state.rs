@@ -2309,7 +2309,7 @@ impl State {
             return self.lock_surface_under(position);
         }
         let active = self.wm.active_workspace();
-        for window in self.wm.stack().iter().rev() {
+        for window in self.wm.stack().iter() {
             let (Some(entry), Some(managed)) = (self.windows.get(window), self.wm.window(*window)) else {
                 continue;
             };

@@ -29,9 +29,7 @@ use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
-use gnoblin_wayland::{
-    Config, ControlHandle, LayoutControl, LoopError, Modal, ModalEvent, ObservedWindow, Server, SessionSnapshot,
-};
+use gnoblin_wayland::{Config, ControlHandle, LayoutControl, LoopError, Modal, ModalEvent, Server, SessionSnapshot};
 use gnoblin_wm::layout::{
     Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
 };
@@ -332,12 +330,29 @@ impl Client {
     }
 }
 
-/// The centre of a window, in the output's logical space.
-fn centre(window: &ObservedWindow) -> Point {
-    Point::new(
-        window.geometry.x + (window.geometry.width / 2) as i32,
-        window.geometry.y + (window.geometry.height / 2) as i32,
-    )
+/// A point inside `title` that no other window covers, so a press there reaches it.
+///
+/// Windows overlap and a newer one can cover the centre of an older one; a press must land
+/// where only the wanted window is.
+fn only_point_of(session: &Handle, title: &str) -> Point {
+    let observation = session.wait_for(|observation| observation.titled(title).is_some());
+    let target = observation.titled(title).expect("the window").geometry;
+    let others: Vec<_> = observation
+        .windows()
+        .filter(|window| window.title != title)
+        .map(|window| window.geometry)
+        .collect();
+    for y in (i64::from(target.y)..target.bottom()).step_by(8) {
+        for x in (i64::from(target.x)..target.right()).step_by(8) {
+            let covered = others.iter().any(|other| {
+                x >= i64::from(other.x) && x < other.right() && y >= i64::from(other.y) && y < other.bottom()
+            });
+            if !covered {
+                return Point::new(x as i32, y as i32);
+            }
+        }
+    }
+    panic!("the window {title} has no point that no other window covers");
 }
 
 /// The logical size of the default headless output.
@@ -440,7 +455,7 @@ fn a_second_client_takes_focus_and_a_click_switches_it_back() {
         );
 
         // A press on the first window is the activation request that moves focus back.
-        let alpha = centre(observation.titled("Alpha").expect("the first window"));
+        let alpha = only_point_of(session, "Alpha");
         first.click(session, alpha);
         let observation =
             session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Alpha"));
@@ -1343,5 +1358,44 @@ fn a_modal_takes_the_keys_from_the_client_until_it_is_cleared() {
         );
 
         client.destroy(window);
+    });
+}
+
+#[test]
+fn a_click_in_an_overlap_goes_to_the_topmost_window() {
+    let session = Session::start_allowing_focus(Headless::new());
+    session.run(|session| {
+        let mut older = Client::connect(session.socket());
+        older.map_window("org.gnoblin.Test", "Older");
+        let mut newer = Client::connect(session.socket());
+        newer.map_window("org.gnoblin.Test", "Newer");
+        let observation = session.wait_for(|observation| {
+            observation.titled("Older").is_some_and(|window| window.mapped)
+                && observation.titled("Newer").is_some_and(|window| window.mapped)
+        });
+        let older_geometry = observation.titled("Older").expect("the older window").geometry;
+        let newer_geometry = observation.titled("Newer").expect("the newer window").geometry;
+
+        // The first point of the newer window that the older one also covers.
+        let mut overlap = None;
+        'search: for y in (i64::from(newer_geometry.y)..newer_geometry.bottom()).step_by(8) {
+            for x in (i64::from(newer_geometry.x)..newer_geometry.right()).step_by(8) {
+                let inside_older = x >= i64::from(older_geometry.x)
+                    && x < older_geometry.right()
+                    && y >= i64::from(older_geometry.y)
+                    && y < older_geometry.bottom();
+                if inside_older {
+                    overlap = Some(Point::new(x as i32, y as i32));
+                    break 'search;
+                }
+            }
+        }
+        let overlap = overlap.expect("the test windows overlap");
+
+        newer.click(session, overlap);
+        newer.roundtrip();
+        older.roundtrip();
+        assert!(newer.state.pointer_enters >= 1, "the topmost window received the click");
+        assert_eq!(older.state.pointer_enters, 0, "the window underneath did not");
     });
 }
