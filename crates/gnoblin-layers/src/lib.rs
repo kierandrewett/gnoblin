@@ -3,23 +3,31 @@
 //!
 //! # The model
 //!
-//! A *layer* is a record a provider registers with the compositor. It has a
-//! unique `name`, a *band* (its place in the stack), a *scope* (the output or
-//! the window it is attached to), an *input policy* (whether it takes pointer
-//! and keyboard input) and a `secure` flag (whether its pixels may be captured).
-//! The full contract is in `design/layers.md`; this crate is the pure model of
-//! it and nothing more.
+//! A *layer* is a record a provider registers with the compositor. It has one
+//! full name, a *band* (its coarse slot in the stack), a *scope* (the output or
+//! window it is attached to), an *order* (its place inside the band), an *input*
+//! policy and a `secure` flag (whether its pixels may be captured). The full
+//! contract is in `design/layers.md`. This crate is the pure model of it and
+//! nothing more.
 //!
-//! The model has three parts, each in its own module:
+//! Each part is in its own module:
 //!
-//! - [`band`]: the closed set of eight bands, from `background` at the bottom to
-//!   `cursor` at the top. Configuration cannot add a band. `Ord` on [`LayerBand`]
-//!   follows declaration order, so sorting by band is sorting bottom to top.
-//! - [`record`]: the data a provider registers. A [`LayerRecord`] is plain data;
-//!   it has no behaviour until a registry accepts it.
-//! - [`registry`]: the owner of every registered record. It enforces that a name
-//!   belongs to its first registrant, that built-in names are reserved, and that
-//!   only the owner may remove a layer.
+//! - [`band`]: the closed set of eight bands, bottom to top. Declaration order is
+//!   paint order.
+//! - [`name`]: the names. A full name is `<provider>.<local>`. The registry builds
+//!   the provider part, so a provider chooses only its local part.
+//! - [`provider`]: who registers a layer, a Gnoblin built-in or an extension.
+//! - [`scope`] and [`state`]: the enums a spec is built from, and the lifecycle.
+//! - [`spec`]: the data a provider asks for, [`LayerSpec`].
+//!
+//! # Names
+//!
+//! Every layer's full name is `<provider>.<local>`. Gnoblin's built-ins share the
+//! namespace `gnoblin`, and an extension `<id>` has the namespace `ext.<id>`. A
+//! uniform prefix means two providers cannot collide by construction, so no
+//! reserved-name list has to be kept in step with the built-ins. The origin of a
+//! layer is also visible in `layers.list`, config keys (`layers.<full name>.secure`)
+//! and logs.
 //!
 //! # Why a separate crate
 //!
@@ -31,23 +39,25 @@
 //!
 //! # Phase 1 scope
 //!
-//! This phase adds the record types and the registry only. It does not order
-//! layers, apply follow rules or enforce limits; those arrive in later phases.
-//! Nothing in the compositor depends on this crate yet, so adding it changes no
-//! behaviour.
+//! This phase adds the enums, the names and the spec. Nothing in the compositor
+//! depends on this crate yet, so adding it changes no behaviour.
 //!
 //! # Errors
 //!
-//! Every rule the registry enforces is a variant of [`LayerError`]. Callers match
-//! on the variant rather than parsing text, so a protocol layer can map each
-//! variant to a stable error code.
+//! Every refusal is a typed error (see [`name::NameError`] for grammar failures).
+//! Callers match on the variant rather than on text, so a protocol layer can map
+//! each one to a stable error code.
 
 pub mod band;
-pub mod error;
-pub mod record;
-pub mod registry;
+pub mod name;
+pub mod provider;
+pub mod scope;
+pub mod spec;
+pub mod state;
 
-pub use band::LayerBand;
-pub use error::LayerError;
-pub use record::{LayerContent, LayerInput, LayerProvider, LayerProviderKind, LayerRecord, LayerScope};
-pub use registry::{LayerRegistry, is_reserved_name};
+pub use band::Band;
+pub use name::{LayerName, LocalName, NameError, ProviderId};
+pub use provider::Provider;
+pub use scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LockBehaviour, Order, Scope};
+pub use spec::LayerSpec;
+pub use state::{EndReason, LayerState};

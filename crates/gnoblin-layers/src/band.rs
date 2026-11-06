@@ -1,73 +1,59 @@
-//! The closed band set: the ordering substrate of the desktop stack.
+//! The closed set of bands: the coarse slots a layer sits in, bottom to top.
 //!
-//! A band is a position in the stack, not an identity. Two layers in the same
-//! band are ordered by their `order` relation (a later phase), and a layer that
-//! names no band cannot exist. The set is closed on purpose: a configuration file
-//! or an extension can choose a band, but it cannot invent one, so the compositor
-//! always knows where every surface can sit.
+//! A band is an ordering substrate, not a layer's identity. A layer's identity is
+//! its full name, and its place inside a band is its `Order`. The set is closed:
+//! the compositor owns it, and configuration cannot add to it. That closure is
+//! the trust boundary. No extension can sort above the lock or the cursor,
+//! because no extension can name a band that is not in this list.
+//!
+//! Declaration order is paint order. `Ord` is derived from it, so sorting bands
+//! sorts them from the bottom of the stack to the top.
 
-/// One band of the stack, from the bottom to the top.
+/// One band, from the bottom of the stack to the top.
 ///
-/// The variants are declared bottom to top, so the derived `Ord` is the stacking
-/// order: `LayerBand::Background < LayerBand::Cursor`. Code that needs "above"
-/// or "below" should compare bands with `<` and `>` instead of matching on the
-/// variants, so a future reordering of the declarations is one edit, not many.
-///
-/// The first four bands are the four wlr layer-shell layers, in the same order,
-/// so a layer-shell surface maps onto a band without a lookup table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum LayerBand {
-    /// The desktop wallpaper and anything that must sit behind every window.
+/// `Lock` and `Cursor` accept registrations only from the compositor itself. The
+/// lock keeps the unlock prompt above everything else, and the cursor is never
+/// covered by a layer.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Band {
+    /// The bottom of the stack, under every window. Wayland `background` layers.
     Background,
-    /// Below windows but above the wallpaper, such as desktop widgets.
+    /// Above the background, still under windows. Wayland `bottom` layers.
     Bottom,
-    /// The band that holds ordinary application windows. Layers attached to a
-    /// window sit above their target inside this band's ordering.
+    /// Ordinary windows. Toplevels, X11 windows and the layers attached to them.
     Windows,
-    /// Above windows: panels and docks.
+    /// Above windows. Wayland `top` layers, such as bars.
     Top,
-    /// Above panels: overlays that must stay visible, such as popups.
+    /// Above `Top`. Wayland `overlay` layers and extension output layers.
     Overlay,
-    /// Compositor-owned system UI. Only the compositor registers here.
+    /// Compositor-chosen system UI, such as an output-scope portal with no parent.
     System,
-    /// The session lock. Only the compositor registers here, and nothing sits
-    /// above it except the cursor.
+    /// The session lock. Compositor-only, so nothing draws over the unlock prompt.
     Lock,
-    /// The cursor. Only the compositor registers here; it is always on top.
+    /// The pointer. Compositor-only, so no layer can cover it.
     Cursor,
 }
 
-impl LayerBand {
-    /// Every band in stacking order, bottom to top.
-    ///
-    /// Use this when iterating the set, for example to report every band to a
-    /// client. The array order is the same as the `Ord` order, and a test pins
-    /// that, so a future edit that breaks it fails loudly.
-    pub const ALL: [LayerBand; 8] = [
-        LayerBand::Background,
-        LayerBand::Bottom,
-        LayerBand::Windows,
-        LayerBand::Top,
-        LayerBand::Overlay,
-        LayerBand::System,
-        LayerBand::Lock,
-        LayerBand::Cursor,
+impl Band {
+    /// Every band in paint order, bottom to top. A test checks this matches `Ord`.
+    pub const ALL: [Band; 8] = [
+        Band::Background,
+        Band::Bottom,
+        Band::Windows,
+        Band::Top,
+        Band::Overlay,
+        Band::System,
+        Band::Lock,
+        Band::Cursor,
     ];
 
-    /// The band's name as it appears in configuration and in the wire protocol.
+    /// Whether only the compositor may register into this band.
     ///
-    /// The names are fixed: a configuration written today must mean the same band
-    /// in every later release, so renaming a band is a protocol change.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            LayerBand::Background => "background",
-            LayerBand::Bottom => "bottom",
-            LayerBand::Windows => "windows",
-            LayerBand::Top => "top",
-            LayerBand::Overlay => "overlay",
-            LayerBand::System => "system",
-            LayerBand::Lock => "lock",
-            LayerBand::Cursor => "cursor",
-        }
+    /// The check is done by the registry, against the provider's kind, not by the
+    /// caller. Keeping the rule on the band means a new compositor-only band
+    /// cannot be forgotten at a call site.
+    #[must_use]
+    pub const fn compositor_only(self) -> bool {
+        matches!(self, Band::Lock | Band::Cursor)
     }
 }
