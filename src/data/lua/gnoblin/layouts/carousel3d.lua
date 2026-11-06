@@ -26,6 +26,7 @@
 
 local M = {}
 M.kind = "tiling"
+M.extent = "unbounded"
 
 M.options = {
     fov_degrees = 40,
