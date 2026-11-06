@@ -119,7 +119,7 @@ pub(super) struct Shared<T: Transport> {
     pub(super) extensions: ExtensionRegistry,
     /// The loader that answers `require` for a layout module with a reference. It holds
     /// the one layout VM of the current configuration evaluation.
-    pub(super) layouts: crate::layout::Loader,
+    pub(super) layouts: crate::layout::LayoutModuleLoader,
 }
 
 impl<T: Transport> Shared<T> {
@@ -297,7 +297,7 @@ impl<T: Transport + 'static> Host<T> {
             reported: BTreeSet::new(),
             reports: Vec::new(),
             extensions: ExtensionRegistry::new(),
-            layouts: crate::layout::Loader::new(limits.clone()),
+            layouts: crate::layout::LayoutModuleLoader::new(limits.clone()),
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {

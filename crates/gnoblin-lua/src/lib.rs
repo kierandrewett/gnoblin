@@ -100,7 +100,7 @@
 //!   declares no runtime configuration method yet, so a call at run time is
 //!   refused with that reason rather than mutating a document nothing applies.
 //! - `require` also answers for layout modules, read from the shipped and user layout
-//!   roots by `layout::Loader`, which holds one layout VM per configuration evaluation.
+//!   roots by `layout::LayoutModuleLoader`, which holds one layout VM per configuration evaluation.
 //!   `gnoblin.load` stays the one loader of configuration files.
 //! - Requests (`RequestOffered` and `RequestFinished`) are dropped: prompts and
 //!   input policy are later lanes, and an unanswered request already fails closed

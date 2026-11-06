@@ -86,14 +86,14 @@ impl UserData for LayoutRef {
 }
 
 /// Builds layout references for one configuration VM.
-pub(crate) struct Loader {
+pub(crate) struct LayoutModuleLoader {
     limits: Limits,
     roots: Option<LayoutRoots>,
     vm: Option<Vm>,
 }
 
-impl Loader {
-    /// A loader with no roots yet; every reference fails until [`Loader::reset`] runs.
+impl LayoutModuleLoader {
+    /// A loader with no roots yet; every reference fails until [`LayoutModuleLoader::reset`] runs.
     pub(crate) fn new(limits: Limits) -> Self {
         Self {
             limits,
