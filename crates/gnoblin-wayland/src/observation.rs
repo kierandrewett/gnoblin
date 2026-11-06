@@ -39,6 +39,8 @@ pub struct ObservedWindow {
     pub modal: bool,
     /// Whether the window floats, outside the tiled set of its workspace's layout.
     pub floating: bool,
+    /// Whether the client has missed its liveness ping for longer than the check-alive timeout.
+    pub unresponsive: bool,
     /// The window this one is a transient of, set by `xdg-foreign` or the client's parent.
     pub transient_for: Option<WindowId>,
 }

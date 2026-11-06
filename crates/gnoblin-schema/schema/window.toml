@@ -101,3 +101,16 @@ since = "0.2.0"
 name = "floating"
 type = "bool"
 since = "0.2.0"
+
+# Whether the window's client has missed its liveness ping for longer than the
+# `window-management.check-alive-timeout` setting. Read-only: the compositor sets it.
+[[object.property]]
+name = "unresponsive"
+type = "bool"
+since = "0.2.0"
+
+# Kill the process that owns the window with SIGKILL. The compositor refuses when the
+# owning process is unknown, is the compositor itself or is init.
+[[object.method]]
+name = "kill"
+since = "0.2.0"

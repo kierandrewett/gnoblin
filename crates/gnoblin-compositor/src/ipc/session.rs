@@ -71,6 +71,8 @@ mod member {
     pub const MODAL: &str = "modal";
     /// The `window` object's floating property.
     pub const FLOATING: &str = "floating";
+    /// The `window` object's unresponsive property.
+    pub const UNRESPONSIVE: &str = "unresponsive";
     pub const LAYOUT: &str = "layout";
     pub const NAME: &str = "name";
     pub const REASON: &str = "reason";
@@ -105,6 +107,7 @@ struct PublishedWindow {
     tag: String,
     modal: bool,
     floating: bool,
+    unresponsive: bool,
     geometry: Rect,
 }
 
@@ -276,6 +279,7 @@ impl SessionSync {
                     tag,
                     modal: window.modal,
                     floating: window.floating,
+                    unresponsive: window.unresponsive,
                     geometry: window.geometry,
                 },
             );
@@ -305,6 +309,10 @@ impl SessionSync {
         if previous.floating != window.floating {
             self.graph.set(object, member::FLOATING, Value::Bool(window.floating))?;
         }
+        if previous.unresponsive != window.unresponsive {
+            self.graph
+                .set(object, member::UNRESPONSIVE, Value::Bool(window.unresponsive))?;
+        }
         if previous.geometry != window.geometry {
             self.set_geometry(object, window.geometry)?;
         }
@@ -319,6 +327,7 @@ impl SessionSync {
                 tag,
                 modal: window.modal,
                 floating: window.floating,
+                unresponsive: window.unresponsive,
                 geometry: window.geometry,
             },
         );
@@ -582,6 +591,7 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
         ),
         (member::MODAL.to_owned(), Value::Bool(observed.modal)),
         (member::FLOATING.to_owned(), Value::Bool(observed.floating)),
+        (member::UNRESPONSIVE.to_owned(), Value::Bool(observed.unresponsive)),
     ])
 }
 
@@ -615,6 +625,7 @@ mod tests {
             tag: None,
             modal: false,
             floating: false,
+            unresponsive: false,
             transient_for: None,
         }
     }

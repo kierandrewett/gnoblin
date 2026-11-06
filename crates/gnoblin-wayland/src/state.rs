@@ -2148,6 +2148,7 @@ impl State {
                     tag: entry.and_then(|entry| entry.tag.clone()),
                     modal: window.kind == WindowKind::Modal,
                     floating: window.state.floating,
+                    unresponsive: false,
                     transient_for: window.transient_for,
                 },
             );
