@@ -1625,6 +1625,18 @@ impl Wm {
         }
     }
 
+    /// The rectangle a tiled window's layout last placed it at, or `None` when no
+    /// settled layout places it. A window that left tiling keeps no placement: its
+    /// geometry is the one that counts.
+    #[must_use]
+    pub fn placed_rect(&self, id: WindowId) -> Option<RectF> {
+        let window = self.windows.get(&id)?;
+        if !arrange::is_tiled(&window.state) {
+            return None;
+        }
+        self.layouts.placed(window.workspace, id)
+    }
+
     /// The rectangle focus navigation measures `id` by: its placement when its
     /// layout placed it, otherwise its geometry.
     fn focus_rect(&self, id: WindowId) -> Option<RectF> {

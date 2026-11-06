@@ -69,6 +69,31 @@ fn wait_for_sizes(client: &mut Client, windows: &[Window; 3], expected: &[(i32, 
     });
 }
 
+/// The frame rectangle `window get` publishes for the window with `id`: `x`, `y`, `width`
+/// and `height`, in logical pixels.
+fn published_rect(session: &Session, id: u64) -> [i64; 4] {
+    ["x", "y", "width", "height"].map(|property| {
+        let value = session.ctl(&["window", "get", &id.to_string(), property]).ok();
+        value
+            .out
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("`{property}` is a number, got {:?}", value.out))
+    })
+}
+
+/// The published rectangle of each window, once two reads in a row agree.
+fn settled_rects(session: &Session, ids: &[u64; 3]) -> Vec<[i64; 4]> {
+    let mut previous = Vec::new();
+    wait_for("the published rectangles to settle", || {
+        let rects: Vec<[i64; 4]> = ids.iter().map(|&id| published_rect(session, id)).collect();
+        (rects == previous).then_some(rects.clone()).or_else(|| {
+            previous = rects;
+            None
+        })
+    })
+}
+
 #[test]
 fn master_stack_tiles_three_toplevels_on_the_headless_output() {
     let session = session_with(LayoutSettings {
@@ -273,6 +298,58 @@ fn set_layout_retiles_the_windows_on_the_workspace() {
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
     assert_ne!(floating, vec![(512, 768), (512, 384), (512, 384)]);
+}
+
+#[test]
+fn master_stack_publishes_the_rectangles_it_placed() {
+    let session = session_with(LayoutSettings {
+        default: "master_stack".to_owned(),
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    settled_sizes(&mut client, &windows);
+    let ids = [
+        wait_for_listed_id(&session, "one"),
+        wait_for_listed_id(&session, "two"),
+        wait_for_listed_id(&session, "three"),
+    ];
+
+    // The IPC rectangle is the placement, not the cascade a window was opened at.
+    let expected = vec![[0, 0, 512, 768], [512, 0, 512, 384], [512, 384, 512, 384]];
+    assert_eq!(settled_rects(&session, &ids), expected);
+}
+
+#[test]
+fn set_layout_publishes_the_retiled_rectangles() {
+    let session = session_with(LayoutSettings {
+        module_dirs: vec![shipped_modules()],
+        ..LayoutSettings::default()
+    });
+    let mut client = Client::connect(session.wayland());
+    let windows = map_three(&mut client);
+    settled_sizes(&mut client, &windows);
+    let ids = [
+        wait_for_listed_id(&session, "one"),
+        wait_for_listed_id(&session, "two"),
+        wait_for_listed_id(&session, "three"),
+    ];
+
+    let workspace = workspace_id(&session);
+    session
+        .ctl(&[
+            "workspace",
+            "call",
+            &workspace.to_string(),
+            "set_layout",
+            "name=master_stack",
+        ])
+        .ok();
+    wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
+
+    let expected = vec![[0, 0, 512, 768], [512, 0, 512, 384], [512, 384, 512, 384]];
+    assert_eq!(settled_rects(&session, &ids), expected);
 }
 
 #[test]

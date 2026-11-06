@@ -473,7 +473,7 @@ fn scripted_with(wm: WmOptions, shape: Shape, wall_clock: bool) -> Session {
 
 /// Waits until the master layout has tiled both windows, then checks the rectangles it chose.
 /// A layout change fails here, loudly, rather than letting the hover tests run on other geometry.
-/// The rectangles are the drawn ones: the observed geometry is not the placed rectangle.
+/// The rectangles are the drawn ones, and the observed geometry is that same rectangle.
 fn wait_for_master(session: &Handle) {
     let deadline = Instant::now() + TIMEOUT;
     loop {

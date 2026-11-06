@@ -983,7 +983,7 @@ impl State {
             if !entry.mapped || !managed.is_visible(active) {
                 continue;
             }
-            let geometry = managed.geometry;
+            let geometry = self.shown_geometry(managed);
             let intersects = i64::from(geometry.x) < rect.right()
                 && i64::from(rect.x) < geometry.right()
                 && i64::from(geometry.y) < rect.bottom()
@@ -1826,12 +1826,7 @@ impl State {
         };
         // A placement from a settled run means the workspace's layout works again.
         self.layout_failures.remove(&workspace);
-        let geometry = Rect::new(
-            position.x.round() as i32,
-            position.y.round() as i32,
-            placement.width.round() as u32,
-            placement.height.round() as u32,
-        );
+        let geometry = placed_geometry(RectF::new(position.x, position.y, placement.width, placement.height));
         let base = gnoblin_types::Transform {
             offset: Vec3::new(0.0, 0.0, position.z),
             rotation_degrees,
@@ -1986,7 +1981,14 @@ impl State {
 
     /// The window's geometry, for popup positioning. `None` when it closed.
     pub(crate) fn geometry_of(&self, window: WindowId) -> Option<Rect> {
-        Some(self.wm.window(window)?.geometry)
+        Some(self.shown_geometry(self.wm.window(window)?))
+    }
+
+    /// The rectangle a window is drawn at: the placement a settled layout gave it, or
+    /// otherwise its own geometry. A tiled window's own geometry is the floating rectangle
+    /// it returns to when it floats, not where it is shown.
+    pub(crate) fn shown_geometry(&self, window: &gnoblin_wm::Window) -> Rect {
+        self.wm.placed_rect(window.id).map_or(window.geometry, placed_geometry)
     }
 
     /// The monitor rectangle of the output the window is on.
@@ -2226,7 +2228,7 @@ impl State {
                     mapped,
                     visible: window.is_visible(active),
                     focused: focused == Some(window.id),
-                    geometry: window.geometry,
+                    geometry: self.shown_geometry(window),
                     icon_name: entry.and_then(|entry| entry.icon_name.clone()),
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),
@@ -2381,7 +2383,7 @@ impl State {
             if !managed.is_visible(active) || self.window_is_covered(*window) {
                 continue;
             }
-            let geometry = managed.geometry;
+            let geometry = self.shown_geometry(managed);
             let inside = position.x >= f64::from(geometry.x)
                 && position.y >= f64::from(geometry.y)
                 && position.x < geometry.right() as f64
@@ -2426,6 +2428,17 @@ fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: 
     } else {
         states.unset(state);
     }
+}
+
+/// The whole-pixel rectangle a placement occupies. The scene and the configure draw
+/// with it, and the observers read the same rectangle, so the two never disagree.
+fn placed_geometry(rect: RectF) -> Rect {
+    Rect::new(
+        rect.x.round() as i32,
+        rect.y.round() as i32,
+        rect.width.round() as u32,
+        rect.height.round() as u32,
+    )
 }
 
 /// An X11 rectangle in the policy's coordinates.
