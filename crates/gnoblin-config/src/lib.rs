@@ -73,14 +73,14 @@ pub mod generated {
 
 pub use document::{CARRIED_SECTIONS, Config, Salvaged, TOP_LEVEL_KEYS, salvage};
 pub use generated::{
-    ALIASES, AccelProfile, Accessibility, Auth, Blur, BounceKeys, ButtonLayout, ClickMethod, Compositor, Cursor,
-    CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers, Gesture, GestureAction,
-    GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource, InputSourceType,
-    InputSources, Keyboard, LayerShell, Layout, LayoutOutput, LayoutWorkspace, Location, LocationAccuracy, Monitors,
-    Mouse, MouseKeys, NewWindowPlacement, PadButton, PadButtonAction, PointingStick, Prompts, Protocol, Protocols,
-    ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping, TapButtonMap,
-    TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualBellType, WindowManagement, Workspace,
-    Xwayland, XwaylandExtension,
+    ALIASES, AccelProfile, Accessibility, Auth, Blur, BounceKeys, ButtonLayout, ClickMethod, Compat, CompatCapture,
+    Compositor, Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers,
+    Gesture, GestureAction, GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource,
+    InputSourceType, InputSources, Keyboard, LayerShell, Layout, LayoutOutput, LayoutWorkspace, Location,
+    LocationAccuracy, Monitors, Mouse, MouseKeys, NewWindowPlacement, PadButton, PadButtonAction, PointingStick,
+    Prompts, Protocol, Protocols, ScrollMethod, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet,
+    TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualBellType,
+    WindowManagement, Workspace, Xwayland, XwaylandExtension,
 };
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
 pub use locate::{ConfigPath, LocateError, Origin, SearchPaths, locate};

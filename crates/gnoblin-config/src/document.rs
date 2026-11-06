@@ -30,11 +30,11 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Auth, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout, Location, Monitors,
-    Prompts, Protocols, WindowManagement, Workspace, Xwayland, parse_auth, parse_compositor, parse_cursor,
-    parse_frame_renderers, parse_input, parse_input_sources, parse_layer_shell, parse_layout, parse_location,
-    parse_monitors, parse_prompts, parse_protocols, parse_touchpad_gestures, parse_window_management, parse_workspaces,
-    parse_xwayland,
+    Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout, Location,
+    Monitors, Prompts, Protocols, WindowManagement, Workspace, Xwayland, parse_auth, parse_compat, parse_compositor,
+    parse_cursor, parse_frame_renderers, parse_input, parse_input_sources, parse_layer_shell, parse_layout,
+    parse_location, parse_monitors, parse_prompts, parse_protocols, parse_touchpad_gestures, parse_window_management,
+    parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
 use crate::path::Path;
@@ -75,6 +75,8 @@ pub struct Config {
     pub monitors: Option<Monitors>,
     /// `prompts`: whether Gnoblin serves passphrase prompts.
     pub prompts: Option<Prompts>,
+    /// `compat`: which compatibility adapters Gnoblin serves.
+    pub compat: Option<Compat>,
     /// `auth`: whether Gnoblin is the polkit agent.
     pub auth: Option<Auth>,
     /// `protocols`: the protocol toggles.
@@ -141,6 +143,8 @@ impl Config {
                     .map(|table| parse_monitors(table, &root.key("monitors"), &mut out));
                 config.prompts = section_table(entries, "prompts", &root, &mut out)
                     .map(|table| parse_prompts(table, &root.key("prompts"), &mut out));
+                config.compat = section_table(entries, "compat", &root, &mut out)
+                    .map(|table| parse_compat(table, &root.key("compat"), &mut out));
                 config.auth = section_table(entries, "auth", &root, &mut out)
                     .map(|table| parse_auth(table, &root.key("auth"), &mut out));
                 config.protocols = section_table(entries, "protocols", &root, &mut out)
@@ -224,6 +228,7 @@ impl Config {
             location: None,
             monitors: None,
             prompts: None,
+            compat: None,
             auth: None,
             protocols: None,
             touchpad_gestures: Vec::new(),

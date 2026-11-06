@@ -302,6 +302,16 @@ variants = [
 ]
 
 [[enum]]
+name = "CompatCapture"
+setting = "capture"
+doc = "How much of the compatibility surface answers."
+variants = [
+    { spelling = "off", doc = "No compatibility adapter owns its upstream name." },
+    { spelling = "portal", doc = "Reads answer; state changes and capture go through the portal." },
+    { spelling = "unmediated", doc = "The upstream names answer as Mutter answers, as far as the matrix allows." },
+]
+
+[[enum]]
 name = "InputSourceType"
 setting = "input-source-type"
 doc = "The kind of an input source."
@@ -1824,6 +1834,20 @@ enum = "LocationAccuracy"
 inherit = true
 accepted = "one of country, city, neighborhood, street, exact"
 doc = "The greatest precision an approved request may return."
+since = "0.2.0"
+
+[[section]]
+key = "compat"
+type = "Compat"
+doc = "Which compatibility adapters Gnoblin serves on the session bus."
+
+[[section.field]]
+key = "capture"
+kind = "enum"
+enum = "CompatCapture"
+accepted = "one of off, portal, unmediated"
+default = { enum = "portal" }
+doc = "How much of the compatibility surface answers: off serves none of it."
 since = "0.2.0"
 
 [[section]]

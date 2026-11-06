@@ -12,6 +12,9 @@ workspace = true
 [dependencies]
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-client = { path = "../../gnoblin-client" }
+# The environment reads the `compat` gate from the configuration, as the gtk-shell1 adapter does.
+gnoblin-config = { path = "../../gnoblin-config" }
+gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-model = { path = "../../gnoblin-model" }
 zbus.workspace = true
 tracing.workspace = true

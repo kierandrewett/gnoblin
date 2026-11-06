@@ -28,6 +28,7 @@ gnoblin-services = { path = "../gnoblin-services" }
 # The gcr passphrase prompter is the one compat adapter the services role serves. Only
 # this binary links compat crates; see `xtask/src/deps.rs`.
 gnoblin-compat-gnome-keyring-prompter = { path = "../compat/gnoblin-compat-gnome-keyring-prompter" }
+gnoblin-compat-gnome-shell-introspect = { path = "../compat/gnoblin-compat-gnome-shell-introspect" }
 gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
 # The display configuration adapter, served by the services role on its own compositor link.
 gnoblin-compat-mutter-displayconfig = { path = "../compat/gnoblin-compat-mutter-displayconfig" }

@@ -44,6 +44,7 @@
 mod displayconfig;
 mod gcr;
 mod idlemonitor;
+mod introspect;
 mod role;
 
 use gnoblin_compat_core::Mode;
@@ -168,15 +169,10 @@ fn runtime() -> Result<(), Exit> {
     }
 }
 
-/// The agents the services role links in: the prompt adapter, the GeoClue agent, which takes
-/// the `location` table of the configuration as its policy, and the two compat adapters
-/// (DisplayConfig and IdleMonitor) at the default mode.
-fn linked_agents() -> Vec<Box<dyn gnoblin_services::LinkedAgent>> {
-    linked_agents_for(Mode::default())
-}
-
-/// The agents the services role links in for `mode`. An `off` mode serves no compat adapter;
-/// the prompt adapter and the GeoClue agent are not compat adapters and always link.
+/// The agents the services role links in for `mode`: the prompt adapter, the GeoClue agent,
+/// which takes the `location` table of the configuration as its policy, and the compat adapters
+/// (DisplayConfig, IdleMonitor and introspection) when the mode is on. An `off` mode serves no
+/// compat adapter; the prompt adapter and the GeoClue agent are not compat adapters and always link.
 fn linked_agents_for(mode: Mode) -> Vec<Box<dyn gnoblin_services::LinkedAgent>> {
     let policy = gnoblin_services::location::policy_from_environment();
     let mut agents: Vec<Box<dyn gnoblin_services::LinkedAgent>> = vec![
@@ -186,13 +182,14 @@ fn linked_agents_for(mode: Mode) -> Vec<Box<dyn gnoblin_services::LinkedAgent>> 
     if mode != Mode::Off {
         agents.push(Box::new(displayconfig::MutterDisplayConfig::new(mode)));
         agents.push(Box::new(idlemonitor::MutterIdleMonitor::new(mode)));
+        agents.push(Box::new(introspect::Introspection::new(mode)));
     }
     agents
 }
 
 /// Runs the services role: the D-Bus agents, until the session ends.
 fn services() -> Result<(), Exit> {
-    let linked = linked_agents();
+    let linked = linked_agents_for(gnoblin_compat_gnome_shell_introspect::mode_from_environment());
     match gnoblin_services::Role::from_environment().run(never_stopped, linked) {
         Ok(()) => Ok(()),
         Err(error) => {
@@ -212,23 +209,23 @@ fn never_stopped() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Exit, linked_agents, linked_agents_for, run};
+    use super::{Exit, linked_agents_for, run};
     use gnoblin_compat_core::Mode;
 
     #[test]
     fn the_services_role_is_given_the_location_agent() {
         // The role claims the location.agent slot as the services provider, so the GeoClue agent
-        // has to be in the list it starts, next to the prompt adapter and the two compat adapters
+        // has to be in the list it starts, next to the prompt adapter and the compat adapters
         // that are on in the default mode.
-        assert_eq!(linked_agents().len(), 4);
+        assert_eq!(linked_agents_for(Mode::default()).len(), 5);
     }
 
     #[test]
     fn the_compat_adapters_are_served_when_the_mode_is_on() {
         // Portal is the default and Unmediated is the other mode that serves reads: both add the
-        // DisplayConfig and IdleMonitor adapters to the prompter and the GeoClue agent.
-        assert_eq!(linked_agents_for(Mode::Portal).len(), 4);
-        assert_eq!(linked_agents_for(Mode::Unmediated).len(), 4);
+        // DisplayConfig, IdleMonitor and introspection adapters to the prompter and GeoClue agent.
+        assert_eq!(linked_agents_for(Mode::Portal).len(), 5);
+        assert_eq!(linked_agents_for(Mode::Unmediated).len(), 5);
     }
 
     #[test]

@@ -62,6 +62,11 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the layout section: which Lua layout engine arranges each workspace, loaded by gnoblin-compositor",
     ),
+    (
+        "compat",
+        "0.2.0",
+        "the compatibility section: which D-Bus adapters the services role serves, read by the adapters at start",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.

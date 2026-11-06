@@ -66,10 +66,13 @@
 #![forbid(unsafe_code)]
 
 pub mod compat;
+pub mod environment;
 pub mod error;
 pub mod link;
 pub mod service;
 pub mod state;
+
+pub use environment::{link_from_environment, mode_from_environment};
 
 pub use compat::{IntrospectAdmission, IntrospectCall, MATRIX, NAME, NAMES};
 pub use error::IntrospectError;
