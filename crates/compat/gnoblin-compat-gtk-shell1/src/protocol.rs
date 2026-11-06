@@ -18,10 +18,12 @@
 //! contain unsafe code.
 
 #[allow(unsafe_code)]
+/// The generated `gtk` protocol bindings, from the vendored `gtk-shell.xml`.
 pub mod gtk {
     use wayland_server;
     use wayland_server::protocol::*;
 
+    /// Generated interface descriptors that the scanner's server code refers to.
     pub mod __interfaces {
         use wayland_server::protocol::__interfaces::*;
         wayland_scanner::generate_interfaces!("protocols/gtk-shell.xml");
@@ -32,4 +34,5 @@ pub mod gtk {
     wayland_scanner::generate_server_code!("protocols/gtk-shell.xml");
 }
 
+/// The generated `gtk_shell1` and `gtk_surface1` server bindings.
 pub use gtk::{gtk_shell1, gtk_surface1};

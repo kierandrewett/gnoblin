@@ -65,16 +65,24 @@
 // its generated module and nowhere else. `Cargo.toml` says the same thing.
 #![deny(unsafe_code)]
 
+/// Admission: the support matrix, the mode gate and the protocol's operation classes.
 pub mod compat;
+/// The global, its objects and the dispatch that turns a request into a host call.
 pub mod global;
+/// The protocol's values, mapped onto the compositor's.
 pub mod mapping;
+/// The generated protocol bindings, private to this crate.
 mod protocol;
 
+/// The admission check, the call it gates, the support matrix and the adapter's name.
 pub use compat::{Admission, Call, MATRIX, NAME};
+/// The redirect a session is given, and the `gtk_shell1` version this adapter serves.
 pub use global::{Redirect, SHELL_VERSION};
+/// The titlebar gestures, the requests they arrive as, and the resolution to a configured action.
 pub use mapping::{Gesture, Requested, action_for, resolve};
 
 /// The vendored protocol's own names, for a client that has to speak it.
 pub mod names {
+    /// The `gtk_shell1` and `gtk_surface1` protocol modules, re-exported for clients.
     pub use crate::protocol::{gtk_shell1, gtk_surface1};
 }
