@@ -96,3 +96,114 @@ since = "0.2.0"
 [[object.method]]
 name = "kill"
 since = "0.2.0"
+
+# The window's effects in paint order, first to last. Read-only: the compositor
+# sets it as effects are added and removed. Each element is an `effect` object.
+[[object.property]]
+name = "effects"
+type = "list<object:effect>"
+since = "0.2.0"
+
+# Add an effect to the top of the window's effects, after those already present.
+# `kind` selects the effect: `blur`, `shadow` or `shader`. The other parameters
+# are the `effect` object's properties for that kind; those a kind does not use
+# are ignored. Unset parameters take their documented defaults.
+#
+# The reply is an operation. The new `effect` is announced as an addition to
+# `effects`; the Lua side gets the handle by reading `window.effects` after the
+# operation completes, the last element being the new effect. A rejected request
+# fails the operation with `unknown-effect-kind` or `too-many-passes`.
+[[object.method]]
+name = "add_effect"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "kind"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "downscale"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "passes"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "algorithm"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "noise"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "brightness"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "contrast"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "saturation"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "tint"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "offset_x"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "offset_y"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "blur_radius"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "spread"
+type = "double"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "colour"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "source"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "entry"
+type = "string"
+since = "0.2.0"
+
+# The window's effects already use all `MAX_PASSES` (32) passes between them, so
+# the requested effect was not added.
+[[error]]
+name = "too-many-passes"
+since = "0.2.0"
+
+# `kind` is not `blur`, `shadow` or `shader`, so no effect was added.
+[[error]]
+name = "unknown-effect-kind"
+since = "0.2.0"

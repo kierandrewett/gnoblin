@@ -615,6 +615,7 @@ mod tests {
             objects,
             vec![
                 "capture",
+                "effect",
                 "eis",
                 "idle",
                 "lock",
