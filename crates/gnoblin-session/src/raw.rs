@@ -38,12 +38,12 @@ const REPORT_INTERVAL: Duration = Duration::from_secs(1);
 
 /// The stream a raw line came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Stream {
+pub enum OutputStream {
     Stdout,
     Stderr,
 }
 
-impl Stream {
+impl OutputStream {
     /// The name the log records for the stream.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -77,7 +77,7 @@ pub fn policy(role: &str, raw_services: bool) -> RawPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawLine {
     pub role: String,
-    pub stream: Stream,
+    pub stream: OutputStream,
     pub text: String,
 }
 
@@ -112,7 +112,7 @@ impl RawSink {
 }
 
 /// Reads `reader` to its end on a new thread, sending each raw line to `sink` under `policy`.
-pub fn capture(role: &str, stream: Stream, policy: RawPolicy, reader: impl Read + Send + 'static, sink: RawSink) {
+pub fn capture(role: &str, stream: OutputStream, policy: RawPolicy, reader: impl Read + Send + 'static, sink: RawSink) {
     let role = role.to_owned();
     let spawned = std::thread::Builder::new()
         .name(format!("gnoblin-raw-{role}-{}", stream.as_str()))
@@ -126,12 +126,12 @@ pub fn capture(role: &str, stream: Stream, policy: RawPolicy, reader: impl Read 
 
 /// Writes a structured line to the guardian's stream of the same name, unchanged. A failed
 /// write is ignored: the guardian's own output is not worth stopping the session for.
-fn forward(stream: Stream, line: &[u8]) {
+fn forward(stream: OutputStream, line: &[u8]) {
     match stream {
-        Stream::Stdout => {
+        OutputStream::Stdout => {
             let _ = std::io::stdout().lock().write_all(line);
         }
-        Stream::Stderr => {
+        OutputStream::Stderr => {
             let _ = std::io::stderr().lock().write_all(line);
         }
     }
@@ -140,7 +140,7 @@ fn forward(stream: Stream, line: &[u8]) {
 /// Reads lines until the end of `reader`. Under [`RawPolicy::Redacted`] each raw line goes to
 /// `sink`, scrubbed. Under [`RawPolicy::Off`] each line is only read and skipped, so the child
 /// still drains its pipe.
-pub fn read_lines(role: &str, stream: Stream, policy: RawPolicy, reader: impl Read, sink: &RawSink) {
+pub fn read_lines(role: &str, stream: OutputStream, policy: RawPolicy, reader: impl Read, sink: &RawSink) {
     let mut reader = BufReader::new(reader);
     let mut buffer = Vec::new();
     let mut redactor = Redactor::new();
@@ -226,8 +226,12 @@ pub fn finish(logger: std::thread::JoinHandle<()>, sink: RawSink) {
 
 fn log_line(line: &RawLine) {
     match line.stream {
-        Stream::Stdout => gnoblin_log::info!(component: "raw", role = %line.role, stream = "stdout", "{}", line.text),
-        Stream::Stderr => gnoblin_log::warn!(component: "raw", role = %line.role, stream = "stderr", "{}", line.text),
+        OutputStream::Stdout => {
+            gnoblin_log::info!(component: "raw", role = %line.role, stream = "stdout", "{}", line.text);
+        }
+        OutputStream::Stderr => {
+            gnoblin_log::warn!(component: "raw", role = %line.role, stream = "stderr", "{}", line.text);
+        }
     }
 }
 
@@ -238,7 +242,7 @@ mod tests {
 
     use super::*;
 
-    fn collect(role: &str, stream: Stream, reader: impl Read) -> Vec<RawLine> {
+    fn collect(role: &str, stream: OutputStream, reader: impl Read) -> Vec<RawLine> {
         let (sink, receiver, _) = RawSink::channel();
         read_lines(role, stream, RawPolicy::Redacted, reader, &sink);
         drop(sink);
@@ -255,8 +259,8 @@ mod tests {
             .expect("sh is available");
         let stdout = child.stdout.take().expect("piped");
         let stderr = child.stderr.take().expect("piped");
-        let out = collect("compositor", Stream::Stdout, stdout);
-        let err = collect("compositor", Stream::Stderr, stderr);
+        let out = collect("compositor", OutputStream::Stdout, stdout);
+        let err = collect("compositor", OutputStream::Stderr, stderr);
         child.wait().expect("sh finishes");
         assert_eq!(
             out.iter().map(|line| line.text.as_str()).collect::<Vec<_>>(),
@@ -267,7 +271,7 @@ mod tests {
             ["from-err"]
         );
         assert_eq!(err[0].role, "compositor");
-        assert_eq!(err[0].stream, Stream::Stderr);
+        assert_eq!(err[0].stream, OutputStream::Stderr);
     }
 
     #[test]
@@ -300,7 +304,7 @@ mod tests {
         for index in 0..CAPACITY + 5 {
             sink.send(RawLine {
                 role: "wm".to_owned(),
-                stream: Stream::Stdout,
+                stream: OutputStream::Stdout,
                 text: index.to_string(),
             });
         }
@@ -313,7 +317,7 @@ mod tests {
         let (sink, receiver, _) = RawSink::channel();
         read_lines(
             "compositor",
-            Stream::Stdout,
+            OutputStream::Stdout,
             RawPolicy::Redacted,
             "password=hunter2 ok\n".as_bytes(),
             &sink,
@@ -328,7 +332,7 @@ mod tests {
         let (sink, receiver, dropped) = RawSink::channel();
         read_lines(
             "services",
-            Stream::Stdout,
+            OutputStream::Stdout,
             RawPolicy::Off,
             "one\ntwo\n".as_bytes(),
             &sink,

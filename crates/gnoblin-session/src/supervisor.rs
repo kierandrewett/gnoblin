@@ -352,10 +352,10 @@ impl Supervisor {
             .role_name(&spec)
             .map_or(raw::RawPolicy::Off, |role| raw::policy(&role, self.config.raw_services));
         if let Some(stdout) = process.stdout.take() {
-            raw::capture(name, raw::Stream::Stdout, raw_policy, stdout, self.raw.clone());
+            raw::capture(name, raw::OutputStream::Stdout, raw_policy, stdout, self.raw.clone());
         }
         if let Some(stderr) = process.stderr.take() {
-            raw::capture(name, raw::Stream::Stderr, raw_policy, stderr, self.raw.clone());
+            raw::capture(name, raw::OutputStream::Stderr, raw_policy, stderr, self.raw.clone());
         }
         log(
             Level::Info,
