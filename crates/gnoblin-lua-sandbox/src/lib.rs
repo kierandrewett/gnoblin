@@ -693,6 +693,61 @@ mod tests {
         );
     }
 
+    #[test]
+    fn xpcall_with_a_handler_that_returns_nothing_cannot_swallow_the_budget() {
+        // A handler that returns no value makes xpcall report `nil`, which the rethrow path
+        // must not treat as a recovered error. The latch decides, so the loop still stops.
+        let outcome = capped(
+            config_state,
+            small_budget(),
+            "while true do xpcall(function() while true do end end, function(e) end) end",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
+    }
+
+    #[test]
+    fn a_coroutine_created_before_exhaustion_stays_bounded_when_resumed_after() {
+        // The thread is created in one entry and resumed in a later, re-armed entry after the
+        // first entry's budget ran out. The hook is global, so the old thread must still be
+        // counted and stopped rather than run free.
+        let limits = small_budget();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (lua, guard) = coroutine_state(&limits);
+            lua.load("co = coroutine.create(function() while true do coroutine.yield() end end)")
+                .exec()
+                .expect("the thread is created inside the first budget");
+            let exhausted = lua.load("while true do end").exec().is_err();
+            let rearmed = {
+                guard.begin(&limits);
+                lua.load("return coroutine.resume(co)").eval::<bool>()
+            };
+            let error = lua
+                .load("while true do coroutine.resume(co) end")
+                .exec()
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_default();
+            let _ = sender.send((exhausted, rearmed.ok(), error, guard.aborted()));
+        });
+        let (exhausted, resumed, error, aborted) = receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the resumed thread must end within five seconds");
+        assert!(exhausted, "the first entry must exhaust its budget");
+        assert_eq!(
+            resumed,
+            Some(true),
+            "the pre-exhaustion thread must resume after re-arming"
+        );
+        assert!(error.contains("instruction budget"), "{error}");
+        assert!(aborted);
+    }
+
     /// A state with the coroutine library open, for proving the limits before it is enabled.
     fn armed_with_coroutines(limits: &Limits) -> (Lua, Rc<Guard>) {
         let guard = Rc::new(Guard::new());
