@@ -10,6 +10,7 @@
 -- Usage: gnoblin.layout.register("kiosk", "gnoblin.layouts.kiosk")
 
 local M = {}
+M.kind = "kiosk"
 
 M.options = {}
 

@@ -200,6 +200,7 @@ mod tests {
             kind,
             transient_for: None,
             workspace: WorkspaceId::new(1),
+            placement: crate::layout::WindowPlacement::Managed,
             output: Some(OutputId::new(0)),
             geometry: Rect::new(0, 0, 100, 100),
             restore: Rect::new(0, 0, 100, 100),

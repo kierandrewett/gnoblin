@@ -20,6 +20,7 @@
 -- Usage: gnoblin.layout.register("master_stack", "gnoblin.layouts.master_stack")
 
 local M = {}
+M.kind = "tiling"
 
 M.options = {
     master_count = 1,

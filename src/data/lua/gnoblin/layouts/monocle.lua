@@ -12,6 +12,7 @@
 -- Usage: gnoblin.layout.register("monocle", "gnoblin.layouts.monocle")
 
 local M = {}
+M.kind = "tiling"
 
 M.options = {}
 

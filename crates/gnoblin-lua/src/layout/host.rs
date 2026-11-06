@@ -14,7 +14,7 @@ use gnoblin_lua_sandbox::Limits;
 
 use super::LayoutReason;
 use super::data::Data;
-use super::lua::{LayoutCall, LayoutFault};
+use super::lua::{LayoutCall, LayoutFault, Manifest};
 use super::snapshot::LayoutSnapshot;
 use super::worker::{Done, LayoutFinished, Spawn, Worker, WorkerJob};
 
@@ -83,6 +83,7 @@ pub struct HostFailure {
 struct RegisteredLayout {
     module: String,
     options: Data,
+    manifest: Manifest,
 }
 
 /// The layout host. One per compositor; it owns the worker and the layout registry.
@@ -134,6 +135,12 @@ impl Host {
         self.disabled
     }
 
+    /// The manifest of layout `name`, read when it loaded. `None` when no layout of that
+    /// name is registered.
+    pub(crate) fn manifest(&self, name: &str) -> Option<&Manifest> {
+        self.registered.get(name).map(|layout| &layout.manifest)
+    }
+
     /// Loads `module` and registers it as layout `name` with the user's `options`. The
     /// load is waited for at most one hard limit. A failed load restores the previous
     /// registration of `name`.
@@ -145,19 +152,12 @@ impl Host {
         if self.disabled {
             return Err(disabled_failure());
         }
-        let previous = self.registered.insert(
-            name.to_owned(),
-            RegisteredLayout {
-                module: module.to_owned(),
-                options: options.clone(),
-            },
-        );
         let generation = self.next_generation();
         let job = WorkerJob::Load {
             generation,
             name: name.to_owned(),
             module: module.to_owned(),
-            options,
+            options: options.clone(),
         };
         let deadline = Instant::now() + self.config.hard_limit;
         let outcome = if self.send(generation, name, job) {
@@ -166,7 +166,15 @@ impl Host {
             Some(Err(LayoutFault::new(LayoutReason::VmDown, "the layout worker exited")))
         };
         let failure = match outcome {
-            Some(Ok(LayoutFinished::Loaded)) => return Ok(()),
+            Some(Ok(LayoutFinished::Loaded(manifest))) => {
+                let registration = RegisteredLayout {
+                    module: module.to_owned(),
+                    options,
+                    manifest,
+                };
+                self.registered.insert(name.to_owned(), registration);
+                return Ok(());
+            }
             Some(Ok(LayoutFinished::Ran(_))) => HostFailure {
                 reason: LayoutReason::InvalidLayout,
                 message: "the worker answered a load with a layout call".into(),
@@ -182,10 +190,6 @@ impl Host {
                     message: format!("loading `{module}` did not finish in time"),
                 }
             }
-        };
-        match previous {
-            Some(old) => self.registered.insert(name.to_owned(), old),
-            None => self.registered.remove(name),
         };
         Err(failure)
     }

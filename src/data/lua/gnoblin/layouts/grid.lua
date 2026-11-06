@@ -11,6 +11,7 @@
 -- Usage: gnoblin.layout.register("grid", "gnoblin.layouts.grid")
 
 local M = {}
+M.kind = "tiling"
 
 M.options = {
     fill = "row",

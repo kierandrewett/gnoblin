@@ -57,6 +57,18 @@ struct MasterStack {
 }
 
 impl LayoutEngine for MasterStack {
+    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
+        gnoblin_wm::layout::LayoutKind::Tiling
+    }
+
+    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
+        gnoblin_wm::layout::LayoutExtent::Output
+    }
+
+    fn declares(&self, _command: &str) -> bool {
+        false
+    }
+
     fn submit(&mut self, job: Job, generation: Generation) -> Ticket {
         let reply = match job {
             Job::Arrange(_) | Job::Request(_) if self.decline => Reply::Declined,
@@ -233,19 +245,8 @@ fn master_stack_follows_the_wm_through_a_session() {
     wm.apply(Event::ToggleFullscreen { window: win(1) });
     assert_eq!(targets(&settle(&mut wm)), vec![target(1, 1, 960.0, 1080.0)]);
 
-    // Floating takes window 1 out of tiling. Unmaximising window 2 with window 1
-    // floating leaves window 2 alone in the set, and clearing floating on window 1
-    // brings it back.
-    wm.apply(Event::SetFloating {
-        window: win(1),
-        floating: true,
-    });
+    // Unmaximising window 2 returns it to the tiled set, beside window 1.
     wm.apply(Event::ToggleMaximise { window: win(2) });
-    assert_eq!(targets(&settle(&mut wm)), vec![target(1, 2, 960.0, 1080.0)]);
-    wm.apply(Event::SetFloating {
-        window: win(1),
-        floating: false,
-    });
     assert_eq!(
         targets(&settle(&mut wm)),
         vec![target(1, 1, 960.0, 1080.0), target(1, 2, 960.0, 1080.0)]

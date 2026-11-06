@@ -27,6 +27,7 @@
 -- Usage: gnoblin.layout.register("dwindle", "gnoblin.layouts.dwindle")
 
 local M = {}
+M.kind = "tiling"
 
 M.options = {
     split = "aspect",

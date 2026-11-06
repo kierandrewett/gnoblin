@@ -1749,17 +1749,6 @@ impl State {
         Ok(())
     }
 
-    /// Sets whether a window floats, and reports whether the window exists.
-    pub(crate) fn set_floating(&mut self, window: WindowId, floating: bool) -> bool {
-        if self.wm.window(window).is_none() {
-            return false;
-        }
-        let effects = self.wm.apply(Event::SetFloating { window, floating });
-        self.apply(effects);
-        self.publish();
-        true
-    }
-
     /// What is known about the process behind a window's client. `None` when no such
     /// window exists.
     pub(crate) fn window_process(&self, window: WindowId) -> Option<crate::WindowProcess> {
@@ -2227,7 +2216,6 @@ impl State {
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),
                     modal: window.kind == WindowKind::Modal,
-                    floating: window.state.floating,
                     unresponsive: matches!(
                         entry.map(|entry| &entry.surface),
                         Some(Managed::Wayland(surface)) if crate::liveness::owner(surface).is_some_and(|id| self.liveness.is_unresponsive(&id))

@@ -489,22 +489,6 @@ mod gnoblin_objects {
             Ok(self.boolean(object, "focused"))
         }
 
-        fn floating(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
-            let object = self.object(&handle).expect("a handle this store issued");
-            Ok(self.boolean(object, "floating"))
-        }
-
-        fn set_floating(
-            &mut self,
-            handle: Resource<ObjectRep>,
-            floating: bool,
-        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
-            let object = self.object(&handle).expect("a handle this store issued");
-            let mut arguments = gnoblin_model::Fields::new();
-            arguments.insert("floating".to_owned(), Value::Bool(floating));
-            self.method(object, "window", "set_floating", arguments)
-        }
-
         fn unresponsive(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.boolean(object, "unresponsive"))

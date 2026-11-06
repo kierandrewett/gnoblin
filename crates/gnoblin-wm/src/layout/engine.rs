@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use super::error::LayoutFailure;
+use super::kind::{LayoutExtent, LayoutKind};
 use super::placement::{Params, Reply, Request};
 use super::settle::{Layout, settle};
 
@@ -121,6 +122,15 @@ pub trait LayoutEngine {
     /// Returns a finished run if one is ready before `deadline`, and
     /// [`LayoutOutcome::Pending`] otherwise. Must not wait past `deadline`.
     fn collect(&mut self, generation: Generation, deadline: Instant) -> LayoutOutcome;
+
+    /// The kind the layout declares. Required: the host derives placement policy from it.
+    fn kind(&self) -> LayoutKind;
+
+    /// The extent the layout arranges in. Only [`LayoutExtent::Output`] is supported.
+    fn extent(&self) -> LayoutExtent;
+
+    /// Whether the layout's manifest declares support for the named standard command.
+    fn declares(&self, command: &str) -> bool;
 }
 
 /// What a slot reports for a frame.

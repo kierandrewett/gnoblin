@@ -37,6 +37,7 @@
 -- Usage: gnoblin.layout.register("scrolling", "gnoblin.layouts.scrolling")
 
 local M = {}
+M.kind = "tiling"
 
 M.options = {
     column_width = 0.5,

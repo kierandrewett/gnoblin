@@ -140,8 +140,9 @@ pub enum Event {
     SnapRequested { window: WindowId, zone: SnapZone },
     /// Return a snapped window to its floating rectangle.
     Unsnap { window: WindowId },
-    /// Take a window out of the tiled set (`true`) or put it back (`false`).
-    SetFloating { window: WindowId, floating: bool },
+    /// Moves a window between managed and free under a tiling layout. Refused under
+    /// a layout whose kind does not allow it.
+    ToggleFloat { window: WindowId },
     /// A drag or resize produced this candidate rectangle.
     MoveResize { window: WindowId, geometry: Rect },
     /// Move focus to the nearest visible window in a direction from the focused one.
@@ -178,6 +179,8 @@ pub enum Rejection {
     NotVisible(WindowId),
     /// The window is fullscreen, so a drag, snap or maximise does not apply.
     NotFloating(WindowId),
+    /// The workspace's layout does not allow toggling a window's placement.
+    NoFloatToggle(WindowId),
     /// The window is a transient, which always floats and cannot be tiled.
     TransientAlwaysFloating(WindowId),
     /// The parent of a transient is on another workspace, so the transient cannot

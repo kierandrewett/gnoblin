@@ -291,6 +291,7 @@ fn driver(test: &str, layout: &str, body: &str) -> PathBuf {
         "local real = require(\"gnoblin.layouts.{layout}\")\n\
          local M = {{}}\n\
          M.options = real.options\n\
+         M.kind = real.kind\n\
          function M.arrange(ctx)\n\
          {body}\n\
          \x20 return real.arrange(ctx)\n\

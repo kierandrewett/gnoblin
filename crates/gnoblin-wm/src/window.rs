@@ -2,6 +2,7 @@
 
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 
+use crate::layout::WindowPlacement;
 use crate::snapping::SnapZone;
 
 /// What kind of toplevel a window is.
@@ -44,9 +45,6 @@ pub struct WindowState {
     pub minimised: bool,
     /// The snapping zone the window is occupying, if any.
     pub snapped: Option<SnapZone>,
-    /// The window is taken out of its workspace's tiled set and keeps its own
-    /// rectangle. Transients are always floating.
-    pub floating: bool,
 }
 
 /// One window the manager is responsible for.
@@ -78,6 +76,9 @@ pub struct Window {
     pub restore: Rect,
     /// Maximise, fullscreen, minimise and snap flags.
     pub state: WindowState,
+    /// Whether the active layout assigned this window its geometry. Set by the
+    /// window manager from the layout's kind; never set by a client.
+    pub placement: WindowPlacement,
     /// How many window rules applied completely to this window.
     ///
     /// Rules run once, when the window is taken into management. The counter makes
@@ -112,6 +113,7 @@ mod tests {
             transient_for: None,
             workspace: WorkspaceId::new(1),
             output: Some(OutputId::new(0)),
+            placement: WindowPlacement::Managed,
             geometry: Rect::new(0, 0, 100, 100),
             restore: Rect::new(0, 0, 100, 100),
             state: WindowState::default(),

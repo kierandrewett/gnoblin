@@ -8,6 +8,7 @@
 -- Usage: gnoblin.layout.register("floating", "gnoblin.layouts.floating")
 
 local M = {}
+M.kind = "floating"
 
 M.options = {}
 

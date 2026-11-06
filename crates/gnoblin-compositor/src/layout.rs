@@ -267,6 +267,18 @@ pub struct FloatingEngine {
 }
 
 impl LayoutEngine for FloatingEngine {
+    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
+        gnoblin_wm::layout::LayoutKind::Floating
+    }
+
+    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
+        gnoblin_wm::layout::LayoutExtent::Output
+    }
+
+    fn declares(&self, _command: &str) -> bool {
+        false
+    }
+
     fn submit(&mut self, job: Job, generation: Generation) -> Ticket {
         let reply = match job {
             Job::Arrange(params) => Reply::Handled(Handled {

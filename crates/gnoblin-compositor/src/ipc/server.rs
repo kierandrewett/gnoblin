@@ -1098,9 +1098,6 @@ impl Dispatcher {
             (Some(ty), Some(window), _, _) if ty == "window" && method == "focus" => {
                 self.focus(client, envelope, object, &method, &arguments, window);
             }
-            (Some(ty), Some(window), _, _) if ty == "window" && method == "set_floating" => {
-                self.set_floating(client, envelope, object, &method, &arguments, window);
-            }
             (Some(ty), Some(window), _, _) if ty == "window" && method == "kill" => {
                 self.kill(client, envelope, object, &method, &arguments, window);
             }
@@ -1253,43 +1250,6 @@ impl Dispatcher {
         };
         self.sync();
         self.finish(object, &operation, Some(outcome));
-    }
-
-    /// Serves `window.set_floating`: the window manager moves the window in or out of the
-    /// tiled set, and the other windows re-arrange around it.
-    fn set_floating(
-        &mut self,
-        client: ClientId,
-        envelope: &Envelope,
-        object: gnoblin_types::ObjectId,
-        method: &str,
-        arguments: &gnoblin_model::Fields,
-        window: gnoblin_types::WindowId,
-    ) {
-        let floating = match arguments.get("floating") {
-            Some(gnoblin_model::Value::Bool(value)) => *value,
-            _ => {
-                self.refuse(
-                    client,
-                    envelope,
-                    wire::code::UNKNOWN_MEMBER,
-                    "set_floating takes a bool `floating`",
-                );
-                return;
-            }
-        };
-        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
-            Ok(operation) => operation,
-            Err(error) => {
-                let code = refusal_code(&error);
-                self.refuse(client, envelope, code, &error.to_string());
-                return;
-            }
-        };
-        self.reply_with_operation(client, envelope, &operation);
-        let answered = self.control.set_floating(window, floating);
-        self.sync();
-        self.finish(object, &operation, answered.map(|_| OperationOutcome::Done));
     }
 
     /// Serves `window.kill`: the window's client process is sent SIGKILL, whatever its

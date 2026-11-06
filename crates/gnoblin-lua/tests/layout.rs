@@ -86,6 +86,7 @@ fn no_options() -> Data {
 /// the right half. A request that includes window 99 is declined.
 const MASTER_STACK: &str = r#"
 local M = {}
+M.kind = 'tiling'
 function M.arrange(ctx)
   local a = ctx.area
   local n = #ctx.windows
@@ -118,6 +119,7 @@ return M
 
 const COUNTER: &str = r#"
 local M = {}
+M.kind = 'tiling'
 function M.arrange(ctx)
   local n = (ctx.state and ctx.state.n or 0) + 1
   ctx.state = { n = n }
@@ -280,7 +282,7 @@ fn stale_generation_is_never_answered_with_a_placement() {
 
 #[test]
 fn spinning_layout_is_aborted_by_the_instruction_budget() {
-    let spin = "local M = {} function M.arrange() while true do end end return M";
+    let spin = "local M = {kind = 'tiling'} function M.arrange() while true do end end return M";
     let h = host(modules("spin", &[("spin", spin)]));
     h.borrow_mut()
         .register("spin", "spin", no_options())
@@ -291,7 +293,7 @@ fn spinning_layout_is_aborted_by_the_instruction_budget() {
 
 #[test]
 fn memory_bomb_is_refused() {
-    let bomb = "local M = {} function M.arrange() local t = {} for i = 1, 1e12 do t[i] = { i, i, i, i } end return nil end return M";
+    let bomb = "local M = {kind = 'tiling'} function M.arrange() local t = {} for i = 1, 1e12 do t[i] = { i, i, i, i } end return nil end return M";
     let h = host(modules("bomb", &[("bomb", bomb)]));
     h.borrow_mut()
         .register("bomb", "bomb", no_options())
@@ -308,15 +310,15 @@ fn bad_returns_are_refused() {
     let cases = [
         (
             "nan",
-            "local M={} function M.arrange(ctx) return {placements={{window=ctx.windows[1].id,x=0,y=0,width=0/0,height=10}}} end return M",
+            "local M={kind='tiling'} function M.arrange(ctx) return {placements={{window=ctx.windows[1].id,x=0,y=0,width=0/0,height=10}}} end return M",
         ),
         (
             "unknown",
-            "local M={} function M.arrange(ctx) return {placements={{window=12345,x=0,y=0,width=10,height=10}}} end return M",
+            "local M={kind='tiling'} function M.arrange(ctx) return {placements={{window=12345,x=0,y=0,width=10,height=10}}} end return M",
         ),
         (
             "wrong_type",
-            "local M={} function M.arrange(ctx) return 42 end return M",
+            "local M={kind='tiling'} function M.arrange(ctx) return 42 end return M",
         ),
     ];
     for (name, source) in cases {
@@ -333,7 +335,7 @@ fn bad_returns_are_refused() {
 
 #[test]
 fn thrown_error_is_reported_as_an_error() {
-    let boom = r#"local M={} function M.arrange() error("boom") end return M"#;
+    let boom = r#"local M={kind='tiling'} function M.arrange() error("boom") end return M"#;
     let h = host(modules("boom", &[("boom", boom)]));
     h.borrow_mut()
         .register("boom", "boom", no_options())

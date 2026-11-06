@@ -12,7 +12,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use gnoblin_types::{RectF, WindowId, WorkspaceId};
-use gnoblin_wm::layout::{Generation, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Reply, Ticket};
+use gnoblin_wm::layout::{
+    Generation, Job, LayoutEngine, LayoutExtent, LayoutFailure, LayoutKind, LayoutOutcome, Params, Reply, Ticket,
+};
 
 use super::LayoutReason;
 use super::host::Host;
@@ -98,6 +100,29 @@ impl LuaEngine {
 }
 
 impl LayoutEngine for LuaEngine {
+    fn kind(&self) -> LayoutKind {
+        // A layout that is not registered refuses every run, so it places nothing. Floating
+        // leaves its windows to their own geometry, which is what that means.
+        self.host
+            .borrow()
+            .manifest(&self.layout)
+            .map_or(LayoutKind::Floating, |manifest| manifest.kind)
+    }
+
+    fn extent(&self) -> LayoutExtent {
+        self.host
+            .borrow()
+            .manifest(&self.layout)
+            .map_or(LayoutExtent::Output, |manifest| manifest.extent)
+    }
+
+    fn declares(&self, command: &str) -> bool {
+        self.host
+            .borrow()
+            .manifest(&self.layout)
+            .is_some_and(|manifest| manifest.commands.contains(command))
+    }
+
     fn submit(&mut self, job: Job, generation: Generation) -> Ticket {
         self.forget_older(generation);
         let call = match &job {
@@ -131,7 +156,7 @@ impl LayoutEngine for LuaEngine {
         self.runs.remove(&generation);
         match finished {
             Ok(LayoutFinished::Ran(ran)) => ready(generation, Ok(ran.reply)),
-            Ok(LayoutFinished::Loaded) => ready(generation, Err(LayoutFailure::Error)),
+            Ok(LayoutFinished::Loaded(_)) => ready(generation, Err(LayoutFailure::Error)),
             Err(fault) => ready(generation, Err(failure(&fault))),
         }
     }

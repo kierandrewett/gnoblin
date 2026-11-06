@@ -14,7 +14,7 @@
 //! - the stack contains every managed window exactly once and never interleaves
 //!   layers;
 //! - maximised, fullscreen and snapped windows match the rectangle their state
-//!   implies, and floating windows overlap their work area;
+//!   implies;
 //! - a transient shares its parent's workspace;
 //! - the focus history names no window that has gone away.
 
@@ -200,10 +200,6 @@ fn next_event(rng: &mut Rng) -> Event {
             },
         },
         98 => Event::RulesChanged { rules: rules(rng) },
-        99 => Event::SetFloating {
-            window: rng.window(),
-            floating: rng.below(2) == 0,
-        },
         _ => Event::WindowTitleChanged {
             window: rng.window(),
             title: "Report 2".to_owned(),

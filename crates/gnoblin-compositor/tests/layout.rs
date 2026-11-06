@@ -137,7 +137,7 @@ fn a_module_that_errors_falls_back_and_the_session_keeps_running() {
     std::fs::create_dir_all(&layouts).expect("the layouts directory");
     std::fs::write(
         layouts.join("broken.lua"),
-        "local M = {}\nM.options = {}\nfunction M.arrange(_ctx) error(\"broken on purpose\") end\n\
+        "local M = {}\nM.kind = 'tiling'\nM.options = {}\nfunction M.arrange(_ctx) error(\"broken on purpose\") end\n\
          function M.on_request(_ctx) return nil end\nreturn M\n",
     )
     .expect("the broken module");
@@ -173,7 +173,7 @@ fn a_user_module_overrides_the_shipped_layout_of_the_same_name() {
     std::fs::create_dir_all(&layouts).expect("the layouts directory");
     std::fs::write(
         layouts.join("master_stack.lua"),
-        "local M = {}\n\
+        "local M = {}\nM.kind = 'tiling'\n\
          function M.arrange(ctx)\n\
            local a = ctx.area\n\
            local placements = {}\n\
@@ -235,33 +235,6 @@ fn a_workspace_override_wins_over_the_output_override() {
     let mut client = Client::connect(session.wayland());
     let windows = map_three(&mut client);
 
-    assert_eq!(settled_sizes(&mut client, &windows), floating);
-}
-
-#[test]
-fn set_floating_overrides_the_workspace_layout() {
-    let floating = {
-        let session = session_with(LayoutSettings::default());
-        let mut client = Client::connect(session.wayland());
-        let windows = map_three(&mut client);
-        settled_sizes(&mut client, &windows)
-    };
-
-    let session = session_with(LayoutSettings {
-        default: "master_stack".to_owned(),
-        module_dirs: vec![shipped_modules()],
-        ..LayoutSettings::default()
-    });
-    let mut client = Client::connect(session.wayland());
-    let windows = map_three(&mut client);
-    assert_ne!(settled_sizes(&mut client, &windows), floating);
-
-    for title in ["one", "two", "three"] {
-        let id = wait_for_listed_id(&session, title);
-        session
-            .ctl(&["window", "call", &id.to_string(), "set_floating", "floating=true"])
-            .ok();
-    }
     assert_eq!(settled_sizes(&mut client, &windows), floating);
 }
 
@@ -362,6 +335,7 @@ fn layout_command_is_delivered_to_the_layout_that_answers_it() {
     std::fs::write(
         layouts.join("probe.lua"),
         r#"local M = {}
+M.kind = "tiling"
 M.options = {}
 function M.arrange(_ctx) return { placements = {} } end
 function M.on_request(_ctx) return nil end
@@ -436,7 +410,7 @@ fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
     std::fs::create_dir_all(&layouts).expect("the layouts directory");
     std::fs::write(
         layouts.join("broken.lua"),
-        "local M = {}\nM.options = {}\nfunction M.arrange(_ctx) error(\"broken on purpose\") end\n\
+        "local M = {}\nM.kind = 'tiling'\nM.options = {}\nfunction M.arrange(_ctx) error(\"broken on purpose\") end\n\
          function M.on_request(_ctx) return nil end\nreturn M\n",
     )
     .expect("the broken module");

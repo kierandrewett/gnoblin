@@ -11,7 +11,7 @@ use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
 use crate::geometry::clamp_to_i32;
-use crate::layout::{Layout, LayoutCommand, LayoutEffect, LayoutEngine, RequestKind};
+use crate::layout::{Layout, LayoutCommand, LayoutEffect, LayoutEngine, RequestKind, WindowPlacement};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
@@ -220,9 +220,6 @@ pub struct Wm {
     history: Vec<WindowId>,
     rules: Vec<Rule>,
     layouts: Layouts,
-    /// Windows a layout floated out of tiling. A layout change returns them to the
-    /// tiled set unless the user has floated them since.
-    layout_floated: std::collections::BTreeSet<WindowId>,
     /// Events held back until the next [`Event::Frame`] because a layout is
     /// installed and the event either changes tiling or follows one that does.
     /// They are applied in arrival order so that layouts see every tiling change.
@@ -347,10 +344,7 @@ impl Wm {
             Event::ToggleMaximise { window } => self.toggle_maximise(window),
             Event::ToggleFullscreen { window } => self.toggle_fullscreen(window),
             Event::SnapRequested { window, zone } => self.snap(window, zone),
-            Event::SetFloating { window, floating } => {
-                self.layout_floated.remove(&window);
-                self.set_floating(window, floating)
-            }
+            Event::ToggleFloat { window } => self.toggle_float(window),
             Event::Unsnap { window } => self.unsnap(window),
             Event::MoveResize { window, geometry } => self.move_resize(window, geometry),
             Event::FocusDirection { direction } => self.focus_direction(direction),
@@ -863,8 +857,9 @@ impl Wm {
             }
         };
         // A transient always floats: it is placed relative to its parent and
-        // is never part of a workspace's tiled set.
-        let floating = spec.kind.is_transient();
+        // is never part of a workspace's tiled set. Any other window takes the
+        // placement its workspace's layout gives.
+        let placement = self.default_placement(workspace, spec.kind.is_transient());
         let mut window = Window {
             id: spec.id,
             app_id: spec.app_id,
@@ -875,10 +870,8 @@ impl Wm {
             output,
             geometry,
             restore: geometry,
-            state: WindowState {
-                floating,
-                ..WindowState::default()
-            },
+            state: WindowState::default(),
+            placement,
             applied_rules: 0,
         };
         let mut effects = Vec::new();
@@ -1008,15 +1001,15 @@ impl Wm {
                 Some(_) => {}
             }
         }
-        let needs_floating = kind.is_transient() && !window.state.floating;
+        let needs_free = kind.is_transient() && window.placement == WindowPlacement::Managed;
         let parent_changed = window.transient_for != parent;
         let Some(window) = self.windows.get_mut(&id) else {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         };
         window.kind = kind;
         window.transient_for = parent;
-        let mut effects = if needs_floating {
-            self.set_floating(id, true)
+        let mut effects = if needs_free {
+            self.set_placement(id, WindowPlacement::Free)
         } else {
             Vec::new()
         };
@@ -1389,22 +1382,51 @@ impl Wm {
         Self::configured_with(id, window.geometry, window.state)
     }
 
-    /// Takes a window out of the tiled set (`floating`) or returns it to it.
-    ///
-    /// Floating is the weakest explicit state: a maximised, snapped, or fullscreen
-    /// window keeps its stronger state, and only the floating flag changes. Setting
-    /// it saves the rectangle the window currently has so a later restore returns
-    /// to it. Clearing it restores that rectangle if the window is still floating
-    /// in the built-in sense, so a tiled window keeps its slot in the layout.
-    fn set_floating(&mut self, id: WindowId, floating: bool) -> Vec<Effect> {
+    /// The placement a window takes when it enters `workspace`: the workspace's
+    /// layout decides, and a window with no layout keeps the placement it had before
+    /// layouts existed (managed, or free for a transient).
+    fn default_placement(&self, workspace: WorkspaceId, transient: bool) -> WindowPlacement {
+        match self.layouts.kind(workspace) {
+            Some(kind) => kind.default_placement(transient),
+            None if transient => WindowPlacement::Free,
+            None => WindowPlacement::Managed,
+        }
+    }
+
+    /// Flips a window between managed and free placement, as the user asks. The
+    /// layout of its workspace must allow it, and a transient never becomes managed.
+    fn toggle_float(&mut self, id: WindowId) -> Vec<Effect> {
         let Some(window) = self.windows.get(&id) else {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         };
-        if window.kind.is_transient() && !floating {
-            // Transients are always floating; clearing the flag would tile them.
+        if window.kind.is_transient() {
             return vec![Effect::rejected(Rejection::TransientAlwaysFloating(id))];
         }
-        if window.state.floating == floating {
+        if self
+            .layouts
+            .kind(window.workspace)
+            .is_some_and(|kind| !kind.allows_toggle_float())
+        {
+            return vec![Effect::rejected(Rejection::NoFloatToggle(id))];
+        }
+        let placement = match window.placement {
+            WindowPlacement::Free => WindowPlacement::Managed,
+            WindowPlacement::Managed => WindowPlacement::Free,
+        };
+        self.set_placement(id, placement)
+    }
+
+    /// Sets a window's placement. Free placement saves the rectangle the window has, so
+    /// a later return to managed restores it. Maximised, snapped and fullscreen windows
+    /// keep their stronger state; only the placement changes. A transient is always free.
+    fn set_placement(&mut self, id: WindowId, placement: WindowPlacement) -> Vec<Effect> {
+        let Some(window) = self.windows.get(&id) else {
+            return vec![Effect::rejected(Rejection::UnknownWindow(id))];
+        };
+        if window.kind.is_transient() && placement == WindowPlacement::Managed {
+            return vec![Effect::rejected(Rejection::TransientAlwaysFloating(id))];
+        }
+        if window.placement == placement {
             return Vec::new();
         }
         let (state, geometry, restore) = (window.state, window.geometry, window.restore);
@@ -1412,8 +1434,8 @@ impl Wm {
         let Some(window) = self.windows.get_mut(&id) else {
             return Vec::new();
         };
-        window.state.floating = floating;
-        if floating {
+        window.placement = placement;
+        if placement == WindowPlacement::Free {
             if !state.maximised && state.snapped.is_none() && !state.fullscreen {
                 window.restore = geometry;
             }
@@ -1466,23 +1488,12 @@ impl Wm {
     }
 
     /// Replaces one workspace's engine with a fresh one from the installed factory and
-    /// submits its arrangement. The old engine is dropped. Does nothing when no
+    /// submits its arrangement. The old engine is dropped, and the windows of the
+    /// workspace take the placements of the new engine's kind. Does nothing when no
     /// factory is installed or the workspace is not declared.
     pub fn rebuild_layout(&mut self, workspace: WorkspaceId) -> Vec<Effect> {
-        let returned: Vec<WindowId> = self
-            .layout_floated
-            .iter()
-            .copied()
-            .filter(|id| self.windows.get(id).is_some_and(|window| window.workspace == workspace))
-            .collect();
-        let mut effects = Vec::new();
-        for id in returned {
-            self.layout_floated.remove(&id);
-            effects.extend(self.set_floating(id, false));
-        }
         self.layouts.forget(workspace);
-        effects.extend(self.sync_layouts());
-        effects
+        self.sync_layouts()
     }
 
     /// The connector name of the output every workspace is arranged on, when it is known.
@@ -1531,13 +1542,15 @@ impl Wm {
     }
 
     /// Submits a run for every workspace whose tiled input changed since its last
-    /// submit. Does nothing when no factory is installed.
+    /// submit. A layout that is created, or whose kind changed, first sets the
+    /// placements of its workspace's windows to the kind's default. Does nothing when
+    /// no factory is installed.
     fn sync_layouts(&mut self) -> Vec<Effect> {
         if !self.layouts.is_enabled() {
             return Vec::new();
         }
         let first_output = self.outputs.first().map(Output::id);
-        let (outputs, windows) = (&self.outputs, &self.windows);
+        let outputs = &self.outputs;
         let output_name = |output: OutputId| {
             outputs
                 .iter()
@@ -1546,10 +1559,15 @@ impl Wm {
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)
         };
+        let changed = self.layouts.rebuild(self.workspaces.ids(), first_output, output_name);
+        for (workspace, kind) in changed {
+            for window in self.windows.values_mut().filter(|window| window.workspace == workspace) {
+                window.placement = kind.default_placement(window.kind.is_transient());
+            }
+        }
+        let (outputs, windows) = (&self.outputs, &self.windows);
         self.layouts
-            .sync(self.workspaces.ids(), first_output, output_name, |workspace, output| {
-                arrange::tiled_params(workspace, output, windows, outputs)
-            })
+            .sync(|workspace, output| arrange::tiled_params(workspace, output, windows, outputs))
     }
 
     /// Applies the tiling changes queued since the last frame, syncs the layouts,
@@ -1577,8 +1595,8 @@ impl Wm {
 
     /// Applies one queued event. Every workspace whose tiled set it changed is
     /// offered the change as a request; a handled request replaces the window's own
-    /// geometry with the layout's placement, and a refused one leaves the floating
-    /// logic in force.
+    /// geometry with the layout's placement, and a refused one leaves the window's own
+    /// geometry in force.
     fn apply_queued(&mut self, event: Event, deadline: Instant) -> Vec<Effect> {
         let before = self.tiling_state();
         let mut effects = self.apply_event(event);
@@ -1610,7 +1628,7 @@ impl Wm {
         effects
     }
 
-    /// Floats the windows a layout took out of tiling, and reports its placements.
+    /// Frees the windows a layout took out of tiling, and reports its placements.
     fn apply_layout(&mut self, workspace: WorkspaceId, layout: Layout) -> Vec<Effect> {
         let mut effects = Vec::new();
         for effect in layout.effects {
@@ -1618,10 +1636,9 @@ impl Wm {
             let tiled_here = self
                 .windows
                 .get(&window)
-                .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state));
+                .is_some_and(|entry| entry.workspace == workspace && arrange::is_tiled(&entry.state, entry.placement));
             if tiled_here {
-                effects.extend(self.set_floating(window, true));
-                self.layout_floated.insert(window);
+                effects.extend(self.set_placement(window, WindowPlacement::Free));
             }
         }
         effects.extend(
@@ -1637,7 +1654,7 @@ impl Wm {
     fn tiling_state(&self) -> TiledState {
         self.windows
             .iter()
-            .filter(|(_, window)| arrange::is_tiled(&window.state))
+            .filter(|(_, window)| arrange::is_tiled(&window.state, window.placement))
             .map(|(&id, window)| (id, (window.workspace, window.geometry)))
             .collect()
     }
@@ -1689,7 +1706,7 @@ impl Wm {
     #[must_use]
     pub fn placed_rect(&self, id: WindowId) -> Option<RectF> {
         let window = self.windows.get(&id)?;
-        if !arrange::is_tiled(&window.state) {
+        if !arrange::is_tiled(&window.state, window.placement) {
             return None;
         }
         self.layouts.placed(window.workspace, id)
@@ -1724,7 +1741,7 @@ fn changes_tiling(event: &Event) -> bool {
             | Event::WindowRoleChanged { .. }
             | Event::Minimise { .. }
             | Event::Unminimise { .. }
-            | Event::SetFloating { .. }
+            | Event::ToggleFloat { .. }
             | Event::MoveResize { .. }
             | Event::ToggleMaximise { .. }
             | Event::ToggleFullscreen { .. }
@@ -1910,7 +1927,11 @@ mod tests {
         let Some(window) = wm.window(child) else {
             panic!("the transient is managed");
         };
-        assert!(window.state.floating, "a transient leaves the tiled set");
+        assert_eq!(
+            window.placement,
+            WindowPlacement::Free,
+            "a transient leaves the tiled set"
+        );
         assert_eq!(window.transient_for, Some(parent));
         let child_at = wm.stack().iter().position(|id| *id == child);
         let parent_at = wm.stack().iter().position(|id| *id == parent);

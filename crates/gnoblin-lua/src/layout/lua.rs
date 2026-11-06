@@ -2,13 +2,13 @@
 //! snapshot `ctx`, and the calls into a layout. Everything here runs on the worker
 //! thread that owns the VM, because a Lua state is not `Send`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use super::LayoutReason;
 use gnoblin_lua_sandbox::{self as sandbox, Guard, Limits, Profile};
-use gnoblin_wm::layout::{Arg, Reply};
+use gnoblin_wm::layout::{Arg, LayoutExtent, LayoutKind, Reply};
 use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
 
 use super::data::Data;
@@ -30,6 +30,16 @@ impl LayoutFault {
             message: message.into(),
         }
     }
+}
+
+/// What a layout module declares about itself. It is read once, when the module
+/// loads, and the wm's layout contract is answered from it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Manifest {
+    pub(crate) kind: LayoutKind,
+    pub(crate) extent: LayoutExtent,
+    /// The standard commands the layout's `command` table names.
+    pub(crate) commands: BTreeSet<String>,
 }
 
 /// What the host asks a layout to do.
@@ -86,14 +96,14 @@ impl Vm {
     }
 
     /// Load `module` afresh and register it as layout `name` with the user's
-    /// `options`. Returns the hash of the module's source.
-    pub(crate) fn load(&mut self, name: &str, module: &str, options: &Data) -> Result<u64, LayoutFault> {
+    /// `options`. Returns the manifest the module declares.
+    pub(crate) fn load(&mut self, name: &str, module: &str, options: &Data) -> Result<Manifest, LayoutFault> {
         self.guard.begin(&self.limits);
         let (value, hash) = self
             .modules
             .reload(&self.lua, module)
             .map_err(|error| self.fault(error, LayoutReason::MissingModule))?;
-        let defaults = shape(&value).map_err(|error| self.fault(error, LayoutReason::Error))?;
+        let (defaults, manifest) = shape(&value).map_err(|error| self.fault(error, LayoutReason::Error))?;
         let options = merge(defaults, options)?;
         let value = self
             .lua
@@ -101,7 +111,7 @@ impl Vm {
             .map_err(|error| self.fault(error, LayoutReason::Error))?;
         self.layouts
             .insert(name.to_owned(), LayoutEntry { value, hash, options });
-        Ok(hash)
+        Ok(manifest)
     }
 
     /// Run `call` on layout `name`. `state` is the persisted `ctx.state` and the module
@@ -168,46 +178,60 @@ fn classify(error: &mlua::Error, default: LayoutReason) -> LayoutReason {
     }
 }
 
-/// Check that a module returned a layout, and read its option defaults.
+/// Check that a module declares a layout, and read its manifest and option defaults.
 ///
-/// A layout is a function (the batch pass) or a table with an `arrange` function and
-/// optional `on_request`, `on_added`, `on_removed`, `command` (a table of functions)
-/// and `options` (plain data).
-fn shape(value: &LuaValue) -> mlua::Result<Data> {
+/// A layout is a table with an `arrange` function, a `kind` (`floating`, `tiling` or
+/// `kiosk`) and optionally an `extent` (`output`, the default, or `unbounded`). It may
+/// also have `on_request`, `on_added`, `on_removed`, `command` (a table of functions)
+/// and `options` (plain data). A bare function declares no kind, so it is refused.
+fn shape(value: &LuaValue) -> mlua::Result<(Data, Manifest)> {
     let LuaValue::Table(table) = value else {
-        return match value {
-            LuaValue::Function(_) => Ok(Data::table()),
-            other => Err(runtime(format!(
-                "a layout must be a function or a table, not {}",
-                other.type_name()
-            ))),
-        };
+        return Err(runtime(format!(
+            "a layout must be a table declaring its `kind`, not {}",
+            value.type_name()
+        )));
     };
     if table.get::<Option<Function>>("arrange")?.is_none() {
         return Err(runtime("a layout table needs an `arrange` function"));
     }
+    let kind = match table.get::<Option<String>>("kind")? {
+        Some(name) => LayoutKind::from_name(&name)
+            .ok_or_else(|| runtime(format!("layout kind `{name}` must be floating, tiling or kiosk")))?,
+        None => return Err(runtime("a layout table needs a `kind`: floating, tiling or kiosk")),
+    };
+    let extent = match table.get::<Option<String>>("extent")? {
+        Some(name) => LayoutExtent::from_name(&name)
+            .ok_or_else(|| runtime(format!("layout extent `{name}` must be output or unbounded")))?,
+        None => LayoutExtent::default(),
+    };
     for key in ["on_request", "on_added", "on_removed"] {
         match table.get::<Option<LuaValue>>(key)? {
             None | Some(LuaValue::Function(_)) => {}
             Some(_) => return Err(runtime(format!("layout `{key}` must be a function"))),
         }
     }
-    if let Some(commands) = table.get::<Option<Table>>("command")? {
-        for pair in commands.pairs::<LuaValue, LuaValue>() {
+    let mut commands = BTreeSet::new();
+    if let Some(table_commands) = table.get::<Option<Table>>("command")? {
+        for pair in table_commands.pairs::<LuaValue, LuaValue>() {
             let (key, value) = pair?;
+            let LuaValue::String(name) = &key else {
+                return Err(runtime("layout commands are named by strings"));
+            };
             if !matches!(value, LuaValue::Function(_)) {
                 return Err(runtime(format!(
                     "layout command `{}` must be a function",
                     key_name(&key)
                 )));
             }
+            commands.insert(name.to_string_lossy());
         }
     }
-    match table.get::<Option<LuaValue>>("options")? {
-        None => Ok(Data::table()),
-        Some(options @ LuaValue::Table(_)) => Data::from_lua(&options).map_err(|error| runtime(error.0)),
-        Some(_) => Err(runtime("layout `options` must be a table")),
-    }
+    let options = match table.get::<Option<LuaValue>>("options")? {
+        None => Data::table(),
+        Some(options @ LuaValue::Table(_)) => Data::from_lua(&options).map_err(|error| runtime(error.0))?,
+        Some(_) => return Err(runtime("layout `options` must be a table")),
+    };
+    Ok((options, Manifest { kind, extent, commands }))
 }
 
 fn key_name(key: &LuaValue) -> String {
@@ -232,7 +256,6 @@ fn merge(defaults: Data, values: &Data) -> Result<Data, LayoutFault> {
 /// The function that answers `call`, or `None` when the layout does not handle it.
 fn handler(layout: &LuaValue, call: &LayoutCall) -> mlua::Result<Option<Function>> {
     match layout {
-        LuaValue::Function(function) => Ok(matches!(call, LayoutCall::Arrange).then(|| function.clone())),
         LuaValue::Table(table) => match call {
             LayoutCall::Arrange => table.get::<Option<Function>>("arrange"),
             LayoutCall::Request => first(table, &["on_request"]),
@@ -241,10 +264,7 @@ fn handler(layout: &LuaValue, call: &LayoutCall) -> mlua::Result<Option<Function
                 None => Ok(None),
             },
         },
-        other => Err(runtime(format!(
-            "the layout is a {}, not a function or table",
-            other.type_name()
-        ))),
+        other => Err(runtime(format!("the layout is a {}, not a table", other.type_name()))),
     }
 }
 

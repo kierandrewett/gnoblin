@@ -1180,6 +1180,18 @@ impl ScriptedEngine {
 }
 
 impl LayoutEngine for ScriptedEngine {
+    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
+        gnoblin_wm::layout::LayoutKind::Tiling
+    }
+
+    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
+        gnoblin_wm::layout::LayoutExtent::Output
+    }
+
+    fn declares(&self, _command: &str) -> bool {
+        false
+    }
+
     fn submit(&mut self, job: Job, generation: gnoblin_wm::layout::Generation) -> gnoblin_wm::layout::Ticket {
         let shape = *self.shape.lock().expect("the shape lock");
         let result = match job {

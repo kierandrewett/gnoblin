@@ -416,13 +416,6 @@ impl Server {
                             Command::SetOutputLayout { output, name, reply } => {
                                 let _ = reply.send(state.set_output_layout(&output, &name));
                             }
-                            Command::SetFloating {
-                                window,
-                                floating,
-                                reply,
-                            } => {
-                                let _ = reply.send(state.set_floating(window, floating));
-                            }
                             Command::IdleHold { holder, held, reply } => {
                                 let _ = reply.send(state.idle_hold(holder, held));
                             }
@@ -697,18 +690,6 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
-    /// Sets whether a window floats. `None` when the loop did not answer in time;
-    /// otherwise whether the window exists.
-    pub fn set_floating(&self, window: WindowId, floating: bool) -> Option<bool> {
-        let (reply, answer) = std::sync::mpsc::sync_channel(1);
-        self.control.push(Command::SetFloating {
-            window,
-            floating,
-            reply,
-        });
-        answer.recv_timeout(FOCUS_TIMEOUT).ok()
-    }
-
     /// Adds (`held` true) or removes one named idle holder. `None` when the loop did not
     /// answer in time; otherwise `Err` when adding would exceed the holder cap, and `Ok`
     /// with whether the set changed (adding a held name, or removing one that was held).
@@ -969,12 +950,6 @@ enum Command {
         output: String,
         name: String,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
-    },
-    /// Whether a window floats, and whether the window exists.
-    SetFloating {
-        window: WindowId,
-        floating: bool,
-        reply: std::sync::mpsc::SyncSender<bool>,
     },
     /// Adds or removes one idle holder; see `ControlHandle::idle_hold`.
     IdleHold {

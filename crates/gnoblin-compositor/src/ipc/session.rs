@@ -69,8 +69,6 @@ mod member {
     pub const ICON: &str = "icon";
     pub const TAG: &str = "tag";
     pub const MODAL: &str = "modal";
-    /// The `window` object's floating property.
-    pub const FLOATING: &str = "floating";
     /// The `window` object's unresponsive property.
     pub const UNRESPONSIVE: &str = "unresponsive";
     pub const LAYOUT: &str = "layout";
@@ -112,7 +110,6 @@ struct PublishedWindow {
     icon: String,
     tag: String,
     modal: bool,
-    floating: bool,
     unresponsive: bool,
     geometry: Rect,
 }
@@ -332,7 +329,6 @@ impl SessionSync {
                     icon,
                     tag,
                     modal: window.modal,
-                    floating: window.floating,
                     unresponsive: window.unresponsive,
                     geometry: window.geometry,
                 },
@@ -360,9 +356,6 @@ impl SessionSync {
         if previous.modal != window.modal {
             self.graph.set(object, member::MODAL, Value::Bool(window.modal))?;
         }
-        if previous.floating != window.floating {
-            self.graph.set(object, member::FLOATING, Value::Bool(window.floating))?;
-        }
         if previous.unresponsive != window.unresponsive {
             self.graph
                 .set(object, member::UNRESPONSIVE, Value::Bool(window.unresponsive))?;
@@ -380,7 +373,6 @@ impl SessionSync {
                 icon,
                 tag,
                 modal: window.modal,
-                floating: window.floating,
                 unresponsive: window.unresponsive,
                 geometry: window.geometry,
             },
@@ -644,7 +636,6 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
             Value::Text(observed.tag.clone().unwrap_or_default()),
         ),
         (member::MODAL.to_owned(), Value::Bool(observed.modal)),
-        (member::FLOATING.to_owned(), Value::Bool(observed.floating)),
         (member::UNRESPONSIVE.to_owned(), Value::Bool(observed.unresponsive)),
     ])
 }
@@ -678,7 +669,6 @@ mod tests {
             icon_buffer_count: 0,
             tag: None,
             modal: false,
-            floating: false,
             unresponsive: false,
             transient_for: None,
         }

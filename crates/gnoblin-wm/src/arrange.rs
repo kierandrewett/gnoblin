@@ -6,8 +6,8 @@
 //! tiled set on its output and that output's work area. Whenever the wanted
 //! input differs from the last submitted one, the wm submits a new run; a
 //! [`crate::Event::Frame`] collects finished runs with a deadline. The layout
-//! never writes window state or geometry: a settled `Float` effect is applied
-//! through the same path as [`crate::Event::SetFloating`].
+//! never writes window state or geometry: a settled `Float` effect moves the
+//! window to free placement, the same as [`crate::Event::ToggleFloat`].
 //!
 //! With no factory installed, nothing in this module runs and the wm behaves as
 //! before.
@@ -39,9 +39,8 @@
 //! - Workspace removed: its layout and engine are dropped.
 //! - Workspace switch: every workspace keeps its engine and its arrangement; only
 //!   visibility changes.
-//! - A settled `Float` effect is applied with `set_floating(window, true)` when the
-//!   window is still tiled on that workspace; the placement of a floated window is
-//!   not emitted.
+//! - A settled `Float` effect sets a tiled window's placement to free when it is still
+//!   tiled on that workspace; the placement of a free window is not emitted.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -51,8 +50,8 @@ use gnoblin_types::{OutputId, RectF, WindowId, WorkspaceId};
 
 use crate::effect::Effect;
 use crate::layout::{
-    Collected, Job, Layout, LayoutCommand, LayoutEngine, LayoutFailure, LayoutOutput, LayoutWindow, Params,
-    ParamsError, Placement, Request, RequestKind, Slot, Transform3,
+    Collected, Job, Layout, LayoutCommand, LayoutEngine, LayoutFailure, LayoutKind, LayoutOutput, LayoutWindow, Params,
+    ParamsError, Placement, Request, RequestKind, Slot, Transform3, WindowPlacement,
 };
 use crate::output::Output;
 use crate::window::{Window, WindowState};
@@ -71,6 +70,8 @@ pub(crate) struct Layouts {
 
 /// One workspace's engine and the parameters of its latest submitted run.
 struct WorkspaceLayout {
+    /// The kind the engine declared; it decides the placement of new windows.
+    kind: LayoutKind,
     output: Option<OutputId>,
     /// The output name the engine was built for. The engine is rebuilt when the
     /// workspace's output name changes.
@@ -85,8 +86,12 @@ struct WorkspaceLayout {
 }
 
 /// Whether a window takes part in tiling.
-pub(crate) fn is_tiled(state: &WindowState) -> bool {
-    !state.floating && !state.minimised && !state.fullscreen && !state.maximised && state.snapped.is_none()
+pub(crate) fn is_tiled(state: &WindowState, placement: WindowPlacement) -> bool {
+    placement == WindowPlacement::Managed
+        && !state.minimised
+        && !state.fullscreen
+        && !state.maximised
+        && state.snapped.is_none()
 }
 
 /// How a geometry request was answered.
@@ -133,6 +138,19 @@ fn placed_rect(placement: &Placement) -> Option<RectF> {
 }
 
 impl WorkspaceLayout {
+    /// Builds the layout for `workspace` on `output`, whose connector name is `name`.
+    fn build(factory: &mut Factory, workspace: WorkspaceId, output: Option<OutputId>, name: Option<String>) -> Self {
+        let engine = factory(workspace, name.as_deref());
+        Self {
+            output,
+            kind: engine.kind(),
+            engine_output: name,
+            slot: Slot::new(engine),
+            submitted: None,
+            placed: BTreeMap::new(),
+        }
+    }
+
     /// Keeps the rectangles of a settled layout's placements.
     fn remember(&mut self, layout: &Layout) {
         self.placed = layout
@@ -160,7 +178,9 @@ pub(crate) fn tiled_params(
     let work_area = entry.work_area();
     let tiled: Vec<LayoutWindow> = windows
         .values()
-        .filter(|window| window.workspace == workspace && window.output == Some(output) && is_tiled(&window.state))
+        .filter(|window| {
+            window.workspace == workspace && window.output == Some(output) && is_tiled(&window.state, window.placement)
+        })
         .map(|window| LayoutWindow {
             id: window.id,
             width: f64::from(window.geometry.width),
@@ -210,48 +230,63 @@ impl Layouts {
         self.by_workspace.clear();
     }
 
-    /// Creates a layout for each declared workspace, drops the layouts of removed
-    /// workspaces, and submits a run for each workspace whose wanted input changed.
+    /// Creates a layout for each declared workspace that has none, rebuilds the
+    /// engine of a workspace whose output name changed, and drops the layouts of
+    /// removed workspaces. Returns each workspace whose layout was created or whose
+    /// engine kind changed, so the wm can set the placements of its windows before
+    /// [`Layouts::sync`] reads them.
     ///
-    /// `wanted` gives the parameters for a workspace on its current output, and
-    /// `output_name` the connector name of an output (`None` while it is unknown).
-    /// An error means the input cannot be used: nothing is submitted, and the
-    /// failure is reported once until the input changes.
-    ///
-    /// A workspace whose output name changed gets a new engine, built for the new
-    /// name, so an output default applies to it. The engine's state is kept by the
-    /// layout host per layout name, so the rebuild does not lose it.
-    pub(crate) fn sync(
+    /// `output_name` gives the connector name of an output (`None` while it is
+    /// unknown). A workspace whose output name changed gets a new engine, built for
+    /// the new name, so an output default applies to it. The engine's state is kept
+    /// by the layout host per layout name, so the rebuild does not lose it.
+    pub(crate) fn rebuild(
         &mut self,
         workspaces: &[WorkspaceId],
         first_output: Option<OutputId>,
         output_name: impl Fn(OutputId) -> Option<String>,
-        wanted: impl Fn(WorkspaceId, Option<OutputId>) -> Result<Option<Params>, ParamsError>,
-    ) -> Vec<Effect> {
+    ) -> Vec<(WorkspaceId, LayoutKind)> {
         let Some(factory) = self.factory.as_mut() else {
             return Vec::new();
         };
         self.by_workspace.retain(|id, _| workspaces.contains(id));
+        let mut changed = Vec::new();
         for id in workspaces {
-            self.by_workspace.entry(*id).or_insert_with(|| {
-                let name = first_output.and_then(&output_name);
-                WorkspaceLayout {
-                    output: first_output,
-                    slot: Slot::new(factory(*id, name.as_deref())),
-                    engine_output: name,
-                    submitted: None,
-                    placed: BTreeMap::new(),
-                }
-            });
+            if self.by_workspace.contains_key(id) {
+                continue;
+            }
+            let name = first_output.and_then(&output_name);
+            let layout = WorkspaceLayout::build(factory, *id, first_output, name);
+            changed.push((*id, layout.kind));
+            self.by_workspace.insert(*id, layout);
         }
-        let mut effects = Vec::new();
         for (id, layout) in &mut self.by_workspace {
             let name = layout.output.and_then(&output_name);
-            if name != layout.engine_output {
-                layout.slot = Slot::new(factory(*id, name.as_deref()));
-                layout.engine_output = name;
-                layout.submitted = None;
+            if name == layout.engine_output {
+                continue;
             }
+            let rebuilt = WorkspaceLayout::build(factory, *id, layout.output, name);
+            if rebuilt.kind != layout.kind {
+                changed.push((*id, rebuilt.kind));
+            }
+            let placed = std::mem::take(&mut layout.placed);
+            *layout = WorkspaceLayout { placed, ..rebuilt };
+        }
+        changed
+    }
+
+    /// Submits a run for each workspace whose wanted input changed.
+    ///
+    /// `wanted` gives the parameters for a workspace on its current output. An
+    /// error means the input cannot be used: nothing is submitted, and the failure
+    /// is reported once until the input changes. [`Layouts::rebuild`] must run first
+    /// so every declared workspace has a layout.
+    pub(crate) fn sync(
+        &mut self,
+        wanted: impl Fn(WorkspaceId, Option<OutputId>) -> Result<Option<Params>, ParamsError>,
+    ) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        for (id, layout) in &mut self.by_workspace {
             let params = match wanted(*id, layout.output) {
                 Ok(params) => params,
                 Err(_) => {
@@ -328,6 +363,12 @@ impl Layouts {
     /// placed it.
     pub(crate) fn placed(&self, workspace: WorkspaceId, window: WindowId) -> Option<RectF> {
         self.by_workspace.get(&workspace)?.placed.get(&window).copied()
+    }
+
+    /// The kind the layout of `workspace` declared, or `None` when the workspace has
+    /// no layout yet.
+    pub(crate) fn kind(&self, workspace: WorkspaceId) -> Option<LayoutKind> {
+        self.by_workspace.get(&workspace).map(|layout| layout.kind)
     }
 
     /// Sends `command` to `workspace`'s engine and waits until `deadline`. A
@@ -427,24 +468,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_maximised_or_floating_window_is_not_tiled() {
-        let tiled = WindowState::default();
-        assert!(is_tiled(&tiled));
-        assert!(!is_tiled(&WindowState {
-            floating: true,
-            ..tiled
-        }));
-        assert!(!is_tiled(&WindowState {
-            maximised: true,
-            ..tiled
-        }));
-        assert!(!is_tiled(&WindowState {
-            fullscreen: true,
-            ..tiled
-        }));
-        assert!(!is_tiled(&WindowState {
-            minimised: true,
-            ..tiled
-        }));
+    fn a_maximised_or_free_window_is_not_tiled() {
+        let state = WindowState::default();
+        assert!(is_tiled(&state, WindowPlacement::Managed));
+        assert!(!is_tiled(&state, WindowPlacement::Free));
+        assert!(!is_tiled(
+            &WindowState {
+                maximised: true,
+                ..state
+            },
+            WindowPlacement::Managed
+        ));
+        assert!(!is_tiled(
+            &WindowState {
+                fullscreen: true,
+                ..state
+            },
+            WindowPlacement::Managed
+        ));
+        assert!(!is_tiled(
+            &WindowState {
+                minimised: true,
+                ..state
+            },
+            WindowPlacement::Managed
+        ));
     }
 }

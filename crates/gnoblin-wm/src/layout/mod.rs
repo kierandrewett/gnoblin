@@ -10,11 +10,13 @@
 mod engine;
 mod error;
 mod fallback;
+mod kind;
 mod placement;
 mod settle;
 mod transform;
 
 pub use engine::{Arg, Collected, Generation, Job, LayoutCommand, LayoutEngine, LayoutOutcome, Slot, Ticket};
+pub use kind::{LayoutExtent, LayoutKind, WindowPlacement};
 
 pub use error::{LayoutFailure, ParamsError, REFUSED_CODE, ReplyError, Subject};
 pub use fallback::fallback;

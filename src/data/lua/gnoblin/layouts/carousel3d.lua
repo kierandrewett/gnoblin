@@ -25,6 +25,7 @@
 -- Usage: gnoblin.layout.register("carousel3d", "gnoblin.layouts.carousel3d")
 
 local M = {}
+M.kind = "tiling"
 
 M.options = {
     fov_degrees = 40,

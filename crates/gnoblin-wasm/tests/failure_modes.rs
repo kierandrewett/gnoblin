@@ -685,11 +685,11 @@ fn the_event_words_are_the_generated_table() {
     );
 }
 
-// 10. The workspace, output-layout and floating members the schema adds are
-// accepted by the graph and read back through the same path the host uses.
+// 10. The workspace layout member the schema adds is accepted by the graph and read
+// back through the same path the host uses.
 #[test]
-fn the_layout_and_floating_members_round_trip_through_the_graph() {
-    let (mut server, window) = server();
+fn the_layout_member_round_trips_through_the_graph() {
+    let (mut server, _) = server();
     let workspace = server
         .create(TypeKey::gnoblin("workspace"), workspace_fields(1, "floating"))
         .expect("the graph takes a workspace");
@@ -702,17 +702,6 @@ fn the_layout_and_floating_members_round_trip_through_the_graph() {
             .object(workspace)
             .and_then(|object| object.property("layout").cloned()),
         Some(Value::Text("tile".to_owned()))
-    );
-
-    server
-        .set(window, "floating", Value::Bool(true))
-        .expect("the graph takes a floating change");
-    assert_eq!(
-        server
-            .graph()
-            .object(window)
-            .and_then(|object| object.property("floating").cloned()),
-        Some(Value::Bool(true))
     );
 }
 

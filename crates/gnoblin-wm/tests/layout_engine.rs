@@ -63,6 +63,18 @@ struct FakeEngine {
 }
 
 impl LayoutEngine for FakeEngine {
+    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
+        gnoblin_wm::layout::LayoutKind::Tiling
+    }
+
+    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
+        gnoblin_wm::layout::LayoutExtent::Output
+    }
+
+    fn declares(&self, _command: &str) -> bool {
+        false
+    }
+
     fn submit(&mut self, _job: Job, generation: Generation) -> Ticket {
         Ticket::new(generation)
     }

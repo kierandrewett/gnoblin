@@ -39,6 +39,18 @@ fn master_reply(params: &Params) -> Reply {
 }
 
 impl LayoutEngine for MasterEngine {
+    fn kind(&self) -> gnoblin_wm::layout::LayoutKind {
+        gnoblin_wm::layout::LayoutKind::Tiling
+    }
+
+    fn extent(&self) -> gnoblin_wm::layout::LayoutExtent {
+        gnoblin_wm::layout::LayoutExtent::Output
+    }
+
+    fn declares(&self, _command: &str) -> bool {
+        false
+    }
+
     fn submit(&mut self, job: Job, generation: gnoblin_wm::layout::Generation) -> gnoblin_wm::layout::Ticket {
         let result = match job {
             Job::Arrange(params) | Job::Request(gnoblin_wm::layout::Request { params, .. }) => {

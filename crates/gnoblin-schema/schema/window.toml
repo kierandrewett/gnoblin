@@ -84,24 +84,6 @@ since = "0.2.0"
 name = "closed"
 since = "0.2.0"
 
-# Whether the window floats, outside the tiled set of its workspace's layout.
-[[object.property]]
-name = "floating"
-type = "bool"
-since = "0.2.0"
-
-# Float the window (`true`) or return it to the tiled set (`false`). The window
-# manager's floating rule decides; a layout that handles the window may still place
-# it, so the `floating` property is what the window manager reports.
-[[object.method]]
-name = "set_floating"
-since = "0.2.0"
-
-[[object.method.param]]
-name = "floating"
-type = "bool"
-since = "0.2.0"
-
 # Whether the window's client has missed its liveness ping for longer than the
 # `window-management.check-alive-timeout` setting. Read-only: the compositor sets it.
 [[object.property]]
