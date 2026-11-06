@@ -17,9 +17,11 @@ use crate::name::LayerName;
 pub enum Scope {
     /// Attached to an output.
     Output(OutputId),
-    /// Attached to a window. The window is the layer's target. Window id `0`
-    /// names no window, so the registry refuses it.
-    Window(WindowId),
+    /// Attached to a window. `None` names no target yet, and the registry refuses
+    /// it as `WindowScopeNeedsWindow`. The `Option` is the typed form of "no
+    /// window": there is no sentinel id, so a valid window can never be confused
+    /// with a missing one.
+    Window(Option<WindowId>),
 }
 
 /// Where a layer sits inside its band, relative to other layers.

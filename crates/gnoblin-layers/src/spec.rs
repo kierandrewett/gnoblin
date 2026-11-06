@@ -13,7 +13,7 @@ use crate::scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LockBehaviour
 ///
 /// The `secure` flag is `false` by default. A provider sets `true` on a layer
 /// whose pixels must never be captured. Only the owner, or a user override in
-/// config, changes it later (see `SecureOverrides`).
+/// config, changes it later (see the invariants in `design/layers.md`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LayerSpec {
     /// The local part. The registry prefixes it with the provider's namespace.

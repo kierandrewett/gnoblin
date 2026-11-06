@@ -8,6 +8,10 @@
 
 use crate::name::{NameError, ProviderId};
 
+/// The crate name of the compositor itself. It is the only built-in that may
+/// register into the compositor-only bands, `Lock` and `Cursor`.
+pub const COMPOSITOR_CRATE: &str = "gnoblin-compositor";
+
 /// The party that registers and owns layers.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Provider {
@@ -34,9 +38,16 @@ impl Provider {
     }
 
     /// Whether this is a Gnoblin built-in, which may use the bands above the
-    /// extension ceiling and the compositor-only bands.
+    /// extension ceiling.
     #[must_use]
     pub fn is_builtin(&self) -> bool {
         matches!(self, Provider::Gnoblin(_))
+    }
+
+    /// Whether this is the compositor itself, the only provider that may register
+    /// into the compositor-only bands.
+    #[must_use]
+    pub fn is_compositor(&self) -> bool {
+        matches!(self, Provider::Gnoblin(name) if *name == COMPOSITOR_CRATE)
     }
 }

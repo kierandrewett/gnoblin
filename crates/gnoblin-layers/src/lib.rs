@@ -39,7 +39,8 @@
 //!
 //! # Phase 1 scope
 //!
-//! This phase adds the enums, the names and the spec. Nothing in the compositor
+//! This phase adds the enums, the names, the spec, the registry and the lifecycle
+//! rules. Nothing in the compositor
 //! depends on this crate yet, so adding it changes no behaviour.
 //!
 //! # Errors
@@ -51,6 +52,7 @@
 pub mod band;
 pub mod name;
 pub mod provider;
+pub mod registry;
 pub mod scope;
 pub mod spec;
 pub mod state;
@@ -58,6 +60,7 @@ pub mod state;
 pub use band::Band;
 pub use name::{LayerName, LocalName, NameError, ProviderId};
 pub use provider::Provider;
+pub use registry::{LayerHandle, LayerRecord, LayerRegistry, RegisterError};
 pub use scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LockBehaviour, Order, Scope};
 pub use spec::LayerSpec;
 pub use state::{EndReason, LayerState};
