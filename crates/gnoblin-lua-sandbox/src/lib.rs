@@ -14,8 +14,8 @@
 //! Two profiles choose the stdlib each state loads:
 //!
 //! - [`Profile::Config`] is the runtime's configuration VM: `string`, `table`,
-//!   `math`, `utf8` and the base library. `io`, `os`, `debug`, `package` and
-//!   `coroutine` are not opened, and the base functions that read files (`dofile`,
+//!   `math`, `utf8`, `coroutine` and the base library. `io`, `os`, `debug` and `package`
+//!   are not opened, and the base functions that read files (`dofile`,
 //!   `loadfile`) and the loader (`require`) are cleared.
 //! - [`Profile::Layout`] is the pure subset a layout runs under (D17). The base
 //!   library is cut to an allowlist, `string` to `len`, `sub`, `byte`, `char` and a
@@ -169,7 +169,7 @@ impl Guard {
 /// The caller arms `guard` with [`Guard::begin`] before each entry.
 pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua, Error> {
     let libraries = match profile {
-        Profile::Config => StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH,
+        Profile::Config => StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH | StdLib::COROUTINE,
         Profile::Layout => StdLib::TABLE | StdLib::STRING | StdLib::MATH,
     };
     let lua = Lua::new_with(libraries, LuaOptions::default())?;
@@ -244,16 +244,7 @@ fn rethrow_if_aborted(results: MultiValue, guard: &Guard) -> Result<MultiValue, 
 /// can read.
 fn clear_config(lua: &Lua) -> Result<(), Error> {
     let globals = lua.globals();
-    for name in [
-        "dofile",
-        "loadfile",
-        "require",
-        "os",
-        "io",
-        "debug",
-        "package",
-        "coroutine",
-    ] {
+    for name in ["dofile", "loadfile", "require", "os", "io", "debug", "package"] {
         globals.set(name, Value::Nil)?;
     }
     text_only_load(lua)
@@ -479,7 +470,7 @@ mod tests {
     #[test]
     fn config_profile_keeps_its_stdlib_and_clears_file_access() {
         let lua = lua(Profile::Config);
-        for name in ["os", "io", "require", "dofile", "coroutine", "package"] {
+        for name in ["os", "io", "require", "dofile", "package"] {
             let value: Value = lua.globals().get(name).expect("a global reads");
             assert!(
                 matches!(value, Value::Nil),
@@ -545,7 +536,7 @@ mod tests {
     }
 
     fn coroutine_state(limits: &Limits) -> (Lua, Rc<Guard>) {
-        armed_with_coroutines(limits)
+        armed(Profile::Config, limits)
     }
 
     fn small_budget() -> Limits {
@@ -748,17 +739,14 @@ mod tests {
         assert!(aborted);
     }
 
-    /// A state with the coroutine library open, for proving the limits before it is enabled.
-    fn armed_with_coroutines(limits: &Limits) -> (Lua, Rc<Guard>) {
-        let guard = Rc::new(Guard::new());
-        guard.begin(limits);
-        let libraries = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::COROUTINE;
-        let lua = Lua::new_with(libraries, LuaOptions::default()).expect("the state builds");
-        lua.set_memory_limit(limits.memory_bytes)
-            .expect("the memory limit is set");
-        install_hook(&lua, limits, Rc::clone(&guard)).expect("the hook is set");
-        guard_protected_calls(&lua, Rc::clone(&guard)).expect("pcall is wrapped");
-        (lua, guard)
+    #[test]
+    fn config_profile_opens_the_coroutine_library() {
+        let lua = lua(Profile::Config);
+        let value: String = lua
+            .load("return type(coroutine.wrap) .. type(coroutine.yield)")
+            .eval()
+            .expect("the coroutine library reads");
+        assert_eq!(value, "functionfunction");
     }
 
     fn armed(profile: Profile, limits: &Limits) -> (Lua, Rc<Guard>) {
