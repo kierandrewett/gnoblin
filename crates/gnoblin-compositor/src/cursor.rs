@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
+use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, ProviderKind};
 use gnoblin_config::{CursorProvider, SearchPaths, Store};
 use gnoblin_wayland::CursorSettings;
 use tracing::{debug, warn};
@@ -73,6 +73,7 @@ fn provider_kind(provider: CursorProvider) -> ProviderKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_backend::render::cursor::DEFAULT_CURSOR_THEME;
 
     #[test]
     fn an_absent_section_keeps_the_defaults() {
