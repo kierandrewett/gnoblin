@@ -5,9 +5,10 @@
 //! handlers, real pixels — on a machine with no display, and so the compositor has
 //! one backend that starts anywhere.
 //!
-//! Each output owns a [`Software`] renderer drawing into an offscreen buffer, so a
-//! headless session produces the same pixels a DRM session would: the difference is
-//! that nothing is scanned out, which is why [`HeadlessTarget::present`] reports
+//! Each output owns an [`AnyRenderer`] drawing into an offscreen buffer, software unless the
+//! configuration says otherwise, so a headless session produces the same pixels a DRM
+//! session would: the difference is that nothing is scanned out, which is why
+//! [`HeadlessTarget::present`] reports
 //! [`Present::Nothing`] while still keeping the clipped damage of each present. The
 //! buffer is what [`Backend::screenshot`] reads back.
 //!
@@ -16,13 +17,12 @@
 //!
 //! ## Choosing the renderer
 //!
-//! [`HeadlessConfig`] selects the renderer a headless output draws with: [`HeadlessTarget`]'s
-//! [`Software`] path, which is the default and the reference, the [`Gles`] path, which is
-//! the same frame drawn on a surfaceless GLES context (D12's GPU half), or the Vulkan path
-//! (`render::Vulkan`, behind the `vulkan` feature). The default is chosen by
-//! [`HeadlessRenderer::default`], so a session that says nothing about rendering gets the
-//! software path. The `compositor.renderer` setting reaches this through
-//! [`HeadlessConfig::from_setting`].
+//! [`HeadlessConfig`] holds the [`RendererKind`] every output draws with: software
+//! (the default and the reference), [`Gles`] (the same frame drawn on a surfaceless GLES
+//! context, D12's GPU half) or Vulkan (`render::Vulkan`, behind the `vulkan` feature). The
+//! `compositor.renderer` setting reaches this through [`HeadlessConfig::from_setting`], and
+//! `auto` means [`RendererKind::AUTO`]. This file only holds the choice: building and
+//! driving the renderer is [`AnyRenderer`]'s job.
 //!
 //! ## Driving a backend the session owns
 //!
@@ -58,9 +58,7 @@ use gnoblin_output::DisplayMode;
 
 use gnoblin_config::RendererChoice;
 
-#[cfg(feature = "vulkan")]
-use crate::render::Vulkan;
-use crate::render::{Gles, Image, OutputFrame, RenderError, Software};
+use crate::render::{AnyRenderer, Gles, Image, OutputFrame, RenderError, RendererKind};
 use crate::{
     Backend, BackendError, BackendEvent, GammaRamp, Host, InputEvent, InputSource, Output, OutputControls, Present,
     Target,
@@ -99,73 +97,6 @@ pub const DEFAULT_MODE: DisplayMode = DisplayMode::new(1024, 768, 60_000);
 /// configuration document can address it and a log line reads like a session.
 pub const DEFAULT_CONNECTOR: &str = "HEADLESS-1";
 
-/// Which renderer a headless output draws with.
-///
-/// The software path is the reference: it needs no GPU, no EGL and no session, which is what
-/// makes it the default. The GLES path is the same [`OutputFrame`] drawn on a surfaceless
-/// GLES context, and it exists here so a session and a test can choose it without a DRM or
-/// nested backend.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum HeadlessRenderer {
-    /// Smithay's Pixman renderer: pixels with no GPU.
-    #[default]
-    Software,
-    /// Smithay's GLES renderer on a surfaceless EGL context: effects and user shaders.
-    Gles,
-    /// The Vulkan renderer on the device the loader offers, which may be a software driver.
-    ///
-    /// A build without the `vulkan` feature cannot create it and reports
-    /// [`RenderError::Unavailable`].
-    Vulkan,
-}
-
-impl HeadlessRenderer {
-    /// The renderer's name, for a log line and a startup report.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Software => "software",
-            Self::Gles => "gles",
-            Self::Vulkan => "vulkan",
-        }
-    }
-
-    /// The renderer a `compositor.renderer` setting names.
-    ///
-    /// `auto` is the default: a headless session draws in software unless it is told otherwise.
-    #[must_use]
-    pub const fn from_setting(setting: RendererChoice) -> Self {
-        match setting {
-            RendererChoice::Auto | RendererChoice::Software => Self::Software,
-            RendererChoice::Gles => Self::Gles,
-            RendererChoice::Vulkan => Self::Vulkan,
-        }
-    }
-
-    /// A renderer of this kind with a target of `physical` pixels.
-    ///
-    /// # Errors
-    ///
-    /// [`RenderError::Unavailable`] when this machine cannot create the renderer at all —
-    /// for the GLES path, no EGL library, no surfaceless platform or no GLES 3 context; for
-    /// the Vulkan path, no loader, no device or a refused shader, which the log names.
-    fn build(self, physical: Size) -> Result<TargetRenderer, RenderError> {
-        match self {
-            Self::Software => Software::new(physical).map(|software| TargetRenderer::Software(Box::new(software))),
-            Self::Gles => Gles::new(physical).map(|gles| TargetRenderer::Gles(Box::new(gles))),
-            #[cfg(feature = "vulkan")]
-            Self::Vulkan => Vulkan::new(physical)
-                .map(|vulkan| TargetRenderer::Vulkan(Box::new(vulkan)))
-                .map_err(crate::render::vulkan::VulkanError::into_render_error),
-            #[cfg(not(feature = "vulkan"))]
-            Self::Vulkan => {
-                gnoblin_log::warn!("[render] this build has no Vulkan renderer (the `vulkan` feature is off)");
-                Err(RenderError::Unavailable)
-            }
-        }
-    }
-}
-
 /// What a headless session starts with.
 ///
 /// It is a value rather than a set of arguments so a caller that will grow properties — a
@@ -174,7 +105,7 @@ impl HeadlessRenderer {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct HeadlessConfig {
     /// The renderer every output draws with.
-    pub renderer: HeadlessRenderer,
+    pub renderer: RendererKind,
 }
 
 impl HeadlessConfig {
@@ -188,7 +119,7 @@ impl HeadlessConfig {
     #[must_use]
     pub fn gles() -> Self {
         Self {
-            renderer: HeadlessRenderer::Gles,
+            renderer: RendererKind::Gles,
         }
     }
 
@@ -196,7 +127,7 @@ impl HeadlessConfig {
     #[must_use]
     pub fn vulkan() -> Self {
         Self {
-            renderer: HeadlessRenderer::Vulkan,
+            renderer: RendererKind::Vulkan,
         }
     }
 
@@ -204,60 +135,7 @@ impl HeadlessConfig {
     #[must_use]
     pub fn from_setting(setting: RendererChoice) -> Self {
         Self {
-            renderer: HeadlessRenderer::from_setting(setting),
-        }
-    }
-}
-
-/// The renderer one virtual output draws with.
-///
-/// It is an enum rather than a `Box<dyn ...>` because the two answers are fixed at build
-/// time and the target's own methods stay visible to a test: `screenshot` on a
-/// [`HeadlessTarget`] reads whichever one is installed. The GLES variant is much larger than
-/// the software one, which is why the whole thing is boxed: a target is created once per
-/// output, so a second allocation there costs nothing a frame feels.
-enum TargetRenderer {
-    /// Pixman, into an offscreen image buffer.
-    Software(Box<Software>),
-    /// GLES, into a texture on a surfaceless context.
-    ///
-    /// Boxed because a GLES renderer owns a context and four programs and is several times
-    /// the size of a pixman one; without the box every target in the session would reserve
-    /// the larger size.
-    Gles(Box<Gles>),
-    /// Vulkan, into an offscreen image on the device the loader offers.
-    #[cfg(feature = "vulkan")]
-    Vulkan(Box<Vulkan>),
-}
-
-impl TargetRenderer {
-    /// Draws a frame, repainting only its damage.
-    fn draw(&mut self, frame: &OutputFrame, scale: Scale) -> Result<(), RenderError> {
-        match self {
-            Self::Software(software) => software.draw(frame, scale),
-            Self::Gles(gles) => gles.draw(frame, scale),
-            #[cfg(feature = "vulkan")]
-            Self::Vulkan(vulkan) => vulkan.draw(frame, scale),
-        }
-    }
-
-    /// Reads the frame back, with the cursor composed in when `with_cursor` is set.
-    fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
-        match self {
-            Self::Software(software) => software.capture(with_cursor),
-            Self::Gles(gles) => gles.capture(with_cursor),
-            #[cfg(feature = "vulkan")]
-            Self::Vulkan(vulkan) => vulkan.capture(with_cursor),
-        }
-    }
-
-    /// Replaces the buffer with one of the given size.
-    fn resize(&mut self, physical: Size) -> Result<(), RenderError> {
-        match self {
-            Self::Software(software) => software.resize(physical),
-            Self::Gles(gles) => gles.resize(physical),
-            #[cfg(feature = "vulkan")]
-            Self::Vulkan(vulkan) => vulkan.resize(physical),
+            renderer: RendererKind::from_setting(setting),
         }
     }
 }
@@ -275,7 +153,7 @@ pub struct HeadlessTarget {
     scale: Scale,
     presents: u64,
     damage: Vec<Rect>,
-    renderer: Box<TargetRenderer>,
+    renderer: AnyRenderer,
 }
 
 impl std::fmt::Debug for HeadlessTarget {
@@ -300,7 +178,7 @@ impl HeadlessTarget {
     /// [`RenderError`] when the size covers no pixels or the software renderer
     /// cannot be created, which means the session cannot draw at all.
     pub fn new(mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
-        Self::with_renderer(HeadlessRenderer::Software, mode, scale)
+        Self::with_renderer(RendererKind::Software, mode, scale)
     }
 
     /// A target of the given mode and scale, drawn by the given renderer.
@@ -309,8 +187,8 @@ impl HeadlessTarget {
     ///
     /// [`RenderError::Degenerate`] when the mode covers no pixels, and
     /// [`RenderError::Unavailable`] when the renderer cannot be created on this machine —
-    /// which for [`HeadlessRenderer::Gles`] means no surfaceless EGL context.
-    pub fn with_renderer(renderer: HeadlessRenderer, mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
+    /// which for [`RendererKind::Gles`] means no surfaceless EGL context.
+    pub fn with_renderer(kind: RendererKind, mode: DisplayMode, scale: Scale) -> Result<Self, RenderError> {
         let physical = Size::new(mode.width, mode.height);
         let size = mode.logical_size(gnoblin_types::Orientation::Normal, scale);
         Ok(Self {
@@ -319,34 +197,24 @@ impl HeadlessTarget {
             scale,
             presents: 0,
             damage: Vec::new(),
-            renderer: Box::new(renderer.build(physical)?),
+            renderer: AnyRenderer::new(kind, physical)?,
         })
     }
 
     /// The renderer this target draws with.
     #[must_use]
-    pub fn renderer(&self) -> &'static str {
-        match *self.renderer {
-            TargetRenderer::Software(_) => "software",
-            TargetRenderer::Gles(_) => "gles",
-            #[cfg(feature = "vulkan")]
-            TargetRenderer::Vulkan(_) => "vulkan",
-        }
+    pub fn renderer(&self) -> RendererKind {
+        self.renderer.kind()
     }
 
     /// The GLES renderer, when this target draws with one.
     ///
     /// A test that wants the draw counter or a shader error reaches the renderer through
-    /// this; the software path answers [`None`], because a question about a device has no
+    /// this; the other renderers answer [`None`], because a question about a GL device has no
     /// answer without one.
     #[must_use]
     pub fn gles(&mut self) -> Option<&mut Gles> {
-        match &mut *self.renderer {
-            TargetRenderer::Software(_) => None,
-            TargetRenderer::Gles(gles) => Some(gles.as_mut()),
-            #[cfg(feature = "vulkan")]
-            TargetRenderer::Vulkan(_) => None,
-        }
+        self.renderer.gles_mut()
     }
 
     /// How many frames the target was asked to present.
@@ -552,7 +420,7 @@ pub struct Headless {
     /// unplug cannot name an output that already exists.
     next_output: u64,
     /// The renderer every output this backend connects draws with.
-    renderer: HeadlessRenderer,
+    renderer: RendererKind,
     /// The gamma and power state last applied, shared with the handle a test holds.
     control: Arc<Mutex<HeadlessControl>>,
 }
@@ -592,7 +460,7 @@ impl Headless {
     /// # Errors
     ///
     /// [`RenderError::Unavailable`] when the selected renderer cannot be created on this
-    /// machine: [`HeadlessRenderer::Gles`] asks for a surfaceless EGL context, and a headless
+    /// machine: [`RendererKind::Gles`] asks for a surfaceless EGL context, and a headless
     /// session that cannot draw is better refused here than left to fail on its first frame.
     pub fn with_config(config: HeadlessConfig) -> Result<Self, RenderError> {
         let mut backend = Self::empty();
@@ -617,7 +485,7 @@ impl Headless {
             requests: Arc::new(Mutex::new(HeadlessRequests::default())),
             presenting: true,
             next_output: 0,
-            renderer: HeadlessRenderer::default(),
+            renderer: RendererKind::default(),
             control: Arc::new(Mutex::new(HeadlessControl::default())),
         }
     }
@@ -1073,8 +941,8 @@ mod tests {
             return;
         };
         assert_eq!(
-            HeadlessRenderer::default(),
-            HeadlessRenderer::Software,
+            RendererKind::default(),
+            RendererKind::Software,
             "the default stays software"
         );
         let output = backend.outputs[0].id;
@@ -1087,7 +955,7 @@ mod tests {
             "the GLES path draws the same frame the software path does"
         );
         let target = backend.target_of(output).expect("the output has a target");
-        assert_eq!(target.renderer(), "gles");
+        assert_eq!(target.renderer(), RendererKind::Gles);
         assert_eq!(
             target.presents(),
             1,
@@ -1096,27 +964,19 @@ mod tests {
     }
 
     #[test]
-    fn the_renderer_setting_selects_the_renderer_and_auto_keeps_the_default() {
+    fn a_renderer_setting_reaches_the_headless_configuration() {
         assert_eq!(
-            HeadlessRenderer::from_setting(RendererChoice::Auto),
-            HeadlessRenderer::default(),
+            HeadlessConfig::from_setting(RendererChoice::Auto),
+            HeadlessConfig::new(),
             "auto is what a session that says nothing gets"
         );
         assert_eq!(
-            HeadlessRenderer::from_setting(RendererChoice::Software),
-            HeadlessRenderer::Software
+            HeadlessConfig::from_setting(RendererChoice::Gles),
+            HeadlessConfig::gles()
         );
         assert_eq!(
-            HeadlessRenderer::from_setting(RendererChoice::Gles),
-            HeadlessRenderer::Gles
-        );
-        assert_eq!(
-            HeadlessRenderer::from_setting(RendererChoice::Vulkan),
-            HeadlessRenderer::Vulkan
-        );
-        assert_eq!(
-            HeadlessConfig::from_setting(RendererChoice::Auto),
-            HeadlessConfig::new()
+            HeadlessConfig::from_setting(RendererChoice::Vulkan),
+            HeadlessConfig::vulkan()
         );
     }
 
@@ -1137,7 +997,7 @@ mod tests {
             "the Vulkan path draws the same frame the software path does"
         );
         let target = backend.target_of(output).expect("the output has a target");
-        assert_eq!(target.renderer(), "vulkan");
+        assert_eq!(target.renderer(), RendererKind::Vulkan);
     }
 
     #[test]

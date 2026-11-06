@@ -1,5 +1,5 @@
-//! The render path: a frame description, a software renderer, a readback, and the
-//! session scene that produces the description.
+//! The render path: a frame description, three renderers, the shaders they share, a
+//! readback, and the session scene that produces the description.
 //!
 //! This is the Renderer card of `design/rust-compositor.md` at the mechanism layer
 //! (D12: GLES now, Pixman for software). It is split so the parts can be replaced
@@ -8,11 +8,16 @@
 //! | Module              | Owns                                                              |
 //! | ------------------- | ----------------------------------------------------------------- |
 //! | [`frame`]           | what an output draws, in numbers and client buffers, no renderer   |
+//! | [`geometry`]        | the one rule that turns a logical rectangle into pixels            |
+//! | [`shader`]          | the WGSL passes and the uniform block: written once, no GPU API    |
 //! | [`software`]        | Pixman: the frame into an offscreen buffer, damage-only            |
 //! | [`gles`]            | Smithay's GLES renderer: the same frame with effects and shaders   |
-//! | `vulkan`            | `ash`: the same frame on a GPU or lavapipe, no effects yet         |
+//! | `vulkan`            | `ash`: the same frame on a GPU or lavapipe, no effects yet (`vulkan` feature) |
+//! | [`renderer`]        | [`RendererKind`], the choice, and [`AnyRenderer`], the choice made |
 //! | [`image`]           | the RGBA8 readback a screenshot, capture and the parity probes use |
 //! | [`compose`]         | the session's `gnoblin_render::Scene` and the frame it produces    |
+//! | [`error`]           | [`RenderError`], the small `Copy` reason a renderer could not draw |
+//! | [`shm`]             | the one writer of a client's `wl_shm` pool                         |
 //!
 //! # Why the frame is a value
 //!
@@ -21,6 +26,42 @@
 //! makes D12's "write every effect once, compile per backend" possible later, and
 //! it is why the scene-to-frame step ([`Composer`]) can be unit-tested without a
 //! device.
+//!
+//! # Choosing a renderer
+//!
+//! The three renderers share four calls (`new`, `draw`, `capture`, `resize`) over an
+//! [`OutputFrame`], and the choice is [`RendererKind`], with [`RendererKind::AUTO`] as the
+//! single statement of what `compositor.renderer = auto` means. Each backend picks its
+//! renderer in one place:
+//!
+//! | Backend  | Picks                                                                          |
+//! | -------- | ------------------------------------------------------------------------------ |
+//! | headless | `HeadlessConfig::renderer`, any kind, built by [`AnyRenderer::new`]            |
+//! | nested   | [`Software`], hard-wired in `nested/surface.rs`; the compositor refuses others |
+//! | DRM      | [`Gles`], hard-wired in `drm/scanout.rs` on the device's EGL display           |
+//!
+//! Nested and DRM do not go through [`AnyRenderer`] yet: DRM needs to draw into a scan-out
+//! buffer the device owns, which the offscreen constructor does not offer (see "Target
+//! ownership" in `design/vulkan-backend.md`).
+//!
+//! ## Why an enum and not a trait
+//!
+//! [`AnyRenderer`] is an enum with one `match` per call, written once by a macro. A trait
+//! would name the same four calls, but they are all the three renderers have in common:
+//! GLES alone has an EGL display and context, a scan-out buffer, user shaders, a shader
+//! error and a draw counter; Vulkan owns its device and target; Pixman has neither. Every
+//! caller that wants one of those (a test reading [`Gles::draws`], DRM calling
+//! `draw_scanout`) would have to downcast out of a `Box<dyn ...>` through an `as_any`
+//! escape hatch, or the trait would grow methods two of the three implement as no-ops.
+//! The set is closed and chosen at build time, so an enum costs nothing a trait buys:
+//! [`AnyRenderer::gles_mut`] is a plain `Option`, and adding a renderer is a compile error
+//! at every `match` instead of a silent default.
+//!
+//! What it replaced, in `headless.rs`: a private enum over the three renderers and a public
+//! choice enum beside it, with six `match` expressions over the renderers and nine
+//! `cfg(feature = "vulkan")` attributes. The feature is now tested in `renderer.rs` for
+//! dispatch, so a build without it has one named refusal (`Unavailable` and a log line)
+//! instead of an arm per method.
 //!
 //! # Contract with the backend
 //!
@@ -44,6 +85,7 @@ pub mod frame;
 pub mod geometry;
 pub mod gles;
 pub mod image;
+pub mod renderer;
 pub mod shader;
 // The one module in this crate that needs `unsafe`: writing a frame into a client's
 // `wl_shm` pool. Its own documentation says why.
@@ -63,6 +105,7 @@ pub use gles::Gles;
 pub use gnoblin_render::cursor;
 pub use gnoblin_render::{Color, Mat4};
 pub use image::Image;
+pub use renderer::{AnyRenderer, RendererKind};
 pub use shm::copy_into as copy_into_shm;
 pub use software::Software;
 #[cfg(feature = "vulkan")]
