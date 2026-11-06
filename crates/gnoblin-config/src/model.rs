@@ -226,6 +226,8 @@ pub enum Kind {
     EnumBoolMap(&'static str),
     /// A table keyed by a name, with a list of strings as each value.
     TextListMap,
+    /// A layout name, or a module reference: text or a table.
+    LayoutSelector,
 }
 
 /// The declared default of a setting.

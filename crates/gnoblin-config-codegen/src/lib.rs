@@ -44,6 +44,54 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
+/// The layout types every `layout-selector` field generates. They are fixed, not
+/// per-schema: a layout is named by text, or referenced by root, module, content
+/// hash and plain options, and the compositor resolves that reference itself.
+const LAYOUT_TYPES: &str = r#"/// Where a layout module is read from: one of two fixed roots, never a path on disk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutRoot {
+    /// The layouts the compositor ships.
+    Shipped,
+    /// The layouts in the user's configuration directory.
+    User,
+}
+
+/// A plain value passed to a layout module as one of its options.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LayoutOptionValue {
+    /// A boolean option.
+    Bool(bool),
+    /// An integer option.
+    Integer(i64),
+    /// A number option.
+    Float(f64),
+    /// A text option.
+    Text(String),
+}
+
+/// A layout module named by its root, dotted module path, content hash and options.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayoutReference {
+    /// The root the module is read from.
+    pub root: LayoutRoot,
+    /// The dotted module path under the root, for example `gnoblin.layouts.tile`.
+    pub module: String,
+    /// The content hash the module must have, as hex.
+    pub hash: String,
+    /// The options the layout starts with, by name.
+    pub options: std::collections::BTreeMap<String, LayoutOptionValue>,
+}
+
+/// A layout a setting names: a shipped layout by its name, or a module by reference.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LayoutSelector {
+    /// A shipped layout, by name. This is shorthand for `gnoblin.layouts.<name>`.
+    Named(String),
+    /// A module reference, verified against its hash before it runs.
+    Reference(LayoutReference),
+}
+"#;
+
 use serde::Deserialize;
 
 /// Everything the generator writes.
@@ -107,6 +155,7 @@ enum Kind {
     RecordMap,
     EnumBoolMap,
     TextListMap,
+    LayoutSelector,
 }
 
 impl Kind {
@@ -125,6 +174,7 @@ impl Kind {
             "record-map" => Kind::RecordMap,
             "enum-bool-map" => Kind::EnumBoolMap,
             "text-list-map" => Kind::TextListMap,
+            "layout-selector" => Kind::LayoutSelector,
             _ => return None,
         })
     }
@@ -608,6 +658,7 @@ fn value_type(field: &FieldDecl) -> String {
         Kind::RecordMap => format!("BTreeMap<String, {}>", field.record.clone().unwrap_or_default()),
         Kind::EnumBoolMap => format!("BTreeMap<{}, bool>", field.enum_name.clone().unwrap_or_default()),
         Kind::TextListMap => "BTreeMap<String, Vec<String>>".to_owned(),
+        Kind::LayoutSelector => "LayoutSelector".to_owned(),
     }
 }
 
@@ -690,6 +741,10 @@ fn read_call(field: &FieldDecl) -> String {
         ),
         Kind::EnumBoolMap => "enum_bool_map(map, path, out)".to_owned(),
         Kind::TextListMap => "text_list_map(map, path, out, IdShape::Renderer)".to_owned(),
+        Kind::LayoutSelector => format!(
+            "layout_selector(map, \"{key}\", path, out, \"{}\")",
+            esc(&field.accepted)
+        ),
     }
 }
 
@@ -765,6 +820,7 @@ fn render_rust(schema: &Schema) -> String {
     let _ = writeln!(text, "use crate::path::Path;");
     let _ = writeln!(text, "use crate::value::Value;");
     let _ = writeln!(text);
+    text.push_str(LAYOUT_TYPES);
 
     for decl in &schema.r#enum {
         let _ = writeln!(text, "/// {}", decl.doc);
@@ -989,6 +1045,7 @@ fn kind_literal(field: &FieldDecl) -> String {
         Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", field.record.clone().unwrap_or_default()),
         Kind::EnumBoolMap => format!("Kind::EnumBoolMap(\"{}\")", field.enum_name.clone().unwrap_or_default()),
         Kind::TextListMap => "Kind::TextListMap".to_owned(),
+        Kind::LayoutSelector => "Kind::LayoutSelector".to_owned(),
     }
 }
 
@@ -1291,6 +1348,7 @@ fn lua_type(field: &FieldDecl) -> String {
         Kind::RecordList | Kind::RecordMap => "table".to_owned(),
         Kind::EnumBoolMap => "table".to_owned(),
         Kind::TextListMap => "table".to_owned(),
+        Kind::LayoutSelector => "string | table".to_owned(),
     };
     if field.inherit {
         format!("{base} | \"inherit\"")

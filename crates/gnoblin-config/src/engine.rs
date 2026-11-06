@@ -14,6 +14,7 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
+use crate::generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
 use crate::model::{self, EnumParse, Inherit, SettingEnum};
 use crate::path::Path;
 use crate::problem::{Fault, Problem};
@@ -654,6 +655,159 @@ fn parse_records<T>(
         }
     }
     records
+}
+
+/// The layout a `layout-selector` setting names: a text name, or a table naming a
+/// module by root, path, content hash and plain options. Each problem is recorded at
+/// the leaf it concerns, so the warning points at the field that is wrong. An absent
+/// key is not a problem, because the setting is optional.
+pub(crate) fn layout_selector(
+    map: &mut BTreeMap<String, Value>,
+    key: &str,
+    path: &Path,
+    out: &mut Parser,
+    expected: &'static str,
+) -> Option<LayoutSelector> {
+    let leaf = path.key(key);
+    let value = map.get_mut(key)?;
+    let found = value.kind();
+    match value {
+        Value::String(name) if !name.is_empty() => Some(LayoutSelector::Named(name.clone())),
+        Value::String(_) => {
+            out.problem(
+                &leaf,
+                Fault::UnsupportedValue {
+                    expected: expected.to_owned(),
+                },
+            );
+            None
+        }
+        Value::Map(fields) => layout_reference(fields, &leaf, out).map(LayoutSelector::Reference),
+        _ => {
+            out.problem(&leaf, Fault::WrongType { expected, found });
+            None
+        }
+    }
+}
+
+/// The fields of a module reference: `root`, `module` and `hash` are required and
+/// `options` is optional. An unknown field is refused rather than ignored, so a typo
+/// cannot silently change which layout runs.
+fn layout_reference(fields: &mut BTreeMap<String, Value>, path: &Path, out: &mut Parser) -> Option<LayoutReference> {
+    const KEYS: &[&str] = &["root", "module", "hash", "options"];
+    let mut complete = true;
+    for key in fields.keys() {
+        if !KEYS.contains(&key.as_str()) {
+            out.problem(&path.key(key), Fault::UnknownKey { accepted: KEYS });
+            complete = false;
+        }
+    }
+    let required = [
+        ("root", "\"shipped\" or \"user\""),
+        ("module", "a dotted module path"),
+        ("hash", "a hex content hash"),
+    ];
+    for (key, expected) in required {
+        if !require(fields, key, path, out, expected) {
+            complete = false;
+        }
+    }
+    if !complete {
+        return None;
+    }
+
+    let root = match text(fields, "root", path, out)?.as_str() {
+        "shipped" => LayoutRoot::Shipped,
+        "user" => LayoutRoot::User,
+        _ => {
+            out.problem(
+                &path.key("root"),
+                Fault::UnsupportedValue {
+                    expected: "\"shipped\" or \"user\"".to_owned(),
+                },
+            );
+            return None;
+        }
+    };
+    let module = text(fields, "module", path, out)?;
+    if !is_module_path(&module) {
+        out.problem(
+            &path.key("module"),
+            Fault::UnsupportedValue {
+                expected: "a dotted module path of identifiers".to_owned(),
+            },
+        );
+        return None;
+    }
+    let hash = text(fields, "hash", path, out)?;
+    if hash.is_empty() || !hash.chars().all(|character| character.is_ascii_hexdigit()) {
+        out.problem(
+            &path.key("hash"),
+            Fault::UnsupportedValue {
+                expected: "a hex content hash".to_owned(),
+            },
+        );
+        return None;
+    }
+    let options = match fields.get_mut("options") {
+        None => BTreeMap::new(),
+        Some(value) => layout_options(value, &path.key("options"), out)?,
+    };
+    Some(LayoutReference {
+        root,
+        module,
+        hash,
+        options,
+    })
+}
+
+/// The options table of a module reference. Every value must be a plain boolean,
+/// finite number or text: a table or list cannot be passed to a layout as an option.
+fn layout_options(value: &mut Value, path: &Path, out: &mut Parser) -> Option<BTreeMap<String, LayoutOptionValue>> {
+    let found = value.kind();
+    let Value::Map(entries) = value else {
+        out.problem(
+            path,
+            Fault::WrongType {
+                expected: "a table of plain values",
+                found,
+            },
+        );
+        return None;
+    };
+    let mut options = BTreeMap::new();
+    let mut complete = true;
+    for (name, item) in entries.iter() {
+        let option = match item {
+            Value::Bool(flag) => LayoutOptionValue::Bool(*flag),
+            Value::Integer(number) => LayoutOptionValue::Integer(*number),
+            Value::Float(number) if number.is_finite() => LayoutOptionValue::Float(*number),
+            Value::String(written) => LayoutOptionValue::Text(written.clone()),
+            _ => {
+                out.problem(
+                    &path.key(name),
+                    Fault::UnsupportedValue {
+                        expected: "a plain value: a boolean, finite number or text".to_owned(),
+                    },
+                );
+                complete = false;
+                continue;
+            }
+        };
+        options.insert(name.clone(), option);
+    }
+    complete.then_some(options)
+}
+
+/// Whether `path` is a dotted module path whose segments are identifiers.
+fn is_module_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        })
 }
 
 /// The table at `key`, whose keys are device ids and whose values are records.
