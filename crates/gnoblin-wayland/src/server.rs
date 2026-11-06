@@ -138,6 +138,10 @@ pub struct Config {
     /// How long a client may leave a ping unanswered before its windows are marked
     /// unresponsive. Zero disables the liveness pings.
     pub check_alive_timeout: Duration,
+    /// Whether the session clock follows the loop's real time, so idle and a rest focus fire
+    /// without a caller advancing it. A test that must not depend on wall time sets this to
+    /// `false` and advances the clock itself with [`Session::advance`].
+    pub wall_clock: bool,
     /// A reader outside the loop that is told when the observable state changed.
     ///
     /// It is how the composition root feeds its object graph from the same
@@ -185,6 +189,7 @@ impl Default for Config {
             workspaces: 1,
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
+            wall_clock: true,
             observer: None,
             protocols: Protocols::default(),
             input_sources: None,
@@ -301,6 +306,7 @@ impl Server {
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
+        state.wall_clock = config.wall_clock;
         let heads = crate::output_config::BackendOutputConfig::new(backend.as_mut(), state.output_positions()).heads();
         state.publish_output_heads(heads);
         // The keyboard is configured before the socket is bound, so the first client that
@@ -435,7 +441,7 @@ impl Server {
                             } => {
                                 let _ = reply.send(state.layout_command(workspace, command));
                             }
-                            Command::Advance(milliseconds) => state.advance_clock(milliseconds),
+                            Command::Advance(milliseconds) => state.tick_clock(milliseconds),
                             Command::SelectSource(index) => {
                                 if !state.select_input_source(index) {
                                     warn!(index, "[keyboard] no such input source");
@@ -552,7 +558,9 @@ impl Server {
                 if let Some(previous) = last_turn {
                     let elapsed = now.duration_since(previous).as_millis();
                     let milliseconds = u64::try_from(elapsed).unwrap_or(u64::MAX);
-                    state.advance_clock(milliseconds);
+                    if state.wall_clock {
+                        state.tick_clock(milliseconds);
+                    }
                     state.advance_motion(u32::try_from(elapsed).unwrap_or(u32::MAX));
                 }
                 last_turn = Some(now);

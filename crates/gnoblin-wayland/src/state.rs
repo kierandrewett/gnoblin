@@ -434,6 +434,9 @@ pub struct State {
     pub(crate) activity: Activity,
     /// The liveness pings and the clients that have missed them.
     pub(crate) liveness: crate::liveness::Liveness,
+    /// Whether the session clock follows the loop's real time. A test that must not depend
+    /// on wall time turns it off and advances the clock itself.
+    pub(crate) wall_clock: bool,
 
     /// The window management policy.
     ///
@@ -753,6 +756,7 @@ impl State {
             clock: Tick::ZERO,
             activity: Activity::new(),
             liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
+            wall_clock: true,
             wm: Wm::new(options),
             windows: BTreeMap::new(),
             outputs: Vec::new(),
@@ -1869,6 +1873,13 @@ impl State {
     /// Advances the window animations by the real time one loop turn took.
     pub(crate) fn advance_motion(&mut self, elapsed_ms: u32) {
         self.composer.advance_motion(elapsed_ms);
+    }
+
+    /// Advances the session clock and gives the window manager the new time, so a rest
+    /// focus that has come due takes effect without any pointer event.
+    pub(crate) fn tick_clock(&mut self, milliseconds: u64) {
+        self.advance_clock(milliseconds);
+        self.apply_pointer(Event::PointerTick { at: self.clock });
     }
 
     /// Feeds a window's role to the window manager when it changed.
