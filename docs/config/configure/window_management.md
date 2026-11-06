@@ -143,11 +143,14 @@ in external renderers or client applications.
 Mutter's standard policy has two choices.
 
 - `"prevent"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
-  key is missing. Activation requests need recent launch or user activity. A
-  newly opened window must also be a transient descendant of the focused
-  window, such as a dialog opened by that app. Requests without valid recent
-  activity leave the window unfocused, including a window you start from a
-  launcher and a password dialog.
+  key is missing. Activation requests need recent launch or user activity, and a newly opened
+  window must also be a transient descendant of the focused window, such as a dialog opened by
+  that app.
+
+    Requests without valid recent activity leave the window unfocused, including a window you start
+    from a launcher and a password dialog. When no window has focus, nothing can be stolen, so a new
+    window takes focus.
+
 - `"allow"` is the starter config value. It allows applications to activate
   their windows after you have interacted with another window since they opened
   them.

@@ -218,9 +218,17 @@ fn focus_completes_after_the_diff_it_caused() {
     let mut second = WaylandClient::connect(session.wayland());
     second.map_window("org.gnoblin.Beta", "Beta");
     let beta = wait_for_listed_id(&session, "Beta");
+    // Under the documented default a window that maps while nothing has focus takes it,
+    // and a later window is refused. Alpha holds focus, so focus beta first, so that
+    // asking for alpha changes the focus the subscription watches.
+    let mut setup = ipc(&session);
+    setup.subscribe(Filter::All).expect("the snapshot");
+    let beta_focus = setup
+        .call(ObjectId::new(beta), "focus", &Fields::new())
+        .expect("the call is served");
+    assert!(setup.await_operation(beta_focus).expect("the completion").is_done());
 
-    // The beta window mapped last, so it holds focus; ask for alpha and read the
-    // observations in the order the compositor sent them.
+    // Ask for alpha and read the observations in the order the compositor sent them.
     let mut client = ipc(&session);
     client.subscribe(Filter::All).expect("the snapshot");
     let operation = client

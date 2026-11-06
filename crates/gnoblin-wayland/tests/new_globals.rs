@@ -28,6 +28,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::Headless;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_callback, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
@@ -98,11 +99,24 @@ struct Session {
 
 impl Session {
     fn start() -> Self {
+        Self::start_with_wm(WmOptions::default())
+    }
+
+    /// Starts a session where a new window takes focus, as `focus_new_windows = allow` does.
+    fn start_allowing_focus() -> Self {
+        Self::start_with_wm(WmOptions {
+            new_window_focus: NewWindowFocus::Allow,
+            ..WmOptions::default()
+        })
+    }
+
+    fn start_with_wm(wm: WmOptions) -> Self {
         let backend = Headless::new();
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
+            wm,
             ..Config::default()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
@@ -567,7 +581,7 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for App {
 
 #[test]
 fn a_modal_dialog_takes_focus_from_its_parent_and_is_reported_modal() {
-    Session::start().run(|session| {
+    Session::start_allowing_focus().run(|session| {
         let mut client = Client::connect(session.socket());
         // The child maps first and the parent last, so the parent holds focus before the
         // child turns modal: the handoff below is then the window manager's doing.

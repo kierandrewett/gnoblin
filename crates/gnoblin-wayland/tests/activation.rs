@@ -82,7 +82,7 @@ fn wait_denial(session: &session::Handle, reason: &str) {
 
 #[test]
 fn a_token_from_a_click_activates_the_window() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut alpha = Client::connect(session.socket());
         let activation = activation(&mut alpha);
@@ -131,7 +131,7 @@ fn a_token_cannot_be_redeemed_twice() {
 
 #[test]
 fn a_fabricated_token_is_refused() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut alpha = Client::connect(session.socket());
         let activation = activation(&mut alpha);
@@ -165,7 +165,7 @@ fn a_fabricated_token_is_refused() {
 
 #[test]
 fn an_app_id_alone_does_not_activate() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut alpha = Client::connect(session.socket());
         let activation = activation(&mut alpha);

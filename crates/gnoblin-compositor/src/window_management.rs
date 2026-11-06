@@ -1,4 +1,4 @@
-//! The stacking, placement, drag and liveness policy, from the `window-management`
+//! The stacking, placement, drag, focus and liveness policy, from the `window-management`
 //! configuration section.
 //!
 //! A document with no `window-management` section keeps the built-in defaults. A section
@@ -9,9 +9,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_config::{NewWindowPlacement, SearchPaths, Store, WindowManagement};
+use gnoblin_config::{FocusNewWindows, NewWindowPlacement, SearchPaths, Store, WindowManagement};
 use gnoblin_wayland::TitlebarActions;
-use gnoblin_wm::{DragConstraint, PlacementMode, WmOptions};
+use gnoblin_wm::{DragConstraint, NewWindowFocus, PlacementMode, WmOptions};
 use tracing::{debug, warn};
 
 use crate::SessionConfig;
@@ -61,6 +61,12 @@ fn apply(config: &mut SessionConfig, section: &WindowManagement) {
                     DragConstraint::MinimumStrip
                 }
             }),
+        new_window_focus: section
+            .focus_new_windows
+            .map_or(wm_defaults.new_window_focus, |focus| match focus {
+                FocusNewWindows::Allow => NewWindowFocus::Allow,
+                FocusNewWindows::Prevent => NewWindowFocus::Prevent,
+            }),
     };
     config.wayland.titlebar_actions = TitlebarActions::of(section);
     let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
@@ -99,6 +105,7 @@ mod tests {
             edge_tiling: Some(true),
             constrain_drag_to_work_area: Some(false),
             check_alive_timeout: Some(1500),
+            focus_new_windows: Some(FocusNewWindows::Allow),
             ..WindowManagement::default()
         };
 
@@ -108,6 +115,7 @@ mod tests {
         assert_eq!(config.wayland.wm.placement, PlacementMode::Cascade);
         assert!(config.wayland.wm.edge_tiling);
         assert_eq!(config.wayland.wm.drag_constraint, DragConstraint::MinimumStrip);
+        assert_eq!(config.wayland.wm.new_window_focus, NewWindowFocus::Allow);
         assert_eq!(config.wayland.check_alive_timeout, Duration::from_millis(1500));
         assert_eq!(config.wayland.titlebar_actions, TitlebarActions::of(&section));
     }

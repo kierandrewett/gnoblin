@@ -22,6 +22,21 @@ pub enum ActivationDecision {
     Deny,
 }
 
+/// The new-window focus policy, `window_management.focus_new_windows`.
+///
+/// It decides whether a window that has just been mapped may take focus. Activation
+/// requests with a valid token do not depend on it: those are decided by the caller.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum NewWindowFocus {
+    /// A new window may take focus.
+    Allow,
+    /// A new window takes focus when nothing is focused, or when it is a transient
+    /// child of the focused window. Otherwise it is left unfocused, so it cannot
+    /// steal focus from a window that has it.
+    #[default]
+    Prevent,
+}
+
 impl ActivationDecision {
     /// Whether acting on this decision raises the window.
     #[must_use]
@@ -35,7 +50,6 @@ impl ActivationDecision {
         !matches!(self, Self::Deny)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

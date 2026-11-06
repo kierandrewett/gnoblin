@@ -35,6 +35,7 @@ use gnoblin_wayland::{
 use gnoblin_wm::layout::{
     Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
 };
+use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
@@ -110,12 +111,37 @@ impl Session {
 
     /// Creates a session whose clients must answer a ping within `timeout`.
     fn start_with_timeout(backend: Headless, timeout: Duration) -> Self {
+        Self::start_configured(
+            backend,
+            Config {
+                check_alive_timeout: timeout,
+                ..Config::default()
+            },
+        )
+    }
+
+    /// Creates a session where a new window takes focus, as `focus_new_windows = allow`
+    /// configures it. The default session refuses that, which is the documented default.
+    fn start_allowing_focus(backend: Headless) -> Self {
+        Self::start_configured(
+            backend,
+            Config {
+                wm: WmOptions {
+                    new_window_focus: NewWindowFocus::Allow,
+                    ..WmOptions::default()
+                },
+                ..Config::default()
+            },
+        )
+    }
+
+    /// Creates a session on the socket described by `config`, with a socket of its own.
+    fn start_configured(backend: Headless, config: Config) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
-            check_alive_timeout: timeout,
-            ..Config::default()
+            ..config
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
         let handle = Handle {
@@ -324,7 +350,7 @@ fn headless_screen() -> (i32, i32) {
 
 #[test]
 fn a_real_client_maps_a_window_and_gets_focus() {
-    let session = Session::start(Headless::new());
+    let session = Session::start_allowing_focus(Headless::new());
     session.run(|session| {
         let mut client = Client::connect(session.socket());
         let window = client.map_window("org.gnoblin.Test", "First");
@@ -365,8 +391,36 @@ fn a_real_client_maps_a_window_and_gets_focus() {
 }
 
 #[test]
-fn a_second_client_takes_focus_and_a_click_switches_it_back() {
+fn a_new_window_does_not_take_focus_under_the_default_policy() {
     let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut first = Client::connect(session.socket());
+        let _alpha = first.map_window("org.gnoblin.Alpha", "Alpha");
+        session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped && window.focused));
+
+        // `focus_new_windows` defaults to `prevent`: a window that maps on its own
+        // initiative is left unfocused, and the window that had focus keeps it.
+        let mut second = Client::connect(session.socket());
+        let _beta = second.map_window("org.gnoblin.Beta", "Beta");
+        let observation = session.wait_for(|observation| {
+            observation.len() == 2 && observation.titled("Beta").is_some_and(|window| window.mapped)
+        });
+        assert_eq!(
+            observation.titled("Alpha").map(|window| window.focused),
+            Some(true),
+            "the focused window kept focus"
+        );
+        assert_eq!(
+            observation.titled("Beta").map(|window| window.focused),
+            Some(false),
+            "the new window stayed unfocused"
+        );
+    });
+}
+
+#[test]
+fn a_second_client_takes_focus_and_a_click_switches_it_back() {
+    let session = Session::start_allowing_focus(Headless::new());
     session.run(|session| {
         let mut first = Client::connect(session.socket());
         let _alpha = first.map_window("org.gnoblin.Alpha", "Alpha");
@@ -427,7 +481,7 @@ fn a_client_that_disconnects_leaves_no_ghost_window() {
 
 #[test]
 fn a_configure_that_is_never_acknowledged_does_not_stall_the_session() {
-    let session = Session::start(Headless::new());
+    let session = Session::start_allowing_focus(Headless::new());
     session.run(|session| {
         let mut slow = Client::connect(session.socket());
         slow.state.no_ack = true;
@@ -522,7 +576,7 @@ fn a_popup_grab_on_a_tracked_parent_keeps_the_popup() {
 
 #[test]
 fn a_popup_grab_without_a_parent_does_not_stop_the_session() {
-    let session = Session::start(Headless::new());
+    let session = Session::start_allowing_focus(Headless::new());
     session.run(|session| {
         let mut client = Client::connect(session.socket());
 
@@ -557,7 +611,7 @@ fn a_popup_grab_without_a_parent_does_not_stop_the_session() {
 
 #[test]
 fn a_protocol_error_from_a_client_does_not_stop_the_compositor() {
-    let session = Session::start(Headless::new());
+    let session = Session::start_allowing_focus(Headless::new());
     session.run(|session| {
         let mut bad = Client::connect(session.socket());
         let _window = bad.map_window("org.gnoblin.Bad", "Bad");

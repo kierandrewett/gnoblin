@@ -26,6 +26,7 @@ use gnoblin_backend::headless::Headless;
 use gnoblin_config::Protocols;
 use gnoblin_types::Point;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_keyboard,
@@ -148,20 +149,37 @@ impl Session {
         Self::start_with(Protocols::default())
     }
 
+    /// Creates a session where a new window takes focus, as `focus_new_windows = allow`
+    /// configures it. The default session refuses that, which is the documented default.
+    pub fn start_allowing_focus() -> Self {
+        let wm = WmOptions {
+            new_window_focus: NewWindowFocus::Allow,
+            ..WmOptions::default()
+        };
+        Self::create(Box::new(Headless::new()), Protocols::default(), wm)
+    }
+
     /// Creates a session whose outputs a test can hotplug.
     pub fn start_detached() -> (Self, gnoblin_backend::headless::HeadlessHandle) {
         let backend = Headless::new();
         let outputs = backend.handle();
-        (Self::create(Box::new(backend), Protocols::default()), outputs)
+        (
+            Self::create(Box::new(backend), Protocols::default(), WmOptions::default()),
+            outputs,
+        )
     }
 
     /// Creates a session with a specific protocol configuration.
     pub fn start_with(protocols: Protocols) -> Self {
-        Self::create(Box::new(Headless::new()), protocols)
+        Self::create(Box::new(Headless::new()), protocols, WmOptions::default())
     }
 
     /// Builds the session, its sockets and the handle a worker thread uses.
-    fn create(backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>, protocols: Protocols) -> Self {
+    fn create(
+        backend: Box<dyn gnoblin_backend::Backend<gnoblin_wayland::State>>,
+        protocols: Protocols,
+        wm: WmOptions,
+    ) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let privileged_socket = directory.path().join("wayland-0-privileged.sock");
@@ -169,6 +187,7 @@ impl Session {
             socket_path: Some(socket.clone()),
             privileged_socket_path: Some(privileged_socket.clone()),
             protocols,
+            wm,
             ..Config::default()
         };
         let server = Server::new(backend, config).expect("the session starts");

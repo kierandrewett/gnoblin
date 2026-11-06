@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
 
-use crate::activation::ActivationDecision;
+use crate::activation::{ActivationDecision, NewWindowFocus};
 use crate::arrange::{self, Layouts};
 use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
@@ -42,6 +42,8 @@ pub struct WmOptions {
     pub edge_tiling: bool,
     /// `window_management.constrain_drag_to_work_area`.
     pub drag_constraint: DragConstraint,
+    /// `window_management.focus_new_windows`.
+    pub new_window_focus: NewWindowFocus,
 }
 
 impl Default for WmOptions {
@@ -52,6 +54,7 @@ impl Default for WmOptions {
             placement: PlacementMode::FreeSpace,
             edge_tiling: false,
             drag_constraint: DragConstraint::WorkArea,
+            new_window_focus: NewWindowFocus::Prevent,
         }
     }
 }
@@ -1068,6 +1071,26 @@ impl Wm {
         effects
     }
 
+    /// The decision for a window that asks to be focused on its own initiative, as
+    /// a new window does when it maps. Under `prevent` a new window may take focus
+    /// only when nothing is focused yet, or when it is a transient of the focused
+    /// window; otherwise it would steal focus from a window that has it. Under
+    /// `allow` any window may.
+    #[must_use]
+    pub fn new_window_decision(&self, id: WindowId) -> ActivationDecision {
+        let Some(window) = self.windows.get(&id) else {
+            return ActivationDecision::Deny;
+        };
+        match self.options.new_window_focus {
+            NewWindowFocus::Allow => ActivationDecision::Allow,
+            NewWindowFocus::Prevent => match window.transient_for {
+                _ if self.focus.is_none() => ActivationDecision::Allow,
+                Some(parent) if self.focus == Some(parent) => ActivationDecision::Allow,
+                _ => ActivationDecision::Deny,
+            },
+        }
+    }
+
     fn activation(&mut self, id: WindowId, decision: ActivationDecision) -> Vec<Effect> {
         if !self.windows.contains_key(&id) {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
@@ -1773,5 +1796,111 @@ mod tests {
         let parent_at = wm.stack().iter().position(|id| *id == parent);
         assert!(child_at < parent_at, "the transient is stacked above its parent");
         assert_eq!(wm.check_invariants().map(|_| ()), Ok(()));
+    }
+
+    /// A manager with one output, one workspace and window 1 focused by a user action.
+    fn wm_with_focused_window(options: WmOptions) -> Wm {
+        let mut wm = Wm::new(options);
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(1),
+        });
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(0),
+            rect: Rect::new(0, 0, 1920, 1080),
+        });
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(1),
+            "org.example.One",
+        )));
+        wm.apply(Event::ActivationRequested {
+            window: WindowId::new(1),
+            decision: ActivationDecision::Allow,
+        });
+        wm
+    }
+
+    #[test]
+    fn prevent_stops_background_window_stealing_focus() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let decision = wm.new_window_decision(WindowId::new(2));
+        assert_eq!(decision, ActivationDecision::Deny);
+        let effects = wm.apply(Event::ActivationRequested {
+            window: WindowId::new(2),
+            decision,
+        });
+        assert!(
+            effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::ActivationDenied { .. }))
+        );
+        assert_eq!(wm.focused(), Some(WindowId::new(1)));
+    }
+
+    #[test]
+    fn prevent_lets_a_new_window_take_focus_when_nothing_is_focused() {
+        let mut wm = Wm::new(WmOptions::default());
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(1),
+        });
+        wm.apply(Event::OutputConnected {
+            output: OutputId::new(0),
+            rect: Rect::new(0, 0, 1920, 1080),
+        });
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(1),
+            "org.example.One",
+        )));
+        let decision = wm.new_window_decision(WindowId::new(1));
+        assert_eq!(decision, ActivationDecision::Allow);
+    }
+
+    #[test]
+    fn prevent_lets_a_transient_of_the_focused_window_take_focus() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::transient(
+            WindowId::new(2),
+            "org.example.One",
+            WindowId::new(1),
+        )));
+        assert_eq!(wm.new_window_decision(WindowId::new(2)), ActivationDecision::Allow);
+    }
+
+    #[test]
+    fn prevent_refuses_a_transient_of_some_other_window() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        wm.apply(Event::WindowOpened(WindowSpec::transient(
+            WindowId::new(3),
+            "org.example.Two",
+            WindowId::new(2),
+        )));
+        assert_eq!(wm.new_window_decision(WindowId::new(3)), ActivationDecision::Deny);
+    }
+
+    #[test]
+    fn allow_lets_a_background_window_take_focus() {
+        let options = WmOptions {
+            new_window_focus: NewWindowFocus::Allow,
+            ..WmOptions::default()
+        };
+        let mut wm = wm_with_focused_window(options);
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let decision = wm.new_window_decision(WindowId::new(2));
+        assert_eq!(decision, ActivationDecision::Allow);
+        wm.apply(Event::ActivationRequested {
+            window: WindowId::new(2),
+            decision,
+        });
+        assert_eq!(wm.focused(), Some(WindowId::new(2)));
     }
 }

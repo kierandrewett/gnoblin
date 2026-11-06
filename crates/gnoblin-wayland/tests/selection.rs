@@ -75,7 +75,7 @@ fn wait_offer(client: &mut Client) {
 
 #[test]
 fn a_copy_between_two_clients_carries_the_source_bytes() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut copier = Client::connect(session.socket());
         let manager = data_device(&mut copier);
@@ -195,7 +195,7 @@ fn turning_data_control_off_hides_both_managers() {
 
 #[test]
 fn a_selection_does_not_outlive_its_owner() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut copier = Client::connect(session.socket());
         let manager = data_device(&mut copier);

@@ -107,7 +107,7 @@ mod window;
 mod wm;
 mod workspace;
 
-pub use activation::ActivationDecision;
+pub use activation::{ActivationDecision, NewWindowFocus};
 pub use drag::DragConstraint;
 pub use effect::{Effect, RuleRejection};
 pub use event::{Event, Rejection, WindowSpec};

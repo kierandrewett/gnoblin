@@ -220,6 +220,12 @@ fn coord(value: u32) -> i32 {
 fn run(seed: u64) -> (Vec<Vec<Effect>>, usize) {
     let mut rng = Rng::new(seed);
     let options = WmOptions {
+        // Both new-window policies are exercised: the seed picks one.
+        new_window_focus: if seed.is_multiple_of(3) {
+            gnoblin_wm::NewWindowFocus::Prevent
+        } else {
+            gnoblin_wm::NewWindowFocus::Allow
+        },
         // Every mode is exercised: the seed picks one of each pair.
         placement: match seed % 3 {
             0 => PlacementMode::FreeSpace,

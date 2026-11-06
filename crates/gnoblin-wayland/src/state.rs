@@ -1578,13 +1578,10 @@ impl State {
             surface.send_configure();
         }
         if newly_mapped {
-            // Attribution is not part of this slice: a mapping toplevel is a
-            // locally launched client and `window_management.focus_new_windows`
-            // defaults to taking focus, so the caller's decision is `Allow`.
-            effects.push(Event::ActivationRequested {
-                window,
-                decision: ActivationDecision::Allow,
-            });
+            // A new window takes focus only as `window_management.focus_new_windows`
+            // allows; the window manager decides, so this path does not guess.
+            let decision = self.wm.new_window_decision(window);
+            effects.push(Event::ActivationRequested { window, decision });
         }
         self.apply_events(effects);
         self.sync_content(window, surface);

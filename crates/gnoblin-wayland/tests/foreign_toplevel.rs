@@ -102,7 +102,7 @@ fn a_taskbar_lists_a_mapped_window() {
 
 #[test]
 fn activate_reaches_the_window_manager() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut alpha = Client::connect(session.socket());
         let _alpha = alpha.map_window("org.gnoblin.Alpha", "Alpha");
@@ -282,7 +282,7 @@ fn maximise_and_fullscreen_reach_the_window_manager() {
 
 #[test]
 fn a_request_for_a_closed_window_does_nothing() {
-    let session = Session::start();
+    let session = Session::start_allowing_focus();
     session.run(|session| {
         let mut app = Client::connect(session.socket());
         let gone = app.map_window("org.gnoblin.Gone", "Gone");

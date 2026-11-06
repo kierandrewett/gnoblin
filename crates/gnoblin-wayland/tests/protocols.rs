@@ -32,6 +32,7 @@ use gnoblin_backend::headless::{Headless, HeadlessHandle};
 use gnoblin_lock::State as LockState;
 use gnoblin_types::Point;
 use gnoblin_wayland::{Config, ControlHandle, LoopError, Server, SessionSnapshot};
+use gnoblin_wm::{NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
@@ -1253,6 +1254,10 @@ fn a_window_remembers_its_layout() {
             ]),
             per_window: Some(true),
         }),
+        wm: WmOptions {
+            new_window_focus: NewWindowFocus::Allow,
+            ..WmOptions::default()
+        },
         ..Config::default()
     };
     let session = Session::with_config(config);
