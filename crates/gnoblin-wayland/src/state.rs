@@ -96,9 +96,11 @@ use crate::server::StartupError;
 /// How many workspaces a session declares when its configuration names none.
 const DEFAULT_WORKSPACES: u32 = 1;
 
-/// The keyboard repeat settings a session starts with, in milliseconds and
-/// repeats per second: the values the configuration reference defaults to.
+/// The keyboard repeat settings a session starts with: the delay before a held key
+/// repeats, and the gap between repeats, both in milliseconds. These are the values the
+/// configuration reference defaults to.
 pub(crate) const KEY_REPEAT_DELAY: i32 = 200;
+/// The gap, in milliseconds, between repeats once a key repeat has started.
 pub(crate) const KEY_REPEAT_INTERVAL: i32 = 40;
 
 /// The protocol object behind a managed window.
@@ -232,10 +234,15 @@ pub struct State {
     display: Option<Display<State>>,
 
     // The Smithay protocol state, one field per protocol module.
+    /// The `wl_compositor` state, which every `wl_surface` is created through.
     pub(crate) compositor_state: CompositorState,
+    /// The `xdg_wm_base` state, the shell that every toplevel and popup is created from.
     pub(crate) xdg_shell_state: XdgShellState,
+    /// The `wl_shm` state, which advertises the shared-memory formats clients can use.
     pub(crate) shm_state: ShmState,
+    /// The seat protocol state, which owns the seat globals and its client list.
     pub(crate) seat_state: SeatState<State>,
+    /// The popup tree for `xdg_popup` surfaces, so they are stacked over their parents.
     pub(crate) popups: PopupManager,
     /// Kept alive so the `zxdg_output_manager_v1` global stays registered.
     #[allow(dead_code)]
@@ -271,11 +278,13 @@ pub struct State {
     pub(crate) activation_state: XdgActivationState,
     /// The clipboard and the primary selection; both have sources kept beside them.
     pub(crate) data_device_state: DataDeviceState,
+    /// The primary selection (middle-click paste) state.
     pub(crate) primary_selection_state: PrimarySelectionState,
     /// The privileged clipboard managers. They are created even when the
     /// configuration hides them, because a state that does not exist cannot be
     /// re-advertised on a reload; the global itself is removed instead.
     pub(crate) ext_data_control_state: ExtDataControlState,
+    /// The `wlr-data-control` clipboard manager state.
     pub(crate) wlr_data_control_state: WlrDataControlState,
     /// Application sandboxes: a client that arrives through one is marked sandboxed
     /// and sees no privileged global.
@@ -351,9 +360,11 @@ pub struct State {
     /// gated by the access roster in [`crate::protocols::ext_background_effect_v1`].
     #[allow(dead_code)]
     pub(crate) background_effect_global: GlobalId,
+    /// Per-output gamma and power control, applied through [`crate::output_control`].
     pub(crate) output_controls: OutputControlState,
+    /// The `zwlr_output_management_v1` state, which answers client requests to read and
+    /// change output configuration.
     pub(crate) output_manager: ZwlrOutputManagementV1State,
-    /// The `zwlr_output_manager_v1` global, present when the configuration offers it.
     /// Kept alive so `zwp_text_input_manager_v3` stays registered.
     #[allow(dead_code)]
     pub(crate) text_input_state: TextInputManagerState,
@@ -369,6 +380,7 @@ pub struct State {
     pub(crate) seat: Seat<State>,
     /// Keyboard and pointer handles for the one seat this slice creates.
     pub(crate) keyboard: KeyboardHandle<State>,
+    /// The pointer handle of the seat, the target of pointer focus and motion.
     pub(crate) pointer: PointerHandle<State>,
     /// What each connection is allowed to be, shared with the globals' filters.
     pub(crate) access: Arc<Access>,
@@ -522,6 +534,8 @@ impl State {
     // Eight arguments, because a session is assembled from eight independent answers:
     // the display, its outputs, the seat, the policy options, the workspaces, Xwayland,
     // the observer and the protocol configuration. A struct would only move the list.
+    /// Builds the state for one session and creates every protocol global it advertises,
+    /// after which the session's seat, outputs and window manager are wired to it.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         display: Display<State>,
@@ -2087,6 +2101,8 @@ impl State {
         std::mem::take(&mut self.modal_events)
     }
 
+    /// The damage rectangles of the frame just described for `output`, or `None` when
+    /// that output's frame was not described, so nothing was drawn for it this cycle.
     pub(crate) fn frame_damage(&self, output: OutputId) -> Option<&[Rect]> {
         match &self.last_frame {
             Some((described, damage)) if *described == output => Some(damage),

@@ -193,15 +193,22 @@ mod server;
 mod state;
 mod xwayland;
 
+/// Clocks the frame and timeout code reads: the system clock, and a manual one for tests.
 pub use clock::{Clock, ManualClock, SystemClock};
+/// Frame counters, and the timeout a screenshot waits for before it gives up.
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
+/// A modal dialog's state, and the events that change it.
 pub use modal::{Modal, ModalEvent};
+/// Snapshot types a reader observes, and the observer trait it implements.
 pub use observation::{
     ActivationDenial, LockObservation, ObservedLayer, ObservedOutput, ObservedWindow, ObservedWorkspace, Observer,
     SessionSnapshot,
 };
+/// Output configuration types a host reports and applies, and the host trait.
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
+/// Output control: the trait a backend implements and the no-op default.
 pub use output_control::{NoOutputControl, OutputControl};
+/// Server configuration, control handle, input sink, startup and loop errors.
 pub use server::{
     Config, ControlHandle, CursorSettings, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings,
     Server, StartupError,
@@ -213,21 +220,30 @@ pub use server::{
 /// through this crate: a compat adapter names its transport, never a second copy of
 /// the library behind it.
 pub use smithay::delegate_dispatch2;
+/// Smithay's dispatch traits, which the redirect adapters implement through this crate.
 pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
+/// The identity and the window process a client's surface belongs to.
 pub use process::{ProcessIdentity, WindowProcess};
+/// Protocol extension trait and host traits, with the activation and surface types they use.
 pub use protocols::extension::{
     Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
 };
+/// The layout control and the session's state.
 pub use state::{LayoutControl, State};
+/// The X11 session that runs Xwayland.
 pub use xwayland::XwaylandSession;
 
+/// Access policy: which global a client role may bind, and the registration that records it.
 pub use access::{Access, AccessPolicy, ClientRole, Global, Registration};
+/// The observed blur rectangle that `ext-background-effect-v1` reports.
 pub use protocols::ext_background_effect_v1::ExtBackgroundEffectV1ObservedBlurRect;
+/// Session host protocol types: requests, power actions, output hints and hosted sessions.
 pub use protocols::gnoblin_session_host_v1::{
     GnoblinSessionHostV1HostedSession, GnoblinSessionHostV1OutputHint, GnoblinSessionHostV1PowerAction,
     GnoblinSessionHostV1Request, GnoblinSessionHostV1RequestKind,
 };
+/// Window frame protocol types: frame actions, regions and the frame itself.
 pub use protocols::gnoblin_window_frame_v1::{
     GnoblinWindowFrameV1Action, GnoblinWindowFrameV1Frame, GnoblinWindowFrameV1Region,
 };

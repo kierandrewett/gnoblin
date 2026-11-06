@@ -107,7 +107,9 @@ impl Default for LockObservation {
 /// One workspace at one instant: its identity and the layout it runs.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct ObservedWorkspace {
+    /// The workspace's policy identity.
     pub id: WorkspaceId,
+    /// The layout the window manager runs on this workspace.
     pub layout: String,
 }
 
@@ -115,15 +117,20 @@ pub struct ObservedWorkspace {
 /// fall back to.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct ObservedOutput {
+    /// The output's policy identity.
     pub id: OutputId,
+    /// The connector name of the output.
     pub name: String,
+    /// The default layout this output's workspaces fall back to.
     pub layout: String,
 }
 
 /// The window state at one instant.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct SessionSnapshot {
+    /// Every managed window, keyed by identity. Read through [`SessionSnapshot::window`] or [`SessionSnapshot::windows`].
     pub(crate) windows: BTreeMap<WindowId, ObservedWindow>,
+    /// The outputs the session presents on.
     pub(crate) outputs: Vec<OutputId>,
     /// Every workspace the window manager arranges, with the layout it runs.
     pub(crate) workspaces: Vec<ObservedWorkspace>,
@@ -133,12 +140,17 @@ pub struct SessionSnapshot {
     pub(crate) output_rects: Vec<(OutputId, Rect)>,
     /// Each workspace whose last layout run failed, with the reason it failed.
     pub(crate) layout_failures: Vec<(WorkspaceId, &'static str)>,
+    /// The window holding keyboard focus, if any.
     pub(crate) focus: Option<WindowId>,
     /// The windows in stacking order, topmost first. A raise moves a window to index 0.
     pub(crate) stack: Vec<WindowId>,
+    /// The session lock's state and the capture embargo it announced.
     pub(crate) lock: LockObservation,
+    /// The layer surfaces, in creation order. Read through [`SessionSnapshot::layers`].
     pub(crate) layers: Vec<ObservedLayer>,
+    /// The last refused activation, if one happened. Read through [`SessionSnapshot::activation_denied`].
     pub(crate) activation_denied: Option<ActivationDenial>,
+    /// The mime types of the current clipboard selection, when there is one.
     pub(crate) selection: Option<Vec<String>>,
     /// How many times a client rang the session bell.
     ///
