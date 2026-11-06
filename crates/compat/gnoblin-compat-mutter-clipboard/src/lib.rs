@@ -35,6 +35,8 @@
 
 #![forbid(unsafe_code)]
 
+/// Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.
 pub mod compat;
 
+/// The admission check, the call it gates, and the interface's name, version and support matrix.
 pub use compat::{ClipboardAdmission, ClipboardCall, INTERFACE, MATRIX, NAME, VERSION};
