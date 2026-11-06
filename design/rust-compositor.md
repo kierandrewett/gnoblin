@@ -470,7 +470,12 @@ gnoblin/
     gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset; a separate crate until the layout host lands, then folds into gnoblin-lua
     gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6); WASM extension tier (D22)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
-    gnoblin-services/         D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit, idle
+    gnoblin-services/         services role: serves the agents and links the GeoClue agent (`location_agent`); polkit, prompter, PipeWire privacy, inhibit, idle
+    gnoblin-service-core/     the services role's shared machinery: slot registry, request state machine, the connection agents offer through
+    gnoblin-service-testkit/  private message bus for one test (dev-dependency only)
+    gnoblin-polkit-service/   polkit authentication agent (D-Bus client of the system bus)
+    gnoblin-screensaver-service/  org.freedesktop.ScreenSaver agent and its inhibits
+    gnoblin-location-service/ GeoClue agent and location policy
     gnoblin-diag/             recovery and console overlay (see D5); `portal` module: built-in portal dialog models, pure and egui-free (D19)
     gnoblinctl/               command line client (binary)
     xdg-desktop-portal-gnoblin/  portal backend (binary)
