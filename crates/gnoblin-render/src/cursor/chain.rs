@@ -13,7 +13,7 @@ use gnoblin_types::Scale;
 
 use super::builtin;
 use super::selection;
-use super::{CursorFiles, CursorImages, CursorProvider, Lookup, MAX_PHYSICAL_SIZE, Request};
+use super::{CursorFiles, CursorImages, CursorProvider, CursorRequest, Lookup, MAX_PHYSICAL_SIZE};
 
 /// The physical pixel size for a logical size at `scale`, clamped to
 /// [`MAX_PHYSICAL_SIZE`] so no provider is asked to rasterise past it.
@@ -23,7 +23,7 @@ pub fn physical_size(logical: u16, scale: Scale) -> u32 {
 }
 
 /// One cached answer.
-struct Entry {
+struct CachedCursor {
     theme: String,
     shape: String,
     physical: u32,
@@ -34,7 +34,7 @@ struct Entry {
 /// Cached answers, least recently used first, with their total size in bytes.
 #[derive(Default)]
 struct Cache {
-    entries: Vec<Entry>,
+    entries: Vec<CachedCursor>,
     bytes: usize,
 }
 
@@ -95,7 +95,7 @@ impl CursorChain {
     /// Asks each provider in order. The flag is false when a provider failed or
     /// panicked on the way, which keeps the answer out of the cache.
     fn resolve(&self, shape: &str, physical: u32) -> (Arc<CursorImages>, bool) {
-        let request = Request {
+        let request = CursorRequest {
             theme: &self.theme,
             shape,
             physical,
@@ -142,7 +142,7 @@ impl CursorChain {
             let stale = cache.entries.remove(index);
             cache.bytes -= stale.bytes;
         }
-        cache.entries.push(Entry {
+        cache.entries.push(CachedCursor {
             theme: self.theme.clone(),
             shape: shape.to_owned(),
             physical,
@@ -176,14 +176,14 @@ mod tests {
     use crate::cursor::{CursorFrame, MemoryFiles, ProviderKind, SearchPath};
 
     /// A provider whose answer is a plain function of the request.
-    struct Scripted(fn(&Request<'_>) -> Lookup);
+    struct Scripted(fn(&CursorRequest<'_>) -> Lookup);
 
     impl CursorProvider for Scripted {
         fn kind(&self) -> ProviderKind {
             ProviderKind::Xcursor
         }
 
-        fn lookup(&self, request: &Request<'_>, _files: &dyn CursorFiles) -> Lookup {
+        fn lookup(&self, request: &CursorRequest<'_>, _files: &dyn CursorFiles) -> Lookup {
             (self.0)(request)
         }
     }

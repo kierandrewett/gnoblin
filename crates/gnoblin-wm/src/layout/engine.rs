@@ -63,7 +63,7 @@ pub enum Job {
     Request(Request),
     /// A named command the layout answers for the whole tiled set. A layout that
     /// does not know `command.name` declines.
-    Command(Params, Command),
+    Command(Params, LayoutCommand),
 }
 
 impl Job {
@@ -78,14 +78,14 @@ impl Job {
 
 /// A command a client sends to the layout of a workspace, with its arguments.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Command {
+pub struct LayoutCommand {
     /// The command's name in the layout's command table.
     pub name: String,
     /// The arguments, by name.
     pub args: BTreeMap<String, Arg>,
 }
 
-/// One argument of a [`Command`].
+/// One argument of a [`LayoutCommand`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum Arg {
     /// A number.
@@ -184,7 +184,7 @@ impl Slot {
     /// Starts a named command, superseding any run still in flight. A
     /// [`Reply::Declined`] is reported as [`Collected::Declined`]: the layout does
     /// not know the command.
-    pub fn submit_command(&mut self, params: Params, command: Command) {
+    pub fn submit_command(&mut self, params: Params, command: LayoutCommand) {
         self.submit(Job::Command(params, command));
     }
 

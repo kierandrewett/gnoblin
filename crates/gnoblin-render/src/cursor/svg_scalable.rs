@@ -16,13 +16,13 @@ use serde_json::Value;
 use super::files::{CursorFiles, FileError, SearchPath, is_contained};
 use super::image::{CursorFrame, CursorImages};
 use super::shapes;
-use super::{CursorProvider, Lookup, MAX_FRAMES, ProviderKind, Request, scale_hotspot, svg};
+use super::{CursorProvider, CursorRequest, Lookup, MAX_FRAMES, ProviderKind, scale_hotspot, svg};
 
 /// The `cursors_scalable` provider.
 pub struct KdeGnomeSvg;
 
 /// One frame as the metadata names it, already validated.
-struct Frame {
+struct SvgFrameEntry {
     filename: String,
     hotspot: (u32, u32),
     nominal: u32,
@@ -34,7 +34,7 @@ impl CursorProvider for KdeGnomeSvg {
         ProviderKind::KdeGnomeSvg
     }
 
-    fn lookup(&self, request: &Request<'_>, files: &dyn CursorFiles) -> Lookup {
+    fn lookup(&self, request: &CursorRequest<'_>, files: &dyn CursorFiles) -> Lookup {
         for name in shapes::candidates(request.shape) {
             let directory = format!("cursors_scalable/{name}");
             let label = format!("{}/{directory}/metadata.json", request.theme);
@@ -58,7 +58,12 @@ impl CursorProvider for KdeGnomeSvg {
 }
 
 /// Reads the frames `metadata.json` names and rasterises each one.
-fn load(files: &dyn CursorFiles, request: &Request<'_>, directory: &str, bytes: &[u8]) -> Result<CursorImages, String> {
+fn load(
+    files: &dyn CursorFiles,
+    request: &CursorRequest<'_>,
+    directory: &str,
+    bytes: &[u8],
+) -> Result<CursorImages, String> {
     let label = format!("{}/{directory}/metadata.json", request.theme);
     let frames = parse_metadata(bytes).map_err(|reason| format!("{label}: {reason}"))?;
 
@@ -87,7 +92,7 @@ fn load(files: &dyn CursorFiles, request: &Request<'_>, directory: &str, bytes: 
 
 /// Checks the metadata and returns its frames in order. Every named file must
 /// stay inside the theme, and the frame count is bounded by [`MAX_FRAMES`].
-fn parse_metadata(bytes: &[u8]) -> Result<Vec<Frame>, String> {
+fn parse_metadata(bytes: &[u8]) -> Result<Vec<SvgFrameEntry>, String> {
     let value: Value = serde_json::from_slice(bytes).map_err(|error| format!("not JSON: {error}"))?;
     let entries = value.as_array().ok_or("not a JSON array of frames")?;
     if entries.is_empty() {
@@ -99,7 +104,7 @@ fn parse_metadata(bytes: &[u8]) -> Result<Vec<Frame>, String> {
     entries.iter().map(parse_frame).collect()
 }
 
-fn parse_frame(entry: &Value) -> Result<Frame, String> {
+fn parse_frame(entry: &Value) -> Result<SvgFrameEntry, String> {
     let filename = entry
         .get("filename")
         .and_then(Value::as_str)
@@ -118,7 +123,7 @@ fn parse_frame(entry: &Value) -> Result<Frame, String> {
     if nominal == 0 {
         return Err(format!("frame {filename}: nominal_size is zero"));
     }
-    Ok(Frame {
+    Ok(SvgFrameEntry {
         filename: filename.to_owned(),
         hotspot: (number("hotspot_x")?, number("hotspot_y")?),
         nominal,

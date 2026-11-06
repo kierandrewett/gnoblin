@@ -66,7 +66,7 @@ pub const MAX_FRAMES: usize = 256;
 
 /// One request to a provider: a theme, a shape and a physical pixel size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Request<'a> {
+pub struct CursorRequest<'a> {
     /// The theme directory name, such as `Adwaita`.
     pub theme: &'a str,
     /// The cursor-spec or cursor-shape-v1 name, such as `default` or `wait`.
@@ -94,7 +94,7 @@ pub trait CursorProvider: Send + Sync {
     fn kind(&self) -> ProviderKind;
 
     /// Looks up `request` in the theme files `files` exposes.
-    fn lookup(&self, request: &Request<'_>, files: &dyn CursorFiles) -> Lookup;
+    fn lookup(&self, request: &CursorRequest<'_>, files: &dyn CursorFiles) -> Lookup;
 }
 
 /// The providers a configuration can name, in the names the configuration uses.

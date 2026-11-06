@@ -51,8 +51,8 @@ use gnoblin_types::{OutputId, RectF, WindowId, WorkspaceId};
 
 use crate::effect::Effect;
 use crate::layout::{
-    Collected, Command, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutput, LayoutWindow, Params, ParamsError,
-    Placement, Request, RequestKind, Slot, Transform3,
+    Collected, Job, Layout, LayoutCommand, LayoutEngine, LayoutFailure, LayoutOutput, LayoutWindow, Params,
+    ParamsError, Placement, Request, RequestKind, Slot, Transform3,
 };
 use crate::output::Output;
 use crate::window::{Window, WindowState};
@@ -336,7 +336,7 @@ impl Layouts {
     pub(crate) fn command(
         &mut self,
         workspace: WorkspaceId,
-        command: Command,
+        command: LayoutCommand,
         deadline: Instant,
         wanted: impl Fn(Option<OutputId>) -> Result<Option<Params>, ParamsError>,
     ) -> CommandVerdict {

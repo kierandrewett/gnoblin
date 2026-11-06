@@ -1364,7 +1364,7 @@ impl Dispatcher {
             }
         };
         self.reply_with_operation(client, envelope, &operation);
-        let command = gnoblin_wm::layout::Command { name, args };
+        let command = gnoblin_wm::layout::LayoutCommand { name, args };
         let answered = self.control.layout_command(workspace, command);
         self.sync();
         self.finish_layout(object, &operation, answered);

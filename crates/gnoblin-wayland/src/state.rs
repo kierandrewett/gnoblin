@@ -1665,7 +1665,7 @@ impl State {
     pub(crate) fn layout_command(
         &mut self,
         workspace: WorkspaceId,
-        command: gnoblin_wm::layout::Command,
+        command: gnoblin_wm::layout::LayoutCommand,
     ) -> Result<(), String> {
         let deadline = std::time::Instant::now() + LAYOUT_COMMAND_WAIT;
         match self.wm.layout_command(workspace, command, deadline) {

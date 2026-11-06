@@ -30,7 +30,7 @@ use zip::ZipArchive;
 
 use super::files::{CursorFiles, FileError, MAX_FILE_BYTES, SearchPath, is_contained};
 use super::image::{CursorFrame, CursorImages};
-use super::{CursorProvider, Lookup, MAX_FRAMES, ProviderKind, Request, nominal_for, png, shapes, svg};
+use super::{CursorProvider, CursorRequest, Lookup, MAX_FRAMES, ProviderKind, nominal_for, png, shapes, svg};
 
 /// The directory of shape archives when `manifest.hl` does not name one.
 const DEFAULT_DIRECTORY: &str = "hyprcursors";
@@ -46,7 +46,7 @@ struct Define {
 }
 
 /// The parts of `meta.hl` the provider reads.
-struct Meta {
+struct HyprcursorMeta {
     hotspot: (f64, f64),
     defines: Vec<Define>,
 }
@@ -56,7 +56,7 @@ impl CursorProvider for Hyprcursor {
         ProviderKind::Hyprcursor
     }
 
-    fn lookup(&self, request: &Request<'_>, files: &dyn CursorFiles) -> Lookup {
+    fn lookup(&self, request: &CursorRequest<'_>, files: &dyn CursorFiles) -> Lookup {
         let manifest_label = format!("{}/manifest.hl", request.theme);
         let manifest = match files.read(SearchPath::Hyprcursor, request.theme, "manifest.hl") {
             Ok(Some(bytes)) => bytes,
@@ -86,7 +86,7 @@ impl CursorProvider for Hyprcursor {
 }
 
 /// Opens one shape archive and draws its frame set at the request's size.
-fn load(bytes: &[u8], request: &Request<'_>, label: &str) -> Result<CursorImages, String> {
+fn load(bytes: &[u8], request: &CursorRequest<'_>, label: &str) -> Result<CursorImages, String> {
     let mut archive =
         ZipArchive::new(Cursor::new(bytes)).map_err(|error| format!("{label}: not a zip archive: {error}"))?;
     let meta_bytes = member(&mut archive, "meta.hl", label)?;
@@ -140,7 +140,7 @@ fn cursors_directory(manifest: &[u8]) -> Result<String, String> {
 }
 
 /// Parses `meta.hl`, keeping the hotspot and every `define_size` in order.
-fn parse_meta(text: &str) -> Result<Meta, String> {
+fn parse_meta(text: &str) -> Result<HyprcursorMeta, String> {
     let mut hotspot = (0.0, 0.0);
     let mut defines = Vec::new();
     for (key, value) in settings(text) {
@@ -154,7 +154,7 @@ fn parse_meta(text: &str) -> Result<Meta, String> {
     if defines.len() > MAX_FRAMES {
         return Err(format!("{} frames, more than {MAX_FRAMES}", defines.len()));
     }
-    Ok(Meta { hotspot, defines })
+    Ok(HyprcursorMeta { hotspot, defines })
 }
 
 /// One `define_size` value: `size, file, delay`. The frame must be an SVG or a PNG.
@@ -278,7 +278,7 @@ mod tests {
     fn a_png_frame_decodes_with_its_hotspot() {
         let frame = super::super::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
         let files = png_theme(&frame);
-        let request = Request {
+        let request = CursorRequest {
             theme: "Test",
             shape: "default",
             physical: 2,
@@ -295,7 +295,7 @@ mod tests {
     fn a_truncated_png_frame_fails_naming_the_file() {
         let frame = super::super::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
         let files = png_theme(&frame[..frame.len() / 2]);
-        let request = Request {
+        let request = CursorRequest {
             theme: "Test",
             shape: "default",
             physical: 2,

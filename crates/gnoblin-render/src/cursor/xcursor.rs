@@ -10,7 +10,7 @@
 use std::collections::VecDeque;
 
 use super::{
-    CursorFiles, CursorFrame, CursorImages, CursorProvider, FileError, Lookup, MAX_FRAMES, ProviderKind, Request,
+    CursorFiles, CursorFrame, CursorImages, CursorProvider, CursorRequest, FileError, Lookup, MAX_FRAMES, ProviderKind,
     SearchPath, candidates, is_contained, nominal_for, premultiplied, scale_hotspot, scale_length,
 };
 
@@ -29,7 +29,7 @@ impl CursorProvider for Xcursor {
         ProviderKind::Xcursor
     }
 
-    fn lookup(&self, request: &Request<'_>, files: &dyn CursorFiles) -> Lookup {
+    fn lookup(&self, request: &CursorRequest<'_>, files: &dyn CursorFiles) -> Lookup {
         if !is_contained(request.theme) {
             return Lookup::Miss;
         }

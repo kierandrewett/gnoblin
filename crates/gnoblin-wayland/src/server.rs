@@ -663,7 +663,7 @@ impl ControlHandle {
     pub fn layout_command(
         &self,
         workspace: WorkspaceId,
-        command: gnoblin_wm::layout::Command,
+        command: gnoblin_wm::layout::LayoutCommand,
     ) -> Option<Result<(), String>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::Layout {
@@ -920,7 +920,7 @@ enum Command {
     /// A command for a workspace's layout; the answer is the refusal, if any.
     Layout {
         workspace: WorkspaceId,
-        command: gnoblin_wm::layout::Command,
+        command: gnoblin_wm::layout::LayoutCommand,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Promise a role to a process the compositor is about to start.

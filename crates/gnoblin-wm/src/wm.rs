@@ -11,7 +11,7 @@ use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
 use crate::geometry::clamp_to_i32;
-use crate::layout::{Command, Layout, LayoutEffect, LayoutEngine, RequestKind};
+use crate::layout::{Layout, LayoutCommand, LayoutEffect, LayoutEngine, RequestKind};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::rules::{Rule, RuleAction};
@@ -1376,7 +1376,7 @@ impl Wm {
     pub fn layout_command(
         &mut self,
         workspace: WorkspaceId,
-        command: Command,
+        command: LayoutCommand,
         deadline: Instant,
     ) -> Result<Vec<Effect>, CommandError> {
         let (windows, outputs) = (&self.windows, &self.outputs);
