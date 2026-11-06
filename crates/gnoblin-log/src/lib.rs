@@ -139,6 +139,7 @@ impl ProcessRole {
 ///
 /// `component: "name"` as the first argument tags it with `name` instead.
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
 macro_rules! error {
     (component: $component:expr, $($rest:tt)+) => {
         $crate::__tracing::error!(component = $component, $($rest)+)
@@ -152,6 +153,7 @@ macro_rules! error {
 ///
 /// `component: "name"` as the first argument tags it with `name` instead.
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
 macro_rules! warn {
     (component: $component:expr, $($rest:tt)+) => {
         $crate::__tracing::warn!(component = $component, $($rest)+)
@@ -165,6 +167,7 @@ macro_rules! warn {
 ///
 /// `component: "name"` as the first argument tags it with `name` instead.
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
 macro_rules! info {
     (component: $component:expr, $($rest:tt)+) => {
         $crate::__tracing::info!(component = $component, $($rest)+)
@@ -178,6 +181,7 @@ macro_rules! info {
 ///
 /// `component: "name"` as the first argument tags it with `name` instead.
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
 macro_rules! debug {
     (component: $component:expr, $($rest:tt)+) => {
         $crate::__tracing::debug!(component = $component, $($rest)+)
@@ -191,6 +195,7 @@ macro_rules! debug {
 ///
 /// `component: "name"` as the first argument tags it with `name` instead.
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
 macro_rules! trace {
     (component: $component:expr, $($rest:tt)+) => {
         $crate::__tracing::trace!(component = $component, $($rest)+)
