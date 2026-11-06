@@ -71,6 +71,10 @@ impl DialogUi for AppChooserUi {
             .iter()
             .map(|choice| (choice.desktop_file_id.clone(), choice.name.clone()))
             .collect();
+        // An empty list would otherwise look broken, so say why nothing is shown.
+        if rows.is_empty() {
+            ui.weak("No matching applications");
+        }
         let highlighted = self.selected.clone();
         let row_height = ui.spacing().interact_size.y;
         let mut clicked = None;
