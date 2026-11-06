@@ -29,7 +29,7 @@ use tracing::{debug, info, warn};
 use zbus::names::{BusName, WellKnownName};
 use zbus::{Connection, fdo, proxy};
 
-use crate::agent::{Offerer, Proposition};
+use gnoblin_service_core::agent::{Offerer, Proposition};
 
 /// Where GeoClue calls the agent.
 pub const AGENT_PATH: &str = "/org/freedesktop/GeoClue2/Agent";
@@ -420,8 +420,8 @@ impl LocationAgent {
     }
 }
 
-impl crate::LinkedAgent for LocationAgent {
-    fn start(&mut self, host: &crate::Host, deadline: Tick) -> bool {
+impl gnoblin_service_core::LinkedAgent for LocationAgent {
+    fn start(&mut self, host: &gnoblin_service_core::Host, deadline: Tick) -> bool {
         let connection = match futures_lite::future::block_on(zbus::Connection::system()) {
             Ok(connection) => connection,
             Err(error) => {

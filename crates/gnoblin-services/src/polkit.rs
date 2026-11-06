@@ -53,9 +53,9 @@ use gnoblin_types::OwnerId;
 use zbus::proxy;
 use zbus::{Connection, ObjectPath, OwnedVariant, Variant, fdo};
 
-use crate::agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Refusal};
-use crate::slot::{CapabilitySlot, Provider, Slots};
 use crate::subject;
+use gnoblin_service_core::agent::{Agent, Decision, Finished, Identity, Offerer, Pending, PolkitRequest, Refusal};
+use gnoblin_service_core::slot::{CapabilitySlot, Provider, Slots};
 
 /// Where polkitd calls the registered agent.
 pub const AGENT_PATH: &str = "/org/freedesktop/PolicyKit1/AuthenticationAgent";

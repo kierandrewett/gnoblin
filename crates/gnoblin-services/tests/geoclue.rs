@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
+use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Refusal};
 use gnoblin_services::location::{AGENT_INTERFACE, AGENT_PATH, GEOCLUE_SERVICE, Location, MANAGER_PATH, Policy};
-use gnoblin_services::{CapabilitySlot, Offerer, Proposition, Refusal};
 use support::bus::Bus;
 use zbus::connection::Builder;
 use zbus::{Connection, Proxy, fdo};

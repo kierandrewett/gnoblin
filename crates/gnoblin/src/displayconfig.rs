@@ -13,8 +13,9 @@
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
 use gnoblin_compat_mutter_displayconfig::{DisplayConfigService, DisplayLink, OutputApplier, export};
-use gnoblin_services::link::{Client, Fields, UnixTransport, Version, socket_path};
-use gnoblin_services::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
+use gnoblin_services::link::{
+    Client, Fields, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
+};
 use tracing::{debug, info, warn};
 use zbus::Connection;
 

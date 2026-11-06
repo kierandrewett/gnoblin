@@ -136,7 +136,7 @@ fn claims(peer: &mut Peer) -> Vec<String> {
                 let (slot, provider) = wire::read_slot_claim(envelope.payload().unwrap_or(&[])).expect("a claim");
                 assert_eq!(
                     provider,
-                    gnoblin_services::Provider::Services,
+                    gnoblin_service_core::Provider::Services,
                     "the role claims its defaults as the services provider"
                 );
                 slots.push(slot);

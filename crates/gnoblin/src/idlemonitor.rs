@@ -11,8 +11,9 @@
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
 use gnoblin_compat_mutter_idlemonitor::{IdleLink, IdleMonitorService, export, watch_callers};
-use gnoblin_services::link::{Client, UnixTransport, Version, socket_path};
-use gnoblin_services::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
+use gnoblin_services::link::{
+    Client, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
+};
 use tracing::{debug, info, warn};
 use zbus::Connection;
 

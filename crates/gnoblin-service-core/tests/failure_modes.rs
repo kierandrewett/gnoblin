@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
-use gnoblin_services::{
+use gnoblin_service_core::{
     Agent, CapabilitySlot, ClaimError, Decision, Identity, Offerer, PolkitRequest, Proposition, Provider, Refusal,
     Slots,
 };

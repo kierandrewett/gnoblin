@@ -13,7 +13,7 @@ use gnoblin_compat_core::Gate;
 use gnoblin_compat_gnome_keyring_prompter::{
     Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run,
 };
-use gnoblin_services::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
+use gnoblin_services::link::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
 use tracing::{debug, info, warn};
 use zbus::Connection;
 

@@ -1,0 +1,32 @@
+[package]
+name = "gnoblin-service-core"
+description = "The services role's shared agent machinery: slots, the request state machine and the offer connection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The services role is an IPC client (design/rust-compositor.md, "Providers and
+# slots"): every agent offers through the compositor client, so the connection type
+# and the offer it makes come from there and never from an engine crate.
+gnoblin-client = { path = "../gnoblin-client" }
+# The request vocabulary the agents speak: `RequestId`, `RequestOutcome`, the
+# schema-addressed `Fields`, and the `Tick` a deadline is measured in.
+gnoblin-model = { path = "../gnoblin-model" }
+# The identifiers the offer and the agents name: `OwnerId` for a slot's claimant and
+# `ObjectId` for the compositor object an operation is called on.
+gnoblin-types = { path = "../gnoblin-types" }
+# Every refusal, cancellation and failed offer is logged once, and never with the
+# material of an answer.
+tracing.workspace = true
+
+[dev-dependencies]
+# The IPC test serves the checked-in schema through the in-process link, so the slot
+# property names are checked against the contract rather than a fixture.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The IPC test names the wire version the in-process link advertises.
+gnoblin-proto = { path = "../gnoblin-proto" }
+
+[lints]
+workspace = true

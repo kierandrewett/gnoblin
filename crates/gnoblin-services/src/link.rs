@@ -9,3 +9,4 @@
 pub use gnoblin_client::{Client, UnixTransport, socket_path};
 pub use gnoblin_model::Fields;
 pub use gnoblin_proto::Version;
+pub use gnoblin_service_core::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};

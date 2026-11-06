@@ -47,6 +47,7 @@ members = [
     "crates/gnoblin-proto",
     "crates/gnoblin-render",
     "crates/gnoblin-schema",
+    "crates/gnoblin-service-core",
     "crates/gnoblin-services",
     "crates/gnoblin-session",
     "crates/gnoblin-testkit",

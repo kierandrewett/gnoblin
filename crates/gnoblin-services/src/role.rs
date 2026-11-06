@@ -42,23 +42,19 @@
 //!    what is left, because an agent a session can live without must not end it:
 //!    `tests::a_missing_bus_does_not_end_the_role`.
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
-use gnoblin_model::{
-    CapabilitySlot, Fields, Filter, OperationOutcome, RequestCompletion, RequestId, RequestOutcome, Snapshot, Tick,
-};
-use gnoblin_types::{ObjectId, Version};
+use gnoblin_model::{CapabilitySlot, RequestCompletion, RequestId, RequestOutcome, Tick};
+use gnoblin_service_core::{Host, LinkedAgent, Provider};
+use gnoblin_types::Version;
 use tracing::{info, warn};
 use zbus::Connection;
 
-use crate::agent::{Proposition, Refusal};
 use crate::polkit::{AGENT_PATH, Polkit};
 use crate::screensaver::ScreenSaver;
-use crate::slot::Provider;
 
 /// How long one read waits before the role looks at its own signals.
 pub const PUMP_TIMEOUT: Duration = Duration::from_millis(100);
@@ -192,146 +188,6 @@ impl Role {
         agents.shutdown();
         Ok(())
     }
-}
-
-/// The offerer the agents share: one privileged connection, one frame stream.
-///
-/// The trait the agents use takes `&mut self`, which is why the connection is behind a
-/// lock: the traits are the agents' seam and their signatures are not this crate's to
-/// change, and one connection is what keeps an offer and its answer on the same socket.
-#[derive(Clone, Debug)]
-pub struct Host {
-    client: Arc<Mutex<Client<UnixTransport>>>,
-    deadline: Duration,
-}
-
-impl Host {
-    /// A host that offers over `client`.
-    fn new(client: Client<UnixTransport>, deadline: Duration) -> Host {
-        Host {
-            client: Arc::new(Mutex::new(client)),
-            deadline,
-        }
-    }
-
-    /// The connection, with a poisoned lock recovered rather than propagated.
-    fn lock(&self) -> MutexGuard<'_, Client<UnixTransport>> {
-        self.client.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Give the connection the pump's read deadline, so an idle read is "nothing yet".
-    fn set_read_timeout(&self, timeout: Option<Duration>) {
-        let _ = self.lock().set_read_timeout(timeout);
-    }
-
-    /// The next event the connection delivered.
-    fn next_event(&self) -> Result<gnoblin_client::Event, ClientError> {
-        self.lock().next_event()
-    }
-
-    /// A snapshot of the compositor's objects, which the screensaver service reads.
-    pub fn snapshot(&self) -> Result<Snapshot, ClientError> {
-        self.lock().subscribe(Filter::All)
-    }
-
-    /// Calls a declared method on an object and waits for the operation's outcome.
-    pub(crate) fn call_operation(&self, object: ObjectId, method: &str) -> Result<OperationOutcome, ClientError> {
-        self.call_operation_with(object, method, &Fields::new())
-    }
-
-    /// Calls a declared method with `arguments` and waits for the operation's outcome.
-    pub(crate) fn call_operation_with(
-        &self,
-        object: ObjectId,
-        method: &str,
-        arguments: &Fields,
-    ) -> Result<OperationOutcome, ClientError> {
-        let mut client = self.lock();
-        let operation = client.call(object, method, arguments)?;
-        client.await_operation(operation)
-    }
-
-    /// Claim a request this role was offered, so it can end it.
-    fn claim(&self, request: RequestId) {
-        if let Err(error) = self.lock().claim(request) {
-            warn!(%error, request = request.get(), "[services] cannot claim an offer");
-        }
-    }
-
-    /// Decline a request this role claimed: it draws nothing, so it cannot answer.
-    fn decline(&self, request: RequestId) {
-        if let Err(error) = self.lock().decline(request) {
-            warn!(%error, request = request.get(), "[services] cannot decline an offer");
-        }
-    }
-
-    /// Offer one request on `slot` to whoever provides it.
-    pub fn offer(&self, slot: &str, title: &str, message: &str, deadline: Tick) -> Result<RequestId, OfferFailure> {
-        // The agent's deadline is what it told the compositor to enforce; the role's own
-        // default is the floor, because an agent with no deadline of its own must still
-        // get one.
-        let timeout = Duration::from_millis(deadline.get()).max(self.deadline);
-        match self.lock().offer(slot, title, message, timeout) {
-            Ok(request) => Ok(request),
-            Err(ClientError::Refused { code, message, .. }) if code == gnoblin_client::code::NO_PROVIDER => {
-                Err(OfferFailure::NoProvider { reason: message })
-            }
-            Err(error) => Err(OfferFailure::Refused {
-                reason: error.to_string(),
-            }),
-        }
-    }
-}
-
-/// Why an offer could not be made.
-#[derive(Debug)]
-pub enum OfferFailure {
-    /// Nothing provides the slot.
-    NoProvider {
-        /// What the compositor said, which names the slot.
-        reason: String,
-    },
-    /// The connection refused or failed.
-    Refused {
-        /// What went wrong.
-        reason: String,
-    },
-}
-
-impl crate::Offerer for Host {
-    fn offer(&mut self, proposition: &Proposition, deadline: Tick) -> Result<RequestId, Refusal> {
-        // A polkit request has no title of its own: the action id is the one name polkitd
-        // gives it, and the message is the sentence it wants shown.
-        let title = proposition.request.action_id.clone();
-        match Host::offer(
-            self,
-            proposition.slot.name(),
-            &title,
-            &proposition.request.message,
-            deadline,
-        ) {
-            Ok(request) => Ok(request),
-            Err(OfferFailure::NoProvider { reason }) => Err(Refusal::NoProvider {
-                slot: proposition.slot,
-                reason,
-            }),
-            Err(OfferFailure::Refused { reason }) => Err(Refusal::Connection { reason }),
-        }
-    }
-}
-
-/// An agent the caller links into the services role.
-///
-/// The role owns the privileged connection and the loop that pumps it. An agent owns one
-/// bus registration and the work that serves it, and offers through the [`Host`] it is
-/// started with. The caller decides which agents a build links, so this crate names none.
-pub trait LinkedAgent {
-    /// Start serving on `host`. Returns `false` when the agent's bus or name is
-    /// unavailable, after logging why: the role serves what is left.
-    fn start(&mut self, host: &Host, deadline: Tick) -> bool;
-
-    /// Report how a request this agent offered ended. Other requests are not its own.
-    fn answer(&self, request: RequestId, outcome: &RequestOutcome);
 }
 
 /// The agents this process is serving, when their buses were available.

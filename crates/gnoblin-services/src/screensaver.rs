@@ -49,13 +49,12 @@ use std::time::Instant;
 
 use futures_lite::StreamExt;
 use gnoblin_model::{Fields, TypeKey, Value};
+use gnoblin_service_core::Host;
 use tracing::{info, warn};
 use zbus::fdo;
 use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, interface};
-
-use crate::role::Host;
 
 /// The well-known name this service owns on the session bus.
 pub const BUS_NAME: &str = "org.freedesktop.ScreenSaver";
@@ -400,32 +399,30 @@ impl Compositor for Host {
     }
 
     fn inhibit(&self, holder: &str) -> Result<(), String> {
-        self.call_idle("inhibit", holder)
+        call_idle(self, "inhibit", holder)
     }
 
     fn uninhibit(&self, holder: &str) -> Result<(), String> {
-        self.call_idle("uninhibit", holder)
+        call_idle(self, "uninhibit", holder)
     }
 }
 
-impl Host {
-    /// Call `method` on the compositor's idle object with the hold name `holder`.
-    fn call_idle(&self, method: &str, holder: &str) -> Result<(), String> {
-        let snapshot = self.snapshot().map_err(|error| error.to_string())?;
-        let view = snapshot
-            .objects()
-            .iter()
-            .find(|view| view.ty() == &TypeKey::gnoblin("idle"))
-            .ok_or_else(|| "the compositor publishes no idle object".to_owned())?;
-        let mut arguments = Fields::new();
-        arguments.insert("holder".to_owned(), Value::Text(holder.to_owned()));
-        match self.call_operation_with(view.id(), method, &arguments) {
-            Ok(gnoblin_model::OperationOutcome::Done) => Ok(()),
-            Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
-                Err(format!("the compositor refused {method}: {}", code.as_str()))
-            }
-            Err(error) => Err(error.to_string()),
+/// Call `method` on the compositor's idle object with the hold name `holder`.
+fn call_idle(host: &Host, method: &str, holder: &str) -> Result<(), String> {
+    let snapshot = host.snapshot().map_err(|error| error.to_string())?;
+    let view = snapshot
+        .objects()
+        .iter()
+        .find(|view| view.ty() == &TypeKey::gnoblin("idle"))
+        .ok_or_else(|| "the compositor publishes no idle object".to_owned())?;
+    let mut arguments = Fields::new();
+    arguments.insert("holder".to_owned(), Value::Text(holder.to_owned()));
+    match host.call_operation_with(view.id(), method, &arguments) {
+        Ok(gnoblin_model::OperationOutcome::Done) => Ok(()),
+        Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
+            Err(format!("the compositor refused {method}: {}", code.as_str()))
         }
+        Err(error) => Err(error.to_string()),
     }
 }
 

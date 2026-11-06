@@ -22,6 +22,9 @@ gnoblin-config = { path = "../gnoblin-config" }
 # The version the handshake advertises is the schema's, and the wire crate is where both
 # sides of a handshake read it from.
 gnoblin-proto = { path = "../gnoblin-proto" }
+# The shared agent machinery: the offerer, the slots and the host the agents reach the
+# compositor through, so each service crate depends on them rather than on this crate.
+gnoblin-service-core = { path = "../gnoblin-service-core" }
 # The polkit authentication agent is a D-Bus object on the system bus.
 zbus.workspace = true
 # One blocking wait per bus registration: the role has no async runtime of its own, and

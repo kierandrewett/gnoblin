@@ -194,7 +194,7 @@ pub struct Offered {
 /// `auth.polkit` has no provider refuses here, before anything is offered.
 ///
 /// It is not `Send` on purpose: the tests drive the agent with an in-process host over
-/// the client's loopback, which is single-threaded. [`crate::polkit`] is where the
+/// the client's loopback, which is single-threaded. The polkit agent is where the
 /// bound is added, because a served interface's future is spawned.
 pub trait Offerer {
     /// Offer one request, announcing it to the connections allowed to claim it.

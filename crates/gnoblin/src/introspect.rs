@@ -13,7 +13,7 @@ use std::thread::JoinHandle;
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{Gate, Mode};
 use gnoblin_compat_gnome_shell_introspect::{IntrospectService, export, link_from_environment};
-use gnoblin_services::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
+use gnoblin_services::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use tracing::{debug, info, warn};
 use zbus::Connection;
 

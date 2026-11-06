@@ -12,7 +12,7 @@ use gnoblin_client::{Event, Server};
 use gnoblin_model::{Fields, Filter, Graph, Observation, RequestOutcome, Tick, TypeKey, Value};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, Type};
-use gnoblin_services::{
+use gnoblin_service_core::{
     Agent, CapabilitySlot, Decision, Offerer, PolkitRequest, Proposition, Provider, Refusal, Slots,
 };
 use gnoblin_types::OwnerId;
