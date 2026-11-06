@@ -16,5 +16,10 @@ gnoblin-types.workspace = true
 # lock state machine already made, at every frame.
 gnoblin-lock = { path = "../gnoblin-lock" }
 
+# The PipeWire client library, used only by the round-trip test in `tests/`. A dev-dependency
+# is never compiled for a dependent, so it cannot reach a shipped binary.
+[dev-dependencies]
+pipewire = { version = "0.10", features = ["v0_3_34"] }
+
 [lints]
 workspace = true

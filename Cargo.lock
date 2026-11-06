@@ -65,6 +65,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "annotate-snippets"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "710e8eae58854cdc1790fcb56cca04d712a17be849eeb81da2a724bf4bae2bc4"
+dependencies = [
+ "anstyle",
+ "unicode-width 0.2.3",
+]
+
+[[package]]
 name = "anstyle"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -140,6 +150,25 @@ name = "base64"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
+name = "bindgen"
+version = "0.72.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+dependencies = [
+ "annotate-snippets",
+ "bitflags",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.13.0",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.3",
+ "shlex 1.3.0",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "bit-set"
@@ -262,7 +291,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "375989decec1a0fa424442bed520fa12ede43a48475ce8c7417d2c69b32b5f6b"
 dependencies = [
  "find-msvc-tools",
- "shlex",
+ "shlex 2.0.1",
+]
+
+[[package]]
+name = "cexpr"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
+dependencies = [
+ "nom 7.1.3",
+]
+
+[[package]]
+name = "cfg-expr"
+version = "0.20.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ba9e9ec16c447027685b1f897b720e18e9a8afd00bd7332c483537e38086c9f"
+dependencies = [
+ "smallvec",
+ "target-lexicon",
 ]
 
 [[package]]
@@ -296,6 +344,17 @@ checksum = "e8cf2a2c93cd704877c0858356ed03480ff301ee950b43f1cbe4573b088bfa6c"
 dependencies = [
  "crypto-common 0.2.2",
  "inout",
+]
+
+[[package]]
+name = "clang-sys"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "157a8ba7b480713b56f4c09fd13fc3e0a22a5dfab8097ba61cbc5feef950788a"
+dependencies = [
+ "glob",
+ "libc",
+ "libloading",
 ]
 
 [[package]]
@@ -380,6 +439,12 @@ name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
+
+[[package]]
+name = "cookie-factory"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9885fa71e26b8ab7855e2ec7cae6e9b380edff76cd052e07c683a0319d51b3a2"
 
 [[package]]
 name = "core_detect"
@@ -1098,6 +1163,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
 name = "glow"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1117,6 +1188,13 @@ dependencies = [
  "futures-lite",
  "gnoblin-compat-core",
  "gnoblin-compat-gnome-keyring-prompter",
+ "gnoblin-compat-gnome-shell-introspect",
+ "gnoblin-compat-gtk-dconf-settings",
+ "gnoblin-compat-gtk-shell1",
+ "gnoblin-compat-mutter-displayconfig",
+ "gnoblin-compat-mutter-idlemonitor",
+ "gnoblin-compat-mutter-x11-interop",
+ "gnoblin-compat-qt-portal-settings",
  "gnoblin-compositor",
  "gnoblin-lua",
  "gnoblin-services",
@@ -1125,6 +1203,7 @@ dependencies = [
  "rustix 1.1.6",
  "tempfile",
  "tracing",
+ "wayland-client",
  "zbus",
 ]
 
@@ -1165,6 +1244,7 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-lock",
  "gnoblin-types",
+ "pipewire",
 ]
 
 [[package]]
@@ -1182,7 +1262,9 @@ name = "gnoblin-compat-core"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
+ "gnoblin-config",
  "serde_json",
+ "tracing",
  "zbus",
 ]
 
@@ -1220,6 +1302,7 @@ dependencies = [
  "futures-lite",
  "gnoblin-client",
  "gnoblin-compat-core",
+ "gnoblin-config",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
@@ -1377,6 +1460,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-config",
  "gnoblin-diag",
+ "gnoblin-input",
  "gnoblin-lua",
  "gnoblin-model",
  "gnoblin-proto",
@@ -1386,11 +1470,13 @@ dependencies = [
  "gnoblin-wm",
  "gnoblin-xwayland",
  "gnoblinctl",
+ "reis",
  "rustix 1.1.6",
  "tempfile",
  "tracing",
  "wayland-client",
  "wayland-protocols",
+ "x11rb",
 ]
 
 [[package]]
@@ -1512,6 +1598,7 @@ name = "gnoblin-render"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-types",
+ "png",
  "resvg",
  "serde_json",
  "tracing",
@@ -1535,6 +1622,7 @@ dependencies = [
  "futures-channel",
  "futures-lite",
  "gnoblin-client",
+ "gnoblin-config",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
@@ -1818,6 +1906,15 @@ dependencies = [
 
 [[package]]
 name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -1915,6 +2012,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8a484fa48be5f62a8d3ffed767779d0ab808cfead91de98ef4362d469097dfb"
 dependencies = [
  "pkg-config",
+]
+
+[[package]]
+name = "libspa"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "882f7427e7989dcc9d388b7f05c4630390a1d7696f9ffa469cd4a7a48f0b4c40"
+dependencies = [
+ "bitflags",
+ "cc",
+ "cookie-factory",
+ "libc",
+ "libspa-sys",
+ "nom 8.0.0",
+ "rustix 1.1.6",
+ "system-deps",
+]
+
+[[package]]
+name = "libspa-sys"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b6e17bdaf63ed0d5e4144022624032b41fd9733112e8c74ac26fc9bf1291924"
+dependencies = [
+ "bindgen",
+ "cc",
+ "system-deps",
 ]
 
 [[package]]
@@ -2079,6 +2203,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2192,6 +2322,25 @@ name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
+
+[[package]]
+name = "nom"
+version = "7.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
+]
+
+[[package]]
+name = "nom"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "num-bigint"
@@ -2320,6 +2469,31 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "pipewire"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bde71084c4e25959d68f1ea54daa75e5ecdb338e5caf0b5510143b79baa32d5c"
+dependencies = [
+ "bitflags",
+ "libc",
+ "libspa",
+ "libspa-sys",
+ "pipewire-sys",
+ "rustix 1.1.6",
+]
+
+[[package]]
+name = "pipewire-sys"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce653f53e63e5b93853218092ee9a8906a5d082c92f3f1db26316955dd63ce0"
+dependencies = [
+ "bindgen",
+ "libspa-sys",
+ "system-deps",
+]
 
 [[package]]
 name = "pixman"
@@ -2859,6 +3033,12 @@ dependencies = [
 
 [[package]]
 name = "shlex"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+
+[[package]]
+name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
@@ -3053,6 +3233,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "system-deps"
+version = "7.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "396a35feb67335377e0251fcbc1092fc85c484bd4e3a7a54319399da127796e7"
+dependencies = [
+ "cfg-expr",
+ "heck",
+ "pkg-config",
+ "toml",
+ "version-compare",
 ]
 
 [[package]]
@@ -3363,6 +3556,12 @@ dependencies = [
  "hashbrown 0.17.1",
  "vello_common",
 ]
+
+[[package]]
+name = "version-compare"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03c2856837ef78f57382f06b2b8563a2f512f7185d732608fd9176cb3b8edf0e"
 
 [[package]]
 name = "version_check"
