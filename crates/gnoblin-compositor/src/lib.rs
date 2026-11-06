@@ -83,6 +83,7 @@
 
 mod backend;
 mod cursor;
+mod eis;
 mod extensions;
 mod ipc;
 mod layout;
@@ -104,6 +105,7 @@ pub use cursor::{
     configure_from_environment as configure_cursor_from_environment,
     configure_from_store as configure_cursor_from_store,
 };
+pub use eis::EisGate;
 pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Observer, SessionSnapshot};
@@ -150,6 +152,9 @@ pub struct SessionConfig {
     ///
     /// A test passes its own path so the run touches no shared directory.
     pub ipc_socket: Option<PathBuf>,
+    /// The EIS endpoint's consent gate. The endpoint is served at `eis.sock` beside the IPC
+    /// socket, and every connection on it waits until the gate grants it input.
+    pub eis: EisGate,
     /// A handle a supervisor or a test stops the session with.
     pub stop: Option<StopHandle>,
     /// The privileged connections this process was handed.
@@ -315,6 +320,13 @@ impl Compositor {
         )
         .map_err(Error::Ipc)?;
 
+        // Input is served only once the seat is up, and every connection waits for a grant.
+        let eis_gate = config.eis.clone();
+        if let Err(error) = eis_gate.serve(&eis::socket_path(&path), control.input_sink()) {
+            ipc.shutdown();
+            return Err(Error::Eis(error));
+        }
+
         // The guardian waits for this report before it starts anything else: the session's
         // later children need the display, and the plan ends the session when a required
         // variable is missing.
@@ -334,6 +346,7 @@ impl Compositor {
         let watcher = spawn_watcher(stop.clone(), control);
 
         let loop_result = server.run();
+        eis_gate.stop();
         ipc.shutdown();
         if let Some(watcher) = watcher {
             // The watcher waits for exactly this: a stop it can then resolve.
@@ -352,6 +365,8 @@ impl Compositor {
 pub enum Error {
     /// The embedded schema could not be loaded or is not valid.
     Schema(SchemaError),
+    /// The EIS socket could not be bound.
+    Eis(std::io::Error),
     /// No IPC socket path could be resolved from the environment.
     IpcPath(String),
     /// The IPC socket could not be prepared or bound.
@@ -381,6 +396,7 @@ impl std::fmt::Display for Error {
             Error::Schema(error) => write!(formatter, "the object schema cannot be loaded: {error}"),
             Error::IpcPath(reason) => write!(formatter, "{reason}"),
             Error::Ipc(error) => write!(formatter, "{error}"),
+            Error::Eis(error) => write!(formatter, "the EIS socket cannot be served: {error}"),
             Error::Wayland(error) => write!(formatter, "the Wayland session cannot start: {error}"),
             Error::Loop(error) => write!(formatter, "the Wayland session stopped: {error}"),
             Error::Model(error) => write!(formatter, "the object graph refused the session: {error}"),

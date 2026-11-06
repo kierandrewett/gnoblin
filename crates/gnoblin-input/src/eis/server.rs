@@ -624,25 +624,17 @@ fn ending_of(ending: Ending) -> (eis::connection::DisconnectReason, Option<Strin
     }
 }
 
-/// Advertises capabilities on the seat, creating it the first time.
+/// Advertises capabilities on the seat.
+///
+/// `reis` fixes the set a seat may be bound to when the seat is created, so a grant that
+/// widens the capabilities cannot be advertised on the existing seat. The old seat and its
+/// devices are removed and a new seat carries the new set; the client binds to that one.
 fn advertise(connected: &mut Connected, capabilities: Caps) {
-    match &connected.seat {
-        None => {
-            connected.seat = Some(connected.connection.add_seat(Some("gnoblin"), flags(capabilities)));
-        }
-        Some(seat) => {
-            // A seat that already exists hears only what is new: an interface the client
-            // did not negotiate in the handshake is skipped, because the protocol makes
-            // advertising it a violation.
-            for capability in capabilities.iter() {
-                let (flag, interface) = interface(capability);
-                if connected.connection.has_interface(interface) {
-                    seat.eis_seat().capability(flag, interface);
-                }
-            }
-            seat.eis_seat().done();
-        }
+    if let Some(seat) = connected.seat.take() {
+        seat.remove();
+        connected.devices.clear();
     }
+    connected.seat = Some(connected.connection.add_seat(Some("gnoblin"), flags(capabilities)));
 }
 
 /// Creates a device and remembers which context identity its events name.

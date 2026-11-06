@@ -24,11 +24,13 @@ use std::path::{Path, PathBuf};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use gnoblin_compositor::{Compositor, SessionConfig, StopHandle};
+use gnoblin_compositor::{Compositor, EisGate, SessionConfig, StopHandle};
 use gnoblinctl::SocketConnection;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface};
-use wayland_client::{Connection as WaylandConnection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_client::protocol::{
+    wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+};
+use wayland_client::{Connection as WaylandConnection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 /// How long a test waits for a state before failing.
@@ -56,6 +58,7 @@ pub struct Session {
     ipc: PathBuf,
     wayland: PathBuf,
     stop: StopHandle,
+    eis: EisGate,
     thread: Option<JoinHandle<Result<(), gnoblin_compositor::Error>>>,
 }
 
@@ -116,9 +119,11 @@ impl Session {
             ends.push(((*role).to_owned(), role_end));
         }
         let stop = StopHandle::new();
+        let eis = EisGate::default();
         let mut config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
+            eis: eis.clone(),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 ..gnoblin_wayland::Config::default()
@@ -136,6 +141,7 @@ impl Session {
             ipc,
             wayland,
             stop,
+            eis,
             thread: Some(thread),
         };
         session.wait_until_listening();
@@ -156,9 +162,11 @@ impl Session {
         let ipc = ipc.unwrap_or_else(|| directory.path().join("ipc.sock"));
         let wayland = directory.path().join("wayland-0.sock");
         let stop = StopHandle::new();
+        let eis = EisGate::default();
         let config = SessionConfig {
             ipc_socket: Some(ipc.clone()),
             stop: Some(stop.clone()),
+            eis: eis.clone(),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
                 window_process_override: process,
@@ -175,10 +183,16 @@ impl Session {
             ipc,
             wayland,
             stop,
+            eis,
             thread: Some(thread),
         };
         session.wait_until_listening();
         session
+    }
+
+    /// The session's EIS gate, which grants or refuses input from EIS clients.
+    pub fn eis(&self) -> &EisGate {
+        &self.eis
     }
 
     /// The IPC socket `gnoblinctl` connects to.
@@ -471,6 +485,8 @@ pub struct Client {
     compositor: wl_compositor::WlCompositor,
     shm: wl_shm::WlShm,
     wm_base: xdg_wm_base::XdgWmBase,
+    #[allow(dead_code)]
+    seat: wl_seat::WlSeat,
 }
 
 /// One toplevel's protocol objects.
@@ -488,6 +504,10 @@ pub struct App {
     /// The size of the last `xdg_toplevel.configure` each toplevel received, keyed by its
     /// protocol id. A zero side means the client chooses that size.
     pub sizes: std::collections::HashMap<u32, (i32, i32)>,
+    /// How many times the keyboard entered one of this client's surfaces.
+    pub keyboard_enters: u32,
+    /// Keys as `(code, state)`, the protocol's own numbers.
+    pub keys: Vec<(u32, u32)>,
 }
 
 impl Client {
@@ -504,6 +524,7 @@ impl Client {
         let wm_base: xdg_wm_base::XdgWmBase = globals
             .bind(&qh, 1..=1, ())
             .expect("the session advertises xdg_wm_base");
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_seat");
         Client {
             _connection: connection,
             queue,
@@ -512,6 +533,7 @@ impl Client {
             compositor,
             shm,
             wm_base,
+            seat,
         }
     }
 
@@ -521,6 +543,11 @@ impl Client {
     }
 
     /// The size of `window`'s last configure, or `None` when it has not been configured.
+    /// The keys this client's keyboard received, as `(code, state)`.
+    pub fn keys(&self) -> &[(u32, u32)] {
+        &self.app.keys
+    }
+
     pub fn configured_size(&self, window: &Window) -> Option<(i32, i32)> {
         self.app.sizes.get(&window.toplevel.id().protocol_id()).copied()
     }
@@ -750,4 +777,44 @@ pub fn listed_titles(session: &Session) -> Vec<String> {
             )
         })
         .collect()
+}
+
+impl Dispatch<wl_seat::WlSeat, ()> for App {
+    fn event(
+        _: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: <wl_seat::WlSeat as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(capabilities),
+        } = event
+            && capabilities.contains(wl_seat::Capability::Keyboard)
+        {
+            seat.get_keyboard(qh, ());
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: <wl_keyboard::WlKeyboard as Proxy>::Event,
+        _: &(),
+        _: &WaylandConnection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_keyboard::Event::Enter { .. } => app.keyboard_enters += 1,
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(value),
+                ..
+            } => app.keys.push((key, value as u32)),
+            _ => {}
+        }
+    }
 }
