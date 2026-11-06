@@ -67,6 +67,10 @@ fn apply(config: &mut SessionConfig, section: &WindowManagement) {
                 FocusNewWindows::Allow => NewWindowFocus::Allow,
                 FocusNewWindows::Prevent => NewWindowFocus::Prevent,
             }),
+        // The pointer focus options are not read from the document yet: the focus_mode mapper is
+        // the next slice, so they keep the compositor defaults.
+        focus_mode: wm_defaults.focus_mode,
+        focus_change_on_pointer_rest: wm_defaults.focus_change_on_pointer_rest,
     };
     config.wayland.titlebar_actions = TitlebarActions::of(section);
     let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
