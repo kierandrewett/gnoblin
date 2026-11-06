@@ -124,6 +124,7 @@ fn module(start: &str, on_event: &str) -> String {
     (export "window" (type $w (sub resource)))
     (export "window-by-id" (func (param "id" u64) (result (result (own $w) (error $ecx)))))
     (export "[method]window.focus" (func (param "self" (borrow $w)) (result (result (own $op) (error $ecx)))))
+    (export "[method]window.kill" (func (param "self" (borrow $w)) (result (result (own $op) (error $ecx)))))
     (export "[method]window.watch" (func (param "self" (borrow $w)) (result (result bool (error $ecx)))))
   ))
   (core module $memmod (memory (export "mem") 1))
@@ -131,14 +132,17 @@ fn module(start: &str, on_event: &str) -> String {
   (alias core export $mi "mem" (core memory $mem))
   (alias export $api "window-by-id" (func $byid))
   (alias export $api "[method]window.focus" (func $focus))
+  (alias export $api "[method]window.kill" (func $kill))
   (alias export $api "[method]window.watch" (func $watch))
   (core func $byid_core (canon lower (func $byid) (memory $mem)))
   (core func $focus_core (canon lower (func $focus) (memory $mem)))
+  (core func $kill_core (canon lower (func $kill) (memory $mem)))
   (core func $watch_core (canon lower (func $watch) (memory $mem)))
   (core module $app
     (import "env" "mem" (memory 1))
     (import "" "window-by-id" (func $byid (param i64 i32)))
     (import "" "focus" (func $focus (param i32 i32)))
+    (import "" "kill" (func $kill (param i32 i32)))
     (import "" "watch" (func $watch (param i32 i32)))
     (global $window (mut i32) (i32.const 0))
     (func (export "start")
@@ -154,6 +158,7 @@ fn module(start: &str, on_event: &str) -> String {
     (with "" (instance
       (export "window-by-id" (func $byid_core))
       (export "focus" (func $focus_core))
+      (export "kill" (func $kill_core))
       (export "watch" (func $watch_core))
     ))
   ))
@@ -321,6 +326,44 @@ fn a_module_that_calls_an_undeclared_method_is_denied_once() {
     );
 
     // Reading was granted, so the handle was real and the denial is about the method.
+    assert_eq!(host.state("denied"), Some(&ModuleState::Running));
+    let _ = window;
+}
+
+// 3b. A module that calls `kill` without the grant is denied, as `focus` is.
+#[test]
+fn a_module_that_calls_kill_without_the_grant_is_denied_once() {
+    let calling = compile(&module(
+        r#"      (call $byid (i64.const 1) (i32.const 64))
+      (if (i32.ne (i32.load8_u (i32.const 64)) (i32.const 0)) (then (unreachable)))
+      (global.set $window (i32.load (i32.const 68)))
+      (call $kill (global.get $window) (i32.const 96))
+      (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))
+      (if (i32.ne (i32.load (i32.const 100)) (i32.const 0)) (then (unreachable)))
+      (call $kill (global.get $window) (i32.const 96))
+      (if (i32.ne (i32.load8_u (i32.const 96)) (i32.const 1)) (then (unreachable)))"#,
+        "      (nop)",
+    ));
+
+    let (mut server, window) = server();
+    let (mut host, capture) = host();
+    host.load(reader("denied"), &calling, budget()).expect("loads");
+    host.connect(&mut server, VERSION).expect("connects");
+    host.start("denied", budget())
+        .expect("the module saw `denied` for both calls");
+
+    assert_eq!(
+        server.graph().pending().count(),
+        0,
+        "a denied kill never reaches the compositor"
+    );
+    let lines = capture.take();
+    let denials: Vec<&String> = lines.iter().filter(|line| line.contains("window.kill")).collect();
+    assert_eq!(denials.len(), 1, "one line for two denied calls, got {lines:#?}");
+    assert!(
+        denials[0].contains("denied") || denials[0].contains("does not grant"),
+        "{denials:?}"
+    );
     assert_eq!(host.state("denied"), Some(&ModuleState::Running));
     let _ = window;
 }
@@ -674,7 +717,6 @@ fn the_layout_and_floating_members_round_trip_through_the_graph() {
 }
 
 // 11. The liveness member the compositor sets is read back through the graph.
-// The host's `kill` method has no fixture yet: it is covered only by the WIT check.
 #[test]
 fn the_unresponsive_member_round_trips_through_the_graph() {
     let (mut server, window) = server();

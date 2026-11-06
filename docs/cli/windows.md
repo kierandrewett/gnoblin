@@ -72,6 +72,10 @@ A window whose client stops answering liveness pings reports `unresponsive` as t
 `window list --json`, and the compositor sends `gnoblin.window.changed`. The ping timeout is
 `window_management.check_alive_timeout`.
 
+`kill` is refused, with a non-zero exit, when the window does not exist, when its process
+is unknown, or when the process is the compositor's own or init's (pid 1). Nothing is sent
+in those cases.
+
 Gnoblin shows no dialog of its own. A shell or a Lua script decides when to offer `kill`.
 
 `window thumbnail` saves a PNG for a stable window ID. By default, it requests

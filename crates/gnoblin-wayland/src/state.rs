@@ -1744,6 +1744,19 @@ impl State {
         true
     }
 
+    /// The pid of the client behind a window, from its connection's credentials. `None`
+    /// when no such window exists; `Some(None)` when the window is X11 or its pid is unknown.
+    pub(crate) fn window_process(&self, window: WindowId) -> Option<Option<u32>> {
+        let entry = self.windows.get(&window)?;
+        let pid = entry
+            .surface
+            .toplevel()
+            .and_then(|toplevel| toplevel.wl_surface().client())
+            .and_then(|client| client.get_credentials(&self.display_handle).ok())
+            .and_then(|credentials| u32::try_from(credentials.pid).ok());
+        Some(pid)
+    }
+
     /// Lets the window manager collect the layout runs that finished and applies the
     /// placements they settle on.
     ///

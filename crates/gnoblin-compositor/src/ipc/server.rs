@@ -1101,6 +1101,9 @@ impl Dispatcher {
             (Some(ty), Some(window), _, _) if ty == "window" && method == "set_floating" => {
                 self.set_floating(client, envelope, object, &method, &arguments, window);
             }
+            (Some(ty), Some(window), _, _) if ty == "window" && method == "kill" => {
+                self.kill(client, envelope, object, &method, &arguments, window);
+            }
             (Some(ty), _, Some(workspace), _) if ty == "workspace" && method == "set_layout" => {
                 self.set_workspace_layout(client, envelope, object, &method, &arguments, workspace);
             }
@@ -1216,6 +1219,74 @@ impl Dispatcher {
         let answered = self.control.set_floating(window, floating);
         self.sync();
         self.finish(object, &operation, answered.map(|_| OperationOutcome::Done));
+    }
+
+    /// Serves `window.kill`: the window's client process is sent SIGKILL, whatever its
+    /// state, so an unresponsive window is not the only one that can be killed. Refused
+    /// when the window is gone, its pid is unknown, or the pid is the compositor's own
+    /// or init's, since those are never a client.
+    fn kill(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+        window: gnoblin_types::WindowId,
+    ) {
+        let pid = match self.control.window_process(window) {
+            None => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::OBJECT_UNKNOWN,
+                    "kill: the compositor did not answer in time",
+                );
+                return;
+            }
+            Some(None) => {
+                self.refuse(client, envelope, wire::code::OBJECT_UNKNOWN, "kill: window not found");
+                return;
+            }
+            Some(Some(None)) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::UNKNOWN_MEMBER,
+                    "kill: the window's pid is unknown",
+                );
+                return;
+            }
+            Some(Some(Some(pid))) => pid,
+        };
+        if pid == std::process::id() || pid == 1 {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::UNKNOWN_MEMBER,
+                "kill: refuses the compositor's own process and init",
+            );
+            return;
+        }
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        // The process may have exited since its credentials were read; that is the only
+        // way the signal fails, and it is reported as the object being gone.
+        let outcome = match i32::try_from(pid).ok().and_then(rustix::process::Pid::from_raw) {
+            Some(target) => match rustix::process::kill_process(target, rustix::process::Signal::KILL) {
+                Ok(()) => OperationOutcome::Done,
+                Err(_) => OperationOutcome::Failed(OBJECT_GONE),
+            },
+            None => OperationOutcome::Failed(OBJECT_GONE),
+        };
+        self.finish(object, &operation, Some(outcome));
     }
 
     /// Serves `workspace.set_layout`: the layout is swapped, and the completion says
