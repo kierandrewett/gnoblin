@@ -827,6 +827,7 @@ wires the roles together.
 These run as parallel lanes and merge as each reaches its gate.
 
 - Shaped windows (D26 amendment): shadow, border, blur and tint follow the window's alpha silhouette. Lands before stacking, so the stack samples one mask.
+- Layer bands (D28) and the window menu with its built-in provider and fallback (D29).
 - Visuals: shadows, rounded corners, opacity, tint, blur with background effect
   that follows window opacity, user shaders, native frames and the frame protocol, open,
   close, minimise and workspace animations, runtime tweens and window visual
@@ -877,6 +878,7 @@ These run as parallel lanes and merge as each reaches its gate.
   vendored sources.
 - Bingux and bsm drop their legacy IPC clients; Mutter's legacy IPC socket
   leaves with Mutter.
+- The `gnoblin.window.menu-requested` event and `MenuContext` are removed in the same change that moves Bingux to the window menu provider (D29).
 - One change deletes `subprojects/mutter`, `subprojects/imgui`,
   `subprojects/xdg-desktop-portal-gnome`, `patches/`, the C tree and the CMake
   superbuild. `docs/` is updated in the same change.
@@ -1562,6 +1564,16 @@ Contracts that change, with a migration path in Bingux before cutover:
 - `org.gnoblin.Shell.GlobalShortcutsProvider` is owned by Bingux inside a
   Gnoblin name space. Decide whether Gnoblin reserves `org.gnoblin.Shell.*` for
   shells or Bingux moves to its own name.
+- The window menu moves from `gnoblin.window.menu-requested` and `MenuContext` to the provider model (D29). Bingux's `WindowMenu.qml` becomes a provider claim before cutover.
+
+### Window menu and layers (D28, D29)
+
+Bingux is the QML shell in `~/dev/bingux-os`, with `bingux-frame` and bsm. Concretely:
+
+- (a) Claim: the shell claims the `window_menu` role under its claim name, set in `window_menu.provider`. Gnoblin sends it the model. Gnoblin carries no Bingux code (AGENTS.md:30).
+- (b) Render: the shell draws the model in `WindowMenu.qml` style. It uses surface mode on the `window_menu` band for its own look, or model mode and replies with the chosen id.
+- (c) Candidate layers, names decided by Bingux: a bar on `top`, and search, notifications and OSD on `overlay`. The window menu uses `window_menu`.
+- Gnoblin exposes a `window_menu` schema object with provider and claim state, `layer` objects with `band` and `target`, IPC to claim, choose and cancel, and events for a menu request and a layer change. Names are proposals until the IPC 0.2.0 schema lands.
 
 ## Risks
 
@@ -1617,6 +1629,8 @@ Each section below records the choice, its consequences, and the options conside
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
+| D28 | Layer bands                  | **Proposed 2026-11-06:** paint order is a closed set of bands; a layer claims one band.                                                                                                                                         |
+| D29 | Window menu                  | **Proposed 2026-11-06:** the window menu is compositor data with a built-in egui provider; config can name another provider.                                                                                                    |
 
 ### D1: where scripts run
 
@@ -3016,6 +3030,105 @@ Consequences:
 - The Secret portal derives per-app secrets from one master secret. Per-app consent is unchanged: confirm the first retrieval per app, with no remember.
 - Acceptance is compatibility: a libsecret `secret-tool` round trip, the portal `Retrieve` call, and an existing Secret Service client needing no change.
 - Migration from gnome-keyring or KWallet is not offered, unless Kieran says yes (`design/keyring.md`, "Needs Kieran").
+
+### D28: layer system
+
+**Proposed 2026-11-06: paint order is a closed set of bands, and a layer is a claim on one band. The window menu gets a window-targeted band.** The full design is in `design/layers.md`.
+
+Today stacking is split. Windows have two layers, `StackLayer::Normal` and `Fullscreen`. wlr layer shell has four. The output frame has one `overlay` slot, shared by the portal dialog and the modal. A window menu needs a band above bars and below the modal, and that slot cannot hold it beside the modal.
+
+Options weighed: A, keep the single overlay slot and add a flag per feature (not chosen: each feature adds a flag and a special case); B, closed bands (chosen); C, client-chosen integer z-order (not chosen: a client could sort above compositor surfaces such as the lock).
+
+Consequences:
+
+- The bands are `background`, `bottom`, `windows`, `top`, `window_menu`, `overlay`, `modal` and `cursor`, in that order. Configuration cannot add a band.
+- `OutputFrame` holds one ordered list of band content. The single `overlay` slot goes. This is a frame type change in `gnoblin-backend`.
+- `layers.list` keeps its wlr record shape. Band claims appear in the same list as `layer` objects with a `band` property.
+- Captures leave out `modal` and `window_menu`, as the portal dialog does today.
+- Tests (not run): band order, one live claim per output, end on owner disconnect and on output removal, and the capture filter. Each names the rule it guards in `design/layers.md`.
+- Parity: new scope. Mutter's stacking is internal [INFERENCE], so the bands are a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer bands".
+
+Needs Kieran:
+
+1. Whether the closed band set is accepted, including `window_menu` between `top` and `overlay`.
+2. Whether `layers.list` gains a `band` filter in this change (proposed: yes).
+3. Whether `top` stays above fullscreen windows, as wlr convention has it (proposed: yes) [INFERENCE: confirm against the reference session].
+
+### D29: window menu
+
+**Proposed 2026-11-06: the window menu is data that the compositor builds. A built-in egui provider renders it, and a config leaf can point the menu at another provider.** The layer detail is in `design/layers.md`.
+
+**Today.** There is no window menu code in the Rust tree. The gesture reaches Mutter's `show_window_menu` hook (`patches/mutter/gnoblin-plugin.c:389`). That hook emits the Lua event `gnoblin.window.menu-requested`, with `window_id`, `menu_type` (`wm` or `app`) and a point.
+
+Bingux draws the menu in `WindowMenu.qml`. Lua API 1.30 `MenuContext` lets a script begin a move or resize for five seconds. `gtk-shell1` calls the menu "visibly absent" (`gtk-shell1/src/lib.rs:55`).
+
+**Parity.** Mutter's `wm` menu offers Restore, Move, Resize, Minimize, Maximize, Always on top, Always on visible workspace, Move to workspace and Close. [INFERENCE: from the reference brief. `subprojects/mutter` is empty here, so the list is not checked against source.]
+
+Items are disabled, not hidden, when the window cannot do them. Restore shows only when maximised, and Move to workspace only with more than one workspace [INFERENCE].
+
+**Model.** The menu is data, built from window state and contributions:
+
+- Each item has `id`, `label`, `icon` (a name), `enabled`, `checked`, `kind` (`action`, `separator` or `submenu`), `children` and an `accelerator` hint.
+- Actions are named: `window.restore`, `window.move`, `window.resize`, `window.minimize`, `window.maximize`, `window.toggle-above`, `window.toggle-visible-on-all-workspaces`, `window.move-to-workspace.<n>` and `window.close`. The compositor owns the table of names and their actions.
+- A provider returns the chosen item id, or cancels. The compositor checks that the id is in the model and enabled, then runs the named action. A provider never moves, resizes or closes a window itself.
+- Extension items are namespaced `<extension>.<id>`. Choosing one sends the choice back to that extension as an event, not to a compositor action (see Needs Kieran 3).
+
+**Providers.** Two modes share the model:
+
+- Model mode: the provider receives the model and returns a choice. The built-in provider and a command provider work this way.
+- Surface mode: the provider draws the model on its own claim in the `window_menu` band (D28), and returns the choice the same way. A shell such as Bingux can use this.
+
+**Selection.** The config leaf is `window_menu.provider` (Needs Kieran 1). Its values follow the D19 handler rule:
+
+- `"builtin"`: the egui provider in `gnoblin-window-menu`.
+- A claim name: a shell or extension that claims the `window_menu` role, as D14 and D19 claims work.
+- `{ command = { ... }, timeout = 2 }`: an external process that receives the model and returns the id. Its wire format is decided with the protocol work [INFERENCE].
+
+Unset means the claimant when one claims `window_menu`, else `"builtin"`. There is one claimant per role. A second claim is refused and logged. Claims are never merged.
+
+**Fallback.** The built-in provider serves the request, and the fallback is logged, when:
+
+- the configured provider is missing, or its claim has gone, before the menu opens;
+- the command fails to start or exits before it replies;
+- no reply arrives within `timeout` (proposed 2 seconds).
+
+After the menu is shown, a provider that disconnects or crashes closes the menu, and the close is logged. The built-in does not take over a menu half way through. A reply that arrives after the menu closed is ignored.
+
+**Opening and placement.** A menu opens from a titlebar button, the titlebar gesture, the keyboard (Alt+Space, proposed in Needs Kieran 2), or `xdg_toplevel.show_window_menu`. Pointer invocations anchor to the button rectangle or the point. Keyboard invocation anchors to the top-left of the window's titlebar and selects the first enabled item.
+
+Placement opens below the anchor, flips above when it does not fit, then clamps into the output's work area, outside exclusive zones. It clamps horizontally too.
+
+**Dismissal.** Escape; a click outside, which is consumed; focus loss; the target window closes or unmaps; its output is removed; the session locks. Choosing an item closes the menu first, then runs the action.
+
+**Input.** The menu takes a popup-style grab of pointer and keyboard while it is open. It is not a modal, so it does not block other outputs. Up and Down move; Home and End jump; Enter or Space choose; Right opens a submenu; Left closes a submenu; Escape closes a submenu, then the menu.
+
+**xdg-shell.** `xdg_toplevel.show_window_menu(seat, serial, x, y)` is answered by the same flow as a pointer invocation, anchored at the surface-local point. The compositor checks the serial against recent input on that seat and ignores a stale one. The protocol says the request must follow user action, and that the compositor may ignore it or not draw a menu at all (`xdg-shell.xml:731`). The built-in serves it once `window_menu` is advertised in `wm_capabilities`, enum value 1 (`xdg-shell.xml:1214`) [INFERENCE: confirm that Smithay exposes it].
+
+**Look and accessibility.** The built-in uses the portal crates' theme, so its accent and text match the portal dialogs. Reduced motion removes the open and close motion. It draws at output scale.
+
+The built-in emits accesskit nodes for its items. `gnoblin-a11y` is policy only and has no AT-SPI tree yet, so assistive tech cannot reach the menu until it does (gap).
+
+**Crates.** Two crates, following the portal split:
+
+- `gnoblin-window-menu-core`: the model, action names, navigation and placement. Foundation dependencies only, no egui.
+- `gnoblin-window-menu`: the egui painter. It implements a core trait, as the portal dialog crates implement `gnoblin-portal-core`. Only the compositor depends on it, under a rule in `xtask/src/deps.rs` like the portal-layering rule.
+
+A window menu is not a portal. Folding it into `gnoblin-portal` would put a compositor surface under the portal rule. The name follows the portal crates' prefix; this lane found no separate naming rule [INFERENCE].
+
+**Retired.** `gnoblin.window.menu-requested` and `MenuContext` go in the same change (D3 lockstep, no shim). Bingux moves to the provider model in that change. See `design/lua-api.md` and `docs/bridge/input-and-focus.md`.
+
+**Tests (not run).** Model contents per window state; refusal of an unknown or disabled id; each fallback case; placement below, flip and clamp; each dismissal; a stale `show_window_menu` serial is ignored.
+
+Needs Kieran:
+
+1. The leaf name `window_menu.provider` and its three values, as proposed above.
+2. The default keyboard invocation: Alt+Space (proposed).
+3. Whether extensions may add items under a `menu.contribute` grant with namespaced ids (proposed: yes).
+4. Whether `xdg_toplevel.show_window_menu` is served by the configured provider with the built-in fallback (proposed: yes).
+5. The fallback timeout: 2 seconds (proposed).
+6. Theme sharing: extract `gnoblin-ui-theme` before the second egui crate, or let the menu depend on `gnoblin-portal-core` (proposed: extract).
+7. Whether the menu appears in captures (proposed: no, as with the modal).
+8. Accept the accessibility gap until `gnoblin-a11y` has an AT-SPI tree, or block cutover on it.
 
 ## Phase 0 checklist
 
