@@ -10,9 +10,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_client::wire;
+use gnoblin_log::debug;
 use gnoblin_proto::{Envelope, Kind};
 use gnoblin_types::ClientId;
-use tracing::debug;
 
 use super::requests::FrameDelivery;
 

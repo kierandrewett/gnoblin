@@ -9,8 +9,8 @@ use std::path::Path;
 
 use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, ProviderKind};
 use gnoblin_config::{CursorProvider, SearchPaths, Store};
+use gnoblin_log::{debug, warn};
 use gnoblin_wayland::CursorSettings;
-use tracing::{debug, warn};
 
 use crate::SessionConfig;
 

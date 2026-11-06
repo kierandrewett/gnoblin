@@ -26,13 +26,13 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use gnoblin_config::{Layout, SearchPaths, Store};
+use gnoblin_log::{debug, warn};
 use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, default_prefix, installed_module_dir};
 use gnoblin_types::WorkspaceId;
 use gnoblin_wayland::LayoutControl;
 use gnoblin_wm::layout::{
     Camera, Generation, Handled, Job, LayoutEffect, LayoutEngine, LayoutFailure, LayoutOutcome, Reply, Ticket,
 };
-use tracing::{debug, warn};
 
 use crate::SessionConfig;
 

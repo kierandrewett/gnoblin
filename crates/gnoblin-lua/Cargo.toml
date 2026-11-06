@@ -38,7 +38,7 @@ gnoblin-wm = { path = "../gnoblin-wm" }
 # speak the same version rule as the compositor without depending on it.
 gnoblin-proto = { path = "../gnoblin-proto" }
 # A `[role]` log line per configuration commit, refused commit and failed handler.
-tracing.workspace = true
+gnoblin-log = { path = "../gnoblin-log" }
 
 [build-dependencies]
 # The Lua tables and `gnoblin.d.lua` are generated from the schema, so a schema

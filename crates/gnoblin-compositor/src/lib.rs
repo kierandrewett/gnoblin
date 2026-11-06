@@ -99,8 +99,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+use gnoblin_log::info;
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
-use tracing::info;
 
 pub use backend::Backend;
 pub use compat::configure_compat_extensions;

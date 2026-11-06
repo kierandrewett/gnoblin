@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use gnoblin_config::{SearchPaths, Store};
-use tracing::{debug, warn};
+use gnoblin_log::{debug, warn};
 
 use crate::SessionConfig;
 

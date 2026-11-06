@@ -647,10 +647,10 @@ const SIGTERM: i32 = 15;
 /// `design/startup-recovery.md`.
 fn log(level: Level, message: &str) {
     match level {
-        Level::Debug => tracing::debug!("{message}"),
-        Level::Info => tracing::info!("{message}"),
-        Level::Warning => tracing::warn!("{message}"),
-        Level::Error => tracing::error!("{message}"),
+        Level::Debug => gnoblin_log::debug!("{message}"),
+        Level::Info => gnoblin_log::info!("{message}"),
+        Level::Warning => gnoblin_log::warn!("{message}"),
+        Level::Error => gnoblin_log::error!("{message}"),
     }
 }
 

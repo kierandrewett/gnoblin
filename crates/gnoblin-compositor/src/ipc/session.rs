@@ -38,11 +38,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use gnoblin_log::error;
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
 use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
 use gnoblin_wayland::{ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot};
-use tracing::error;
 
 /// The property and member names this module writes, as the schema spells them.
 ///

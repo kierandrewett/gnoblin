@@ -28,8 +28,8 @@ use std::fmt;
 use std::os::unix::net::UnixStream;
 
 use gnoblin_client::{Inherited, inherited_stream};
+use gnoblin_log::warn;
 use gnoblin_proto::{Capabilities, Capability, privilege};
-use tracing::warn;
 
 /// One privileged connection this process was handed.
 #[derive(Debug)]

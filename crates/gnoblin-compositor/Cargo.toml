@@ -45,7 +45,7 @@ rustix.workspace = true
 # extensions a session serves from it before the session starts.
 gnoblin-config = { path = "../gnoblin-config" }
 # `[tag]` log lines, the same crate the Wayland engine logs through.
-tracing = "0.1.37"
+gnoblin-log = { path = "../gnoblin-log" }
 
 [build-dependencies]
 # The build script validates the checked-in schema once and embeds it, so the

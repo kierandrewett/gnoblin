@@ -10,8 +10,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use gnoblin_config::{SearchPaths, Store, Xwayland};
+use gnoblin_log::{debug, info, warn};
 use gnoblin_xwayland::{Settings, probe};
-use tracing::{debug, info, warn};
 
 use crate::SessionConfig;
 

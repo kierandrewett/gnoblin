@@ -70,11 +70,11 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use gnoblin_client::wire;
+use gnoblin_log::{debug, info, warn};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WorkspaceId};
 use gnoblin_wayland::{ControlHandle, Observer, ProcessIdentity, SessionSnapshot, WindowProcess};
-use tracing::{debug, info, warn};
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
 use super::portal::{MALFORMED, PortalService};

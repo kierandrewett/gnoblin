@@ -12,8 +12,8 @@
 use std::path::Path;
 
 use gnoblin_config::{Inherit, Monitors, SearchPaths, Store};
+use gnoblin_log::{debug, warn};
 use gnoblin_wayland::MonitorSettings;
-use tracing::{debug, warn};
 
 use crate::SessionConfig;
 

@@ -15,8 +15,8 @@ use std::path::Path;
 
 use gnoblin_config::extensions::{ExtensionEntry, ExtensionRefusal, LoadedExtensions, load_extensions};
 use gnoblin_config::{SearchPaths, Store, StoreError};
+use gnoblin_log::{debug, info, warn};
 use gnoblin_proto::Grant;
-use tracing::{debug, info, warn};
 
 use crate::SessionConfig;
 use crate::ipc::ExtensionRoute;

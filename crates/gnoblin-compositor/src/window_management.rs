@@ -12,9 +12,9 @@ use std::time::Duration;
 use gnoblin_config::{
     FocusMode as ConfiguredFocusMode, FocusNewWindows, NewWindowPlacement, SearchPaths, Store, WindowManagement,
 };
+use gnoblin_log::{debug, warn};
 use gnoblin_wayland::TitlebarActions;
 use gnoblin_wm::{DragConstraint, FocusMode, NewWindowFocus, PlacementMode, WmOptions};
-use tracing::{debug, warn};
 
 use crate::SessionConfig;
 
