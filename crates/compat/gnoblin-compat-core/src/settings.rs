@@ -36,6 +36,8 @@
 
 use std::fmt;
 
+use gnoblin_config::appearance::Accent;
+
 /// The colour scheme a toolkit should prefer.
 ///
 /// The spellings are the ones `org.gnome.desktop.interface color-scheme` and the
@@ -157,6 +159,8 @@ pub struct DesktopSettings {
     pub colour_scheme: ColourScheme,
     /// The dots per inch the interface scale works out to: 96 at scale 1.
     pub dpi: u32,
+    /// The accent colour, when the configuration names one. `None` leaves the toolkit's own accent.
+    pub accent: Option<Accent>,
 }
 
 impl DesktopSettings {
@@ -190,6 +194,7 @@ impl Default for DesktopSettings {
             button_layout: "appmenu:minimize,maximize,close".to_owned(),
             colour_scheme: ColourScheme::NoPreference,
             dpi: 96,
+            accent: None,
         }
     }
 }
@@ -208,6 +213,19 @@ pub fn settings_from_config(config: &gnoblin_config::Config) -> DesktopSettings 
         if let Some(size) = cursor.size.and_then(|size| u32::try_from(size).ok()) {
             settings.cursor_size = size;
         }
+    }
+    if let Some(appearance) = &config.appearance {
+        settings.colour_scheme = appearance
+            .color_scheme
+            .map_or(ColourScheme::NoPreference, |scheme| match scheme {
+                gnoblin_config::ColorScheme::Default => ColourScheme::NoPreference,
+                gnoblin_config::ColorScheme::PreferDark => ColourScheme::PreferDark,
+                gnoblin_config::ColorScheme::PreferLight => ColourScheme::PreferLight,
+            });
+        settings.accent = appearance
+            .accent
+            .as_deref()
+            .and_then(|accent| Accent::parse(accent).ok());
     }
     settings
 }
@@ -285,5 +303,29 @@ mod tests {
         )
         .expect("a valid configuration");
         assert_eq!(settings_from_config(&config), DesktopSettings::default());
+    }
+
+    /// The appearance section is the colour scheme and accent a publisher sends; an absent section
+    /// sends neither, so the toolkit keeps its own.
+    #[test]
+    fn the_appearance_section_is_the_published_scheme_and_accent() {
+        let config = gnoblin_config::Config::from_value(
+            gnoblin_config::Value::from_json(
+                &serde_json::json!({"appearance": {"color-scheme": "prefer-dark", "accent": "#3584e4"}}),
+            )
+            .expect("an object"),
+        )
+        .expect("a valid configuration");
+        let settings = settings_from_config(&config);
+        assert_eq!(settings.colour_scheme, ColourScheme::PreferDark);
+        assert_eq!(settings.accent.map(Accent::name), Some("blue"));
+
+        let bare = gnoblin_config::Config::from_value(
+            gnoblin_config::Value::from_json(&serde_json::json!({})).expect("an object"),
+        )
+        .expect("a valid configuration");
+        let bare = settings_from_config(&bare);
+        assert_eq!(bare.colour_scheme, ColourScheme::NoPreference);
+        assert_eq!(bare.accent, None);
     }
 }

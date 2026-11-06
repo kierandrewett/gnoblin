@@ -323,6 +323,7 @@ impl IdShape {
 /// two, so the file cannot silently lose one.
 pub const HOOKS: &[&str] = &[
     "accel_curve",
+    "appearance",
     "button_layout",
     "compositor",
     "frame_renderers",

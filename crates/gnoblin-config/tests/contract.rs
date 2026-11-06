@@ -67,6 +67,11 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the compatibility section: which D-Bus adapters the services role serves, read by the adapters at start",
     ),
+    (
+        "appearance",
+        "0.2.0",
+        "the appearance section: the colour scheme and accent published to dconf and the portal; the C core had no single table for them",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.

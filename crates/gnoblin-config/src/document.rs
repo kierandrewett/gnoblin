@@ -30,10 +30,10 @@ use std::collections::BTreeMap;
 
 use crate::engine::{Parser, removed, section_table, unknown_keys};
 use crate::generated::{
-    Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout, Location,
-    Logging, Monitors, Prompts, Protocols, WindowManagement, Workspace, Xwayland, parse_auth, parse_compat,
-    parse_compositor, parse_cursor, parse_frame_renderers, parse_input, parse_input_sources, parse_layer_shell,
-    parse_layout, parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols,
+    Appearance, Auth, Compat, Compositor, Cursor, FrameRenderers, Gesture, Input, InputSources, LayerShell, Layout,
+    Location, Logging, Monitors, Prompts, Protocols, WindowManagement, Workspace, Xwayland, parse_appearance,
+    parse_auth, parse_compat, parse_compositor, parse_cursor, parse_frame_renderers, parse_input, parse_input_sources,
+    parse_layer_shell, parse_layout, parse_location, parse_logging, parse_monitors, parse_prompts, parse_protocols,
     parse_touchpad_gestures, parse_window_management, parse_workspaces, parse_xwayland,
 };
 use crate::model::Deprecation;
@@ -55,6 +55,8 @@ pub use crate::generated::CARRIED_SECTIONS;
 /// A validated configuration document.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
+    /// `appearance`: the colour scheme and accent every toolkit is told about.
+    pub appearance: Option<Appearance>,
     /// `compositor`: what the compositor draws itself and how.
     pub compositor: Option<Compositor>,
     /// `cursor`: the cursor theme and size.
@@ -125,6 +127,8 @@ impl Config {
                     "configure the shell UI in the shell client, and use gnoblin.animation and window rules for compositor animations",
                 );
                 unknown_keys(entries, &root, &mut out, TOP_LEVEL_KEYS);
+                config.appearance = section_table(entries, "appearance", &root, &mut out)
+                    .map(|table| parse_appearance(table, &root.key("appearance"), &mut out));
                 config.compositor = section_table(entries, "compositor", &root, &mut out)
                     .map(|table| parse_compositor(table, &root.key("compositor"), &mut out));
                 config.cursor = section_table(entries, "cursor", &root, &mut out)
@@ -222,6 +226,7 @@ impl Config {
     /// a document is read and as the result of a salvage that kept nothing.
     pub(crate) fn empty() -> Config {
         Config {
+            appearance: None,
             compositor: None,
             cursor: None,
             frame_renderers: None,

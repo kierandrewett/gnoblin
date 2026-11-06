@@ -101,6 +101,16 @@ variants = [
 ]
 
 [[enum]]
+name = "ColorScheme"
+setting = "color-scheme"
+doc = "Whether applications prefer a dark or a light appearance."
+variants = [
+    { spelling = "default", doc = "No preference: each application keeps its own choice." },
+    { spelling = "prefer-dark", doc = "Prefer a dark appearance." },
+    { spelling = "prefer-light", doc = "Prefer a light appearance." },
+]
+
+[[enum]]
 name = "TitlebarButton"
 setting = "button-layout"
 doc = "One entry in a titlebar side."
@@ -1680,6 +1690,30 @@ enum = "CursorProvider"
 accepted = "a list of cursor providers"
 default = { list = ["hyprcursor", "kde-gnome-svg", "xcursor"] }
 doc = "The cursor image providers, searched in order. The built-in arrow is always the last resort."
+since = "0.2.0"
+
+[[section]]
+key = "appearance"
+type = "Appearance"
+doc = "The colour scheme and accent colour that every toolkit is told about: GTK through dconf and the portal, Qt through the portal."
+hook = "appearance"
+overridable = true
+
+[[section.field]]
+key = "color-scheme"
+kind = "enum"
+enum = "ColorScheme"
+accepted = "one of default, prefer-dark, prefer-light"
+default = { enum = "default" }
+doc = "Whether applications prefer a dark or a light appearance."
+since = "0.2.0"
+
+[[section.field]]
+key = "accent"
+kind = "text"
+nonempty = true
+accepted = "a named accent (blue, teal, green, yellow, orange, red, pink, purple, slate), #rgb or #rrggbb"
+doc = "The accent colour. A named accent is used as it is; a hex colour is published as the nearest named accent, because GTK takes only names."
 since = "0.2.0"
 
 [[section]]

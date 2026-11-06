@@ -126,11 +126,11 @@ impl DconfValue {
 
 /// The keys Gnoblin writes into the layer.
 ///
-/// Every key is one GTK actually reads for one of the five facts D15 names: fonts, icon
-/// theme, cursor theme and size, button layout and colour scheme.
+/// Every key is one GTK actually reads for one of the facts D15 names: fonts, icon
+/// theme, cursor theme and size, button layout, colour scheme and accent colour.
 #[must_use]
 pub fn publish(settings: &DesktopSettings) -> Vec<KeyWrite> {
-    vec![
+    let mut writes = vec![
         KeyWrite {
             group: INTERFACE,
             key: "font-name",
@@ -171,7 +171,15 @@ pub fn publish(settings: &DesktopSettings) -> Vec<KeyWrite> {
             key: "button-layout",
             value: DconfValue::Text(settings.button_layout.clone()),
         },
-    ]
+    ];
+    if let Some(accent) = settings.accent {
+        writes.push(KeyWrite {
+            group: INTERFACE,
+            key: "accent-color",
+            value: DconfValue::Text(accent.name().to_owned()),
+        });
+    }
+    writes
 }
 
 /// The actions as the dconf keyfile `dconf compile` reads.

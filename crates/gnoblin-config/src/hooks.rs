@@ -19,9 +19,10 @@
 
 use std::collections::BTreeMap;
 
+use crate::appearance::Accent;
 use crate::engine::{Parser, is_inherit};
 use crate::generated::{
-    AccelCurve, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, GestureWhen, PadButton,
+    AccelCurve, Appearance, ButtonLayout, Compositor, FrameRenderers, Gesture, GesturePoint, GestureWhen, PadButton,
     PadButtonAction, Tablet, TouchpadGestures, WindowManagement, Workspace, Workspaces, Xwayland,
 };
 use crate::model::Inherit;
@@ -458,6 +459,34 @@ pub(crate) fn accel_curve(
         }
     }
     valid
+}
+
+/// `appearance`: the accent is a named accent or an opaque `#rrggbb`.
+///
+/// The accent is the one string the schema cannot shape on its own: a name is one of
+/// nine, a hex is exactly three or six digits. The message from [`Accent::parse`] is
+/// not reused, so the fault names the accepted forms the way the other hooks do.
+pub(crate) fn appearance(
+    section: &mut Appearance,
+    _map: &BTreeMap<String, Value>,
+    path: &Path,
+    out: &mut Parser,
+) -> bool {
+    let Some(accent) = &section.accent else {
+        return true;
+    };
+    match Accent::parse(accent) {
+        Ok(_) => true,
+        Err(_) => {
+            out.problem(
+                &path.key("accent"),
+                Fault::UnsupportedValue {
+                    expected: "a named accent or #rrggbb without alpha".to_owned(),
+                },
+            );
+            false
+        }
+    }
 }
 
 /// `tablets.<id>`: an output name, the active-area rule, and unique pad buttons.

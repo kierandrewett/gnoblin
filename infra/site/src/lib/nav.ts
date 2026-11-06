@@ -82,6 +82,7 @@ export const NAV: NavSection[] = [
                     { label: "Monitors", slug: "config/configure/monitors" },
                     { label: "Portals", slug: "config/configure/portals" },
                     { label: "Location", slug: "config/configure/location" },
+                    { label: "Appearance", slug: "config/configure/appearance" },
                     { label: "Authentication", slug: "config/configure/auth" },
                     { label: "Prompts", slug: "config/configure/prompts" },
                     { label: "Autostart", slug: "config/configure/autostart" },
