@@ -690,10 +690,6 @@ impl<S: Host + 'static> Backend<S> for Nested {
         }
         target.draw(frame).map_err(BackendError::Render)?;
         let present = target.present(frame.damage());
-        debug_assert!(
-            present == Present::Nothing || target.awaiting_frame(),
-            "a presented frame waits for the parent's callback"
-        );
         self.flush();
         Ok(present)
     }

@@ -291,6 +291,32 @@ impl Pool {
     }
 }
 
+/// Whether the parent's last frame is still on the wire.
+///
+/// | State      | Event                 | Result                                    |
+/// |------------|-----------------------|-------------------------------------------|
+/// | `Idle`     | present a frame       | sent, becomes `Awaiting`                  |
+/// | `Awaiting` | present a frame       | refused (`AlreadyAwaiting`), nothing sent |
+/// | `Awaiting` | parent frame callback | becomes `Idle`                            |
+/// | `Idle`     | parent frame callback | stays `Idle` (a stray callback)           |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrameWait {
+    /// No frame is waiting for the parent, so the next present may send one.
+    Idle,
+    /// A frame is on the wire and the parent has not called back yet.
+    Awaiting,
+}
+
+/// The buffer scale the parent was last told. A fresh or resized target has told it
+/// nothing, so the first present states it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BufferScaleState {
+    /// Nothing has been stated to the parent since the surface was made or resized.
+    Unstated,
+    /// The parent was told this buffer scale.
+    Stated(i32),
+}
+
 /// One nested output: the renderer, the pool and the surface.
 pub struct NestedTarget {
     /// The output this target presents. Its mode is physical, so its logical size is
@@ -306,13 +332,13 @@ pub struct NestedTarget {
     pool: Pool,
     ring: Ring,
     /// Whether a frame is on the wire and its callback has not arrived.
-    awaiting_frame: bool,
+    frame: FrameWait,
     /// The damage that has not reached the parent yet, in the output's logical space.
     damage: Vec<Rect>,
     presents: u64,
     format: wl_shm::Format,
     /// The buffer scale last stated to the parent, so a steady frame repeats nothing.
-    buffer_scale: Option<i32>,
+    buffer_scale: BufferScaleState,
     /// One row of packed slot pixels, so a frame with damage allocates nothing.
     scratch: Vec<u8>,
 }
@@ -323,7 +349,7 @@ impl std::fmt::Debug for NestedTarget {
             .debug_struct("NestedTarget")
             .field("output", &self.output)
             .field("physical", &Size::new(self.pool.width, self.pool.height))
-            .field("awaiting_frame", &self.awaiting_frame)
+            .field("frame", &self.frame)
             .field("presents", &self.presents)
             .finish_non_exhaustive()
     }
@@ -368,11 +394,13 @@ impl NestedTarget {
             index,
             pool,
             ring: Ring::new(SLOTS),
-            awaiting_frame: false,
+            frame: FrameWait::Idle,
             damage: Vec::new(),
             presents: 0,
             format,
-            buffer_scale: planned.buffer_scale,
+            buffer_scale: planned
+                .buffer_scale
+                .map_or(BufferScaleState::Unstated, BufferScaleState::Stated),
             scratch: Vec::new(),
         };
         target.damage_whole();
@@ -388,7 +416,7 @@ impl NestedTarget {
     /// Whether a frame is on the wire and the parent has not finished it.
     #[must_use]
     pub fn awaiting_frame(&self) -> bool {
-        self.awaiting_frame
+        self.frame == FrameWait::Awaiting
     }
 
     /// How many frames this target presented.
@@ -457,7 +485,7 @@ impl NestedTarget {
         self.ring = Ring::new(SLOTS);
         // The buffer scale is a property of the surface rather than of a buffer, and it
         // may have changed with the configure, so the next present states it again.
-        self.buffer_scale = None;
+        self.buffer_scale = BufferScaleState::Unstated;
         self.damage_whole();
         Ok(())
     }
@@ -471,7 +499,7 @@ impl NestedTarget {
 
     /// The parent finished the frame this target presented.
     pub(crate) fn frame_done(&mut self) {
-        self.awaiting_frame = false;
+        self.frame = self.frame.callback();
     }
 
     /// Damages the whole output.
@@ -535,9 +563,9 @@ impl Target for NestedTarget {
         // skipped would otherwise leave the parent showing what it replaced.
         self.damage
             .extend(damage.iter().filter_map(|rect| rect.intersection(bounds)));
-        if self.awaiting_frame {
-            // The parent has not finished the last frame, so it has not asked for this
-            // one.
+        if self.frame.send().is_err() {
+            // Named refusal: the parent has not answered the last frame, so this one is
+            // not sent and nothing is written.
             return Present::Nothing;
         }
         let Some(slot) = self.ring.take() else {
@@ -576,10 +604,10 @@ impl Target for NestedTarget {
             self.surface.version() >= 3,
         );
         if let Some(buffer_scale) = planned.buffer_scale
-            && self.buffer_scale != Some(buffer_scale)
+            && self.buffer_scale != BufferScaleState::Stated(buffer_scale)
         {
             self.surface.set_buffer_scale(buffer_scale);
-            self.buffer_scale = Some(buffer_scale);
+            self.buffer_scale = BufferScaleState::Stated(buffer_scale);
         }
         if let (Some(destination), Some(viewport)) = (planned.destination, self.viewport.as_ref()) {
             viewport.set_destination(
@@ -603,7 +631,7 @@ impl Target for NestedTarget {
         let _callback = self.surface.frame(&self.qh, OutputKey(self.index));
         self.surface.commit();
         self.damage.clear();
-        self.awaiting_frame = true;
+        self.frame = FrameWait::Awaiting;
         self.presents = self.presents.saturating_add(1);
         Present::Rendered
     }
@@ -702,6 +730,50 @@ fn runtime_directory() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
+}
+
+/// A frame send was refused because the parent has not answered the last one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AlreadyAwaiting;
+
+impl FrameWait {
+    /// Sends a frame: `Idle` becomes `Awaiting`, `Awaiting` refuses with [`AlreadyAwaiting`].
+    pub(crate) fn send(self) -> Result<Self, AlreadyAwaiting> {
+        match self {
+            Self::Idle => Ok(Self::Awaiting),
+            Self::Awaiting => Err(AlreadyAwaiting),
+        }
+    }
+
+    /// The parent's frame callback: `Awaiting` becomes `Idle`; a stray callback stays `Idle`.
+    pub(crate) fn callback(self) -> Self {
+        Self::Idle
+    }
+}
+
+#[cfg(test)]
+mod frame_wait_tests {
+    use super::{AlreadyAwaiting, FrameWait};
+
+    #[test]
+    fn an_idle_target_sends_a_frame_and_awaits_it() {
+        assert_eq!(FrameWait::Idle.send(), Ok(FrameWait::Awaiting));
+    }
+
+    #[test]
+    fn an_awaiting_target_refuses_a_second_frame() {
+        assert_eq!(FrameWait::Awaiting.send(), Err(AlreadyAwaiting));
+    }
+
+    #[test]
+    fn the_callback_frees_an_awaiting_target() {
+        assert_eq!(FrameWait::Awaiting.callback(), FrameWait::Idle);
+    }
+
+    #[test]
+    fn a_stray_callback_leaves_an_idle_target_idle() {
+        assert_eq!(FrameWait::Idle.callback(), FrameWait::Idle);
+    }
 }
 
 #[cfg(test)]
