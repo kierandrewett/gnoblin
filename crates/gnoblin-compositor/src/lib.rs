@@ -93,6 +93,7 @@ pub mod portal;
 mod schema;
 mod session_tables;
 mod window_management;
+mod xwayland;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -128,6 +129,10 @@ pub use session_tables::{
 pub use window_management::{
     configure_from_environment as configure_window_management_from_environment,
     configure_from_store as configure_window_management_from_store,
+};
+pub use xwayland::{
+    configure_from_environment as configure_xwayland_from_environment,
+    configure_from_store as configure_xwayland_from_store,
 };
 
 use gnoblin_backend::nested::NestedError;

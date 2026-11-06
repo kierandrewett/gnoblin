@@ -56,6 +56,8 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # session the way another process would.
 wayland-client = "0.31.14"
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# A real X11 client, to prove the session's X server accepts a connection.
+x11rb = "0.14.0"
 # The real command line client, called through its library entry point, so the
 # end-to-end tests exercise the shipped code rather than a copy of it.
 gnoblinctl = { path = "../gnoblinctl" }
