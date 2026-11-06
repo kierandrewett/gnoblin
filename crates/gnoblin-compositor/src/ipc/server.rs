@@ -578,10 +578,12 @@ fn write_accept(writer: &UnixStream, handshake: &Handshake, extension_grants: &[
 
 /// What the dispatcher holds for one client.
 struct Connection {
+    /// The socket this connection's frames are written to.
     writer: UnixStream,
     /// What this connection may do beyond reading the graph. Empty for every
     /// connection that reached the socket.
     capabilities: Capabilities,
+    /// Diff streams this connection subscribed to. They end when the connection is dropped.
     subscriptions: Vec<Subscription>,
     /// Set once a write fails, so the connection is dropped after this turn instead
     /// of being written to again.
@@ -603,16 +605,23 @@ impl Connection {
 
 /// The one owner of the graph: everything a connection asks for runs here, in order.
 struct Dispatcher {
+    /// The graph owner: every mutation and every published diff goes through it.
     store: SessionSync,
+    /// The last published snapshot, shared so observers can read it without entering the loop.
     observation: Arc<Mutex<SessionSnapshot>>,
+    /// Hands control changes (focus, lock, idle holds) to the compositor's loop.
     control: ControlHandle,
+    /// Set by an observer once it has queued a `Changed` wake, so it does not queue another
+    /// while one is still pending.
     pending: Arc<AtomicBool>,
     /// The request layer: the broker, the slot registry and the last accepted
     /// configuration.
     requests: Requests,
     /// The portal UI: admitted requests, their owners, and the open dialog.
     portal: PortalService,
+    /// Every connection that reached the socket, keyed by client.
     connections: BTreeMap<ClientId, Connection>,
+    /// Reader threads, one per client, kept so shutdown can join them.
     readers: Arc<Mutex<BTreeMap<ClientId, JoinHandle<()>>>>,
     /// When this process started serving, which is the origin of every request
     /// deadline it measures. The compositor is the only party that needs a clock here:
@@ -631,6 +640,8 @@ impl Dispatcher {
                 // A request that nobody answered within its deadline ends here, so the
                 // session never holds a prompt past the time its host asked for.
                 Err(RecvTimeoutError::Timeout) => {
+                    // Deadlines are checked on the timeout tick because nothing else wakes the
+                    // loop when every client goes quiet.
                     let now = self.now();
                     let expired = self.requests.tick(now);
                     let replies = self.portal.tick(now);
@@ -1005,6 +1016,9 @@ impl Dispatcher {
                 return;
             }
         };
+        // The request layer records the document before it is parsed, so the revision counts
+        // every commit the runtime made, including one this process cannot decode. The
+        // settings object then keeps its last good values.
         let config = gnoblin_config::Config::from_json_bytes(&document);
         let revision = self.requests.commit(document);
         match config {
