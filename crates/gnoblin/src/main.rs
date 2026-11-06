@@ -97,8 +97,8 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
         Ok(logging) => (logging, None),
         Err(problem) => (gnoblin_compositor::Logging::default(), Some(problem)),
     };
-    let options = gnoblin_log_init::LogOptions::from_environment(&log_settings(&logging));
-    let _log = gnoblin_log_init::init(log_role(&role), &options);
+    let options = gnoblin_log::init::LogOptions::from_environment(&log_settings(&logging));
+    let _log = gnoblin_log::init::init(log_role(&role), &options);
     if let Some(problem) = problem {
         gnoblin_log::warn!("[logging] {problem}; the default logging is used");
     }
@@ -127,9 +127,9 @@ fn log_role(role: &role::Role) -> gnoblin_log::ProcessRole {
 
 /// The log settings the `logging` section asks for. An unset field keeps the default the log
 /// uses with no configuration.
-fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log_init::LogSettings {
-    let defaults = gnoblin_log_init::LogSettings::default();
-    gnoblin_log_init::LogSettings {
+fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::LogSettings {
+    let defaults = gnoblin_log::init::LogSettings::default();
+    gnoblin_log::init::LogSettings {
         console: !matches!(logging.console, Some(gnoblin_compositor::LogConsole::Off)),
         level: logging.level.clone().unwrap_or(defaults.level),
         store: logging.store.unwrap_or(defaults.store),
@@ -138,7 +138,7 @@ fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log_init::LogS
             .as_deref()
             .filter(|path| !path.is_empty())
             .map(std::path::PathBuf::from),
-        retention: gnoblin_log_init::Retention {
+        retention: gnoblin_log::init::Retention {
             max_age_days: logging
                 .store_max_age_days
                 .and_then(|days| u32::try_from(days).ok())

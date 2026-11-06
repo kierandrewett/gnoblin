@@ -1219,7 +1219,6 @@ dependencies = [
  "gnoblin-compat-x11-xsettings",
  "gnoblin-compositor",
  "gnoblin-log",
- "gnoblin-log-init",
  "gnoblin-lua",
  "gnoblin-services",
  "gnoblin-session",
@@ -1562,14 +1561,6 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "rusqlite",
  "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "gnoblin-log-init"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-log",
  "tracing-subscriber",
 ]
 
@@ -4571,7 +4562,6 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-config",
  "gnoblin-log",
- "gnoblin-log-init",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",

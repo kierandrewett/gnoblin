@@ -1,28 +1,27 @@
 //! Installs the gnoblin log for one process.
 //!
-//! [`init`] installs one `tracing` subscriber with two sinks. The console sink, from
-//! `gnoblin-log-console`, prints one line per event on stderr. The database sink, from
-//! `gnoblin-log-store`, stores each event as a row in a SQLite file, so that a session can be
-//! inspected after the fact. Both sinks share one filter, taken from `GNOBLIN_LOG`, and the
-//! database location comes from `GNOBLIN_LOG_DB`; see [`LogOptions`].
+//! [`init`] installs one `tracing` subscriber with two sinks. The console sink, the `console`
+//! module, prints one line per event on stderr. The database sink, the `store` module, stores
+//! each event as a row in a SQLite file, so that a session can be inspected after the fact. Both
+//! sinks share one filter, taken from `GNOBLIN_LOG`, and the database location comes from
+//! `GNOBLIN_LOG_DB`; see [`LogOptions`].
 //!
-//! Only the binaries name this crate. The crates that log use the macros of `gnoblin-log`.
-
-gnoblin_log::component!("log");
+//! Only the binaries use this module: they enable the `init` feature. The crates that log use the
+//! macros of the facade.
 
 mod options;
 
 use std::panic;
 
-use gnoblin_log::ProcessRole;
-use gnoblin_log::console::ConsoleFormat;
-use gnoblin_log::store::{DatabaseLayer, Sink};
+use crate::ProcessRole;
+use crate::console::ConsoleFormat;
+use crate::store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
-pub use gnoblin_log::store::Retention;
+pub use crate::store::Retention;
 pub use options::{DATABASE_VARIABLE, FILTER_VARIABLE, LogOptions, LogSettings};
 
 /// Keeps the database writer alive. Dropping it waits, for a bounded time, for pending
@@ -73,7 +72,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
 
     let mut sink = None;
     if let Some(path) = &options.database {
-        match gnoblin_log::store::open(path, role, options.retention) {
+        match crate::store::open(path, role, options.retention) {
             Ok(opened) => {
                 layers.push(DatabaseLayer::new(opened.clone(), role).with_filter(filter).boxed());
                 sink = Some(opened);
@@ -86,7 +85,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     if installed.is_ok() {
         install_panic_hook();
         for problem in &problems {
-            gnoblin_log::warn!("{problem}");
+            crate::warn!("{problem}");
         }
     }
     LogGuard { sink }
@@ -96,7 +95,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
 fn install_panic_hook() {
     let previous = panic::take_hook();
     panic::set_hook(Box::new(move |information| {
-        gnoblin_log::error!(panic = %information, "a thread panicked");
+        crate::error!(panic = %information, "a thread panicked");
         previous(information);
     }));
 }

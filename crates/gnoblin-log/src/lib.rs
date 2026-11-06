@@ -40,6 +40,10 @@ pub mod console;
 #[cfg(feature = "store")]
 pub mod store;
 
+/// Installs the process-wide subscriber for a binary. Needs the `init` feature.
+#[cfg(feature = "init")]
+pub mod init;
+
 /// The `tracing` crate, for the sinks and the composition, which need its subscriber types.
 ///
 /// Crates other than this one must not use it to log; they use the macros.
