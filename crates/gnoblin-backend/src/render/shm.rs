@@ -66,12 +66,14 @@ impl std::fmt::Display for ShmError {
 
 impl std::error::Error for ShmError {}
 
-/// Copies `region` of `image` into `buffer`.
+/// Copies the part of `image` that starts at `from` into `buffer`.
 ///
-/// `region` is in the image's own pixels and is clipped to the buffer: a region that
+/// `region` is in the buffer's own pixels and is clipped to the buffer: a region that
 /// overlaps it only partly writes the overlap rather than refusing the frame, because
 /// a client that asked for a frame to the edge of an output may hold a buffer exactly
-/// that size and one pixel short is not a reason to fail the capture.
+/// that size and one pixel short is not a reason to fail the capture. Buffer pixel
+/// `(x, y)` is read from image pixel `(from.x + x, from.y + y)`, so a window's frame
+/// is read from where the window sits on the output.
 ///
 /// Returns the region that was written, in buffer pixels.
 ///
@@ -79,12 +81,12 @@ impl std::error::Error for ShmError {}
 ///
 /// [`ShmError`] when the buffer is not shared memory, its format is not packed 32-bit,
 /// nothing of the region fits it, or the pool cannot be mapped.
-pub fn copy_into(image: &Image, region: Rect, buffer: &WlBuffer) -> Result<Rect, ShmError> {
+pub fn copy_into(image: &Image, region: Rect, from: Point, buffer: &WlBuffer) -> Result<Rect, ShmError> {
     if !buffer.is_alive() {
         return Err(ShmError::NotShared);
     }
     with_buffer_contents_mut(buffer, |pointer, length, data| {
-        let written = write(pointer, length, &data, image, region)?;
+        let written = write(pointer, length, &data, image, region, from)?;
         Ok(written)
     })
     // The outer error is Smithay refusing to hand over the mapping at all: the pool was
@@ -93,7 +95,14 @@ pub fn copy_into(image: &Image, region: Rect, buffer: &WlBuffer) -> Result<Rect,
 }
 
 /// The checked part of [`copy_into`]: everything that touches the mapping.
-fn write(pointer: *mut u8, length: usize, data: &BufferData, image: &Image, region: Rect) -> Result<Rect, ShmError> {
+fn write(
+    pointer: *mut u8,
+    length: usize,
+    data: &BufferData,
+    image: &Image,
+    region: Rect,
+    from: Point,
+) -> Result<Rect, ShmError> {
     let pixel = match data.format {
         wl_shm::Format::Argb8888 => Pixel::Argb,
         wl_shm::Format::Xrgb8888 => Pixel::Xrgb,
@@ -131,7 +140,8 @@ fn write(pointer: *mut u8, length: usize, data: &BufferData, image: &Image, regi
         };
         for (column, slot) in destination.chunks_exact_mut(pixel.bytes()).enumerate() {
             let source_x = written.x.saturating_add_unsigned(u32::try_from(column).unwrap_or(0));
-            let Some(pixel_value) = image.pixel(Point::new(source_x, source_y)) else {
+            let source = Point::new(source_x.saturating_add(from.x), source_y.saturating_add(from.y));
+            let Some(pixel_value) = image.pixel(source) else {
                 // The image is smaller than the buffer: the pixels it does not hold stay
                 // as the client left them rather than becoming a colour the frame never
                 // had.

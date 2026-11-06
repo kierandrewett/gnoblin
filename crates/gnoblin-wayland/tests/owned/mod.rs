@@ -17,6 +17,7 @@ use std::io;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -30,6 +31,8 @@ use wayland_client::DispatchError;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool};
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
+
+pub mod master;
 
 /// How long a test waits for a state before failing.
 pub const TIMEOUT: Duration = Duration::from_secs(10);
@@ -139,6 +142,14 @@ impl Session {
     /// is advertised.
     pub fn start_without_output_controls() -> Self {
         Self::boot(None, false, gnoblin_wayland::MonitorSettings::default())
+    }
+
+    /// A session whose every workspace runs the master-stack layout, so a mapped window is
+    /// placed by the layout rather than where it asks to be.
+    pub fn start_tiled(role: Option<ClientRole>) -> Self {
+        let mut session = Self::boot(role, true, gnoblin_wayland::MonitorSettings::default());
+        session.server.install_layouts(Rc::new(master::MasterLayouts));
+        session
     }
 
     /// Starts the session; `controls` says whether the headless backend keeps its controls.

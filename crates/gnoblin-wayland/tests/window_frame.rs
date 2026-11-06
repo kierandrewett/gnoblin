@@ -217,8 +217,13 @@ fn map_app_window(handle: &Handle) -> Connected<App> {
     map_titled_window(handle, "decorated")
 }
 
-/// An ordinary client that maps one window with the given title.
+/// An ordinary client that maps one window with the given title, buffer 200 by 150.
 fn map_titled_window(handle: &Handle, title: &str) -> Connected<App> {
+    map_sized_window(handle, title, (200, 150))
+}
+
+/// An ordinary client that maps one window with the given title and buffer size.
+fn map_sized_window(handle: &Handle, title: &str, size: (i32, i32)) -> Connected<App> {
     let mut client = Connected::connect(handle.socket(), App::default());
     let wm_base: xdg_wm_base::XdgWmBase = client
         .globals
@@ -231,9 +236,9 @@ fn map_titled_window(handle: &Handle, title: &str) -> Connected<App> {
     toplevel.set_app_id("org.example.Decorated".to_owned());
     surface.commit();
     client.roundtrip();
-    let buffer = client.buffer(200, 150);
+    let buffer = client.buffer(size.0, size.1);
     surface.attach(Some(&buffer), 0, 0);
-    surface.damage(0, 0, 200, 150);
+    surface.damage(0, 0, size.0, size.1);
     surface.commit();
     client.roundtrip();
     client
@@ -484,13 +489,25 @@ fn hovering_a_region_is_reported_to_the_renderer() {
 }
 
 /// Attaches, configures and presents the frame of the window titled `title`, with one
-/// region at frame-local `(x, y, width, height)`.
+/// region at frame-local `(x, y, width, height)` and a 200 by 150 buffer.
 fn present_titled(
     renderer: &mut Renderer,
     frame: &gnoblin_window_frame_v1::GnoblinWindowFrameV1,
     title: &str,
     action: gnoblin_window_frame_v1::Action,
     region: (i32, i32, i32, i32),
+) {
+    present_titled_sized(renderer, frame, title, action, region, (200, 150));
+}
+
+/// As `present_titled`, with a buffer of `size`.
+fn present_titled_sized(
+    renderer: &mut Renderer,
+    frame: &gnoblin_window_frame_v1::GnoblinWindowFrameV1,
+    title: &str,
+    action: gnoblin_window_frame_v1::Action,
+    region: (i32, i32, i32, i32),
+    size: (i32, i32),
 ) {
     let surface = renderer.client.compositor.create_surface(&renderer.client.qh, ());
     frame.attach_surface(&surface);
@@ -508,10 +525,10 @@ fn present_titled(
         .expect("the window's frame was configured")
         .serial;
     frame.region(action, region.0, region.1, region.2, region.3);
-    let buffer = renderer.client.buffer(200, 150);
+    let buffer = renderer.client.buffer(size.0, size.1);
     frame.ack_configure(serial);
     surface.attach(Some(&buffer), 0, 0);
-    surface.damage(0, 0, 200, 150);
+    surface.damage(0, 0, size.0, size.1);
     surface.commit();
     renderer.client.roundtrip();
 }
@@ -585,6 +602,63 @@ fn a_pointer_over_overlapping_windows_reaches_the_topmost_frame() {
                 .iter()
                 .any(|(action, _)| *action == 4),
             "the window underneath must not receive the pointer"
+        );
+    });
+}
+
+#[test]
+fn a_pointer_over_a_tiled_window_reaches_its_own_frame() {
+    let session = Session::start_tiled(Some(ClientRole::FrameRenderer));
+    session.run(|handle| {
+        let mut renderer = Renderer::start(handle);
+        // Master tiling puts the first window on the left half of the output and the
+        // second on the right, so the second window starts at x 512.
+        let _left = map_sized_window(handle, "left", (512, 768));
+        wait_renderer(&mut renderer, "the first frame", |state| state.frames.len() == 1);
+        let _right = map_sized_window(handle, "right", (512, 768));
+        wait_renderer(&mut renderer, "the second frame", |state| state.frames.len() == 2);
+        let left_frame = renderer.client.state.frames[0].clone();
+        let right_frame = renderer.client.state.frames[1].clone();
+        // The left frame's region covers its whole window, so a pointer that reached it
+        // would report Minimize, which the test forbids.
+        present_titled_sized(
+            &mut renderer,
+            &left_frame,
+            "left",
+            gnoblin_window_frame_v1::Action::Minimize,
+            (0, 0, 512, 768),
+            (512, 768),
+        );
+        present_titled_sized(
+            &mut renderer,
+            &right_frame,
+            "right",
+            gnoblin_window_frame_v1::Action::Close,
+            (80, 90, 40, 20),
+            (512, 768),
+        );
+        wait_presented(handle, WindowId::new(1));
+        wait_presented(handle, WindowId::new(2));
+        // (600, 100) is frame-local (88, 100) in the right window: inside its Close region,
+        // and outside the left window altogether.
+        handle.control.inject_input(gnoblin_backend::InputEvent::PointerMotion {
+            output: gnoblin_types::OutputId::new(0),
+            position: gnoblin_types::Point::new(600, 100),
+        });
+        wait_renderer(&mut renderer, "a hovered region", |state| {
+            state
+                .interactions
+                .iter()
+                .any(|(action, pressed)| *action == 2 && !*pressed)
+        });
+        assert!(
+            !renderer
+                .client
+                .state
+                .interactions
+                .iter()
+                .any(|(action, _)| *action == 4),
+            "the left window underneath must not receive the pointer"
         );
     });
 }

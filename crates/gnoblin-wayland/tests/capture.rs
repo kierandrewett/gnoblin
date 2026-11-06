@@ -22,6 +22,7 @@ use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -49,6 +50,11 @@ use wayland_protocols::ext::session_lock::v1::client::{
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_wlr::screencopy::v1::client::{zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1};
 
+#[path = "owned/master.rs"]
+mod master;
+
+use master::MasterLayouts;
+
 /// How long a test waits for the session to reach a state before failing.
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -57,6 +63,9 @@ const RED: u32 = 0xFFFF_0000;
 
 /// The colour the compositor's background has: opaque black.
 const BLACK: u32 = 0xFF00_0000;
+
+/// The second window's pixels: opaque green.
+const GREEN: u32 = 0xFF00_FF00;
 
 /// What a worker thread can reach of a running session.
 #[derive(Clone)]
@@ -133,6 +142,13 @@ impl Session {
     /// Creates a session on sockets of its own.
     fn start() -> Self {
         Self::start_with(Protocols::default())
+    }
+
+    /// Creates a session whose layout tiles the windows the master-stack way.
+    fn start_tiled() -> Self {
+        let mut session = Self::start();
+        session.server.install_layouts(Rc::new(MasterLayouts));
+        session
     }
 
     /// Creates a session with an explicit protocol configuration.
@@ -1451,4 +1467,84 @@ impl Dispatch<ext_image_copy_capture_frame_v1::ExtImageCopyCaptureFrameV1, ()> f
             _ => {}
         }
     }
+}
+
+/// Captures the window `title` through an image-copy session and returns the frame it wrote.
+fn capture_window(capture: &mut Client, title: &str) -> Shm {
+    let source = capture.toplevel_source_for(title);
+    let manager = capture.image_copy.clone().expect("a capture client");
+    let copy_session = manager.create_session(
+        &source,
+        ext_image_copy_capture_manager_v1::Options::empty(),
+        &capture.qh,
+        (),
+    );
+    let sessions = capture.state.session_done;
+    capture.wait_until(|state| state.session_done > sessions, "the session constraints");
+    let (width, height) = capture.session_geometry();
+    let shm = Shm::new(capture, width, height, 0);
+    let frame = copy_session.create_frame(&capture.qh, ());
+    frame.attach_buffer(&shm.buffer);
+    frame.damage_buffer(0, 0, width as i32, height as i32);
+    let ready = capture.state.frame_ready;
+    frame.capture();
+    capture.wait_until(|state| state.frame_ready > ready, "the captured frame");
+    frame.destroy();
+    shm
+}
+
+#[test]
+fn a_capture_of_a_tiled_window_is_its_placed_rectangle() {
+    let session = Session::start_tiled();
+    session.run(|session| {
+        let mut left_app = Client::app(session.socket());
+        let mut right_app = Client::app(session.socket());
+        let _left = left_app.map_window("org.gnoblin.Left", "Left", 512, 768, RED);
+        let _right = right_app.map_window("org.gnoblin.Right", "Right", 512, 768, GREEN);
+        // The master layout places the first window on the left half and the second on the right.
+        session.wait_for(|observation| {
+            observation
+                .titled("Left")
+                .is_some_and(|window| window.geometry == gnoblin_types::Rect::new(0, 0, 512, 768))
+                && observation
+                    .titled("Right")
+                    .is_some_and(|window| window.geometry == gnoblin_types::Rect::new(512, 0, 512, 768))
+        });
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        // A capture is the window's tiled size, not the 800 by 600 cascade a floating window gets.
+        let left = capture_window(&mut capture, "Left");
+        assert_eq!(
+            (left.width, left.height),
+            (512, 768),
+            "the first capture is the tiled size"
+        );
+        assert_eq!(
+            left.pixel(5, 5),
+            RED,
+            "the first capture holds the first window's colour"
+        );
+        assert_eq!(
+            left.pixel(506, 762),
+            RED,
+            "the first capture covers the whole tiled rectangle"
+        );
+
+        let right = capture_window(&mut capture, "Right");
+        assert_eq!(
+            (right.width, right.height),
+            (512, 768),
+            "the second capture is the tiled size"
+        );
+        assert_eq!(
+            right.pixel(5, 5),
+            GREEN,
+            "the second capture holds the second window's colour"
+        );
+        assert_eq!(
+            right.pixel(506, 762),
+            GREEN,
+            "the second capture covers the whole tiled rectangle"
+        );
+    });
 }

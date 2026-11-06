@@ -392,7 +392,7 @@ impl PixelSource for Pixels<'_> {
             return Copied::Nothing;
         };
         let origin = self.targets.origin(target);
-        let source = region.translate(
+        let from = Point::new(
             origin.x.saturating_add(self.offset.x),
             origin.y.saturating_add(self.offset.y),
         );
@@ -400,7 +400,7 @@ impl PixelSource for Pixels<'_> {
             (true, Some(cursored)) => cursored,
             _ => &cached.image,
         };
-        match copy_into_shm(image, source, &self.buffer) {
+        match copy_into_shm(image, region, from, &self.buffer) {
             Ok(_) => Copied::Copied,
             Err(error) => {
                 warn!(%error, %target, "[capture] the frame could not be written into the client's buffer");
