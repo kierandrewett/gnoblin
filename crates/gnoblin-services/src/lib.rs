@@ -1,5 +1,5 @@
-//! D-Bus agents: polkit, prompter, PipeWire privacy, ScreenSaver, inhibit and idle. GeoClue is
-//! `gnoblin-location-service`.
+//! D-Bus agents: polkit, prompter, PipeWire privacy, inhibit and idle. ScreenSaver is
+//! `gnoblin-screensaver-service` and GeoClue is `gnoblin-location-service`.
 //!
 //! This is the services role of `design/rust-compositor.md` ("Providers and slots")
 //! as an **IPC client**. It depends on `gnoblin-client` and the request vocabulary in
@@ -23,6 +23,5 @@
 pub mod link;
 pub mod prompts;
 pub mod role;
-pub mod screensaver;
 
 pub use role::{Buses, Role, RoleError};

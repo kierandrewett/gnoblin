@@ -1,0 +1,28 @@
+[package]
+name = "gnoblin-screensaver-service"
+description = "The ScreenSaver agent: org.freedesktop.ScreenSaver inhibit and lock."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The vocabulary the inhibit table and the compositor's answers are read in, and the field
+# and type keys the compositor's objects are named with.
+gnoblin-model = { path = "../gnoblin-model" }
+# The shared agent machinery: the host the agent reaches the compositor through.
+gnoblin-service-core = { path = "../gnoblin-service-core" }
+# The ScreenSaver interface is an object on the session bus, served through zbus.
+zbus.workspace = true
+# One blocking wait per bus registration: the role has no async runtime of its own, and
+# `zbus` runs its connection on its own thread.
+futures-lite.workspace = true
+# Every refusal, inhibit and release is logged once, and never with the material of a cookie.
+tracing.workspace = true
+
+[dev-dependencies]
+# The private bus the D-Bus tests start for themselves, shared with the other service crates.
+gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
+
+[lints]
+workspace = true

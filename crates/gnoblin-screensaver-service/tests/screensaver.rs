@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gnoblin_screensaver_service::{BUS_NAME, Compositor, PATHS, ScreenSaver};
 use gnoblin_service_testkit::Bus;
-use gnoblin_services::screensaver::{BUS_NAME, Compositor, PATHS, ScreenSaver};
 use zbus::Connection;
 use zbus::connection::Builder;
 

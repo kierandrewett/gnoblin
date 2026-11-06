@@ -54,7 +54,7 @@ use gnoblin_types::Version;
 use tracing::{info, warn};
 use zbus::Connection;
 
-use crate::screensaver::ScreenSaver;
+use gnoblin_screensaver_service::ScreenSaver;
 
 /// How long one read waits before the role looks at its own signals.
 pub const PUMP_TIMEOUT: Duration = Duration::from_millis(100);
@@ -207,7 +207,7 @@ impl Agents {
         let tick = Tick::new(u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX));
         Agents {
             polkit: start_polkit(host, tick),
-            screensaver: crate::screensaver::start(host),
+            screensaver: gnoblin_screensaver_service::start(host),
             linked: start_linked(host, tick, linked),
         }
     }

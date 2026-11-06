@@ -26,6 +26,8 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-service-core = { path = "../gnoblin-service-core" }
 # The polkit authentication agent: the role serves it and offers its requests.
 gnoblin-polkit-service = { path = "../gnoblin-polkit-service" }
+# The ScreenSaver agent: the role serves it and offers its inhibits.
+gnoblin-screensaver-service = { path = "../gnoblin-screensaver-service" }
 # The D-Bus agents are objects on the system bus, served through zbus.
 zbus.workspace = true
 # One blocking wait per bus registration: the role has no async runtime of its own, and
