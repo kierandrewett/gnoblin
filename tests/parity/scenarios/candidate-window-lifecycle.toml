@@ -1,0 +1,19 @@
+# A Wayland client maps an xdg toplevel, the candidate lists it over IPC, and the
+# client destroying the toplevel removes it from the list again. The reference is
+# stock Mutter 51, which is not run here (no Mutter session in this tree); see
+# tests/parity/divergences.toml.
+#
+# The expectation is the candidate's own observation, recorded from a run.
+name = "candidate-window-lifecycle"
+description = "A toplevel mapped by a Wayland client is listed over IPC and gone once destroyed."
+target = { candidate = {} }
+
+[[steps]]
+id = "window.open"
+description = "The window list after a client maps a toplevel with an app id and a title."
+expect = { listed = true, app_id_listed = true, focused = true }
+
+[[steps]]
+id = "window.close"
+description = "The window list after the client destroys its toplevel."
+expect = { listed = false, list_empty = true }

@@ -1,0 +1,15 @@
+# A fresh Rust compositor has a workspace list that a client can read over IPC
+# before any client has connected. The reference is stock Mutter 51, which has no
+# headless session in this tree, so the reference run is not run and the
+# divergence ledger in tests/parity/divergences.toml records that.
+#
+# The expectation is the candidate's own normalised output, recorded from a run;
+# it is a regression pin for the candidate, not a claim of parity with Mutter.
+name = "candidate-workspace-list"
+description = "A fresh candidate session reports its workspace list over IPC before any client connects."
+target = { candidate = {} }
+
+[[steps]]
+id = "workspace.list"
+description = "The workspaces `gnoblinctl workspace list` reports at start."
+expect = { objects = [{ id = "<id:1>", type = "gnoblin.workspace", properties = { id = "<id:2>", layout = "floating" } }] }

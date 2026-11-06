@@ -15,7 +15,7 @@ From the workspace root:
 
 ```console
 $ cargo run -p gnoblin-parity -- run tests/parity/scenarios
-[parity] 3 scenarios: 1 pass, 1 fail, 1 skip
+[parity] 6 scenarios: 4 pass, 1 fail, 1 skip
   fail layer-surface-stacking (recorded:../fixtures/layer-surface-stacking/candidate.json)
        layers.list [0].layer: expected "overlay", got "top"
        layers.list [0].namespace: expected "osd", got "bar"
@@ -23,6 +23,9 @@ $ cargo run -p gnoblin-parity -- run tests/parity/scenarios
        layers.list [1].namespace: expected "bar", got "osd"
   skip nested-session-ipc (mutter-gnoblin): needs a live headless Mutter session with gnoblin_session_host_v1; the Mutter target arrives with lane P2
   pass toplevel-configure (command), 2 observation(s) matched
+  pass candidate-workspace-list (candidate), 1 observation(s) matched
+  pass candidate-window-lifecycle (candidate), 2 observation(s) matched
+  pass candidate-kill-unknown-window (candidate), 1 observation(s) matched
 ```
 
 The binary exits `0` when no scenario failed, `1` when at least one differed, and
@@ -79,17 +82,25 @@ implemented today, and both run without a compositor:
 | `target = { command = {} }`        | Runs each step's `command` on this machine and captures its standard output. `format = "text"` trims the trailing newlines; `format = "json"` parses the output, so an expectation compares structurally. |
 | `target = { recorded = "<path>" }` | Replays observations from a JSON recording, resolved relative to the scenario file. The recording looks like `{ "target": "<who produced it>", "observations": { "<step id>": <value> } }`.               |
 
-The three live targets are named in the plan and are not implemented yet:
+The Rust candidate is live: `target = { candidate = {} }` starts `gnoblin-compositor`
+headless on a thread, in a private temporary directory, and drives it over its IPC
+socket (through the `gnoblinctl` library) and a real Wayland client. The step ids are
+a closed set of probes: `workspace.list`, `window.open`, `window.close`,
+`window.kill.unknown`. An unknown id fails the run.
+
+The two Mutter targets are named in the plan and are not implemented yet. A reference
+run needs a headless Mutter session, which this crate does not start:
 
 | Target                             | What it will be                                                     |
 | ---------------------------------- | ------------------------------------------------------------------- |
-| `target = { mutter-51 = {} }`      | Stock Mutter 51 with the headless backend: core protocol reference. |
+| `target = { mutter51 = {} }`       | Stock Mutter 51 with the headless backend: core protocol reference. |
 | `target = { mutter-gnoblin = {} }` | Gnoblin on the patched Mutter: reference for Gnoblin's own API.     |
-| `target = { candidate = {} }`      | The Rust candidate with `gnoblin-backend` headless.                 |
 
-A scenario that names a live target without a `skip` reason fails loudly with
+A scenario that names a Mutter target without a `skip` reason fails loudly with
 "target `...` is not implemented". There is no stand-in that pretends to drive a
-compositor, so a scenario cannot pass on behaviour nothing exercised.
+compositor, so a scenario cannot pass on behaviour nothing exercised. Candidate
+scenarios that have no reference run yet are listed in `divergences.toml` as
+`reference not run`.
 
 ### Adding a live target
 

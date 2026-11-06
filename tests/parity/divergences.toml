@@ -1,0 +1,24 @@
+# Divergence ledger: where a scenario's reference has not been run, and why.
+#
+# A candidate scenario records the candidate's own observation, so it pins the
+# candidate's behaviour. It is not a claim of parity until the reference target
+# has produced the same observation. Until the Mutter target lane lands, the
+# reference is absent for every entry below.
+
+[[entries]]
+scenario = "candidate-workspace-list"
+reference = "mutter51"
+status = "reference not run"
+note = "Stock Mutter 51 needs a headless Mutter session, which this crate does not start yet."
+
+[[entries]]
+scenario = "candidate-window-lifecycle"
+reference = "mutter51"
+status = "reference not run"
+note = "Stock Mutter 51 needs a headless Mutter session, which this crate does not start yet."
+
+[[entries]]
+scenario = "candidate-kill-unknown-window"
+reference = "mutter51"
+status = "reference not run"
+note = "The refusal text is gnoblinctl's own; Mutter has no equivalent IPC, so the reference is compared on exit status only once it runs."

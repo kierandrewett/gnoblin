@@ -1,9 +1,10 @@
 //! The scenarios checked into `tests/parity/scenarios`, run as CI runs them.
 //!
-//! This test is the gate for the runner itself: it asserts that the three checked
-//! in scenarios report one pass, one failure with a readable difference, and one
-//! skip with its reason. A change that makes the runner silently pass everything,
-//! or that loses the normaliser, fails here before it can hide a candidate defect.
+//! This test is the gate for the runner itself: it asserts that the checked-in
+//! scenarios report the expected verdicts, that the Rust candidate passes its own
+//! recorded expectations, and that a difference is named in words. A change that
+//! makes the runner silently pass everything, or that loses the normaliser, fails
+//! here before it can hide a candidate defect.
 
 use std::path::{Path, PathBuf};
 
@@ -26,12 +27,12 @@ fn find<'report>(report: &'report Report, name: &str) -> &'report ScenarioReport
 }
 
 #[test]
-fn the_checked_in_scenarios_report_one_pass_one_failure_and_one_skip() {
+fn the_checked_in_scenarios_report_their_verdicts() {
     let report = run();
-    assert_eq!(report.scenarios().len(), 3, "unexpected scenario count:\n{report}");
+    assert_eq!(report.scenarios().len(), 6, "unexpected scenario count:\n{report}");
     assert_eq!(
         (report.passed(), report.failed(), report.skipped()),
-        (1, 1, 1),
+        (4, 1, 1),
         "unexpected verdicts:\n{report}"
     );
     assert!(!report.is_ok(), "a reported difference must fail the run");
@@ -45,6 +46,25 @@ fn the_command_target_scenario_passes_on_its_expectations() {
     match scenario.verdict() {
         Verdict::Pass { compared } => assert_eq!(*compared, 2, "both steps carry an expectation"),
         other => panic!("expected a pass, got:\n{report}\n{other:?}"),
+    }
+}
+
+#[test]
+fn the_candidate_scenarios_pass_against_the_rust_compositor() {
+    let report = run();
+    for (name, compared) in [
+        ("candidate-workspace-list", 1),
+        ("candidate-window-lifecycle", 2),
+        ("candidate-kill-unknown-window", 1),
+    ] {
+        let scenario = find(&report, name);
+        assert_eq!(scenario.target(), "candidate");
+        match scenario.verdict() {
+            Verdict::Pass { compared: count } => {
+                assert_eq!(*count, compared, "every step of `{name}` carries an expectation");
+            }
+            other => panic!("`{name}` must pass against the candidate, got:\n{report}\n{other:?}"),
+        }
     }
 }
 

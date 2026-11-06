@@ -301,7 +301,7 @@ id = "windows.list"
         let scenario = Scenario::parse(
             r#"
 name = "not-implemented"
-target = { candidate = {} }
+target = { mutter51 = {} }
 
 [[steps]]
 id = "windows.list"
@@ -313,7 +313,7 @@ id = "windows.list"
         match report.verdict() {
             Verdict::Fail { diff } => {
                 assert!(
-                    diff.to_string().contains("target `candidate` is not implemented"),
+                    diff.to_string().contains("target `mutter51` is not implemented"),
                     "{diff}"
                 );
             }

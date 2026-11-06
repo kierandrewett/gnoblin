@@ -1,12 +1,12 @@
 //! Targets: the ways a scenario obtains its observations.
 //!
 //! A target is "a way to start a headless session with a fixed virtual output
-//! layout and to stop it" (design/rust-compositor.md). Three live targets are
-//! planned: Gnoblin on the patched Mutter, stock Mutter 51, and the Rust
-//! candidate. None of them exists yet, and this crate does not pretend
-//! otherwise: [`TargetSpec::build_target`] rejects a live target with the lane
-//! that will bring it, so a scenario that asks for one is reported as failing
-//! rather than passing on a stand-in.
+//! layout and to stop it" (design/rust-compositor.md). The Rust candidate is live
+//! ([`crate::candidate::CandidateTarget`]). Stock Mutter 51 and Gnoblin on the
+//! patched Mutter need a Mutter session this crate does not start, so
+//! [`TargetSpec::build_target`] rejects them with the lane that will bring them,
+//! and a scenario that asks for one is reported as failing rather than passing on
+//! a stand-in.
 //!
 //! Two targets are real today and make the runner testable end to end without a
 //! compositor:
@@ -27,6 +27,7 @@ use std::process::Command;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::candidate::CandidateTarget;
 use crate::scenario::{CommandStep, OutputFormat, Scenario, TargetSpec};
 
 /// One observation per step, keyed by step id.
@@ -218,11 +219,12 @@ impl TargetSpec {
                 Ok(Box::new(RecordedTarget::load(&path)?))
             }
             Self::Command(_) => Ok(Box::new(CommandTarget::new())),
-            Self::Mutter51(_) | Self::MutterGnoblin(_) | Self::Candidate(_) => Err(TargetError::NotImplemented {
+            Self::Mutter51(_) | Self::MutterGnoblin(_) => Err(TargetError::NotImplemented {
                 target: self.name(),
-                hint: "the live targets arrive with their lanes; add a `skip` reason to the scenario meanwhile"
+                hint: "a reference run needs a Mutter session with the headless backend, which this crate does not start yet (the Mutter target lane)"
                     .to_owned(),
             }),
+            Self::Candidate(_) => Ok(Box::new(CandidateTarget::new())),
         }
     }
 }
@@ -253,6 +255,8 @@ pub enum TargetError {
     NotJson { step: String, detail: String },
     /// A live target has no implementation yet.
     NotImplemented { target: String, hint: String },
+    /// A live target failed while it was running the scenario's steps.
+    Live { target: String, detail: String },
 }
 
 impl fmt::Display for TargetError {
@@ -284,6 +288,7 @@ impl fmt::Display for TargetError {
             Self::NotImplemented { target, hint } => {
                 write!(formatter, "target `{target}` is not implemented: {hint}")
             }
+            Self::Live { target, detail } => write!(formatter, "target `{target}` failed: {detail}"),
         }
     }
 }

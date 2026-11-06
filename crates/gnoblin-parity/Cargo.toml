@@ -14,6 +14,17 @@ toml.workspace = true
 # Recordings are JSON, and an observation keeps its JSON shape rather than being
 # flattened to text, so a numeric configure size compares as a number.
 serde_json.workspace = true
+# The Rust candidate target: the compositor's library entry point runs the session
+# on a thread, the gnoblinctl library entry point is the IPC peer, and a real
+# Wayland client creates the toplevel. The same arrangement the compositor's own
+# end-to-end tests use.
+gnoblin-compositor = { path = "../gnoblin-compositor" }
+gnoblin-wayland = { path = "../gnoblin-wayland" }
+gnoblinctl = { path = "../gnoblinctl" }
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client"] }
+# A private temporary directory for the candidate's two sockets.
+tempfile = "3.23.0"
 
 [lints]
 workspace = true

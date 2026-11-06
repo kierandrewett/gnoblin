@@ -1,0 +1,12 @@
+# `window call <id> kill` for an id no live window has is refused, and the session
+# keeps running. The refusal is what a script sees: its exit status and the error it
+# printed. The reference is stock Mutter 51, which is not run here; see
+# tests/parity/divergences.toml.
+name = "candidate-kill-unknown-window"
+description = "Killing a window id that no session window has is refused with a non-zero exit and an error."
+target = { candidate = {} }
+
+[[steps]]
+id = "window.kill.unknown"
+description = "The exit status and standard error of killing an unknown window id."
+expect = { exit = 1, stderr = "gnoblinctl: object-unknown: no live object has identity 9999999" }
