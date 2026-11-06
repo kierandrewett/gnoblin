@@ -10,9 +10,11 @@
 //! one bounded channel, and a full channel drops the line and counts it. The drop count is
 //! logged once a second while it changes, so a flood is visible without slowing anything down.
 //!
-//! Each line is scrubbed of what looks like a secret before it is logged. That scrubbing is
-//! best effort: heuristics cannot recognise every secret, so it never guarantees that a line is
-//! free of secrets. Only capture the output of a child that does not print secrets.
+//! Which children are captured is decided by [`policy`]: an allowlist by role, so a role that is
+//! not listed is read and discarded. Each captured line is scrubbed of what looks like a secret
+//! before it is logged. That scrubbing is best effort: heuristics cannot recognise every secret,
+//! so it never guarantees that a line is free of secrets. Only capture the output of a child that
+//! does not print secrets.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::Arc;
@@ -48,6 +50,26 @@ impl Stream {
             Self::Stdout => "stdout",
             Self::Stderr => "stderr",
         }
+    }
+}
+
+/// Whether the raw lines of one child are captured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawPolicy {
+    /// The lines are read and skipped, so nothing reaches the log.
+    Off,
+    /// The lines are scrubbed with [`Redactor`] before they are logged.
+    Redacted,
+}
+
+/// The raw capture policy of a child, by role. Only the roles listed here are captured; any
+/// other role is [`RawPolicy::Off`] until someone decides otherwise. The services role is
+/// captured only when `raw_services` is set.
+pub fn policy(role: &str, raw_services: bool) -> RawPolicy {
+    match role {
+        "compositor" | "runtime" | "portal" => RawPolicy::Redacted,
+        "services" if raw_services => RawPolicy::Redacted,
+        _ => RawPolicy::Off,
     }
 }
 
@@ -89,13 +111,12 @@ impl RawSink {
     }
 }
 
-/// Reads `reader` to its end on a new thread, sending each line that is not structured log
-/// output to `sink`.
-pub fn capture(role: &str, stream: Stream, reader: impl Read + Send + 'static, sink: RawSink) {
+/// Reads `reader` to its end on a new thread, sending each raw line to `sink` under `policy`.
+pub fn capture(role: &str, stream: Stream, policy: RawPolicy, reader: impl Read + Send + 'static, sink: RawSink) {
     let role = role.to_owned();
     let spawned = std::thread::Builder::new()
         .name(format!("gnoblin-raw-{role}-{}", stream.as_str()))
-        .spawn(move || read_lines(&role, stream, reader, &sink));
+        .spawn(move || read_lines(&role, stream, policy, reader, &sink));
     if let Err(error) = spawned {
         // Without a reader the child would block once its pipe fills, so this is worth a log
         // line even though the guardian carries on.
@@ -116,8 +137,10 @@ fn forward(stream: Stream, line: &[u8]) {
     }
 }
 
-/// Reads lines until the end of `reader`, sending the raw ones to `sink`.
-pub fn read_lines(role: &str, stream: Stream, reader: impl Read, sink: &RawSink) {
+/// Reads lines until the end of `reader`. Under [`RawPolicy::Redacted`] each raw line goes to
+/// `sink`, scrubbed. Under [`RawPolicy::Off`] each line is only read and skipped, so the child
+/// still drains its pipe.
+pub fn read_lines(role: &str, stream: Stream, policy: RawPolicy, reader: impl Read, sink: &RawSink) {
     let mut reader = BufReader::new(reader);
     let mut buffer = Vec::new();
     let mut redactor = Redactor::new();
@@ -126,6 +149,9 @@ pub fn read_lines(role: &str, stream: Stream, reader: impl Read, sink: &RawSink)
         match reader.read_until(b'\n', &mut buffer) {
             Ok(0) | Err(_) => return,
             Ok(_) => {}
+        }
+        if policy == RawPolicy::Off {
+            continue;
         }
         let line = String::from_utf8_lossy(&buffer);
         let text = bound(&redactor.redact(line.trim_end_matches(['\n', '\r'])));
@@ -214,7 +240,7 @@ mod tests {
 
     fn collect(role: &str, stream: Stream, reader: impl Read) -> Vec<RawLine> {
         let (sink, receiver, _) = RawSink::channel();
-        read_lines(role, stream, reader, &sink);
+        read_lines(role, stream, RawPolicy::Redacted, reader, &sink);
         drop(sink);
         receiver.try_iter().collect()
     }
@@ -285,9 +311,41 @@ mod tests {
     #[test]
     fn a_secret_in_a_raw_line_is_redacted_before_it_is_sent() {
         let (sink, receiver, _) = RawSink::channel();
-        read_lines("compositor", Stream::Stdout, "password=hunter2 ok\n".as_bytes(), &sink);
+        read_lines(
+            "compositor",
+            Stream::Stdout,
+            RawPolicy::Redacted,
+            "password=hunter2 ok\n".as_bytes(),
+            &sink,
+        );
         drop(sink);
         let texts: Vec<String> = receiver.try_iter().map(|line| line.text).collect();
         assert_eq!(texts, ["password=[redacted] ok"]);
+    }
+
+    #[test]
+    fn a_role_without_raw_capture_drops_nothing_and_logs_nothing() {
+        let (sink, receiver, dropped) = RawSink::channel();
+        read_lines(
+            "services",
+            Stream::Stdout,
+            RawPolicy::Off,
+            "one\ntwo\n".as_bytes(),
+            &sink,
+        );
+        drop(sink);
+        assert_eq!(receiver.try_iter().count(), 0);
+        assert_eq!(dropped.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn only_the_listed_roles_are_captured() {
+        assert_eq!(policy("compositor", false), RawPolicy::Redacted);
+        assert_eq!(policy("runtime", false), RawPolicy::Redacted);
+        assert_eq!(policy("portal", false), RawPolicy::Redacted);
+        assert_eq!(policy("services", false), RawPolicy::Off);
+        assert_eq!(policy("services", true), RawPolicy::Redacted);
+        assert_eq!(policy("front", true), RawPolicy::Off);
+        assert_eq!(policy("guardian", true), RawPolicy::Off);
     }
 }

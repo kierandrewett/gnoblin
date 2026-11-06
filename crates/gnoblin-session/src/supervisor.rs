@@ -82,6 +82,9 @@ use crate::time::{Tick, secs};
 /// read once, in [`SupervisorConfig::from_environment`], and nothing else in the workspace looks at it.
 pub const TEST_FAST_VARIABLE: &str = "GNOBLIN_TEST_FAST";
 
+/// Set to `1` to log the raw output of the services role, see [`SupervisorConfig::raw_services`].
+pub const RAW_SERVICES_VARIABLE: &str = "GNOBLIN_LOG_RAW_SERVICES";
+
 /// How the guardian role runs.
 pub struct SupervisorConfig {
     /// The executable to start the children from, which is this binary.
@@ -96,6 +99,10 @@ pub struct SupervisorConfig {
     pub recovery_path: PathBuf,
     /// How often the loop tells the policy that time passed.
     pub tick: Duration,
+    /// Whether the raw output of the services role is logged. Raw lines are scrubbed with
+    /// heuristics that cannot recognise every secret; do not enable raw capture for a process
+    /// that may print secrets.
+    pub raw_services: bool,
 }
 
 impl SupervisorConfig {
@@ -125,6 +132,7 @@ impl SupervisorConfig {
             rules.stop_grace = Tick::new(200);
             tick = Duration::from_millis(10);
         }
+        let raw_services = std::env::var(RAW_SERVICES_VARIABLE).is_ok_and(|value| value == "1");
         let recovery_path = state_home().join("gnoblin").join("recovery");
         Ok(SupervisorConfig {
             program,
@@ -133,6 +141,7 @@ impl SupervisorConfig {
             recovery: read_recovery(&recovery_path),
             recovery_path,
             tick,
+            raw_services,
         })
     }
 }
@@ -339,11 +348,14 @@ impl Supervisor {
             }
         };
         let pid = process.id();
+        let raw_policy = self
+            .role_name(&spec)
+            .map_or(raw::RawPolicy::Off, |role| raw::policy(&role, self.config.raw_services));
         if let Some(stdout) = process.stdout.take() {
-            raw::capture(name, raw::Stream::Stdout, stdout, self.raw.clone());
+            raw::capture(name, raw::Stream::Stdout, raw_policy, stdout, self.raw.clone());
         }
         if let Some(stderr) = process.stderr.take() {
-            raw::capture(name, raw::Stream::Stderr, stderr, self.raw.clone());
+            raw::capture(name, raw::Stream::Stderr, raw_policy, stderr, self.raw.clone());
         }
         log(
             Level::Info,

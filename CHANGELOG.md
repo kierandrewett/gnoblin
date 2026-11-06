@@ -15,6 +15,11 @@
   on a software driver such as lavapipe. Presentation, dmabuf import and effects are not done yet. The new
   `compositor.renderer` setting (`auto`, `vulkan`, `gles` or `software`) chooses the renderer; `auto` keeps today's
   choice, and a named renderer the session cannot create is refused with the setting named.
+- Text a child prints without the `gnoblin-log` facade (a panic, a Lua `print`, output from a C library or Xwayland)
+  is logged as component `raw`, tagged with the child's role and stream. Only the compositor, runtime and portal roles
+  are captured by default, and the services role only with `GNOBLIN_LOG_RAW_SERVICES=1`; other children are read and
+  discarded. Each line is scrubbed of secret-looking text on a best-effort basis that cannot recognise every secret, see
+  `docs/guides/logging.md`.
 
 ### Changed
 
