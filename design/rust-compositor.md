@@ -1607,7 +1607,7 @@ Each section below records the choice, its consequences, and the options conside
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
 | D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; `gnoblin-log-init` installs a console and a SQLite sink, and only a binary may name it                                                               |
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
-| D25 | Layout kinds                 | to be written by the layout lane                                                                                                                                                                                                |
+| D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 | D27 | Keyring                      | **Proposed 2026-11-06, pending sign-off:** Gnoblin stores no secrets; Secret is a client of the Secret Service (`design/keyring.md`)                                                                                            |
 
@@ -2886,6 +2886,27 @@ Consequences:
 - The renderer draws a node's effects at full opacity inside its group, then fades the finished group by the node's opacity. Blur and content therefore fade together.
 - No Gnoblin protocol carries blur fade metadata. A client that wants a fade sets the opacity of the surface that carries the blur, such as a subsurface.
 - The per-node effect list is an ordered `Vec` in the renderer API, so stacking changes the config and Lua shape only, not the renderer.
+
+### D25: layout kinds
+
+**Decided 2026-11-06: a layout declares its kind, and the kind decides who owns window geometry. A window has no floating flag of its own.** The kinds are `floating`, `tiling` and `kiosk`.
+
+A window's placement is `managed` (the layout assigns its rectangle) or `free` (the window keeps its own geometry). The wm keeps the placement internally; IPC and the schema do not expose it.
+
+Every layout module returns a table with a `kind`. The kind sets the default placement of a window that enters the layout:
+
+- `floating`: every window is free.
+- `tiling` and `kiosk`: every window is managed, except a transient, which is free.
+
+The `extent` says where placements may lie. `output` (the default) keeps them in the work area. `unbounded` lets them lie anywhere in layout space; the renderer clips to the output. A scrolling layout is `tiling` with extent `unbounded` and a viewport, a finite offset that picks the visible part.
+
+Removed: the `floating` property and `set_floating` method on `window`, with their IPC handler and wasm binding. Migration: remove calls to `set_floating` and reads of `floating`. To float windows, put their workspace on the `floating` layout.
+
+The names `workspace.layout_kind`, `window.workspace`, `window.placement` and `layout_viewport` are not provided. The workspace exposes its layout by name in `layout`, and the kind is read from the module. Toggling float is refused on a `floating` or `kiosk` workspace, and a transient never becomes managed.
+
+Failure modes, each refused when the module loads: a bare function, a table without `kind`, an unknown `kind` or `extent`, a `command` table whose names are not strings or whose values are not functions, and `options` that are not a table. A failed load runs the workspace floating, as `layout-failed` reports.
+
+Status: the `kind` and `extent` fields and the window placement landed in `79ad3bf9`. The viewport flag and `workspace:scroll_to` are the scrolling layout's remaining work.
 
 ### D26: stackable surface effects
 
