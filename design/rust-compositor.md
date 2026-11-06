@@ -1629,7 +1629,7 @@ Each section below records the choice, its consequences, and the options conside
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
-| D28 | Layer registry               | **Proposed 2026-11-06:** runtime layer registry; named, attributed layers; a closed band set orders them.                                                                                                                       |
+| D28 | Layer registry               | **Proposed 2026-11-06:** runtime layer registry; named, attributed layers; a closed band set orders them. Client surfaces are layers too.                                                                                       |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
 
 ### D1: where scripts run
@@ -3044,18 +3044,19 @@ Consequences:
 - A layer has a unique `name`, a `provider` that the compositor sets (never the caller), a `scope` of `output` or `window`, a `band`, an `order`, and input, focus, capture, lock and effects policies. `design/layers.md` has the full table.
 - Bands, bottom to top: `background`, `bottom`, `windows`, `top`, `overlay`, `system`, `lock`, `cursor`. Configuration and extensions cannot add one. Only the compositor registers in `system`, `lock` or `cursor`.
 - A window-scope layer sits directly above its target, and follows it through move, minimise, workspace switch and output move. It ends when the target closes.
-- Gnoblin registers `portals`, `alerts` (name open, `design/layers.md` item 1) and `window_menu` (D29). Extensions register under `ext.<id>.`, with powers granted in `extension.toml` (D22).
+- Gnoblin registers `portals`, `alerts` (the not-responding layer; `unresponsive` stays the property and reason) and `window_menu` (D29). Built-in Wayland providers register `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11` through the same registry. Extensions register under `ext.<id>.`, with powers granted in `extension.toml` (D22).
 - `OutputFrame` holds one ordered list of band content. The single `overlay` slot goes. This is a frame type change in `gnoblin-backend`.
 - `layers.list` keeps its wlr record shape. Registered layers appear in the same list, with `band`, `scope`, `target`, `provider` and `state` properties.
-- Captures leave out `system` and Gnoblin layers by default (`design/layers.md`, Needs Kieran 4).
+- Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, and no capture of secret-bearing layers. Per-layer options (scope, order, input, capture inclusion, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
+- Captures leave out secret-bearing layers always, and other Gnoblin layers by default (`design/layers.md`, Needs Kieran 4).
 - Tests (not run): band order; window-layer stacking and follow rules; one live `portals` per output; name collision; end on provider disconnect, target close and output removal; the lock; the capture filter. Each names the rule it guards in `design/layers.md`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
 
-Needs Kieran: the full list is in `design/layers.md`. Three block the first phase:
+Needs Kieran: the full list is in `design/layers.md`. Each item is marked (A), a policy choice about an invariant, or (B), a default for an option. Three block the first phase:
 
-1. The name of the not-responding layer: `alerts`, `attention` or `notices` (`design/layers.md` item 1).
-2. Whether a window-targeted `portals` modal blocks the whole output (proposed) or only its target (item 2).
-3. Whether the capture default for `portals`, `alerts` and `window_menu` is exclude (proposed) (item 4).
+1. Name of the toplevel kind: `surface_toplevel` (proposed; `design/layers.md` item 12).
+2. Whether a window-targeted `portals` modal blocks the whole output (A, proposed) or only its target (`design/layers.md` item 2).
+3. Default capture inclusion for `alerts` and `window_menu` (B, proposed: excluded; item 4).
 
 ### D29: window menu
 
