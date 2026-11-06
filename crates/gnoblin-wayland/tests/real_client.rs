@@ -29,7 +29,10 @@ use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
 use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
-use gnoblin_wayland::{Config, ControlHandle, LayoutControl, LoopError, Modal, ModalEvent, Server, SessionSnapshot};
+use gnoblin_wayland::{
+    Clock, Config, ControlHandle, LayoutControl, LoopError, ManualClock, Modal, ModalEvent, Server, SessionSnapshot,
+    SystemClock,
+};
 use gnoblin_wm::layout::{
     Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
 };
@@ -436,13 +439,18 @@ fn scripted_session(focus_mode: FocusMode, shape: Shape) -> Session {
             ..WmOptions::default()
         },
         shape,
-        true,
+        Arc::new(SystemClock),
     )
 }
 
 /// A master-stack session whose pointer rests before a hover focus change: the change waits
 /// `POINTER_REST` on the new window, and only a test advances the clock that measures it.
 fn rest_master_session() -> Session {
+    rest_master_session_on(Arc::new(ManualClock::new()))
+}
+
+/// The rest session on a clock the test owns, so the test decides when wall time passes.
+fn rest_master_session_on(clock: Arc<ManualClock>) -> Session {
     scripted_with(
         WmOptions {
             focus_mode: FocusMode::Hover,
@@ -450,19 +458,19 @@ fn rest_master_session() -> Session {
             ..WmOptions::default()
         },
         Shape::Master,
-        false,
+        clock,
     )
 }
 
-/// Starts a session with the given window manager options and a scripted engine. With
-/// `wall_clock` off the session clock moves only when a test advances it, so a rest timer
-/// never expires during a client round trip that the test did not ask for.
-fn scripted_with(wm: WmOptions, shape: Shape, wall_clock: bool) -> Session {
+/// Starts a session with the given window manager options, a scripted engine and a session
+/// clock source. A [`ManualClock`] moves only when its owner moves it, so a rest timer never
+/// expires during a client round trip that the test did not ask for.
+fn scripted_with(wm: WmOptions, shape: Shape, clock: Arc<dyn Clock>) -> Session {
     let mut session = Session::start_configured(
         Headless::new(),
         Config {
             wm,
-            wall_clock,
+            clock,
             ..Config::default()
         },
     );
@@ -1828,15 +1836,15 @@ fn a_held_button_ignores_a_pending_rest_focus() {
 
 #[test]
 fn a_client_round_trip_does_not_advance_the_session_clock() {
-    let session = rest_master_session();
-    session.run(|session| {
+    let clock = Arc::new(ManualClock::new());
+    let session = rest_master_session_on(clock.clone());
+    session.run(move |session| {
         let mut client = Client::connect(session.socket());
         let _pair = map_master_pair(session, &mut client);
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
         client.move_pointer(session, only_point_of(session, "Right"));
-        // Wall time passes while the client waits. The session clock is manual, so the rest
-        // must not come due: the sleep is the point of the test, not a wait for a result.
-        thread::sleep(Duration::from_millis(POINTER_REST * 3));
+        // The clock only moves when the test moves it, so the round trip must leave the rest
+        // where it was.
         client.roundtrip();
         settle(session);
         assert_eq!(
@@ -1844,7 +1852,7 @@ fn a_client_round_trip_does_not_advance_the_session_clock() {
             Some("Left"),
             "wall time advanced the rest"
         );
-        session.control.advance(POINTER_REST);
+        clock.advance(Duration::from_millis(POINTER_REST));
         session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
     });
 }

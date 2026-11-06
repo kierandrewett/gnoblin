@@ -42,6 +42,7 @@ use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::InitError;
 use tracing::{debug, info, warn};
 
+use crate::clock::{Clock, SystemClock};
 use crate::modal::{Modal, ModalEvent};
 use gnoblin_backend::render::Image;
 use gnoblin_backend::render::cursor::{DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, ProviderKind};
@@ -138,10 +139,12 @@ pub struct Config {
     /// How long a client may leave a ping unanswered before its windows are marked
     /// unresponsive. Zero disables the liveness pings.
     pub check_alive_timeout: Duration,
-    /// Whether the session clock follows the loop's real time, so idle and a rest focus fire
-    /// without a caller advancing it. A test that must not depend on wall time sets this to
-    /// `false` and advances the clock itself with [`Session::advance`].
-    pub wall_clock: bool,
+    /// The source of the session clock. The loop reads it once per turn and advances the
+    /// session clock by the time elapsed since the previous turn, so idle and a rest focus
+    /// fire without a caller advancing it. A test that must not depend on wall time passes a
+    /// [`ManualClock`](crate::ManualClock) and moves it instead, or advances the session with
+    /// [`Session::advance`].
+    pub clock: Arc<dyn Clock>,
     /// A reader outside the loop that is told when the observable state changed.
     ///
     /// It is how the composition root feeds its object graph from the same
@@ -189,7 +192,7 @@ impl Default for Config {
             workspaces: 1,
             wm: WmOptions::default(),
             check_alive_timeout: Duration::from_secs(5),
-            wall_clock: true,
+            clock: Arc::new(SystemClock),
             observer: None,
             protocols: Protocols::default(),
             input_sources: None,
@@ -236,6 +239,7 @@ pub struct Server {
     stop: LoopSignal,
     control: Arc<Control>,
     frames: Arc<Mutex<FrameStats>>,
+    clock: Arc<dyn Clock>,
 }
 
 impl Server {
@@ -306,7 +310,7 @@ impl Server {
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
         state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
-        state.wall_clock = config.wall_clock;
+        let clock = config.clock.clone();
         let heads = crate::output_config::BackendOutputConfig::new(backend.as_mut(), state.output_positions()).heads();
         state.publish_output_heads(heads);
         // The keyboard is configured before the socket is bound, so the first client that
@@ -471,6 +475,7 @@ impl Server {
             stop,
             control,
             frames: Arc::new(Mutex::new(FrameStats::default())),
+            clock,
         })
     }
 
@@ -543,6 +548,7 @@ impl Server {
                 mut backend,
                 control,
                 frames,
+                clock,
                 ..
             } = self;
             // The loop's own handle, so a sandbox listener created during a dispatch
@@ -554,13 +560,11 @@ impl Server {
                 // The session clock follows the loop's real time, so idle fires without a
                 // caller having to advance it; a caller that advances it as well is jumping
                 // the same counter forwards.
-                let now = std::time::Instant::now();
+                let now = clock.now();
                 if let Some(previous) = last_turn {
                     let elapsed = now.duration_since(previous).as_millis();
                     let milliseconds = u64::try_from(elapsed).unwrap_or(u64::MAX);
-                    if state.wall_clock {
-                        state.tick_clock(milliseconds);
-                    }
+                    state.tick_clock(milliseconds);
                     state.advance_motion(u32::try_from(elapsed).unwrap_or(u32::MAX));
                 }
                 last_turn = Some(now);

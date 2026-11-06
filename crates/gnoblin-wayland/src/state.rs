@@ -434,9 +434,6 @@ pub struct State {
     pub(crate) activity: Activity,
     /// The liveness pings and the clients that have missed them.
     pub(crate) liveness: crate::liveness::Liveness,
-    /// Whether the session clock follows the loop's real time. A test that must not depend
-    /// on wall time turns it off and advances the clock itself.
-    pub(crate) wall_clock: bool,
 
     /// The window management policy.
     ///
@@ -756,7 +753,6 @@ impl State {
             clock: Tick::ZERO,
             activity: Activity::new(),
             liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
-            wall_clock: true,
             wm: Wm::new(options),
             windows: BTreeMap::new(),
             outputs: Vec::new(),

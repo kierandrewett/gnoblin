@@ -177,6 +177,7 @@
 //! loop's turn is the only thing that decides when a dead connection is noticed.
 
 mod access;
+mod clock;
 mod frame;
 mod keyboard;
 mod liveness;
@@ -192,6 +193,7 @@ mod server;
 mod state;
 mod xwayland;
 
+pub use clock::{Clock, ManualClock, SystemClock};
 pub use frame::{FrameStats, SCREENSHOT_TIMEOUT};
 pub use modal::{Modal, ModalEvent};
 pub use observation::{
