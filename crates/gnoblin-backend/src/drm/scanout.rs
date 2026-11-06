@@ -227,10 +227,17 @@ fn allocate(
 
 /// The scan-out of one output for one [`crate::drm::frame::present`] call: draws into the
 /// buffers and queues flips on the CRTC.
+///
+/// Built fresh for each present, so it borrows the output's buffers and the GPU only for that
+/// call. Nothing here outlives the frame.
 pub(crate) struct Flip<'a> {
+    /// The two slots of this output, borrowed mutably because drawing into one changes its state.
     pub(crate) buffers: &'a mut Buffers,
+    /// The device the buffers were allocated on, used to queue the flip.
     pub(crate) gpu: &'a Gpu,
+    /// The CRTC the output is driven on; the flip is queued against it.
     pub(crate) crtc: crtc::Handle,
+    /// The output's scale, applied when the frame is drawn into the buffer.
     pub(crate) scale: Scale,
 }
 

@@ -39,11 +39,17 @@
 //! 5. **A gamma table does not fit.** [`gamma::GammaRamp::matches`] refuses it before the
 //!    ioctl and the refusal is logged, so the display keeps the table it had.
 
+/// The render-then-flip step of one output; see the module docs.
 pub mod frame;
+/// The gamma lookup table and its length check; see the module docs.
 pub mod gamma;
+/// The GPU behind the hardware backend: the primary node, its connectors and KMS surfaces.
 pub mod gpu;
+/// The pure planning of output state and kernel operations.
 pub mod plan;
+/// The per-output swapchain state machine: which buffer is drawn and when a flip may queue.
 pub mod present;
+/// The GBM scan-out buffers of one output and the adapter that draws into them.
 pub(crate) mod scanout;
 
 use std::fmt;
