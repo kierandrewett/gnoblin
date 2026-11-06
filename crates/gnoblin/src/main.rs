@@ -130,7 +130,11 @@ fn log_role(role: &role::Role) -> gnoblin_log::ProcessRole {
 fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::LogSettings {
     let defaults = gnoblin_log::init::LogSettings::default();
     gnoblin_log::init::LogSettings {
-        console: !matches!(logging.console, Some(gnoblin_compositor::LogConsole::Off)),
+        console: match logging.console {
+            None | Some(gnoblin_compositor::LogConsole::Auto) => gnoblin_log::init::Console::Auto,
+            Some(gnoblin_compositor::LogConsole::Pretty) => gnoblin_log::init::Console::Pretty,
+            Some(gnoblin_compositor::LogConsole::Off) => gnoblin_log::init::Console::Off,
+        },
         level: logging.level.clone().unwrap_or(defaults.level),
         store: logging.store.unwrap_or(defaults.store),
         store_path: logging

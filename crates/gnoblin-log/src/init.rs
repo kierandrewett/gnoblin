@@ -1,28 +1,35 @@
 //! Installs the gnoblin log for one process.
 //!
-//! [`init`] installs one `tracing` subscriber with two sinks. The console sink, the `console`
-//! module, prints one line per event on stderr. The database sink, the `store` module, stores
-//! each event as a row in a SQLite file, so that a session can be inspected after the fact. Both
-//! sinks share one filter, taken from `GNOBLIN_LOG`, and the database location comes from
-//! `GNOBLIN_LOG_DB`; see [`LogOptions`].
+//! [`init`] installs one `tracing` subscriber. Its console layer follows the resolved
+//! [`Output`]: the native journal (the `journal` module), the `<N>` stream format, the pretty or
+//! plain line format, JSON lines, or nothing. Its database layer, the `store` module, stores each
+//! event as a row in a SQLite file, so that a session can be inspected after the fact; it is on
+//! in every mode. All layers share one filter, taken from `GNOBLIN_LOG`, and the database location
+//! comes from `GNOBLIN_LOG_DB`; see [`LogOptions`].
 //!
 //! Only the binaries use this module: they enable the `init` feature. The crates that log use the
 //! macros of the facade.
 
 mod options;
 
+use std::io::IsTerminal as _;
 use std::panic;
 
 use crate::ProcessRole;
-use crate::console::ConsoleFormat;
+use crate::console::{ConsoleFormat, JsonFormat, StreamFormat};
+use crate::journal::{JournalLayer, SOCKET_PATH};
 use crate::store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;
+use tracing_subscriber::fmt::format::DefaultFields;
+use tracing_subscriber::fmt::{self, FormatEvent};
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
 pub use crate::store::Retention;
-pub use options::{DATABASE_VARIABLE, FILTER_VARIABLE, LogOptions, LogSettings};
+pub use options::{
+    Console, DATABASE_VARIABLE, FILTER_VARIABLE, FORMAT_VARIABLE, LogOptions, LogSettings, Output, Probe,
+};
 
 /// Keeps the database writer alive. Dropping it waits, for a bounded time, for pending
 /// records to reach the database, so a process should hold it until it is done logging.
@@ -42,14 +49,15 @@ impl Drop for LogGuard {
 /// Installs the process-wide subscriber for `role`, with `options`.
 ///
 /// Problems with the configuration do not stop the process: an invalid filter falls back to
-/// `info`, and a database that cannot be opened leaves the console working. Each problem is
+/// `info`, an unknown format is ignored, a database that cannot be opened leaves the console
+/// working, and a journal that cannot be reached writes to stderr instead. Each problem is
 /// reported as a warning once the subscriber is installed. A panic is logged as an error
 /// before the previous panic hook runs.
 ///
 /// Calling this after another subscriber is installed leaves that subscriber in place.
 pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     let role = role.name();
-    let mut problems = Vec::new();
+    let mut problems = options.problems.clone();
 
     let filter = match EnvFilter::try_new(&options.filter) {
         Ok(filter) => filter,
@@ -60,17 +68,27 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     };
 
     let mut layers: Vec<Box<dyn Layer<Registry> + Send + Sync>> = Vec::new();
-    if options.console {
-        layers.push(
-            tracing_subscriber::fmt::layer()
-                .event_format(ConsoleFormat {
-                    role,
-                    colour: std::io::IsTerminal::is_terminal(&std::io::stderr()),
-                })
-                .with_writer(std::io::stderr)
-                .with_filter(filter.clone())
-                .boxed(),
-        );
+    match options.output {
+        Output::Off => {}
+        Output::Journal => match JournalLayer::connect(role) {
+            Ok(journal) => layers.push(journal.with_filter(filter.clone()).boxed()),
+            Err(error) => {
+                problems.push(format!(
+                    "no journal at {SOCKET_PATH} ({error}), logging to stderr instead"
+                ));
+                layers.push(console_layer(StreamFormat, filter.clone()));
+            }
+        },
+        Output::JournalStream => layers.push(console_layer(StreamFormat, filter.clone())),
+        Output::Pretty => layers.push(console_layer(
+            ConsoleFormat {
+                role,
+                colour: std::io::stderr().is_terminal(),
+            },
+            filter.clone(),
+        )),
+        Output::Json => layers.push(console_layer(JsonFormat { role }, filter.clone())),
+        Output::Plain => layers.push(console_layer(ConsoleFormat { role, colour: false }, filter.clone())),
     }
 
     let mut sink = None;
@@ -92,6 +110,18 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
         }
     }
     LogGuard { sink }
+}
+
+/// A console layer that writes each event on stderr in `format`, filtered by `filter`.
+fn console_layer<F>(format: F, filter: EnvFilter) -> Box<dyn Layer<Registry> + Send + Sync>
+where
+    F: FormatEvent<Registry, DefaultFields> + Send + Sync + 'static,
+{
+    fmt::layer::<Registry>()
+        .event_format(format)
+        .with_writer(std::io::stderr)
+        .with_filter(filter)
+        .boxed()
 }
 
 /// Routes panics through the log as errors, keeping the previous hook's output.

@@ -74,7 +74,11 @@ fn main() -> ExitCode {
 fn log_settings(logging: &gnoblin_config::Logging) -> gnoblin_log::init::LogSettings {
     let defaults = gnoblin_log::init::LogSettings::default();
     gnoblin_log::init::LogSettings {
-        console: !matches!(logging.console, Some(gnoblin_config::LogConsole::Off)),
+        console: match logging.console {
+            None | Some(gnoblin_config::LogConsole::Auto) => gnoblin_log::init::Console::Auto,
+            Some(gnoblin_config::LogConsole::Pretty) => gnoblin_log::init::Console::Pretty,
+            Some(gnoblin_config::LogConsole::Off) => gnoblin_log::init::Console::Off,
+        },
         level: logging.level.clone().unwrap_or(defaults.level),
         store: logging.store.unwrap_or(defaults.store),
         store_path: logging

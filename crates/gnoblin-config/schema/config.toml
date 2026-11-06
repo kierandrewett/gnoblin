@@ -345,6 +345,7 @@ name = "LogConsole"
 setting = "log-console"
 doc = "What the process prints on standard error."
 variants = [
+    { spelling = "auto", doc = "The native journal under systemd, otherwise pretty lines on a terminal and plain lines elsewhere." },
     { spelling = "pretty", doc = "One human-readable line per event." },
     { spelling = "off", doc = "Print nothing; the database still records events." },
 ]
@@ -2067,9 +2068,9 @@ doc = "What the process logs, where the database is, and how long it is kept."
 key = "console"
 kind = "enum"
 enum = "LogConsole"
-accepted = "one of pretty, off"
-default = { enum = "pretty" }
-doc = "Whether events are printed on standard error."
+accepted = "one of auto, pretty, off"
+default = { enum = "auto" }
+doc = "What is printed on standard error: auto picks the journal under systemd and a line format otherwise."
 since = "0.2.0"
 
 [[section.field]]
