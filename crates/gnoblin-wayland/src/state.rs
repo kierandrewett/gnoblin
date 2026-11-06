@@ -844,17 +844,22 @@ impl State {
             stream,
             Arc::clone(&data) as Arc<dyn smithay::reexports::wayland_server::backend::ClientData>,
         )?;
+        // The pid and the process's start time are read now, while the peer still holds
+        // the pid. The start time tells the process apart from a later one that reuses
+        // the number, so a kill can refuse a process that has changed.
+        let pid = client
+            .get_credentials(&self.display_handle)
+            .ok()
+            .and_then(|credentials| u32::try_from(credentials.pid).ok());
+        if let Some(identity) = pid.and_then(crate::ProcessIdentity::of) {
+            let _ = data.process.set(identity);
+        }
         // A role the compositor promised to the process takes the place of the socket's
         // default. Only an unprivileged connection can be promoted: a sandboxed one
         // stays sandboxed whatever a promise says, and the privileged socket already
         // sees more than either single-purpose role.
         let role = match role {
-            ClientRole::Unprivileged => client
-                .get_credentials(&self.display_handle)
-                .ok()
-                .and_then(|credentials| u32::try_from(credentials.pid).ok())
-                .and_then(|pid| self.access.promised(pid))
-                .unwrap_or(role),
+            ClientRole::Unprivileged => pid.and_then(|pid| self.access.promised(pid)).unwrap_or(role),
             _ => role,
         };
         self.access.record(&client.id(), role);
@@ -1744,17 +1749,24 @@ impl State {
         true
     }
 
-    /// The pid of the client behind a window, from its connection's credentials. `None`
-    /// when no such window exists; `Some(None)` when the window is X11 or its pid is unknown.
-    pub(crate) fn window_process(&self, window: WindowId) -> Option<Option<u32>> {
+    /// What is known about the process behind a window's client. `None` when no such
+    /// window exists.
+    pub(crate) fn window_process(&self, window: WindowId) -> Option<crate::WindowProcess> {
         let entry = self.windows.get(&window)?;
-        let pid = entry
-            .surface
-            .toplevel()
-            .and_then(|toplevel| toplevel.wl_surface().client())
-            .and_then(|client| client.get_credentials(&self.display_handle).ok())
-            .and_then(|credentials| u32::try_from(credentials.pid).ok());
-        Some(pid)
+        // An X11 window has no Wayland client, so there is no process to name.
+        let Some(toplevel) = entry.surface.toplevel() else {
+            return Some(crate::WindowProcess::Unknown);
+        };
+        let Some(client) = toplevel.wl_surface().client() else {
+            return Some(crate::WindowProcess::Disconnected);
+        };
+        let identity = client
+            .get_data::<crate::protocols::wl_compositor::WlCompositorClientState>()
+            .and_then(|data| data.process.get().copied());
+        Some(match identity {
+            Some(identity) => crate::WindowProcess::Connected(identity),
+            None => crate::WindowProcess::Unknown,
+        })
     }
 
     /// Lets the window manager collect the layout runs that finished and applies the

@@ -73,7 +73,7 @@ use gnoblin_client::wire;
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
 use gnoblin_types::{ClientId, ErrorCode, Version, WorkspaceId};
-use gnoblin_wayland::{ControlHandle, Observer, SessionSnapshot};
+use gnoblin_wayland::{ControlHandle, Observer, ProcessIdentity, SessionSnapshot, WindowProcess};
 use tracing::{debug, info, warn};
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
@@ -1223,8 +1223,9 @@ impl Dispatcher {
 
     /// Serves `window.kill`: the window's client process is sent SIGKILL, whatever its
     /// state, so an unresponsive window is not the only one that can be killed. Refused
-    /// when the window is gone, its pid is unknown, or the pid is the compositor's own
-    /// or init's, since those are never a client.
+    /// when the window is gone, its process is unknown or its client has disconnected,
+    /// the pid now names another process than the one that connected, or the pid is the
+    /// compositor's own or init's, since those are never a client.
     fn kill(
         &mut self,
         client: ClientId,
@@ -1234,7 +1235,7 @@ impl Dispatcher {
         arguments: &gnoblin_model::Fields,
         window: gnoblin_types::WindowId,
     ) {
-        let pid = match self.control.window_process(window) {
+        let identity = match self.control.window_process(window) {
             None => {
                 self.refuse(
                     client,
@@ -1248,7 +1249,7 @@ impl Dispatcher {
                 self.refuse(client, envelope, wire::code::OBJECT_UNKNOWN, "kill: window not found");
                 return;
             }
-            Some(Some(None)) => {
+            Some(Some(WindowProcess::Unknown)) => {
                 self.refuse(
                     client,
                     envelope,
@@ -1257,9 +1258,18 @@ impl Dispatcher {
                 );
                 return;
             }
-            Some(Some(Some(pid))) => pid,
+            Some(Some(WindowProcess::Disconnected)) => {
+                self.refuse(
+                    client,
+                    envelope,
+                    wire::code::PROCESS_CHANGED,
+                    "kill: the window's client has disconnected",
+                );
+                return;
+            }
+            Some(Some(WindowProcess::Connected(identity))) => identity,
         };
-        if pid == std::process::id() || pid == 1 {
+        if identity.pid == std::process::id() || identity.pid == 1 {
             self.refuse(
                 client,
                 envelope,
@@ -1268,6 +1278,23 @@ impl Dispatcher {
             );
             return;
         }
+        // The pidfd is opened before the identity is checked. Once it is open it names the
+        // process that holds the pid, and the check shows whether that process is the one
+        // that connected: a pid reused since then fails the check.
+        let pidfd = i32::try_from(identity.pid)
+            .ok()
+            .and_then(rustix::process::Pid::from_raw)
+            .and_then(|pid| rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok());
+        let current = ProcessIdentity::of(identity.pid);
+        let Some(pidfd) = pidfd.filter(|_| current == Some(identity)) else {
+            self.refuse(
+                client,
+                envelope,
+                wire::code::PROCESS_CHANGED,
+                "kill: the window's process has exited or changed",
+            );
+            return;
+        };
         let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
             Ok(operation) => operation,
             Err(error) => {
@@ -1277,14 +1304,12 @@ impl Dispatcher {
             }
         };
         self.reply_with_operation(client, envelope, &operation);
-        // The process may have exited since its credentials were read; that is the only
-        // way the signal fails, and it is reported as the object being gone.
-        let outcome = match i32::try_from(pid).ok().and_then(rustix::process::Pid::from_raw) {
-            Some(target) => match rustix::process::kill_process(target, rustix::process::Signal::KILL) {
-                Ok(()) => OperationOutcome::Done,
-                Err(_) => OperationOutcome::Failed(OBJECT_GONE),
-            },
-            None => OperationOutcome::Failed(OBJECT_GONE),
+        // The signal goes through the pidfd, so it cannot land on a process that took the
+        // pid after the check; a process that has already exited fails it instead.
+        let signalled = rustix::process::pidfd_send_signal(&pidfd, rustix::process::Signal::KILL);
+        let outcome = match signalled {
+            Ok(()) => OperationOutcome::Done,
+            Err(_) => OperationOutcome::Failed(OBJECT_GONE),
         };
         self.finish(object, &operation, Some(outcome));
     }

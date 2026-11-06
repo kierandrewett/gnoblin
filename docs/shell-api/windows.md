@@ -86,22 +86,22 @@ Window and workspace objects expose methods that queue the corresponding
 typed operation. Call them with colon syntax from a runtime event callback.
 Each method returns an `Operation` handle.
 
-| Window method                                   | Arguments                                          | Effect                                                                                                 |
-| ----------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `window:close()`                                | None                                               | Ask the application to close.                                                                          |
-| `window:kill()`                                 | None                                               | SIGKILL the window's process. Refused for an unknown window or pid, and for the compositor's pid or 1. |
-| `window:set_minimized(enabled)`                 | Boolean                                            | Minimize the window, or remove minimization.                                                           |
-| `window:restore_or_minimize()`                  | None                                               | Unmaximize, restore the pre-snap frame, or minimize.                                                   |
-| `window:set_maximized(enabled)`                 | Boolean                                            | Set maximization.                                                                                      |
-| `window:set_fullscreen(enabled)`                | Boolean                                            | Set fullscreen.                                                                                        |
-| `window:set_above(enabled)`                     | Boolean                                            | Set the above state.                                                                                   |
-| `window:set_sticky(enabled)`                    | Boolean                                            | Set visibility across workspaces.                                                                      |
-| `window:move(x, y)`                             | Integers from −100000 to 100000                    | Move in logical desktop pixels.                                                                        |
-| `window:resize(width, height)`                  | Integers from 1 to 32768                           | Resize in logical pixels.                                                                              |
-| `window:move_to_workspace(workspace, options?)` | `Workspace`, its ID or its number; option `follow` | Move this window and optionally activate the destination.                                              |
-| `window:move_to_monitor(monitor)`               | `Output`, or a monitor connector ID                | Move this window to an active monitor.                                                                 |
-| `window:thumbnail(width, height)`               | Width from 1 to 480, height from 1 to 320          | Capture a bounded compositor-rendered PNG preview.                                                     |
-| `window:present()`                              | None                                               | Focus a window of a process the runtime started.                                                       |
+| Window method                                   | Arguments                                          | Effect                                                                                           |
+| ----------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `window:close()`                                | None                                               | Ask the application to close.                                                                    |
+| `window:kill()`                                 | None                                               | SIGKILL the window's process, refused if unknown, gone or changed, or the compositor's pid or 1. |
+| `window:set_minimized(enabled)`                 | Boolean                                            | Minimize the window, or remove minimization.                                                     |
+| `window:restore_or_minimize()`                  | None                                               | Unmaximize, restore the pre-snap frame, or minimize.                                             |
+| `window:set_maximized(enabled)`                 | Boolean                                            | Set maximization.                                                                                |
+| `window:set_fullscreen(enabled)`                | Boolean                                            | Set fullscreen.                                                                                  |
+| `window:set_above(enabled)`                     | Boolean                                            | Set the above state.                                                                             |
+| `window:set_sticky(enabled)`                    | Boolean                                            | Set visibility across workspaces.                                                                |
+| `window:move(x, y)`                             | Integers from −100000 to 100000                    | Move in logical desktop pixels.                                                                  |
+| `window:resize(width, height)`                  | Integers from 1 to 32768                           | Resize in logical pixels.                                                                        |
+| `window:move_to_workspace(workspace, options?)` | `Workspace`, its ID or its number; option `follow` | Move this window and optionally activate the destination.                                        |
+| `window:move_to_monitor(monitor)`               | `Output`, or a monitor connector ID                | Move this window to an active monitor.                                                           |
+| `window:thumbnail(width, height)`               | Width from 1 to 480, height from 1 to 320          | Capture a bounded compositor-rendered PNG preview.                                               |
+| `window:present()`                              | None                                               | Focus a window of a process the runtime started.                                                 |
 
 Record properties remain read-only. In the native runtime,
 `Window:focus(grant)` requests focus with the [`grant`](/shell-api/grants) of

@@ -144,14 +144,14 @@ impl Session {
 
     /// Starts a session that serves `ipc` instead of the directory's default.
     pub fn start_with(ipc: Option<PathBuf>) -> Session {
-        Session::start_with_window_pid(ipc, None)
+        Session::start_with_window_process(ipc, None)
     }
 
-    /// Like [`Session::start_with`], but every window reports `window_pid` as its pid
-    /// instead of reading its client's credentials. The in-process test client's pid is
+    /// Like [`Session::start_with`], but every window reports `process` as its process
+    /// instead of reading its client's connection. The in-process test client's pid is
     /// the test's own, which `window.kill` refuses, so a kill test names its victim here.
-    /// `Some(None)` reports the pid as unknown.
-    pub fn start_with_window_pid(ipc: Option<PathBuf>, window_pid: Option<Option<u32>>) -> Session {
+    /// Passing `Some(WindowProcess::Unknown)` reports the process as unknown.
+    pub fn start_with_window_process(ipc: Option<PathBuf>, process: Option<gnoblin_wayland::WindowProcess>) -> Session {
         let directory = private_directory();
         let ipc = ipc.unwrap_or_else(|| directory.path().join("ipc.sock"));
         let wayland = directory.path().join("wayland-0.sock");
@@ -161,7 +161,7 @@ impl Session {
             stop: Some(stop.clone()),
             wayland: gnoblin_wayland::Config {
                 socket_path: Some(wayland.clone()),
-                window_pid_override: window_pid,
+                window_process_override: process,
                 ..gnoblin_wayland::Config::default()
             },
             ..SessionConfig::default()

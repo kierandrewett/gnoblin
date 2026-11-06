@@ -144,9 +144,9 @@ pub struct Config {
     pub input_sources: Option<gnoblin_config::InputSources>,
     /// The document's `input.keyboard`: repeat delay, repeat interval and XKB options.
     pub keyboard: Option<gnoblin_config::Keyboard>,
-    /// A test seam: the pid every window reports in place of its client's credentials.
-    /// `Some(None)` reports every window's pid as unknown; `None` reads the credentials.
-    pub window_pid_override: Option<Option<u32>>,
+    /// A test seam: the process every window reports in place of its client's, so a test
+    /// can name a process it chose. `None` reads each window's connection.
+    pub window_process_override: Option<crate::WindowProcess>,
     /// The titlebar actions `window_management` declares.
     ///
     /// The redirect in `gnoblin-compat-gtk-shell1` maps a titlebar gesture to one of
@@ -180,7 +180,7 @@ impl Default for Config {
             titlebar_actions: TitlebarActions::default(),
             cursor: CursorSettings::default(),
             extensions: Vec::new(),
-            window_pid_override: None,
+            window_process_override: None,
         }
     }
 }
@@ -245,7 +245,7 @@ impl Server {
         // `'static` and the display can stay in the state.
         let poll_fd = display.as_fd().try_clone_to_owned().map_err(StartupError::Io)?;
 
-        let window_pid_override = config.window_pid_override;
+        let window_process_override = config.window_process_override;
         let mut state = State::new(
             display,
             backend.outputs(),
@@ -380,7 +380,7 @@ impl Server {
                             }
                             Command::WindowProcess { window, reply } => {
                                 let process = state.window_process(window);
-                                let process = match (process, window_pid_override) {
+                                let process = match (process, window_process_override) {
                                     (Some(_), Some(over)) => Some(over),
                                     (process, _) => process,
                                 };
@@ -651,8 +651,8 @@ impl ControlHandle {
     }
 
     /// The process behind a window's client. `None` when the loop did not answer in time;
-    /// otherwise `None` when no such window exists, and `Some(None)` when its pid is unknown.
-    pub fn window_process(&self, window: WindowId) -> Option<Option<Option<u32>>> {
+    /// otherwise `None` when no such window exists, and the window's process otherwise.
+    pub fn window_process(&self, window: WindowId) -> Option<Option<crate::WindowProcess>> {
         let (reply, answer) = std::sync::mpsc::sync_channel(1);
         self.control.push(Command::WindowProcess { window, reply });
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
@@ -915,7 +915,7 @@ enum Command {
     /// The process behind a window's client; see `ControlHandle::window_process`.
     WindowProcess {
         window: WindowId,
-        reply: std::sync::mpsc::SyncSender<Option<Option<u32>>>,
+        reply: std::sync::mpsc::SyncSender<Option<crate::WindowProcess>>,
     },
     /// A command for a workspace's layout; the answer is the refusal, if any.
     Layout {

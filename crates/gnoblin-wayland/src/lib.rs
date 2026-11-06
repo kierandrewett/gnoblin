@@ -184,6 +184,7 @@ mod modal;
 mod observation;
 mod output_config;
 mod output_control;
+mod process;
 mod protocols;
 mod server;
 mod state;
@@ -210,6 +211,7 @@ pub use server::{
 pub use smithay::delegate_dispatch2;
 pub use smithay::wayland::{Dispatch2, GlobalDispatch2};
 
+pub use process::{ProcessIdentity, WindowProcess};
 pub use protocols::extension::{
     Activation, Extension, ExtensionError, Shell1Host, Surface, Titlebar, TitlebarActions, X11InteropHost,
 };

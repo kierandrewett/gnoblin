@@ -21,7 +21,7 @@
 //! 4. Only for a non-synchronous subsurface, the commit is attributed to its root
 //!    surface, which is the toplevel the window manager knows.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::reexports::wayland_server::Client;
@@ -32,6 +32,7 @@ use smithay::wayland::compositor::{
 };
 use smithay::xwayland::XWaylandClientData;
 
+use crate::ProcessIdentity;
 use crate::State;
 use crate::access::{Access, Registration};
 
@@ -51,6 +52,9 @@ pub struct WlCompositorClientState {
     pub compositor_state: CompositorClientState,
     /// The connection's claim on its access-roster entry.
     pub registration: Registration,
+    /// The connection's process, read when it connected; unset where its credentials
+    /// could not be read.
+    pub process: OnceLock<ProcessIdentity>,
 }
 
 impl WlCompositorClientState {
@@ -60,6 +64,7 @@ impl WlCompositorClientState {
         Self {
             compositor_state: CompositorClientState::default(),
             registration: Registration::new(Arc::clone(access)),
+            process: OnceLock::new(),
         }
     }
 }

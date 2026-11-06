@@ -112,6 +112,9 @@ pub mod code {
     pub const REQUEST_UNKNOWN: &str = "request-unknown";
     /// No live object has that identity.
     pub const OBJECT_UNKNOWN: &str = "object-unknown";
+    /// The window's process is no longer the one that connected: it exited, or its pid
+    /// names another process, so nothing is signalled.
+    pub const PROCESS_CHANGED: &str = "process-changed";
     /// The member is not one this layer serves.
     pub const UNKNOWN_MEMBER: &str = gnoblin_proto::UNKNOWN_MEMBER;
     /// This connection does not hold the capability the member needs.

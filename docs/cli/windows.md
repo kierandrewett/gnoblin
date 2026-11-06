@@ -72,9 +72,14 @@ A window whose client stops answering liveness pings reports `unresponsive` as t
 `window list --json`, and the compositor sends `gnoblin.window.changed`. The ping timeout is
 `window_management.check_alive_timeout`.
 
-`kill` is refused, with a non-zero exit, when the window does not exist, when its process
-is unknown, or when the process is the compositor's own or init's (pid 1). Nothing is sent
-in those cases.
+`kill` is refused, with a non-zero exit, and sends nothing, when:
+
+- the window does not exist;
+- its process is unknown, or its client has disconnected;
+- its process has exited, or its pid now names another process;
+- its process is the compositor's own or init's (pid 1).
+
+Like the other window members, `kill` needs no capability. Only the same user can reach the socket, and that user can already signal its own processes.
 
 Gnoblin shows no dialog of its own. A shell or a Lua script decides when to offer `kill`.
 
