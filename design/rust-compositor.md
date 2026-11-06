@@ -444,6 +444,7 @@ gnoblin/
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
+    gnoblin-log/              logging: one `tracing` subscriber, console and SQLite sinks (D23)
     gnoblin-xwayland/         Xwayland startup and window management
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
@@ -1602,6 +1603,7 @@ Each section below records the choice, its consequences, and the options conside
 | D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
 | D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
+| D23 | Logging                      | **Decided 2026-11-06:** `tracing` everywhere; `gnoblin-log` installs one subscriber that prints to the console and writes every event to a SQLite database                                                                      |
 
 ### D1: where scripts run
 
@@ -2858,6 +2860,16 @@ New feature. Mutter has no equivalent, so there is no divergence ledger entry. R
 7. Run-time enable and disable: session-only, or persisted to the host configuration.
 8. Cursor providers (D20) are deferred, so the extension cursor power waits for that decision.
 9. Whether `gnoblin.configure.extension_dirs` may name user directories or only system ones.
+
+### D23: logging
+
+**Decided 2026-11-06: every binary logs through the `tracing` macros, and `gnoblin-log` is the only crate that installs a subscriber.** Each event goes to two sinks: the console, with ANSI colour and a per-component prefix, and a SQLite database (`rusqlite` with `bundled`) that keeps the same fields for later query. `GNOBLIN_LOG` takes an `EnvFilter` expression and defaults to `info`. `GNOBLIN_LOG_DB` names the database, and `off` keeps none. The default is `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, falling back to `$HOME/.local/state`. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
+
+Consequences:
+
+- `gnoblin-log` depends on no other Gnoblin crate, so any lane may depend on it. `xtask deps` enforces that edge.
+- A test that runs a binary sets `GNOBLIN_LOG_DB=off`, or points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's database.
+- Each binary names its component once, at start, and every event carries that name.
 
 ## Phase 0 checklist
 
