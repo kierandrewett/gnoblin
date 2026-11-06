@@ -14,6 +14,7 @@ use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::sync::Once;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -537,7 +538,7 @@ fn consumer_receives_frames_of_the_window_colour() {
         .expect("a granted session starts");
     observer.wait_for(node);
 
-    let received = Rc::new(RefCell::new(Vec::new()));
+    let received = Arc::new(Mutex::new(Vec::new()));
     let consumer = StreamRc::new(
         observer.core.clone(),
         "gnoblin-capture-test-consumer",
@@ -547,14 +548,21 @@ fn consumer_receives_frames_of_the_window_colour() {
         },
     )
     .expect("create the consumer stream");
-    let states = Rc::new(RefCell::new(Vec::new()));
+    let states = Arc::new(Mutex::new(Vec::new()));
     let _states_listener = consumer
-        .add_local_listener_with_user_data(Rc::clone(&states))
-        .state_changed(|_, states, old, new| states.borrow_mut().push(format!("{old:?}->{new:?}")))
+        .add_local_listener_with_user_data(Arc::clone(&states))
+        .state_changed(|_, states, old, new| {
+            states
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(format!("{old:?}->{new:?}"));
+        })
         .register()
         .expect("register the consumer state callback");
+    // The callbacks run on PipeWire's data thread, so the frame and state logs are shared through a
+    // Mutex. Never hold a guard across a call that pumps the loop: the callback would block on it.
     let _listener = consumer
-        .add_local_listener_with_user_data(Rc::clone(&received))
+        .add_local_listener_with_user_data(Arc::clone(&received))
         .process(|stream, received| {
             let Some(mut buffer) = stream.dequeue_buffer() else {
                 return;
@@ -569,7 +577,7 @@ fn consumer_receives_frames_of_the_window_colour() {
                 };
                 !plane.is_empty() && plane.as_chunks::<4>().0.iter().all(|pixel| *pixel == WINDOW_PIXEL)
             });
-            received.borrow_mut().push(matches);
+            received.lock().unwrap_or_else(PoisonError::into_inner).push(matches);
         })
         .register()
         .expect("register the consumer callbacks");
@@ -591,14 +599,20 @@ fn consumer_receives_frames_of_the_window_colour() {
     let delivered = drive(&observer.mainloop, || {
         tick += 1;
         export.pump(&mut table, Tick::new(tick), Capture::Desktop, &mut SolidSource);
-        received.borrow().iter().filter(|matches| **matches).count() >= 3
+        received
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|matches| **matches)
+            .count()
+            >= 3
     });
-    let frames = received.borrow();
+    let frames = received.lock().unwrap_or_else(PoisonError::into_inner).clone();
     let producer: Vec<_> = export.exports.values().map(|export| export.stream.state()).collect();
     assert!(
         delivered,
         "three frames of the window colour arrive within the deadline, got {frames:?}; consumer states {:?}; producer {producer:?}",
-        states.borrow()
+        states.lock().unwrap_or_else(PoisonError::into_inner).clone()
     );
     assert!(
         frames.iter().all(|matches| *matches),
