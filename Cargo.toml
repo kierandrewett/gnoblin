@@ -43,6 +43,7 @@ members = [
     "crates/gnoblin-portal-core",
     "crates/gnoblin-portal-filechooser",
     "crates/gnoblin-input",
+    "crates/gnoblin-layers",
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
     "crates/gnoblin-lua",

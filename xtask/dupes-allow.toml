@@ -1760,3 +1760,9 @@ left = "gnoblin-input::Grant"
 right = "gnoblin-proto::Grant"
 kind = "same-name"
 reason = "the eis grant is the consent and capabilities a seat holds; the proto grant is an extension namespace and version on the wire"
+
+[[allow]]
+left = "gnoblin-capture::Target"
+right = "gnoblin-layers::LayerScope"
+kind = "same-shape"
+reason = "a capture target names what a screen-cast exports; a layer scope names what a layer is attached to; both are an output or a window, but the lifetimes and rules differ"
