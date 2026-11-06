@@ -274,7 +274,6 @@ pub struct Nested {
     frame: OutputFrame,
     /// Set by the event-loop source when the parent's socket is readable.
     readable: Arc<AtomicBool>,
-    disconnected: bool,
 }
 
 impl std::fmt::Debug for Nested {
@@ -284,7 +283,7 @@ impl std::fmt::Debug for Nested {
             .field("outputs", &self.outputs)
             .field("targets", &self.targets.len())
             .field("pending", &self.pending)
-            .field("disconnected", &self.disconnected)
+            .field("connected", &self.handler.table().is_connected())
             .finish_non_exhaustive()
     }
 }
@@ -368,7 +367,6 @@ impl Nested {
             pending: Vec::new(),
             frame: OutputFrame::new(),
             readable: Arc::new(AtomicBool::new(false)),
-            disconnected: false,
         };
         backend.await_first_configures()?;
         info!(socket = %config.socket.display(), outputs = backend.outputs.len(), "[nested] connected to the parent");
@@ -402,7 +400,7 @@ impl Nested {
     ///
     /// [`NestedError::Disconnected`] when the parent has gone.
     pub fn roundtrip(&mut self) -> Result<(), NestedError> {
-        if self.disconnected {
+        if !self.handler.table().is_connected() {
             return Err(NestedError::Disconnected);
         }
         let outcome = {
@@ -443,7 +441,7 @@ impl Nested {
 
     /// Reads what the parent sent, when the event loop says there is something to read.
     fn pump(&mut self) {
-        if self.disconnected || !self.readable.swap(false, Ordering::AcqRel) {
+        if !self.handler.table().is_connected() || !self.readable.swap(false, Ordering::AcqRel) {
             return;
         }
         let read = match self.connection.prepare_read() {
@@ -483,10 +481,9 @@ impl Nested {
     /// Both a socket error and a message the parent should never have sent are the same
     /// thing to a session: there is nothing left to draw on.
     fn fail(&mut self, error: impl std::fmt::Debug) {
-        if !self.disconnected {
+        if self.handler.table().is_connected() {
             warn!(?error, "[nested] the connection to the parent ended");
         }
-        self.disconnected = true;
         self.handler.table_mut().disconnected();
     }
 
