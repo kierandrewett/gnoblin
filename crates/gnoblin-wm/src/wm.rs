@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, WindowId, WorkspaceId};
+use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
 use crate::activation::{ActivationDecision, NewWindowFocus};
 use crate::arrange::{self, Layouts};
@@ -14,6 +14,7 @@ use crate::geometry::clamp_to_i32;
 use crate::layout::{Layout, LayoutCommand, LayoutEffect, LayoutEngine, RequestKind};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
+use crate::pointer_focus::{self, FocusMode, PointerFocus};
 use crate::rules::{Rule, RuleAction};
 use crate::snapping::SnapZone;
 use crate::stack::{Stack, StackLayer};
@@ -44,6 +45,10 @@ pub struct WmOptions {
     pub drag_constraint: DragConstraint,
     /// `window_management.focus_new_windows`.
     pub new_window_focus: NewWindowFocus,
+    /// `window_management.focus_mode`.
+    pub focus_mode: FocusMode,
+    /// `window_management.focus_change_on_pointer_rest`.
+    pub focus_change_on_pointer_rest: bool,
 }
 
 impl Default for WmOptions {
@@ -55,6 +60,8 @@ impl Default for WmOptions {
             edge_tiling: false,
             drag_constraint: DragConstraint::WorkArea,
             new_window_focus: NewWindowFocus::Prevent,
+            focus_mode: FocusMode::Click,
+            focus_change_on_pointer_rest: false,
         }
     }
 }
@@ -211,6 +218,8 @@ pub struct Wm {
     /// installed and the event either changes tiling or follows one that does.
     /// They are applied in arrival order so that layouts see every tiling change.
     deferred: Vec<Event>,
+    /// Pointer position and any rest focus waiting on it.
+    pointer: PointerFocus,
 }
 
 impl Wm {
@@ -310,6 +319,12 @@ impl Wm {
             Event::WorkspaceRemoved { workspace } => self.workspace_removed(workspace),
             Event::WorkspaceActivated { workspace } => self.workspace_activated(workspace),
             Event::ActivationRequested { window, decision } => self.activation(window, decision),
+            Event::PointerMoved { window, at } => self.pointer_moved(window, at),
+            Event::PointerTick { at } => self.pointer_due(at),
+            Event::PointerGrab { active } => {
+                self.pointer.set_grab(active);
+                Vec::new()
+            }
             Event::Raise { window } => self.raise(window),
             Event::Lower { window } => self.lower(window),
             Event::Minimise { window } => self.minimise(window),
@@ -919,6 +934,7 @@ impl Wm {
         if self.windows.remove(&id).is_none() {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         }
+        self.pointer.forget(id);
         // A dialog whose parent has gone keeps working as its own window, so drop the
         // dangling parent link. Keeping it would let a reused window id look like the
         // parent of an unrelated dialog.
@@ -1101,6 +1117,40 @@ impl Wm {
         // A parent with an open modal child cannot take focus: the modal takes it instead.
         let target = self.blocking_modal(id).unwrap_or(id);
         self.focus_window(target, decision)
+    }
+
+    /// The pointer moved over `window` (or a gap). Focus follows it as `focus_mode` asks.
+    fn pointer_moved(&mut self, window: Option<WindowId>, at: Tick) -> Vec<Effect> {
+        let action = self.pointer.moved(
+            window,
+            at,
+            self.focus,
+            self.options.focus_mode,
+            self.options.focus_change_on_pointer_rest,
+        );
+        self.pointer_effects(action)
+    }
+
+    /// The clock reached `at`; a rest focus whose time has come takes effect.
+    fn pointer_due(&mut self, at: Tick) -> Vec<Effect> {
+        let action = self.pointer.due(at);
+        self.pointer_effects(action)
+    }
+
+    fn pointer_effects(&mut self, action: pointer_focus::PointerAction) -> Vec<Effect> {
+        use pointer_focus::PointerAction;
+        match action {
+            PointerAction::None => Vec::new(),
+            PointerAction::Focus(id) => self.activation(id, ActivationDecision::AllowWithoutRaise),
+            PointerAction::Clear => {
+                let previous = self.focus.take();
+                if previous.is_some() {
+                    vec![Effect::focus(previous, None)]
+                } else {
+                    Vec::new()
+                }
+            }
+        }
     }
 
     /// Focuses a visible window, raising it when the decision allows. The caller has

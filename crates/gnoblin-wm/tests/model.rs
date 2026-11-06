@@ -238,6 +238,8 @@ fn run(seed: u64) -> (Vec<Vec<Effect>>, usize) {
         } else {
             DragConstraint::WorkArea
         },
+        focus_mode: gnoblin_wm::FocusMode::Click,
+        focus_change_on_pointer_rest: false,
     };
     let mut wm = Wm::new(options);
     for raw in 1..=WORKSPACE_POOL {

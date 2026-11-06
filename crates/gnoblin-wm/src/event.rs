@@ -108,6 +108,16 @@ pub enum Event {
         window: WindowId,
         decision: ActivationDecision,
     },
+    /// The pointer is over `window`, or over no managed window when `None`, at `at`.
+    PointerMoved {
+        window: Option<WindowId>,
+        at: gnoblin_types::Tick,
+    },
+    /// The clock reached `at`; a pending pointer-rest focus may be due.
+    PointerTick { at: gnoblin_types::Tick },
+    /// A button went down (`active`) or the last one came up. Focus does not follow the
+    /// pointer while a button is held.
+    PointerGrab { active: bool },
     /// A window should move to the top of its layer.
     Raise { window: WindowId },
     /// A compositor frame. Collects every layout run that finished before

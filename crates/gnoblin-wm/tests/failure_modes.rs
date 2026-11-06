@@ -1,10 +1,10 @@
 //! One test per documented failure mode, plus the behaviours the state machine
 //! exists to provide.
 
-use gnoblin_types::{Insets, OutputId, Rect, WindowId, WorkspaceId};
+use gnoblin_types::{Insets, OutputId, Rect, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{
-    ActivationDecision, DragConstraint, Effect, Event, Match, Pattern, PlacementMode, Rejection, Rule, RuleAction,
-    RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceSelector,
+    ActivationDecision, DragConstraint, Effect, Event, FocusMode, Match, Pattern, PlacementMode, Rejection, Rule,
+    RuleAction, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceSelector,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -945,5 +945,112 @@ fn duplicate_and_unknown_identities_are_rejected() {
             reason: Rejection::UnknownWorkspace(WorkspaceId::new(9))
         }]
     );
+    check(&wm);
+}
+
+// Failure mode: pointer focus. Focus follows the pointer only as `focus_mode` asks.
+fn pointer_wm(mode: FocusMode, rest: bool) -> Wm {
+    let mut wm = wm_with(WmOptions {
+        focus_mode: mode,
+        focus_change_on_pointer_rest: rest,
+        ..WmOptions::default()
+    });
+    open(&mut wm, 1);
+    open(&mut wm, 2);
+    focus(&mut wm, 1, ActivationDecision::Allow);
+    assert_eq!(wm.focused(), Some(window(1)), "the first window is focused");
+    wm
+}
+
+fn pointer_moved(wm: &mut Wm, over: Option<u64>, ms: u64) {
+    wm.apply(Event::PointerMoved {
+        window: over.map(window),
+        at: Tick::new(ms),
+    });
+}
+
+fn pointer_tick(wm: &mut Wm, ms: u64) {
+    wm.apply(Event::PointerTick { at: Tick::new(ms) });
+}
+
+#[test]
+fn click_mode_ignores_pointer_motion() {
+    let mut wm = pointer_wm(FocusMode::Click, false);
+    pointer_moved(&mut wm, Some(2), 0);
+    assert_eq!(wm.focused(), Some(window(1)));
+    check(&wm);
+}
+
+#[test]
+fn hover_keeps_focus_when_the_pointer_crosses_a_gap() {
+    let mut wm = pointer_wm(FocusMode::Hover, false);
+    pointer_moved(&mut wm, Some(2), 0);
+    assert_eq!(wm.focused(), Some(window(2)));
+    pointer_moved(&mut wm, None, 10);
+    assert_eq!(wm.focused(), Some(window(2)));
+    check(&wm);
+}
+
+#[test]
+fn hover_strict_clears_focus_when_the_pointer_crosses_a_gap() {
+    let mut wm = pointer_wm(FocusMode::HoverStrict, false);
+    pointer_moved(&mut wm, Some(2), 0);
+    assert_eq!(wm.focused(), Some(window(2)));
+    pointer_moved(&mut wm, None, 10);
+    assert_eq!(wm.focused(), None);
+    check(&wm);
+}
+
+#[test]
+fn motion_cancels_a_pending_rest_focus() {
+    let mut wm = pointer_wm(FocusMode::Hover, true);
+    pointer_moved(&mut wm, Some(2), 0);
+    pointer_moved(&mut wm, None, 50);
+    pointer_tick(&mut wm, 400);
+    assert_eq!(wm.focused(), Some(window(1)));
+    check(&wm);
+}
+
+#[test]
+fn a_pointer_resting_over_a_window_focuses_it_once_settled() {
+    let mut wm = pointer_wm(FocusMode::Hover, true);
+    pointer_moved(&mut wm, Some(2), 0);
+    pointer_moved(&mut wm, Some(2), 100);
+    pointer_tick(&mut wm, 250);
+    assert_eq!(wm.focused(), Some(window(1)), "the timer restarted at the last motion");
+    pointer_tick(&mut wm, 300);
+    assert_eq!(wm.focused(), Some(window(2)));
+    check(&wm);
+}
+
+#[test]
+fn a_closed_window_cancels_its_pending_rest_focus() {
+    let mut wm = pointer_wm(FocusMode::Hover, true);
+    pointer_moved(&mut wm, Some(2), 0);
+    wm.apply(Event::WindowClosed { window: window(2) });
+    pointer_tick(&mut wm, 400);
+    assert_eq!(wm.focused(), Some(window(1)));
+    check(&wm);
+}
+
+#[test]
+fn a_focus_change_while_a_button_is_held_is_ignored() {
+    let mut wm = pointer_wm(FocusMode::HoverStrict, false);
+    pointer_moved(&mut wm, Some(2), 0);
+    assert_eq!(wm.focused(), Some(window(2)));
+    wm.apply(Event::PointerGrab { active: true });
+    pointer_moved(&mut wm, None, 10);
+    assert_eq!(wm.focused(), Some(window(2)), "a drag across a gap keeps its focus");
+    wm.apply(Event::PointerGrab { active: false });
+    check(&wm);
+}
+
+#[test]
+fn a_rest_focus_does_not_fire_while_a_button_is_held() {
+    let mut wm = pointer_wm(FocusMode::Hover, true);
+    pointer_moved(&mut wm, Some(2), 0);
+    wm.apply(Event::PointerGrab { active: true });
+    pointer_tick(&mut wm, 400);
+    assert_eq!(wm.focused(), Some(window(1)));
     check(&wm);
 }
