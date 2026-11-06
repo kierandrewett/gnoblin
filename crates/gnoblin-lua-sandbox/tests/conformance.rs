@@ -60,7 +60,7 @@ const CASES: &[Case] = &[
         "close attribute",
         "local closed = false do local c <close> = setmetatable({}, {__close = function() closed = true end}) end return closed",
         true,
-        true,
+        false,
     ),
     case(
         "varargs and table.pack",
@@ -68,29 +68,31 @@ const CASES: &[Case] = &[
         true,
         true,
     ),
+    // Layout has no setmetatable (D17 allowlist), so no value can carry a metamethod or a
+    // <close> handler there; the layout column is false for these rows by design.
     case(
         "arithmetic metamethods",
         "local o = setmetatable({}, {__add = function() return 42 end}) return o + 1 == 42",
         true,
-        true,
+        false,
     ),
     case(
         "concat and len metamethods",
         "local o = setmetatable({}, {__concat = function() return 'c' end, __len = function() return 7 end}) return o .. '' == 'c' and #o == 7",
         true,
-        true,
+        false,
     ),
     case(
         "call metamethod",
         "local o = setmetatable({}, {__call = function() return 9 end}) return o() == 9",
         true,
-        true,
+        false,
     ),
     case(
         "__gc accepted",
         "return setmetatable({}, {__gc = function() end}) ~= nil",
         true,
-        true,
+        false,
     ),
     case(
         "closures",
@@ -201,7 +203,7 @@ const CASES: &[Case] = &[
     case("string.rep", "return string.rep('ab', 2) == 'abab'", true, false),
     case(
         "string.format bounded",
-        "return string.format('%5.2f', 1.5) == '  1.50'",
+        "return string.format('%5.2f', 1.5) == ' 1.50'",
         true,
         true,
     ),
