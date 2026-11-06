@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-portal-backend"
+name = "xdg-desktop-portal-gnoblin"
 description = "Desktop portal backend for Gnoblin."
 version.workspace = true
 edition.workspace = true

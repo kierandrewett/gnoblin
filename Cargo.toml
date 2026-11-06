@@ -67,7 +67,7 @@ members = [
     "crates/gnoblin-wm",
     "crates/gnoblin-xwayland",
     "crates/gnoblinctl",
-    "crates/gnoblin-portal-backend",
+    "crates/xdg-desktop-portal-gnoblin",
     "xtask",
 ]
 

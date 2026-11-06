@@ -1105,217 +1105,217 @@ reason = "a connector's DPMS state (lit or dark) versus a publish toggle an appl
 
 [[allow]]
 left = "gnoblin-a11y::Key"
-right = "gnoblin-portal-backend::Key"
+right = "xdg-desktop-portal-gnoblin::Key"
 kind = "same-name"
 reason = "a11y's Key is one key press or release the compositor saw; the portal's Key is one published settings key, the schema property and the name toolkits look up"
 
 [[allow]]
 left = "gnoblin-a11y::Pending"
-right = "gnoblin-portal-backend::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
 kind = "same-name"
 reason = "a11y's Pending is a slow-keys press held until its delay elapses; the portal's Pending is what Guard::ask could do, a consent outcome"
 
 [[allow]]
 left = "gnoblin-authority::Pending"
-right = "gnoblin-portal-backend::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
 kind = "same-name"
 reason = "authority's Pending is a consent prompt waiting for the provider; the portal's Pending is what Guard::ask could do"
 
 [[allow]]
 left = "gnoblin-backend::Change"
-right = "gnoblin-portal-backend::Change"
+right = "xdg-desktop-portal-gnoblin::Change"
 kind = "same-name"
 reason = "backend's Change is one connector's part of a plan, its target state and operations; the portal's Change is one thing a settings subscriber is told"
 
 [[allow]]
 left = "gnoblin-backend::Command"
-right = "gnoblin-portal-backend::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
 kind = "same-name"
 reason = "backend's Command is an X11 request the compositor sends and the policy cannot; the portal's Command is one thing its connection thread has to do"
 
 [[allow]]
 left = "gnoblin-backend::Setting"
-right = "gnoblin-portal-backend::Setting"
+right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
 reason = "backend's libinput Setting is one device setting in libinput's configuration terms; the portal's Setting is one published setting"
 
 [[allow]]
 left = "gnoblin-backend::Setting"
-right = "gnoblin-portal-backend::Setting"
+right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
 reason = "backend's X11 Setting is one XSETTINGS value; the portal's Setting is one published setting"
 
 [[allow]]
 left = "gnoblin-backend::Table"
-right = "gnoblin-portal-backend::Table"
+right = "xdg-desktop-portal-gnoblin::Table"
 kind = "same-name"
 reason = "backend's Table is the parent-facing state of every nested output plus the seat; the portal's Table holds the published values"
 
 [[allow]]
 left = "gnoblin-capture::Refusal"
-right = "gnoblin-portal-backend::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
 reason = "capture's Refusal is why a request or a frame produced nothing; the portal's Refusal is why something was refused before it could wait for an answer"
 
 [[allow]]
 left = "gnoblin-capture::Session"
-right = "gnoblin-portal-backend::Session"
+right = "xdg-desktop-portal-gnoblin::Session"
 kind = "same-name"
 reason = "capture's Session is one capture session's state; the portal's Session is one portal session"
 
 [[allow]]
 left = "gnoblin-capture::Table"
-right = "gnoblin-portal-backend::Table"
+right = "xdg-desktop-portal-gnoblin::Table"
 kind = "same-name"
 reason = "capture's Table is every capture session the compositor has open; the portal's Table holds the published values"
 
 [[allow]]
 left = "gnoblin-compat-core::Interface"
-right = "gnoblin-portal-backend::Interface"
+right = "xdg-desktop-portal-gnoblin::Interface"
 kind = "same-name"
 reason = "compat-core's Interface is one upstream interface and every member an adapter declares for it; the portal's Interface names which portal interface a session belongs to"
 
 [[allow]]
 left = "gnoblin-compat-core::Refusal"
-right = "gnoblin-portal-backend::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
 reason = "compat-core's Refusal is one refused call; the portal's Refusal is why something was refused before it could wait for an answer"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Pending"
-right = "gnoblin-portal-backend::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
 kind = "same-name"
 reason = "the keyring prompter's Pending is one prompt waiting for an answer; the portal's Pending is what Guard::ask could do"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Prompt"
-right = "gnoblin-portal-backend::Prompt"
+right = "xdg-desktop-portal-gnoblin::Prompt"
 kind = "same-name"
 reason = "the keyring prompter's Prompt is one gcr prompt as the caller described it with gcr's properties; the portal's Prompt is a prompt for the portal.ui provider"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Unavailable"
-right = "gnoblin-portal-backend::Unavailable"
+right = "xdg-desktop-portal-gnoblin::Unavailable"
 kind = "same-name"
 reason = "the keyring prompter's Unavailable is why a prompt could not be started, answered or finished; the portal's Unavailable is why a compositor call could not be made"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Waiting"
-right = "gnoblin-portal-backend::Waiting"
+right = "xdg-desktop-portal-gnoblin::Waiting"
 kind = "same-name"
 reason = "the keyring prompter's Waiting is the live half of one waiting request, kept out of Pending; the portal's Waiting is one prompt waiting for the provider"
 
 [[allow]]
 left = "gnoblin-compositor::Offer"
-right = "gnoblin-portal-backend::Offer"
+right = "xdg-desktop-portal-gnoblin::Offer"
 kind = "same-name"
 reason = "compositor's Offer is one request live in the IPC broker; the portal's Offer is what a request layer offered"
 
 [[allow]]
 left = "gnoblin-config::Setting"
-right = "gnoblin-portal-backend::Setting"
+right = "xdg-desktop-portal-gnoblin::Setting"
 kind = "same-name"
 reason = "config's Setting is one declared setting; the portal's Setting is one published setting"
 
 [[allow]]
 left = "gnoblin-input::Command"
-right = "gnoblin-portal-backend::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
 kind = "same-name"
 reason = "input's Command is one EI request as the state machine sees it; the portal's Command is one thing its connection thread has to do"
 
 [[allow]]
 left = "gnoblin-input::Key"
-right = "gnoblin-portal-backend::Key"
+right = "xdg-desktop-portal-gnoblin::Key"
 kind = "same-name"
 reason = "input's Key is the key part of a chord; the portal's Key is one published settings key, the schema property and the name toolkits look up"
 
 [[allow]]
 left = "gnoblin-input::Stream"
-right = "gnoblin-portal-backend::Stream"
+right = "xdg-desktop-portal-gnoblin::Stream"
 kind = "same-name"
 reason = "input's Stream is a recognised gesture in progress; the portal's Stream is one stream the compositor opened"
 
 [[allow]]
 left = "gnoblin-input::Waiting"
-right = "gnoblin-portal-backend::Waiting"
+right = "xdg-desktop-portal-gnoblin::Waiting"
 kind = "same-name"
 reason = "input's Waiting is one waiting request; the portal's Waiting is one prompt waiting for the provider"
 
 [[allow]]
 left = "gnoblin-lock::State"
-right = "gnoblin-portal-backend::State"
+right = "xdg-desktop-portal-gnoblin::State"
 kind = "same-name"
 reason = "lock's State is where the session lock controller is; the portal's State is how far one portal session has got"
 
 [[allow]]
 left = "gnoblin-lua-sandbox::Guard"
-right = "gnoblin-portal-backend::Guard"
+right = "xdg-desktop-portal-gnoblin::Guard"
 kind = "same-name"
 reason = "lua's Guard is the budgets one entry into Lua consumes, shared between host and hook; the portal's Guard is the session table and the grants behind it"
 
 [[allow]]
 left = "gnoblin-lua::Pending"
-right = "gnoblin-portal-backend::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
 kind = "same-name"
 reason = "lua's Pending is what the host knows about one operation it called; the portal's Pending is what Guard::ask could do"
 
 [[allow]]
 left = "gnoblin-lua::Shared"
-right = "gnoblin-portal-backend::Shared"
+right = "xdg-desktop-portal-gnoblin::Shared"
 kind = "same-name"
 reason = "lua's Shared is the host state shared with the Lua closures its bindings install; the portal's Shared is everything its served objects share"
 
 [[allow]]
 left = "gnoblin-service-core::Pending"
-right = "gnoblin-portal-backend::Pending"
+right = "xdg-desktop-portal-gnoblin::Pending"
 kind = "same-name"
 reason = "services' Pending is one agent request waiting for its answer; the portal's Pending is what Guard::ask could do"
 
 [[allow]]
 left = "gnoblin-service-core::Refusal"
-right = "gnoblin-portal-backend::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
 reason = "services' Refusal is why a request could not be started, answered or finished; the portal's Refusal is why something was refused before it could wait for an answer"
 
 [[allow]]
 left = "gnoblin-wayland::Command"
-right = "gnoblin-portal-backend::Command"
+right = "xdg-desktop-portal-gnoblin::Command"
 kind = "same-name"
 reason = "wayland's Command is one command a control handle queued for the event loop; the portal's Command is one thing its connection thread has to do"
 
 [[allow]]
 left = "gnoblin-wayland::State"
-right = "gnoblin-portal-backend::State"
+right = "xdg-desktop-portal-gnoblin::State"
 kind = "same-name"
 reason = "wayland's State is the compositor state every protocol handler receives; the portal's State is how far one portal session has got"
 
 [[allow]]
 left = "gnoblin-xwayland::Handle"
-right = "gnoblin-portal-backend::Handle"
+right = "xdg-desktop-portal-gnoblin::Handle"
 kind = "same-name"
 reason = "xwayland's Handle is the compositor's half of a session; the portal's Handle is one request handle's live meaning, so Request.Close can end what the handler waits on"
 
 [[allow]]
 left = "gnoblin-xwayland::Settings"
-right = "gnoblin-portal-backend::Settings"
+right = "xdg-desktop-portal-gnoblin::Settings"
 kind = "same-name"
 reason = "xwayland's Settings are the X11 settings a session starts with; the portal's Settings is one served Settings object"
 
 [[allow]]
-left = "gnoblin-portal-backend::Interface"
+left = "xdg-desktop-portal-gnoblin::Interface"
 right = "xtask::Interface"
 kind = "same-name"
 reason = "the portal's Interface names which portal interface a session belongs to; xtask's Interface is a private struct with no doc comment, used for its compat report rows"
 
 [[allow]]
 left = "gnoblin-compat-mutter-screencast::BridgeError"
-right = "gnoblin-portal-backend::Unavailable"
+right = "xdg-desktop-portal-gnoblin::Unavailable"
 kind = "same-shape"
 reason = "the screencast bridge's BridgeError is why the compositor did not open or close a session; the portal's Unavailable is why a compositor call could not be made; the shape coincides and the failures differ"
 
 [[allow]]
 left = "gnoblin-compat-core::CallerWatcher"
-right = "gnoblin-portal-backend::Owners"
+right = "xdg-desktop-portal-gnoblin::Owners"
 kind = "same-shape"
 reason = "both wrap the bus's NameOwnerChanged stream to end a gone caller's grants or sessions; the portal may not link a compat adapter, and gnoblin-compat-core is a compat crate, so the portal keeps its own copy until the rule is moved to a non-compat shared crate"
 
@@ -1650,7 +1650,7 @@ reason = "a portal Event is a negotiation value of this crate; the other crate's
 
 [[allow]]
 left = "gnoblin-portal-model::Interface"
-right = "gnoblin-portal-backend::Interface"
+right = "xdg-desktop-portal-gnoblin::Interface"
 kind = "same-name"
 reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1662,7 +1662,7 @@ reason = "a portal Interface is a negotiation or dialog value of this crate; the
 
 [[allow]]
 left = "gnoblin-portal-model::Key"
-right = "gnoblin-portal-backend::Key"
+right = "xdg-desktop-portal-gnoblin::Key"
 kind = "same-name"
 reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1674,7 +1674,7 @@ reason = "a portal Refusal is a negotiation value of this crate; the other crate
 
 [[allow]]
 left = "gnoblin-compositor::Refusal"
-right = "gnoblin-portal-backend::Refusal"
+right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
 reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 

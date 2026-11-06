@@ -51,7 +51,7 @@ impl Component {
 const PREFIX: &[u8] = b"gnoblin-";
 
 const fn component_name(package: &'static str) -> &'static str {
-    if bytes_equal(package, "gnoblin-portal-backend") {
+    if bytes_equal(package, "xdg-desktop-portal-gnoblin") {
         "portal"
     } else {
         strip_prefix(package)
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn the_portal_keeps_its_name() {
-        assert_eq!(Component::for_package("gnoblin-portal-backend").as_str(), "portal");
+        assert_eq!(Component::for_package("xdg-desktop-portal-gnoblin").as_str(), "portal");
     }
 
     #[test]

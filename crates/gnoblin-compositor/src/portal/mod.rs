@@ -9,7 +9,7 @@
 //! [`gnoblin_diag::portal`].
 //!
 //! This module is core logic, not part of the portal relay: the relay
-//! (`gnoblin-portal-backend`) stays a removable thin relay (D19).
+//! (`xdg-desktop-portal-gnoblin`) stays a removable thin relay (D19).
 
 mod negotiate;
 mod outcome;

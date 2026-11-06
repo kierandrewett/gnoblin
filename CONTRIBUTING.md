@@ -120,6 +120,10 @@ Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
 `patches/`. Do not commit build prefixes, generated tarballs or local session
 configuration.
 
+Name a crate that builds a binary after the binary, so `xdg-desktop-portal-gnoblin`
+is the crate and the binary alike. Library crates take their area prefix, such as
+`gnoblin-portal-core`.
+
 Export a committed subproject change through `scripts/manage-patches.py` so its
 mail header uses the Gnoblin patch identity. The export appends the patch to the
 project's `patches/<project>/series`, the file that orders the patches:
