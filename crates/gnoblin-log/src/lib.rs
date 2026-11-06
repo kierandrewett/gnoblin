@@ -23,15 +23,18 @@
 //! The macros take the arguments of their `tracing` counterparts, including fields and `%`/`?`
 //! sigils. Every event carries its component in a `component` field, which [`event`] reads. An
 //! event from a crate that does not use these macros has no such field, so it gets the component
-//! `ext` and keeps its target. This crate depends on `tracing` alone. The sinks live in
-//! `gnoblin-log-console`, `gnoblin-log-store` and `gnoblin-log-journal`, and the composition that
-//! installs them in `gnoblin-log-init`.
+//! `ext` and keeps its target. This crate depends on `tracing` alone. The console sink lives in
+//! the `console` module, behind the `console` feature; the other sinks follow it.
 
 /// Best-effort scrubbing of secrets from free text. See the module documentation.
 pub mod redact;
 
 /// The shape of one logged event, read once and shared by every sink.
 pub mod event;
+
+/// The console sink: one line per event on stderr. Needs the `console` feature.
+#[cfg(feature = "console")]
+pub mod console;
 
 /// The `tracing` crate, for the sinks and the composition, which need its subscriber types.
 ///
@@ -184,7 +187,6 @@ macro_rules! trace {
     };
 }
 
-#[cfg(test)]
 component!("log");
 
 #[cfg(test)]

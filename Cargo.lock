@@ -1561,13 +1561,6 @@ name = "gnoblin-log"
 version = "0.2.0-alpha.0"
 dependencies = [
  "tracing",
-]
-
-[[package]]
-name = "gnoblin-log-console"
-version = "0.2.0-alpha.0"
-dependencies = [
- "gnoblin-log",
  "tracing-subscriber",
 ]
 
@@ -1576,7 +1569,6 @@ name = "gnoblin-log-init"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-log",
- "gnoblin-log-console",
  "gnoblin-log-store",
  "tracing-subscriber",
 ]
@@ -1605,8 +1597,10 @@ dependencies = [
  "gnoblin-types",
  "gnoblin-wm",
  "mlua",
+ "serde",
  "serde_json",
  "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -1899,6 +1893,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "gnoblin-client",
+ "gnoblin-log-store",
  "gnoblin-model",
  "gnoblin-proto",
  "gnoblin-schema",
@@ -4583,6 +4578,7 @@ dependencies = [
  "gnoblin-authority",
  "gnoblin-capture",
  "gnoblin-client",
+ "gnoblin-config",
  "gnoblin-log",
  "gnoblin-log-init",
  "gnoblin-model",

@@ -15,7 +15,7 @@ mod options;
 use std::panic;
 
 use gnoblin_log::ProcessRole;
-use gnoblin_log_console::ConsoleFormat;
+use gnoblin_log::console::ConsoleFormat;
 use gnoblin_log_store::{DatabaseLayer, Sink};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::EnvFilter;

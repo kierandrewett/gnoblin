@@ -9,8 +9,8 @@
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use gnoblin_log::__tracing::{Event, Subscriber};
-use gnoblin_log::event::Logged;
+use crate::__tracing::{Event, Subscriber};
+use crate::event::Logged;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
 use tracing_subscriber::registry::LookupSpan;

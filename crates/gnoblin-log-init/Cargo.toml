@@ -7,8 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-gnoblin-log = { path = "../gnoblin-log" }
-gnoblin-log-console = { path = "../gnoblin-log-console" }
+gnoblin-log = { path = "../gnoblin-log", features = ["console"] }
 gnoblin-log-store = { path = "../gnoblin-log-store" }
 tracing-subscriber.workspace = true
 

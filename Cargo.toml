@@ -45,7 +45,6 @@ members = [
     "crates/gnoblin-input",
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
-    "crates/gnoblin-log-console",
     "crates/gnoblin-log-init",
     "crates/gnoblin-log-store",
     "crates/gnoblin-lua",
