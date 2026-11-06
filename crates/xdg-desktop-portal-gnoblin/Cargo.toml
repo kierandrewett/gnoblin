@@ -38,7 +38,6 @@ futures-lite.workspace = true
 async-io.workspace = true
 # Every refusal, expiry and grant is logged once, and never with a secret: the portal
 # carries none.
-tracing.workspace = true
 # The backend's own bus name and its interfaces.
 zbus.workspace = true
 

@@ -138,7 +138,7 @@ impl Screenshot {
         };
         let _ = self.portal.close_session(&caller, &path);
         let _ = remove(&self.portal.connection, &path).await;
-        tracing::info!(app = %app_id, response = reply.0, "a screenshot request finished");
+        gnoblin_log::info!(app = %app_id, response = reply.0, "a screenshot request finished");
         Ok(reply)
     }
 
@@ -263,7 +263,7 @@ impl ScreenCast {
         let _ = remove(&self.portal.connection, handle.as_str()).await;
         let mut results = BTreeMap::new();
         results.insert("session_id".to_owned(), text(&path));
-        tracing::info!(app = %app_id, session = %path, "a screen cast session was created");
+        gnoblin_log::info!(app = %app_id, session = %path, "a screen cast session was created");
         Ok((0, results))
     }
 
@@ -294,12 +294,10 @@ impl ScreenCast {
             selection
         };
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        tracing::info!(
-            app = %app_id,
-            session = %path,
-            types = narrowed.get("types").map(|value| format!("{value:?}")),
-            "a screen cast source selection was recorded"
-        );
+        gnoblin_log::info!(app = %app_id,
+        session = %path,
+        types = narrowed.get("types").map(|value| format!("{value:?}")),
+        "a screen cast source selection was recorded");
         Ok((0, BTreeMap::new()))
     }
 
@@ -366,7 +364,7 @@ impl ScreenCast {
             Err(refusal) => return Err(refusal),
         };
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        tracing::info!(app = %app_id, session = %path, response = reply.0, "a screen cast start finished");
+        gnoblin_log::info!(app = %app_id, session = %path, response = reply.0, "a screen cast start finished");
         Ok(reply)
     }
 
@@ -508,7 +506,7 @@ pub fn streams(streams: &[(u32, BTreeMap<String, OwnedVariant>)]) -> OwnedVarian
         let dictionary: std::collections::HashMap<String, OwnedVariant> = properties.clone().into_iter().collect();
         let entry = Structure::from((*node, dictionary));
         if let Err(error) = array.append(Variant::Structure(entry)) {
-            tracing::warn!(%error, "a stream could not be added to the reply");
+            gnoblin_log::warn!(%error, "a stream could not be added to the reply");
         }
     }
     OwnedVariant::try_from(Variant::Array(array)).expect("an array of streams is a value")

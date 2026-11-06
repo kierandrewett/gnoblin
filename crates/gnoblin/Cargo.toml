@@ -47,7 +47,6 @@ gnoblin-compat-gtk-dconf-settings = { path = "../compat/gnoblin-compat-gtk-dconf
 gnoblin-compat-x11-xsettings = { path = "../compat/gnoblin-compat-x11-xsettings" }
 zbus.workspace = true
 futures-lite.workspace = true
-tracing.workspace = true
 # The role flag. One flag with a documented default, and `--version`.
 clap.workspace = true
 

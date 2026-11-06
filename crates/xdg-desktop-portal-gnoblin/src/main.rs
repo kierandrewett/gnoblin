@@ -52,7 +52,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            tracing::error!("{error}");
+            gnoblin_log::error!("{error}");
             ExitCode::FAILURE
         }
     }
@@ -63,7 +63,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (host, loop_) = match ipc() {
         Ok((host, loop_)) => (Box::new(host) as Box<dyn Host>, Some(loop_)),
         Err(error) => {
-            tracing::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
+            gnoblin_log::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
             (Box::new(NoShell) as Box<dyn Host>, None)
         }
     };
@@ -78,7 +78,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         connection
             .request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE)
             .await?;
-        tracing::info!(name = BUS_NAME, "serving the Gnoblin portal backend");
+        gnoblin_log::info!(name = BUS_NAME, "serving the Gnoblin portal backend");
 
         if let Some(loop_) = loop_ {
             let serving = portal.clone();

@@ -165,12 +165,12 @@ impl<T: Transport> IpcLoop<T> {
     /// rather than from a handler that is already waiting on something else.
     pub fn run(mut self, portal: crate::iface::Portal) {
         if let Err(error) = self.client.set_read_timeout(Some(READ_TIMEOUT)) {
-            tracing::warn!(%error, "the IPC socket has no read timeout; offers will wait for an event");
+            gnoblin_log::warn!(%error, "the IPC socket has no read timeout; offers will wait for an event");
         }
         if let Err(error) = self.client.subscribe(Filter::All) {
             // Without a subscription the settings interface publishes nothing, which is
             // visible and correct; the answers still work, so the loop continues.
-            tracing::warn!(%error, "the portal cannot subscribe to the object graph");
+            gnoblin_log::warn!(%error, "the portal cannot subscribe to the object graph");
         }
         loop {
             while let Ok(command) = self.queue.try_recv() {
@@ -192,11 +192,11 @@ impl<T: Transport> IpcLoop<T> {
                                 // The compositor knows who provides the slot; a slot
                                 // nobody provides is refused here rather than turned into a
                                 // wait for a deadline that ends as "the app was cancelled".
-                                tracing::warn!(%message, slot = SLOT, "nobody claims the consent slot");
+                                gnoblin_log::warn!(%message, slot = SLOT, "nobody claims the consent slot");
                                 Err(Refusal::NoProvider { slot: SLOT })
                             }
                             Err(error) => {
-                                tracing::warn!(%error, "a consent prompt could not be offered");
+                                gnoblin_log::warn!(%error, "a consent prompt could not be offered");
                                 Err(Refusal::NoProvider { slot: SLOT })
                             }
                         };
@@ -204,7 +204,7 @@ impl<T: Transport> IpcLoop<T> {
                     }
                     Command::Decline(request) => {
                         if let Err(error) = self.client.decline(request) {
-                            tracing::debug!(%error, request = request.get(), "an abandoned prompt was already over");
+                            gnoblin_log::debug!(%error, request = request.get(), "an abandoned prompt was already over");
                         }
                     }
                 }
@@ -222,7 +222,7 @@ impl<T: Transport> IpcLoop<T> {
                 }
                 Err(ClientError::Idle) => {}
                 Err(error) => {
-                    tracing::info!(%error, "the IPC connection ended; the portal serves D-Bus only from here");
+                    gnoblin_log::info!(%error, "the IPC connection ended; the portal serves D-Bus only from here");
                     return;
                 }
             }
@@ -241,8 +241,8 @@ impl<T: Transport> IpcLoop<T> {
             shared.guard.answer(now, request, answer.as_deref())
         };
         match outcome {
-            Ok(outcome) => tracing::info!(request = request.get(), ?outcome, "a consent answer arrived"),
-            Err(error) => tracing::debug!(%error, request = request.get(), "an answer arrived for no prompt"),
+            Ok(outcome) => gnoblin_log::info!(request = request.get(), ?outcome, "a consent answer arrived"),
+            Err(error) => gnoblin_log::debug!(%error, request = request.get(), "an answer arrived for no prompt"),
         }
     }
 }

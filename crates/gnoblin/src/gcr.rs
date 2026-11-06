@@ -13,8 +13,8 @@ use gnoblin_compat_core::Gate;
 use gnoblin_compat_gnome_keyring_prompter::{
     Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run,
 };
+use gnoblin_log::{debug, info, warn};
 use gnoblin_services::link::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
-use tracing::{debug, info, warn};
 use zbus::Connection;
 
 /// The slot the prompter adapter exists for, as the plan's table names it.

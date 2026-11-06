@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use gnoblin_compat_core::{DesktopSettings, Mode, Switch, settings_from_environment};
 use gnoblin_compat_gtk_dconf_settings::{Written, apply, publish};
+use gnoblin_log::{info, warn};
 use gnoblin_services::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
-use tracing::{info, warn};
 
 /// The profile file name dconf reads `DCONF_PROFILE` from, beside the compiled database.
 pub const PROFILE: &str = "profile";

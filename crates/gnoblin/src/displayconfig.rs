@@ -13,10 +13,10 @@
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
 use gnoblin_compat_mutter_displayconfig::{DisplayConfigService, DisplayLink, OutputApplier, export};
+use gnoblin_log::{debug, info, warn};
 use gnoblin_services::link::{
     Client, Fields, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
 };
-use tracing::{debug, info, warn};
 use zbus::Connection;
 
 /// The version this adapter's compositor subscription speaks.

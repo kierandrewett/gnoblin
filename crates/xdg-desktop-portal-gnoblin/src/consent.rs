@@ -715,13 +715,11 @@ impl Guard {
                 wake,
             },
         );
-        tracing::info!(
-            request = offer.request.get(),
-            app = %session.owner.app_id,
-            capability = capability.as_str(),
-            interface = session.interface.as_str(),
-            "asked portal.ui for consent"
-        );
+        gnoblin_log::info!(request = offer.request.get(),
+        app = %session.owner.app_id,
+        capability = capability.as_str(),
+        interface = session.interface.as_str(),
+        "asked portal.ui for consent");
         Ok(Pending::Asked {
             request: offer.request,
             answered,
@@ -791,7 +789,7 @@ impl Guard {
         let reply = match answer {
             Some(b"allow") => Answer::Allow,
             Some(other) => {
-                tracing::warn!(
+                gnoblin_log::warn!(
                     request = request.get(),
                     length = other.len(),
                     "a consent answer was not `allow`; treating it as a refusal"
@@ -847,7 +845,7 @@ impl Guard {
             }
             self.host.withdraw(*request);
             let _ = waiting.wake.send(ConsentOutcome::Expired);
-            tracing::info!(request = request.get(), "a consent prompt expired closed");
+            gnoblin_log::info!(request = request.get(), "a consent prompt expired closed");
         }
         overdue
     }
@@ -1013,7 +1011,7 @@ impl Guard {
                 | Effect::Capture { .. }
                 | Effect::PortalUi { .. }
                 | Effect::Gate { .. } => {}
-                other => tracing::debug!(?other, "the authority produced an effect no prompt uses"),
+                other => gnoblin_log::debug!(?other, "the authority produced an effect no prompt uses"),
             }
         }
         decision

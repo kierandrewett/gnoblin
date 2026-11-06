@@ -71,7 +71,7 @@ impl Inhibit {
             Ok(handle) => {
                 super::export_request(&self.portal, &path).await?;
                 self.portal.handle(&path, Handle::Inhibition(handle));
-                tracing::info!(app = %app_id, flags, "an inhibition was recorded");
+                gnoblin_log::info!(app = %app_id, flags, "an inhibition was recorded");
                 Ok(())
             }
             Err(missing) => {
@@ -113,7 +113,7 @@ impl Inhibit {
         }
         export_session(&self.portal, &path).await?;
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        tracing::info!(app = %app_id, session = %path, "an inhibit monitor was created");
+        gnoblin_log::info!(app = %app_id, session = %path, "an inhibit monitor was created");
         Ok(0)
     }
 
