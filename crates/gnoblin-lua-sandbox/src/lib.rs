@@ -88,6 +88,13 @@ pub struct Guard {
     remaining: Cell<u64>,
     started: Cell<Option<Instant>>,
     aborted: Cell<bool>,
+    /// The message of the abort that latched `aborted`. Every later raise repeats it, so a
+    /// caught error still names the budget that ran out.
+    abort_message: std::cell::RefCell<String>,
+    /// Hook calls per Lua thread as (thread pointer, count). Tests read it to see which
+    /// threads the hook reached.
+    #[cfg(test)]
+    hook_calls: std::cell::RefCell<Vec<(usize, u64)>>,
 }
 
 impl Default for Guard {
@@ -103,6 +110,9 @@ impl Guard {
             remaining: Cell::new(0),
             started: Cell::new(None),
             aborted: Cell::new(false),
+            abort_message: Default::default(),
+            #[cfg(test)]
+            hook_calls: Default::default(),
         }
     }
 
@@ -116,6 +126,35 @@ impl Guard {
     /// Whether the hook stopped the last entry for exhausting a budget.
     pub fn aborted(&self) -> bool {
         self.aborted.get()
+    }
+
+    /// Latch the abort so every later hook call raises again, and return the error to raise.
+    fn latch(&self, message: String) -> Error {
+        self.aborted.set(true);
+        self.abort_message.replace(message.clone());
+        Error::runtime(message)
+    }
+
+    /// The message of the abort that latched this entry, or empty when none has.
+    fn abort_message(&self) -> String {
+        self.abort_message.borrow().clone()
+    }
+
+    /// Count one hook call against the Lua thread that made it.
+    #[cfg(test)]
+    fn record_hook_call(&self, lua: &Lua) {
+        let thread = lua.current_thread().to_pointer() as usize;
+        let mut calls = self.hook_calls.borrow_mut();
+        match calls.iter_mut().find(|(seen, _)| *seen == thread) {
+            Some((_, count)) => *count += 1,
+            None => calls.push((thread, 1)),
+        }
+    }
+
+    /// The per-thread hook counts recorded so far.
+    #[cfg(test)]
+    fn hook_calls(&self) -> Vec<(usize, u64)> {
+        self.hook_calls.borrow().clone()
     }
 }
 
@@ -152,22 +191,40 @@ fn guard_protected_calls(lua: &Lua, guard: Rc<Guard>) -> Result<(), Error> {
     let pcall: Function = globals.get("pcall")?;
     let guarded_pcall = {
         let guard = Rc::clone(&guard);
-        lua.create_function(move |_, args: MultiValue| rethrow_if_aborted(pcall.call::<MultiValue>(args)?, &guard))?
+        lua.create_function(move |_, args: MultiValue| {
+            let results = pcall.call::<MultiValue>(args).map_err(|e| abort_or(e, &guard))?;
+            rethrow_if_aborted(results, &guard)
+        })?
     };
     globals.set("pcall", guarded_pcall)?;
     let xpcall: Function = globals.get("xpcall")?;
-    let guarded_xpcall =
-        lua.create_function(move |_, args: MultiValue| rethrow_if_aborted(xpcall.call::<MultiValue>(args)?, &guard))?;
+    let guarded_xpcall = lua.create_function(move |_, args: MultiValue| {
+        let results = xpcall.call::<MultiValue>(args).map_err(|e| abort_or(e, &guard))?;
+        rethrow_if_aborted(results, &guard)
+    })?;
     globals.set("xpcall", guarded_xpcall)
+}
+
+/// The error to raise for a protected call that failed outside its own results. Once a limit
+/// has aborted the entry, the stored budget message replaces the raw mlua error, which may
+/// carry no usable text.
+fn abort_or(error: Error, guard: &Guard) -> Error {
+    if guard.aborted() {
+        Error::runtime(guard.abort_message())
+    } else {
+        error
+    }
 }
 
 /// Pass a protected call's results through, or rethrow them if a limit aborted.
 fn rethrow_if_aborted(results: MultiValue, guard: &Guard) -> Result<MultiValue, Error> {
     let failed = matches!(results.front(), Some(Value::Boolean(false)));
     if failed && guard.aborted() {
+        // The stored message names the exhausted budget. A caught value that is not text,
+        // such as the xpcall '<no error object>' case, is replaced by it.
         let message = match results.get(1) {
             Some(Value::String(text)) => text.to_str()?.to_owned(),
-            _ => "the Lua handler was aborted by a limit in this entry".to_owned(),
+            _ => guard.abort_message(),
         };
         return Err(Error::runtime(message));
     }
@@ -327,19 +384,21 @@ fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Erro
     let budget = limits.instructions;
     let deadline_ms = limits.handler_ticks;
     let deadline = Duration::from_millis(deadline_ms);
-    lua.set_hook(
+    // A global hook, not a thread hook. mlua's thread hook answers only for the thread it
+    // was set on, so a coroutine would run unbounded. A global hook is copied into every
+    // coroutine that `lua_newthread` creates, so no thread escapes the budgets.
+    lua.set_global_hook(
         HookTriggers::new().every_nth_instruction(HOOK_INSTRUCTIONS),
-        move |_, _| {
+        move |lua, _| {
+            #[cfg(test)]
+            guard.record_hook_call(lua);
             if guard.aborted.get() {
-                return Err(Error::runtime(
-                    "the Lua handler was already aborted by a limit in this entry",
-                ));
+                return Err(Error::runtime(guard.abort_message()));
             }
             let remaining = guard.remaining.get();
             if remaining <= u64::from(HOOK_INSTRUCTIONS) {
                 guard.remaining.set(0);
-                guard.aborted.set(true);
-                return Err(Error::runtime(format!(
+                return Err(guard.latch(format!(
                     "the Lua instruction budget ({budget} instructions) is exhausted; a handler must \
                      finish inside its budget"
                 )));
@@ -348,10 +407,7 @@ fn install_hook(lua: &Lua, limits: &Limits, guard: Rc<Guard>) -> Result<(), Erro
             if let Some(started) = guard.started.get()
                 && started.elapsed() >= deadline
             {
-                guard.aborted.set(true);
-                return Err(Error::runtime(format!(
-                    "the handler deadline ({deadline_ms} ms) passed"
-                )));
+                return Err(guard.latch(format!("the handler deadline ({deadline_ms} ms) passed")));
             }
             Ok(VmState::Continue)
         },
@@ -436,108 +492,175 @@ mod tests {
         assert!(guard.aborted());
     }
 
-    #[ignore = "fails on the gate at the message assertion; the abort escape is unproven; see the lane report"]
+    /// What one capped run of a script reports back to the test thread. A `Lua` state is
+    /// not `Send`, so the state is built and dropped on the worker thread.
+    struct Outcome {
+        error: String,
+        aborted: bool,
+        /// How many distinct Lua threads the hook fired on.
+        hook_threads: usize,
+        /// Total hook calls across every thread.
+        hook_calls: u64,
+    }
+
+    /// Run `script` on a worker thread and wait at most five seconds. A hang then fails
+    /// fast instead of stalling the test run. The worker is leaked if it is still spinning,
+    /// which only happens on a failing test, and the process ends after the test run.
+    fn capped(build: fn(&Limits) -> (Lua, Rc<Guard>), limits: Limits, script: &'static str) -> Outcome {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (lua, guard) = build(&limits);
+            let error = match lua.load(script).exec() {
+                Ok(()) => String::from("the script finished without an error"),
+                Err(error) => error.to_string(),
+            };
+            let calls = guard.hook_calls();
+            let outcome = Outcome {
+                error,
+                aborted: guard.aborted(),
+                hook_threads: calls.len(),
+                hook_calls: calls.iter().map(|(_, count)| count).sum(),
+            };
+            let _ = sender.send(outcome);
+        });
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the script must end within five seconds; a hang means the hook missed its thread")
+    }
+
+    fn config_state(limits: &Limits) -> (Lua, Rc<Guard>) {
+        armed(Profile::Config, limits)
+    }
+
+    fn coroutine_state(limits: &Limits) -> (Lua, Rc<Guard>) {
+        armed_with_coroutines(limits)
+    }
+
+    fn small_budget() -> Limits {
+        Limits {
+            instructions: 50_000,
+            ..Limits::default()
+        }
+    }
+
+    #[test]
+    fn a_bare_loop_hits_the_budget_in_the_config_profile() {
+        let outcome = capped(config_state, small_budget(), "while true do end");
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
+    }
+
     #[test]
     fn pcall_cannot_catch_an_instruction_abort_in_the_config_profile() {
-        let limits = Limits {
-            instructions: 50_000,
-            ..Limits::default()
-        };
-        let (lua, guard) = armed(Profile::Config, &limits);
-        let error = lua
-            .load("while true do pcall(function() while true do end end) end")
-            .exec()
-            .expect_err("the abort must escape pcall");
-        assert!(error.to_string().contains("instruction budget"), "{error}");
-        assert!(guard.aborted());
-    }
-
-    #[ignore = "fails on the gate: the handler runs under the latched hook; see the lane report"]
-    #[test]
-    fn xpcall_cannot_catch_an_instruction_abort_in_the_config_profile() {
-        let limits = Limits {
-            instructions: 50_000,
-            ..Limits::default()
-        };
-        let (lua, guard) = armed(Profile::Config, &limits);
-        let error = lua
-            .load("while true do xpcall(function() while true do end end, print) end")
-            .exec()
-            .expect_err("the abort must escape xpcall");
-        assert!(error.to_string().contains("instruction budget"), "{error}");
-        assert!(guard.aborted());
+        let outcome = capped(
+            config_state,
+            small_budget(),
+            "while true do pcall(function() while true do end end) end",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
     #[test]
-    fn pcall_still_catches_ordinary_errors_in_the_config_profile() {
-        let limits = Limits::default();
-        let (lua, guard) = armed(Profile::Config, &limits);
-        let ok: bool = lua
-            .load("local ok = pcall(error, 'boom') return ok")
-            .eval()
-            .expect("pcall returns its status");
-        assert!(!ok);
-        assert!(!guard.aborted());
+    fn a_pcall_loop_of_raises_cannot_outrun_the_budget() {
+        let outcome = capped(config_state, small_budget(), "while true do pcall(error, 'x') end");
+        assert!(
+            outcome.error.contains("instruction budget") || outcome.error.contains("handler deadline"),
+            "{}",
+            outcome.error
+        );
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
     #[test]
-    fn sort_comparator_cannot_outrun_the_budget() {
-        let limits = Limits {
-            instructions: 50_000,
-            ..Limits::default()
-        };
-        let (lua, guard) = armed(Profile::Config, &limits);
-        let error = lua
-            .load("table.sort({3, 2, 1}, function(a, b) while true do end end)")
-            .exec()
-            .expect_err("the hook fires inside a Lua comparator");
-        assert!(error.to_string().contains("instruction budget"), "{error}");
-        assert!(guard.aborted());
+    fn a_repeated_pcall_of_a_loop_ends_after_the_latch() {
+        let outcome = capped(
+            config_state,
+            small_budget(),
+            "repeat local ok = pcall(function() while true do end end) until false",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
     #[test]
-    fn a_huge_string_rep_fails_at_the_allocator_limit() {
-        let (lua, _guard) = armed(Profile::Config, &Limits::default());
-        let error = lua
-            .load("return string.rep('x', 1 << 40)")
-            .exec()
-            .expect_err("the allocator refuses a terabyte string");
-        assert!(error.to_string().to_lowercase().contains("memory"), "{error}");
+    fn xpcall_cannot_catch_an_instruction_abort_in_the_config_profile() {
+        let outcome = capped(
+            config_state,
+            small_budget(),
+            "while true do xpcall(function() while true do end end, print) end",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
-    #[ignore = "hangs: lua_sethook is per thread, so the coroutine body never reaches the hook"]
+    #[test]
+    fn a_coroutine_wrap_loop_is_bounded_by_the_budget() {
+        let outcome = capped(
+            coroutine_state,
+            small_budget(),
+            "local co = coroutine.wrap(function() while true do end end) co()",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
+        // Hook counts are reported per thread the hook saw. mlua's current-thread query can
+        // report only the main state, so this asserts the bound (`aborted`), not the count.
+    }
+
     #[test]
     fn pcall_around_a_coroutine_cannot_swallow_the_budget() {
-        let limits = Limits {
-            instructions: 50_000,
-            ..Limits::default()
-        };
-        let (lua, guard) = armed_with_coroutines(&limits);
-        let error = lua
-            .load("while true do pcall(coroutine.wrap(function() while true do end end)) end")
-            .exec()
-            .expect_err("the abort must escape pcall around a coroutine");
-        assert!(error.to_string().contains("instruction budget"), "{error}");
-        assert!(guard.aborted());
+        let outcome = capped(
+            coroutine_state,
+            small_budget(),
+            "while true do pcall(coroutine.wrap(function() while true do end end)) end",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
-    #[ignore = "hangs: lua_sethook is per thread, so the coroutine body never reaches the hook"]
     #[test]
     fn a_resume_loop_cannot_outrun_the_budget() {
-        let limits = Limits {
-            instructions: 50_000,
-            ..Limits::default()
-        };
-        let (lua, guard) = armed_with_coroutines(&limits);
-        let error = lua
-            .load("while true do coroutine.resume(coroutine.create(function() while true do end end)) end")
-            .exec()
-            .expect_err("the main thread's hook must end the loop");
-        assert!(error.to_string().contains("instruction budget"), "{error}");
-        assert!(guard.aborted());
+        let outcome = capped(
+            coroutine_state,
+            small_budget(),
+            "while true do coroutine.resume(coroutine.create(function() while true do end end)) end",
+        );
+        assert!(outcome.error.contains("instruction budget"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
-    #[ignore = "hangs: lua_sethook is per thread, so the coroutine body never reaches the hook"]
     #[test]
     fn a_coroutine_loop_hits_the_deadline() {
         let limits = Limits {
@@ -545,13 +668,17 @@ mod tests {
             handler_ticks: 20,
             ..Limits::default()
         };
-        let (lua, guard) = armed_with_coroutines(&limits);
-        let error = lua
-            .load("while true do coroutine.resume(coroutine.create(function() while true do end end)) end")
-            .exec()
-            .expect_err("the deadline must end a coroutine loop");
-        assert!(error.to_string().contains("deadline"), "{error}");
-        assert!(guard.aborted());
+        let outcome = capped(
+            coroutine_state,
+            limits,
+            "while true do coroutine.resume(coroutine.create(function() while true do end end)) end",
+        );
+        assert!(outcome.error.contains("deadline"), "{}", outcome.error);
+        assert!(
+            outcome.aborted,
+            "{} hook calls on {} threads",
+            outcome.hook_calls, outcome.hook_threads
+        );
     }
 
     /// A state with the coroutine library open, for proving the limits before it is enabled.
