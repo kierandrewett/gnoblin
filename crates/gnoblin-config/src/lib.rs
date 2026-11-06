@@ -53,18 +53,31 @@
 //! Seven sections are carried but not interpreted: `extensions`, `keybindings`,
 //! `portals`, `shortcuts`, `autostart`, `window-rules` and `animations`.
 
+/// Accent and colour rules for the `appearance` table.
 pub mod appearance;
+/// The typed configuration document and the salvage that keeps its valid sections.
 pub mod document;
+/// The validation engine: reads one setting and reports the diagnostic for a wrong one.
 pub mod engine;
+/// Extensions the host loads, named in `gnoblin.configure`.
 pub mod extensions;
+/// Cross-field rules that the schema cannot declare.
 pub mod hooks;
+/// The last-good store: the last accepted document, kept on disk.
 pub mod last_good;
+/// Decides which file is the configuration, and in what search order.
 pub mod locate;
+/// The `logging` section, read before the log subscriber is installed.
 mod logging;
+/// Layered documents: how several files become one.
 pub mod merge;
+/// Shared shapes that the generated and hand-written code both name.
 pub mod model;
+/// Dotted paths that name a setting in diagnostics.
 pub mod path;
+/// Validation problems and the report that carries all of them.
 pub mod problem;
+/// The neutral value tree that the Lua host hands over.
 pub mod value;
 
 /// The document, generated from `schema/config.toml` by `build.rs`.
@@ -73,7 +86,9 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 }
 
+/// The typed document, the sections it carries, and the salvage that keeps valid sections.
 pub use document::{CARRIED_SECTIONS, Config, Salvaged, TOP_LEVEL_KEYS, salvage};
+/// Generated enums, settings and the alias table, all from `schema/config.toml`.
 pub use generated::{
     ALIASES, AccelProfile, Accessibility, Appearance, Auth, Blur, BounceKeys, ButtonLayout, ClickMethod, ColorScheme,
     Compat, CompatCapture, Compositor, Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode,
@@ -85,11 +100,19 @@ pub use generated::{
     TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualBellType, WindowManagement, Workspace, Xwayland,
     XwaylandExtension,
 };
+/// The last-good store, its on-disk format version and its load result.
 pub use last_good::{FORMAT, Resolution, Status, Store, StoreError, StoredDocument};
+/// Config path lookup: the located path, its origin and the search order.
 pub use locate::{ConfigPath, LocateError, Origin, SearchPaths, locate};
+/// Reads the `logging` section from the environment before the subscriber exists.
 pub use logging::logging_from_environment;
+/// Merges layered documents into one, last layer wins.
 pub use merge::{merge, merge_layers};
+/// Shared model types: deprecations, enum parsing, settings and their kinds.
 pub use model::{Default, Deprecation, EnumParse, EnumSpec, Inherit, Kind, Setting, SettingEnum};
+/// Dotted path and segment types used in diagnostics.
 pub use path::{Path, Segment};
+/// Validation problems, their fault class and the report that holds them.
 pub use problem::{Fault, Problem, Report};
+/// The value tree type and the depth limit it enforces.
 pub use value::{MAX_DEPTH, Value};
