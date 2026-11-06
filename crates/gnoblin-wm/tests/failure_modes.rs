@@ -1011,6 +1011,63 @@ fn motion_cancels_a_pending_rest_focus() {
     check(&wm);
 }
 
+// Failure mode: raise on click and auto raise. Raising never moves pointer focus,
+// and an armed auto raise is cancelled by leaving, focus moving or closing.
+fn raise_wm(auto: bool, delay: u64) -> Wm {
+    let mut wm = wm_with(WmOptions {
+        focus_mode: FocusMode::Hover,
+        auto_raise: auto,
+        auto_raise_delay: delay,
+        ..WmOptions::default()
+    });
+    open(&mut wm, 1);
+    open(&mut wm, 2);
+    focus(&mut wm, 1, ActivationDecision::Allow);
+    wm
+}
+
+#[test]
+fn a_click_on_a_buried_window_raises_it() {
+    let mut wm = raise_wm(false, 0);
+    assert_eq!(wm.stack().first(), Some(&window(1)));
+    wm.apply(Event::PointerPressed { window: window(2) });
+    assert_eq!(wm.stack().first(), Some(&window(2)));
+    check(&wm);
+}
+
+#[test]
+fn a_click_with_raise_on_click_off_keeps_the_stacking() {
+    let mut wm = wm_with(WmOptions {
+        raise_on_click: false,
+        ..WmOptions::default()
+    });
+    open(&mut wm, 1);
+    open(&mut wm, 2);
+    let before = wm.stack().to_vec();
+    wm.apply(Event::PointerPressed { window: window(1) });
+    assert_eq!(wm.stack(), before.as_slice());
+    check(&wm);
+}
+
+#[test]
+fn auto_raise_is_cancelled_by_leaving_the_window() {
+    let mut wm = raise_wm(true, 500);
+    pointer_moved(&mut wm, Some(2), 100);
+    pointer_moved(&mut wm, None, 200);
+    pointer_tick(&mut wm, 1000);
+    assert_eq!(wm.stack().first(), Some(&window(1)));
+    check(&wm);
+}
+
+#[test]
+fn closing_the_armed_window_cancels_its_auto_raise() {
+    let mut wm = raise_wm(true, 500);
+    pointer_moved(&mut wm, Some(2), 0);
+    wm.apply(Event::WindowClosed { window: window(2) });
+    pointer_tick(&mut wm, 1000);
+    check(&wm);
+}
+
 #[test]
 fn a_pointer_resting_over_a_window_focuses_it_once_settled() {
     let mut wm = pointer_wm(FocusMode::Hover, true);

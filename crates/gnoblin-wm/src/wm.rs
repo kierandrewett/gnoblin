@@ -49,6 +49,12 @@ pub struct WmOptions {
     pub focus_mode: FocusMode,
     /// `window_management.focus_change_on_pointer_rest`.
     pub focus_change_on_pointer_rest: bool,
+    /// `window_management.raise_on_click`.
+    pub raise_on_click: bool,
+    /// `window_management.auto_raise`.
+    pub auto_raise: bool,
+    /// `window_management.auto_raise_delay`, in milliseconds.
+    pub auto_raise_delay: u64,
 }
 
 impl Default for WmOptions {
@@ -62,6 +68,9 @@ impl Default for WmOptions {
             new_window_focus: NewWindowFocus::Prevent,
             focus_mode: FocusMode::Click,
             focus_change_on_pointer_rest: false,
+            raise_on_click: true,
+            auto_raise: false,
+            auto_raise_delay: 500,
         }
     }
 }
@@ -220,6 +229,8 @@ pub struct Wm {
     deferred: Vec<Event>,
     /// Pointer position and any rest focus waiting on it.
     pointer: PointerFocus,
+    /// A window the pointer focused, which `auto_raise` raises at the given tick.
+    auto_raise: Option<(WindowId, Tick)>,
 }
 
 impl Wm {
@@ -321,8 +332,12 @@ impl Wm {
             Event::ActivationRequested { window, decision } => self.activation(window, decision),
             Event::PointerMoved { window, at } => self.pointer_moved(window, at),
             Event::PointerTick { at } => self.pointer_due(at),
+            Event::PointerPressed { window } => self.pointer_pressed(window),
             Event::PointerGrab { active } => {
                 self.pointer.set_grab(active);
+                if active {
+                    self.auto_raise = None;
+                }
                 Vec::new()
             }
             Event::Raise { window } => self.raise(window),
@@ -935,6 +950,9 @@ impl Wm {
             return vec![Effect::rejected(Rejection::UnknownWindow(id))];
         }
         self.pointer.forget(id);
+        if self.auto_raise.is_some_and(|(armed, _)| armed == id) {
+            self.auto_raise = None;
+        }
         // A dialog whose parent has gone keeps working as its own window, so drop the
         // dangling parent link. Keeping it would let a reused window id look like the
         // parent of an unrelated dialog.
@@ -1121,6 +1139,10 @@ impl Wm {
 
     /// The pointer moved over `window` (or a gap). Focus follows it as `focus_mode` asks.
     fn pointer_moved(&mut self, window: Option<WindowId>, at: Tick) -> Vec<Effect> {
+        // Leaving the window an auto-raise is waiting on cancels the raise.
+        if self.auto_raise.is_some_and(|(armed, _)| window != Some(armed)) {
+            self.auto_raise = None;
+        }
         let action = self.pointer.moved(
             window,
             at,
@@ -1128,21 +1150,53 @@ impl Wm {
             self.options.focus_mode,
             self.options.focus_change_on_pointer_rest,
         );
-        self.pointer_effects(action)
+        self.pointer_effects(action, at)
     }
 
-    /// The clock reached `at`; a rest focus whose time has come takes effect.
+    /// The clock reached `at`. A rest focus whose time has come takes effect, and an
+    /// auto-raise whose delay has run out raises the focused window if the pointer is
+    /// still on it.
     fn pointer_due(&mut self, at: Tick) -> Vec<Effect> {
         let action = self.pointer.due(at);
-        self.pointer_effects(action)
+        let mut effects = self.pointer_effects(action, at);
+        if let Some((id, _)) = self.auto_raise.filter(|(_, due)| at.reached(*due)) {
+            self.auto_raise = None;
+            let focused_and_under = self.focus == Some(id) && self.pointer.over() == Some(id);
+            let visible = self
+                .windows
+                .get(&id)
+                .is_some_and(|window| window.is_visible(self.active_workspace));
+            if focused_and_under && visible {
+                effects.extend(self.raise(id));
+            }
+        }
+        effects
     }
 
-    fn pointer_effects(&mut self, action: pointer_focus::PointerAction) -> Vec<Effect> {
+    /// A button went down over `window`. It is focused, and raised when `raise_on_click`
+    /// is set; otherwise its stacking is left alone.
+    fn pointer_pressed(&mut self, window: WindowId) -> Vec<Effect> {
+        let decision = if self.options.raise_on_click {
+            ActivationDecision::Allow
+        } else {
+            ActivationDecision::AllowWithoutRaise
+        };
+        self.activation(window, decision)
+    }
+
+    fn pointer_effects(&mut self, action: pointer_focus::PointerAction, at: Tick) -> Vec<Effect> {
         use pointer_focus::PointerAction;
         match action {
             PointerAction::None => Vec::new(),
-            PointerAction::Focus(id) => self.activation(id, ActivationDecision::AllowWithoutRaise),
+            PointerAction::Focus(id) => {
+                let effects = self.activation(id, ActivationDecision::AllowWithoutRaise);
+                if self.options.auto_raise && self.focus == Some(id) {
+                    self.auto_raise = Some((id, at.saturating_add(self.options.auto_raise_delay)));
+                }
+                effects
+            }
             PointerAction::Clear => {
+                self.auto_raise = None;
                 let previous = self.focus.take();
                 if previous.is_some() {
                     vec![Effect::focus(previous, None)]
@@ -1164,6 +1218,10 @@ impl Wm {
         }
         let previous = self.focus;
         self.focus = Some(id);
+        // Focus moving to another window cancels an auto-raise waiting on the last one.
+        if self.auto_raise.is_some_and(|(armed, _)| armed != id) {
+            self.auto_raise = None;
+        }
         self.remember_focus(id);
         let mut effects = Vec::new();
         if decision.raises() {

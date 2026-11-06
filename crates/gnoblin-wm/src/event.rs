@@ -115,6 +115,9 @@ pub enum Event {
     },
     /// The clock reached `at`; a pending pointer-rest focus may be due.
     PointerTick { at: gnoblin_types::Tick },
+    /// A button went down over `window`. The window is focused, and raised when
+    /// `raise_on_click` is set.
+    PointerPressed { window: WindowId },
     /// A button went down (`active`) or the last one came up. Focus does not follow the
     /// pointer while a button is held.
     PointerGrab { active: bool },

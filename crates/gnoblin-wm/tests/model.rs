@@ -240,6 +240,9 @@ fn run(seed: u64) -> (Vec<Vec<Effect>>, usize) {
         },
         focus_mode: gnoblin_wm::FocusMode::Click,
         focus_change_on_pointer_rest: false,
+        raise_on_click: !seed.is_multiple_of(5),
+        auto_raise: seed.is_multiple_of(7),
+        auto_raise_delay: 0,
     };
     let mut wm = Wm::new(options);
     for raw in 1..=WORKSPACE_POOL {
