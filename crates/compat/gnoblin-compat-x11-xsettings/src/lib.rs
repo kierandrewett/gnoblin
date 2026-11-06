@@ -36,8 +36,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("compat-xsettings");
-
 use gnoblin_compat_core::{DesktopSettings, Switch};
 use gnoblin_log::debug_in;
 use gnoblin_xwayland::xsettings::{Setting, XSettings};

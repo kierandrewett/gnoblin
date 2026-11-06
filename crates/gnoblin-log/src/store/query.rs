@@ -36,7 +36,7 @@ pub struct LogRecord {
     pub id: i64,
     pub time_ms: i64,
     pub level: String,
-    /// The component that logged the event, as declared by `gnoblin_log::component!`.
+    /// The component that logged the event, as named by the `*_in!` call.
     pub component: String,
     /// The process role that logged the event.
     pub role: String,

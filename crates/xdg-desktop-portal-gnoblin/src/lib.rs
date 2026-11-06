@@ -77,8 +77,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("portal");
-
 pub mod backends;
 pub mod consent;
 pub mod host;

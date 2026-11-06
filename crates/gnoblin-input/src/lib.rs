@@ -84,8 +84,6 @@
 //! always produces the same decisions. `tests/model.rs` replays each generated sequence
 //! twice and requires an identical decision stream.
 
-gnoblin_log::component!("input");
-
 pub mod binding;
 pub mod chord;
 pub mod eis;

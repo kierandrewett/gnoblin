@@ -64,8 +64,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("compat-keyring");
-
 pub mod callback;
 pub mod compat;
 pub mod exchange;

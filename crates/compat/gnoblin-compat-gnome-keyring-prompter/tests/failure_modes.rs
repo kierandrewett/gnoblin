@@ -5,8 +5,6 @@
 //! interface's own refusals are there because they belong to the transport rather than to
 //! the state.
 
-gnoblin_log::component!("compat-keyring");
-
 mod support;
 
 use std::cell::RefCell;

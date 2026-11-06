@@ -157,8 +157,6 @@
 //!     [`nested`]'s own list, because that backend's failure modes are about the wire
 //!     rather than about the contract.
 
-gnoblin_log::component!("backend");
-
 pub mod drm;
 pub mod headless;
 pub mod libinput;

@@ -80,8 +80,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("compat-core");
-
 mod adapter;
 mod caller;
 mod matrix;

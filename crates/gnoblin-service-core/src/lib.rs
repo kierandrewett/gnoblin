@@ -43,8 +43,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("service-core");
-
 pub mod agent;
 pub mod host;
 pub mod slot;

@@ -63,8 +63,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("compat-screenshot");
-
 pub mod compat;
 pub mod error;
 pub mod link;

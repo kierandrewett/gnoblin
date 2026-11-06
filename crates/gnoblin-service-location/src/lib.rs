@@ -35,8 +35,6 @@
 //! Offers are accepted only in `Available`. A `grant` is still [`grant`], a pure function of
 //! the answer, the request and the policy ceiling.
 
-gnoblin_log::component!("location");
-
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};

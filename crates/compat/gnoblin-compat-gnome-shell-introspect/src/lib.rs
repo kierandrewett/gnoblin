@@ -65,8 +65,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("compat-introspect");
-
 pub mod compat;
 pub mod environment;
 pub mod error;

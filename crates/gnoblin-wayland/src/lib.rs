@@ -176,8 +176,6 @@
 //! session lock reads no clock either: its barrier is a generation counter, and the
 //! loop's turn is the only thing that decides when a dead connection is noticed.
 
-gnoblin_log::component!("wayland");
-
 mod access;
 mod clock;
 mod frame;

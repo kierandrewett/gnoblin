@@ -87,7 +87,7 @@ pub fn check_dependencies(graph: &Graph) -> Vec<String> {
             let name = dep.name.as_str();
             if LOGGING_CRATES.contains(&name) && !allowed.contains(&name) {
                 violations.push(format!(
-                    "{} declares a {} dependency on `{name}`; log through the gnoblin-log macros instead",
+                    "{} declares a {} dependency on `{name}`; log through the gnoblin-log `*_in!` macros instead",
                     package.name,
                     dep.kind.as_str(),
                 ));
@@ -116,7 +116,7 @@ fn check_sources(root: &Path) -> Result<Vec<String>, String> {
                     used.insert(index);
                 }
                 None => violations.push(format!(
-                    "{relative}:{}: {} in library code; log through the gnoblin-log macros, or allow it in {ALLOW_FILE}",
+                    "{relative}:{}: {} in library code; log through the gnoblin-log `*_in!` macros, or allow it in {ALLOW_FILE}",
                     hit.line, hit.what,
                 )),
             }

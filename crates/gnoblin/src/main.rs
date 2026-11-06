@@ -41,8 +41,6 @@
 //!    line error (exit 2) naming the roles this build has:
 //!    `tests/roles.rs::an_unknown_role_is_a_command_line_error`.
 
-gnoblin_log::component!("gnoblin");
-
 mod compat;
 mod dconf;
 mod displayconfig;

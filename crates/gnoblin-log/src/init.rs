@@ -106,7 +106,7 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
     if installed.is_ok() {
         install_panic_hook();
         for problem in &problems {
-            crate::warn!("{problem}");
+            crate::warn_in!("log", "{problem}");
         }
     }
     LogGuard { sink }
@@ -128,7 +128,7 @@ where
 fn install_panic_hook() {
     let previous = panic::take_hook();
     panic::set_hook(Box::new(move |information| {
-        crate::error!(panic = %information, "a thread panicked");
+        crate::error_in!("log", panic = %information, "a thread panicked");
         previous(information);
     }));
 }

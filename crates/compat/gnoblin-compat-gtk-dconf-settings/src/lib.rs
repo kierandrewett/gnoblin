@@ -48,8 +48,6 @@
 
 #![forbid(unsafe_code)]
 
-gnoblin_log::component!("compat-dconf");
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

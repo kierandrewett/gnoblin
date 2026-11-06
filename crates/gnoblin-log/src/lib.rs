@@ -1,24 +1,15 @@
 //! The logging facade every gnoblin crate depends on.
 //!
-//! A crate declares its component once, at its crate root:
+//! Every call names its component as the first argument, as a string literal:
 //!
 //! ```ignore
-//! gnoblin_log::component!("wayland");
+//! gnoblin_log::info_in!("wayland", surfaces = count, "mapped");
 //! ```
 //!
-//! The name is checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading or
-//! trailing `-`. The level macros read the declared name, so a crate that logs without declaring
-//! one does not compile. Call sites name nothing else:
-//!
-//! ```ignore
-//! gnoblin_log::info!(surfaces = count, "mapped");
-//! ```
-//!
-//! A call that belongs to a sub-area of a crate names its component first:
-//!
-//! ```ignore
-//! gnoblin_log::warn!(component: "xdg-shell", "unknown request {opcode}");
-//! ```
+//! The literal is checked at compile time: 1 to 24 bytes of `a-z`, `0-9` and `-`, with no leading
+//! or trailing `-`. A sub-area of a crate is simply another component name, so there is no
+//! separate override. The level macros are `error_in!`, `warn_in!`, `info_in!`, `debug_in!` and
+//! `trace_in!`, and each call site owns a `static` filter, so a disabled call formats nothing.
 //!
 //! The macros take the arguments of their `tracing` counterparts, including fields and `%`/`?`
 //! sigils. Every event carries its component in a `component` field, which [`event`] reads. An
@@ -61,29 +52,15 @@ pub use tracing as __tracing;
 /// The longest component name, in bytes.
 const MAX_COMPONENT_LEN: usize = 24;
 
-/// Declares the component of the crate it appears in.
-///
-/// Put it once, at the crate root (`lib.rs` or `main.rs`), and not in a module. It expands to a
-/// hidden `__GNOBLIN_LOG_COMPONENT` constant that the level macros read.
-#[macro_export]
-macro_rules! component {
-    ($name:literal) => {
-        #[allow(dead_code)]
-        pub(crate) const __GNOBLIN_LOG_COMPONENT: &str = $crate::__checked_component($name);
-    };
-}
-
 /// Returns `name` when it is a valid component, and fails compilation when it is not.
 ///
-/// Only [`component!`] calls this, in a constant, so an invalid name is a compile error.
+/// Only [`__emit!`] calls this, in a `static`, so an invalid name is a compile error.
 #[doc(hidden)]
 pub const fn __checked_component(name: &'static str) -> &'static str {
     if is_valid_component(name) {
         name
     } else {
-        panic!(
-            "gnoblin_log::component!: a component is 1 to 24 bytes of a-z, 0-9 and '-', with no leading or trailing '-'"
-        )
+        panic!("gnoblin_log: a component is 1 to 24 bytes of a-z, 0-9 and '-', with no leading or trailing '-'")
     }
 }
 
@@ -137,78 +114,6 @@ impl ProcessRole {
         }
     }
 }
-
-/// Logs an event at `ERROR` level, tagged with the crate's component.
-///
-/// `component: "name"` as the first argument tags it with `name` instead.
-#[macro_export]
-#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
-macro_rules! error {
-    (component: $component:expr, $($rest:tt)+) => {
-        $crate::__tracing::error!(component = $component, $($rest)+)
-    };
-    ($($rest:tt)+) => {
-        $crate::__tracing::error!(component = crate::__GNOBLIN_LOG_COMPONENT, $($rest)+)
-    };
-}
-
-/// Logs an event at `WARN` level, tagged with the crate's component.
-///
-/// `component: "name"` as the first argument tags it with `name` instead.
-#[macro_export]
-#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
-macro_rules! warn {
-    (component: $component:expr, $($rest:tt)+) => {
-        $crate::__tracing::warn!(component = $component, $($rest)+)
-    };
-    ($($rest:tt)+) => {
-        $crate::__tracing::warn!(component = crate::__GNOBLIN_LOG_COMPONENT, $($rest)+)
-    };
-}
-
-/// Logs an event at `INFO` level, tagged with the crate's component.
-///
-/// `component: "name"` as the first argument tags it with `name` instead.
-#[macro_export]
-#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
-macro_rules! info {
-    (component: $component:expr, $($rest:tt)+) => {
-        $crate::__tracing::info!(component = $component, $($rest)+)
-    };
-    ($($rest:tt)+) => {
-        $crate::__tracing::info!(component = crate::__GNOBLIN_LOG_COMPONENT, $($rest)+)
-    };
-}
-
-/// Logs an event at `DEBUG` level, tagged with the crate's component.
-///
-/// `component: "name"` as the first argument tags it with `name` instead.
-#[macro_export]
-#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
-macro_rules! debug {
-    (component: $component:expr, $($rest:tt)+) => {
-        $crate::__tracing::debug!(component = $component, $($rest)+)
-    };
-    ($($rest:tt)+) => {
-        $crate::__tracing::debug!(component = crate::__GNOBLIN_LOG_COMPONENT, $($rest)+)
-    };
-}
-
-/// Logs an event at `TRACE` level, tagged with the crate's component.
-///
-/// `component: "name"` as the first argument tags it with `name` instead.
-#[macro_export]
-#[allow(clippy::crate_in_macro_def)] // `crate` is the caller's root, where `component!` declares the constant
-macro_rules! trace {
-    (component: $component:expr, $($rest:tt)+) => {
-        $crate::__tracing::trace!(component = $component, $($rest)+)
-    };
-    ($($rest:tt)+) => {
-        $crate::__tracing::trace!(component = crate::__GNOBLIN_LOG_COMPONENT, $($rest)+)
-    };
-}
-
-component!("log");
 
 /// Emits one `tracing` event at `$level` for `$component`, if that call site is enabled.
 ///
@@ -290,21 +195,22 @@ mod tests {
     }
 
     #[test]
-    fn every_level_macro_tags_the_event_with_the_declared_component() {
+    fn every_level_macro_tags_the_event_with_its_named_component() {
         let events = logged(|| {
-            crate::error!("e");
-            crate::warn!("w");
-            crate::info!(count = 3, "i {}", 4);
-            crate::debug!("d");
-            crate::trace!("t");
+            error_in!("log", "e");
+            warn_in!("log", "w");
+            info_in!("log", count = 3, "i {}", 4);
+            debug_in!("log", "d");
+            trace_in!("log", "t");
         });
         let components: Vec<_> = events.iter().map(|event| event.component.as_str()).collect();
-        assert_eq!(components, ["log"; 5]);
+        // `debug` and `trace` are below the default `info` filter, so only three events arrive.
+        assert_eq!(components, ["log"; 3]);
     }
 
     #[test]
-    fn a_component_argument_overrides_the_declared_component() {
-        let events = logged(|| crate::warn!(component: "xdg-shell", "unknown request {}", 7));
+    fn a_sub_area_names_its_own_component() {
+        let events = logged(|| warn_in!("xdg-shell", "unknown request {}", 7));
         assert_eq!(events[0].component, "xdg-shell");
         assert_eq!(events[0].message, "unknown request 7");
     }

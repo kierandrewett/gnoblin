@@ -43,8 +43,6 @@
 //!    no inhibit is recorded, so the sender's cookie count is not inflated:
 //!    `tests::a_refused_inhibit_leaves_no_entry`.
 
-gnoblin_log::component!("screensaver");
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
