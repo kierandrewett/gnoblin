@@ -42,6 +42,7 @@ fn json_line(entry: &Entry) -> String {
         "id": entry.id,
         "time_ms": entry.time_ms,
         "level": entry.level,
+        "component": entry.component,
         "role": entry.role,
         "target": entry.target,
         "message": entry.message,
@@ -50,13 +51,13 @@ fn json_line(entry: &Entry) -> String {
     .to_string()
 }
 
-/// One record as text: UTC time, level, role, target, message, then the fields if any.
+/// One record as text: UTC time, level, component, target, message, then the fields if any.
 fn text_line(entry: &Entry) -> String {
     let mut line = format!(
         "{} {:<5} {} {}: {}",
         iso8601_utc(entry.time_ms),
         entry.level,
-        entry.role,
+        entry.component,
         entry.target,
         entry.message,
     );
@@ -111,11 +112,12 @@ mod tests {
     }
 
     #[test]
-    fn a_text_line_names_the_time_level_role_target_and_message_then_the_fields() {
+    fn a_text_line_names_the_time_level_component_target_and_message_then_the_fields() {
         let entry = Entry {
             id: 7,
             time_ms: 0,
             level: "WARN".to_owned(),
+            component: "wayland".to_owned(),
             role: "compositor".to_owned(),
             target: "gnoblin::log".to_owned(),
             message: "disk full".to_owned(),
@@ -123,7 +125,7 @@ mod tests {
         };
         assert_eq!(
             text_line(&entry),
-            "1970-01-01T00:00:00.000Z WARN  compositor gnoblin::log: disk full path=/x"
+            "1970-01-01T00:00:00.000Z WARN  wayland gnoblin::log: disk full path=/x"
         );
     }
 }

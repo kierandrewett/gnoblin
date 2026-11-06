@@ -17,7 +17,7 @@ pub struct Query {
     pub until_ms: Option<i64>,
     /// Records at this level or above, named as the writer names them (`INFO`, `WARN`, ...).
     pub min_level: Option<String>,
-    /// Records written by this process role.
+    /// Records written by this process role, in the `role` column.
     pub role: Option<String>,
     /// Records whose event target matches exactly.
     pub target: Option<String>,
@@ -33,6 +33,9 @@ pub struct Entry {
     pub id: i64,
     pub time_ms: i64,
     pub level: String,
+    /// The component that logged the event, as declared by `gnoblin_log::component!`.
+    pub component: String,
+    /// The process role that logged the event.
     pub role: String,
     pub target: String,
     pub message: String,
@@ -89,23 +92,23 @@ pub(crate) fn level_rank(name: &str) -> i64 {
 
 /// The newest `?6` records matching the filters. `?1`/`?2` bound the time, `?3` is the minimum
 /// level rank, `?4` the role and `?5` the target; a `NULL` parameter disables its filter.
-const NEWEST_SQL: &str = "SELECT id, time_ms, level, component, target, message, fields FROM log_records
+const NEWEST_SQL: &str = "SELECT id, time_ms, level, component, role, target, message, fields FROM log_records
     WHERE (?1 IS NULL OR time_ms >= ?1)
       AND (?2 IS NULL OR time_ms < ?2)
       AND (CASE level WHEN 'TRACE' THEN 0 WHEN 'DEBUG' THEN 1 WHEN 'INFO' THEN 2 WHEN 'WARN' THEN 3 ELSE 4 END) >= ?3
-      AND (?4 IS NULL OR component = ?4)
+      AND (?4 IS NULL OR role = ?4)
       AND (?5 IS NULL OR target = ?5)
     ORDER BY id DESC
     LIMIT ?6";
 
 /// The oldest `?7` records after id `?1` matching the filters, with the same parameters as
 /// [`NEWEST_SQL`] shifted by one.
-const FOLLOW_SQL: &str = "SELECT id, time_ms, level, component, target, message, fields FROM log_records
+const FOLLOW_SQL: &str = "SELECT id, time_ms, level, component, role, target, message, fields FROM log_records
     WHERE id > ?1
       AND (?2 IS NULL OR time_ms >= ?2)
       AND (?3 IS NULL OR time_ms < ?3)
       AND (CASE level WHEN 'TRACE' THEN 0 WHEN 'DEBUG' THEN 1 WHEN 'INFO' THEN 2 WHEN 'WARN' THEN 3 ELSE 4 END) >= ?4
-      AND (?5 IS NULL OR component = ?5)
+      AND (?5 IS NULL OR role = ?5)
       AND (?6 IS NULL OR target = ?6)
     ORDER BY id ASC
     LIMIT ?7";
@@ -115,10 +118,11 @@ fn read_entry(row: &Row<'_>) -> rusqlite::Result<Entry> {
         id: row.get(0)?,
         time_ms: row.get(1)?,
         level: row.get(2)?,
-        role: row.get(3)?,
-        target: row.get(4)?,
-        message: row.get(5)?,
-        fields: row.get(6)?,
+        component: row.get(3)?,
+        role: row.get(4)?,
+        target: row.get(5)?,
+        message: row.get(6)?,
+        fields: row.get(7)?,
     })
 }
 
@@ -135,8 +139,8 @@ mod tests {
     fn insert(connection: &Connection, time_ms: i64, level: &str, role: &str, target: &str, message: &str) {
         connection
             .execute(
-                "INSERT INTO log_records (time_ms, level, component, target, message, fields) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, '')",
+                "INSERT INTO log_records (time_ms, level, component, role, target, message, fields) \
+                 VALUES (?1, ?2, 'wayland', ?3, ?4, ?5, '')",
                 params![time_ms, level, role, target, message],
             )
             .expect("an insert");

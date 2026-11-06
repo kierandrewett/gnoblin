@@ -1,7 +1,9 @@
 //! The database half of the log: one row per event, written by a thread that batches inserts
 //! so that the call which logs never waits on the disk.
+//!
+//! Each row keeps the component that logged the event (as declared by `gnoblin_log::component!`)
+//! and the process role (`compositor`, `services`, ...) in separate columns.
 
-use std::fmt::{self, Debug, Write as _};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,9 +12,9 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use gnoblin_log::__tracing::field::{Field, Visit};
 use gnoblin_log::__tracing::{Event, Subscriber};
-use rusqlite::{Connection, params};
+use gnoblin_log::event::Logged;
+use rusqlite::{Connection, TransactionBehavior, params};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -34,12 +36,16 @@ const FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long a write waits for another process holding the database.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The component of the record that says how many events the full queue discarded.
+const STORE_COMPONENT: &str = "log";
+
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS log_records (
         id INTEGER PRIMARY KEY,
         time_ms INTEGER NOT NULL,
         level TEXT NOT NULL,
         component TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT '',
         target TEXT NOT NULL,
         message TEXT NOT NULL,
         fields TEXT NOT NULL
@@ -47,8 +53,8 @@ const SCHEMA: &str = "
     CREATE INDEX IF NOT EXISTS log_records_time ON log_records (time_ms);
 ";
 
-const INSERT: &str = "INSERT INTO log_records (time_ms, level, component, target, message, fields) \
-                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+const INSERT: &str = "INSERT INTO log_records (time_ms, level, component, role, target, message, fields) \
+                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
 
 /// One logged event, as stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,7 +62,9 @@ pub(crate) struct LogRecord {
     /// Milliseconds since the Unix epoch.
     pub(crate) time_ms: i64,
     pub(crate) level: &'static str,
-    /// The process role that logged the event, stored in the `component` column.
+    /// The component that logged the event, or `ext` for a dependency's event.
+    pub(crate) component: String,
+    /// The process role that logged the event.
     pub(crate) role: &'static str,
     pub(crate) target: String,
     pub(crate) message: String,
@@ -150,55 +158,21 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
-        let metadata = event.metadata();
-        let mut fields = FieldCollector::default();
-        event.record(&mut fields);
+        let logged = Logged::from_event(event);
+        let fields = logged.fields_line();
         let record = LogRecord {
             time_ms: now_ms(),
-            level: metadata.level().as_str(),
+            level: event.metadata().level().as_str(),
+            component: logged.component,
             role: self.role,
-            target: metadata.target().to_owned(),
-            message: fields.message,
-            fields: fields.rest,
+            target: logged.target,
+            message: logged.message,
+            fields,
         };
         if let Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) =
             self.sink.sender.try_send(Message::Record(record))
         {
             self.sink.dropped.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-}
-
-/// Collects an event's `message` and its other fields.
-#[derive(Default)]
-struct FieldCollector {
-    message: String,
-    rest: String,
-}
-
-impl FieldCollector {
-    fn push_field(&mut self, name: &str, value: fmt::Arguments<'_>) {
-        if !self.rest.is_empty() {
-            self.rest.push(' ');
-        }
-        let _ = write!(self.rest, "{name}={value}");
-    }
-}
-
-impl Visit for FieldCollector {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "message" {
-            self.message.push_str(value);
-        } else {
-            self.push_field(field.name(), format_args!("{value:?}"));
-        }
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-        if field.name() == "message" {
-            let _ = write!(self.message, "{value:?}");
-        } else {
-            self.push_field(field.name(), format_args!("{value:?}"));
         }
     }
 }
@@ -236,6 +210,7 @@ fn dropped_record(role: &'static str, lost: u64) -> LogRecord {
     LogRecord {
         time_ms: now_ms(),
         level: "WARN",
+        component: STORE_COMPONENT.to_owned(),
         role,
         target: module_path!().to_owned(),
         message: format!("dropped {lost} log records because the queue was full"),
@@ -247,7 +222,32 @@ fn dropped_record(role: &'static str, lost: u64) -> LogRecord {
 fn prepare(connection: &mut Connection) -> rusqlite::Result<()> {
     connection.busy_timeout(BUSY_TIMEOUT)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
-    connection.execute_batch(SCHEMA)
+    connection.execute_batch(SCHEMA)?;
+    migrate(connection)
+}
+
+/// Adds the `role` column to a database written before it existed. Those rows kept the role in
+/// `component`, so their role is copied from there. Runs in one immediate transaction, so two
+/// processes opening the same old database cannot both add the column.
+fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if !has_column(&transaction, "role")? {
+        transaction.execute_batch(
+            "ALTER TABLE log_records ADD COLUMN role TEXT NOT NULL DEFAULT '';
+             UPDATE log_records SET role = component;",
+        )?;
+    }
+    transaction.commit()
+}
+
+/// Whether the `log_records` table has a column called `name`.
+fn has_column(connection: &Connection, name: &str) -> rusqlite::Result<bool> {
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('log_records') WHERE name = ?1",
+        params![name],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 /// Writes `records` in one transaction.
@@ -259,6 +259,7 @@ fn insert_batch(connection: &mut Connection, records: &[LogRecord]) -> rusqlite:
             statement.execute(params![
                 record.time_ms,
                 record.level,
+                record.component,
                 record.role,
                 record.target,
                 record.message,
@@ -285,6 +286,7 @@ mod tests {
         LogRecord {
             time_ms: 1_000,
             level: "INFO",
+            component: "wayland".to_owned(),
             role: "compositor",
             target: "gnoblin::main".to_owned(),
             message: message.to_owned(),
@@ -316,13 +318,26 @@ mod tests {
             stored,
             vec![
                 (
-                    "compositor".to_owned(),
+                    "wayland".to_owned(),
                     "started".to_owned(),
                     "role=\"compositor\"".to_owned()
                 ),
-                ("compositor".to_owned(), "stopped".to_owned(), String::new()),
+                ("wayland".to_owned(), "stopped".to_owned(), String::new()),
             ]
         );
+    }
+
+    #[test]
+    fn the_role_is_stored_in_its_own_column() {
+        let mut connection = database();
+        insert_batch(&mut connection, &[record("started", "")]).expect("the batch is written");
+
+        let (component, role): (String, String) = connection
+            .query_row("SELECT component, role FROM log_records", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .expect("the row");
+        assert_eq!((component.as_str(), role.as_str()), ("wayland", "compositor"));
     }
 
     #[test]
@@ -343,5 +358,34 @@ mod tests {
     fn the_schema_can_be_prepared_twice() {
         let mut connection = database();
         prepare(&mut connection).expect("a second process prepares the same file");
+    }
+
+    #[test]
+    fn a_database_without_a_role_column_gets_one_filled_from_component() {
+        let mut connection = Connection::open_in_memory().expect("an in-memory database");
+        connection
+            .execute_batch(
+                "CREATE TABLE log_records (
+                    id INTEGER PRIMARY KEY,
+                    time_ms INTEGER NOT NULL,
+                    level TEXT NOT NULL,
+                    component TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    fields TEXT NOT NULL
+                );
+                INSERT INTO log_records (time_ms, level, component, target, message, fields)
+                    VALUES (1, 'INFO', 'compositor', 'gnoblin::main', 'old row', '');",
+            )
+            .expect("the old schema");
+
+        prepare(&mut connection).expect("the migration");
+
+        let role: String = connection
+            .query_row("SELECT role FROM log_records WHERE message = 'old row'", [], |row| {
+                row.get(0)
+            })
+            .expect("the row");
+        assert_eq!(role, "compositor");
     }
 }
