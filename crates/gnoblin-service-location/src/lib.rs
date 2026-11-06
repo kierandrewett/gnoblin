@@ -16,6 +16,24 @@
 //!    or below the requested level, the policy ceiling and the answer.
 //! 4. **Policy is absent.** The ceiling defaults to [`Policy::DENY`], which denies every
 //!    request.
+//!
+//! # Agent states
+//!
+//! The agent is `Offline` until GeoClue accepts its registration, and `Available` after.
+//! `in_use` exists only while `Available`. Each transition is a method on `AgentState`
+//! and every refused transition leaves the state unchanged.
+//!
+//! | from        | event                  | to          | notes                                   |
+//! |-------------|------------------------|-------------|-----------------------------------------|
+//! | `Offline`   | `start(in_use)`        | `Available` | registration accepted                   |
+//! | `Available` | `start(in_use)`        | unchanged   | refused: already registered             |
+//! | `Available` | `stop`                 | `Offline`   | GeoClue left the bus; `in_use` cleared  |
+//! | `Offline`   | `stop`                 | unchanged   | nothing to withdraw                     |
+//! | `Available` | `watch_in_use(in_use)` | `Available` | `InUse` changed                         |
+//! | `Offline`   | `watch_in_use(in_use)` | unchanged   | refused: no registration to report on   |
+//!
+//! Offers are accepted only in `Available`. A `grant` is still [`grant`], a pure function of
+//! the answer, the request and the policy ceiling.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -173,13 +191,56 @@ pub fn grant(outcome: &RequestOutcome, requested: u32, ceiling: u32) -> (bool, u
     if level == 0 { (false, 0) } else { (true, level) }
 }
 
+/// Whether GeoClue has accepted this agent, and the `InUse` value GeoClue last reported
+/// while it has. See the module's agent-state table for the transitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentState {
+    /// GeoClue has not accepted the registration: it is absent, refused the agent or has
+    /// left the bus.
+    Offline,
+    /// GeoClue accepted the registration; `in_use` is its last `InUse` value.
+    Available { in_use: bool },
+}
+
+impl AgentState {
+    /// The state after GeoClue accepts a registration. Already registered: unchanged.
+    fn start(self, in_use: bool) -> AgentState {
+        match self {
+            AgentState::Offline => AgentState::Available { in_use },
+            available @ AgentState::Available { .. } => available,
+        }
+    }
+
+    /// The state after GeoClue goes away. Clears `in_use` with the registration.
+    fn stop(self) -> AgentState {
+        AgentState::Offline
+    }
+
+    /// The state after GeoClue reports `InUse`. Ignored while offline.
+    fn watch_in_use(self, in_use: bool) -> AgentState {
+        match self {
+            AgentState::Offline => AgentState::Offline,
+            AgentState::Available { .. } => AgentState::Available { in_use },
+        }
+    }
+
+    /// Whether this agent is registered and answers offers.
+    fn is_available(self) -> bool {
+        matches!(self, AgentState::Available { .. })
+    }
+
+    /// Whether GeoClue reports a client using location. Always `false` while offline.
+    fn in_use(self) -> bool {
+        matches!(self, AgentState::Available { in_use: true })
+    }
+}
+
 /// The state the handlers and the watchers share.
 struct LocationState {
     offerer: Box<dyn Offerer + Send>,
     waiting: BTreeMap<RequestId, oneshot::Sender<RequestOutcome>>,
     policy: Policy,
-    available: bool,
-    in_use: bool,
+    state: AgentState,
 }
 
 /// The agent object, clonable so the connection's object server and the watchers share
@@ -195,8 +256,7 @@ impl std::fmt::Debug for Location {
         let state = self.lock();
         formatter
             .debug_struct("Location")
-            .field("available", &state.available)
-            .field("in_use", &state.in_use)
+            .field("state", &state.state)
             .field("waiting", &state.waiting.len())
             .finish()
     }
@@ -211,8 +271,7 @@ impl Location {
                 offerer: Box::new(offerer),
                 waiting: BTreeMap::new(),
                 policy,
-                available: false,
-                in_use: false,
+                state: AgentState::Offline,
             })),
             deadline,
         }
@@ -226,12 +285,12 @@ impl Location {
 
     /// Whether GeoClue has accepted the registration.
     pub fn is_available(&self) -> bool {
-        self.lock().available
+        self.lock().state.is_available()
     }
 
     /// Whether GeoClue reports that a client is using location right now.
     pub fn in_use(&self) -> bool {
-        self.lock().in_use
+        self.lock().state.in_use()
     }
 
     /// The ceiling this agent reports as `MaxAccuracyLevel` and enforces.
@@ -257,7 +316,7 @@ impl Location {
         let (receiver, ceiling) = {
             let mut state = self.lock();
             let ceiling = state.policy.max_level;
-            if ceiling == 0 || !state.available {
+            if ceiling == 0 || !state.state.is_available() {
                 return (false, 0);
             }
             let proposition = Proposition::location(desktop_id, &format!("Allow {desktop_id} to use your location?"));
@@ -284,7 +343,7 @@ impl Location {
     fn withdraw(&self) {
         let waiting = {
             let mut state = self.lock();
-            state.available = false;
+            state.state = state.state.stop();
             std::mem::take(&mut state.waiting)
         };
         for (_, sender) in waiting {
@@ -298,8 +357,7 @@ impl Location {
         manager.add_agent(AGENT_ID).await?;
         let in_use = manager.in_use().await.unwrap_or(false);
         let mut state = self.lock();
-        state.available = true;
-        state.in_use = in_use;
+        state.state = state.state.start(in_use);
         Ok(())
     }
 
@@ -381,7 +439,10 @@ impl Location {
         let mut changes = manager.receive_in_use_changed().await;
         while let Some(change) = changes.next().await {
             match change.get().await {
-                Ok(in_use) => self.lock().in_use = in_use,
+                Ok(in_use) => {
+                    let mut state = self.lock();
+                    state.state = state.state.watch_in_use(in_use);
+                }
                 Err(error) => debug!(%error, "[services] unreadable GeoClue InUse change"),
             }
         }
@@ -571,5 +632,59 @@ mod tests {
         let store = Store::new(directory.path());
         let source = directory.path().join("config.toml");
         assert_eq!(policy_from_store(&store, &source), Policy::DENY);
+    }
+
+    #[test]
+    fn starting_an_offline_agent_registers_it_with_the_reported_in_use() {
+        assert_eq!(AgentState::Offline.start(true), AgentState::Available { in_use: true });
+        assert_eq!(
+            AgentState::Offline.start(false),
+            AgentState::Available { in_use: false }
+        );
+    }
+
+    #[test]
+    fn starting_a_registered_agent_keeps_its_registration() {
+        let registered = AgentState::Available { in_use: true };
+        assert_eq!(registered.start(false), registered);
+    }
+
+    #[test]
+    fn stopping_an_available_agent_takes_it_offline() {
+        assert_eq!(AgentState::Available { in_use: false }.stop(), AgentState::Offline);
+    }
+
+    #[test]
+    fn stopping_an_available_agent_clears_in_use() {
+        assert!(!AgentState::Available { in_use: true }.stop().in_use());
+    }
+
+    #[test]
+    fn stopping_an_offline_agent_changes_nothing() {
+        assert_eq!(AgentState::Offline.stop(), AgentState::Offline);
+    }
+
+    #[test]
+    fn watching_in_use_updates_an_available_agent() {
+        assert_eq!(
+            AgentState::Available { in_use: false }.watch_in_use(true),
+            AgentState::Available { in_use: true }
+        );
+        assert_eq!(
+            AgentState::Available { in_use: true }.watch_in_use(false),
+            AgentState::Available { in_use: false }
+        );
+    }
+
+    #[test]
+    fn watching_in_use_on_an_offline_agent_records_nothing() {
+        assert_eq!(AgentState::Offline.watch_in_use(true), AgentState::Offline);
+        assert!(!AgentState::Offline.watch_in_use(true).in_use());
+    }
+
+    #[test]
+    fn only_a_registered_agent_is_available_for_offers() {
+        assert!(!AgentState::Offline.is_available());
+        assert!(AgentState::Available { in_use: false }.is_available());
     }
 }
