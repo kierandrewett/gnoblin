@@ -176,6 +176,8 @@ fn failure(fault: &LayoutFault) -> LayoutFailure {
         | LayoutReason::Error
         | LayoutReason::RefusedReply
         | LayoutReason::VmDown
-        | LayoutReason::InvalidLayout => LayoutFailure::Error,
+        | LayoutReason::InvalidLayout
+        | LayoutReason::UnknownModule
+        | LayoutReason::HashMismatch => LayoutFailure::Error,
     }
 }
