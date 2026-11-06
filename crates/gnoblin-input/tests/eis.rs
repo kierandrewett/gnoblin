@@ -858,3 +858,87 @@ fn a_forgotten_context_stops_being_reported() {
     assert_eq!(peer.service.contexts().count(), 0);
     assert!(peer.service.apply(peer.id, Command::Disconnect).is_empty());
 }
+
+#[test]
+fn a_bind_after_the_connection_ended_creates_no_device() {
+    let mut peer = Peer::connect(Grant::granted(all_caps()));
+    let ended = peer.apply(Command::Disconnect);
+    assert_eq!(ending(&ended), Some(Ending::Disconnected));
+
+    let actions = peer.bind(all_caps());
+    assert!(actions.is_empty(), "an ended context answers a late bind with nothing");
+    assert_eq!(
+        peer.context().devices().count(),
+        0,
+        "no device may appear after the end"
+    );
+}
+
+#[test]
+fn a_second_bind_is_refused_and_keeps_the_first_devices() {
+    let mut peer = Peer::bound();
+    let actions = peer.bind(all_caps());
+    assert_eq!(devices(&actions), Vec::new(), "a second bind creates no device");
+    assert_eq!(ending(&actions), Some(Ending::Violation(Violation::AlreadyBound)));
+    assert_eq!(
+        peer.context().devices().count(),
+        3,
+        "the devices of the first bind are still reported after the end"
+    );
+}
+
+#[test]
+fn an_empty_bind_before_the_decision_leaves_the_seat_bound() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    let (id, _) = service.connect(Some("waiting"), ContextType::Sender);
+    let actions = service.apply(
+        id,
+        Command::Bind {
+            capabilities: Caps::NONE,
+        },
+    );
+    assert_eq!(ending(&actions), None, "binding nothing is not a violation");
+
+    // The decision arrives after the bind: it advertises, but the seat is already bound.
+    service.set_grant(Grant::granted(Caps::KEYBOARD));
+    let actions = service.apply(
+        id,
+        Command::Bind {
+            capabilities: Caps::KEYBOARD,
+        },
+    );
+    assert_eq!(ending(&actions), Some(Ending::Violation(Violation::AlreadyBound)));
+}
+
+#[test]
+fn a_decision_after_the_connection_ended_is_not_sent() {
+    let mut service = Service::new(Grant::pending(), layout(), Quota::default());
+    let (id, _) = service.connect(Some("waiting"), ContextType::Sender);
+    let ended = service.apply(id, Command::Disconnect);
+    assert_eq!(ending(&ended), Some(Ending::Disconnected));
+
+    let told = service.set_grant(Grant::granted(Caps::KEYBOARD));
+    assert_eq!(told, Vec::new(), "an ended context is never advertised to");
+    assert_eq!(
+        service.context(id).expect("the context exists").capabilities(),
+        Caps::NONE
+    );
+}
+
+#[test]
+fn a_restart_with_a_larger_sequence_is_accepted_and_reported() {
+    let mut peer = Peer::ready();
+    let device = peer.keyboard_device();
+    assert_eq!(peer.device(Some(device)).emulating(), Some(1));
+
+    peer.apply(Command::StopEmulating { device });
+    assert_eq!(
+        peer.device(Some(device)).emulating(),
+        None,
+        "a stopped device is not emulating"
+    );
+
+    let actions = peer.apply(Command::StartEmulating { device, sequence: 2 });
+    assert_eq!(ending(&actions), None, "a larger sequence restarts the emulation");
+    assert_eq!(peer.device(Some(device)).emulating(), Some(2));
+}

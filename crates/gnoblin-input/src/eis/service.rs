@@ -615,14 +615,51 @@ impl fmt::Display for DeviceId {
     }
 }
 
+/// Where a connection context is in its life. Transitions, with the refusals:
+///
+/// | from           | event                  | to                 | refused when            |
+/// |----------------|------------------------|--------------------|-------------------------|
+/// | AwaitingConsent| consent granted        | Advertised         | ended (no-op)           |
+/// | AwaitingConsent| consent refused        | Ended(Refused)     | ended (no-op)           |
+/// | Advertised     | bind                   | Bound              | bound: AlreadyBound     |
+/// | AwaitingConsent| bind                   | Bound              | bound: AlreadyBound     |
+/// | any live       | bind, caps not granted | (unchanged)        | CapabilityEscalation    |
+/// | any live       | disconnect / violation | Ended(ending)      | ended (no-op)           |
+/// | Ended          | any command            | (unchanged)        | ignored, nothing sent   |
+///
+/// Capabilities and devices are data beside the phase, not inside it, so an ended
+/// context still answers for what it advertised and dropped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContextPhase {
+    /// Waiting for a consent decision: the seat has advertised nothing yet.
+    AwaitingConsent,
+    /// The seat advertised the granted capabilities; the client may bind.
+    Advertised,
+    /// The client bound the seat, and the devices for the grant exist.
+    Bound,
+    /// The context ended, after releasing what it held.
+    Ended(Ending),
+}
+
+/// Whether a device is emulating, and the last sequence the client started with.
+///
+/// A sequence must increase across the device's whole life, so the last one survives
+/// a stop: `Idle` keeps it and `Emulating` carries the one in progress.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Emulation {
+    /// Not emulating; `last` is the sequence of the previous emulation, if any.
+    Idle { last: Option<u32> },
+    /// Emulating under this sequence.
+    Emulating { sequence: u32 },
+}
+
 /// One device a client bound, and what it holds down.
 #[derive(Clone, Debug)]
 pub struct Device {
     id: DeviceId,
     capabilities: Caps,
     regions: Vec<Region>,
-    emulating: Option<u32>,
-    last_sequence: Option<u32>,
+    emulation: Emulation,
     keys: BTreeSet<u32>,
     buttons: BTreeSet<u32>,
     contacts: BTreeMap<u32, (OutputId, Point)>,
@@ -654,7 +691,10 @@ impl Device {
     /// The sequence number of the emulation in progress, if any.
     #[must_use]
     pub const fn emulating(&self) -> Option<u32> {
-        self.emulating
+        match self.emulation {
+            Emulation::Emulating { sequence } => Some(sequence),
+            Emulation::Idle { .. } => None,
+        }
     }
 
     /// The keys it holds down, in code order.
@@ -715,10 +755,9 @@ pub struct Context {
     name: Option<String>,
     grant: Grant,
     capabilities: Caps,
-    bound: bool,
     devices: BTreeMap<DeviceId, Device>,
     next_device: u64,
-    ending: Option<Ending>,
+    phase: ContextPhase,
 }
 
 impl Context {
@@ -729,10 +768,9 @@ impl Context {
             name: name.map(ToOwned::to_owned),
             grant,
             capabilities: Caps::NONE,
-            bound: false,
             devices: BTreeMap::new(),
             next_device: 0,
-            ending: None,
+            phase: ContextPhase::AwaitingConsent,
         }
     }
 
@@ -774,7 +812,10 @@ impl Context {
     /// How it ended, if it has.
     #[must_use]
     pub const fn ended(&self) -> Option<Ending> {
-        self.ending
+        match self.phase {
+            ContextPhase::Ended(ending) => Some(ending),
+            ContextPhase::AwaitingConsent | ContextPhase::Advertised | ContextPhase::Bound => None,
+        }
     }
 
     /// Releases dropped because the edge was not held.
@@ -795,6 +836,9 @@ impl Context {
             }],
             Consent::Granted => {
                 self.capabilities = self.grant.capabilities();
+                if self.phase == ContextPhase::AwaitingConsent {
+                    self.phase = ContextPhase::Advertised;
+                }
                 vec![Action::Seat {
                     capabilities: self.capabilities,
                 }]
@@ -805,7 +849,7 @@ impl Context {
 
     /// Applies a decision to a context whose grant was pending.
     fn decide(&mut self, grant: Grant) -> Vec<Action> {
-        if self.ending.is_some() {
+        if self.ended().is_some() {
             return Vec::new();
         }
         self.grant = grant;
@@ -814,10 +858,10 @@ impl Context {
 
     /// Ends the context, releasing everything it holds first.
     fn end(&mut self, ending: Ending) -> Vec<Action> {
-        if self.ending.is_some() {
+        if self.ended().is_some() {
             return Vec::new();
         }
-        self.ending = Some(ending);
+        self.phase = ContextPhase::Ended(ending);
         let mut actions = Vec::new();
         for device in self.devices.values_mut() {
             actions.append(&mut device.release_all());
@@ -844,8 +888,7 @@ impl Context {
             id,
             capabilities,
             regions: regions.clone(),
-            emulating: None,
-            last_sequence: None,
+            emulation: Emulation::Idle { last: None },
             keys: BTreeSet::new(),
             buttons: BTreeSet::new(),
             contacts: BTreeMap::new(),
@@ -860,7 +903,7 @@ impl Context {
 
     /// Applies one command, refusing it when it breaks a rule.
     fn handle(&mut self, command: Command, quota: Quota, layout: &[Region]) -> Result<Vec<Action>, Violation> {
-        if self.ending.is_some() {
+        if self.ended().is_some() {
             // A context that has ended accepts nothing more: every event after the end
             // would be one the client sent before it heard about it.
             return Ok(Vec::new());
@@ -886,32 +929,32 @@ impl Context {
         let device = self.devices.get_mut(&device).ok_or(Violation::UnknownDevice)?;
         match command {
             Command::StartEmulating { sequence, .. } => {
-                if device.emulating.is_some() {
-                    return Err(Violation::AlreadyEmulating);
-                }
+                let last = match device.emulation {
+                    Emulation::Emulating { .. } => return Err(Violation::AlreadyEmulating),
+                    Emulation::Idle { last } => last,
+                };
                 // The sequence must increase across the device's whole life, not only
                 // while one emulation runs: a restart that repeats a number is the client
                 // losing track of its own edits, and the seat would have no way to tell
                 // which emulation an event belonged to.
-                if device.last_sequence.is_some_and(|last| sequence <= last) {
+                if last.is_some_and(|last| sequence <= last) {
                     return Err(Violation::SequenceNotIncreasing);
                 }
-                device.emulating = Some(sequence);
-                device.last_sequence = Some(sequence);
+                device.emulation = Emulation::Emulating { sequence };
                 device.frame_keys.clear();
                 device.frame_buttons.clear();
                 device.frame_events = 0;
                 Ok(Vec::new())
             }
             Command::StopEmulating { .. } => {
-                if device.emulating.is_none() {
+                let Emulation::Emulating { sequence } = device.emulation else {
                     return Err(Violation::NotEmulating);
-                }
-                device.emulating = None;
+                };
+                device.emulation = Emulation::Idle { last: Some(sequence) };
                 Ok(device.release_all())
             }
             Command::Frame { .. } => {
-                if device.emulating.is_none() {
+                if device.emulating().is_none() {
                     return Err(Violation::NotEmulating);
                 }
                 device.frame_keys.clear();
@@ -1043,13 +1086,16 @@ impl Context {
 
     /// Creates the devices the client asked for, and only those the grant covers.
     fn bind(&mut self, requested: Caps, layout: &[Region]) -> Result<Vec<Action>, Violation> {
-        if self.bound {
-            return Err(Violation::AlreadyBound);
+        match self.phase {
+            ContextPhase::Bound => return Err(Violation::AlreadyBound),
+            // Unreachable through `handle`, which refuses every command after the end.
+            ContextPhase::Ended(_) => return Ok(Vec::new()),
+            ContextPhase::AwaitingConsent | ContextPhase::Advertised => {}
         }
         if !self.capabilities.contains(requested) {
             return Err(Violation::CapabilityEscalation);
         }
-        self.bound = true;
+        self.phase = ContextPhase::Bound;
         // One device per kind, because a client that asks for a pointer and a keyboard
         // gets the two things a desktop has rather than one device that is both. A
         // capability the grant does not cover is already excluded by the check above;
@@ -1138,7 +1184,7 @@ impl Service {
         self.grant = grant;
         let mut told = Vec::new();
         for context in self.contexts.values_mut() {
-            if context.grant.consent() != Consent::Pending || context.ending.is_some() {
+            if context.grant.consent() != Consent::Pending || context.ended().is_some() {
                 continue;
             }
             for action in context.decide(grant) {
@@ -1274,7 +1320,7 @@ fn admits(device: &mut Device, capability: Caps, quota: Quota) -> Result<(), Vio
     if !device.capabilities.contains(capability) {
         return Err(Violation::WrongCapability);
     }
-    if device.emulating.is_none() {
+    if device.emulating().is_none() {
         return Err(Violation::NotEmulating);
     }
     device.count(quota)
