@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8" />
+        <title>gnoblin-cli-ui gallery</title>
+        <style>
+            body {
+                background: #1e1e1e;
+                color: #d4d4d4;
+                font-family: monospace;
+                margin: 24px;
+            }
+            h1 {
+                font-family: sans-serif;
+                font-weight: normal;
+            }
+            h2 {
+                font-family: sans-serif;
+                font-weight: normal;
+                color: #9cdcfe;
+                margin-top: 32px;
+            }
+            pre {
+                font-size: 14px;
+                line-height: 1.35;
+                margin: 0;
+            }
+            .b {
+                font-weight: bold;
+            }
+            .c0 {
+                color: #000000;
+            }
+            .c1 {
+                color: #cd0000;
+            }
+            .c2 {
+                color: #00cd00;
+            }
+            .c3 {
+                color: #cdcd00;
+            }
+            .c4 {
+                color: #0000ee;
+            }
+            .c5 {
+                color: #cd00cd;
+            }
+            .c6 {
+                color: #00cdcd;
+            }
+            .c7 {
+                color: #e5e5e5;
+            }
+            .c8 {
+                color: #7f7f7f;
+            }
+            .c9 {
+                color: #ff0000;
+            }
+            .c10 {
+                color: #00ff00;
+            }
+            .c11 {
+                color: #ffff00;
+            }
+            .c12 {
+                color: #5c5cff;
+            }
+            .c13 {
+                color: #ff00ff;
+            }
+            .c14 {
+                color: #00ffff;
+            }
+            .c15 {
+                color: #ffffff;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>gnoblin-cli-ui gallery</h1>
+        <h2>section: 80 columns, Unicode</h2>
+        <pre><span class="b">Windows</span>
+<span class="c8">───────</span></pre>
+        <h2>table: 80 columns, Unicode</h2>
+        <pre><span class="b">id    state    title</span>
+<span class="c8">────  ───────  ────────────────────────────────────────</span>
+12    focused  Terminal
+7     normal   a long document title that needs cutting
+東京  normal   Notes</pre>
+        <h2>key-value list: 80 columns, Unicode</h2>
+        <pre><span class="c6">id</span>        12
+<span class="c6">title</span>     Terminal
+<span class="c6">geometry</span>  0,0 1280x720 at scale 1.5</pre>
+        <h2>definition list: 80 columns, Unicode</h2>
+        <pre><span class="c6">window list</span>
+    List every window the compositor knows about.
+<span class="c6">window get ID</span>
+    Show one window in full.</pre>
+        <h2>status lines: 80 columns, Unicode</h2>
+        <pre><span class="c2">✓ ok</span>  window 12 focused
+<span class="c3">⚠ warn</span>  output DP-2 is disabled
+<span class="c1">✗ fail</span>  socket missing
+<span class="c4">ℹ info</span>  using the default socket</pre>
+        <h2>error block: 80 columns, Unicode</h2>
+        <pre><span class="c1">error:</span> the compositor did not answer within the timeout of five seconds
+<span class="c8">why:</span>   it may be busy or the socket belongs to a different session
+<span class="c6">hint:</span>  run `gnoblinctl status` to see the connection
+<span class="c6">hint:</span>  check that XDG_RUNTIME_DIR points at this session</pre>
+        <h2>event lines: 80 columns, Unicode</h2>
+        <pre><span class="c8">00:00:01.500</span>  <span class="c6">window.focus</span>  7 → 12
+<span class="c8">00:00:02.114</span>  <span class="c6">window.title</span></pre>
+        <h2>waiting: 80 columns, Unicode</h2>
+        <pre>calling window.focus 12...
+<span class="c2">✓ ok</span>  window.focus 12 done</pre>
+        <h2>badges and identifiers: 80 columns, Unicode</h2>
+        <pre><span class="c2">[live]</span> <span class="c3">[stale]</span> <span class="c1">[failed]</span> <span class="c6">window.focus</span></pre>
+        <h2>section: 40 columns, Unicode</h2>
+        <pre><span class="b">Windows</span>
+<span class="c8">───────</span></pre>
+        <h2>table: 40 columns, Unicode</h2>
+        <pre><span class="b">id    state    title</span>
+<span class="c8">────  ───────  ─────────────────────────</span>
+12    focused  Terminal
+7     normal   a long document title th…
+東京  normal   Notes</pre>
+        <h2>key-value list: 40 columns, Unicode</h2>
+        <pre><span class="c6">id</span>        12
+<span class="c6">title</span>     Terminal
+<span class="c6">geometry</span>  0,0 1280x720 at scale 1.5</pre>
+        <h2>definition list: 40 columns, Unicode</h2>
+        <pre><span class="c6">window list</span>
+    List every window the compositor
+    knows about.
+<span class="c6">window get ID</span>
+    Show one window in full.</pre>
+        <h2>status lines: 40 columns, Unicode</h2>
+        <pre><span class="c2">✓ ok</span>  window 12 focused
+<span class="c3">⚠ warn</span>  output DP-2 is disabled
+<span class="c1">✗ fail</span>  socket missing
+<span class="c4">ℹ info</span>  using the default socket</pre>
+        <h2>error block: 40 columns, Unicode</h2>
+        <pre><span class="c1">error:</span> the compositor did not answer
+       within the timeout of five
+       seconds
+<span class="c8">why:</span>   it may be busy or the socket
+       belongs to a different session
+<span class="c6">hint:</span>  run `gnoblinctl status` to see
+       the connection
+<span class="c6">hint:</span>  check that XDG_RUNTIME_DIR points
+       at this session</pre>
+        <h2>event lines: 40 columns, Unicode</h2>
+        <pre><span class="c8">00:00:01.500</span>  <span class="c6">window.focus</span>  7 → 12
+<span class="c8">00:00:02.114</span>  <span class="c6">window.title</span></pre>
+        <h2>waiting: 40 columns, Unicode</h2>
+        <pre>calling window.focus 12...
+<span class="c2">✓ ok</span>  window.focus 12 done</pre>
+        <h2>badges and identifiers: 40 columns, Unicode</h2>
+        <pre><span class="c2">[live]</span> <span class="c3">[stale]</span> <span class="c1">[failed]</span> <span class="c6">window.focus</span></pre>
+        <h2>section: 80 columns, ASCII</h2>
+        <pre><span class="b">Windows</span>
+<span class="c8">-------</span></pre>
+        <h2>table: 80 columns, ASCII</h2>
+        <pre><span class="b">id    state    title</span>
+<span class="c8">----  -------  ----------------------------------------</span>
+12    focused  Terminal
+7     normal   a long document title that needs cutting
+東京  normal   Notes</pre>
+        <h2>key-value list: 80 columns, ASCII</h2>
+        <pre><span class="c6">id</span>        12
+<span class="c6">title</span>     Terminal
+<span class="c6">geometry</span>  0,0 1280x720 at scale 1.5</pre>
+        <h2>definition list: 80 columns, ASCII</h2>
+        <pre><span class="c6">window list</span>
+    List every window the compositor knows about.
+<span class="c6">window get ID</span>
+    Show one window in full.</pre>
+        <h2>status lines: 80 columns, ASCII</h2>
+        <pre><span class="c2">ok</span>  window 12 focused
+<span class="c3">warn</span>  output DP-2 is disabled
+<span class="c1">fail</span>  socket missing
+<span class="c4">info</span>  using the default socket</pre>
+        <h2>error block: 80 columns, ASCII</h2>
+        <pre><span class="c1">error:</span> the compositor did not answer within the timeout of five seconds
+<span class="c8">why:</span>   it may be busy or the socket belongs to a different session
+<span class="c6">hint:</span>  run `gnoblinctl status` to see the connection
+<span class="c6">hint:</span>  check that XDG_RUNTIME_DIR points at this session</pre>
+        <h2>event lines: 80 columns, ASCII</h2>
+        <pre><span class="c8">00:00:01.500</span>  <span class="c6">window.focus</span>  7 -&gt; 12
+<span class="c8">00:00:02.114</span>  <span class="c6">window.title</span></pre>
+        <h2>waiting: 80 columns, ASCII</h2>
+        <pre>calling window.focus 12...
+<span class="c2">ok</span>  window.focus 12 done</pre>
+        <h2>badges and identifiers: 80 columns, ASCII</h2>
+        <pre><span class="c2">[live]</span> <span class="c3">[stale]</span> <span class="c1">[failed]</span> <span class="c6">window.focus</span></pre>
+        <h2>section: 40 columns, ASCII</h2>
+        <pre><span class="b">Windows</span>
+<span class="c8">-------</span></pre>
+        <h2>table: 40 columns, ASCII</h2>
+        <pre><span class="b">id    state    title</span>
+<span class="c8">----  -------  -------------------------</span>
+12    focused  Terminal
+7     normal   a long document title ...
+東京  normal   Notes</pre>
+        <h2>key-value list: 40 columns, ASCII</h2>
+        <pre><span class="c6">id</span>        12
+<span class="c6">title</span>     Terminal
+<span class="c6">geometry</span>  0,0 1280x720 at scale 1.5</pre>
+        <h2>definition list: 40 columns, ASCII</h2>
+        <pre><span class="c6">window list</span>
+    List every window the compositor
+    knows about.
+<span class="c6">window get ID</span>
+    Show one window in full.</pre>
+        <h2>status lines: 40 columns, ASCII</h2>
+        <pre><span class="c2">ok</span>  window 12 focused
+<span class="c3">warn</span>  output DP-2 is disabled
+<span class="c1">fail</span>  socket missing
+<span class="c4">info</span>  using the default socket</pre>
+        <h2>error block: 40 columns, ASCII</h2>
+        <pre><span class="c1">error:</span> the compositor did not answer
+       within the timeout of five
+       seconds
+<span class="c8">why:</span>   it may be busy or the socket
+       belongs to a different session
+<span class="c6">hint:</span>  run `gnoblinctl status` to see
+       the connection
+<span class="c6">hint:</span>  check that XDG_RUNTIME_DIR points
+       at this session</pre>
+        <h2>event lines: 40 columns, ASCII</h2>
+        <pre><span class="c8">00:00:01.500</span>  <span class="c6">window.focus</span>  7 -&gt; 12
+<span class="c8">00:00:02.114</span>  <span class="c6">window.title</span></pre>
+        <h2>waiting: 40 columns, ASCII</h2>
+        <pre>calling window.focus 12...
+<span class="c2">ok</span>  window.focus 12 done</pre>
+        <h2>badges and identifiers: 40 columns, ASCII</h2>
+        <pre><span class="c2">[live]</span> <span class="c3">[stale]</span> <span class="c1">[failed]</span> <span class="c6">window.focus</span></pre>
+    </body>
+</html>
