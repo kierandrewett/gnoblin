@@ -57,6 +57,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
+use crate::raw;
+
 use gnoblin_proto::{privilege, report};
 use rustix::io::FdFlags;
 use rustix::process::{Pid, Signal as ProcessSignal};
@@ -191,6 +193,8 @@ struct Supervisor {
     receiver: Receiver<LoopWake>,
     /// The clock every event is stamped with.
     start: Instant,
+    /// Where the raw output of the children goes, read by the logger thread.
+    raw: raw::RawSink,
 }
 
 impl Supervisor {
@@ -271,6 +275,8 @@ impl Supervisor {
             .envs(self.base.set.iter().map(|(key, value)| (key, value)))
             .envs(environment.set.iter().map(|(key, value)| (key, value)))
             .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .process_group(0);
         // The report descriptor, which every child gets.
         if let Ok(number) = inheritable(&writer) {
@@ -317,7 +323,7 @@ impl Supervisor {
             }
         }
 
-        let process = match started {
+        let mut process = match started {
             Ok(process) => process,
             Err(reason) => {
                 log(Level::Error, &format!("[guardian] cannot start {name}: {reason}"));
@@ -333,6 +339,12 @@ impl Supervisor {
             }
         };
         let pid = process.id();
+        if let Some(stdout) = process.stdout.take() {
+            raw::capture(name, raw::Stream::Stdout, stdout, self.raw.clone());
+        }
+        if let Some(stderr) = process.stderr.take() {
+            raw::capture(name, raw::Stream::Stderr, stderr, self.raw.clone());
+        }
         log(
             Level::Info,
             &format!("[guardian] started {name} (generation {generation}, pid {pid})"),
@@ -668,7 +680,13 @@ pub fn run(config: SupervisorConfig) -> Result<u8, SupervisorError> {
     let guardian = Guardian::with_recovery(config.plan.clone(), config.rules.clone(), config.recovery.clone());
     let (sender, receiver) = channel();
     let start = Instant::now();
+    let (raw_sink, raw_receiver, raw_dropped) = raw::RawSink::channel();
+    std::thread::Builder::new()
+        .name("gnoblin-raw-log".to_owned())
+        .spawn(move || raw::run_logger(&raw_receiver, &raw_dropped))
+        .map_err(SupervisorError::Descriptors)?;
     let mut supervisor = Supervisor {
+        raw: raw_sink,
         config,
         guardian,
         base,

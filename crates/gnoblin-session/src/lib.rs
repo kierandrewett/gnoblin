@@ -112,6 +112,7 @@ mod ids;
 #[cfg(test)]
 mod model;
 mod plan;
+mod raw;
 mod recovery;
 mod state;
 pub mod supervisor;
