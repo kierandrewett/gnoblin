@@ -8,9 +8,9 @@
 
 use std::sync::Arc;
 
+use gnoblin_log::{debug, warn};
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::virtual_keyboard::{VirtualKeyboardBackend, VirtualKeyboardHandler, VirtualKeyboardManagerState};
-use tracing::{debug, warn};
 
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};

@@ -6,11 +6,11 @@
 //! a shell that reads the other. This module keeps the one record and works out what
 //! changed; each protocol module sends its own events for those changes.
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::ClientId as ClientKey;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
-use tracing::debug;
 use wayland_protocols_wlr::foreign_toplevel::v1::server::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
 
 use gnoblin_types::{OutputId, WindowId};

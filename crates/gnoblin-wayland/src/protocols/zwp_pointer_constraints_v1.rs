@@ -43,6 +43,7 @@
 //!    the region's bounding box, and a motion that would leave it is held at the edge:
 //!    `a_confined_pointer_stays_inside_its_region`.
 
+use gnoblin_log::debug;
 use smithay::input::pointer::PointerHandle;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
@@ -51,7 +52,6 @@ use smithay::utils::{Logical, Point};
 use smithay::wayland::pointer_constraints::{
     ConstraintRemove, PointerConstraintRef, PointerConstraintsHandler, PointerConstraintsState, with_pointer_constraint,
 };
-use tracing::debug;
 
 use crate::State;
 

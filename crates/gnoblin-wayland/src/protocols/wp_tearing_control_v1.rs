@@ -24,6 +24,7 @@
 //! 3. **A destroyed manager destroys a live control object.** The control objects outlive
 //!    the manager, so the hint keeps working after the manager is destroyed.
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_protocols::wp::tearing_control::v1::server::{
     wp_tearing_control_manager_v1::{self, WpTearingControlManagerV1},
     wp_tearing_control_v1::{self, WpTearingControlV1},
@@ -31,7 +32,6 @@ use smithay::reexports::wayland_protocols::wp::tearing_control::v1::server::{
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::debug;
 
 use crate::State;
 

@@ -46,11 +46,11 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 
+use gnoblin_log::{debug, trace, warn};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::{debug, trace, warn};
 use wayland_protocols_wlr::gamma_control::v1::server::{
     zwlr_gamma_control_manager_v1::{self as manager, ZwlrGammaControlManagerV1},
     zwlr_gamma_control_v1::{self as control, ZwlrGammaControlV1},

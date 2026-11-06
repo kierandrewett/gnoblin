@@ -61,6 +61,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use gnoblin_log::{debug, warn};
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
 use smithay::reexports::wayland_server::Resource;
@@ -72,7 +73,6 @@ use smithay::wayland::image_capture_source::{
     ImageCaptureSource, OutputCaptureSourceState, ToplevelCaptureSourceState,
 };
 use smithay::wayland::image_copy_capture::{ImageCopyCaptureState, Session as CaptureSession};
-use tracing::{debug, warn};
 
 use gnoblin_backend::render::Image;
 use gnoblin_backend::render::copy_into_shm;

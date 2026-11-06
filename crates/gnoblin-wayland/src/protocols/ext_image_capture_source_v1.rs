@@ -5,13 +5,13 @@
 //! An output source names an output and a toplevel source names a window; the source is
 //! remembered under its object id so a session can resolve it later.
 
+use gnoblin_log::warn;
 use smithay::output::Output as SmithayOutput;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 use smithay::wayland::image_capture_source::{
     ImageCaptureSource, ImageCaptureSourceHandler, OutputCaptureSourceHandler, OutputCaptureSourceState,
     ToplevelCaptureSourceHandler, ToplevelCaptureSourceState,
 };
-use tracing::warn;
 
 use gnoblin_capture::Target;
 use gnoblin_types::WindowId;

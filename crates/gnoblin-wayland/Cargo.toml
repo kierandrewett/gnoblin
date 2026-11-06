@@ -68,9 +68,8 @@ gnoblin-authority = { path = "../gnoblin-authority" }
 # come straight from the wlroots protocol definitions. The tests use the same
 # crate's client side, which is what keeps one XML behind both halves.
 wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
-# `[tag]` log lines. Smithay already brings `tracing` in, so this adds no crate to
-# the graph.
-tracing = "0.1.37"
+# Log lines go through the `gnoblin-log` facade's macros, so each one carries this crate's component.
+gnoblin-log = { path = "../gnoblin-log" }
 # The Gnoblin-owned protocols' server halves, generated from `protocols/` at compile
 # time. Checking the generated code in would let the XML and the code drift, which is
 # exactly what a wire-compatible port cannot afford.

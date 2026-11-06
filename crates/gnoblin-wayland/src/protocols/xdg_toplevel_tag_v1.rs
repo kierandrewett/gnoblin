@@ -20,11 +20,11 @@
 //!    changes nothing about placement or focus.
 //! 4. **A description shown.** Not exposed: only the tag reaches the snapshot.
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::xdg_toplevel_tag::{XdgToplevelTagHandler, XdgToplevelTagManager};
-use tracing::debug;
 
 use crate::State;
 

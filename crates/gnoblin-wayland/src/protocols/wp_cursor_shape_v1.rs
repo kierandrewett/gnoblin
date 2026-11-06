@@ -24,9 +24,9 @@
 //!    the same [`smithay::input::pointer::CursorImageStatus`], so the last request wins
 //!    by construction rather than by two code paths agreeing.
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
-use tracing::debug;
 
 use crate::State;
 

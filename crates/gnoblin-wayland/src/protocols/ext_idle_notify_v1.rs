@@ -41,6 +41,7 @@
 
 use std::sync::Arc;
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::{
     ext_idle_notification_v1::{self, ExtIdleNotificationV1},
     ext_idle_notifier_v1::{self, ExtIdleNotifierV1},
@@ -48,7 +49,6 @@ use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::{
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::{DataInit, DisplayHandle, Resource};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::debug;
 
 use gnoblin_input::Activity;
 

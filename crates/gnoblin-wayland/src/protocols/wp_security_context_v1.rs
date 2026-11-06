@@ -27,11 +27,11 @@
 //!    not make the sandboxed application privileged: the same test, from the privileged
 //!    socket's creator.
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::security_context::{
     SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState,
 };
-use tracing::debug;
 
 use crate::State;
 

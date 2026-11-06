@@ -34,8 +34,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use gnoblin_log::warn;
 use smithay::reexports::calloop::ping::Ping;
-use tracing::warn;
 
 use gnoblin_backend::render::Image;
 use gnoblin_backend::{Backend, Host};

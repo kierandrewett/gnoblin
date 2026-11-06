@@ -24,6 +24,7 @@
 //! parent is answered with `xdg_popup.popup_done` and a grab for a valid popup is
 //! logged and otherwise ignored rather than half-implemented.
 
+use gnoblin_log::{debug, trace, warn};
 use smithay::desktop::{PopupKind, find_popup_root_surface, get_popup_toplevel_coords};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -33,7 +34,6 @@ use smithay::utils::{Point, Rectangle, Serial, Size};
 use smithay::wayland::shell::xdg::{
     Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
-use tracing::{debug, trace, warn};
 
 use gnoblin_wm::Event;
 

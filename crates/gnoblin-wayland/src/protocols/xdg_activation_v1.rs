@@ -72,12 +72,12 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use gnoblin_log::{debug, trace};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::xdg_activation::{
     XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
 };
-use tracing::{debug, trace};
 
 use gnoblin_authority::{AppId, Authority, Claimant, Event, LaunchOrigin, SessionLeader, SurfaceId, TokenId};
 use gnoblin_types::{ClientId as ConnectionId, Tick, WindowId};

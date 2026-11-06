@@ -261,19 +261,19 @@ impl State {
                         blue: &tables[2],
                     };
                     if let Err(error) = control.set_gamma(output, ramp) {
-                        tracing::warn!(%error, "[gamma] the backend refused the ramp");
+                        gnoblin_log::warn!(%error, "[gamma] the backend refused the ramp");
                         self.fail_gamma(output);
                     }
                 }
                 PendingOp::RestoreGamma { output } => {
                     if let Err(error) = control.restore_gamma(output) {
-                        tracing::warn!(%error, "[gamma] the backend could not restore the ramp");
+                        gnoblin_log::warn!(%error, "[gamma] the backend could not restore the ramp");
                     }
                 }
                 PendingOp::SetPower { output, on } => match control.set_power(output, on) {
                     Ok(()) => self.power_changed(output, on),
                     Err(error) => {
-                        tracing::warn!(%error, "[power] the backend refused the power change");
+                        gnoblin_log::warn!(%error, "[power] the backend refused the power change");
                         if let Some(holder) = self.output_controls.power_holders.get(&output) {
                             holder.failed();
                         }

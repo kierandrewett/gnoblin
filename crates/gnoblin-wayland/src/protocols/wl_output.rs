@@ -7,11 +7,11 @@
 //! is the client-facing half: it counts the bindings so a hotplug can log who is
 //! watching, and it is where an output's per-client state would live.
 
+use gnoblin_log::debug;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::wayland::output::OutputHandler;
-use tracing::debug;
 
 use crate::State;
 

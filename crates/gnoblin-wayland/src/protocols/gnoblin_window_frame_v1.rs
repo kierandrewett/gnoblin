@@ -85,6 +85,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use gnoblin_log::{debug, warn};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::reexports::wayland_server::backend::{ClientId as WaylandClientId, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -92,7 +93,6 @@ use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, R
 use smithay::utils::{Logical, Point as SmithayPoint, SERIAL_COUNTER};
 use smithay::wayland::compositor::give_role;
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::{debug, warn};
 
 use gnoblin_types::WindowId;
 

@@ -50,8 +50,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_server::backend::ClientId as ClientKey;
-use tracing::debug;
 
 /// The privileged globals this crate serves.
 ///

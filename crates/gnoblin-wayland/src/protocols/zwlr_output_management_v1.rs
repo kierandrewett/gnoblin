@@ -31,11 +31,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use gnoblin_log::{debug, trace};
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_output;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource, WEnum};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::{debug, trace};
 use wayland_protocols_wlr::output_management::v1::server::{
     zwlr_output_configuration_head_v1::{
         self as config_head, ZwlrOutputConfigurationHeadV1 as ZwlrOutputManagementV1ConfigurationHead,

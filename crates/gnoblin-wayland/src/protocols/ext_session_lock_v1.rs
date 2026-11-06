@@ -73,6 +73,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use gnoblin_log::{debug, info, warn};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::Resource;
@@ -83,7 +84,6 @@ use smithay::utils::{Logical, Point, Size};
 use smithay::wayland::session_lock::{
     LockSurface, LockSurfaceConfigure, SessionLockHandler, SessionLockManagerState, SessionLocker,
 };
-use tracing::{debug, info, warn};
 
 use gnoblin_backend::render::{Color, OutputFrame};
 use gnoblin_lock::{

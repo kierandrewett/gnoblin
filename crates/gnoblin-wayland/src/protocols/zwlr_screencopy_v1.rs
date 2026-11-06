@@ -10,6 +10,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use gnoblin_log::debug;
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -22,7 +23,6 @@ use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
 use smithay::wayland::shm;
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::debug;
 
 use gnoblin_capture::{Format, PixelFormat, Target};
 use gnoblin_lock::CaptureStream;

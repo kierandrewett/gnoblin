@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use gnoblin_log::{debug, warn};
 use smithay::backend::input::{ButtonState, InputTime};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::PopupManager;
@@ -60,7 +61,6 @@ use smithay::wayland::xdg_toplevel_tag::{XdgToplevelTagManager, XdgToplevelTagSu
 use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::xwm::X11Surface;
-use tracing::{debug, warn};
 
 use gnoblin_backend::render::{Composer, Content, Mat4, OutputFrame};
 use gnoblin_backend::{Host, InputEvent};

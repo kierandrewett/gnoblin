@@ -23,13 +23,13 @@
 
 use std::collections::HashSet;
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_v3::{
     ContentHint, ContentPurpose,
 };
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::text_input::{TextInputActivation, TextInputManagerState};
-use tracing::debug;
 
 use crate::State;
 

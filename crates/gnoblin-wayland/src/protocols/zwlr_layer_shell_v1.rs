@@ -55,6 +55,7 @@
 //!    output drops its reservation and its surfaces' rectangles instead of leaving a
 //!    strip reserved for ever: `a_disconnected_output_reserves_nothing`.
 
+use gnoblin_log::{debug, trace};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -64,7 +65,6 @@ use smithay::wayland::shell::wlr_layer::{
     Anchor, ExclusiveZone, KeyboardInteractivity, Layer, LayerSurface, LayerSurfaceCachedState, LayerSurfaceConfigure,
     WlrLayerShellHandler, WlrLayerShellState,
 };
-use tracing::{debug, trace};
 
 use gnoblin_types::{Edge, Insets, OutputId, Rect};
 

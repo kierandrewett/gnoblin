@@ -7,6 +7,7 @@
 //! [`capture_shared`](super::capture_shared). Its refusals map onto the protocol's
 //! failure reasons here.
 
+use gnoblin_log::{debug, warn};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::utils::{Buffer as BufferSpace, Rectangle, Transform};
@@ -15,7 +16,6 @@ use smithay::wayland::image_copy_capture::{
     BufferConstraints, CaptureFailureReason, Frame as CaptureFrame, ImageCopyCaptureHandler, ImageCopyCaptureState,
     Session as CaptureSession, SessionRef,
 };
-use tracing::{debug, warn};
 
 use gnoblin_capture::{BufferId, CaptureOutcome, Format, PixelFormat, Refusal, Session, Stop, Target};
 use gnoblin_lock::CaptureStream;

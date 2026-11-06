@@ -59,12 +59,12 @@ use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle, SERIAL_COUNTER};
 
+use gnoblin_log::{debug, error, info, warn};
 use smithay::wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrab, XWaylandKeyboardGrabHandler};
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::settings::Value as SettingValue;
 use smithay::xwayland::xwm::{Reorder, ResizeEdge, WmWindowProperty, X11Surface, X11Wm, XwmId};
 use smithay::xwayland::{XWayland, XWaylandClientData, XwmHandler};
-use tracing::{debug, error, info, warn};
 
 use gnoblin_backend::x11::{self, Command, Launch, Restart, Session, Start, WindowEvent, WindowMeta};
 use gnoblin_types::Rect;

@@ -57,12 +57,12 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_log::{debug, warn};
 use smithay::backend::input::{InputTime, KeyState as SmithayKeyState};
 use smithay::input::keyboard::Keysym as SmithayKeysym;
 use smithay::input::keyboard::{FilterResult, KeysymHandle, ModifiersState, XkbConfig, xkb};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Serial;
-use tracing::{debug, warn};
 
 use gnoblin_input::{
     Chord, ChordKind, Event as RouterEvent, KeyState as RouterKeyState, Keysyms, Name, Router, ShortcutInhibit, Symbol,

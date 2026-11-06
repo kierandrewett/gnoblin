@@ -40,6 +40,7 @@
 
 use std::time::Duration;
 
+use gnoblin_log::debug;
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -47,7 +48,6 @@ use smithay::reexports::wayland_server::{DisplayHandle, Resource};
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::presentation::{PresentationFeedbackCachedState, PresentationState, Refresh};
-use tracing::debug;
 
 use gnoblin_types::OutputId;
 

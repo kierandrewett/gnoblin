@@ -47,11 +47,11 @@
 
 use std::os::unix::io::OwnedFd;
 
+use gnoblin_log::{debug, trace};
 use smithay::input::Seat;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::selection::data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler};
 use smithay::wayland::selection::{SelectionHandler, SelectionSource, SelectionTarget};
-use tracing::{debug, trace};
 
 use crate::State;
 

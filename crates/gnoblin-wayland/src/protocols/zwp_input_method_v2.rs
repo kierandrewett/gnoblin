@@ -9,12 +9,12 @@
 
 use std::sync::Arc;
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface};
-use tracing::debug;
 
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};

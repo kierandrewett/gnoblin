@@ -78,10 +78,10 @@
 //! path. Until then a manager reads them through the control handle.
 use std::collections::{BTreeMap, HashMap};
 
+use gnoblin_log::{debug, info, warn};
 use smithay::reexports::wayland_server::backend::ClientId as WaylandClientId;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource, WEnum};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
-use tracing::{debug, info, warn};
 
 use gnoblin_lock::{Protection, ProtectionEffect, ProtectionEvent, ProtectionFailure, ProtectionState};
 use gnoblin_model::{RequestBroker, RequestError, RequestState};

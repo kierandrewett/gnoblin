@@ -23,12 +23,12 @@
 //! 5. **The icon drawn in a taskbar.** Not done: the compositor exposes the icon and does
 //!    not draw it.
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::xdg_toplevel_icon::{XdgToplevelIconHandler, XdgToplevelIconManager};
-use tracing::debug;
 
 use crate::State;
 

@@ -48,6 +48,7 @@
 
 use std::sync::Arc;
 
+use gnoblin_log::{debug, trace};
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
@@ -55,7 +56,6 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
 use smithay::wayland::Dispatch2;
 use smithay::wayland::GlobalDispatch2;
-use tracing::{debug, trace};
 use wayland_protocols_wlr::foreign_toplevel::v1::server::{
     zwlr_foreign_toplevel_handle_v1::{self as handle, ZwlrForeignToplevelHandleV1},
     zwlr_foreign_toplevel_manager_v1::{self as manager, ZwlrForeignToplevelManagerV1},

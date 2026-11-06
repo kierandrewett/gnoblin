@@ -35,12 +35,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use gnoblin_log::{debug, info, warn};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::ping::{Ping, make_ping};
 use smithay::reexports::calloop::{Error as CalloopError, EventLoop, Interest, LoopSignal, Mode, PostAction};
 use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::backend::InitError;
-use tracing::{debug, info, warn};
 
 use crate::clock::{Clock, SystemClock};
 use crate::modal::{Modal, ModalEvent};
