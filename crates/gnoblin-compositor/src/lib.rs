@@ -231,6 +231,8 @@ impl StopHandle {
     pub fn request(&self) {
         let (requested, wake) = &*self.requested;
         let mut guard = requested.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The flag is set under the lock and the waiter is woken after it, so a waiter that
+        // checks the flag before this call cannot miss the wake-up.
         *guard = true;
         wake.notify_all();
     }
@@ -282,6 +284,8 @@ impl Compositor {
     /// [`Error::Nested`] a parent compositor that cannot host the session. [`Error::Wayland`]
     /// when the Wayland session cannot start, and [`Error::Loop`] when the running loop fails.
     pub fn run(config: SessionConfig) -> Result<(), Error> {
+        // The schema is embedded at build time (see `schema.rs`), so a failure here is a
+        // problem with this build rather than with the host configuration.
         let catalog = schema::catalog().map_err(Error::Schema)?;
         let version = version();
         let mut store = SessionSync::new(catalog, version).map_err(Error::Model)?;
@@ -372,9 +376,13 @@ impl Compositor {
             backend = backend_name,
             "[compositor] serving"
         );
+        // The watcher is joined below, and it only returns once a stop is requested. The stop
+        // is therefore requested after the loop ends, even when the loop stopped on its own.
         let stop = config.stop.clone();
         let watcher = spawn_watcher(stop.clone(), control);
 
+        // The loop's result is kept and returned after cleanup, so a loop error still stops the
+        // EIS gate and shuts the IPC server down first.
         let loop_result = server.run();
         eis_gate.stop();
         ipc.shutdown();
@@ -385,6 +393,8 @@ impl Compositor {
             }
             let _ = watcher.join();
         }
+        // The socket file is removed after both threads have stopped. A removal error is
+        // ignored because the file may already be gone.
         let _ = std::fs::remove_file(&path);
         loop_result.map_err(Error::Loop)
     }

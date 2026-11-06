@@ -32,7 +32,8 @@ use gnoblin_wayland::State;
 
 use crate::Error;
 
-/// The refusal of a renderer a backend cannot draw with, naming the setting.
+/// Builds the [`Error::RendererRefused`] for `renderer` on `backend`, naming the
+/// `compositor.renderer` setting. `reason` says why that backend cannot draw with it.
 fn refused(renderer: RendererChoice, backend: &'static str, reason: &'static str) -> Error {
     Error::RendererRefused {
         leaf: "compositor.renderer",
