@@ -20,6 +20,8 @@
 
 #![forbid(unsafe_code)]
 
+gnoblin_log::component!("services");
+
 pub mod link;
 pub mod prompts;
 pub mod role;

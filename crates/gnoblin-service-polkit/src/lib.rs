@@ -46,6 +46,8 @@
 
 #![forbid(unsafe_code)]
 
+gnoblin_log::component!("polkit");
+
 pub mod subject;
 
 use std::collections::{BTreeMap, HashMap};

@@ -111,6 +111,8 @@
 //! - Lua 5.5 integers are signed 64-bit, so an unsigned property above
 //!   `i64::MAX` cannot be read and raises rather than arriving wrapped.
 
+gnoblin_log::component!("lua");
+
 mod bindings;
 mod configure;
 mod error;

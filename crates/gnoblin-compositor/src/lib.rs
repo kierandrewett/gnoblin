@@ -81,6 +81,8 @@
 //!   dispatcher owns: a privileged connection offers one, the slot registry routes it to
 //!   the connection that provides the slot, and both sides learn its one completion.
 
+gnoblin_log::component!("compositor");
+
 mod backend;
 mod compat;
 mod cursor;

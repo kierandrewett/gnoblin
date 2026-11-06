@@ -128,6 +128,8 @@
 //!   theme declares its sizes at scale 1. The physical size is the chosen
 //!   nominal size times the output scale, rounded once in integer arithmetic.
 
+gnoblin_log::component!("render");
+
 mod camera;
 mod color;
 pub mod cursor;

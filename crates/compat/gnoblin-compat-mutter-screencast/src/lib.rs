@@ -64,6 +64,8 @@
 
 #![forbid(unsafe_code)]
 
+gnoblin_log::component!("compat-screencast");
+
 pub mod bridge;
 pub mod caller;
 pub mod compat;

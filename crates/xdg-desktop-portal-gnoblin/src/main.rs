@@ -32,6 +32,8 @@
 //! and `Settings` still answers from its (empty) table. The bus is then the only thing this
 //! process waits on: it exits when the session bus goes away.
 
+gnoblin_log::component!("portal");
+
 use std::process::ExitCode;
 
 use futures_lite::future;

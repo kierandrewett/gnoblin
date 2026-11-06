@@ -40,6 +40,8 @@
 // generated module and nowhere else. `Cargo.toml` says the same thing.
 #![deny(unsafe_code)]
 
+gnoblin_log::component!("compat-x11");
+
 pub mod compat;
 pub mod global;
 pub mod relations;

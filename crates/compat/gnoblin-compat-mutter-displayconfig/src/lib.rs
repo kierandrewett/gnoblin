@@ -82,6 +82,8 @@
 
 #![forbid(unsafe_code)]
 
+gnoblin_log::component!("compat-displayconfig");
+
 pub mod compat;
 pub mod error;
 pub mod link;

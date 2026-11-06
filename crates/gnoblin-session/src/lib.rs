@@ -104,6 +104,8 @@
 
 #![forbid(unsafe_code)]
 
+gnoblin_log::component!("session");
+
 mod effect;
 mod environment;
 mod event;

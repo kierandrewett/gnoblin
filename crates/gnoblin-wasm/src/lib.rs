@@ -1,5 +1,7 @@
 //! WASM module host: WIT host API generated from the schema, capabilities and deadlines.
 
+gnoblin_log::component!("wasm");
+
 pub mod abi;
 mod bindings;
 mod error;

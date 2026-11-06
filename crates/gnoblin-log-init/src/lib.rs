@@ -8,6 +8,8 @@
 //!
 //! Only the binaries name this crate. The crates that log use the macros of `gnoblin-log`.
 
+gnoblin_log::component!("log");
+
 mod options;
 
 use std::panic;
