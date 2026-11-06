@@ -64,16 +64,26 @@
 
 #![forbid(unsafe_code)]
 
+/// The `Prompter.Callback` object that carries each prompt's answer back to the caller.
 pub mod callback;
+/// Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.
 pub mod compat;
+/// The gcr secret exchange, `sx-aes-1`, implemented here without libgcr.
 pub mod exchange;
+/// The `org.gnome.keyring.internal.Prompter` service that answers gcr's prompt requests.
 pub mod prompter;
+/// The prompt state machine: one gcr prompt, one request, one answer.
 pub mod state;
 
+/// The proxy that calls back into the prompt requester with the answer.
 pub use callback::PromptCallbackProxy;
+/// Admission check and the call it gates, as the prompter uses them.
 pub use compat::{Admission, Call};
+/// The secret exchange: its error type and the secret it carries.
 pub use exchange::{Exchange, ExchangeError, Secret};
+/// The bus names, interface and object path the prompter serves on.
 pub use prompter::{PRIVATE_NAME, PROMPTER_INTERFACE, PROMPTER_PATH, PromptService, SYSTEM_NAME};
+/// The prompt state types: pending prompts, their effects and their outcomes.
 pub use state::{Callback, Decision, Effect, EndedPrompt, Offerer, Pending, Prompt, PromptKind, Prompter, Unavailable};
 
 use futures_lite::StreamExt as _;
