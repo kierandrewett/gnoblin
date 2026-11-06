@@ -1,0 +1,497 @@
+//! Per-workspace layout arrangement: the bridge between the wm and a
+//! [`LayoutEngine`] (design/rust-compositor.md, D17).
+//!
+//! Each declared workspace owns one engine, created by the factory given to
+//! [`crate::Wm::set_layout_engines`]. The wanted input for a workspace is its
+//! tiled set on its output and that output's work area. Whenever the wanted
+//! input differs from the last submitted one, the wm submits a new run; a
+//! [`crate::Event::Frame`] collects finished runs with a deadline. The layout
+//! never writes window state or geometry: a settled `Float` effect moves the
+//! window to free placement, the same as [`crate::Event::ToggleFloat`].
+//!
+//! With no factory installed, nothing in this module runs and the wm behaves as
+//! before.
+//!
+//! ## Failure modes
+//!
+//! - No factory installed: no layout, no submits, no effects.
+//! - Empty tiled set: nothing is submitted and the last placements are dropped.
+//!   The windows that left tiling are reported by their own `Configure` effects.
+//! - Invalid parameters (empty or out-of-bounds output or window size): the engine
+//!   is not called; [`crate::Effect::LayoutFailed`] with `invalid-params` is sent
+//!   once when the layout was previously submitted. The last good placements stay
+//!   in force.
+//! - Engine still running at the deadline: [`crate::layout::Collected::Pending`];
+//!   the last good placements stay in force and no effect is sent.
+//! - Engine error, timeout, disabled layout, wedged worker, or an invalid reply
+//!   (refused by [`crate::layout::settle`]): [`crate::Effect::LayoutFailed`] with
+//!   the failure's reason; the last good placements stay in force. The run is
+//!   retried when the wanted input next changes.
+//! - Late or stale generation: discarded by [`crate::layout::Slot`] and reported as
+//!   pending; it never reaches the wm.
+//! - Inputs change while a run is in flight: the run is superseded by a new
+//!   submit. A result for the old inputs is never emitted.
+//! - Result for a workspace that no longer exists or has no submitted input: dropped.
+//! - Output removed: the layout moves to the first surviving output and is
+//!   re-arranged against its work area. With no output left, the layout waits for
+//!   an output and submits nothing.
+//! - Output added while a workspace has no output: the layout takes the new output.
+//! - Workspace removed: its layout and engine are dropped.
+//! - Workspace switch: every workspace keeps its engine and its arrangement; only
+//!   visibility changes.
+//! - A settled `Float` effect sets a tiled window's placement to free when it is still
+//!   tiled on that workspace; the placement of a free window is not emitted.
+
+use std::collections::BTreeMap;
+use std::fmt;
+use std::time::Instant;
+
+use gnoblin_types::{OutputId, RectF, WindowId, WorkspaceId};
+
+use crate::effect::Effect;
+use crate::layout::{
+    Collected, Job, Layout, LayoutCommand, LayoutEngine, LayoutFailure, LayoutKind, LayoutOutput, LayoutWindow, Params,
+    ParamsError, Placement, Request, RequestKind, Slot, Transform3, WindowPlacement,
+};
+use crate::output::Output;
+use crate::window::{Window, WindowState};
+
+/// Builds the engine for one workspace. The second argument is the connector name
+/// of the output the workspace is on, `None` until the output is identified or
+/// when the workspace is on no output.
+pub(crate) type Factory = Box<dyn FnMut(WorkspaceId, Option<&str>) -> Box<dyn LayoutEngine>>;
+
+/// Every workspace's layout state, and the factory that makes engines.
+#[derive(Default)]
+pub(crate) struct Layouts {
+    factory: Option<Factory>,
+    by_workspace: BTreeMap<WorkspaceId, WorkspaceLayout>,
+}
+
+/// One workspace's engine and the parameters of its latest submitted run.
+struct WorkspaceLayout {
+    /// The kind the engine declared; it decides the placement of new windows.
+    kind: LayoutKind,
+    output: Option<OutputId>,
+    /// The output name the engine was built for. The engine is rebuilt when the
+    /// workspace's output name changes.
+    engine_output: Option<String>,
+    slot: Slot,
+    /// The parameters of the latest submitted run, `None` when nothing is tiled or
+    /// the input was refused.
+    submitted: Option<Params>,
+    /// Where the last good placements put each window, for directional focus.
+    /// Empty when nothing is tiled or the layout has no placements.
+    placed: BTreeMap<WindowId, RectF>,
+}
+
+/// Whether a window takes part in tiling.
+pub(crate) fn is_tiled(state: &WindowState, placement: WindowPlacement) -> bool {
+    placement == WindowPlacement::Managed
+        && !state.minimised
+        && !state.fullscreen
+        && !state.maximised
+        && state.snapped.is_none()
+}
+
+/// How a geometry request was answered.
+pub(crate) enum RequestVerdict {
+    /// The layout answered; its placements are in force.
+    Handled(Layout),
+    /// The layout declined or did not answer in time, or nothing is tiled on the
+    /// workspace; the built-in logic applies.
+    Fallthrough,
+    /// The layout failed or its reply was refused; the last good placements stay.
+    Failed(LayoutFailure),
+    /// The workspace's tiled input cannot be used.
+    InvalidParams,
+}
+
+/// How a named command was answered.
+pub(crate) enum CommandVerdict {
+    /// The layout answered; its placements are in force.
+    Handled(Layout),
+    /// The layout failed, timed out or its reply was refused; the last good
+    /// placements stay.
+    Failed(LayoutFailure),
+    /// The layout does not know the command.
+    Declined,
+    /// The workspace's tiled input cannot be used.
+    InvalidParams,
+    /// Nothing is tiled on the workspace, so there is nothing to re-arrange.
+    Idle,
+    /// The workspace has no layout engine.
+    NoLayout,
+}
+
+/// The rectangle a placement occupies, or `None` when its transform is a raw matrix.
+fn placed_rect(placement: &Placement) -> Option<RectF> {
+    match placement.transform {
+        Transform3::Trs { position, .. } => Some(RectF {
+            x: position.x,
+            y: position.y,
+            width: placement.width,
+            height: placement.height,
+        }),
+        Transform3::Matrix(_) => None,
+    }
+}
+
+impl WorkspaceLayout {
+    /// Builds the layout for `workspace` on `output`, whose connector name is `name`.
+    fn build(factory: &mut Factory, workspace: WorkspaceId, output: Option<OutputId>, name: Option<String>) -> Self {
+        let engine = factory(workspace, name.as_deref());
+        Self {
+            output,
+            kind: engine.kind(),
+            engine_output: name,
+            slot: Slot::new(engine),
+            submitted: None,
+            placed: BTreeMap::new(),
+        }
+    }
+
+    /// Keeps the rectangles of a settled layout's placements.
+    fn remember(&mut self, layout: &Layout) {
+        self.placed = layout
+            .placements
+            .iter()
+            .filter_map(|placement| placed_rect(placement).map(|rect| (placement.window, rect)))
+            .collect();
+    }
+}
+
+/// The parameters a workspace's layout needs right now, or `None` when there is
+/// nothing to arrange.
+pub(crate) fn tiled_params(
+    workspace: WorkspaceId,
+    output: Option<OutputId>,
+    windows: &BTreeMap<WindowId, Window>,
+    outputs: &[Output],
+) -> Result<Option<Params>, ParamsError> {
+    let Some(output) = output else {
+        return Ok(None);
+    };
+    let Some(entry) = outputs.iter().find(|entry| entry.id() == output) else {
+        return Ok(None);
+    };
+    let work_area = entry.work_area();
+    let tiled: Vec<LayoutWindow> = windows
+        .values()
+        .filter(|window| {
+            window.workspace == workspace && window.output == Some(output) && is_tiled(&window.state, window.placement)
+        })
+        .map(|window| LayoutWindow {
+            id: window.id,
+            width: f64::from(window.geometry.width),
+            height: f64::from(window.geometry.height),
+        })
+        .collect();
+    if tiled.is_empty() {
+        return Ok(None);
+    }
+    let identity = LayoutOutput {
+        id: output,
+        name: entry.name().to_owned(),
+        scale: entry.scale(),
+    };
+    Params::new(identity, f64::from(work_area.width), f64::from(work_area.height), tiled).map(Some)
+}
+
+impl fmt::Debug for Layouts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Layouts")
+            .field("enabled", &self.is_enabled())
+            .field("workspaces", &self.by_workspace.len())
+            .finish()
+    }
+}
+
+impl Layouts {
+    /// Whether a factory is installed.
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.factory.is_some()
+    }
+
+    /// Installs `factory` and drops every existing layout and engine.
+    pub(crate) fn install(&mut self, factory: Factory) {
+        self.factory = Some(factory);
+        self.by_workspace.clear();
+    }
+
+    /// Drops the workspace's engine so the next sync asks the factory for a new one.
+    /// The old slot, and any run in flight on it, is dropped with the engine.
+    pub(crate) fn forget(&mut self, workspace: WorkspaceId) {
+        self.by_workspace.remove(&workspace);
+    }
+
+    /// Drops every workspace's engine; the next sync asks the factory for each again.
+    pub(crate) fn forget_all(&mut self) {
+        self.by_workspace.clear();
+    }
+
+    /// Creates a layout for each declared workspace that has none, rebuilds the
+    /// engine of a workspace whose output name changed, and drops the layouts of
+    /// removed workspaces. Returns each workspace whose layout was created or whose
+    /// engine kind changed, so the wm can set the placements of its windows before
+    /// [`Layouts::sync`] reads them.
+    ///
+    /// `output_name` gives the connector name of an output (`None` while it is
+    /// unknown). A workspace whose output name changed gets a new engine, built for
+    /// the new name, so an output default applies to it. The engine's state is kept
+    /// by the layout host per layout name, so the rebuild does not lose it.
+    pub(crate) fn rebuild(
+        &mut self,
+        workspaces: &[WorkspaceId],
+        first_output: Option<OutputId>,
+        output_name: impl Fn(OutputId) -> Option<String>,
+    ) -> Vec<(WorkspaceId, LayoutKind)> {
+        let Some(factory) = self.factory.as_mut() else {
+            return Vec::new();
+        };
+        self.by_workspace.retain(|id, _| workspaces.contains(id));
+        let mut changed = Vec::new();
+        for id in workspaces {
+            if self.by_workspace.contains_key(id) {
+                continue;
+            }
+            let name = first_output.and_then(&output_name);
+            let layout = WorkspaceLayout::build(factory, *id, first_output, name);
+            changed.push((*id, layout.kind));
+            self.by_workspace.insert(*id, layout);
+        }
+        for (id, layout) in &mut self.by_workspace {
+            let name = layout.output.and_then(&output_name);
+            if name == layout.engine_output {
+                continue;
+            }
+            let rebuilt = WorkspaceLayout::build(factory, *id, layout.output, name);
+            if rebuilt.kind != layout.kind {
+                changed.push((*id, rebuilt.kind));
+            }
+            let placed = std::mem::take(&mut layout.placed);
+            *layout = WorkspaceLayout { placed, ..rebuilt };
+        }
+        changed
+    }
+
+    /// Submits a run for each workspace whose wanted input changed.
+    ///
+    /// `wanted` gives the parameters for a workspace on its current output. An
+    /// error means the input cannot be used: nothing is submitted, and the failure
+    /// is reported once until the input changes. [`Layouts::rebuild`] must run first
+    /// so every declared workspace has a layout.
+    pub(crate) fn sync(
+        &mut self,
+        wanted: impl Fn(WorkspaceId, Option<OutputId>) -> Result<Option<Params>, ParamsError>,
+    ) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        for (id, layout) in &mut self.by_workspace {
+            let params = match wanted(*id, layout.output) {
+                Ok(params) => params,
+                Err(_) => {
+                    layout.placed.clear();
+                    if layout.submitted.take().is_some() {
+                        effects.push(Effect::LayoutFailed {
+                            workspace: *id,
+                            reason: "invalid-params",
+                        });
+                    }
+                    continue;
+                }
+            };
+            if params == layout.submitted {
+                continue;
+            }
+            match params {
+                Some(params) => {
+                    layout.slot.submit(Job::Arrange(params.clone()));
+                    layout.submitted = Some(params);
+                }
+                None => {
+                    layout.submitted = None;
+                    layout.placed.clear();
+                }
+            }
+        }
+        effects
+    }
+
+    /// Collects every run that finished before `deadline`. A run whose workspace
+    /// has nothing submitted any more is dropped.
+    pub(crate) fn collect(&mut self, deadline: Instant) -> Vec<(WorkspaceId, Result<Layout, LayoutFailure>)> {
+        let mut finished = Vec::new();
+        for (id, layout) in &mut self.by_workspace {
+            match layout.slot.collect(deadline) {
+                Collected::Idle | Collected::Pending | Collected::Declined => {}
+                Collected::Settled(settled) => {
+                    if layout.submitted.is_some() {
+                        layout.remember(&settled);
+                        finished.push((*id, Ok(settled)));
+                    }
+                }
+                Collected::Failed(failure) => {
+                    if layout.submitted.is_some() {
+                        finished.push((*id, Err(failure)));
+                    }
+                }
+            }
+        }
+        finished
+    }
+
+    /// Gives layouts that have no output the newly connected `output`.
+    pub(crate) fn output_connected(&mut self, output: OutputId) {
+        for entry in self.by_workspace.values_mut().filter(|entry| entry.output.is_none()) {
+            entry.output = Some(output);
+        }
+    }
+
+    /// Moves the layouts of a removed output onto `survivor`, or leaves them
+    /// without an output when none is left.
+    pub(crate) fn output_disconnected(&mut self, removed: OutputId, survivor: Option<OutputId>) {
+        for entry in self
+            .by_workspace
+            .values_mut()
+            .filter(|entry| entry.output == Some(removed))
+        {
+            entry.output = survivor;
+        }
+    }
+
+    /// The last good placed rectangle of `window` on `workspace`, if the layout
+    /// placed it.
+    pub(crate) fn placed(&self, workspace: WorkspaceId, window: WindowId) -> Option<RectF> {
+        self.by_workspace.get(&workspace)?.placed.get(&window).copied()
+    }
+
+    /// The kind the layout of `workspace` declared, or `None` when the workspace has
+    /// no layout yet.
+    pub(crate) fn kind(&self, workspace: WorkspaceId) -> Option<LayoutKind> {
+        self.by_workspace.get(&workspace).map(|layout| layout.kind)
+    }
+
+    /// Sends `command` to `workspace`'s engine and waits until `deadline`. A
+    /// handled command's placements are remembered like an arrangement's, so the
+    /// next submit compares against them.
+    pub(crate) fn command(
+        &mut self,
+        workspace: WorkspaceId,
+        command: LayoutCommand,
+        deadline: Instant,
+        wanted: impl Fn(Option<OutputId>) -> Result<Option<Params>, ParamsError>,
+    ) -> CommandVerdict {
+        let Some(layout) = self.by_workspace.get_mut(&workspace) else {
+            return CommandVerdict::NoLayout;
+        };
+        let params = match wanted(layout.output) {
+            Ok(Some(params)) => params,
+            Ok(None) => return CommandVerdict::Idle,
+            Err(_) => return CommandVerdict::InvalidParams,
+        };
+        layout.slot.submit_command(params.clone(), command);
+        match layout.slot.collect(deadline) {
+            Collected::Settled(settled) => {
+                layout.submitted = Some(params);
+                layout.remember(&settled);
+                CommandVerdict::Handled(settled)
+            }
+            Collected::Failed(failure) => {
+                layout.submitted = Some(params);
+                CommandVerdict::Failed(failure)
+            }
+            Collected::Declined => CommandVerdict::Declined,
+            Collected::Idle => CommandVerdict::Idle,
+            Collected::Pending => {
+                layout.slot.cancel();
+                layout.submitted = Some(params);
+                CommandVerdict::Failed(LayoutFailure::Timeout)
+            }
+        }
+    }
+
+    /// Offers one geometry request to `workspace`'s engine and waits until
+    /// `deadline`. `wanted` gives the tiled input on the workspace's output after
+    /// the change, as [`Layouts::sync`] does.
+    pub(crate) fn offer(
+        &mut self,
+        workspace: WorkspaceId,
+        kind: RequestKind,
+        deadline: Instant,
+        wanted: impl Fn(Option<OutputId>) -> Result<Option<Params>, ParamsError>,
+    ) -> RequestVerdict {
+        let Some(layout) = self.by_workspace.get_mut(&workspace) else {
+            return RequestVerdict::Fallthrough;
+        };
+        let params = match wanted(layout.output) {
+            Ok(Some(params)) => params,
+            Ok(None) => {
+                layout.submitted = None;
+                layout.placed.clear();
+                return RequestVerdict::Fallthrough;
+            }
+            Err(_) => {
+                layout.submitted = None;
+                layout.placed.clear();
+                return RequestVerdict::InvalidParams;
+            }
+        };
+        layout.slot.submit_request(Request {
+            params: params.clone(),
+            kind,
+        });
+        match layout.slot.collect(deadline) {
+            Collected::Settled(settled) => {
+                layout.submitted = Some(params);
+                layout.remember(&settled);
+                RequestVerdict::Handled(settled)
+            }
+            Collected::Failed(failure) => {
+                layout.submitted = Some(params);
+                RequestVerdict::Failed(failure)
+            }
+            Collected::Declined | Collected::Idle => {
+                layout.submitted = None;
+                RequestVerdict::Fallthrough
+            }
+            Collected::Pending => {
+                layout.slot.cancel();
+                layout.submitted = None;
+                RequestVerdict::Fallthrough
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_maximised_or_free_window_is_not_tiled() {
+        let state = WindowState::default();
+        assert!(is_tiled(&state, WindowPlacement::Managed));
+        assert!(!is_tiled(&state, WindowPlacement::Free));
+        assert!(!is_tiled(
+            &WindowState {
+                maximised: true,
+                ..state
+            },
+            WindowPlacement::Managed
+        ));
+        assert!(!is_tiled(
+            &WindowState {
+                fullscreen: true,
+                ..state
+            },
+            WindowPlacement::Managed
+        ));
+        assert!(!is_tiled(
+            &WindowState {
+                minimised: true,
+                ..state
+            },
+            WindowPlacement::Managed
+        ));
+    }
+}

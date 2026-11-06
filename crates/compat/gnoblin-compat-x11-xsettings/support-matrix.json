@@ -1,0 +1,60 @@
+{
+  "interfaces": [
+    {
+      "name": "_XSETTINGS_S0",
+      "version": 1,
+      "members": [
+        {
+          "kind": "property",
+          "name": "Gtk/DecorationLayout",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Gtk/CursorThemeName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Gtk/CursorThemeSize",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Gtk/FontName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Gtk/IconThemeName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Gtk/MonospaceFontName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Gtk/ThemeName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Net/IconThemeName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Net/ThemeName",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "Xft/DPI",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

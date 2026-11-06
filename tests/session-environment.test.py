@@ -103,7 +103,7 @@ class SessionEnvironmentTests(unittest.TestCase):
     def test_desktop_installs_the_c_guardian_as_the_login_command(self):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         installer = (ROOT / "cmake/install-session.cmake").read_text()
-        desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
+        desktop = (ROOT / "data/session/gnoblin.desktop").read_text()
         runtime = RUNTIME_SOURCES.read_text()
         # Meson builds the compositor and the guardian as one executable through the
         # executable fragment, so CMake defines no gnoblin target and the installer

@@ -1,0 +1,12 @@
+# Declares an object the stock catalog already owns (`window`, in namespace gnoblin).
+# A loaded extension may not shadow a stock class in Lua.
+namespace = "example.stock"
+version = "0.1.0"
+
+[[object]]
+name = "window"
+since = "0.1.0"
+
+[[object.method]]
+name = "ping"
+since = "0.1.0"

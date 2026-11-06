@@ -1,0 +1,55 @@
+name: Rust workspace
+
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "rustfmt.toml"
+      - "justfile"
+      - "deny.toml"
+      - ".cargo/**"
+      - "tests/parity/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "rustfmt.toml"
+      - "justfile"
+      - "deny.toml"
+      - ".cargo/**"
+      - "tests/parity/**"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  workspace:
+    name: Build, lint, test, dependency rules, licences
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tree without submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install just and cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-deny
+      # rust-toolchain.toml selects the compiler and installs rustfmt and
+      # clippy, so every runner builds with the same toolchain as a developer.
+      - name: Show the pinned toolchain
+        run: rustup show active-toolchain
+      - name: Run the workspace gate
+        run: just ci

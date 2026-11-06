@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP="$(mktemp -d /tmp/gnoblin-log-test.XXXXXX)"
+TMP="$(mktemp -d /tmp/gnoblin-diagnostics-test.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
 source "$ROOT/tests/gnoblin-test-lib.sh"
@@ -22,12 +22,12 @@ GNOBLIN_GDB_FATAL: SIGSEGV
 GNOBLIN_GDB_ABORT: SIGABRT
 EOF
 
-if gnoblin_log_has_fatal "$TMP/benign.log"; then
+if gnoblin_shell_log_has_fatal "$TMP/benign.log"; then
     echo "FAIL: expected environment diagnostics were treated as fatal" >&2
     exit 1
 fi
 
-if ! gnoblin_log_has_fatal "$TMP/fatal.log"; then
+if ! gnoblin_shell_log_has_fatal "$TMP/fatal.log"; then
     echo "FAIL: GNOME Shell CRITICAL was not treated as fatal" >&2
     exit 1
 fi

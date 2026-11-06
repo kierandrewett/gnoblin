@@ -1,0 +1,20 @@
+[package]
+name = "gnoblin-testkit"
+description = "In-process fixture, test clients, input injection and the observation recorder."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The observation recorder writes JSON and the tests read it back. Nothing here
+# needs `serde`'s derive: the recorder builds its document with the `json!`
+# macro, so the shape it writes is visible in one place.
+serde_json.workspace = true
+# The window fixture takes its property set from the schema and builds values from
+# the model's vocabulary, so the helper names the same types the graph validates.
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+[lints]
+workspace = true

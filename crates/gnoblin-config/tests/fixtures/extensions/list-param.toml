@@ -1,0 +1,17 @@
+namespace = "example.listparam"
+version = "0.1.0"
+
+[[object]]
+name = "probe"
+since = "0.1.0"
+
+# Takes a list of names. A list parameter has no Lua conversion, so the whole schema
+# is refused at load time.
+[[object.method]]
+name = "tag"
+since = "0.1.0"
+
+[[object.method.param]]
+name = "names"
+type = "list<string>"
+since = "0.1.0"

@@ -1,0 +1,3 @@
+# Not a schema: the version has no value, so the file does not parse as TOML.
+namespace = "example.ext"
+version =

@@ -1,0 +1,2149 @@
+# The configuration schema: one declaration per setting, from which the typed
+# document, its validators, the accepted-values hints, the reference tables and
+# the Lua stubs are generated (`cargo xtask gen-config`).
+#
+# Why TOML in the crate rather than code: the same reason the object schema is
+# TOML (crates/gnoblin-schema/src/parse.rs). A setting's existence, type, range,
+# default, accepted-values text, `since`, overridability and deprecated spellings
+# are facts about the document, not about how it is read; declaring them as data
+# lets one generator produce the Rust, the reference and the stubs from one
+# source, and lets CI compare the three. The parsers it emits still report a
+# dotted path and an accepted-values hint, so a diagnostic is unchanged by being
+# generated.
+#
+# What stays hand-written is what data cannot express: the cross-field rules
+# (gesture conflicts, workspace uniqueness, swipe-path shape, spacer rules,
+# "0 or 0.5 and up" scales, renderer argv rules). A section or record names one
+# with `hook`, and `crates/gnoblin-config/src/hooks.rs` must define it; a field
+# may not name a hook, because a hook is about a whole table.
+#
+# Layout: enums, then aliases, then records in dependency order (a record is
+# declared before the field that uses it), then sections in document-key order.
+# Every `since` is a full `x.y.z` release: the document layer ships with the
+# rewrite at 0.2.0.
+format = 1
+
+# --- Enumerated settings -----------------------------------------------------
+# `setting` is the key the alias table looks up, so it is the document key the
+# value is ordinarily written under.
+
+[[enum]]
+name = "Blur"
+setting = "blur"
+doc = "Background blur policy."
+variants = [
+    { spelling = "auto", doc = "Blur when hardware accelerated rendering is available." },
+    { spelling = "on", doc = "Always blur." },
+    { spelling = "off", doc = "Never blur." },
+]
+
+[[enum]]
+name = "RendererChoice"
+setting = "renderer"
+doc = "Which renderer draws the compositor's frames."
+variants = [
+    { spelling = "auto", doc = "The renderer the selected backend draws with by default." },
+    { spelling = "vulkan", doc = "The Vulkan renderer. A session that cannot create it is refused." },
+    { spelling = "gles", doc = "The OpenGL ES renderer. A session that cannot create it is refused." },
+    { spelling = "software", doc = "The CPU renderer, which needs no GPU." },
+]
+
+[[enum]]
+name = "VisualBellType"
+setting = "visual-bell-type"
+doc = "Which part of the screen the visual bell flashes."
+variants = [
+    { spelling = "fullscreen-flash", doc = "Flash the whole screen." },
+    { spelling = "frame-flash", doc = "Flash the focused window instead." },
+]
+
+[[enum]]
+name = "FocusMode"
+setting = "focus-mode"
+doc = "When pointer movement changes focus."
+variants = [
+    { spelling = "click", doc = "Only a click changes focus." },
+    { spelling = "hover", doc = "Entering a window focuses it." },
+    { spelling = "hover-strict", doc = "Entering focuses and leaving clears focus." },
+]
+
+[[enum]]
+name = "FocusNewWindows"
+setting = "focus-new-windows"
+doc = "When a new window may take focus."
+variants = [
+    { spelling = "allow", doc = "Allow activation requests that follow recent activity." },
+    { spelling = "prevent", doc = "Keep focus-stealing prevention on." },
+]
+
+[[enum]]
+name = "NewWindowPlacement"
+setting = "new-window-placement"
+doc = "Where a new application window opens."
+variants = [
+    { spelling = "free_space", doc = "First free area, cascading when nothing fits." },
+    { spelling = "center", doc = "Centred on the work area." },
+    { spelling = "cascade", doc = "Always stepped from the top left." },
+]
+
+[[enum]]
+name = "TitlebarAction"
+setting = "titlebar-action"
+doc = "What a titlebar click does."
+variants = [
+    { spelling = "toggle-maximize", doc = "Toggle maximize." },
+    { spelling = "toggle-maximize-horizontally", doc = "Toggle horizontal maximize." },
+    { spelling = "toggle-maximize-vertically", doc = "Toggle vertical maximize." },
+    { spelling = "minimize", doc = "Minimize." },
+    { spelling = "lower", doc = "Lower." },
+    { spelling = "menu", doc = "Open the window menu." },
+    { spelling = "none", doc = "Do nothing." },
+]
+
+[[enum]]
+name = "ColorScheme"
+setting = "color-scheme"
+doc = "Whether applications prefer a dark or a light appearance."
+variants = [
+    { spelling = "default", doc = "No preference: each application keeps its own choice." },
+    { spelling = "prefer-dark", doc = "Prefer a dark appearance." },
+    { spelling = "prefer-light", doc = "Prefer a light appearance." },
+]
+
+[[enum]]
+name = "TitlebarButton"
+setting = "button-layout"
+doc = "One entry in a titlebar side."
+variants = [
+    { spelling = "menu", doc = "The window menu." },
+    { spelling = "minimize", doc = "Minimize." },
+    { spelling = "maximize", doc = "Maximize." },
+    { spelling = "close", doc = "Close." },
+    { spelling = "spacer", doc = "A gap between two buttons." },
+]
+
+[[enum]]
+name = "Protocol"
+setting = "protocols"
+doc = "A Wayland protocol Gnoblin can stop advertising."
+variants = [
+    { spelling = "wlr-layer-shell", doc = "wlr-layer-shell." },
+    { spelling = "ext-foreign-toplevel-list", doc = "ext-foreign-toplevel-list." },
+    { spelling = "wlr-foreign-toplevel-management", doc = "wlr-foreign-toplevel-management." },
+    { spelling = "xdg-decoration", doc = "xdg-decoration." },
+    { spelling = "kde-server-decoration", doc = "kde-server-decoration." },
+    { spelling = "window-frame-renderer", doc = "The Gnoblin window frame renderer protocol." },
+    { spelling = "wlr-screencopy", doc = "wlr-screencopy." },
+    { spelling = "ext-image-copy-capture", doc = "ext-image-copy-capture." },
+    { spelling = "ext-background-effect-v1", doc = "ext-background-effect-v1." },
+    { spelling = "ext-data-control", doc = "ext-data-control." },
+    { spelling = "ext-idle-notify", doc = "ext-idle-notify." },
+    { spelling = "wlr-gamma-control", doc = "wlr-gamma-control." },
+    { spelling = "wlr-output-power-management", doc = "wlr-output-power-management." },
+    { spelling = "wlr-output-management", doc = "wlr-output-management." },
+    { spelling = "ext-session-lock", doc = "ext-session-lock." },
+]
+
+[[enum]]
+name = "CursorProvider"
+setting = "providers"
+doc = "A cursor image source the compositor searches, in order."
+variants = [
+    { spelling = "hyprcursor", doc = "Compiled Hyprcursor themes." },
+    { spelling = "kde-gnome-svg", doc = "cursors_scalable SVG themes with metadata.json." },
+    { spelling = "xcursor", doc = "Xcursor themes with index.theme inheritance." },
+]
+
+[[enum]]
+name = "Handedness"
+setting = "left-handed"
+doc = "Which hand a touchpad is configured for."
+variants = [
+    { spelling = "right", doc = "Right-handed." },
+    { spelling = "left", doc = "Left-handed." },
+    { spelling = "follow-mouse", doc = "Follow the pointer position." },
+]
+
+[[enum]]
+name = "TapButtonMap"
+setting = "tap-button-map"
+doc = "Which button each tap area reports."
+variants = [
+    { spelling = "default", doc = "The device default." },
+    { spelling = "left-right-middle", doc = "Left, right, middle." },
+    { spelling = "left-middle-right", doc = "Left, middle, right." },
+]
+
+[[enum]]
+name = "AccelProfile"
+setting = "accel-profile"
+doc = "A pointer acceleration profile, including the custom curve."
+variants = [
+    { spelling = "default", doc = "The device default." },
+    { spelling = "flat", doc = "No acceleration." },
+    { spelling = "adaptive", doc = "The adaptive profile." },
+    { spelling = "custom", doc = "The curve in accel-curve." },
+]
+
+[[enum]]
+name = "DeviceAccelProfile"
+setting = "device-accel-profile"
+doc = "A trackball or pointing-stick acceleration profile, which has no custom curve."
+variants = [
+    { spelling = "default", doc = "The device default." },
+    { spelling = "flat", doc = "No acceleration." },
+    { spelling = "adaptive", doc = "The adaptive profile." },
+]
+
+[[enum]]
+name = "ClickMethod"
+setting = "click-method"
+doc = "How a touchpad tap maps to a button."
+variants = [
+    { spelling = "default", doc = "The device default." },
+    { spelling = "none", doc = "No software buttons." },
+    { spelling = "areas", doc = "Button areas." },
+    { spelling = "fingers", doc = "Finger count." },
+]
+
+[[enum]]
+name = "ScrollMethod"
+setting = "scroll-method"
+doc = "How a pointing stick scrolls."
+variants = [
+    { spelling = "default", doc = "The device default." },
+    { spelling = "none", doc = "No scrolling." },
+    { spelling = "on-button-down", doc = "Scroll while the middle button is held." },
+]
+
+[[enum]]
+name = "TabletMapping"
+setting = "tablet-mapping"
+doc = "How a tablet maps pen movement."
+variants = [
+    { spelling = "absolute", doc = "Absolute position on a fixed tablet area." },
+    { spelling = "relative", doc = "Relative, like a mouse." },
+]
+
+[[enum]]
+name = "StylusEraserMode"
+setting = "eraser-button-mode"
+doc = "What the eraser button does."
+variants = [
+    { spelling = "default", doc = "The device default." },
+    { spelling = "button", doc = "Act as a button with its own action." },
+]
+
+[[enum]]
+name = "StylusAction"
+setting = "stylus-action"
+doc = "What a stylus button does."
+variants = [
+    { spelling = "default", doc = "Keep the system behaviour." },
+    { spelling = "middle", doc = "Middle click." },
+    { spelling = "right", doc = "Right click." },
+    { spelling = "back", doc = "Navigation back." },
+    { spelling = "forward", doc = "Navigation forward." },
+    { spelling = "switch-monitor", doc = "Move the stylus to another monitor." },
+    { spelling = "keybinding", doc = "Run the configured keybinding." },
+]
+
+[[enum]]
+name = "PadButtonAction"
+setting = "tablet-pad-button-action"
+doc = "What a tablet pad button does."
+variants = [
+    { spelling = "default", doc = "Keep the system action." },
+    { spelling = "none", doc = "Leave the event to clients." },
+    { spelling = "help", doc = "Ask the shell to show pad help." },
+    { spelling = "switch-monitor", doc = "Cycle the mapped monitor." },
+    { spelling = "keybinding", doc = "Run the configured keybinding." },
+]
+
+[[enum]]
+name = "GestureKind"
+setting = "gesture"
+doc = "The shape of a touchpad gesture."
+variants = [
+    { spelling = "swipe", doc = "A swipe along a path." },
+    { spelling = "pinch", doc = "A pinch in or out." },
+]
+
+[[enum]]
+name = "GestureWhen"
+setting = "when"
+doc = "Which lock context a gesture applies in."
+variants = [
+    { spelling = "unlocked", doc = "Only when the session is unlocked." },
+    { spelling = "locked", doc = "Only on the lock screen." },
+    { spelling = "any", doc = "In either state." },
+]
+
+[[enum]]
+name = "GestureDirection"
+setting = "direction"
+doc = "The direction of a pinch gesture."
+variants = [
+    { spelling = "in", doc = "Fingers moving together." },
+    { spelling = "out", doc = "Fingers moving apart." },
+]
+
+[[enum]]
+name = "GestureAction"
+setting = "touchpad-gesture-action"
+doc = "A built-in touchpad gesture action."
+variants = [
+    { spelling = "workspace.next", doc = "Switch to the next workspace." },
+    { spelling = "workspace.previous", doc = "Switch to the previous workspace." },
+    { spelling = "window.close", doc = "Close the focused window." },
+    { spelling = "window.minimize", doc = "Minimize the focused window." },
+    { spelling = "window.toggle-maximize", doc = "Toggle maximize on the focused window." },
+]
+
+[[enum]]
+name = "XwaylandExtension"
+setting = "disable-extensions"
+doc = "An Xwayland extension Gnoblin can disable."
+variants = [
+    { spelling = "security", doc = "The SECURITY extension." },
+    { spelling = "xtest", doc = "The XTEST extension." },
+]
+
+[[enum]]
+name = "LocationAccuracy"
+setting = "max-accuracy"
+doc = "The accuracy cap Gnoblin may return to an application."
+variants = [
+    { spelling = "country", doc = "Country level." },
+    { spelling = "city", doc = "City level." },
+    { spelling = "neighborhood", doc = "Neighborhood level." },
+    { spelling = "street", doc = "Street level." },
+    { spelling = "exact", doc = "Exact location." },
+]
+
+[[enum]]
+name = "CompatCapture"
+setting = "capture"
+doc = "How much of the compatibility surface answers."
+variants = [
+    { spelling = "off", doc = "No compatibility adapter owns its upstream name." },
+    { spelling = "portal", doc = "Reads answer; state changes and capture go through the portal." },
+    { spelling = "unmediated", doc = "The upstream names answer as Mutter answers, as far as the matrix allows." },
+]
+
+[[enum]]
+name = "InputSourceType"
+setting = "input-source-type"
+doc = "The kind of an input source."
+variants = [
+    { spelling = "xkb", doc = "An XKB keyboard layout." },
+    { spelling = "ibus", doc = "An IBus input method." },
+]
+
+[[enum]]
+name = "LogConsole"
+setting = "log-console"
+doc = "What the process prints on standard error."
+variants = [
+    { spelling = "auto", doc = "The native journal under systemd, otherwise pretty lines on a terminal and plain lines elsewhere." },
+    { spelling = "pretty", doc = "One human-readable line per event." },
+    { spelling = "off", doc = "Print nothing; the database still records events." },
+]
+
+# --- Deprecated spellings ----------------------------------------------------
+# One table, accepted until `removed_in`. A spelling must not also be a current
+# variant: the generator refuses that, because an alias that is already current
+# can never fire.
+
+[[alias]]
+setting = "when"
+spelling = "normal"
+canonical = "unlocked"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "when"
+spelling = "unlock-screen"
+canonical = "locked"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "focus-mode"
+spelling = "sloppy"
+canonical = "hover"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "focus-mode"
+spelling = "mouse"
+canonical = "hover-strict"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "focus-new-windows"
+spelling = "smart"
+canonical = "allow"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "focus-new-windows"
+spelling = "strict"
+canonical = "prevent"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "left-handed"
+spelling = "mouse"
+canonical = "follow-mouse"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "tap-button-map"
+spelling = "lrm"
+canonical = "left-right-middle"
+removed_in = "0.3.0"
+
+[[alias]]
+setting = "tap-button-map"
+spelling = "lmr"
+canonical = "left-middle-right"
+removed_in = "0.3.0"
+
+# --- Records ----------------------------------------------------------------
+# A record is a table inside a section. Records come first so a field can name
+# one; the generator refuses a field that names a record declared later.
+
+[[record]]
+name = "AccelCurve"
+doc = "A pointer acceleration curve, in device units."
+hook = "accel_curve"
+
+[[record.field]]
+key = "step"
+kind = "float"
+min = 0.0
+max = 1.7976931348623157e308
+accepted = "a number greater than 0"
+doc = "Device units per millisecond between points."
+since = "0.2.0"
+
+[[record.field]]
+key = "points"
+kind = "float-list"
+min = 0.0
+max = 1.7976931348623157e308
+accepted = "a list of at least two numbers"
+doc = "Output speed at each evenly spaced input speed."
+since = "0.2.0"
+
+[[record]]
+name = "Workspace"
+doc = "One named workspace."
+hook = "workspace"
+
+[[record.field]]
+key = "id"
+kind = "text"
+nonempty = true
+required = "a workspace id"
+accepted = "a nonempty workspace id"
+doc = "The stable identifier rules and scripts use."
+since = "0.2.0"
+
+[[record.field]]
+key = "name"
+kind = "text"
+required = "a workspace name"
+accepted = "a nonempty name of at most 80 characters"
+doc = "The name shown to the user."
+since = "0.2.0"
+
+[[record]]
+name = "LayoutOutput"
+doc = "The layout of every workspace on one output."
+
+[[record.field]]
+key = "output"
+kind = "text"
+nonempty = true
+required = "an output connector id"
+accepted = "a nonempty connector id"
+doc = "The connector id, for example DP-1."
+since = "0.2.0"
+
+[[record.field]]
+key = "layout"
+kind = "text"
+nonempty = true
+required = "a layout name"
+accepted = "a nonempty layout name"
+doc = "The layout name the output's workspaces use."
+since = "0.2.0"
+
+[[record]]
+name = "LayoutWorkspace"
+doc = "The layout of one workspace."
+
+[[record.field]]
+key = "workspace"
+kind = "text"
+nonempty = true
+required = "a workspace id"
+accepted = "a nonempty workspace id"
+doc = "The workspace id, as declared in workspaces."
+since = "0.2.0"
+
+[[record.field]]
+key = "layout"
+kind = "text"
+nonempty = true
+required = "a layout name"
+accepted = "a nonempty layout name"
+doc = "The layout name this workspace uses."
+since = "0.2.0"
+
+[[record]]
+name = "ButtonLayout"
+doc = "The ordered titlebar buttons per side."
+hook = "button_layout"
+
+[[record.field]]
+key = "left"
+kind = "enum-list"
+enum = "TitlebarButton"
+accepted = "a list of titlebar buttons"
+doc = "The buttons drawn on the left, in order."
+since = "0.2.0"
+
+[[record.field]]
+key = "right"
+kind = "enum-list"
+enum = "TitlebarButton"
+accepted = "a list of titlebar buttons"
+doc = "The buttons drawn on the right, in order."
+since = "0.2.0"
+
+[[record]]
+name = "BounceKeys"
+doc = "Bounce Keys: ignore repeated presses of the same key."
+
+[[record.field]]
+key = "enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Enable the feature."
+since = "0.2.0"
+
+[[record.field]]
+key = "delay-ms"
+kind = "int"
+min = 0
+max = 10000
+inherit = true
+accepted = "an integer from 0 to 10000 milliseconds"
+doc = "Minimum interval between accepted presses, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "beep-on-reject"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Beep when a repeated press is rejected."
+since = "0.2.0"
+
+[[record]]
+name = "MouseKeys"
+doc = "Mouse Keys: move the pointer with the keyboard."
+
+[[record.field]]
+key = "enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Enable the feature."
+since = "0.2.0"
+
+[[record.field]]
+key = "max-speed"
+kind = "int"
+min = 1
+max = 10000
+inherit = true
+accepted = "an integer from 1 to 10000 pixels per second"
+doc = "Maximum pointer speed, in pixels per second."
+since = "0.2.0"
+
+[[record.field]]
+key = "acceleration-time-ms"
+kind = "int"
+min = 1
+max = 10000
+inherit = true
+accepted = "an integer from 1 to 10000 milliseconds"
+doc = "Time to accelerate from rest to maximum, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "initial-delay-ms"
+kind = "int"
+min = 0
+max = 10000
+inherit = true
+accepted = "an integer from 0 to 10000 milliseconds"
+doc = "Delay before the pointer starts moving, in milliseconds."
+since = "0.2.0"
+
+[[record]]
+name = "SlowKeys"
+doc = "Slow Keys: accept a press only after the key is held."
+
+[[record.field]]
+key = "enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Enable the feature."
+since = "0.2.0"
+
+[[record.field]]
+key = "delay-ms"
+kind = "int"
+min = 0
+max = 10000
+inherit = true
+accepted = "an integer from 0 to 10000 milliseconds"
+doc = "How long the key must be held, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "beep-on-press"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Beep when a key is first pressed."
+since = "0.2.0"
+
+[[record.field]]
+key = "beep-on-accept"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Beep when a held press is accepted."
+since = "0.2.0"
+
+[[record.field]]
+key = "beep-on-reject"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Beep when a press is rejected."
+since = "0.2.0"
+
+[[record]]
+name = "StickyKeys"
+doc = "Sticky Keys: modifiers apply to one press at a time."
+
+[[record.field]]
+key = "enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Enable the feature."
+since = "0.2.0"
+
+[[record.field]]
+key = "two-key-off"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Disable Sticky Keys when two keys are pressed together."
+since = "0.2.0"
+
+[[record.field]]
+key = "beep-on-modifier"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Beep when a modifier is pressed."
+since = "0.2.0"
+
+[[record]]
+name = "ToggleKeys"
+doc = "Toggle Keys: beep when a locking key toggles."
+
+[[record.field]]
+key = "enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Enable the feature."
+since = "0.2.0"
+
+[[record]]
+name = "Accessibility"
+doc = "Keyboard accessibility features, as Mutter names them."
+
+[[record.field]]
+key = "shortcuts-enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Enable the keyboard shortcuts that toggle accessibility features."
+since = "0.2.0"
+
+[[record.field]]
+key = "beep-on-feature-state-change"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Beep when a feature changes state."
+since = "0.2.0"
+
+[[record.field]]
+key = "bounce-keys"
+kind = "record"
+record = "BounceKeys"
+inherit = true
+accepted = "a table of feature settings or \"inherit\""
+doc = "Bounce Keys."
+since = "0.2.0"
+
+[[record.field]]
+key = "mouse-keys"
+kind = "record"
+record = "MouseKeys"
+inherit = true
+accepted = "a table of feature settings or \"inherit\""
+doc = "Mouse Keys."
+since = "0.2.0"
+
+[[record.field]]
+key = "slow-keys"
+kind = "record"
+record = "SlowKeys"
+inherit = true
+accepted = "a table of feature settings or \"inherit\""
+doc = "Slow Keys."
+since = "0.2.0"
+
+[[record.field]]
+key = "sticky-keys"
+kind = "record"
+record = "StickyKeys"
+inherit = true
+accepted = "a table of feature settings or \"inherit\""
+doc = "Sticky Keys."
+since = "0.2.0"
+
+[[record.field]]
+key = "toggle-keys"
+kind = "record"
+record = "ToggleKeys"
+inherit = true
+accepted = "a table of feature settings or \"inherit\""
+doc = "Toggle Keys."
+since = "0.2.0"
+
+[[record]]
+name = "Mouse"
+doc = "Mouse settings."
+
+[[record.field]]
+key = "speed"
+kind = "float"
+min = -1.0
+max = 1.0
+inherit = true
+accepted = "a number from -1 to 1"
+default = { float = 0.0 }
+doc = "Pointer speed, -1 to 1."
+since = "0.2.0"
+
+[[record.field]]
+key = "double-click-time"
+kind = "int"
+min = 0
+max = 2147483647
+inherit = true
+accepted = "an integer from 0 to 2147483647 milliseconds"
+doc = "Time between presses that counts as a double click, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "drag-threshold"
+kind = "int"
+min = 1
+max = 2147483647
+inherit = true
+accepted = "an integer from 1 to 2147483647 pixels"
+doc = "Distance before movement becomes a drag, in pixels."
+since = "0.2.0"
+
+[[record.field]]
+key = "left-handed"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+default = { bool = false }
+doc = "Swap the primary buttons."
+since = "0.2.0"
+
+[[record.field]]
+key = "natural-scroll"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+default = { bool = false }
+doc = "Reverse the scroll direction."
+since = "0.2.0"
+
+[[record.field]]
+key = "middle-click-emulation"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+default = { bool = false }
+doc = "Middle click when both buttons are pressed."
+since = "0.2.0"
+
+[[record.field]]
+key = "accel-profile"
+kind = "enum"
+enum = "AccelProfile"
+inherit = true
+accepted = "one of default, flat, adaptive, custom"
+default = { enum = "default" }
+doc = "The acceleration profile."
+since = "0.2.0"
+
+[[record.field]]
+key = "accel-curve"
+kind = "record"
+record = "AccelCurve"
+inherit = true
+accepted = "a table with step and points"
+doc = "The curve accel-profile = custom uses."
+since = "0.2.0"
+
+[[record]]
+name = "Touchpad"
+doc = "Touchpad settings."
+
+[[record.field]]
+key = "speed"
+kind = "float"
+min = -1.0
+max = 1.0
+inherit = true
+accepted = "a number from -1 to 1"
+doc = "Pointer speed, -1 to 1."
+since = "0.2.0"
+
+[[record.field]]
+key = "scroll-speed"
+kind = "float"
+min = 0.0
+max = 2.0
+inherit = true
+accepted = "a number from 0 to 2"
+doc = "Scroll speed, 0 to 2."
+since = "0.2.0"
+
+[[record.field]]
+key = "left-handed"
+kind = "enum"
+enum = "Handedness"
+inherit = true
+accepted = "one of right, left, follow-mouse"
+doc = "Which hand the touchpad is configured for."
+since = "0.2.0"
+
+[[record.field]]
+key = "natural-scroll"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Reverse the scroll direction."
+since = "0.2.0"
+
+[[record.field]]
+key = "middle-click-emulation"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Middle click when both buttons are pressed."
+since = "0.2.0"
+
+[[record.field]]
+key = "accel-profile"
+kind = "enum"
+enum = "AccelProfile"
+inherit = true
+accepted = "one of default, flat, adaptive, custom"
+doc = "The acceleration profile."
+since = "0.2.0"
+
+[[record.field]]
+key = "accel-curve"
+kind = "record"
+record = "AccelCurve"
+inherit = true
+accepted = "a table with step and points"
+doc = "The curve accel-profile = custom uses."
+since = "0.2.0"
+
+[[record.field]]
+key = "tap-to-click"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Treat a tap as a click."
+since = "0.2.0"
+
+[[record.field]]
+key = "tap-button-map"
+kind = "enum"
+enum = "TapButtonMap"
+inherit = true
+accepted = "one of default, left-right-middle, left-middle-right"
+doc = "Which button each tap area reports."
+since = "0.2.0"
+
+[[record.field]]
+key = "tap-and-drag"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Drag by tapping and moving."
+since = "0.2.0"
+
+[[record.field]]
+key = "tap-and-drag-lock"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Keep dragging after the next tap."
+since = "0.2.0"
+
+[[record.field]]
+key = "disable-while-typing"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Ignore the touchpad while typing."
+since = "0.2.0"
+
+[[record.field]]
+key = "disable-while-typing-timeout"
+kind = "int"
+min = 100
+max = 5000
+inherit = true
+accepted = "an integer from 100 to 5000 milliseconds"
+doc = "How long after a key press the touchpad stays disabled, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "edge-scrolling-enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Scroll along the touchpad edge."
+since = "0.2.0"
+
+[[record.field]]
+key = "two-finger-scrolling-enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Scroll with two fingers."
+since = "0.2.0"
+
+[[record.field]]
+key = "click-method"
+kind = "enum"
+enum = "ClickMethod"
+inherit = true
+accepted = "one of default, none, areas, fingers"
+doc = "How a tap maps to a button."
+since = "0.2.0"
+
+[[record]]
+name = "Trackball"
+doc = "Trackball settings."
+
+[[record.field]]
+key = "accel-profile"
+kind = "enum"
+enum = "DeviceAccelProfile"
+inherit = true
+accepted = "one of default, flat, adaptive"
+doc = "The acceleration profile."
+since = "0.2.0"
+
+[[record.field]]
+key = "middle-click-emulation"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Middle click when both buttons are pressed."
+since = "0.2.0"
+
+[[record.field]]
+key = "scroll-wheel-emulation-button"
+kind = "int"
+min = 0
+max = 24
+inherit = true
+accepted = "an integer from 0 to 24"
+doc = "The button that stands in for scroll events."
+since = "0.2.0"
+
+[[record.field]]
+key = "scroll-wheel-emulation-button-lock"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Hold that button to keep scrolling."
+since = "0.2.0"
+
+[[record]]
+name = "PointingStick"
+doc = "Pointing-stick settings."
+
+[[record.field]]
+key = "speed"
+kind = "float"
+min = -1.0
+max = 1.0
+inherit = true
+accepted = "a number from -1 to 1"
+doc = "Pointer speed, -1 to 1."
+since = "0.2.0"
+
+[[record.field]]
+key = "accel-profile"
+kind = "enum"
+enum = "DeviceAccelProfile"
+inherit = true
+accepted = "one of default, flat, adaptive"
+doc = "The acceleration profile."
+since = "0.2.0"
+
+[[record.field]]
+key = "scroll-method"
+kind = "enum"
+enum = "ScrollMethod"
+inherit = true
+accepted = "one of default, none, on-button-down"
+doc = "How the stick scrolls."
+since = "0.2.0"
+
+[[record]]
+name = "Keyboard"
+doc = "Keyboard settings."
+
+[[record.field]]
+key = "repeat"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Repeat a held key."
+since = "0.2.0"
+
+[[record.field]]
+key = "delay"
+kind = "int"
+min = 1
+max = 10000
+inherit = true
+accepted = "an integer from 1 to 10000 milliseconds"
+doc = "Time before repeat starts, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "repeat-interval"
+kind = "int"
+min = 1
+max = 10000
+inherit = true
+accepted = "an integer from 1 to 10000 milliseconds"
+doc = "Time between repeated presses, in milliseconds."
+since = "0.2.0"
+
+[[record.field]]
+key = "remember-numlock-state"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Remember the Num Lock state between sessions."
+since = "0.2.0"
+
+[[record.field]]
+key = "numlock-state"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Set the Num Lock state while this document is active."
+since = "0.2.0"
+
+[[record.field]]
+key = "xkb-options"
+kind = "text-list"
+inherit = true
+accepted = "a list of XKB option strings"
+doc = "The XKB option list, which replaces the active one."
+since = "0.2.0"
+
+[[record.field]]
+key = "accessibility"
+kind = "record"
+record = "Accessibility"
+inherit = true
+accepted = "a table of accessibility settings or \"inherit\""
+doc = "Keyboard accessibility features."
+since = "0.2.0"
+
+[[record]]
+name = "PadButton"
+doc = "One tablet-pad button action."
+hook = "pad_button"
+
+[[record.field]]
+key = "button"
+kind = "int"
+min = 0
+max = 255
+required = "a button number from 0 to 255"
+accepted = "a button number from 0 to 255"
+doc = "The button number."
+since = "0.2.0"
+
+[[record.field]]
+key = "action"
+kind = "enum"
+enum = "PadButtonAction"
+required = "a pad button action"
+accepted = "one of default, none, help, switch-monitor, keybinding"
+doc = "What the button does."
+since = "0.2.0"
+
+[[record.field]]
+key = "keybinding"
+kind = "text"
+accepted = "an accelerator string"
+doc = "The accelerator the keybinding action runs."
+since = "0.2.0"
+
+[[record]]
+name = "Tablet"
+doc = "One tablet's overrides."
+hook = "tablet"
+
+[[record.field]]
+key = "mapping"
+kind = "enum"
+enum = "TabletMapping"
+inherit = true
+accepted = "one of absolute, relative"
+doc = "How pen movement maps to the pointer."
+since = "0.2.0"
+
+[[record.field]]
+key = "output"
+kind = "text"
+inherit = true
+accepted = "\"auto\" or a connector id"
+doc = "auto, or the connector id of the output to map to."
+since = "0.2.0"
+
+[[record.field]]
+key = "left-handed"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Reverse the button orientation."
+since = "0.2.0"
+
+[[record.field]]
+key = "keep-aspect"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Keep the tablet's proportions on a differently shaped display."
+since = "0.2.0"
+
+[[record.field]]
+key = "area"
+kind = "float-list"
+min = 0.0
+max = 1.0
+exclusive_max = true
+length = 4
+inherit = true
+accepted = "four fractions or \"inherit\""
+doc = "The active area as left, right, top and bottom fractions."
+since = "0.2.0"
+
+[[record.field]]
+key = "pad-buttons"
+kind = "record-list"
+record = "PadButton"
+inherit = true
+accepted = "a list of button actions or \"inherit\""
+doc = "Actions for the tablet-pad buttons."
+since = "0.2.0"
+
+[[record]]
+name = "Stylus"
+doc = "One stylus's overrides."
+
+[[record.field]]
+key = "eraser-button-mode"
+kind = "enum"
+enum = "StylusEraserMode"
+inherit = true
+accepted = "one of default, button"
+doc = "What the eraser button does."
+since = "0.2.0"
+
+[[record.field]]
+key = "eraser-button-action"
+kind = "enum"
+enum = "StylusAction"
+inherit = true
+accepted = "one of default, middle, right, back, forward, switch-monitor, keybinding"
+doc = "The eraser button's action."
+since = "0.2.0"
+
+[[record.field]]
+key = "eraser-button-keybinding"
+kind = "text"
+inherit = true
+accepted = "an accelerator string"
+doc = "The accelerator the eraser button runs."
+since = "0.2.0"
+
+[[record.field]]
+key = "button-action"
+kind = "enum"
+enum = "StylusAction"
+inherit = true
+accepted = "one of default, middle, right, back, forward, switch-monitor, keybinding"
+doc = "The primary button's action."
+since = "0.2.0"
+
+[[record.field]]
+key = "button-keybinding"
+kind = "text"
+inherit = true
+accepted = "an accelerator string"
+doc = "The accelerator the primary button runs."
+since = "0.2.0"
+
+[[record.field]]
+key = "secondary-button-action"
+kind = "enum"
+enum = "StylusAction"
+inherit = true
+accepted = "one of default, middle, right, back, forward, switch-monitor, keybinding"
+doc = "The secondary button's action."
+since = "0.2.0"
+
+[[record.field]]
+key = "secondary-button-keybinding"
+kind = "text"
+inherit = true
+accepted = "an accelerator string"
+doc = "The accelerator the secondary button runs."
+since = "0.2.0"
+
+[[record.field]]
+key = "tertiary-button-action"
+kind = "enum"
+enum = "StylusAction"
+inherit = true
+accepted = "one of default, middle, right, back, forward, switch-monitor, keybinding"
+doc = "The tertiary button's action."
+since = "0.2.0"
+
+[[record.field]]
+key = "tertiary-button-keybinding"
+kind = "text"
+inherit = true
+accepted = "an accelerator string"
+doc = "The accelerator the tertiary button runs."
+since = "0.2.0"
+
+[[record]]
+name = "GesturePoint"
+doc = "One point of a swipe path, normalised to the range -1 to 1."
+
+[[record.field]]
+key = "x"
+kind = "float"
+min = -1.0
+max = 1.0
+required = "a number from -1 to 1"
+accepted = "a number from -1 to 1"
+doc = "Horizontal position, increasing to the right."
+since = "0.2.0"
+
+[[record.field]]
+key = "y"
+kind = "float"
+min = -1.0
+max = 1.0
+required = "a number from -1 to 1"
+accepted = "a number from -1 to 1"
+doc = "Vertical position, increasing downwards."
+since = "0.2.0"
+
+[[record]]
+name = "Gesture"
+doc = "One touchpad gesture binding."
+hook = "gesture"
+
+[[record.field]]
+key = "name"
+kind = "text"
+required = "a gesture name"
+accepted = "a unique name of 1 to 64 letters, digits, underscores or dashes"
+doc = "The unique name diagnostics use."
+since = "0.2.0"
+
+[[record.field]]
+key = "gesture"
+kind = "enum"
+enum = "GestureKind"
+required = "swipe or pinch"
+accepted = "one of swipe, pinch"
+doc = "Whether this is a swipe or a pinch."
+since = "0.2.0"
+
+[[record.field]]
+key = "fingers"
+kind = "int"
+min = 2
+max = 5
+required = "a finger count from 2 to 5"
+accepted = "an integer from 2 to 5 fingers"
+doc = "How many fingers the gesture needs."
+since = "0.2.0"
+
+[[record.field]]
+key = "direction"
+kind = "enum"
+enum = "GestureDirection"
+accepted = "one of in, out"
+doc = "The pinch direction; only for a pinch."
+since = "0.2.0"
+
+[[record.field]]
+key = "path"
+kind = "record-list"
+record = "GesturePoint"
+accepted = "a path of 2 to 16 points"
+doc = "The swipe path; only for a swipe."
+since = "0.2.0"
+
+[[record.field]]
+key = "action"
+kind = "enum"
+enum = "GestureAction"
+accepted = "a built-in gesture action"
+doc = "The built-in action, or none when this runs a command."
+since = "0.2.0"
+
+[[record.field]]
+key = "command"
+kind = "text-list"
+first_nonempty = true
+accepted = "a nonempty argv array whose first entry names the program"
+doc = "The command to start."
+since = "0.2.0"
+
+[[record.field]]
+key = "when"
+kind = "enum"
+enum = "GestureWhen"
+accepted = "one of unlocked, locked, any"
+default = { enum = "unlocked" }
+doc = "The lock context the gesture applies in."
+since = "0.2.0"
+
+[[record.field]]
+key = "threshold"
+kind = "float"
+min = 16.0
+max = 240.0
+accepted = "a swipe threshold from 16 to 240"
+doc = "The minimum movement before the path can match."
+since = "0.2.0"
+
+[[record.field]]
+key = "tolerance"
+kind = "float"
+min = 0.05
+max = 0.5
+accepted = "a tolerance from 0.05 to 0.5"
+doc = "How closely the movement must match the path."
+since = "0.2.0"
+
+[[record]]
+name = "InputSource"
+doc = "One input source."
+
+[[record.field]]
+key = "type"
+kind = "enum"
+enum = "InputSourceType"
+required = "xkb or ibus"
+accepted = "one of xkb, ibus"
+doc = "Whether this is an XKB layout or an IBus engine."
+since = "0.2.0"
+
+[[record.field]]
+key = "id"
+kind = "text"
+required = "a layout or engine id"
+accepted = "a nonempty layout or engine id"
+doc = "The layout or engine id."
+since = "0.2.0"
+
+# --- Sections ---------------------------------------------------------------
+# A section is a top-level document key. `spread` means the section's own keys
+# are the map (`protocols`, `frame-renderers`) rather than settings.
+
+[[section]]
+key = "compositor"
+type = "Compositor"
+doc = "What the compositor draws itself and how."
+hook = "compositor"
+overridable = true
+
+[[section.field]]
+key = "debug"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Show the frame-time and resource overlay."
+since = "0.2.0"
+
+[[section.field]]
+key = "locate-pointer"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Send a locate request when the locate key is pressed."
+since = "0.2.0"
+
+[[section.field]]
+key = "locate-pointer-key"
+kind = "text"
+accepted = "one XKB keysym name, \"disabled\", or an empty string"
+default = { text = "Control_L" }
+doc = "The key that triggers the pointer locator."
+since = "0.2.0"
+
+[[section.field]]
+key = "visual-bell"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Flash the screen when an application rings the visual bell."
+since = "0.2.0"
+
+[[section.field]]
+key = "audible-bell"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Play a sound when an application rings the audible bell."
+since = "0.2.0"
+
+[[section.field]]
+key = "visual-bell-type"
+kind = "enum"
+enum = "VisualBellType"
+accepted = "one of fullscreen-flash, frame-flash"
+default = { enum = "fullscreen-flash" }
+doc = "Which part of the screen the visual bell flashes."
+since = "0.2.0"
+
+[[section.field]]
+key = "blur"
+kind = "enum"
+enum = "Blur"
+accepted = "one of auto, on, off"
+default = { enum = "auto" }
+doc = "Background blur policy."
+since = "0.2.0"
+
+[[section.field]]
+key = "renderer"
+kind = "enum"
+enum = "RendererChoice"
+accepted = "one of auto, vulkan, gles, software"
+default = { enum = "auto" }
+doc = "Which renderer draws the compositor's frames."
+since = "0.2.0"
+
+[[section]]
+key = "window-management"
+type = "WindowManagement"
+doc = "Stacking, focus and placement policy."
+hook = "window_management"
+overridable = true
+
+[[section.field]]
+key = "focus-mode"
+kind = "enum"
+enum = "FocusMode"
+accepted = "one of click, hover, hover-strict"
+default = { enum = "click" }
+doc = "When pointer movement changes focus."
+since = "0.2.0"
+
+[[section.field]]
+key = "focus-new-windows"
+kind = "enum"
+enum = "FocusNewWindows"
+accepted = "one of allow, prevent"
+default = { enum = "prevent" }
+doc = "When a new window may take focus."
+since = "0.2.0"
+
+[[section.field]]
+key = "auto-maximize"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Maximize a window that nearly fills its monitor."
+since = "0.2.0"
+
+[[section.field]]
+key = "raise-on-click"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Raise a window when it is clicked."
+since = "0.2.0"
+
+[[section.field]]
+key = "auto-raise"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Raise the focused window after a delay."
+since = "0.2.0"
+
+[[section.field]]
+key = "auto-raise-delay"
+kind = "int"
+min = 0
+max = 10000
+accepted = "an integer from 0 to 10000"
+default = { int = 500 }
+doc = "The delay before auto-raise, in milliseconds."
+since = "0.2.0"
+
+[[section.field]]
+key = "focus-change-on-pointer-rest"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Change focus only after the pointer rests over another window."
+since = "0.2.0"
+
+[[section.field]]
+key = "check-alive-timeout"
+kind = "int"
+min = 0
+max = 4294967295
+accepted = "an integer from 0 to 4294967295"
+default = { int = 5000 }
+doc = "How long a client may take to answer a ping, in milliseconds."
+since = "0.2.0"
+
+[[section.field]]
+key = "workspaces-only-on-primary"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Keep workspaces on the primary monitor."
+since = "0.2.0"
+
+[[section.field]]
+key = "edge-tiling"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Drag a window to a screen edge to tile it."
+since = "0.2.0"
+
+[[section.field]]
+key = "new-window-placement"
+kind = "enum"
+enum = "NewWindowPlacement"
+accepted = "one of free_space, center, cascade"
+default = { enum = "free_space" }
+doc = "Where a new application window opens."
+since = "0.2.0"
+
+[[section.field]]
+key = "attach-modal-dialogs"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Place modal dialogs with their parent."
+since = "0.2.0"
+
+[[section.field]]
+key = "disable-workarounds"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Turn off Mutter's compatibility workarounds for X11 clients."
+since = "0.2.0"
+
+[[section.field]]
+key = "constrain-drag-to-work-area"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Keep a dragged window inside the work area."
+since = "0.2.0"
+
+[[section.field]]
+key = "dynamic-workspaces"
+kind = "bool"
+accepted = "a boolean"
+doc = "Let the workspace count follow use instead of a declaration."
+since = "0.2.0"
+
+[[section.field]]
+key = "action-double-click-titlebar"
+kind = "enum"
+enum = "TitlebarAction"
+accepted = "one of toggle-maximize, toggle-maximize-horizontally, toggle-maximize-vertically, minimize, lower, menu, none"
+default = { enum = "toggle-maximize" }
+doc = "What a titlebar double-click does."
+since = "0.2.0"
+
+[[section.field]]
+key = "action-middle-click-titlebar"
+kind = "enum"
+enum = "TitlebarAction"
+accepted = "one of toggle-maximize, toggle-maximize-horizontally, toggle-maximize-vertically, minimize, lower, menu, none"
+default = { enum = "lower" }
+doc = "What a titlebar middle-click does."
+since = "0.2.0"
+
+[[section.field]]
+key = "action-right-click-titlebar"
+kind = "enum"
+enum = "TitlebarAction"
+accepted = "one of toggle-maximize, toggle-maximize-horizontally, toggle-maximize-vertically, minimize, lower, menu, none"
+default = { enum = "menu" }
+doc = "What a titlebar right-click does."
+since = "0.2.0"
+
+[[section.field]]
+key = "button-layout"
+kind = "record"
+record = "ButtonLayout"
+accepted = "a table"
+doc = "The button layout preference stored for compatibility with Mutter."
+since = "0.2.0"
+
+[[section]]
+key = "cursor"
+type = "Cursor"
+doc = "The Xcursor or Hyprcursor theme and its logical size."
+overridable = true
+
+[[section.field]]
+key = "theme"
+kind = "text"
+nonempty = true
+accepted = "a nonempty theme name"
+default = { text = "default" }
+doc = "The theme name."
+since = "0.2.0"
+
+[[section.field]]
+key = "size"
+kind = "int"
+min = 1
+max = 256
+accepted = "an integer from 1 to 256"
+default = { int = 24 }
+doc = "The size in logical pixels."
+since = "0.2.0"
+
+[[section.field]]
+key = "providers"
+kind = "enum-list"
+enum = "CursorProvider"
+accepted = "a list of cursor providers"
+default = { list = ["hyprcursor", "kde-gnome-svg", "xcursor"] }
+doc = "The cursor image providers, searched in order. The built-in arrow is always the last resort."
+since = "0.2.0"
+
+[[section]]
+key = "appearance"
+type = "Appearance"
+doc = "The colour scheme and accent colour that every toolkit is told about: GTK through dconf and the portal, Qt through the portal."
+hook = "appearance"
+overridable = true
+
+[[section.field]]
+key = "color-scheme"
+kind = "enum"
+enum = "ColorScheme"
+accepted = "one of default, prefer-dark, prefer-light"
+default = { enum = "default" }
+doc = "Whether applications prefer a dark or a light appearance."
+since = "0.2.0"
+
+[[section.field]]
+key = "accent"
+kind = "text"
+nonempty = true
+accepted = "a named accent (blue, teal, green, yellow, orange, red, pink, purple, slate), #rgb or #rrggbb"
+doc = "The accent colour. A named accent is used as it is; a hex colour is published as the nearest named accent, because GTK takes only names."
+since = "0.2.0"
+
+[[section]]
+key = "input"
+type = "Input"
+doc = "Pointer, keyboard and tablet settings."
+overridable = true
+
+[[section.field]]
+key = "orientation-lock"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Lock the screen orientation, or follow the system setting."
+since = "0.2.0"
+
+[[section.field]]
+key = "mouse"
+kind = "record"
+record = "Mouse"
+accepted = "a table of device settings"
+doc = "Mouse settings."
+since = "0.2.0"
+
+[[section.field]]
+key = "touchpad"
+kind = "record"
+record = "Touchpad"
+accepted = "a table of device settings"
+doc = "Touchpad settings."
+since = "0.2.0"
+
+[[section.field]]
+key = "trackball"
+kind = "record"
+record = "Trackball"
+accepted = "a table of device settings"
+doc = "Trackball settings."
+since = "0.2.0"
+
+[[section.field]]
+key = "pointing-stick"
+kind = "record"
+record = "PointingStick"
+accepted = "a table of device settings"
+doc = "Pointing-stick settings."
+since = "0.2.0"
+
+[[section.field]]
+key = "keyboard"
+kind = "record"
+record = "Keyboard"
+accepted = "a table of device settings"
+doc = "Keyboard settings."
+since = "0.2.0"
+
+[[section.field]]
+key = "tablets"
+kind = "record-map"
+record = "Tablet"
+id = "hex-pair"
+accepted = "a table keyed by device id"
+doc = "Per-device tablet overrides, keyed by vvvv:pppp."
+since = "0.2.0"
+
+[[section.field]]
+key = "styluses"
+kind = "record-map"
+record = "Stylus"
+id = "serial"
+accepted = "a table keyed by device id"
+doc = "Per-device stylus overrides."
+since = "0.2.0"
+
+[[section]]
+key = "input-sources"
+type = "InputSources"
+doc = "The switchable keyboard layouts and input methods."
+
+[[section.field]]
+key = "sources"
+kind = "record-list"
+record = "InputSource"
+required = "a list of input sources"
+accepted = "a list of input source tables"
+doc = "The sources, in switching order."
+since = "0.2.0"
+
+[[section.field]]
+key = "per-window"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Remember a different source per window."
+since = "0.2.0"
+
+[[section]]
+key = "protocols"
+type = "Protocols"
+doc = "Which Wayland protocols are advertised to new clients."
+overridable = true
+
+[section.spread]
+field = "toggles"
+kind = "enum-bool-map"
+enum = "Protocol"
+accepted = "a protocol name and a boolean"
+doc = "The protocols the document sets, in name order."
+
+[[section]]
+key = "frame-renderers"
+type = "FrameRenderers"
+doc = "The named frame renderer commands."
+hook = "frame_renderers"
+
+[section.spread]
+field = "renderers"
+kind = "text-list-map"
+id = "renderer"
+accepted = "an argv of 1 to 32 strings whose first entry names the program"
+doc = "Each renderer's argv, in name order."
+
+[[section]]
+key = "layer-shell"
+type = "LayerShell"
+doc = "How an opening layer surface affects the focused window."
+overridable = true
+
+[[section.field]]
+key = "preserve-active-window"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Keep the active application window focused when a layer surface opens."
+since = "0.2.0"
+
+[[section]]
+key = "prompts"
+type = "Prompts"
+doc = "Whether Gnoblin serves keyring and GPG passphrase prompts."
+
+[[section.field]]
+key = "enabled"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Take the prompter role on the session bus."
+since = "0.2.0"
+
+[[section]]
+key = "auth"
+type = "Auth"
+doc = "Whether Gnoblin is the session's polkit authentication agent."
+
+[[section.field]]
+key = "polkit-agent"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Register as the polkit authentication agent."
+since = "0.2.0"
+
+[[section]]
+key = "location"
+type = "Location"
+doc = "The policy Gnoblin's GeoClue agent applies."
+
+[[section.field]]
+key = "enabled"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Whether location requests may be approved at all."
+since = "0.2.0"
+
+[[section.field]]
+key = "max-accuracy"
+kind = "enum"
+enum = "LocationAccuracy"
+inherit = true
+accepted = "one of country, city, neighborhood, street, exact"
+doc = "The greatest precision an approved request may return."
+since = "0.2.0"
+
+[[section]]
+key = "compat"
+type = "Compat"
+doc = "Which compatibility adapters Gnoblin serves on the session bus."
+
+[[section.field]]
+key = "capture"
+kind = "enum"
+enum = "CompatCapture"
+accepted = "one of off, portal, unmediated"
+default = { enum = "portal" }
+doc = "How much of the compatibility surface answers: off serves none of it."
+since = "0.2.0"
+
+[[section]]
+key = "monitors"
+type = "Monitors"
+doc = "Preferences that apply to whichever monitors are connected."
+overridable = true
+
+[[section.field]]
+key = "privacy-screen"
+kind = "bool"
+inherit = true
+accepted = "a boolean or \"inherit\""
+doc = "Request the privacy-screen state on monitors that have one."
+since = "0.2.0"
+
+[[section.field]]
+key = "global-scale"
+kind = "int"
+min = 0
+max = 4
+inherit = true
+accepted = "an integer from 0 through 4"
+doc = "Scale every output by this integer step, or follow the system setting."
+since = "0.2.0"
+
+[[section]]
+key = "xwayland"
+type = "Xwayland"
+doc = "How the X11 server is started and what it may do."
+hook = "xwayland"
+
+[[section.field]]
+key = "allow-grabs"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Allow X11 clients to take keyboard grabs on override-redirect windows."
+since = "0.2.0"
+
+[[section.field]]
+key = "allow-byte-swapped-clients"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = false }
+doc = "Allow clients whose byte order differs from the server's."
+since = "0.2.0"
+
+[[section.field]]
+key = "grab-access-rules"
+kind = "text-list"
+accepted = "a list of strings"
+default = { list = [] }
+doc = "Resource names or classes permitted to take a grab."
+since = "0.2.0"
+
+[[section.field]]
+key = "disable-extensions"
+kind = "enum-list"
+enum = "XwaylandExtension"
+accepted = "a list of xwayland extensions"
+default = { list = [] }
+doc = "Xwayland extensions to disable."
+since = "0.2.0"
+
+[[section.field]]
+key = "scaling-factor"
+kind = "float"
+min = 0.0
+max = 2147483520.0
+accepted = "0, or a finite number from 0.5 through 2147483520"
+default = { int = 0 }
+doc = "0 for automatic scaling, otherwise the scale Mutter is told."
+since = "0.2.0"
+
+[[section]]
+key = "layout"
+type = "Layout"
+doc = "Which layout engine arranges each workspace's windows."
+
+[[section.field]]
+key = "default"
+kind = "text"
+nonempty = true
+accepted = "a nonempty layout name"
+default = { text = "floating" }
+doc = "The layout of a workspace with no override. floating arranges nothing."
+since = "0.2.0"
+
+[[section.field]]
+key = "outputs"
+kind = "record-list"
+record = "LayoutOutput"
+accepted = "a list of output layout tables"
+doc = "Layout overrides by output connector id. A workspace override wins over these."
+since = "0.2.0"
+
+[[section.field]]
+key = "workspaces"
+kind = "record-list"
+record = "LayoutWorkspace"
+accepted = "a list of workspace layout tables"
+doc = "Layout overrides by workspace id. These win over the output and default layouts."
+since = "0.2.0"
+
+[[section.field]]
+key = "module-dirs"
+kind = "text-list"
+accepted = "a list of directory paths"
+default = { list = [] }
+doc = "Extra directories searched for layout modules, before the shipped ones. A module here overrides a shipped layout of the same name: the first directory that holds the name wins."
+since = "0.2.0"
+
+[[section]]
+key = "workspaces"
+type = "Workspaces"
+doc = "The declared workspaces, in declaration order."
+hook = "workspaces"
+
+[section.spread]
+field = "workspaces"
+kind = "record-list"
+record = "Workspace"
+accepted = "a list of workspace tables"
+doc = "The declared workspaces."
+
+[[section]]
+key = "touchpad-gestures"
+type = "TouchpadGestures"
+doc = "The touchpad gesture bindings, in declaration order."
+hook = "gestures"
+
+[section.spread]
+field = "gestures"
+kind = "record-list"
+record = "Gesture"
+accepted = "a list of gesture tables"
+doc = "The gesture bindings."
+
+# --- Carried sections -------------------------------------------------------
+# Recognised so a typo is still a typo, but not interpreted here: the values are
+# callbacks and rule declarations, which the Lua host and window management own.
+
+[[section]]
+key = "animations"
+doc = "Named animation declarations."
+carried = true
+
+[[section]]
+key = "logging"
+type = "Logging"
+doc = "What the process logs, where the database is, and how long it is kept."
+
+[[section.field]]
+key = "console"
+kind = "enum"
+enum = "LogConsole"
+accepted = "one of auto, pretty, off"
+default = { enum = "auto" }
+doc = "What is printed on standard error: auto picks the journal under systemd and a line format otherwise."
+since = "0.2.0"
+
+[[section.field]]
+key = "level"
+kind = "text"
+nonempty = true
+accepted = "a nonempty filter in EnvFilter syntax, such as info or gnoblin=debug,warn"
+default = { text = "info" }
+doc = "Which events are recorded, by level and by target."
+since = "0.2.0"
+
+[[section.field]]
+key = "store"
+kind = "bool"
+accepted = "a boolean"
+default = { bool = true }
+doc = "Whether events are written to the log database."
+since = "0.2.0"
+
+[[section.field]]
+key = "store-path"
+kind = "text"
+accepted = "a file path, or an empty string for the default"
+default = { text = "" }
+doc = "The database file. Empty means the state directory's gnoblin/logs.sqlite3."
+since = "0.2.0"
+
+[[section.field]]
+key = "store-max-age-days"
+kind = "int"
+min = 0
+max = 36500
+accepted = "an integer from 0 to 36500; 0 keeps every record"
+default = { int = 0 }
+doc = "Delete records older than this many days when the database opens."
+since = "0.2.0"
+
+[[section.field]]
+key = "store-max-size-mb"
+kind = "int"
+min = 0
+max = 1048576
+accepted = "an integer from 0 to 1048576; 0 means no limit"
+default = { int = 0 }
+doc = "Delete the oldest records when the database file exceeds this many megabytes."
+since = "0.2.0"
+
+[[section]]
+key = "autostart"
+doc = "Programs Gnoblin starts with the session."
+carried = true
+
+[[section]]
+key = "extensions"
+doc = "IPC extensions loaded from host configuration: namespace, schema, provider and grants."
+carried = true
+
+[[section]]
+key = "keybindings"
+doc = "Lua callbacks and Mutter action overrides by binding name."
+carried = true
+
+[[section]]
+key = "portals"
+doc = "Which portal implementation serves each interface."
+carried = true
+
+[[section]]
+key = "shortcuts"
+doc = "Named command shortcuts and built-in actions."
+carried = true
+
+[[section]]
+key = "window-rules"
+doc = "Window and layer-surface rules."
+carried = true

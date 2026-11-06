@@ -1,0 +1,28 @@
+[package]
+name = "gnoblin-session"
+description = "Guardian: supervision, systemd and logind, environment, autostart, logs and recovery."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-types.workspace = true
+# The guardian's log lines go through the `gnoblin-log` facade; the binary installs the subscriber that prints
+# and stores them, so the library names only the macros.
+gnoblin-log = { path = "../gnoblin-log" }
+
+# The supervisor module performs the effects: it creates socket pairs and pipes, clears and
+# restores close-on-exec, and signals a child's process group. Every one of those calls is
+# `rustix`'s safe wrapper, so the crate stays free of `unsafe` and needs no FFI shim.
+rustix = { workspace = true, features = ["net", "pipe"] }
+# The session manager's SIGTERM and SIGINT, as an iterator of signals rather than a handler.
+# `signal-hook` registers a handler in C and reports through a safe iterator; the unsafe is
+# the crate's, not this workspace's.
+signal-hook = "0.3.18"
+# The names of the descriptor variables and the report lines a role child writes, which are
+# the IPC's plumbing rather than the guardian's invention.
+gnoblin-proto = { path = "../gnoblin-proto" }
+
+[lints]
+workspace = true

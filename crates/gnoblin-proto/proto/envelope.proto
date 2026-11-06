@@ -1,0 +1,70 @@
+// The RPC envelope every frame carries.
+//
+// Hand-written, and the only .proto file here that is: the envelope is not a
+// schema member but the layer that carries them, so `cargo xtask gen-proto`
+// writes the namespace files beside it and leaves this one alone. `build.rs`
+// compiles all of them together, so the envelope is a generated type like the
+// rest (design/rust-compositor.md, "One IPC" and D16).
+//
+// Tags are fixed for good. A field number that has been used is never reused,
+// even after a member is removed, because a client built against an older version
+// would silently decode the new meaning.
+
+syntax = "proto3";
+
+package gnoblin.ipc;
+
+// Where a message goes, what it is, and the kind-specific body.
+message Envelope {
+  // The schema namespace the member belongs to, for example `gnoblin` or
+  // `example.ext`. The compositor routes on this and never decodes a payload from
+  // a namespace it does not serve itself.
+  string namespace = 1;
+
+  // The schema member: the method or signal name, such as `focus` or
+  // `request.answer`.
+  string member = 2;
+
+  // Pairs a reply or an error with its request. Zero on events.
+  uint64 request_id = 3;
+
+  // Bit 0 marks a frame as carrying secret material; the schema's `secret` flag
+  // decides it and nothing else may. See `sensitive.rs`.
+  uint32 flags = 4;
+
+  oneof kind {
+    Request request = 5;
+    Reply reply = 6;
+    Event event = 7;
+    Error error = 8;
+  }
+}
+
+// A call, answered by a Reply or an Error with the same request id. The payload
+// is a message generated from the schema for that member, or an extension's own,
+// which the compositor forwards undecoded.
+message Request {
+  bytes payload = 1;
+}
+
+// The answer to a request.
+message Reply {
+  bytes payload = 1;
+}
+
+// Something that happened without anyone asking: a property change, a signal, a
+// completion.
+message Event {
+  bytes payload = 1;
+}
+
+// A request that failed. The code is the schema's kebab-case error name carried
+// as text rather than as a number, so an older peer can still report a code this
+// build has never heard of.
+message Error {
+  string code = 1;
+
+  // Human-readable detail. Never carries a secret: the reply to a sensitive
+  // request is sensitive itself, and a reporter must redact before logging it.
+  string message = 2;
+}

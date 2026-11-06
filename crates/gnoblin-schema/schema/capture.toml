@@ -1,0 +1,69 @@
+# The `capture` object: the compositor's record of the capture sessions the
+# compatibility adapters opened.
+#
+# It is the compositor-side half of `org.gnome.Mutter.ScreenCast`
+# (design/rust-compositor.md, "Compatibility crates" and the redirect map's
+# `ScreenCast` row). The adapter runs in the services role, which is an IPC client
+# and may not link the engine, so every capture session it opens is announced
+# here and the compositor's capture table is what owns it. The session ends with
+# the caller: the adapter closes it when the caller's bus name vanishes, when the
+# session lock goes up, and when the session is stopped.
+#
+# The session identity is chosen by the caller of `open`, not returned by it.
+# Method results have no wire carriage in the object model yet, so a session that
+# had to be named by the compositor's reply could not be named at all. An
+# identity the adapter allocates makes `open` a plain command, and `close` a
+# lookup with nothing to guess.
+#
+# This object is a *command surface* rather than a published record. What the
+# compositor showed on screen is the privacy indicator's own business, and the
+# adapter does not read it: a caller that asks ScreenCast for a stream learns the
+# outcome from the stream's error, not from a mirrored copy of compositor state.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "capture"
+since = "0.2.0"
+
+# Announce a capture session. The compositor records it against the calling
+# connection, so a later frame delivered for an identity this connection never
+# opened is refused rather than served.
+[[object.method]]
+name = "open"
+since = "0.2.0"
+
+# The identity the adapter allocated for this session.
+[[object.method.param]]
+name = "session"
+type = "uint"
+since = "0.2.0"
+
+# The D-Bus caller's unique name, which is what the session belongs to. It is
+# carried rather than inferred because one services connection opens sessions for
+# many callers, and the compositor's attribution must name the caller and not the
+# services role.
+[[object.method.param]]
+name = "owner"
+type = "string"
+since = "0.2.0"
+
+# The `org.gnome.Mutter.RemoteDesktop.Session.SessionId` this screen cast is
+# linked to, or the empty string. A ScreenCast session created with a remote
+# desktop session id is started and stopped by that remote desktop session, which
+# is the link `CreateSession`'s `remote-desktop-session-id` property asks for.
+[[object.method.param]]
+name = "remote_session"
+type = "string"
+since = "0.2.0"
+
+# End a capture session the adapter opened.
+[[object.method]]
+name = "close"
+since = "0.2.0"
+
+# The identity the session was opened with.
+[[object.method.param]]
+name = "session"
+type = "uint"
+since = "0.2.0"

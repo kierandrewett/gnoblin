@@ -1,0 +1,23 @@
+{
+  "target": "candidate",
+  "observations": {
+    "layers.list": [
+      {
+        "id": 41,
+        "namespace": "bar",
+        "layer": "top",
+        "serial": 7,
+        "timestamp": 1767225600456,
+        "client_pid": 9931
+      },
+      {
+        "id": 42,
+        "namespace": "osd",
+        "layer": "overlay",
+        "serial": 9,
+        "timestamp": 1767225600789,
+        "client_pid": 9947
+      }
+    ]
+  }
+}

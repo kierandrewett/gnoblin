@@ -1,0 +1,322 @@
+# The Gnoblin Cargo workspace.
+#
+# Layout, crate ownership and the dependency rules enforced by `cargo xtask
+# deps` come from design/rust-compositor.md ("Project structure" and
+# "Dependency rules"). This manifest holds no code: it lists members, the shared
+# package fields, the shared lint levels and the pinned versions that members
+# inherit from `[workspace.dependencies]`.
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/compat/gnoblin-compat-core",
+    "crates/compat/gnoblin-compat-gnome-keyring-prompter",
+    "crates/compat/gnoblin-compat-gnome-session-manager",
+    "crates/compat/gnoblin-compat-gnome-shell-introspect",
+    "crates/compat/gnoblin-compat-gnome-shell-screenshot",
+    "crates/compat/gnoblin-compat-gtk-dconf-settings",
+    "crates/compat/gnoblin-compat-gtk-shell1",
+    "crates/compat/gnoblin-compat-mutter-clipboard",
+    "crates/compat/gnoblin-compat-mutter-displayconfig",
+    "crates/compat/gnoblin-compat-mutter-idlemonitor",
+    "crates/compat/gnoblin-compat-mutter-inputcapture",
+    "crates/compat/gnoblin-compat-mutter-inputmapping",
+    "crates/compat/gnoblin-compat-mutter-remotedesktop",
+    "crates/compat/gnoblin-compat-mutter-screencast",
+    "crates/compat/gnoblin-compat-mutter-servicechannel",
+    "crates/compat/gnoblin-compat-mutter-x11-interop",
+    "crates/compat/gnoblin-compat-qt-portal-settings",
+    "crates/compat/gnoblin-compat-x11-xsettings",
+    "crates/gnoblin",
+    "crates/gnoblin-a11y",
+    "crates/gnoblin-authority",
+    "crates/gnoblin-backend",
+    "crates/gnoblin-capture",
+    "crates/gnoblin-cli-style",
+    "crates/gnoblin-client",
+    "crates/gnoblin-compositor",
+    "crates/gnoblin-config",
+    "crates/gnoblin-config-codegen",
+    "crates/gnoblin-portal",
+    "crates/gnoblin-portal-appchooser",
+    "crates/gnoblin-portal-consent",
+    "crates/gnoblin-portal-core",
+    "crates/gnoblin-portal-filechooser",
+    "crates/gnoblin-input",
+    "crates/gnoblin-layers",
+    "crates/gnoblin-lock",
+    "crates/gnoblin-log",
+    "crates/gnoblin-lua",
+    "crates/gnoblin-lua-sandbox",
+    "crates/gnoblin-model",
+    "crates/gnoblin-output",
+    "crates/gnoblin-parity",
+    "crates/gnoblin-proto",
+    "crates/gnoblin-render",
+    "crates/gnoblin-schema",
+    "crates/gnoblin-service-core",
+    "crates/gnoblin-service-location",
+    "crates/gnoblin-service-polkit",
+    "crates/gnoblin-service-screensaver",
+    "crates/gnoblin-service-testkit",
+    "crates/gnoblin-services",
+    "crates/gnoblin-session",
+    "crates/gnoblin-testkit",
+    "crates/gnoblin-types",
+    "crates/gnoblin-wasm",
+    "crates/gnoblin-wayland",
+    "crates/gnoblin-wm",
+    "crates/gnoblin-xwayland",
+    "crates/gnoblinctl",
+    "crates/xdg-desktop-portal-gnoblin",
+    "xtask",
+]
+
+[workspace.package]
+# The rewrite ships as 0.2.0 and the IPC version is exactly the Gnoblin version,
+# so candidate builds are `0.2.0-alpha.N` (design/rust-compositor.md,
+# "Versioning"). xtask copies the released version from
+# versions/gnoblin-version.json at release time; do not edit this by hand.
+version = "0.2.0-alpha.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+repository = "https://github.com/kierandrewett/gnoblin"
+# Workspace crates are built from the tree and packaged by the distribution
+# packaging, never uploaded to crates.io.
+publish = false
+# `rust-version` is deliberately unset. The MSRV is the highest floor of the
+# exact pinned dependencies, not a release number (design/rust-compositor.md,
+# "Distribution and toolchain"), and no crate depends on anything yet. The
+# rust-toolchain.toml pin covers development until that job exists.
+
+# Lints every crate inherits with `[lints] workspace = true`.
+#
+# `unsafe_code = "forbid"` cannot be lifted anywhere inside a crate that inherits
+# this table, which is the point: pure policy crates and the skeleton stay free
+# of unsafe. A crate that must call C (libinput, libdrm, libseat, GBM) opts out by
+# dropping `[lints] workspace = true` and declaring its own table that restates
+# the clippy levels below with `unsafe_code = "deny"`; it then confines unsafe to
+# named FFI shim modules that each open with `#[allow(unsafe_code)]` and a
+# `// SAFETY:` comment. Adding such a crate is a reviewable change to this file
+# and to the dependency rules in `xtask/src/deps.rs`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+# Versions every member shares, so a bump is one line per dependency instead of
+# one line per crate. Members inherit these with `serde_json.workspace = true`.
+#
+# Every entry's licence is on the allow-list in deny.toml: prost, prost-build,
+# prost-types and prost-reflect (Apache-2.0), protox and protox-parse (MIT or
+# Apache-2.0), serde and serde_json (MIT or Apache-2.0), toml (MIT).
+[workspace.dependencies]
+# Protocol Buffers messages for the IPC (design/rust-compositor.md, D16).
+prost = "0.14.4"
+# `build.rs` in gnoblin-proto generates the `.proto` text from the schema and
+# compiles it with the pure-Rust front end, so nothing generated is checked in and a
+# build needs no protoc binary and no C++ toolchain.
+prost-build = "0.14.4"
+prost-types = "0.14.4"
+protox = "0.10.0"
+# The shader compiler of D12: every effect and user shader is written once in
+# WGSL and compiled per backend with `naga` (the validator and translator wgpu
+# uses). `wgsl-in` parses the source the shader guide documents and `glsl-out`
+# emits the GLSL ES 3.10 the GLES backend links; the Vulkan backend will take the
+# same module to SPIR-V. Validation is part of the crate, so no feature selects
+# it. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
+# The Vulkan bindings of the Vulkan renderer (`gnoblin-backend`, feature `vulkan`),
+# chosen in `design/vulkan-backend.md`. `loaded` opens the Vulkan loader with `dlopen`
+# at run time, so a machine without one still builds and starts and the renderer
+# reports a named error instead. `debug` is the debug-utils extension the validation
+# layer reports through. Licence MIT OR Apache-2.0, on the allow-list in deny.toml.
+ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
+# The safe OpenGL ES API Smithay's `renderer_glow` feature is built on. The same
+# 0.16 the pinned Smithay revision depends on, so the two cannot resolve to
+# different contexts.
+glow = "0.16"
+# The immediate-mode toolkit of the built-in portal dialogs and the recovery overlay
+# (D5, D19). Default features off: the core is pure math and tessellation, which the
+# headless renderer reads. `default_fonts` bundles the UI font so text renders
+# without a font lookup.
+egui = { version = "0.37.0", default-features = false, features = ["default_fonts"] }
+# PNG encoding for the portal gallery example (crates/gnoblin-portal/examples).
+png = "0.18.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.140"
+# The schema file format (crates/gnoblin-schema/src/parse.rs says why TOML).
+toml = "1.2.0"
+# The Wayland compositor library the engine is built on (design/rust-compositor.md,
+# D7). A git revision, not a crates.io release: 0.7.0 is from 2025-06-24 and lacks
+# protocols the session needs (`ext-image-copy-capture-v1`), so the pin tracks
+# master until a release carries them. Every member takes the same revision, and a
+# bump is its own change with a full parity run.
+#
+# Revision: 65aa86fa5236e41775c313408102a5d5c2d1e2ca (2026-11-04, "input/tablet:
+# Send the old focus its frame before proximity_in"). Reported version is 0.7.0,
+# `rust-version` 1.87, so the toolchain pin builds it.
+#
+# `default-features = false` keeps the DRM, libinput, X11, winit and Xwayland
+# backends out of the dependency graph until their crates ask for them: a member
+# adds the features it needs on top of this entry. `renderer_pixman` is here and
+# not in a member because D12's software path is the reference renderer: it links
+# the system `pixman-1` and turns `#[cfg]`s on in Smithay's own modules, both of
+# which must look the same for the whole workspace.
+#
+# `renderer_gl` and `renderer_glow` are here for the same reason, one step later:
+# D12's GPU path is Smithay's GLES renderer (`renderer_gl`, which is the EGL and
+# GLES bindings) with `glow` on top (`renderer_glow`, which hands the same
+# context to a safe `glow::Context`). `renderer_gl` pulls no display or DRM
+# backend in by itself, so a session that never asks for a GLES renderer pays for
+# the bindings and nothing else.
+#
+# The hardware backend is the second step: `backend_drm` (the KMS device and
+# surface), `backend_gbm` (buffer allocation for scan-out), `backend_udev` (device
+# discovery and hotplug), `backend_session_libseat` (device access through the
+# seat) and `backend_libinput` (the seat's input devices) are what
+# `crates/gnoblin-backend/src/drm` and `src/libinput` are made of. They are named
+# here rather than in one member's manifest for the reason this table exists: a
+# feature chosen per member would let two members resolve Smithay's `input`, `drm`
+# and `gbm` crates to different builds of the same C library.
+smithay = { git = "https://github.com/Smithay/smithay", rev = "65aa86fa5236e41775c313408102a5d5c2d1e2ca", default-features = false, features = [
+    "wayland_frontend",
+    "desktop",
+    "renderer_pixman",
+    "renderer_gl",
+    "renderer_glow",
+    "backend_drm",
+    "backend_gbm",
+    "backend_udev",
+    "backend_session_libseat",
+    "backend_libinput",
+] }
+# Wayland server and code generation, for the protocols Gnoblin owns or vendors.
+#
+# `smithay` re-exports `wayland_server`, so a crate that already names Smithay takes
+# it from there. These entries exist for the two crates that must name it directly:
+# a compat redirect generates its bindings from its own XML, so `wayland-scanner`
+# is a build-time dependency of that crate, and the generated server code names
+# `wayland-server` itself. The versions are the ones the pinned Smithay resolves to,
+# so cargo unifies them with the compositor's copy rather than building a second
+# one; `Cargo.lock` is what proves it.
+wayland-server = "0.31.14"
+wayland-client = "0.31.15"
+wayland-scanner = "0.31.11"
+wayland-backend = "0.3.17"
+
+# The Lua VM the script runtime embeds (design/rust-compositor.md, D10). Lua 5.5
+# is vendored and compiled by the build so the runtime links one Lua version on
+# every distribution target instead of whatever the distribution ships. Only
+# `gnoblin-lua` may name it: the dependency rules forbid it in a foundation crate,
+# because the configuration and model layers must work with no Lua at all.
+mlua = { version = "0.12.2", features = ["lua55", "vendored"] }
+
+# Command line parsing for `gnoblinctl`. Its command tree is generated from the
+# object schema at build time, so it uses the builder API rather than derive: a
+# generated tree cannot be a derive struct. Colour is off because `gnoblinctl`
+# output is read by scripts as often as by people.
+clap = { version = "4.6.7", default-features = false, features = [
+    "std",
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+] }
+# Shell completion scripts, rendered from the same clap tree so a completion can
+# never offer a member the schema does not declare.
+clap_complete = "4.6.9"
+# Column widths of terminal text (CJK and emoji are two columns wide).
+unicode-width = "0.2.3"
+
+# The effective user, for the IPC socket's ownership check: the socket is only as
+# private as the directory holding it, and a directory owned by another account is a
+# directory that account controls. It is already in the graph (calloop uses it), and
+# it is the smallest safe way to ask the kernel who this process is `libc` would
+# need `unsafe`, which the workspace forbids.
+rustix = { version = "1.1.6", features = ["process"] }
+
+# The shared primitives: geometry, transform, scale, identities, ticks and error
+# codes. Every crate that names a rectangle or an output uses this crate instead
+# of declaring its own.
+gnoblin-types = { path = "crates/gnoblin-types" }
+gnoblin-schema = { path = "crates/gnoblin-schema" }
+# The portal's shared pieces: dialog models, theme tokens, the CPU painter and widgets (D19).
+gnoblin-portal-core = { path = "crates/gnoblin-portal-core" }
+gnoblin-portal-consent = { path = "crates/gnoblin-portal-consent" }
+gnoblin-portal-filechooser = { path = "crates/gnoblin-portal-filechooser" }
+gnoblin-portal-appchooser = { path = "crates/gnoblin-portal-appchooser" }
+# The WebAssembly runtime the module host embeds (design/rust-compositor.md, D6).
+# The component model is the host API's shape: a WIT package generated from the
+# schema, so a module links against the object model and a member that moved is a
+# link error rather than a call that misbehaves.
+#
+# Default features are off because the default set pulls in the CLI, the compile
+# cache, profiling, the async engine and the GC proposals, none of which the host
+# uses, and every one of them is code that runs inside the compositor. What is
+# left is the smallest set that compiles and runs a component: the core runtime,
+# one compiler, and the component model. There is no WASI feature here and no
+# `wasmtime-wasi` dependency anywhere in the tree, so a module that imports
+# `wasi:*` has nothing to link against: filesystem, network and process access are
+# denied by the absence of an implementation, not by a policy check that could be
+# wrong (D6: "Isolation holds only if the host API is the module's only reach").
+wasmtime = { version = "50.0.1", default-features = false, features = [
+    "std",
+    "runtime",
+    "cranelift",
+    "component-model",
+] }
+
+# D-Bus, for the services role and the compat adapters that serve an upstream bus
+# name (design/rust-compositor.md, "Providers and slots" and "Compatibility
+# adapters", rule 4). Only client-side crates may name it: the dependency rules in
+# `xtask/src/deps.rs` refuse `zbus` in a foundation crate, because the policy and
+# model layers must work with no bus at all.
+#
+# The default feature set is left on: it is the async-io stack, which needs no
+# tokio runtime in a process that already runs on calloop. `zbus::blocking` wraps
+# that same stack, so a `#[zbus::interface]` method may be synchronous and a
+# caller that wants to wait needs no runtime of its own.
+zbus = "6.2.1"
+
+# A small async facade: `StreamExt` for the effect channel and `join`/`yield_now` for
+# the tests that run a served connection and its caller on one thread.
+futures-lite = "2.6.1"
+# The timer that ticks consent deadlines, and the name-owner watch's wakeups.
+async-io = "2"
+# One-shot channels and queues between a handler and the loop that performs its
+# effects.
+futures-channel = "0.3.31"
+
+# Log lines. Only the `gnoblin-log` facade names `tracing`; every other crate logs through its macros.
+tracing = "0.1.37"
+# The sinks and the composition use its subscriber layers. Default features are off; `env-filter` reads `GNOBLIN_LOG`.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+    "env-filter",
+    "fmt",
+    "registry",
+    "std",
+] }
+# The SQLite library behind the log database. `bundled` compiles SQLite into the
+# binary, so the database needs no system library and the same version everywhere.
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+
+# The gcr prompter's `prompt.secret` transport: `GcrSecretExchange` protocol 1 is
+# DH over the 1536-bit MODP group with HKDF-SHA256 and AES-128-CBC, so the adapter
+# can serve the interface without linking libgcr.
+#
+# The crate names below are the RustCrypto primitives that protocol is defined in
+# terms of, plus a bignum for the modular exponentiation: every one is MIT or
+# Apache-2.0, which is on the licence allow-list in deny.toml.
+sha2 = "0.11.1"
+hkdf = "0.13.0"
+aes = "0.9.4"
+cbc = { version = "0.2.1", features = ["alloc", "block-padding"] }
+# The key file the exchange string is: GLib's `GKeyFile` with base64 fields.
+base64 = "0.23.1"
+num-bigint = "0.5.1"
+# Randomness for the DH private key and the AES IV. `getrandom` is the same crate
+# `rand` uses underneath, and it needs no trait plumbing in a crate with no
+# dependency on a random-number generator.
+getrandom = "0.4.3"

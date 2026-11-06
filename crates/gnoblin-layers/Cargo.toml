@@ -1,0 +1,13 @@
+[package]
+name = "gnoblin-layers"
+description = "Pure layer model: bands, layer records, the name-owning registry, ordering, follow rules and limits."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-types.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,540 @@
+{
+  "format": 1,
+  "kind": "events",
+  "generated_by": "scripts/contract-inventory.py",
+  "count": 76,
+  "entries": [
+    {
+      "name": "gnoblin.animation.finished",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 457
+    },
+    {
+      "name": "gnoblin.animation.started",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 456
+    },
+    {
+      "name": "gnoblin.api.operation-completed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 490
+    },
+    {
+      "name": "gnoblin.appearance.color-scheme-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 446
+    },
+    {
+      "name": "gnoblin.auth.finished",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 453
+    },
+    {
+      "name": "gnoblin.auth.message",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 452
+    },
+    {
+      "name": "gnoblin.auth.prompt",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 451
+    },
+    {
+      "name": "gnoblin.auth.requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 450
+    },
+    {
+      "name": "gnoblin.capability.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 445
+    },
+    {
+      "name": "gnoblin.config.reload-failed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 444
+    },
+    {
+      "name": "gnoblin.config.reloaded",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 443
+    },
+    {
+      "name": "gnoblin.focus.policy-changed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 442
+    },
+    {
+      "name": "gnoblin.idle.watch-active",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/portal/grants/gnoblin-control-session-activity.c",
+      "line": 134
+    },
+    {
+      "name": "gnoblin.idle.watch-idle",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/portal/grants/gnoblin-control-session-activity.c",
+      "line": 134
+    },
+    {
+      "name": "gnoblin.input.device-added",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 471
+    },
+    {
+      "name": "gnoblin.input.device-removed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 472
+    },
+    {
+      "name": "gnoblin.input.gesture",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 477
+    },
+    {
+      "name": "gnoblin.input.grab.closed",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/control/gnoblin-control-grabs.c",
+      "line": 80
+    },
+    {
+      "name": "gnoblin.input.grab.key",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/control/gnoblin-control-grabs.c",
+      "line": 311
+    },
+    {
+      "name": "gnoblin.input.orientation-lock-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 475
+    },
+    {
+      "name": "gnoblin.input.pad-help-requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 441
+    },
+    {
+      "name": "gnoblin.input.source-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 474
+    },
+    {
+      "name": "gnoblin.input.sources-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 473
+    },
+    {
+      "name": "gnoblin.launch.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 478
+    },
+    {
+      "name": "gnoblin.layer.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 426
+    },
+    {
+      "name": "gnoblin.layer.created",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 425
+    },
+    {
+      "name": "gnoblin.layer.removed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 427
+    },
+    {
+      "name": "gnoblin.location.authorization-finished",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 449
+    },
+    {
+      "name": "gnoblin.location.authorization-requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 448
+    },
+    {
+      "name": "gnoblin.monitor.added",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 465
+    },
+    {
+      "name": "gnoblin.monitor.changed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 466
+    },
+    {
+      "name": "gnoblin.monitor.privacy-screen-changed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 476
+    },
+    {
+      "name": "gnoblin.monitor.removed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 467
+    },
+    {
+      "name": "gnoblin.operation.completed",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 491
+    },
+    {
+      "name": "gnoblin.osd.requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 439
+    },
+    {
+      "name": "gnoblin.output.added",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 468
+    },
+    {
+      "name": "gnoblin.output.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 469
+    },
+    {
+      "name": "gnoblin.output.removed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 470
+    },
+    {
+      "name": "gnoblin.override.closed",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/control/gnoblin-control-overrides.c",
+      "line": 101
+    },
+    {
+      "name": "gnoblin.pointer.binding-activated",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/control/gnoblin-control-focus.c",
+      "line": 107
+    },
+    {
+      "name": "gnoblin.pointer.locate-requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 440
+    },
+    {
+      "name": "gnoblin.privacy.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 447
+    },
+    {
+      "name": "gnoblin.process.exited",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/control/gnoblin-control-process.c",
+      "line": 141
+    },
+    {
+      "name": "gnoblin.prompt.finished",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 455
+    },
+    {
+      "name": "gnoblin.prompt.requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 454
+    },
+    {
+      "name": "gnoblin.runtime.status-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 483
+    },
+    {
+      "name": "gnoblin.session.activity-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 481
+    },
+    {
+      "name": "gnoblin.session.lock-requested",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 479
+    },
+    {
+      "name": "gnoblin.session.lock-state-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 480
+    },
+    {
+      "name": "gnoblin.session.state-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 482
+    },
+    {
+      "name": "gnoblin.shortcut.activated",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 484
+    },
+    {
+      "name": "gnoblin.shortcut.binding-activated",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 485
+    },
+    {
+      "name": "gnoblin.shortcut.binding-deactivated",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 486
+    },
+    {
+      "name": "gnoblin.shortcut.session.activated",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 487
+    },
+    {
+      "name": "gnoblin.shortcut.session.ended",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 489
+    },
+    {
+      "name": "gnoblin.shortcut.session.key",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 488
+    },
+    {
+      "name": "gnoblin.tween.callback",
+      "channels": ["runtime"],
+      "subscription_table": false,
+      "source": "src/control/gnoblin-control-tweens.c",
+      "line": 132
+    },
+    {
+      "name": "gnoblin.window.activation-denied",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 433
+    },
+    {
+      "name": "gnoblin.window.attention-changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 432
+    },
+    {
+      "name": "gnoblin.window.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 429
+    },
+    {
+      "name": "gnoblin.window.closed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 434
+    },
+    {
+      "name": "gnoblin.window.created",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 428
+    },
+    {
+      "name": "gnoblin.window.drag.ended",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 437
+    },
+    {
+      "name": "gnoblin.window.drag.started",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 435
+    },
+    {
+      "name": "gnoblin.window.drag.updated",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 436
+    },
+    {
+      "name": "gnoblin.window.focused",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 430
+    },
+    {
+      "name": "gnoblin.window.menu-requested",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 438
+    },
+    {
+      "name": "gnoblin.window.unfocused",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 431
+    },
+    {
+      "name": "gnoblin.workspace.activated",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 462
+    },
+    {
+      "name": "gnoblin.workspace.changed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 460
+    },
+    {
+      "name": "gnoblin.workspace.created",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 458
+    },
+    {
+      "name": "gnoblin.workspace.removed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 461
+    },
+    {
+      "name": "gnoblin.workspace.renamed",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 459
+    },
+    {
+      "name": "gnoblin.workspace.window-moved",
+      "channels": ["runtime", "socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 463
+    },
+    {
+      "name": "monitors",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 464
+    },
+    {
+      "name": "windows",
+      "channels": ["socket"],
+      "subscription_table": true,
+      "source": "src/control/gnoblin-native-control.c",
+      "line": 424
+    }
+  ]
+}

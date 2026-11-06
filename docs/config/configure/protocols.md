@@ -33,6 +33,10 @@ and `gnoblinctl config reload` includes an `unknown protocol` diagnostic in its
 `warnings` list. Gnoblin also logs it and publishes a configuration notice for
 the shell. Correct the name and reload again to clear the warning.
 
+The Rust compositor does not accept `blur_fade`: setting it is an unknown
+protocol and produces the same warning. To fade a blurred panel, put the panel
+in a subsurface with its own opacity; the blur fades with it.
+
 See [reload feedback](/shell-api/session-runtime#reload-warnings) for the
 result and event fields. Protocol values must still be booleans; an invalid
 value fails validation and leaves the previous configuration active.

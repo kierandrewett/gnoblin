@@ -1,0 +1,39 @@
+[package]
+name = "gnoblin-client"
+description = "Rust client library for the IPC, used by gnoblinctl, the runtime, services, the portal, tests and shells."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The client's public vocabulary is the object model's: identities, values,
+# observations, snapshots and the request outcome. Reusing them is what keeps the
+# graph, the wire and the client from growing three dialects.
+gnoblin-model = { path = "../gnoblin-model" }
+# The wire: the envelope, its four kinds, the fixed-layout handshake and the
+# version rule.
+gnoblin-proto = { path = "../gnoblin-proto" }
+
+[dev-dependencies]
+# The tests build a graph from the checked-in schema, so the loopback pair is
+# exercised against the real contract rather than a fixture.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The window fixture builds a window's full property set from the schema.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
+
+# The workspace's lint table with one deliberate difference: `unsafe_code` is `deny`
+# rather than `forbid`.
+#
+# The exception is `src/inherit.rs`, which adopts the inherited descriptor the guardian
+# hands a role child (design/rust-compositor.md, "Process model"). No safe Rust API turns
+# an integer into a descriptor — `OwnedFd` is only ever built from another owner — so the
+# conversion is one `unsafe` block with a `SAFETY` comment in a named module, which is
+# what the workspace `Cargo.toml` describes for a crate that must cross that line. Every
+# other file in the crate, and every other operation on a descriptor here (creating the
+# pair, clearing `FD_CLOEXEC`, signalling a process group), uses `rustix`.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

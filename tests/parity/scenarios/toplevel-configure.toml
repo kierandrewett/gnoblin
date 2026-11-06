@@ -1,0 +1,24 @@
+# A toplevel with a 320x200 minimum is configured at its requested size, and the
+# client's frame callbacks run in one order.
+#
+# The `command` target stands in for a live session today: each step prints the
+# observation a test client would report, so the scenario exercises the runner,
+# the normaliser and the diff without a compositor. The expectations are the
+# behaviour a conforming compositor must show for this client; they are not a
+# recording of a Mutter session, which the Mutter target will produce when its
+# lane lands.
+name = "toplevel-configure"
+description = "A 320x200 toplevel is configured at its requested size and paints in frame order."
+target = { command = {} }
+
+[[steps]]
+id = "window.configure"
+description = "One toplevel with a 320x200 minimum, and the first configure it received."
+expect = { width = 320, height = 200, state = "normal" }
+command = { program = "printf", args = ["%s", "{\"width\": 320, \"height\": 200, \"state\": \"normal\"}"], format = "json" }
+
+[[steps]]
+id = "frame.callback.order"
+description = "Frame callbacks reported by the client, in the order they ran."
+expect = ["before-paint", "paint", "after-paint"]
+command = { program = "printf", args = ["%s\n", "[\"before-paint\", \"paint\", \"after-paint\"]"], format = "json" }

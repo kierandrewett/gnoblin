@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-a11y"
+description = "Accessibility state machines: keyboard monitor, sticky, slow, bounce and mouse keys, magnifier, colour filters."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# The shared primitives (design/rust-compositor.md, "Dependency rules";
+# `gnoblin-types` is a foundation crate).
+[dependencies]
+gnoblin-types.workspace = true

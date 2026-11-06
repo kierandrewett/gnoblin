@@ -1,0 +1,51 @@
+# The members `gnoblin` has by hand, beside the generated object types.
+#
+# These are host-only: they never reach the schema, the IPC catalog, the CLI or the
+# IPC docs. `build.rs` reads this file and derives the names an object type may not
+# take (`lua_names.rs`), the LuaCATS stub text for these members, and `HOST_MEMBERS`,
+# which `src/bindings.rs` checks its installers against at startup. The installers stay
+# hand-written Rust: each declaration needs one, and each installer needs a declaration.
+#
+# A `table` member lists its children under `members`. Types are LuaCATS spellings.
+
+[[member]]
+name = "configure"
+kind = "function"
+doc = "Declare configuration. Validated immediately; every problem is raised."
+params = [{ name = "settings", type = "table" }]
+
+[[member]]
+name = "load"
+kind = "function"
+doc = "Evaluate another configuration file, relative to the calling file."
+params = [{ name = "path_or_glob", type = "string" }]
+returns = ["boolean"]
+
+[[member]]
+name = "timers"
+kind = "table"
+doc = "Timers run on the caller's tick, never on a clock of their own."
+
+[[member.members]]
+name = "after"
+kind = "function"
+doc = "Run `callback` after `ticks` ticks; the returned timer can be cancelled."
+params = [{ name = "ticks", type = "integer" }, { name = "callback", type = "fun()" }]
+returns = ["gnoblin.Timer"]
+
+[[member.members]]
+name = "now"
+kind = "function"
+doc = "The caller's current tick."
+returns = ["integer"]
+
+[[member]]
+name = "layout"
+kind = "table"
+doc = "Register Lua layout modules with the compositor."
+
+[[member.members]]
+name = "register"
+kind = "function"
+doc = "Register the Lua module `module` as the layout `name`. Names are unique."
+params = [{ name = "name", type = "string" }, { name = "module", type = "string" }]

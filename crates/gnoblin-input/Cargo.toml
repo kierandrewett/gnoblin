@@ -1,0 +1,46 @@
+[package]
+name = "gnoblin-input"
+description = "libinput settings, xkb, chords, gestures, input policy routing, IME and the EIS server."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The shared primitives: the tick counter, the request identity and the edge names.
+gnoblin-types.workspace = true
+# The consent vocabulary every request in the session speaks: how far a grant has got is
+# one type, whether the request came from the portal or unlocked input for an EI client.
+gnoblin-authority = { path = "../gnoblin-authority" }
+# The seat's event vocabulary. `gnoblin_input::eis` produces the same `InputEvent`s a
+# libinput device will produce, which is what makes injected input take the seat's own
+# path — the lock gate, grabs and bindings — instead of a second one. The dependency is
+# the one engine-to-engine edge the dependency rules allow, from a mechanism crate to
+# the hub.
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The EI protocol, server side. Pure Rust (MIT), already in the graph through Smithay, and
+# the plan names it for this job ("EIS is `reis`"). It types the wire only: every rule
+# about what a client may send lives in `eis::service`, which names no protocol type.
+reis = { version = "0.7.1", default-features = false }
+# `poll` for the endpoint's thread, without `unsafe`: the server watches its listener,
+# every client socket and a wake socket in one call. The workspace entry covers the
+# process module the composition root uses; `event` adds the poller.
+rustix = { workspace = true, features = ["event"] }
+# `[tag]` lines for a refused session, logged through the `gnoblin-log` facade.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[dev-dependencies]
+# The headless compositor the real-client suite drives: one real EI client moves a real
+# Wayland client's pointer through the seat. A development edge is exempt from engine
+# isolation by rule, and this is the same arrangement `gnoblin-xwayland`'s tests use.
+gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The client half of the protocols those tests exercise, generated from the same XML the
+# server uses.
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# A socket, a runtime directory and a shared-memory file per test, so a run touches no
+# shared path.
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

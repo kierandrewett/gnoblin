@@ -1,0 +1,18 @@
+[package]
+name = "gnoblin-compat-mutter-screencast"
+description = "org.gnome.Mutter.ScreenCast adapter."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+zbus.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
+
+[dev-dependencies]
+futures-lite.workspace = true

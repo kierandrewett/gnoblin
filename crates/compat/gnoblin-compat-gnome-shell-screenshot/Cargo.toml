@@ -1,0 +1,22 @@
+[package]
+name = "gnoblin-compat-gnome-shell-screenshot"
+description = "org.gnome.Shell.Screenshot adapter."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-client = { path = "../../gnoblin-client" }
+gnoblin-model = { path = "../../gnoblin-model" }
+zbus.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
+
+[dev-dependencies]
+futures-lite.workspace = true
+gnoblin-proto = { path = "../../gnoblin-proto" }
+gnoblin-schema = { path = "../../gnoblin-schema" }

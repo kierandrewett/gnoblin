@@ -1,0 +1,52 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Shell.Screenshot",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "FlashArea",
+          "support": "unsupported",
+          "reason": "a flash is a rendered effect over captured pixels, and the IPC publishes no capture at all, so there is nothing to flash"
+        },
+        {
+          "kind": "method",
+          "name": "InteractiveScreenshot",
+          "support": "unsupported",
+          "reason": "an interactive selection is the shell's own UI, and this adapter draws nothing"
+        },
+        {
+          "kind": "method",
+          "name": "PickColor",
+          "support": "unsupported",
+          "reason": "a colour picker needs the same frame the screenshot path does, and the IPC publishes no frame export"
+        },
+        {
+          "kind": "method",
+          "name": "Screenshot",
+          "support": "unsupported",
+          "reason": "the IPC has no image-capture member yet; capture reaches the desktop only through the portal's frame export, after consent"
+        },
+        {
+          "kind": "method",
+          "name": "ScreenshotArea",
+          "support": "unsupported",
+          "reason": "the IPC has no image-capture member yet; capture reaches the desktop only through the portal's frame export, after consent"
+        },
+        {
+          "kind": "method",
+          "name": "ScreenshotWindow",
+          "support": "unsupported",
+          "reason": "the IPC has no image-capture member yet; capture reaches the desktop only through the portal's frame export, after consent"
+        },
+        {
+          "kind": "method",
+          "name": "SelectArea",
+          "support": "unsupported",
+          "reason": "an interactive selection is the shell's own UI, and this adapter draws nothing"
+        }
+      ]
+    }
+  ]
+}

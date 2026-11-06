@@ -1,0 +1,104 @@
+[package]
+name = "gnoblin-backend"
+description = "Backends (DRM, nested, headless) and the extension traits the engine crates share."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The workspace table forbids `unsafe` outright, which cannot be lifted, and this crate
+# needs three things it does not offer:
+#
+# - one block that turns Smithay's mapping of a client's `wl_shm` pool into a slice
+#   (`render/shm.rs`, the only writer of client pixels);
+# - the EGL and GL calls a GLES context and its draws are made of. Smithay's
+#   `EGLDisplay::new` and `GlowRenderer::new` are `unsafe` because it cannot check a native
+#   display or that a context is idle on another thread, and `glow`'s calls are `unsafe`
+#   because a GL call changes process-wide state;
+# - the Vulkan calls the Vulkan renderer is made of: `ash` is a raw binding, so opening the
+#   loader and every call into a driver is `unsafe`.
+#
+# So the crate restates the workspace's levels with `deny` and confines the exemption to
+# named FFI shim modules, each opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment
+# per block: `render/shm.rs`, `render/gles/egl.rs`, `render/gles/gl.rs` and the three files of
+# `render/vulkan/` that call `ash` (`context.rs`, `pipeline.rs` and `frame.rs`). Nothing else
+# in the crate may contain `unsafe`, and a session on the software path reaches none of them.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[features]
+# The Vulkan renderer (`render::vulkan`). On by default because the Vulkan loader is
+# opened with `dlopen` when a renderer is created, not linked: a machine without one
+# builds, starts and runs the Vulkan tests as skips. `naga/spv-out` is the SPIR-V
+# writer the renderer compiles the shared WGSL passes with.
+default = ["vulkan"]
+vulkan = ["dep:ash", "naga/spv-out"]
+
+[dependencies]
+# The event-loop handle the backend contract registers its sources with, and the
+# library the DRM and nested backends will drive. Pinned workspace-wide (D7) with the
+# `renderer_pixman` feature, which is the software path of the Frame card and the
+# reference renderer the headless backend uses. The hardware features (`backend_drm`,
+# `backend_gbm`, `backend_udev`, `backend_session_libseat`, `backend_libinput`) come
+# with the workspace pin too, because they are choices the whole workspace has to make
+# together; the modules that use them are `drm`, `session`, `udev` and `libinput`, and
+# every other backend here links no DRM code at all.
+smithay.workspace = true
+# Outputs, events and targets are stated in the shared primitives.
+gnoblin-types.workspace = true
+# A backend produces output descriptors and their modes; the layout engine owns
+# where they sit.
+gnoblin-output = { path = "../gnoblin-output" }
+# The scene graph the frame is composed from: visual transforms, paint order and
+# damage. This crate is the one place the engine's crates may meet, so the scene sits
+# on this side of the contract and `gnoblin-wayland` never names it.
+gnoblin-render = { path = "../gnoblin-render" }
+# The `input` section the libinput devices are configured from: acceleration profile,
+# natural scroll, tap-to-click and the rest. The types are the generated document's,
+# not copies, so a key that the configuration accepts and the driver does not know
+# cannot exist. It is a foundation crate, so this direction is the allowed one.
+gnoblin-config = { path = "../gnoblin-config" }
+# `[tag]` log lines for a refused frame or a client buffer that went away. Smithay
+# The logging facade is a path dependency and adds no crate beyond `tracing`, which Smithay already brings in.
+gnoblin-log = { path = "../gnoblin-log" }
+# The nested backend is a Wayland *client* of the compositor that hosts the session,
+# so this crate depends on the client library as well as the server one Smithay
+# re-exports. It is the same version `gnoblin-wayland` tests its server with, so the
+# two sides of the wire cannot drift apart.
+#
+# The client side needs no `unsafe`: a shared-memory buffer is filled through
+# `File::write_all_at` rather than an `mmap`, one copy per frame more than a real client
+# would make, which is why `nested/mod.rs` states the dmabuf path as a follow-up rather
+# than a second code path here. The crate's `unsafe` opt-out (see the `[lints]` table) is
+# for the GLES renderer's EGL and GL calls, not for this backend.
+wayland-client = "0.31.14"
+# The client side of `xdg_shell` and of the scale protocols. `staging` is the
+# feature that carries `wp_fractional_scale_v1`; a parent that does not offer it
+# falls back to the integer scale of its `wl_output`.
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# The Xwayland seam ([`x11`]) states the answer to an X11 event as the window
+# manager's own effects, so the two engine crates that meet there share one
+# vocabulary instead of translating between two. That is why `gnoblin-wm` is here:
+# the alternative was a second event enum in this crate and a translation in each
+# direction.
+gnoblin-wm = { path = "../gnoblin-wm" }
+# The GLES renderer's shader compiler (D12): effect and user shaders are written
+# once in WGSL, `naga` validates them and emits the GLSL ES 3.10 the GLES backend
+# links through `glow`. A refused shader is reported with its line and disables only
+# its own effect, so `naga` never decides whether a frame is drawn.
+naga.workspace = true
+# The safe OpenGL ES API layered over Smithay's GLES context by its
+# `renderer_glow` feature. Every draw the GLES renderer makes goes through it, so
+# no `gl::` call is written here by hand and the only `unsafe` in the crate is the
+# EGL bootstrap in `render/gles/egl.rs`.
+glow.workspace = true
+# The Vulkan bindings (feature `vulkan`). Every call is `unsafe`, so the renderer's
+# modules in `render/vulkan/` are the third exemption listed under `[lints.rust]`.
+ash = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The shared-memory files of the Vulkan tests' in-process client (`render/vulkan/harness.rs`).
+tempfile = "3.23.0"

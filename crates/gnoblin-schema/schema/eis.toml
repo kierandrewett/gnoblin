@@ -1,0 +1,68 @@
+# The `eis` object: scoped EIS sessions for remote desktop and input capture.
+#
+# This is the compositor-side half of `org.gnome.Mutter.RemoteDesktop.
+# ConnectToEIS` and `org.gnome.Mutter.InputCapture.ConnectToEIS`
+# (design/rust-compositor.md: "one input injection path (EIS)" and the redirect
+# map's `RemoteDesktop` and `InputCapture` rows). The adapter cannot link
+# `gnoblin-input` — compat crates stay out of the engine — so it asks the
+# compositor for an endpoint and hands the caller a connected socket.
+#
+# The endpoint is a Unix socket path chosen by the adapter, because it is the
+# service that owns the runtime directory and the caller's lifetime. The
+# compositor binds that exact path and records the grant with the session; a
+# path that is not announced here has no endpoint behind it, so a caller cannot
+# invent one and receive input that was granted to somebody else.
+#
+# The capability mask is the caller's request in Mutter's own numbering:
+# keyboard 1, pointer 2, touchscreen 4 for RemoteDesktop, and Mutter's
+# InputCapture numbering (keyboard 2, pointer 4, touch 8). The adapter passes the
+# mask through unchanged; the compositor grants what it can serve and refuses a
+# request for a capability it cannot.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "eis"
+since = "0.2.0"
+
+# Bind an EIS endpoint for one consenting session.
+[[object.method]]
+name = "open"
+since = "0.2.0"
+
+# The identity the adapter allocated for this EIS session.
+[[object.method.param]]
+name = "session"
+type = "uint"
+since = "0.2.0"
+
+# The D-Bus caller's unique name. The compositor records it with the session so
+# an endpoint cannot be handed to a caller the adapter did not open it for.
+[[object.method.param]]
+name = "owner"
+type = "string"
+since = "0.2.0"
+
+# The capabilities the caller asked for, in the interface's own numbering.
+[[object.method.param]]
+name = "capabilities"
+type = "uint"
+since = "0.2.0"
+
+# The socket path to bind. The adapter allocates it; the compositor must refuse a
+# path that exists, so two sessions cannot share one endpoint.
+[[object.method.param]]
+name = "path"
+type = "string"
+since = "0.2.0"
+
+# Close an EIS session and remove its endpoint.
+[[object.method]]
+name = "close"
+since = "0.2.0"
+
+# The identity the session was opened with.
+[[object.method.param]]
+name = "session"
+type = "uint"
+since = "0.2.0"

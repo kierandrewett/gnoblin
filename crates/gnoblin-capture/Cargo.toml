@@ -1,0 +1,25 @@
+[package]
+name = "gnoblin-capture"
+description = "Frame export: capture sessions, the lock embargo, pacing and single-use frames."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Rectangles, sizes, output and window identities, ticks and connection identities:
+# a capture session names the same values every other crate names, so a target and a
+# tick cannot drift between the capture path and the compositor.
+gnoblin-types.workspace = true
+# The session lock's own answer (`Lock::capture`) and the consent a session holds
+# (`CaptureStream`). Capture does not decide the embargo; it applies the decision the
+# lock state machine already made, at every frame.
+gnoblin-lock = { path = "../gnoblin-lock" }
+
+# The PipeWire client library, used only by the round-trip test in `tests/`. A dev-dependency
+# is never compiled for a dependent, so it cannot reach a shipped binary.
+[dev-dependencies]
+pipewire = { version = "0.10", features = ["v0_3_34"] }
+
+[lints]
+workspace = true

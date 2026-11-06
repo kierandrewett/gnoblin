@@ -41,3 +41,23 @@ infra/site/.svelte-kit/
 # Tool caches and local agent state
 .ruff_cache/
 .omp/
+
+# Cargo build output
+/target/
+
+# Generated source. Nothing generated is checked in: `crates/gnoblin-proto`'s
+# build script renders the namespace `.proto` documents and the sensitive table
+# from the schema into OUT_DIR, and `just gen-proto` writes readable copies under
+# target/ (already ignored above). These rules catch a stray write into the tree.
+/crates/gnoblin-proto/proto/*.proto
+!/crates/gnoblin-proto/proto/envelope.proto
+/crates/gnoblin-proto/src/sensitive.rs
+
+# Generated WIT host API and member table for the module host. The build script
+# writes the package twice: the canonical copy under `target/` (OUT_DIR) and one
+# beside the crate, because `wasmtime::component::bindgen` takes a literal path
+# relative to the manifest and cannot read OUT_DIR.
+/crates/gnoblin-wasm/generated/
+
+# Generated configuration reference, Lua stubs and settings catalogue.
+crates/gnoblin-config/generated/

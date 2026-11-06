@@ -1,0 +1,18 @@
+[package]
+name = "gnoblin-compat-x11-xsettings"
+description = "XSETTINGS (the _XSETTINGS_S0 selection) for X11 apps on the XWM connection."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
+gnoblin-log = { path = "../../gnoblin-log" }
+
+[dev-dependencies]
+tempfile = "3.23.0"

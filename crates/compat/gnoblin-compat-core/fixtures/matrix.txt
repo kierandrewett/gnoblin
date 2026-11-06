@@ -1,0 +1,10 @@
+interface org.gnome.Mutter.DisplayConfig version 3
+  method ApplyConfiguration unsupported: the legacy variant is not served; callers use ApplyMonitorsConfig
+  method ApplyMonitorsConfig partial: applies monitors and logical monitors, but not a layout mode change
+  method GetCurrentState supported
+  signal MonitorsChanged supported
+interface org.gnome.Mutter.IdleMonitor version 1
+  method AddIdleWatch supported
+  method GetIdletime supported
+  method RemoveWatch supported
+  signal WatchFired supported

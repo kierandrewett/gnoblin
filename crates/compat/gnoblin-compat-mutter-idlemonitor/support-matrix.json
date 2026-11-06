@@ -1,0 +1,41 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.IdleMonitor",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "AddIdleWatch",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "AddUserActiveWatch",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "GetIdletime",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "RemoveWatch",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "ResetIdletime",
+          "support": "unsupported",
+          "reason": "the idle counter is the compositor's; a caller that could reset it could hold the session awake by resetting it forever"
+        },
+        {
+          "kind": "signal",
+          "name": "WatchFired",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

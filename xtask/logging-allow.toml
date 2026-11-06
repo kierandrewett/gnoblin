@@ -1,0 +1,10 @@
+# Reviewed exceptions for `cargo xtask logging`: library sources allowed to write to stdout or stderr
+# directly. Each entry names a file or a directory (prefix match) and why it is not a log call.
+
+[[allow]]
+path = "crates/gnoblin-parity"
+reason = "gnoblin-parity is a command-line tool: its stdout is the report it exists to print, and its stderr is its usage and error text"
+
+[[allow]]
+path = "crates/gnoblin-log/src/store.rs"
+reason = "the stderr fallback of the sink: when the database cannot take a batch the record is printed directly, since routing it through the facade would feed the failure back into the same sink"

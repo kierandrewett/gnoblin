@@ -1,0 +1,584 @@
+# The portal UI: the request the services role sends to the built-in portal UI, and
+# the outcome the UI answers with (design/rust-compositor.md, D19, "Schema additions").
+#
+# Two objects. `portal_ui` is the request, one method per interface kind, so each
+# interface's payload is typed by its own parameters rather than one loose bag. The
+# object model has no union, so the kind is the method name. `portal_outcome` is the
+# answer: `handled`, `cancelled`, `declined` or `error`. The object model has no
+# method results, so each outcome is its own method, sent back by the UI to services.
+#
+# Every request method carries `request_id` (unique per boot, assigned by services),
+# `app_id` (set by services from compositor attribution, never from the request body)
+# and `deadline_ms`. Bounded lists are parallel: `filter_names[i]` pairs with
+# `filter_patterns[i]`, and `choice_ids[i]` with `choice_labels[i]`.
+#
+# The reply's bounds (a grant no wider than the request) are checked by
+# `gnoblin-portal-core::model`, which owns the typed payloads; this file only names the wire.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "portal_ui"
+since = "0.2.0"
+
+# FileChooser: open, save or folder. `mode` is "open", "save" or "folder".
+[[object.method]]
+name = "file_chooser"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "mode"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "multiple"
+type = "bool"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "filter_names"
+type = "list<string>"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "filter_patterns"
+type = "list<string>"
+since = "0.2.0"
+
+# Index into `filter_names`, or -1 for no current filter.
+[[object.method.param]]
+name = "current_filter"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "current_folder"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "current_name"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice_ids"
+type = "list<string>"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice_labels"
+type = "list<string>"
+since = "0.2.0"
+
+# AppChooser: the candidates are `choice_ids` (desktop file ids) with `choice_labels`.
+[[object.method]]
+name = "app_chooser"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "content_type"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "last_choice"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "filter_text"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice_ids"
+type = "list<string>"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice_labels"
+type = "list<string>"
+since = "0.2.0"
+
+# Print: printers from lpstat (`choice_ids`), or print-to-PDF only when empty.
+[[object.method]]
+name = "print"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice_ids"
+type = "list<string>"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice_labels"
+type = "list<string>"
+since = "0.2.0"
+
+# The copies the dialog starts at, and the most it may grant.
+[[object.method.param]]
+name = "copies"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "max_copies"
+type = "uint"
+since = "0.2.0"
+
+# The requested page range text, empty for all pages.
+[[object.method.param]]
+name = "pages"
+type = "string"
+since = "0.2.0"
+
+# Account: confirm sharing the name and avatar.
+[[object.method]]
+name = "account"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "reason"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "avatar_uri"
+type = "string"
+since = "0.2.0"
+
+# Wallpaper: confirm setting `uri` as the background.
+[[object.method]]
+name = "wallpaper"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "uri"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "options"
+type = "string"
+since = "0.2.0"
+
+# Background: confirm a session-only background grant.
+[[object.method]]
+name = "background"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "reason"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "autostart_requested"
+type = "bool"
+since = "0.2.0"
+
+# DynamicLauncher: confirm installing a launcher.
+[[object.method]]
+name = "dynamic_launcher"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "name"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "icon"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "desktop_file_id"
+type = "string"
+since = "0.2.0"
+
+# ScreenCast: consent, then a source choice. Bitmasks are the portal's own bits.
+[[object.method]]
+name = "screen_cast"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "source_types"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "cursor_mode"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "multiple"
+type = "bool"
+since = "0.2.0"
+
+# RemoteDesktop: consent, then a device choice.
+[[object.method]]
+name = "remote_desktop"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "device_types"
+type = "uint"
+since = "0.2.0"
+
+# InputCapture: consent for the requested capabilities.
+[[object.method]]
+name = "input_capture"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "capabilities"
+type = "uint"
+since = "0.2.0"
+
+# Screenshot: consent; `interactive` allows a region pick.
+[[object.method]]
+name = "screenshot"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "interactive"
+type = "bool"
+since = "0.2.0"
+
+# PickColor: the pick overlay. It has no payload beyond the common fields.
+[[object.method]]
+name = "pick_color"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+# Secret: confirm the first read of a secret by `app_id`. `label` names the entry.
+[[object.method]]
+name = "secret"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "deadline_ms"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "label"
+type = "string"
+since = "0.2.0"
+
+# Portal-cancel: the requester is gone (or the Request closed). The UI tears down any
+# dialog for `request_id` and sends no outcome.
+[[object.method]]
+name = "cancel"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object]]
+name = "portal_outcome"
+since = "0.2.0"
+
+# The request was handled. The result fields are the interface's, and any left
+# unused stay empty or zero: `uris` (FileChooser), `choice` (AppChooser desktop id,
+# Print printer, ScreenCast or RemoteDesktop source), `remember` (AppChooser only),
+# `copies` and `pages` (Print), `grant_bits` (granted capability bits), `cursor_mode`.
+[[object.method]]
+name = "handled"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "uris"
+type = "list<string>"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "choice"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "remember"
+type = "bool"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "copies"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "pages"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "grant_bits"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "cursor_mode"
+type = "uint"
+since = "0.2.0"
+
+# The user cancelled (`user`) or the UI could not show the dialog (`ui-failed`), or the
+# deadline passed (`timeout`). Portal code 1.
+[[object.method]]
+name = "cancelled"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "reason"
+type = "string"
+since = "0.2.0"
+
+# The UI confirms it did not act. Only a provider sends this, and the UI never does.
+[[object.method]]
+name = "declined"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+# A failure the caller sees. `code` is one of the portal error codes. Portal code 2.
+[[object.method]]
+name = "error"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request_id"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "code"
+type = "string"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "message"
+type = "string"
+since = "0.2.0"

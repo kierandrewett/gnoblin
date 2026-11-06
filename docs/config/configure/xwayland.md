@@ -48,6 +48,12 @@ Xwayland coordinate scaling. Values below `0.5` would round to zero, so they
 are rejected. This is a representational limit, not a recommended display
 scale.
 
+Gnoblin starts X11 when an `Xwayland` binary is on `PATH`. A host without one
+runs the session without X11 and logs that once. A `scaling_factor` between
+`0` and `0.5` is refused by naming the setting; the session then runs without
+X11 rather than with a rounded scale. Gnoblin keeps a fixed scale to three
+decimal places, not the nearest integer that Mutter uses.
+
 ## Type definition
 
 ```lua

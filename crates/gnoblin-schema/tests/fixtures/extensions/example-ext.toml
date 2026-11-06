@@ -1,0 +1,65 @@
+# A test fixture for the extension mechanism. It is not part of the stock schema:
+# the stock catalog is `schema/` and extensions are loaded from host configuration
+# at run time. Tests that exercise extensions read this file.
+namespace = "example.ext"
+version = "0.1.0"
+
+[[object]]
+name = "probe"
+since = "0.1.0"
+
+# Start a round of the probe. The argument is not secret.
+[[object.method]]
+name = "begin"
+since = "0.1.0"
+
+[[object.method.param]]
+name = "user"
+type = "string"
+since = "0.1.0"
+
+# The answer to the probe's question. The field is secret, so every frame that
+# carries it is flagged sensitive and redacted before it reaches a log.
+[[object.method]]
+name = "answer"
+since = "0.1.0"
+
+[[object.method.param]]
+name = "response"
+type = "string"
+since = "0.1.0"
+secret = true
+
+# Raised when the probe asks its question.
+[[object.signal]]
+name = "question"
+since = "0.1.0"
+
+[[object.signal.field]]
+name = "message"
+type = "string"
+since = "0.1.0"
+
+[[object]]
+name = "counter"
+since = "0.1.0"
+
+# Reset the counter to zero. The counter has no secret members.
+[[object.method]]
+name = "reset"
+since = "0.1.0"
+
+# Raised after every reset, with the label the counter was reset under.
+[[object.signal]]
+name = "changed"
+since = "0.1.0"
+
+[[object.signal.field]]
+name = "label"
+type = "string"
+since = "0.1.0"
+
+# The extension has no provider connected, so calls fail with this code.
+[[error]]
+name = "provider-gone"
+since = "0.1.0"

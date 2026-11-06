@@ -1,0 +1,108 @@
+[package]
+name = "gnoblin-wayland"
+description = "Smithay protocol handlers, one module per protocol."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The workspace lints are restated here rather than inherited with `workspace = true`,
+# because one rule needs a narrower level in this crate: `wayland-scanner` generates
+# `unsafe { &C_INTERFACE }` for the C descriptor of every interface it is handed, and a
+# crate-wide `forbid` cannot be lifted in one module. Only `protocols::wire`, which is
+# entirely generated, carries the allow; every hand-written line of this crate is still
+# checked, and a second allow anywhere would be a review failure.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[dependencies]
+# The Wayland server itself, pinned to the revision in the root manifest (D7).
+# The safe API is enough for this slice, so the crate keeps the workspace's
+# `unsafe_code = "forbid"` and has no FFI shim module.
+# `xwayland` adds Smithay's `XWayland` process handle, the `X11Wm` window manager and the
+# `xwayland-shell-v1` and keyboard grab globals. It is enabled here because this crate is
+# the only one that owns the display the Xwayland client is inserted into; the policy
+# crate stays free of Smithay.
+smithay = { workspace = true, features = ["xwayland"] }
+# Rectangles, sizes, scales and output identities, so a geometry value is the same
+# value the window manager and the output layout already know.
+gnoblin-types.workspace = true
+# Window state transitions go through the pure policy state machine: this crate
+# translates protocols into `Wm::apply` events and turns the effects back into
+# configures, focus changes and stacking.
+gnoblin-wm = { path = "../gnoblin-wm" }
+# The session lock and protection-cover policy: `ext-session-lock-v1` is a request
+# for `Lock::apply`, and the cover, the input gate and the embargo are what its
+# effects perform (design/rust-compositor.md, "Session lock: gnoblin-lock").
+gnoblin-lock = { path = "../gnoblin-lock" }
+# Output layout: the backend's connected outputs become a declarative layout here,
+# so the window manager sees the same monitor rectangles the display configuration
+# and the portal will.
+gnoblin-output = { path = "../gnoblin-output" }
+# The backend trait and the headless backend this server drives. It is the only
+# engine crate this crate is allowed to name (design/rust-compositor.md,
+# "Dependency rules").
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The input policy: the delivery order (grab, binding, client), the idle counter and
+# the key ownership that makes a release follow its press. Delivery order is a rule,
+# not a device, so the seat reads it here instead of restating it
+# (design/rust-compositor.md, "Input: gnoblin-input"). It is a hub crate, so naming it
+# is the one engine edge this crate is allowed besides the backend's.
+gnoblin-input = { path = "../gnoblin-input" }
+# The `protocols` configuration: which globals a session advertises is a document
+# value, and the `Protocol` enum is the schema's own list of names, so gating a
+# global cannot drift from what `gnoblin.configure` accepts. The seat's keymap comes
+# from the document's `input-sources`, so the layout list has one definition.
+gnoblin-config = { path = "../gnoblin-config" }
+# The capture rules and every capture session: a protocol handler asks for a claim and
+# this crate decides whether a frame may exist at all (design/rust-compositor.md,
+# Renderer card, "session owner").
+gnoblin-capture = { path = "../gnoblin-capture" }
+# Activation authority: a token is minted once, redeemed once, refused when it
+# expired, reused or was never issued, and an app id alone never grants focus.
+gnoblin-authority = { path = "../gnoblin-authority" }
+# `zwlr_foreign_toplevel_manager_v1` is not in Smithay, so the server interfaces
+# come straight from the wlroots protocol definitions. The tests use the same
+# crate's client side, which is what keeps one XML behind both halves.
+wayland-protocols-wlr = { version = "0.3.12", features = ["server"] }
+# Log lines go through the `gnoblin-log` facade's macros, so each one carries this crate's component.
+gnoblin-log = { path = "../gnoblin-log" }
+# The Gnoblin-owned protocols' server halves, generated from `protocols/` at compile
+# time. Checking the generated code in would let the XML and the code drift, which is
+# exactly what a wire-compatible port cannot afford.
+wayland-scanner = "0.31.11"
+# The generated `state` bit field of `gnoblin_window_frame_v1` is a `bitflags` type.
+bitflags = "2"
+# The IPC request broker. A hosted session's `lock`, `logout` and `power` requests are
+# `Request` objects the session manager claims and answers, never actions this crate
+# performs (design/rust-compositor.md, "Main data paths").
+gnoblin-model = { path = "../gnoblin-model" }
+# The PipeWire client the portal ScreenCast stream is served through. The `v0_3_34`
+# feature adds the trigger call a DRIVER stream needs to produce a frame on its own
+# schedule (design/pipewire-capture-spike.md).
+pipewire = { version = "0.10", features = ["v0_3_34"] }
+
+[dev-dependencies]
+# The real client the integration tests run against the server. A `wayland-client`
+# connection over the test's own socket is what proves the round trip: no display,
+# no session, no compositor from the environment.
+wayland-client = "0.31.14"
+# The client side of the protocols the tests exercise, generated from the same XML
+# the server side uses.
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+# `zwlr_foreign_toplevel_manager_v1`'s client half, from the same wlroots XML the
+# server in `protocols::zwlr_foreign_toplevel_management_v1` is generated from.
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+# `zwp_input_method_v2` and `zwp_virtual_keyboard_v1` live outside wayland-protocols:
+# they are the two misc protocols the text-input round trip needs on the client side.
+wayland-protocols-misc = { version = "0.3.12", features = ["client"] }
+# A temporary directory and a shared-memory file for the test's socket and buffers,
+# so a test run touches no shared path.
+tempfile = "3.23.0"
+# The colours a test's stand-in host describes its frame in. The engine's dependency
+# rule allows this hub edge and it is a dev-dependency of a test only: the crate
+# itself never names the scene.
+gnoblin-render = { path = "../gnoblin-render" }

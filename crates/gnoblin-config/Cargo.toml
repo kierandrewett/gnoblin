@@ -1,0 +1,31 @@
+[package]
+name = "gnoblin-config"
+description = "Configuration document: validation, merge, salvage and the last-good store. No Lua."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The document is stored as plain JSON so the state file can be read and diffed
+# by a person; see src/last_good.rs for why the stored document is flattened
+# rather than written as a tagged tree.
+serde_json.workspace = true
+# The extension manifest reads each schema with the schema crate's parser, so an
+# extension's schema is checked by the same code that checks the stock catalog.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+[build-dependencies]
+# The generator is the same library `cargo xtask gen-config` calls, so the build
+# and the developer command cannot produce different documents.
+gnoblin-config-codegen = { path = "../gnoblin-config-codegen" }
+
+[dev-dependencies]
+# A private temporary directory for the store tests, and nothing else: the
+# validation core takes its input as an argument precisely so it needs no fixture.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
+# The contract test reads the recorded key inventory generated from the C loader.
+serde_json.workspace = true
+
+[lints]
+workspace = true

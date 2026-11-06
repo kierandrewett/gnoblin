@@ -1,0 +1,12 @@
+# Declares `probe`, which the example.ext fixture already declares. Loaded after it, this
+# schema must be refused, while example.ext stays loaded.
+namespace = "example.second"
+version = "0.1.0"
+
+[[object]]
+name = "probe"
+since = "0.1.0"
+
+[[object.method]]
+name = "ping"
+since = "0.1.0"

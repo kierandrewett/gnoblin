@@ -1,0 +1,20 @@
+# Layer surfaces stack by layer first: background, then bottom, then top, then
+# overlay, and a later surface sits above an earlier one inside its layer
+# (design/rust-compositor.md lists this under the layer shell contract).
+#
+# The recording is a candidate run whose overlay surface reported itself below a
+# top-layer surface, which is the difference this scenario exists to catch. The
+# ids, serials, timestamps and pids in the recording are deliberately unlike the
+# expectation's: the normaliser must remove them, so the only reported differences
+# are the layer and the namespace that moved with it.
+name = "layer-surface-stacking"
+description = "An overlay layer surface stacks above a top layer surface, both reported topmost first."
+target = { recorded = "../fixtures/layer-surface-stacking/candidate.json" }
+
+[[steps]]
+id = "layers.list"
+description = "Layer surfaces topmost first, each with the layer its client asked for."
+expect = [
+    { id = 1, namespace = "osd", layer = "overlay" },
+    { id = 2, namespace = "bar", layer = "top" },
+]

@@ -1,0 +1,208 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.RemoteDesktop",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "CreateSession",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `CreateSession` has nothing to act on"
+        },
+        {
+          "kind": "property",
+          "name": "SupportedDeviceTypes",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SupportedDeviceTypes` has nothing to act on"
+        },
+        {
+          "kind": "property",
+          "name": "Version",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `Version` has nothing to act on"
+        }
+      ]
+    },
+    {
+      "name": "org.gnome.Mutter.RemoteDesktop.Session",
+      "version": 1,
+      "members": [
+        {
+          "kind": "property",
+          "name": "SessionId",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SessionId` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "Start",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `Start` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "Stop",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `Stop` has nothing to act on"
+        },
+        {
+          "kind": "signal",
+          "name": "Closed",
+          "support": "unsupported",
+          "reason": "`Closed` is not published: the compositor has no remote-desktop IPC object yet"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyKeyboardKeycode",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyKeyboardKeycode` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyKeyboardKeysym",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyKeyboardKeysym` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyPointerButton",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyPointerButton` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyPointerAxis",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyPointerAxis` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyPointerAxisDiscrete",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyPointerAxisDiscrete` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyPointerMotionRelative",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyPointerMotionRelative` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyPointerMotionAbsolute",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyPointerMotionAbsolute` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyTouchDown",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyTouchDown` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyTouchMotion",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyTouchMotion` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "NotifyTouchUp",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NotifyTouchUp` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "EnableClipboard",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `EnableClipboard` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "DisableClipboard",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `DisableClipboard` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "SetSelection",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SetSelection` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "SelectionWrite",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SelectionWrite` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "SelectionWriteDone",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SelectionWriteDone` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "SelectionRead",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SelectionRead` has nothing to act on"
+        },
+        {
+          "kind": "signal",
+          "name": "SelectionOwnerChanged",
+          "support": "unsupported",
+          "reason": "`SelectionOwnerChanged` is not published: the compositor has no remote-desktop IPC object yet"
+        },
+        {
+          "kind": "signal",
+          "name": "SelectionTransfer",
+          "support": "unsupported",
+          "reason": "`SelectionTransfer` is not published: the compositor has no remote-desktop IPC object yet"
+        },
+        {
+          "kind": "property",
+          "name": "CapsLockState",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `CapsLockState` has nothing to act on"
+        },
+        {
+          "kind": "property",
+          "name": "NumLockState",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `NumLockState` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "ConnectToEIS",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `ConnectToEIS` has nothing to act on"
+        },
+        {
+          "kind": "property",
+          "name": "KeymapCapabilities",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `KeymapCapabilities` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "SetKeymap",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SetKeymap` has nothing to act on"
+        },
+        {
+          "kind": "method",
+          "name": "SetKeymapLayoutIndex",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `SetKeymapLayoutIndex` has nothing to act on"
+        },
+        {
+          "kind": "property",
+          "name": "CurrentKeymap",
+          "support": "unsupported",
+          "reason": "the compositor has no remote-desktop IPC object yet, so `CurrentKeymap` has nothing to act on"
+        }
+      ]
+    }
+  ]
+}

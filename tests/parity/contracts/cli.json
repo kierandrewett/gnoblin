@@ -1,0 +1,638 @@
+{
+  "format": 1,
+  "kind": "cli",
+  "generated_by": "scripts/contract-inventory.py",
+  "count": 22,
+  "actions": 77,
+  "entries": [
+    {
+      "command": "animation",
+      "summary": "Inspect and preview compositor animations",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List configured animations",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 150
+        },
+        {
+          "action": "get",
+          "summary": "Show one configured animation",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 151
+        },
+        {
+          "action": "surfaces",
+          "summary": "List layer-shell animation targets",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 152
+        },
+        {
+          "action": "inspect",
+          "summary": "Inspect a configured animation",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 153
+        },
+        {
+          "action": "preview",
+          "summary": "Preview a configured animation",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 154
+        },
+        {
+          "action": "seek",
+          "summary": "Seek a preview to a percentage",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 155
+        },
+        {
+          "action": "step",
+          "summary": "Advance a preview by milliseconds",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 156
+        },
+        {
+          "action": "play",
+          "summary": "Play a preview session",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 157
+        },
+        {
+          "action": "pause",
+          "summary": "Pause a preview session",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 158
+        },
+        {
+          "action": "stop",
+          "summary": "Stop a preview session",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 159
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 34
+    },
+    {
+      "command": "capabilities",
+      "summary": "List compositor and protocol capabilities",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 13
+    },
+    {
+      "command": "completion",
+      "summary": "Print shell completion setup for bash, zsh or fish",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 25
+    },
+    {
+      "command": "config",
+      "summary": "Show the default or manage the active configuration",
+      "actions": [
+        {
+          "action": "path",
+          "summary": "Show the active configuration path",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 119
+        },
+        {
+          "action": "default",
+          "summary": "Print the bundled default Lua configuration",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 120
+        },
+        {
+          "action": "show",
+          "summary": "Show the committed settings snapshot",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 121
+        },
+        {
+          "action": "reload",
+          "summary": "Reload the active configuration",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 122
+        },
+        {
+          "action": "restore-default",
+          "summary": "Back up and replace the config folder with embedded defaults",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 123
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 27
+    },
+    {
+      "command": "focus",
+      "summary": "Inspect focus policy and recent focus history",
+      "actions": [
+        {
+          "action": "history",
+          "summary": "List recently focused windows",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 68
+        },
+        {
+          "action": "policy",
+          "summary": "Show the committed focus policy",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 67
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 14
+    },
+    {
+      "command": "init",
+      "summary": "Create an editable default config tree from the binary",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 28
+    },
+    {
+      "command": "input",
+      "summary": "Inspect and select input sources",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List configured keyboard sources",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 140
+        },
+        {
+          "action": "current",
+          "summary": "Show the active keyboard source",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 141
+        },
+        {
+          "action": "select",
+          "summary": "Select a configured keyboard source",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 142
+        },
+        {
+          "action": "devices",
+          "summary": "List detected input devices and capabilities",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 143
+        },
+        {
+          "action": "orientation-lock",
+          "summary": "Read or set the orientation lock",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 144
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 32
+    },
+    {
+      "command": "launch",
+      "summary": "Inspect launch feedback",
+      "actions": [
+        {
+          "action": "status",
+          "summary": "Show pending app launches",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 146
+        },
+        {
+          "action": "begin",
+          "summary": "Start a global busy-cursor request",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 147
+        },
+        {
+          "action": "end",
+          "summary": "End a busy-cursor request",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 148
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 33
+    },
+    {
+      "command": "layer",
+      "summary": "Inspect layer-shell surfaces",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List layer surfaces and their rule namespaces",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 112
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 24
+    },
+    {
+      "command": "logout",
+      "summary": "End this Gnoblin session and return to the login manager",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 16
+    },
+    {
+      "command": "lua",
+      "summary": "Open a Lua console, or run a Lua file, with the session API",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 35
+    },
+    {
+      "command": "monitor",
+      "summary": "List monitors",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List logical monitors and geometry",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 135
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 30
+    },
+    {
+      "command": "output",
+      "summary": "Inspect rendering outputs",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List output modes and renderer details",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 137
+        },
+        {
+          "action": "primary",
+          "summary": "Show the primary output",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 138
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 31
+    },
+    {
+      "command": "ping",
+      "summary": "Check whether the compositor control socket responds",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 11
+    },
+    {
+      "command": "privacy",
+      "summary": "Show privacy indicators, or stop sharing or recording",
+      "actions": [
+        {
+          "action": "stop-sharing",
+          "summary": "Stop screen sharing",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 80
+        },
+        {
+          "action": "stop-recording",
+          "summary": "Stop recording",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 81
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 18
+    },
+    {
+      "command": "reload",
+      "summary": "Reload supported runtime configuration",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 15
+    },
+    {
+      "command": "session",
+      "summary": "Read idle activity, lock, log out, suspend or power off",
+      "actions": [
+        {
+          "action": "activity",
+          "summary": "Read the latest idle-monitor sample",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 72
+        },
+        {
+          "action": "lock",
+          "summary": "Ask a subscribed external shell client to lock the session",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 73
+        },
+        {
+          "action": "logout",
+          "summary": "End this Gnoblin session and return to the login manager",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 74
+        },
+        {
+          "action": "suspend",
+          "summary": "Suspend the machine",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 75
+        },
+        {
+          "action": "hibernate",
+          "summary": "Hibernate the machine",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 76
+        },
+        {
+          "action": "reboot",
+          "summary": "Restart the machine",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 77
+        },
+        {
+          "action": "poweroff",
+          "summary": "Shut the machine down",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 78
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 17
+    },
+    {
+      "command": "shortcut",
+      "summary": "List configured shortcuts and capture key combinations",
+      "actions": [
+        {
+          "action": "actions",
+          "summary": "List built-in shortcut actions, optionally by group",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 115
+        },
+        {
+          "action": "list",
+          "summary": "List shortcuts registered by the native compositor",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 116
+        },
+        {
+          "action": "capture",
+          "summary": "Capture one key combination and print its GTK accelerator",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 117
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 26
+    },
+    {
+      "command": "status",
+      "summary": "Show the running session and lock availability",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 10
+    },
+    {
+      "command": "version",
+      "summary": "Show the version reported by the running compositor",
+      "actions": [],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 12
+    },
+    {
+      "command": "window",
+      "summary": "List and manage windows",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List open windows",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 83
+        },
+        {
+          "action": "match",
+          "summary": "Show the fields used to match one window in config rules",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 84
+        },
+        {
+          "action": "menu",
+          "summary": "Rejected: needs a trusted shell input context",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 85
+        },
+        {
+          "action": "interactive-move",
+          "summary": "Rejected: needs a trusted shell input context",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 86
+        },
+        {
+          "action": "interactive-resize",
+          "summary": "Rejected: needs a trusted shell input context",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 87
+        },
+        {
+          "action": "above",
+          "summary": "Keep a window above others",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 88
+        },
+        {
+          "action": "unabove",
+          "summary": "Stop keeping a window above others",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 89
+        },
+        {
+          "action": "stick",
+          "summary": "Show a window on every workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 90
+        },
+        {
+          "action": "unstick",
+          "summary": "Show a window on one workspace only",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 91
+        },
+        {
+          "action": "focus",
+          "summary": "Rejected: needs a one-use trusted context or an activation token",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 92
+        },
+        {
+          "action": "close",
+          "summary": "Close a window",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 93
+        },
+        {
+          "action": "kill",
+          "summary": "Force-quit a window by killing its client process",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 94
+        },
+        {
+          "action": "raise",
+          "summary": "Raise a window above the others",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 95
+        },
+        {
+          "action": "lower",
+          "summary": "Lower a window below the others",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 96
+        },
+        {
+          "action": "minimize",
+          "summary": "Minimize a window",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 97
+        },
+        {
+          "action": "unminimize",
+          "summary": "Bring back a minimized window",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 98
+        },
+        {
+          "action": "toggle-minimize",
+          "summary": "Minimize a window, or bring it back if minimized",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 99
+        },
+        {
+          "action": "restore-or-minimize",
+          "summary": "Restore a window, or minimize it, depending on its state",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 100
+        },
+        {
+          "action": "restore",
+          "summary": "Restore a maximized, fullscreen or minimized window",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 101
+        },
+        {
+          "action": "maximize",
+          "summary": "Maximize a window",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 102
+        },
+        {
+          "action": "unmaximize",
+          "summary": "Stop maximizing a window",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 103
+        },
+        {
+          "action": "fullscreen",
+          "summary": "Make a window fullscreen",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 104
+        },
+        {
+          "action": "unfullscreen",
+          "summary": "Leave fullscreen",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 105
+        },
+        {
+          "action": "move",
+          "summary": "Set position in logical screen coordinates",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 106
+        },
+        {
+          "action": "resize",
+          "summary": "Set frame size in logical pixels",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 107
+        },
+        {
+          "action": "monitor",
+          "summary": "Move to a connector ID, or use an index for active",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 108
+        },
+        {
+          "action": "workspace",
+          "summary": "Move a window to an existing workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 109
+        },
+        {
+          "action": "thumbnail",
+          "summary": "Save a window thumbnail as a PNG",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 110
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 19
+    },
+    {
+      "command": "workspace",
+      "summary": "List and switch workspaces",
+      "actions": [
+        {
+          "action": "list",
+          "summary": "List workspaces",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 126
+        },
+        {
+          "action": "create",
+          "summary": "Create a workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 127
+        },
+        {
+          "action": "rename",
+          "summary": "Rename a workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 128
+        },
+        {
+          "action": "remove",
+          "summary": "Remove a workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 129
+        },
+        {
+          "action": "switch",
+          "summary": "Switch to an existing workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 130
+        },
+        {
+          "action": "next",
+          "summary": "Switch to the next workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 131
+        },
+        {
+          "action": "previous",
+          "summary": "Switch to the previous workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 132
+        },
+        {
+          "action": "move-active",
+          "summary": "Move the active window to a workspace",
+          "source": "src/cli/gnoblinctl-cli.c",
+          "line": 133
+        }
+      ],
+      "source": "src/cli/gnoblinctl-cli.c",
+      "line": 29
+    }
+  ]
+}

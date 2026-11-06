@@ -1,0 +1,70 @@
+[package]
+name = "gnoblin"
+description = "Session entry point: role dispatch for guardian, compositor, runtime and services."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "gnoblin"
+path = "src/main.rs"
+
+[dependencies]
+# The composition root: the only crate that knows every subsystem. This binary hands
+# it a configuration and stays out of the way; it must never learn a subsystem itself,
+# because a binary that reached into an engine crate would be a second composition
+# root.
+gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The guardian: the plan of children, the events it answers, the effects it returns and
+# the supervisor that performs them. The guardian role is this crate's, because the
+# process that starts the other processes is the one that names them.
+gnoblin-session = { path = "../gnoblin-session" }
+# The logging composition: the console and database sinks, for every role.
+gnoblin-log = { path = "../gnoblin-log", features = ["init"] }
+# The runtime role: the Lua host as its own process (D1). A role entry point, not an
+# engine: the binary hands it the inherited connection and stays out of the way.
+gnoblin-lua = { path = "../gnoblin-lua" }
+# The services role: the D-Bus agents as their own process.
+gnoblin-services = { path = "../gnoblin-services" }
+# The gcr passphrase prompter is the one compat adapter the services role serves. Only
+# this binary links compat crates; see `xtask/src/deps.rs`.
+gnoblin-compat-gnome-keyring-prompter = { path = "../compat/gnoblin-compat-gnome-keyring-prompter" }
+gnoblin-compat-gnome-shell-introspect = { path = "../compat/gnoblin-compat-gnome-shell-introspect" }
+gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
+# The display configuration adapter, served by the services role on its own compositor link.
+gnoblin-compat-mutter-displayconfig = { path = "../compat/gnoblin-compat-mutter-displayconfig" }
+# The gtk_shell1 redirect and the X11 interop protocol, served by the compositor role.
+gnoblin-compat-gtk-shell1 = { path = "../compat/gnoblin-compat-gtk-shell1" }
+gnoblin-compat-mutter-x11-interop = { path = "../compat/gnoblin-compat-mutter-x11-interop" }
+gnoblin-compat-mutter-idlemonitor = { path = "../compat/gnoblin-compat-mutter-idlemonitor" }
+# The Qt settings adapter: the guardian exports the platform theme that points Qt at the portal.
+gnoblin-compat-qt-portal-settings = { path = "../compat/gnoblin-compat-qt-portal-settings" }
+# The dconf settings adapter: the services role writes the layer GTK reads, and the guardian points dconf at it.
+gnoblin-compat-gtk-dconf-settings = { path = "../compat/gnoblin-compat-gtk-dconf-settings" }
+# The XSETTINGS adapter, served by the compositor role to the X11 session's clients.
+gnoblin-compat-x11-xsettings = { path = "../compat/gnoblin-compat-x11-xsettings" }
+zbus.workspace = true
+futures-lite.workspace = true
+# The role flag. One flag with a documented default, and `--version`.
+clap.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The tests run the built binary, so the exit codes and the flags are the shipped
+# ones rather than a function that happens to share their names.
+tempfile = "3.23.0"
+# The guardian tests ask the session what it serves through the real command line client,
+# and read the version the compositor advertises from the crate that serves it.
+gnoblinctl = { path = "../gnoblinctl" }
+gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The XSETTINGS seam the test reads the session's settings through, named by the compat wiring.
+gnoblin-xwayland = { path = "../gnoblin-xwayland" }
+# A test kills a child the way a crash does, which is one signal to one process group.
+rustix = { workspace = true, features = ["process"] }
+# The probe's real client, so the test reads what the session advertises on its socket.
+wayland-client = "0.31.14"
+# The X11 client the XSETTINGS test connects as, the way a toolkit reads the selection.
+x11rb = "0.14.0"

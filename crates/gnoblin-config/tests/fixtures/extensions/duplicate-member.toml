@@ -1,0 +1,15 @@
+# One object declares the member `ping` twice: once as a method and once as a signal.
+namespace = "example.dup"
+version = "0.1.0"
+
+[[object]]
+name = "thing"
+since = "0.1.0"
+
+[[object.method]]
+name = "ping"
+since = "0.1.0"
+
+[[object.signal]]
+name = "ping"
+since = "0.1.0"

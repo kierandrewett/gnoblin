@@ -1,0 +1,61 @@
+[package]
+name = "gnoblin-lua"
+description = "Lua host: sandbox, loader, generated bindings, operations, timers and tweens."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The Lua VM (D10): Lua 5.5, vendored, so the runtime links one Lua on every
+# distribution target.
+mlua.workspace = true
+# The sandboxed VM and its limits, shared with the layout host (D17). The runtime
+# builds its state through it, so the limits are stated once.
+gnoblin-lua-sandbox = { path = "../gnoblin-lua-sandbox" }
+# The runtime is an IPC client, not part of the compositor (D1): it reaches the
+# object graph through the same client `gnoblinctl` and the shells use.
+gnoblin-client = { path = "../gnoblin-client" }
+# `gnoblin.configure` produces the configuration layer's own value tree and hands
+# it to its validation, so the host owns no second document model.
+gnoblin-config = { path = "../gnoblin-config" }
+# The bindings speak the object model's vocabulary: identities, values,
+# observations, operations and ticks.
+gnoblin-model = { path = "../gnoblin-model" }
+# The schema parser: the stock schemas are embedded and parsed at run time, and an
+# extension's schema is parsed from its package, so the runtime needs the parser itself.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The document a commit carries is the configuration tree as JSON, which is the encoding the
+# configuration layer already uses for its stored last-good file.
+serde_json.workspace = true
+# The primitives the role loop names: the tick it pumps on.
+gnoblin-types.workspace = true
+# The layout host settles placements through the window manager's layout validator and
+# engine, so Lua layouts and built-in layouts share one set of rules.
+gnoblin-wm = { path = "../gnoblin-wm" }
+# The version the handshake advertises, which is the schema's and therefore the
+# compositor's. The runtime role is the second IPC peer in the workspace, and it has to
+# speak the same version rule as the compositor without depending on it.
+gnoblin-proto = { path = "../gnoblin-proto" }
+# A `[role]` log line per configuration commit, refused commit and failed handler.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[build-dependencies]
+# The Lua tables and `gnoblin.d.lua` are generated from the schema, so a schema
+# member is the only way to add one.
+gnoblin-schema = { path = "../gnoblin-schema" }
+serde.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+# The tests drive the host through the in-process loopback against a real graph
+# built from the checked-in schema, and re-derive the expected bindings from it.
+gnoblin-client = { path = "../gnoblin-client" }
+# The window fixture builds a window's full property set from the schema.
+gnoblin-testkit = { path = "../gnoblin-testkit" }
+# The role test serves a real socketpair and a real client, so the shipped role is
+# exercised rather than a copy of its loop.
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

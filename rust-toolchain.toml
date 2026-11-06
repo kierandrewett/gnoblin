@@ -1,0 +1,15 @@
+# Pinned development toolchain.
+#
+# Gnoblin's MSRV comes from the highest floor of its pinned dependencies, not
+# from a Rust release number (design/rust-compositor.md, "Distribution and
+# toolchain"): Smithay master declares 1.87 and `mlua` 0.12 declares 1.88, and
+# the exact revisions land here later. Until then this pin exists so that every
+# developer, CI runner and build lane compiles with one `rustc` and one
+# `rustfmt`. A floating toolchain would let a formatting or lint change on a
+# patch release break unrelated commits, and `rustfmt` output would differ
+# between machines. Bump this pin deliberately, in its own commit, and run
+# `just ci` on it.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

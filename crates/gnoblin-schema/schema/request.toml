@@ -1,0 +1,104 @@
+# The `request` object: the offered → claimed → answered exchange.
+#
+# A request is how the compositor asks a provider to decide something (polkit
+# authentication, a secret prompt, a portal consent dialog, a location request),
+# and the request layer's four frames used to be hand-written beside the schema
+# because an envelope "cannot carry the layer itself". That left a hole: an answer
+# can carry a password, and only a schema member is flagged sensitive, so a request
+# answer travelled as a plain frame and a log or the parity recorder would have kept
+# the bytes. Declaring the four frames here closes it — `answer` is a member with a
+# secret field, so every frame that carries one is flagged and redacted by the same
+# generated table every other member uses.
+#
+# The object has no properties on purpose: a request's live state (offered, claimed
+# by one owner, finished once) is the broker's, and what a client may learn about it
+# is these two signals.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "request"
+since = "0.2.0"
+
+# Ask for an offered request. The first claim wins; a second owner is refused with
+# the holder's identity.
+[[object.method]]
+name = "claim"
+since = "0.2.0"
+
+# The identity the offer named.
+[[object.method.param]]
+name = "request"
+type = "uint"
+since = "0.2.0"
+
+# Answer a request the caller holds. An answer from anyone else, or a late answer,
+# is refused.
+[[object.method]]
+name = "answer"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "request"
+type = "uint"
+since = "0.2.0"
+
+# The provider's answer, encoded by the provider. A prompt's answer is a password or
+# a passphrase, so this field is secret and every frame carrying it is flagged:
+# `gnoblinctl ipc dump`, the parity recorder and every log line redact it without
+# knowing which provider asked.
+[[object.method.param]]
+name = "answer"
+type = "bytes"
+since = "0.2.0"
+secret = true
+
+# Decline a request the caller holds: the provider will not answer it. Declining is
+# its own member rather than an empty answer, because an empty answer is consent with
+# no content — a provider that chooses nothing still chose — and the two outcomes
+# must stay distinguishable on the wire. The member is `decline` and not `end`
+# because a schema member is also generated into the Lua bindings, where `end` is a
+# reserved word and `object:end()` cannot be written or parsed; the *outcome* it
+# produces is still `ended`. It carries no answer bytes, so its frame is not secret.
+[[object.method]]
+name = "decline"
+since = "0.2.0"
+
+# The identity the offer named.
+[[object.method.param]]
+name = "request"
+type = "uint"
+since = "0.2.0"
+
+# A request is available to claim.
+[[object.signal]]
+name = "offered"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "request"
+type = "uint"
+since = "0.2.0"
+
+# When the offer fails if nobody claims and answers it.
+[[object.signal.field]]
+name = "deadline"
+type = "uint"
+since = "0.2.0"
+
+# The request ended. Emitted exactly once per request, and never carries the
+# answer: only the host that offered the request reads that.
+[[object.signal]]
+name = "finished"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "request"
+type = "uint"
+since = "0.2.0"
+
+# `answered`, `ended` or `timed-out`.
+[[object.signal.field]]
+name = "completion"
+type = "string"
+since = "0.2.0"

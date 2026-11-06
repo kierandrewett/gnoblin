@@ -1,0 +1,199 @@
+{
+  "format": 1,
+  "kind": "config-keys",
+  "generated_by": "scripts/contract-inventory.py",
+  "count": 21,
+  "entries": [
+    {
+      "key": "animations",
+      "table_index": 20,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 441
+    },
+    {
+      "key": "auth",
+      "table_index": 9,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 430
+    },
+    {
+      "key": "autostart",
+      "table_index": 17,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 438
+    },
+    {
+      "key": "compositor",
+      "table_index": 2,
+      "runtime_overridable": true,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 423
+    },
+    {
+      "key": "cursor",
+      "table_index": 14,
+      "runtime_overridable": true,
+      "runtime_override_keys": ["theme", "size"],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 435
+    },
+    {
+      "key": "frame-renderers",
+      "table_index": 13,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 434
+    },
+    {
+      "key": "input",
+      "table_index": 3,
+      "runtime_overridable": true,
+      "runtime_override_keys": ["orientation-lock"],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 424
+    },
+    {
+      "key": "input-sources",
+      "table_index": 4,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 425
+    },
+    {
+      "key": "keybindings",
+      "table_index": 0,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 421
+    },
+    {
+      "key": "layer-shell",
+      "table_index": 11,
+      "runtime_overridable": true,
+      "runtime_override_keys": ["preserve-active-window"],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 432
+    },
+    {
+      "key": "location",
+      "table_index": 7,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 428
+    },
+    {
+      "key": "monitors",
+      "table_index": 5,
+      "runtime_overridable": true,
+      "runtime_override_keys": ["privacy-screen"],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 426
+    },
+    {
+      "key": "portals",
+      "table_index": 10,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 431
+    },
+    {
+      "key": "prompts",
+      "table_index": 8,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 429
+    },
+    {
+      "key": "protocols",
+      "table_index": 12,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 433
+    },
+    {
+      "key": "shortcuts",
+      "table_index": 16,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 437
+    },
+    {
+      "key": "touchpad-gestures",
+      "table_index": 6,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 427
+    },
+    {
+      "key": "window-management",
+      "table_index": 1,
+      "runtime_overridable": true,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 422
+    },
+    {
+      "key": "window-rules",
+      "table_index": 19,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 440
+    },
+    {
+      "key": "workspaces",
+      "table_index": 18,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 439
+    },
+    {
+      "key": "xwayland",
+      "table_index": 15,
+      "runtime_overridable": false,
+      "runtime_override_keys": [],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 436
+    }
+  ],
+  "enumerations": [
+    {
+      "name": "protocols",
+      "values": [
+        "wlr-layer-shell",
+        "ext-foreign-toplevel-list",
+        "wlr-foreign-toplevel-management",
+        "xdg-decoration",
+        "kde-server-decoration",
+        "window-frame-renderer",
+        "wlr-screencopy",
+        "ext-background-effect-v1",
+        "blur-fade",
+        "ext-data-control",
+        "ext-idle-notify",
+        "wlr-gamma-control",
+        "wlr-output-power-management",
+        "ext-session-lock"
+      ],
+      "source": "src/config/lua/gnoblin-lua-input.c",
+      "line": 445
+    }
+  ]
+}

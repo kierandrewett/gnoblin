@@ -1,0 +1,98 @@
+# The `window` object: the first slice of the window vocabulary. Properties feed
+# property diffs; `focus` is a method; `closed` ends the object.
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "window"
+since = "0.2.0"
+
+# The compositor's identity for the window, stable for its lifetime.
+[[object.property]]
+name = "id"
+type = "uint"
+since = "0.2.0"
+
+# The title the client set. Not trustworthy for attribution: any client can pick
+# one (design/rust-compositor.md, "Attribution is not authority").
+[[object.property]]
+name = "title"
+type = "string"
+since = "0.2.0"
+
+# The Wayland app ID the client set.
+[[object.property]]
+name = "app_id"
+type = "string"
+since = "0.2.0"
+
+[[object.property]]
+name = "focused"
+type = "bool"
+since = "0.2.0"
+
+# The frame rectangle in global logical coordinates: the left and top edges, then
+# the extents. Four numbers rather than one rectangle because the schema declares
+# no rectangle type yet, and a move changes x and y while a resize changes width
+# and height, so each diff says which kind of change it was.
+[[object.property]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+[[object.property]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+
+[[object.property]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+
+# The icon name the client set with `xdg-toplevel-icon-v1`; empty when none is set.
+[[object.property]]
+name = "icon"
+type = "string"
+since = "0.2.0"
+
+# The tag the client set with `xdg-toplevel-tag-v1`; empty when none is set.
+[[object.property]]
+name = "tag"
+type = "string"
+since = "0.2.0"
+
+# Whether the window is a modal dialog. A modal blocks its parent: focus on the parent is redirected to it.
+[[object.property]]
+name = "modal"
+type = "bool"
+since = "0.2.0"
+
+# Ask the compositor to focus the window. Focus policy decides whether it does;
+# the result arrives as a change to the `focused` property.
+[[object.method]]
+name = "focus"
+since = "0.2.0"
+
+# The window is gone. A client drops its view of the object on this signal.
+[[object.signal]]
+name = "closed"
+since = "0.2.0"
+
+# Whether the window's client has missed its liveness ping for longer than the
+# `window-management.check-alive-timeout` setting. Read-only: the compositor sets it.
+[[object.property]]
+name = "unresponsive"
+type = "bool"
+since = "0.2.0"
+
+# Kill the process that owns the window with SIGKILL. The compositor refuses when the
+# owning process is unknown, is the compositor itself or is init.
+[[object.method]]
+name = "kill"
+since = "0.2.0"

@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gnoblin-session-host-v1.xml: Gnoblin-owned protocol, version history.
+
+  New in the Rust compositor (design/rust-compositor.md, "Hosting sessions",
+  D4). It replaces three interfaces at once: bsm's `bsm_session_host_v1`, the
+  `bsm-host` bridge socket and bsm's `org.gnoblin.Hosted1` D-Bus name. Nothing
+  in this file is wire-compatible with any of them: they described a session
+  whose surface bsm placed, and this one describes a session that is a Wayland
+  client of a host compositor.
+
+  1  Initial version.
+-->
+<protocol name="gnoblin_session_host_v1">
+  <copyright>Copyright 2026 Gnoblin contributors. MIT license.</copyright>
+  <interface name="gnoblin_session_host_v1" version="1">
+    <description summary="the host compositor's channel to one hosted session">
+      Offered only on the connection the host compositor brokered for one
+      hosted session: the compositor marks that connection before its first
+      request, so a greeter, an application, or a session's own clients never
+      see this global at all. One object exists per session connection, and a
+      second bind on the same connection is a protocol error.
+
+      The host is the server and the session is the client. The session's
+      Gnoblin runs on the nested backend, so its outputs are surfaces of this
+      connection and its clients are its own.
+
+      The two sides divide the host's invariants like this:
+
+      - The host hides the session's surfaces and paints the cover itself, so a
+        session can never be shown by accident. It answers the manager only
+        after a frame without the session reached every output.
+      - The session covers its own scene and acknowledges with `protected`
+        only once that cover was presented on its own outputs. A session that
+        is asked to protect itself and then crashes leaves the host's cover
+        standing and nothing is revealed.
+
+      Nothing here is a request the compositor performs on its own authority.
+      `lock`, `logout` and `power` are published to the session manager as
+      objects it may claim and answer; the compositor never locks, ends a
+      session or calls logind because a client asked.
+    </description>
+    <enum name="power_action">
+      <description summary="what the session asked the machine to do"/>
+      <entry name="reboot" value="0"/>
+      <entry name="power_off" value="1"/>
+      <entry name="suspend" value="2"/>
+      <entry name="hibernate" value="3"/>
+    </enum>
+    <enum name="error">
+      <entry name="already_bound" value="0" summary="a second session host on one connection"/>
+      <entry name="stale_protection" value="1" summary="acknowledged a protection that was never requested"/>
+      <entry name="invalid_hint" value="2" summary="an output hint with a non-positive size or scale"/>
+      <entry name="invalid_power_action" value="3" summary="a power action outside the enum"/>
+    </enum>
+    <request name="destroy" type="destructor">
+      <description summary="the session stops speaking this protocol">
+        The protection state is kept: destroy is not a release, and a session
+        that destroys its object while protected leaves the cover in place.
+      </description>
+    </request>
+    <request name="ready">
+      <description summary="the session can be shown">
+        Sent once the session serves its own clients and its shell is up. The
+        host publishes it to the session manager, which is what decides whether
+        to show the session, so readiness is a statement about the session and
+        never a request to be shown. A second `ready` on the same object is
+        harmless: readiness is a level, not an edge.
+      </description>
+    </request>
+    <request name="protected">
+      <description summary="the cover for this protection was presented">
+        The answer to `protect`. Send it only after the frame carrying the
+        cover reached every output of the session: a cover that is merely
+        committed proves nothing, because a flip already in flight can still
+        show the desktop. A serial older than the current protection is
+        ignored; a serial the host never sent is the `stale_protection` error.
+      </description>
+      <arg name="serial" type="uint"/>
+    </request>
+    <request name="lock">
+      <description summary="ask for the session to be locked">
+        A lock source inside the session - idle, a hotkey, a shell action. The
+        host publishes it to the session manager as a request; whether the seat
+        locks is the manager's decision and this request carries no consent.
+      </description>
+    </request>
+    <request name="logout">
+      <description summary="ask for the session to end">
+        The session asks to log out. As with `lock`, the manager decides, and
+        the compositor never ends the session itself.
+      </description>
+    </request>
+    <request name="power">
+      <description summary="ask for a machine power action">
+        Reboot, power off, suspend or hibernate, published to the manager as a
+        request. A nested session never calls logind: it does not own the seat,
+        the hardware or the machine's policy. An action outside the enum is the
+        `invalid_power_action` error.
+      </description>
+      <arg name="action" type="uint" enum="power_action"/>
+    </request>
+    <request name="output_hint">
+      <description summary="how one of the session's outputs wants to be shown">
+        A hint, sent once per output the session drives, then completed by
+        `output_hint_done`. The host places the session's surfaces itself and
+        may ignore the hint entirely; what it does with it is report it to the
+        manager and use it to choose a size when the manager asks it to fit the
+        session to an output. `name` is the session's own output name, `width`
+        and `height` are logical pixels and `scale` is 24.8 fixed point. Hints
+        sent between one `output_hint_done` and the next replace each other;
+        the completed set replaces the previous set as a whole.
+      </description>
+      <arg name="name" type="string"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="scale" type="fixed"/>
+    </request>
+    <request name="output_hint_done">
+      <description summary="the hint set is complete">
+        Marks the end of a consistent set of `output_hint` requests, so a host
+        never acts on a half-updated layout. Send it even when the set is
+        empty, which says the session drives no output.
+      </description>
+    </request>
+    <event name="protect">
+      <description summary="cover yourself">
+        The host is about to remove this session from its outputs and wants the
+        session to cover its own scene as well, so a capture, a screenshot or a
+        stale buffer of the session cannot show what the host just hid. Answer
+        with `protected` and the same serial once the cover frame is presented.
+        A protection already in place is not asked for twice.
+      </description>
+      <arg name="serial" type="uint"/>
+    </event>
+    <event name="unprotect">
+      <description summary="lift your own cover">
+        The host is showing this session again, so the cover the session raised
+        for the last `protect` must go. Only the host can ask for this: a
+        session cannot unprotect itself, which is what makes the manager's
+        protection state the only way a session becomes visible.
+      </description>
+    </event>
+    <event name="closed">
+      <description summary="the host is ending this hosted session">
+        The session's connection is about to be closed because the session was
+        ended or the host is shutting down. Nothing in the session survives it;
+        a client that ignores it is disconnected anyway.
+      </description>
+    </event>
+  </interface>
+</protocol>

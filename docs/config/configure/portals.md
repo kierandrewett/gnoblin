@@ -88,3 +88,30 @@ precedence. Gnoblin leaves it alone and reports a conflict rather than
 overwriting it. If a generated Gnoblin file exists when a generic `portals.conf`
 is added, Gnoblin removes its generated file so the user's configuration can
 take effect.
+
+## Settings interface
+
+The `org.freedesktop.impl.portal.Settings` interface answers `ReadAll` and
+`Read` from the appearance values Gnoblin already holds. A toolkit reads them
+through the portal, and each change is announced with `SettingChanged`. The
+backend publishes these keys:
+
+| Namespace                     | Key                                                      | Source         |
+| ----------------------------- | -------------------------------------------------------- | -------------- |
+| `org.freedesktop.appearance`  | `color-scheme`                                           | colour scheme  |
+| `org.freedesktop.appearance`  | `contrast`                                               | contrast       |
+| `org.freedesktop.appearance`  | `reduced-motion`                                         | reduced motion |
+| `org.freedesktop.appearance`  | `accent-color`                                           | accent colour  |
+| `org.gnome.desktop.interface` | `gtk-theme`, `icon-theme`                                | theme names    |
+| `org.gnome.desktop.interface` | `cursor-theme`, `cursor-size`                            | cursor         |
+| `org.gnome.desktop.interface` | `font-name`, `document-font-name`, `monospace-font-name` | fonts          |
+| `org.gnome.desktop.interface` | `text-scaling-factor`                                    | text scale     |
+| `org.gnome.desktop.interface` | `button-layout`                                          | window buttons |
+| `org.gnome.desktop.interface` | `enable-animations`                                      | animations     |
+
+An accent colour that is not set is published as the sentinel the Settings
+portal defines: all three components out of range. A key Gnoblin does not
+publish is absent, not guessed.
+
+Gnoblin does not publish Qt or KDE settings through this interface. A Qt or
+KDE toolkit needs its own bridge to read these values.

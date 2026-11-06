@@ -1,0 +1,87 @@
+# The `session` object: the small slice a shell needs to know the compositor is
+# up, which version it speaks, and who provides each optional capability.
+#
+# Every member records `since`, the full Gnoblin version that added it. A client
+# compares `since` with the compositor's version before it uses a member
+# (design/rust-compositor.md, "Versioning").
+namespace = "gnoblin"
+version = "0.2.0"
+
+[[object]]
+name = "session"
+since = "0.2.0"
+
+# The IPC version the compositor serves, which is exactly the Gnoblin version.
+[[object.property]]
+name = "version"
+type = "string"
+since = "0.2.0"
+
+# Sent once when the session can accept requests.
+[[object.signal]]
+name = "ready"
+since = "0.2.0"
+
+# An application rang the bell: `gtk_shell1.system_bell` or the display's own bell.
+#
+# A signal and not a property because there is no state to read afterwards: a reader
+# reacts to the change. Whether the bell is visual, audible or both is configuration
+# (`compositor.visual_bell`, `compositor.audible_bell`) and `gnoblin-a11y`'s decision,
+# so the signal carries the count and nothing that would make the compositor's choice
+# for it.
+[[object.signal]]
+name = "bell"
+since = "0.2.0"
+
+# How many times the bell has rung since the session started. A reader that missed one
+# still sees that it happened, and a reader that compares against what it saw last knows
+# how many it missed.
+[[object.signal.field]]
+name = "count"
+type = "uint"
+since = "0.2.0"
+
+# The provider of one slot, one property per slot ("Providers and slots").
+#
+# The value is `none`, `services` or `shell`. `none` means the slot has no
+# provider at all, so a request for it fails closed with an error that names the
+# slot: the alternative is a prompt that never appears and a caller that waits
+# for its deadline. `services` is the services role's default provider and
+# `shell` means a shell claimed the slot, so the shell draws the prompt and this
+# connection does not.
+#
+# A slot is one property rather than a member of a list because the four slots
+# are a closed set: a client reads the one property it cares about, a
+# subscription sees a diff only for the slot that changed, and the schema's typing
+# rules apply to the value. A property name cannot contain a dot, so a slot name
+# from the plan becomes `slot_` plus the slot with its dot turned into an
+# underscore.
+[[object.property]]
+name = "slot_auth_polkit"
+type = "string"
+since = "0.2.0"
+
+# The passphrase and confirm prompt (gnome-keyring, `pinentry-gnome3`). Defaults
+# to `none`: a prompt with no provider fails closed rather than timing out.
+[[object.property]]
+name = "slot_prompt_secret"
+type = "string"
+since = "0.2.0"
+
+# The `org.freedesktop.GeoClue2.Agent` provider.
+[[object.property]]
+name = "slot_location_agent"
+type = "string"
+since = "0.2.0"
+
+# Idle watches and the ScreenSaver names.
+[[object.property]]
+name = "slot_idle_policy"
+type = "string"
+since = "0.2.0"
+
+# A client asked for a member this compositor does not serve. Returned instead of
+# silently ignoring the frame, so an old client reports what it needed.
+[[error]]
+name = "unknown-member"
+since = "0.2.0"

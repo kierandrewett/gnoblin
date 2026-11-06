@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-log"
+description = "The logging facade every gnoblin crate depends on: macros, components and roles, built on tracing."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
+
+[features]
+console = ["dep:tracing-subscriber"]
+store = ["dep:rusqlite", "dep:tracing-subscriber"]
+journal = ["dep:tracing-subscriber"]
+init = ["console", "store", "journal"]
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+[package]
+name = "gnoblin-compat-core"
+description = "Shared compat adapter frame: support matrix, mode gate, sandbox refusal and D-Bus helpers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The support matrix is data an adapter checks in (`support-matrix.json`) and
+# `cargo xtask compat-report` prints, so the frame parses it. Only the reading
+# side uses serde_json: the renderers write the bytes themselves, so the
+# checked-in manifest is exactly what the frame would write.
+serde_json.workspace = true
+# `CallerWatcher` is the one D-Bus helper: it reads the bus's `NameOwnerChanged` to end a
+# caller's watches and sessions when the caller leaves.
+futures-lite.workspace = true
+zbus.workspace = true
+# The settings publishers read the `cursor` section of the configuration, through the same store
+# the other adapters read their gates from.
+gnoblin-config = { path = "../../gnoblin-config" }
+gnoblin-log = { path = "../../gnoblin-log" }
+
+[lints]
+workspace = true

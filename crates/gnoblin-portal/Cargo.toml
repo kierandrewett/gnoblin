@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-portal"
+description = "Recovery and console overlay, and the built-in portal dialog screens."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-types.workspace = true
+gnoblin-portal-core.workspace = true
+gnoblin-portal-consent.workspace = true
+gnoblin-portal-filechooser.workspace = true
+gnoblin-portal-appchooser.workspace = true
+egui.workspace = true
+
+[dev-dependencies]
+png.workspace = true
+
+[lints]
+workspace = true

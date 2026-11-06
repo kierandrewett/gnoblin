@@ -11,6 +11,20 @@
   dropped, and any other missing file still fails the pull.
 - `Window.client_type` (`"wayland"` or `"x11"`, bridge API 1.93) in window records, `gnoblin.find("Window", {client_type = ...})`,
   the window rule `match.client_type` key and `gnoblinctl window list` and `window match`.
+- The services role starts the GeoClue agent next to the polkit agent, with the policy of the `location` table
+  in the configuration. Until now the role claimed the `location.agent` slot but never served it. With no system
+  bus the agent is skipped and the role carries on.
+- A Vulkan renderer for the Rust compositor (`gnoblin-backend`, feature `vulkan`), drawn with `ash` and the shared WGSL
+  passes compiled by `naga`: solid and `wl_shm` surface layers, opacity, tint, corner radius, the portal overlay and
+  the cursor, readable back as an image and compared pixel for pixel with the software renderer. It runs on a GPU or
+  on a software driver such as lavapipe. Presentation, dmabuf import and effects are not done yet. The new
+  `compositor.renderer` setting (`auto`, `vulkan`, `gles` or `software`) chooses the renderer; `auto` keeps today's
+  choice, and a named renderer the session cannot create is refused with the setting named.
+- Text a child prints without the `gnoblin-log` facade (a panic, a Lua `print`, output from a C library or Xwayland)
+  is logged as component `raw`, tagged with the child's role and stream. Only the compositor, runtime and portal roles
+  are captured by default, and the services role only with `GNOBLIN_LOG_RAW_SERVICES=1`; other children are read and
+  discarded. Each line is scrubbed of secret-looking text on a best-effort basis that cannot recognise every secret, see
+  `docs/guides/logging.md`.
 
 ### Fixed
 
@@ -31,6 +45,11 @@
   whatever the listing order. Each upload and delete is printed.
 
 ### Changed
+
+- Layouts with `extent = "unbounded"` must declare `kind = "tiling"`; a floating or kiosk layout that asks for it is
+  refused when it loads. The wm now enforces `extent` when it settles a reply: a placement whose rectangle (before its
+  transform) lies outside the output, or past the coordinate bound when unbounded, refuses the whole reply. The
+  `carousel3d` layout declares `extent = "unbounded"`.
 
 - Xwayland windows get Gnoblin's own frame, rules and effects like Wayland windows. Mutter no longer launches
   `mutter-x11-frames` or reparents X11 clients into frame windows. An X11 window that does not turn decorations off is

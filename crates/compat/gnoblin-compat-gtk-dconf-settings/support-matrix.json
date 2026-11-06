@@ -1,0 +1,56 @@
+{
+  "interfaces": [
+    {
+      "name": "org/gnome/desktop/interface",
+      "version": 1,
+      "members": [
+        {
+          "kind": "property",
+          "name": "font-name",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "monospace-font-name",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "icon-theme",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "cursor-theme",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "cursor-size",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "color-scheme",
+          "support": "supported"
+        }
+      ]
+    },
+    {
+      "name": "org/gnome/desktop/wm/preferences",
+      "version": 1,
+      "members": [
+        {
+          "kind": "property",
+          "name": "titlebar-font",
+          "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "button-layout",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+[package]
+name = "gnoblin-compositor"
+description = "Composition root: event loop and wiring, the only crate that knows every subsystem."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The Wayland engine this process runs: the protocol handlers, the seat, the window
+# manager glue and the frame hook.
+gnoblin-wayland = { path = "../gnoblin-wayland" }
+gnoblin-wm = { path = "../gnoblin-wm" }
+# The Lua host that runs the layout modules.
+gnoblin-lua = { path = "../gnoblin-lua" }
+# The backend trait and the backends this build selects between: headless, nested in
+# a parent compositor, and the DRM refusal until the DRM backend lands.
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The X11 supervisor and window policy. A session with X11 starts Xwayland under it;
+# a session without X11 never touches it.
+gnoblin-xwayland = { path = "../gnoblin-xwayland" }
+# The live object graph the IPC serves, and the shared primitives its identities
+# and values are.
+gnoblin-model = { path = "../gnoblin-model" }
+gnoblin-types.workspace = true
+# The schema the graph's vocabulary comes from, and the source of the IPC version
+# this process serves.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The wire vocabulary: the envelope, the handshake, the version rule and the
+# object-model members. A server speaks the same members a client does, so both
+# sides use one description of them.
+gnoblin-proto = { path = "../gnoblin-proto" }
+gnoblin-client = { path = "../gnoblin-client" }
+# The portal's built-in dialog screens (D19). The negotiation core names their models;
+# the screens draw them, and nothing else in the compositor depends on the dialog crates.
+gnoblin-portal = { path = "../gnoblin-portal" }
+gnoblin-portal-core = { path = "../gnoblin-portal-core" }
+gnoblin-input = { path = "../gnoblin-input" }
+# Who this process is, for the IPC socket directory's ownership check.
+rustix.workspace = true
+# The accepted configuration document and its last-good store: the compositor reads the
+# extensions a session serves from it before the session starts.
+gnoblin-config = { path = "../gnoblin-config" }
+# `[tag]` log lines, the same crate the Wayland engine logs through.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[build-dependencies]
+# The build script validates the checked-in schema once and embeds it, so the
+# process reads no source tree at run time.
+gnoblin-schema = { path = "../gnoblin-schema" }
+
+[dev-dependencies]
+# A real client for the real Wayland socket: the end-to-end tests drive the
+# session the way another process would.
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging", "unstable"] }
+# A real X11 client, to prove the session's X server accepts a connection.
+x11rb = "0.14.0"
+# The real command line client, called through its library entry point, so the
+# end-to-end tests exercise the shipped code rather than a copy of it.
+gnoblinctl = { path = "../gnoblinctl" }
+# A temporary directory for the two sockets, so a test run touches no shared path.
+tempfile = "3.23.0"
+# The EI client the end-to-end EIS test speaks to the endpoint with, the same crate the
+# endpoint itself is written against.
+reis = { version = "0.7.1", default-features = false }

@@ -1,0 +1,17 @@
+{
+  "packages": [
+    {
+      "name": "gnoblin-wm",
+      "dependencies": [
+        {
+          "name": "gnoblin-testkit",
+          "kind": null
+        }
+      ]
+    },
+    {
+      "name": "gnoblin-testkit",
+      "dependencies": []
+    }
+  ]
+}

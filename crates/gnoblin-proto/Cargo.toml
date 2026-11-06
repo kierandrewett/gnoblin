@@ -1,0 +1,35 @@
+[package]
+name = "gnoblin-proto"
+description = "IPC wire codec, handshake, capabilities, version negotiation, and the client and server traits."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The IPC version and its `since` rule are shared with the schema, so the wire
+# layer borrows the schema crate's Version rather than defining a second one.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# And the version itself is the shared primitive, re-exported at this crate's root
+# so a peer names one type for the handshake and for a member's `since`.
+gnoblin-types.workspace = true
+# Protocol Buffers messages (design/rust-compositor.md, D16).
+prost.workspace = true
+
+[build-dependencies]
+# build.rs renders the .proto documents and the sensitive table from the schema,
+# so the wire types are generated during a plain `cargo build`.
+gnoblin-schema = { path = "../gnoblin-schema" }
+# The pure-Rust protobuf front end, so a build needs no protoc binary.
+protox.workspace = true
+# The code generator: the descriptor set becomes this crate's wire types.
+prost-build.workspace = true
+# build.rs encodes the descriptor set it writes for the tag test.
+prost.workspace = true
+
+[dev-dependencies]
+# The tag test decodes that descriptor set.
+prost-types.workspace = true
+
+[lints]
+workspace = true

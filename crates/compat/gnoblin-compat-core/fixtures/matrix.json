@@ -1,0 +1,58 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.DisplayConfig",
+      "version": 3,
+      "members": [
+        {
+          "kind": "method",
+          "name": "ApplyConfiguration",
+          "support": "unsupported",
+          "reason": "the legacy variant is not served; callers use ApplyMonitorsConfig"
+        },
+        {
+          "kind": "method",
+          "name": "ApplyMonitorsConfig",
+          "support": "partial",
+          "note": "applies monitors and logical monitors, but not a layout mode change"
+        },
+        {
+          "kind": "method",
+          "name": "GetCurrentState",
+          "support": "supported"
+        },
+        {
+          "kind": "signal",
+          "name": "MonitorsChanged",
+          "support": "supported"
+        }
+      ]
+    },
+    {
+      "name": "org.gnome.Mutter.IdleMonitor",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "AddIdleWatch",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "GetIdletime",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "RemoveWatch",
+          "support": "supported"
+        },
+        {
+          "kind": "signal",
+          "name": "WatchFired",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

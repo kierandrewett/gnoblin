@@ -1,0 +1,10 @@
+[package]
+name = "gnoblin-compat-mutter-inputmapping"
+description = "org.gnome.Mutter.InputMapping adapter (later)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

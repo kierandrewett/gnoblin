@@ -1,0 +1,17 @@
+namespace = "example.objparam"
+version = "0.1.0"
+
+[[object]]
+name = "probe"
+since = "0.1.0"
+
+# Takes another probe by identity. An object reference parameter has no Lua
+# conversion, so the whole schema is refused at load time.
+[[object.method]]
+name = "adopt"
+since = "0.1.0"
+
+[[object.method.param]]
+name = "other"
+type = "object:probe"
+since = "0.1.0"

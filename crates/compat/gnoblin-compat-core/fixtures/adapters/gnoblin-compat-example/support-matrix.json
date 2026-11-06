@@ -1,0 +1,21 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Shell.Introspect",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "GetRunningApplications",
+          "support": "partial",
+          "note": "only the application id is filled in"
+        },
+        {
+          "kind": "method",
+          "name": "GetWindows",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

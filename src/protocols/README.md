@@ -34,7 +34,7 @@ remains XML only and does not register a global.
 2. Add its init call to `aggregator/meta-gnoblin-protocols.c`.
 3. Add its source and XML basenames to `src/mutter-build/wiring.meson`.
 4. Reapply the Mutter patches; no patch changes.
-5. Add a `[protocols]` gate and update `src/data/gnoblin.conf.example`.
+5. Add a `[protocols]` gate and update `data/gnoblin.conf.example`.
 6. Add a focused protocol client under `tests/` and include it in
    `tests/test-protocol-boundaries.sh`.
 

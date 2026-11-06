@@ -1,0 +1,15 @@
+{
+  "interfaces": [
+    {
+      "name": "org.gnome.Mutter.IdleMonitor",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "GetIdletime",
+          "support": "mostly"
+        }
+      ]
+    }
+  ]
+}

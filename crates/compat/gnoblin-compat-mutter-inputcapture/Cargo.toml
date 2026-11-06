@@ -1,0 +1,13 @@
+[package]
+name = "gnoblin-compat-mutter-inputcapture"
+description = "org.gnome.Mutter.InputCapture adapter."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
