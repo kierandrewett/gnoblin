@@ -288,7 +288,7 @@ mod tests {
 
     /// A path in the temp directory that no other test or run uses.
     fn scratch_path(name: &str) -> PathBuf {
-        let directory = std::env::temp_dir().join(format!("gnoblin-log-journal-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("gnoblin-journal-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&directory);
         directory.join(name)
     }
