@@ -114,8 +114,8 @@ use gnoblin_types::{Rect, RectF, Scale, Size};
 
 use crate::render::RenderError;
 use crate::render::frame::{Layer, Model, OutputFrame, Overlay, Surface};
+use crate::render::geometry::physical_rect;
 use crate::render::image::Image;
-use crate::render::physical_rect;
 use crate::render::software::READBACK_FORMAT;
 
 use crate::render::shader::ShaderError;

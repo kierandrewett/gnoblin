@@ -17,7 +17,7 @@
 //! - **The portal overlay and the cursor**, nearest-sampled, with the pixels under each saved
 //!   so a capture can leave the overlay (always) and the cursor (when asked) out.
 //! - **Output scale**: a frame's rectangles are logical and the target is physical, converted
-//!   with the one rounding rule all renderers share ([`physical_rect`](crate::render)).
+//!   with the one rounding rule all renderers share ([`physical_rect`](crate::render::geometry)).
 //! - **Damage**: only the damage is repainted. Each rectangle is a scissor, and overlapping
 //!   rectangles are made disjoint first so a translucent layer is never blended twice.
 //!

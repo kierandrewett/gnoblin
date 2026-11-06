@@ -69,8 +69,8 @@ use gnoblin_types::{Scale, Size};
 
 use crate::render::RenderError;
 use crate::render::frame::{Layer, OutputFrame, Overlay, Surface};
+use crate::render::geometry::physical_rect;
 use crate::render::image::Image;
-use crate::render::physical_rect;
 
 /// The colour format of the offscreen buffer.
 ///

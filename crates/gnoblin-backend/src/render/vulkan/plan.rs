@@ -33,7 +33,7 @@ use smithay::utils::{Physical, Rectangle};
 
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
 use crate::render::frame::{Layer, OutputFrame, Surface};
-use crate::render::physical_rect;
+use crate::render::geometry::physical_rect;
 use crate::render::shader::uniforms::{UniformLayout, Uniforms};
 
 /// The distance between two draws' uniform blocks, in bytes.

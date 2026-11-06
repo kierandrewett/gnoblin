@@ -10,9 +10,9 @@
 //! | `uniforms`   | the uniform values of a pass and the byte layout of the block          |
 //! | `error`      | [`ShaderError`], the line-numbered refusal a broken shader answers     |
 //!
-//! The *compilers* are not here, because each one ends in an API: `gles::program` turns the
-//! WGSL into GLSL ES 3.10 for a driver, and `vulkan::shader` turns it into SPIR-V. Both
-//! enter a module through [`ENTRY`].
+//! The *compilers* are not here, because each one ends in an API: the GLES program module
+//! turns the WGSL into GLSL ES 3.10 for a driver, and the Vulkan shader module turns it
+//! into SPIR-V. Both enter a module through [`ENTRY`].
 
 mod error;
 pub(crate) mod sources;
