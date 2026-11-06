@@ -408,8 +408,8 @@ impl NestedTarget {
     /// # Errors
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
-    pub fn screenshot(&mut self) -> Result<Image, RenderError> {
-        self.software.screenshot()
+    pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
+        self.software.capture(with_cursor)
     }
 
     /// Applies a new configure: the mode the output is in and the scale it composes at.
@@ -546,7 +546,7 @@ impl Target for NestedTarget {
             return Present::Nothing;
         };
         let released = u8::try_from(slot).unwrap_or(0);
-        let image = match self.software.screenshot() {
+        let image = match self.software.capture(true) {
             Ok(image) => image,
             Err(error) => {
                 warn!(?error, "[nested] the frame could not be read back");

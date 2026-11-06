@@ -109,6 +109,10 @@ pub struct Software {
     under: Vec<u8>,
     /// The overlay's visible rectangle in the last frame, or `None` when it had none.
     under_rect: Option<Rectangle<i32, Physical>>,
+    /// The pixels under the cursor before it was drawn, packed like `under`.
+    cursor_under: Vec<u8>,
+    /// The cursor's visible rectangle in the last frame, or `None` when it had none.
+    cursor_under_rect: Option<Rectangle<i32, Physical>>,
     /// The bytes of a tinted layer, reused for the same reason.
     scratch: Vec<u8>,
     /// The frame's damage and the current layer's share of it, in physical pixels,
@@ -145,6 +149,8 @@ impl Software {
             cursor: None,
             under: Vec::new(),
             under_rect: None,
+            cursor_under: Vec::new(),
+            cursor_under_rect: None,
             scratch: Vec::new(),
             damage: Vec::new(),
             clipped: Vec::new(),
@@ -222,29 +228,41 @@ impl Software {
         result
     }
 
-    /// Reads the buffer back as an [`Image`].
+    /// Reads the buffer back as an [`Image`], without the cursor.
     ///
     /// # Errors
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn screenshot(&mut self) -> Result<Image, RenderError> {
-        self.readback(true)
+        self.capture(false)
     }
 
-    /// The buffer as drawn, overlay included, for tests of the composed frame.
+    /// Reads the buffer back as an [`Image`], with the cursor composed in when `with_cursor`.
+    ///
+    /// # Errors
+    ///
+    /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
+    pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
+        self.readback(true, with_cursor)
+    }
+
+    /// The buffer as drawn, overlay and cursor included, for tests of the composed frame.
     #[cfg(test)]
     fn composed(&mut self) -> Result<Image, RenderError> {
-        self.readback(false)
+        self.readback(false, true)
     }
 
-    /// Reads the buffer back, with the overlay's pixels put back when `hide_overlay`.
-    fn readback(&mut self, hide_overlay: bool) -> Result<Image, RenderError> {
+    /// Reads the buffer back, with the overlay's pixels put back when `hide_overlay` and
+    /// the cursor's when `!with_cursor`.
+    fn readback(&mut self, hide_overlay: bool, with_cursor: bool) -> Result<Image, RenderError> {
         let Self {
             renderer,
             buffer,
             physical,
             under,
             under_rect,
+            cursor_under,
+            cursor_under_rect,
             ..
         } = self;
         let size = PhysicalSize::from((physical.width as i32, physical.height as i32));
@@ -261,6 +279,10 @@ impl Software {
         // is measured from the slice rather than assumed.
         let stride = bytes.len() / height;
         let mut bytes = bytes.to_vec();
+        // The cursor was drawn last, so its pixels go back first, over the overlay.
+        if let (false, Some(rect)) = (with_cursor, *cursor_under_rect) {
+            paste_under(&mut bytes, stride, rect, cursor_under);
+        }
         if let (true, Some(rect)) = (hide_overlay, *under_rect) {
             paste_under(&mut bytes, stride, rect, under);
         }
@@ -284,6 +306,8 @@ impl Software {
             cursor,
             under,
             under_rect,
+            cursor_under,
+            cursor_under_rect,
             ..
         } = self;
         let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
@@ -336,8 +360,15 @@ impl Software {
             renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
             drawn?;
         }
+        *cursor_under_rect = None;
         if let (Some(cursor), Some(texture)) = (frame.cursor(), cursor.as_ref()) {
             // The cursor is drawn above the overlay, with the same nearest-neighbour scaling.
+            // Its pixels are kept first, so a capture without the cursor can put them back.
+            let bounds = Rectangle::new((0, 0).into(), (physical.width as i32, physical.height as i32).into());
+            if let Some(dst) = physical_rect(cursor.dst(), scale).intersection(bounds) {
+                capture_under(renderer, &target, dst, damage, cursor_under)?;
+                *cursor_under_rect = Some(dst);
+            }
             renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
             let drawn = draw_overlay(renderer, &mut target, output, cursor, texture, scale, damage, clipped);
             renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
@@ -742,7 +773,7 @@ mod tests {
         let white = Image::new(Size::new(4, 4), 16, [255, 255, 255, 255].repeat(16)).expect("a 4x4 image");
         frame.set_cursor_image(Overlay::new(Rect::new(2, 2, 4, 4), &white));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
-        let image = software.screenshot().expect("a readback");
+        let image = software.capture(true).expect("a readback");
         assert_eq!(
             image.colour_at(3, 3),
             Some([255, 255, 255, 255]),
@@ -753,6 +784,33 @@ mod tests {
             Some([0, 0, 255, 255]),
             "the layer below shows around it"
         );
+    }
+
+    #[test]
+    fn a_capture_without_the_cursor_leaves_it_out() {
+        let mut software = Software::new(Size::new(16, 16)).expect("a software renderer");
+        let mut frame = OutputFrame::new();
+        frame.push_damage(Rect::new(0, 0, 16, 16));
+        frame.push_layer(Layer::Solid(Solid::new(
+            Rect::new(0, 0, 16, 16),
+            Color::from_rgba8(0, 0, 255, 255),
+        )));
+        let white = Image::new(Size::new(4, 4), 16, [255, 255, 255, 255].repeat(16)).expect("a 4x4 image");
+        frame.set_cursor_image(Overlay::new(Rect::new(2, 2, 4, 4), &white));
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let without = software.capture(false).expect("a readback");
+        assert_eq!(
+            without.colour_at(3, 3),
+            Some([0, 0, 255, 255]),
+            "the cursor is left out"
+        );
+        assert_eq!(
+            without.colour_at(10, 10),
+            Some([0, 0, 255, 255]),
+            "the layer below is kept"
+        );
+        let with = software.capture(true).expect("a readback");
+        assert_eq!(with.colour_at(3, 3), Some([255, 255, 255, 255]), "the cursor is in");
     }
 
     #[test]

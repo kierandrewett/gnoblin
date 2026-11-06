@@ -91,6 +91,8 @@ use crate::access::{Access, AccessPolicy, Global};
 pub(super) struct Cached {
     /// The pixels, in physical output pixels.
     image: Image,
+    /// The same frame with the cursor composed in, when the pointer is over the output.
+    cursored: Option<Image>,
     /// The tick the frame was presented at.
     tick: Tick,
 }
@@ -358,6 +360,8 @@ pub(super) struct Pixels<'a> {
     /// A whole-target capture starts at its origin. A screencopy of a region starts at
     /// the region's corner, which is why the same path can serve both.
     pub(super) offset: Point,
+    /// Whether the client asked for the cursor to be in the copy.
+    pub(super) with_cursor: bool,
 }
 
 impl Pixels<'_> {
@@ -388,7 +392,11 @@ impl PixelSource for Pixels<'_> {
             origin.x.saturating_add(self.offset.x),
             origin.y.saturating_add(self.offset.y),
         );
-        match copy_into_shm(&cached.image, source, &self.buffer) {
+        let image = match (self.with_cursor, cached.cursored.as_ref()) {
+            (true, Some(cursored)) => cursored,
+            _ => &cached.image,
+        };
+        match copy_into_shm(image, source, &self.buffer) {
             Ok(_) => Copied::Copied,
             Err(error) => {
                 warn!(%error, %target, "[capture] the frame could not be written into the client's buffer");
@@ -423,11 +431,18 @@ impl State {
     /// software buffer; the renderer lane can drop it by lending capture the software
     /// buffer instead of a copy of it.
     pub(crate) fn capture_frame(&mut self, backend: &mut dyn gnoblin_backend::Backend<State>, output: OutputId) {
-        let Some(image) = backend.screenshot(output) else {
+        let Some(image) = backend.capture(output, false) else {
             return;
         };
+        // The cursor is only drawn on an output the pointer is over, so the second
+        // readback is paid only there.
+        let cursored = if self.pointer_cursor(output).is_some() {
+            backend.capture(output, true)
+        } else {
+            None
+        };
         let tick = self.capture.tick;
-        self.capture.pixels.insert(output, Cached { image, tick });
+        self.capture.pixels.insert(output, Cached { image, cursored, tick });
     }
 
     /// Tells capture that part of an output changed, so the next frame reports it.
@@ -491,6 +506,7 @@ impl State {
         buffer: &WlBuffer,
         format: Format,
         offset: Point,
+        with_cursor: bool,
         capture: Capture,
         tick: Tick,
     ) -> Option<(Rect, Tick)> {
@@ -512,6 +528,7 @@ impl State {
             frames: &self.capture.pixels,
             buffer: buffer.clone(),
             offset,
+            with_cursor,
         };
         let target = Target::Output(output);
         let presented = source.presented(target).unwrap_or(tick);

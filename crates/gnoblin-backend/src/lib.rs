@@ -447,13 +447,20 @@ pub trait Backend<S: Host + 'static> {
     /// the next dispatch, not as a failure of the frame.
     fn render(&mut self, host: &mut S, output: OutputId) -> Result<Present, BackendError>;
 
-    /// Read the last frame drawn on `output` back as pixels.
+    /// Read the last frame drawn on `output` back as pixels, with the cursor composed in
+    /// when `with_cursor` is set.
     ///
     /// [`None`] when this backend does not drive the output or has no renderer for
     /// it. The image is in physical pixels, top-left first, RGBA8: see
     /// [`render::Image`]. Capture and the tests read through this, which is why it is
     /// on the contract and not on one backend.
-    fn screenshot(&mut self, output: OutputId) -> Option<render::Image>;
+    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<render::Image>;
+
+    /// The last frame drawn on `output` without the cursor: [`Backend::capture`] with
+    /// `with_cursor` off.
+    fn screenshot(&mut self, output: OutputId) -> Option<render::Image> {
+        self.capture(output, false)
+    }
 
     /// Deliver queued input to the host and report state changes.
     ///

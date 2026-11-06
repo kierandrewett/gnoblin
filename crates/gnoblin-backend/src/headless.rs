@@ -186,11 +186,11 @@ impl TargetRenderer {
         }
     }
 
-    /// Reads the frame back.
-    fn screenshot(&mut self) -> Result<Image, RenderError> {
+    /// Reads the frame back, with the cursor composed in when `with_cursor` is set.
+    fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
         match self {
-            Self::Software(software) => software.screenshot(),
-            Self::Gles(gles) => gles.screenshot(),
+            Self::Software(software) => software.capture(with_cursor),
+            Self::Gles(gles) => gles.capture(with_cursor),
         }
     }
 
@@ -309,8 +309,8 @@ impl HeadlessTarget {
     /// # Errors
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
-    pub fn screenshot(&mut self) -> Result<Image, RenderError> {
-        self.renderer.screenshot()
+    pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
+        self.renderer.capture(with_cursor)
     }
 
     /// The target's whole extent as a rectangle, for clipping.
@@ -679,10 +679,10 @@ impl Headless {
     /// not depend on the compositor type the backend drives, and a caller should not
     /// have to name one to take a screenshot.
     #[must_use]
-    pub fn screenshot(&mut self, output: OutputId) -> Option<Image> {
+    pub fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
         let index = self.index(output)?;
         let target = self.targets.get_mut(index)?;
-        target.screenshot().ok()
+        target.capture(with_cursor).ok()
     }
 
     /// Applies the requests a [`HeadlessHandle`] queued, as the next dispatch.
@@ -754,8 +754,8 @@ impl<S: Host + 'static> Backend<S> for Headless {
         Ok(target.present(self.frame.damage()))
     }
 
-    fn screenshot(&mut self, output: OutputId) -> Option<Image> {
-        Self::screenshot(self, output)
+    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
+        Self::capture(self, output, with_cursor)
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
@@ -978,7 +978,7 @@ mod tests {
         assert_eq!(target.presents(), 1, "one present for the one frame that changed");
         assert_eq!(target.size(), Size::new(1024, 768));
         assert_eq!(target.damage(), &[Rect::new(0, 0, 4, 4)]);
-        let image = backend.screenshot(output).expect("a readback");
+        let image = backend.capture(output, false).expect("a readback");
         assert_eq!(
             image.colour_at(1, 1),
             Some([255, 0, 0, 255]),
@@ -1002,7 +1002,7 @@ mod tests {
         let output = backend.outputs[0].id;
         let mut host = changing();
         assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
-        let image = backend.screenshot(output).expect("a readback");
+        let image = backend.capture(output, false).expect("a readback");
         assert_eq!(
             image.colour_at(1, 1),
             Some([255, 0, 0, 255]),
@@ -1026,7 +1026,7 @@ mod tests {
         let target = backend.target_of(output).expect("the output has a target");
         assert_eq!(target.presents(), 0, "an idle iteration does not present");
         assert!(target.damage().is_empty());
-        let image = backend.screenshot(output).expect("a readback");
+        let image = backend.capture(output, false).expect("a readback");
         assert_eq!(
             image.colour_at(0, 0),
             Some([0, 0, 0, 0]),
@@ -1037,7 +1037,7 @@ mod tests {
     #[test]
     fn a_screenshot_of_an_unknown_output_is_none() {
         let mut backend = Headless::new();
-        assert!(backend.screenshot(OutputId::new(4)).is_none());
+        assert!(backend.capture(OutputId::new(4), false).is_none());
     }
 
     #[test]
@@ -1147,7 +1147,7 @@ mod tests {
         assert_eq!(target.physical_size(), Size::new(64, 48));
         assert_eq!(target.size(), Size::new(64, 48));
         backend.render(&mut host, output).expect("the frame after the resize");
-        let image = backend.screenshot(output).expect("a readback");
+        let image = backend.capture(output, false).expect("a readback");
         assert_eq!(
             image.size(),
             Size::new(64, 48),

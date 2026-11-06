@@ -701,9 +701,9 @@ impl<S: Host + 'static> Backend<S> for Nested {
         Ok(present)
     }
 
-    fn screenshot(&mut self, output: OutputId) -> Option<Image> {
+    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
         let index = self.index(output)?;
-        self.targets.get_mut(index)?.as_mut()?.screenshot().ok()
+        self.targets.get_mut(index)?.as_mut()?.capture(with_cursor).ok()
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {

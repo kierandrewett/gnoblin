@@ -316,7 +316,7 @@ mod tests {
             Err(BackendError::UnknownOutput(output))
         }
 
-        fn screenshot(&mut self, _output: OutputId) -> Option<Image> {
+        fn capture(&mut self, _output: OutputId, _with_cursor: bool) -> Option<Image> {
             None
         }
 
@@ -366,7 +366,7 @@ mod tests {
             Ok(Present::Nothing)
         }
 
-        fn screenshot(&mut self, _output: OutputId) -> Option<Image> {
+        fn capture(&mut self, _output: OutputId, _with_cursor: bool) -> Option<Image> {
             None
         }
 
@@ -498,7 +498,9 @@ mod tests {
             vec![Rect::new(0, 0, 64, 48)],
             "the whole new output is damaged"
         );
-        let image = backend.screenshot(output).expect("a readback of the resized output");
+        let image = backend
+            .capture(output, false)
+            .expect("a readback of the resized output");
         assert_eq!(image.size(), gnoblin_types::Size::new(64, 48));
         assert_eq!(
             image.colour_at(0, 0),

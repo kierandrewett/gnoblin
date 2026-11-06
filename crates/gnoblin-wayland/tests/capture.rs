@@ -550,11 +550,20 @@ impl Client {
         self.lock_surface(0);
     }
 
-    /// A screencopy frame of the whole output.
+    /// A screencopy frame of the whole output, without the cursor.
     fn screencopy(&mut self, index: usize) -> zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1 {
+        self.screencopy_overlaid(index, 0)
+    }
+
+    /// A screencopy frame of the whole output, with the cursor when `overlay_cursor` is 1.
+    fn screencopy_overlaid(
+        &mut self,
+        index: usize,
+        overlay_cursor: i32,
+    ) -> zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1 {
         let manager = self.screens.as_ref().expect("a capture client");
         let output = self.outputs.get(index).expect("an output").clone();
-        let frame = manager.capture_output(0, &output, &self.qh, ());
+        let frame = manager.capture_output(overlay_cursor, &output, &self.qh, ());
         self.roundtrip();
         frame
     }
@@ -634,6 +643,51 @@ fn a_screencopy_of_the_output_returns_the_window_pixels() {
         assert_eq!(inside, RED, "the capture returned the window's own pixels");
         let outside = shm.pixel(width - 5, height - 5);
         assert_eq!(outside, BLACK, "and the background where the window is not");
+    });
+}
+
+#[test]
+fn a_screencopy_with_overlay_cursor_draws_the_cursor_and_one_without_does_not() {
+    let session = Session::start();
+    session.run(|session| {
+        let mut app = Client::app(session.socket());
+        let _window = app.map_window("org.gnoblin.Red", "Red", 200, 150, RED);
+        let geometry = session.only_window();
+
+        let mut capture = Client::capturer(session.privileged_socket());
+        let plain = capture.screencopy_overlaid(0, 0);
+        let (width, height, _stride, _format) = capture.screencopy_geometry();
+        let plain_shm = Shm::new(&capture, width, height, 0);
+        plain.copy(&plain_shm.buffer);
+        capture.wait_until(|state| state.screencopy_ready >= 1, "the plain screencopy frame ready");
+
+        let overlaid = capture.screencopy_overlaid(0, 1);
+        let overlaid_shm = Shm::new(&capture, width, height, 0);
+        overlaid.copy(&overlaid_shm.buffer);
+        capture.wait_until(
+            |state| state.screencopy_ready >= 2,
+            "the overlaid screencopy frame ready",
+        );
+
+        // Every sampled pixel inside the window is the client's red when the cursor is left
+        // out, wherever the pointer is.
+        for dy in 0..5 {
+            for dx in 0..5 {
+                let x = geometry.x as u32 + 10 + dx * 30;
+                let y = geometry.y as u32 + 10 + dy * 30;
+                assert_eq!(
+                    plain_shm.pixel(x, y),
+                    RED,
+                    "the plain capture keeps the window at ({x}, {y})"
+                );
+            }
+        }
+        // The overlaid capture is the same frame with the cursor drawn on it somewhere.
+        let differs = (0..height).any(|y| (0..width).any(|x| plain_shm.pixel(x, y) != overlaid_shm.pixel(x, y)));
+        assert!(
+            differs,
+            "the overlaid capture draws the cursor the plain one leaves out"
+        );
     });
 }
 

@@ -413,7 +413,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
         }
     }
 
-    fn screenshot(&mut self, _output: OutputId) -> Option<Image> {
+    fn capture(&mut self, _output: OutputId, _with_cursor: bool) -> Option<Image> {
         None
     }
 

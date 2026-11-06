@@ -81,10 +81,7 @@ impl Dispatch2<ZwlrScreencopyManagerV1, State> for ZwlrScreencopyV1ScreencopyMan
                 overlay_cursor,
                 output,
             } => {
-                // No cursor is composed into a capture yet: the seat has no theme
-                // loader, so there is nothing to overlay and the flag changes nothing.
-                let _ = overlay_cursor;
-                create_screencopy_frame(state, client, frame, &output, None, data_init);
+                create_screencopy_frame(state, client, frame, &output, None, overlay_cursor != 0, data_init);
             }
             zwlr_screencopy_manager_v1::Request::CaptureOutputRegion {
                 frame,
@@ -95,14 +92,21 @@ impl Dispatch2<ZwlrScreencopyManagerV1, State> for ZwlrScreencopyV1ScreencopyMan
                 width,
                 height,
             } => {
-                let _ = overlay_cursor;
                 let region = Rect::new(
                     x,
                     y,
                     u32::try_from(width).unwrap_or(0),
                     u32::try_from(height).unwrap_or(0),
                 );
-                create_screencopy_frame(state, client, frame, &output, Some(region), data_init);
+                create_screencopy_frame(
+                    state,
+                    client,
+                    frame,
+                    &output,
+                    Some(region),
+                    overlay_cursor != 0,
+                    data_init,
+                );
             }
             zwlr_screencopy_manager_v1::Request::Destroy => {}
             _ => {}
@@ -123,6 +127,8 @@ struct ZwlrScreencopyV1ScreencopyFrame {
     format: Format,
     /// Whether the object has already copied, which the protocol forbids repeating.
     used: AtomicBool,
+    /// Whether the client asked for the cursor to be composed into the capture.
+    with_cursor: bool,
 }
 
 impl Dispatch2<ZwlrScreencopyFrameV1, State> for ZwlrScreencopyV1ScreencopyFrame {
@@ -180,7 +186,16 @@ impl ZwlrScreencopyV1ScreencopyFrame {
         let capture = state.lock_capture(CaptureStream::Requested);
         let tick = state.capture.tick;
         let offset = Point::new(self.region.x, self.region.y);
-        match state.copy_into_buffer(self.owner, self.output, buffer, self.format, offset, capture, tick) {
+        match state.copy_into_buffer(
+            self.owner,
+            self.output,
+            buffer,
+            self.format,
+            offset,
+            self.with_cursor,
+            capture,
+            tick,
+        ) {
             Some((copied, presented)) => {
                 if with_damage {
                     // One rectangle for the whole frame: the whole buffer was written,
@@ -229,6 +244,7 @@ fn create_screencopy_frame(
     frame: New<ZwlrScreencopyFrameV1>,
     output: &WlOutput,
     region: Option<Rect>,
+    with_cursor: bool,
     data_init: &mut DataInit<'_, State>,
 ) {
     let owner = state.capture.owner(&client.id());
@@ -255,6 +271,7 @@ fn create_screencopy_frame(
                 output: output.unwrap_or_default(),
                 region: Rect::EMPTY,
                 format: placeholder(),
+                with_cursor,
                 used: AtomicBool::new(true),
             },
         );
@@ -273,6 +290,7 @@ fn create_screencopy_frame(
                 output,
                 region,
                 format: placeholder(),
+                with_cursor,
                 used: AtomicBool::new(true),
             },
         );
@@ -287,6 +305,7 @@ fn create_screencopy_frame(
             output,
             region,
             format,
+            with_cursor,
             used: AtomicBool::new(false),
         },
     );

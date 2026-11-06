@@ -93,8 +93,8 @@ impl<S: Host + 'static> Backend<S> for WithoutOutputControls {
         <Headless as Backend<S>>::render(&mut self.0, host, output)
     }
 
-    fn screenshot(&mut self, output: OutputId) -> Option<Image> {
-        <Headless as Backend<S>>::screenshot(&mut self.0, output)
+    fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
+        <Headless as Backend<S>>::capture(&mut self.0, output, with_cursor)
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {

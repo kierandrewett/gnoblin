@@ -96,6 +96,8 @@ impl ImageCopyCaptureHandler for State {
             frames: &self.capture.pixels,
             buffer,
             offset: Point::new(0, 0),
+            // This protocol has no cursor option, so its frames never carry the cursor.
+            with_cursor: false,
         };
         let outcome = self.capture.table.capture(&mut claim, tick, capture, &mut source);
         match outcome {
