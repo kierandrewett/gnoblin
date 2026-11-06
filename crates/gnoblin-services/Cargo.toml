@@ -1,6 +1,6 @@
 [package]
 name = "gnoblin-services"
-description = "D-Bus agents: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver, inhibit and idle."
+description = "The services role: polkit, prompter, PipeWire privacy, ScreenSaver, inhibit and idle agents."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,8 +16,7 @@ gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-model = { path = "../gnoblin-model" }
 # The primitives the role loop names: the tick a deadline is measured in.
 gnoblin-types = { path = "../gnoblin-types" }
-# The `location` section the GeoClue agent's policy is read from, and the store and
-# locator the configuration file is read through.
+# The configuration file the role reads its settings through: the store and the locator.
 gnoblin-config = { path = "../gnoblin-config" }
 # The version the handshake advertises is the schema's, and the wire crate is where both
 # sides of a handshake read it from.
@@ -35,9 +34,6 @@ futures-lite.workspace = true
 # Every refusal, cancellation and registration is logged once, and never with the
 # material of an answer.
 tracing.workspace = true
-# A `BeginAuthentication` reply waits for the provider's answer, so the waiting
-# handler holds a one-shot channel rather than a locked mutex.
-futures-channel.workspace = true
 
 [dev-dependencies]
 # The tests build the graph from the checked-in schema, so the slot property names
@@ -45,9 +41,6 @@ futures-channel.workspace = true
 gnoblin-schema = { path = "../gnoblin-schema" }
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.
 gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
-# The role test serves a real socketpair, so the shipped loop is exercised rather
-# than a copy of it.
-tempfile = "3.23.0"
 
 [lints]
 workspace = true

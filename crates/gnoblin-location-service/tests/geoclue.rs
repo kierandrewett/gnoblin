@@ -9,10 +9,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use futures_lite::future;
+use gnoblin_location_service::{AGENT_INTERFACE, AGENT_PATH, GEOCLUE_SERVICE, Location, MANAGER_PATH, Policy};
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Refusal};
 use gnoblin_service_testkit::Bus;
-use gnoblin_services::location::{AGENT_INTERFACE, AGENT_PATH, GEOCLUE_SERVICE, Location, MANAGER_PATH, Policy};
 use zbus::connection::Builder;
 use zbus::{Connection, Proxy, fdo};
 

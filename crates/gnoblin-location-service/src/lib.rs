@@ -1,7 +1,7 @@
 //! The GeoClue agent: `org.freedesktop.GeoClue2.Agent`, the object GeoClue calls when an
 //! application asks for its location.
 //!
-//! This module is the only place that knows GeoClue's bus names. It registers with the
+//! This crate is the only place that knows GeoClue's bus names. It registers with the
 //! manager as `gnoblin`, answers `AuthorizeApp` by offering the request on the
 //! `location.agent` slot, and grants the accuracy the shell answered, capped by policy.
 //!

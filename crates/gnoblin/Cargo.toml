@@ -25,6 +25,8 @@ gnoblin-session = { path = "../gnoblin-session" }
 gnoblin-lua = { path = "../gnoblin-lua" }
 # The services role: the D-Bus agents as their own process.
 gnoblin-services = { path = "../gnoblin-services" }
+# The GeoClue agent and its location policy: the services role's binary links it directly.
+gnoblin-location-service = { path = "../gnoblin-location-service" }
 # The gcr passphrase prompter is the one compat adapter the services role serves. Only
 # this binary links compat crates; see `xtask/src/deps.rs`.
 gnoblin-compat-gnome-keyring-prompter = { path = "../compat/gnoblin-compat-gnome-keyring-prompter" }
