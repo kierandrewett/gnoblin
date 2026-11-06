@@ -86,6 +86,7 @@ mod cursor;
 mod extensions;
 mod ipc;
 mod layout;
+mod monitors;
 pub mod portal;
 mod schema;
 mod session_tables;
@@ -110,6 +111,10 @@ pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync};
 pub use layout::{
     LayoutSettings, configure_from_environment as configure_layouts_from_environment,
     configure_from_store as configure_layouts_from_store,
+};
+pub use monitors::{
+    configure_from_environment as configure_monitors_from_environment,
+    configure_from_store as configure_monitors_from_store,
 };
 pub use schema::catalog;
 pub use session_tables::{

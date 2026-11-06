@@ -116,6 +116,7 @@ fn compositor() -> Result<(), Exit> {
     gnoblin_compositor::configure_cursor_from_environment(&mut config);
     gnoblin_compositor::configure_window_management_from_environment(&mut config);
     gnoblin_compositor::configure_session_tables_from_environment(&mut config);
+    gnoblin_compositor::configure_monitors_from_environment(&mut config);
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {

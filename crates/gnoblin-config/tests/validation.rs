@@ -114,6 +114,19 @@ fn an_out_of_range_value_reports_the_range() {
 }
 
 #[test]
+fn an_out_of_range_monitors_global_scale_is_refused_naming_the_leaf() {
+    let document = table([("monitors", table([("global-scale", int(5))]))]);
+    let problems = problems(document);
+    assert_eq!(problems.len(), 1, "one leaf is wrong, got {problems:?}");
+    assert!(
+        problems[0].0.contains("global-scale"),
+        "the refusal names the leaf, got {}",
+        problems[0].0
+    );
+    assert!(matches!(problems[0].1, Fault::UnsupportedValue { .. }));
+}
+
+#[test]
 fn a_removed_setting_names_what_replaced_it() {
     let document = table([("window-management", table([("center-new-windows", flag(true))]))]);
     let problems = problems(document);
