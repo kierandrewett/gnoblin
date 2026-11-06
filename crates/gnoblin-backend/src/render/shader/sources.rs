@@ -53,7 +53,7 @@ pub(crate) const USER_ENTRY: &str = include_str!("wgsl/user.wgsl");
 /// The preamble with a schema's uniforms declared in the uniform block.
 ///
 /// The fields are appended after the framework's, in declaration order, which is the order
-/// [`crate::render::gles::program::UniformLayout`] packs them in.
+/// [`super::uniforms::UniformLayout`] packs them in.
 pub(crate) fn preamble(schema: &gnoblin_render::UniformSchema) -> String {
     let mut fields = String::new();
     for (name, kind) in schema.entries() {

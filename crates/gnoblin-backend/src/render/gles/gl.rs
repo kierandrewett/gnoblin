@@ -33,8 +33,9 @@ use gnoblin_render::{Color, ResolvedUniform};
 use gnoblin_types::{Rect, Size};
 
 use crate::render::RenderError;
-use crate::render::gles::ShaderError;
-use crate::render::gles::program::{CompileFailure, Stage, UniformLayout, Uniforms};
+use crate::render::gles::program::CompileFailure;
+use crate::render::shader::uniforms::{UniformLayout, Uniforms};
+use crate::render::shader::{ShaderError, Stage};
 
 /// The binding the uniform buffer is uploaded to.
 const UNIFORM_BINDING: u32 = 0;

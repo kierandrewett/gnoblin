@@ -20,7 +20,7 @@ use naga::front::wgsl::Frontend;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 use super::error::VulkanError;
-use crate::render::gles::program::ENTRY;
+use crate::render::shader::ENTRY;
 
 /// Which stage of a module to emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

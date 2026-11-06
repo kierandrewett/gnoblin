@@ -118,10 +118,9 @@ use crate::render::image::Image;
 use crate::render::physical_rect;
 use crate::render::software::READBACK_FORMAT;
 
-pub use program::ShaderError;
-
+use crate::render::shader::ShaderError;
+use crate::render::shader::uniforms::Uniforms;
 use gl::{Depth, Device, Framebuffer, Placement, Program, Texture};
-use program::Uniforms;
 
 /// The largest corner radius or blur radius a pass draws, in physical pixels.
 ///
