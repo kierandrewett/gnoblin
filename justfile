@@ -39,8 +39,8 @@ deps:
 logging:
     cargo xtask logging
 
-# Forbid a Rust string literal that names the retired src/data tree: the Lua runtime and its assets
-# live under data/. `xtask/layout-allow.toml` lists the exceptions.
+# Forbid a Rust string literal that names the retired source-data tree: the Lua runtime and its assets
+# live under data/. `xtask/layout-allow.toml` lists the reviewed root references.
 layout:
     cargo xtask layout
 

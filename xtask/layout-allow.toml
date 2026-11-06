@@ -1,6 +1,92 @@
-# Reviewed exceptions for `cargo xtask layout`: Rust sources allowed to name the retired src/data tree.
-# Each entry names a file or a directory (prefix match) and why it is not a live path.
+# Reviewed references for `cargo xtask layout`: files and directories that name the root `src/` (the
+# C tree) or `patches/` (the upstream patch series). Each entry covers a file or everything below a
+# directory, and each carries the reason the reference is a real input. A retired `src/data` reference
+# is never allowed here, so it is absent by design.
+#
+# Crate-relative `src/` paths are not root references, but the scanner cannot tell them apart from
+# root ones in a text file, so each crate file that names its own `src/` is listed with that reason.
+
+[[allow]]
+path = "build.sh"
+reason = "the build script copies the C components out of src/ and reads the patch series from patches/"
+
+[[allow]]
+path = "Cargo.toml"
+reason = "the workspace manifest comment names the root src/libinput tree that the Rust backend mirrors"
+
+[[allow]]
+path = "CMakeLists.txt"
+reason = "the CMake build reads the C control headers and sources from src/ under PROJECT_SOURCE_DIR"
+
+[[allow]]
+path = "nix/package.nix"
+reason = "the Nix package builds from src/ and takes its patch order only from patches/<project>/series"
+
+[[allow]]
+path = "cmake"
+reason = "the CMake fragments compile the C tree in src/ and apply the patches/ series"
+
+[[allow]]
+path = ".github/workflows"
+reason = "the CI jobs check out and build the C tree in src/ and apply the patches/ series"
+
+[[allow]]
+path = "scripts"
+reason = "the build, patch and generation scripts read the C tree in src/ and the series in patches/"
+
+[[allow]]
+path = "tests"
+reason = "the test harnesses exercise the built product and read its C sources or patch series as fixtures"
+
+[[allow]]
+path = "design"
+reason = "the design notes describe where the C tree and the patch series live, so they name src/ and patches/"
+
+[[allow]]
+path = "docs/cli/index.md"
+reason = "the CLI reference points readers at the C command table in src/cli/"
+
+[[allow]]
+path = "docs/source-development.md"
+reason = "the source development guide documents the src/ tree and the patches/ series for contributors"
+
+[[allow]]
+path = "crates/gnoblin/Cargo.toml"
+reason = "crate-relative: path = \"src/main.rs\" is this crate's own binary, resolved from the crate directory"
+
+[[allow]]
+path = "crates/xdg-desktop-portal-gnoblin/Cargo.toml"
+reason = "crate-relative: path = \"src/main.rs\" is this crate's own binary, resolved from the crate directory"
+
+[[allow]]
+path = "crates/gnoblin-client/Cargo.toml"
+reason = "crate-relative: a comment naming this crate's own src/inherit.rs"
+
+[[allow]]
+path = "crates/gnoblin-config/Cargo.toml"
+reason = "crate-relative: a comment naming this crate's own src/last_good.rs"
+
+[[allow]]
+path = "crates/gnoblin-schema/Cargo.toml"
+reason = "crate-relative: a comment naming this crate's own src/parse.rs"
+
+[[allow]]
+path = "crates/gnoblin-lua/host_members.toml"
+reason = "crate-relative: a comment naming this crate's own src/bindings.rs"
+
+[[allow]]
+path = "crates/gnoblinctl/build.rs"
+reason = "crate-relative: the build script names src/generate.rs in this crate, run from the crate directory"
+
+[[allow]]
+path = "crates/gnoblin-wasm/build.rs"
+reason = "crate-relative: the build script names src/wit.rs in this crate, run from the crate directory"
+
+[[allow]]
+path = "crates/compat/gnoblin-compat-gtk-shell1/protocols/gtk-shell.xml"
+reason = "the vendored protocol header records Mutter's src/wayland path it was copied from, not a path we read"
+
 
 [[allow]]
 path = "xtask/src/layout.rs"
-reason = "the rule's own tests spell the retired path as the input they check the scanner against; no code opens it"
+reason = "the rule's own constants name the root prefixes it checks, and its tests feed it a root-relative path"

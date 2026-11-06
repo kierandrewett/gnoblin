@@ -23,7 +23,7 @@ subcommands:
   compat-report      print every compat adapter's declared support matrix
   dupes              fail on a struct or enum two crates declare twice
   dupes --warn       the same report, printing every hit and exiting zero
-  layout             fail on a Rust string literal that names the retired src/data tree
+  layout             fail on a Rust string literal that names the retired source-data tree
   logging            fail on a direct logging-crate dependency or a stock print in library code
   compat-report --json  the same report as JSON";
 
