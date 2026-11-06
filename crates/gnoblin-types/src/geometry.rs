@@ -461,10 +461,11 @@ impl PointF {
         self.x.is_finite() && self.y.is_finite()
     }
 
-    /// The whole-pixel point nearest to this one.
+    /// The whole-pixel point that contains this one.
     ///
-    /// Rounding is flooring, so a value inside a pixel maps to that pixel; a
-    /// caller that needs a covering rectangle uses [`RectF::to_pixel`] instead.
+    /// Rounding is flooring, so a value inside a pixel maps to that pixel. If
+    /// either component is non-finite, both map to zero. A caller that needs a
+    /// covering rectangle uses [`RectF::to_pixel`].
     #[must_use]
     pub fn to_i32(self) -> Point {
         if !self.is_finite() {
