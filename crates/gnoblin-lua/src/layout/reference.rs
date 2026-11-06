@@ -1,0 +1,97 @@
+//! Layout references for a configuration VM.
+//!
+//! `require("gnoblin.layouts.grid")` in a configuration file returns a layout
+//! reference, not a layout. The reference names the module and carries what the
+//! module declares: its source hash and its default options. The module is read and
+//! checked in a sandboxed layout VM, so a broken layout fails at `require` time, in
+//! the configuration that names it.
+//!
+//! One layout VM serves a whole configuration evaluation. It is created on the first
+//! layout `require` and dropped when the next evaluation resets the loader, so a
+//! changed module on disk is read again by the next evaluation and never served from
+//! a stale cache. Within one evaluation a module is read once and then reused.
+
+use mlua::{UserData, UserDataFields};
+
+use super::data::Data;
+use super::lua::Vm;
+use super::require::{LayoutRoots, is_module_name, resolve};
+use gnoblin_lua_sandbox::Limits;
+
+/// A layout module named by a configuration file.
+///
+/// Scripts see it as a userdata with read-only fields. `root` says which fixed
+/// directory the module came from, `module` is its name, `hash` is the FNV-1a hash of
+/// its source as a decimal string, and `options` are its declared defaults.
+#[derive(Clone, Debug)]
+pub(crate) struct LayoutRef {
+    /// `shipped` for a `gnoblin.` name, `user` for any other.
+    pub(crate) root: &'static str,
+    pub(crate) module: String,
+    pub(crate) hash: u64,
+    pub(crate) options: Data,
+}
+
+impl UserData for LayoutRef {
+    fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("root", |_, this| Ok(this.root));
+        fields.add_field_method_get("module", |_, this| Ok(this.module.clone()));
+        // A string, because a 64-bit hash does not survive a round trip through a Lua number.
+        fields.add_field_method_get("hash", |_, this| Ok(this.hash.to_string()));
+        fields.add_field_method_get("options", |lua, this| this.options.to_lua(lua));
+    }
+}
+
+/// Builds layout references for one configuration VM.
+pub(crate) struct Loader {
+    limits: Limits,
+    roots: Option<LayoutRoots>,
+    vm: Option<Vm>,
+}
+
+impl Loader {
+    /// A loader with no roots yet; every reference fails until [`Loader::reset`] runs.
+    pub(crate) fn new(limits: Limits) -> Self {
+        Self {
+            limits,
+            roots: None,
+            vm: None,
+        }
+    }
+
+    /// Start a new configuration evaluation with `roots`. The shared layout VM is
+    /// dropped here, so the evaluation starts from the files as they are now.
+    pub(crate) fn reset(&mut self, roots: LayoutRoots) {
+        self.roots = Some(roots);
+        self.vm = None;
+    }
+
+    /// The reference for layout module `name`, reading and checking it on first use.
+    ///
+    /// A name that is not a layout module under either root is reported as an unknown
+    /// module, the same message an unloaded extension namespace gives.
+    pub(crate) fn reference(&mut self, name: &str) -> Result<LayoutRef, String> {
+        let unknown = || format!("unknown module `{name}`: no extension namespace or layout module has that name");
+        let roots = self.roots.clone().ok_or_else(unknown)?;
+        if !is_module_name(name) || resolve(&roots, name).is_err() {
+            return Err(unknown());
+        }
+        let root = if name.starts_with("gnoblin.") {
+            "shipped"
+        } else {
+            "user"
+        };
+        if self.vm.is_none() {
+            let vm = Vm::new(self.limits.clone(), roots).map_err(|error| error.to_string())?;
+            self.vm = Some(vm);
+        }
+        let vm = self.vm.as_mut().ok_or_else(unknown)?;
+        let inspected = vm.inspect(name).map_err(|fault| fault.message)?;
+        Ok(LayoutRef {
+            root,
+            module: name.to_owned(),
+            hash: inspected.hash,
+            options: inspected.options,
+        })
+    }
+}

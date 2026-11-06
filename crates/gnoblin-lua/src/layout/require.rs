@@ -92,7 +92,12 @@ impl Modules {
         let path = resolve(&self.roots, name).map_err(runtime)?;
         let source = read_source(&path, name).map_err(runtime)?;
         let hash = fnv1a(source.as_bytes());
-        let value = match lua.load(source.as_str()).set_name(name).call::<LuaValue>(())? {
+        // The chunk is named by its file, so a runtime error points at the source line.
+        let value = match lua
+            .load(source.as_str())
+            .set_name(format!("@{}", path.display()))
+            .call::<LuaValue>(())?
+        {
             // A module that returns nothing is loaded as `true`, as in Lua's own `require`.
             LuaValue::Nil => LuaValue::Boolean(true),
             value => value,

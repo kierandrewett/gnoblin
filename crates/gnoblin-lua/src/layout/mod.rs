@@ -33,6 +33,7 @@ mod data;
 mod engine;
 mod host;
 mod lua;
+mod reference;
 mod reply;
 mod require;
 mod snapshot;
@@ -46,6 +47,7 @@ use mlua::{Lua, Table};
 pub use data::{Data, DataError, LayoutKey};
 pub use engine::LuaEngine;
 pub use host::{Host, HostConfig, HostFailure, WedgeHook, default_prefix, installed_module_dir};
+pub(crate) use reference::Loader;
 pub use require::LayoutRoots;
 pub use snapshot::{Gaps, LayoutRequest, LayoutSnapshot, SizeHints, SnapshotWindow};
 

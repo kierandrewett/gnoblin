@@ -60,17 +60,18 @@ pub(super) fn bind<T: Transport + 'static>(
         modules.set(name, module)?;
     }
     let granted = granted.clone();
+    let layouts = Rc::clone(shared);
     lua.globals().set(
         "require",
         lua.create_function(move |lua, name: String| {
             let modules: Table = lua.named_registry_value(MODULES)?;
             if let Some(module) = modules.raw_get::<Option<Table>>(name.as_str())? {
-                return Ok(module);
+                return Ok(Value::Table(module));
             }
             if !loaded.contains(&name) {
-                return Err(Error::runtime(format!(
-                    "unknown module `{name}`: no extension namespace has that name"
-                )));
+                // Not an extension namespace: a layout module answers with a reference.
+                let reference = layouts.borrow_mut().layouts.reference(&name).map_err(Error::runtime)?;
+                return Ok(Value::UserData(lua.create_userdata(reference)?));
             }
             if !granted.contains(&name) {
                 return Err(Error::runtime(format!("extension not granted: {name}")));

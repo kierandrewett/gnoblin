@@ -61,6 +61,15 @@ struct LayoutEntry {
     options: Data,
 }
 
+/// What [`Vm::inspect`] found in a layout module: its default options, its manifest
+/// and the FNV-1a hash of its source.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Inspected {
+    pub(crate) options: Data,
+    pub(crate) manifest: LayoutManifest,
+    pub(crate) hash: u64,
+}
+
 /// The result of one layout call: the reply, the module hash it ran under, and the
 /// `ctx.state` the layout left behind.
 #[derive(Clone, Debug, PartialEq)]
@@ -111,6 +120,25 @@ impl Vm {
         self.layouts
             .insert(name.to_owned(), LayoutEntry { value, hash, options });
         Ok(manifest)
+    }
+
+    /// Read module `module` and report what it declares, without registering a layout.
+    ///
+    /// A configuration file calls this through a layout reference, so the module is
+    /// checked where it is named. The module is cached in this VM, so a later `load`
+    /// of the same name does not read the file again.
+    pub(crate) fn inspect(&mut self, module: &str) -> Result<Inspected, LayoutFault> {
+        self.guard.begin(&self.limits);
+        let (value, hash) = self
+            .modules
+            .fetch(&self.lua, module)
+            .map_err(|error| self.fault(error, LayoutReason::MissingModule))?;
+        let (options, manifest) = shape(&value).map_err(|error| self.fault(error, LayoutReason::Error))?;
+        Ok(Inspected {
+            options,
+            manifest,
+            hash,
+        })
     }
 
     /// Run `call` on layout `name`. `state` is the persisted `ctx.state` and the module

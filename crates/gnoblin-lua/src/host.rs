@@ -117,6 +117,9 @@ pub(super) struct Shared<T: Transport> {
     pub(super) reports: Vec<ScriptError>,
     /// The extension schemas `require` binds from; a signal's declared fields come from here.
     pub(super) extensions: ExtensionRegistry,
+    /// The loader that answers `require` for a layout module with a reference. It holds
+    /// the one layout VM of the current configuration evaluation.
+    pub(super) layouts: crate::layout::Loader,
 }
 
 impl<T: Transport> Shared<T> {
@@ -294,6 +297,7 @@ impl<T: Transport + 'static> Host<T> {
             reported: BTreeSet::new(),
             reports: Vec::new(),
             extensions: ExtensionRegistry::new(),
+            layouts: crate::layout::Loader::new(limits.clone()),
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {
@@ -357,6 +361,16 @@ impl<T: Transport + 'static> Host<T> {
     pub fn run_config(&mut self, paths: &SearchPaths) -> Result<RunReport, HostError> {
         let path = locate(paths).map_err(HostError::Locate)?;
         self.reset_runtime()?;
+        // The shipped root is the installed prefix; the user root is the directory of the
+        // configuration file being evaluated, so a `require` there resolves from one place.
+        let shipped = crate::layout::installed_module_dir(&crate::layout::default_prefix(
+            std::env::var_os("GNOBLIN_PREFIX").as_deref(),
+        ));
+        let user = path.path().parent().map(Path::to_path_buf);
+        self.shared
+            .borrow_mut()
+            .layouts
+            .reset(crate::layout::LayoutRoots { shipped, user });
         {
             let mut shared = self.shared.borrow_mut();
             shared.document = Value::Map(BTreeMap::new());
