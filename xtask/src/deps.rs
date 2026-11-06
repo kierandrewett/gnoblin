@@ -354,14 +354,11 @@ fn client_side_isolation(package: &Package, dep: &Dep) -> Option<String> {
 }
 
 /// Whether `name` is an IPC client under [`client_side_isolation`]: a listed crate, or any
-/// service crate. The `*-service` crates are the agents the services role serves, and
+/// service crate. The `gnoblin-service-*` crates are the agents the services role serves, and
 /// `gnoblin-service-core` and `gnoblin-service-testkit` are the shared frame and the test
 /// kit under them, so they run in the same client process and get the same rule.
 fn is_client_side(name: &str) -> bool {
-    CLIENT_SIDE.contains(&name)
-        || name == "gnoblin-service-core"
-        || name == "gnoblin-service-testkit"
-        || (name.starts_with("gnoblin-") && name.ends_with("-service"))
+    CLIENT_SIDE.contains(&name) || name.starts_with("gnoblin-service-")
 }
 
 /// A compat crate depends only on `gnoblin-compat-core`, `gnoblin-client` and
@@ -653,12 +650,12 @@ mod tests {
 
     #[test]
     fn a_service_crate_may_not_depend_on_the_engine() {
-        // Each `*-service` crate is a role's agent, served in the services process, so it is a
+        // Each `gnoblin-service-*` crate is a role's agent, served in the services process, so it is a
         // client like `gnoblin-services` and may not link the engine.
-        let reported = violations(&[("gnoblin-polkit-service", &["gnoblin-wayland"])]);
+        let reported = violations(&[("gnoblin-service-polkit", &["gnoblin-wayland"])]);
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
-            reported[0].starts_with("gnoblin-polkit-service -> gnoblin-wayland [client-side-isolation]"),
+            reported[0].starts_with("gnoblin-service-polkit -> gnoblin-wayland [client-side-isolation]"),
             "unexpected violation: {}",
             reported[0]
         );
