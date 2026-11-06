@@ -692,7 +692,7 @@ reason = "one offered request waiting for an answer versus another crate's pendi
 
 [[allow]]
 left = "gnoblin-a11y::Pending"
-right = "gnoblin-services::Pending"
+right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
 
@@ -704,7 +704,7 @@ reason = "a provider's typed answer (which identity authenticated, or a dismissa
 
 [[allow]]
 left = "gnoblin-authority::Decision"
-right = "gnoblin-services::Decision"
+right = "gnoblin-service-core::Decision"
 kind = "same-name"
 reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
@@ -722,7 +722,7 @@ reason = "one offered request waiting for an answer versus another crate's pendi
 
 [[allow]]
 left = "gnoblin-authority::Pending"
-right = "gnoblin-services::Pending"
+right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
 
@@ -734,13 +734,13 @@ reason = "a provider's typed answer (which identity authenticated, or a dismissa
 
 [[allow]]
 left = "gnoblin-compat-core::Decision"
-right = "gnoblin-services::Decision"
+right = "gnoblin-service-core::Decision"
 kind = "same-name"
 reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
 [[allow]]
 left = "gnoblin-compat-core::Refusal"
-right = "gnoblin-services::Refusal"
+right = "gnoblin-service-core::Refusal"
 kind = "same-name"
 reason = "why a slot request could not be offered or answered versus the compat frame's rule refusal; the compat one names a rule and this one names a slot or a request"
 
@@ -752,7 +752,7 @@ reason = "a provider's typed answer (which identity authenticated, or a dismissa
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Decision"
-right = "gnoblin-services::Decision"
+right = "gnoblin-service-core::Decision"
 kind = "same-name"
 reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
@@ -788,7 +788,7 @@ reason = "one offered request waiting for an answer versus another crate's pendi
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::Pending"
-right = "gnoblin-services::Pending"
+right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
 
@@ -800,19 +800,19 @@ reason = "a prompt waiting for an answer versus another crate's wait record; the
 
 [[allow]]
 left = "gnoblin-input::Decision"
-right = "gnoblin-services::Decision"
+right = "gnoblin-service-core::Decision"
 kind = "same-name"
 reason = "a provider's typed answer (which identity authenticated, or a dismissal) versus another crate's decision type; the variants differ and one cannot stand in for the other"
 
 [[allow]]
 left = "gnoblin-lua::Pending"
-right = "gnoblin-services::Pending"
+right = "gnoblin-service-core::Pending"
 kind = "same-name"
 reason = "one offered request waiting for an answer versus another crate's pending record; each names its own crate's request lifecycle and fields"
 
 [[allow]]
 left = "gnoblin-compat-gnome-keyring-prompter::EndedPrompt"
-right = "gnoblin-services::Finished"
+right = "gnoblin-service-core::Finished"
 kind = "same-shape"
 reason = "one request that ended with a decision: the two crates' decisions are different types, so the records are separate vocabulary rather than one type"
 
@@ -859,7 +859,7 @@ reason = "a capture target is what is being exported; an input target is where a
 
 [[allow]]
 left = "gnoblin-capture::Refusal"
-right = "gnoblin-services::Refusal"
+right = "gnoblin-service-core::Refusal"
 kind = "same-name"
 reason = "a capture refusal says why no pixels were exposed; a services refusal says why an agent request was declined"
 
@@ -1039,7 +1039,7 @@ reason = "every adapter's admission wrapper is one parsed SupportMatrix; the typ
 
 [[allow]]
 left = "gnoblin-lua::Host"
-right = "gnoblin-services::Host"
+right = "gnoblin-service-core::Host"
 kind = "same-name"
 reason = "the services role's inherited IPC host versus the script runtime's object host"
 
@@ -1266,13 +1266,13 @@ kind = "same-name"
 reason = "lua's Shared is the host state shared with the Lua closures its bindings install; the portal's Shared is everything its served objects share"
 
 [[allow]]
-left = "gnoblin-services::Pending"
+left = "gnoblin-service-core::Pending"
 right = "xdg-desktop-portal-gnoblin::Pending"
 kind = "same-name"
 reason = "services' Pending is one agent request waiting for its answer; the portal's Pending is what Guard::ask could do"
 
 [[allow]]
-left = "gnoblin-services::Refusal"
+left = "gnoblin-service-core::Refusal"
 right = "xdg-desktop-portal-gnoblin::Refusal"
 kind = "same-name"
 reason = "services' Refusal is why a request could not be started, answered or finished; the portal's Refusal is why something was refused before it could wait for an answer"
@@ -1668,7 +1668,7 @@ reason = "a portal Key is a negotiation or dialog value of this crate; the other
 
 [[allow]]
 left = "gnoblin-compositor::Refusal"
-right = "gnoblin-services::Refusal"
+right = "gnoblin-service-core::Refusal"
 kind = "same-name"
 reason = "a portal Refusal is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
