@@ -479,7 +479,7 @@ gnoblin/
     gnoblin-service-location/ GeoClue agent and location policy
     gnoblin-diag/             recovery and console overlay (see D5)
     gnoblin-portal/           built-in portal dialog screens (egui, D19)
-    gnoblin-portal-core/      portal dialog models, theme, CPU painter and widgets, pure and egui-free (D19)
+    gnoblin-portal-core/      portal dialog models, the `DialogUi` trait and the shell that runs it, CPU painter; pure models and egui only (D19)
     gnoblin-portal-consent/   consent dialog screen (D19)
     gnoblin-portal-filechooser/  file chooser dialog screen (D19)
     gnoblin-portal-appchooser/   app chooser dialog screen (D19)
@@ -1149,8 +1149,13 @@ failure-mode list that must be complete before isolated tests or code.
   serves the `org.freedesktop.impl.portal.*` names and speaks `portal-call` to
   the compositor. Nothing depends on it. Removing it makes `xdg-desktop-portal` fall
   through to `gtk`, then `kde`, with no config change (D19, "Removability").
-- **UI:** the relay has no UI dependency. The built-in egui UI is in the
-  compositor: `gnoblin-portal-core::model` holds the dialog models, `gnoblin-portal` draws them, and `gnoblin-compositor::portal` the negotiation (D19).
+- **UI:** the relay has no UI dependency. Every dialog is drawn with stock egui
+  widgets and egui's default look; no theme or hand-drawn widgets. Each dialog kind is one
+  crate (`gnoblin-portal-consent`, `-filechooser`, `-appchooser`) that implements
+  `gnoblin-portal-core::DialogUi` and names only egui and the core. `gnoblin-portal`
+  holds the one constructor map from `Dialog` to UI crate and wraps the chosen UI in the
+  shell. A new dialog kind is a new crate, its `DialogUi` impl and one line in that map.
+  The compositor's `portal` module does the negotiation (D19).
 - **Replaces:** `src/session`, `src/agents`, `src/idle.c`, `src/portal`,
   `subprojects/xdg-desktop-portal-gnome` and its patches.
 - **Keeps:** `org.freedesktop.ScreenSaver`, `org.gnome.ScreenSaver` forwarding,
