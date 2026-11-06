@@ -17,6 +17,8 @@
 //! compositor still checks that the connection may ask for what the descriptor
 //! carries.
 
+/// The connection seam that carries frames and their descriptors. Unix only, because
+/// descriptor passing is a Unix mechanism.
 #[cfg(unix)]
 pub use unix::Transport;
 
