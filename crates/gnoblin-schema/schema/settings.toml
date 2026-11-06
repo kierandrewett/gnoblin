@@ -8,9 +8,10 @@
 #
 # One object of this type exists for the session's lifetime and its identity is the
 # session's whole appearance state, so a subscriber that starts from the snapshot is
-# exactly current. A property is absent from the graph until the compositor has a value
-# for it, which is why the portal treats a missing property as "not published" rather
-# than as a default: a toolkit that reads no value keeps its own.
+# exactly current. The compositor creates it with every property set to its stock value,
+# because the graph requires each declared property at creation. A configuration then
+# overrides the values it names. A property the portal cannot read is therefore never
+# absent here; a toolkit keeps its own value only where the stock value says so.
 #
 # The property names are the settings' own names with `-` turned into `_`, because a
 # schema property name cannot contain a dash. The portal's translation table in

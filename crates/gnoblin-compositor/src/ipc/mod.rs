@@ -31,6 +31,7 @@ mod privileged;
 mod requests;
 mod server;
 mod session;
+mod settings;
 
 use std::path::PathBuf;
 

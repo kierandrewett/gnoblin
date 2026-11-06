@@ -123,6 +123,8 @@ pub struct SessionSync {
     lock: ObjectId,
     /// The `idle` object, whose idle_ms and inhibitors properties `apply` writes from the snapshot.
     idle: ObjectId,
+    /// The `settings` object, which `publish_settings` writes from the configuration.
+    settings: ObjectId,
     /// How many bells the last snapshot counted, so `apply` raises the signal once per
     /// ring rather than once per snapshot.
     bells: u64,
@@ -154,11 +156,13 @@ impl SessionSync {
             (member::INHIBITORS.to_owned(), Value::Uint(0)),
         ]);
         let idle = graph.create(TypeKey::gnoblin("idle"), idle_properties)?;
+        let settings = graph.create(TypeKey::gnoblin("settings"), super::settings::defaults())?;
         Ok(SessionSync {
             graph,
             session,
             lock,
             idle,
+            settings,
             bells: 0,
             windows: BTreeMap::new(),
             workspaces: BTreeMap::new(),
@@ -180,6 +184,16 @@ impl SessionSync {
     pub fn ready(&mut self) {
         if let Err(error) = self.graph.signal(self.session, member::READY, Fields::new()) {
             error!(%error, "[ipc] the session object declares no ready signal");
+        }
+    }
+    /// Writes the `settings` object from the configuration's `appearance` and `cursor`
+    /// tables. A property the configuration does not name takes its stock value, so a
+    /// setting removed from the configuration reverts rather than sticking.
+    pub fn publish_settings(&mut self, config: &gnoblin_config::Config) {
+        let mut fields = super::settings::defaults();
+        fields.extend(super::settings::from_config(config));
+        for (property, value) in fields {
+            self.set_if_changed(self.settings, &property, value);
         }
     }
 
