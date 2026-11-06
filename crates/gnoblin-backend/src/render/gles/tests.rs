@@ -965,3 +965,123 @@ fn an_effect_on_a_projected_layer_draws_nothing_extra() {
         }
     }
 }
+
+/// The blur of the glass tests' backdrop, as `shaders/blur.wgsl` computes it: nine taps
+/// `step` pixels apart with a Gaussian of sigma 1.5 taps, normalised. The backdrop is constant
+/// down a column, so the vertical pass leaves it as it is.
+fn reference_blur(backdrop: fn(i32) -> f32, x: i32, step: i32) -> f32 {
+    let mut total = 0.0;
+    let mut weights = 0.0;
+    for index in -4..=4 {
+        let weight = (-0.5 * (index * index) as f32 / 2.25).exp();
+        total += weight * backdrop(x + index * step);
+        weights += weight;
+    }
+    total / weights
+}
+
+/// The glass tests' backdrop: black left of x = 32, white from there on.
+fn edge_backdrop(x: i32) -> f32 {
+    if x >= 32 { 1.0 } else { 0.0 }
+}
+
+/// The glass tests' node colour: a straight (200, 100, 50) at `alpha`.
+const GLASS_RGB: [f32; 3] = [200.0, 100.0, 50.0];
+
+/// Levels of 8-bit error the glass tests allow: two blur passes and the blend each round.
+const GLASS_TOLERANCE: f32 = 2.0;
+
+/// The frame's colour at (x, 32) under isolated-group compositing, in 0..1 per channel:
+/// `out = (1 - g) * D + g * (P + (1 - a) * B)` with `P` premultiplied.
+fn glass_expected(opacity: f32, alpha: u8, x: i32) -> [f32; 3] {
+    let a = f32::from(alpha) / 255.0;
+    let d = edge_backdrop(x);
+    let b = reference_blur(edge_backdrop, x, 3);
+    GLASS_RGB.map(|channel| {
+        let p = channel / 255.0 * a;
+        (1.0 - opacity) * d + opacity * (p + (1.0 - a) * b)
+    })
+}
+
+/// Renders the edge backdrop with a blurred node over `quad` at group `opacity`, and returns
+/// the readback.
+fn glass_over_edge(quad: Rect, opacity: f32, alpha: u8) -> Option<Image> {
+    let size = Size::new(64, 64);
+    let mut renderer = gles(size)?;
+    let mut frame = OutputFrame::new();
+    frame.set_background(Color::BLACK);
+    frame.push_layer(Layer::Solid(Solid::new(Rect::new(32, 0, 32, 64), Color::WHITE)));
+    let mut effects = Effects::new();
+    effects.push(Pass::Blur(Blur { radius: 9.0 })).expect("a blur");
+    let glass = LayerParts {
+        quad,
+        radius: 0.0,
+        effects: &effects,
+        colour: Some(Color::from_rgba8(200, 100, 50, alpha)),
+        tint: Color::WHITE,
+        opacity,
+        src: [0.0, 0.0, 1.0, 1.0],
+    };
+    renderer
+        .paint(&frame, Scale::IDENTITY, &[Rect::new(0, 0, 64, 64)], Some(&glass))
+        .expect("drawn");
+    Some(renderer.screenshot().expect("a readback"))
+}
+
+/// Asserts the probe at (x, 32) matches the isolated-group formula to `GLASS_TOLERANCE`.
+fn assert_glass_pixel(image: &Image, x: i32, opacity: f32, alpha: u8) {
+    let expected = glass_expected(opacity, alpha, x);
+    let got = probe(image, x, 32);
+    for channel in 0..3 {
+        let want = expected[channel] * 255.0;
+        assert!(
+            (f32::from(got[channel]) - want).abs() <= GLASS_TOLERANCE,
+            "g {opacity}, a {alpha}, x {x}, channel {channel}: got {}, want {want:.1}",
+            got[channel]
+        );
+    }
+}
+
+#[test]
+fn a_blurred_node_composites_as_one_isolated_group() {
+    let quad = Rect::new(16, 0, 32, 64);
+    // Translucent glass fully blurred behind; opaque glass at half opacity; a transparent
+    // cut-out at half opacity, which is the blur alone; and a layer at zero opacity, which is
+    // the backdrop alone.
+    for (opacity, alpha) in [(1.0, 77), (0.5, 255), (0.5, 0), (0.0, 77)] {
+        for x in [24, 40] {
+            let Some(image) = glass_over_edge(quad, opacity, alpha) else {
+                return;
+            };
+            assert_glass_pixel(&image, x, opacity, alpha);
+        }
+    }
+}
+
+#[test]
+fn a_blur_reaches_nothing_outside_its_node() {
+    // A probe just left of the edge is black in the backdrop, but its blur is not: the taps
+    // reach the white side. Outside the node it must stay the backdrop's black.
+    assert!(reference_blur(edge_backdrop, 28, 3) * 255.0 > 15.0);
+    let Some(image) = glass_over_edge(Rect::new(40, 0, 8, 64), 1.0, 255) else {
+        return;
+    };
+    let [red, _, _, _] = probe(&image, 28, 32);
+    assert!(red <= 2, "outside the node the backdrop is untouched: {red}");
+}
+
+#[test]
+fn a_blurred_node_fades_monotonically_with_group_opacity() {
+    let quad = Rect::new(16, 0, 32, 64);
+    let mut reds = Vec::new();
+    for opacity in [1.0, 0.75, 0.5, 0.25, 0.0] {
+        let Some(image) = glass_over_edge(quad, opacity, 77) else {
+            return;
+        };
+        reds.push(probe(&image, 40, 32)[0]);
+    }
+    assert!(
+        reds.windows(2).all(|pair| pair[1] > pair[0]),
+        "the white side rises as the group fades to the backdrop: {reds:?}"
+    );
+}

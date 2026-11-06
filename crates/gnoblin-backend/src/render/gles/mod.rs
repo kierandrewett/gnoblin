@@ -415,7 +415,7 @@ impl Gles {
             self.damage = damage;
             return Ok(());
         }
-        let outcome = self.paint(frame, scale, &damage);
+        let outcome = self.paint(frame, scale, &damage, None);
         self.damage = damage;
         outcome?;
         self.draws = self.draws.saturating_add(1);
@@ -461,7 +461,7 @@ impl Gles {
     ) -> Result<(), RenderError> {
         let full = [Rect::new(0, 0, self.physical.width, self.physical.height)];
         std::mem::swap(&mut self.target, &mut buffer.framebuffer);
-        let outcome = self.paint(frame, scale, &full);
+        let outcome = self.paint(frame, scale, &full, None);
         std::mem::swap(&mut self.target, &mut buffer.framebuffer);
         outcome?;
         self.draws = self.draws.saturating_add(1);
@@ -520,7 +520,13 @@ impl Gles {
     }
 
     /// Draws every layer of the frame, damage rectangle by damage rectangle.
-    fn paint(&mut self, frame: &OutputFrame, scale: Scale, damage: &[Rect]) -> Result<(), RenderError> {
+    fn paint(
+        &mut self,
+        frame: &OutputFrame,
+        scale: Scale,
+        damage: &[Rect],
+        glass: Option<&LayerParts<'_>>,
+    ) -> Result<(), RenderError> {
         // Textures first: importing needs the renderer mutably, and a pass borrows it for the
         // whole of the draw.
         let mut textures: Vec<Option<Texture>> = Vec::with_capacity(frame.layers().len());
@@ -606,6 +612,9 @@ impl Gles {
                 let layer = &frame.layers()[*index];
                 let texture = textures.get(*index).and_then(|texture| *texture);
                 painter.layer(layer, texture, *placement)?;
+            }
+            if let Some(parts) = glass {
+                painter.draw_parts(parts, None, Placement::FLAT)?;
             }
             if let Some((overlay, texture)) = overlay {
                 if let Some(dst) = overlay_rect {
@@ -699,6 +708,19 @@ impl Gles {
     }
 }
 
+/// One layer's geometry and paint: a layer of the frame, or the glass a test draws over it.
+#[derive(Clone, Copy)]
+struct LayerParts<'a> {
+    /// The physical rectangle the layer covers.
+    quad: Rect,
+    radius: f32,
+    effects: &'a gnoblin_render::Effects,
+    colour: Option<Color>,
+    tint: Color,
+    opacity: f32,
+    src: [f32; 4],
+}
+
 /// One frame's mutable state, so a pass's parameters stay a method's arguments.
 struct Painter<'a> {
     device: &'a mut Device,
@@ -767,6 +789,37 @@ impl Painter<'_> {
             return Ok(());
         }
         let radius = (corner_radius * self.scale.as_f64() as f32).clamp(0.0, MAX_RADIUS);
+        self.draw_parts(
+            &LayerParts {
+                quad,
+                radius,
+                effects,
+                colour,
+                tint,
+                opacity,
+                src,
+            },
+            texture,
+            placement,
+        )
+    }
+
+    /// Draws one layer's parts: its shadow, its blur group, then its own pixels.
+    fn draw_parts(
+        &mut self,
+        parts: &LayerParts<'_>,
+        texture: Option<Texture>,
+        placement: Placement,
+    ) -> Result<(), RenderError> {
+        let LayerParts {
+            quad,
+            radius,
+            effects,
+            colour,
+            tint,
+            opacity,
+            src,
+        } = *parts;
         let mut grouped = false;
         for pass in effects.passes() {
             match pass {
