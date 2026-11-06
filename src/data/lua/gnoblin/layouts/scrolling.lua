@@ -6,13 +6,14 @@
 -- Gaps: `outer` insets the area, `inner` separates columns and stacked windows.
 --
 -- State (ctx.state): columns = array of { windows = {id...}, fraction = 0..1 or px = n,
--- tabbed = bool, active = id }, view = strip offset in pixels, focus_seen.
+-- tabbed = bool, active = id }, view = strip offset in pixels, pinned = bool, focus_seen = id.
 -- Reconciliation runs on every arrange: closed windows leave their column, empty
 -- columns vanish, and a new window opens as a new column right after the focused
 -- column (or at the end when nothing is focused).
 --
 -- arrange: columns are laid out left to right, each at its width (fraction of the
---          area width, or px). The view follows the focused column under `centre`.
+--          area width, or px). The view follows the focused column under `centre`,
+--          until scroll_to pins it.
 -- on_request: declines every geometry request.
 -- options:
 --   column_width  width of new columns as a fraction of the area, 0..1 (default 0.5)
@@ -33,11 +34,15 @@
 --   focus(direction): "left", "right", "up" or "down". Returns the id of the window
 --                 to focus, or nil. The layout cannot move focus itself: the compositor
 --                 must focus the returned window.
+--   scroll_to(x): set the view offset to x pixels and keep it there until the focus
+--                 changes. The view is clamped to the strip, so an x past either end
+--                 stops at that end.
 --
 -- Usage: gnoblin.layout.register("scrolling", "gnoblin.layouts.scrolling")
 
 local M = {}
 M.kind = "tiling"
+M.extent = "unbounded"
 
 M.options = {
     column_width = 0.5,
@@ -135,9 +140,13 @@ end
 -- Moves the view as the centre policy requires for the focused column.
 local function follow(ctx, columns, geo, total, vw)
     local state = ctx.state
+    if ctx.focus ~= state.focus_seen then
+        state.pinned = false
+        state.focus_seen = ctx.focus
+    end
     local ci = locate(columns, ctx.focus)
     local view = state.view or 0
-    if ci ~= nil then
+    if ci ~= nil and not state.pinned then
         local x, w = geo[ci].x, geo[ci].w
         local policy = ctx.params.centre
         local centred = x + w / 2 - vw / 2
@@ -348,6 +357,17 @@ M.command = {
             return neighbour.windows[1]
         end
         error("scrolling focus direction must be left, right, up or down")
+    end,
+
+    scroll_to = function(ctx, args)
+        args = args or {}
+        local x = args.x
+        if type(x) ~= "number" or x ~= x then
+            error("scrolling scroll_to needs a number x, in pixels")
+        end
+        ctx.state.view = x
+        ctx.state.pinned = true
+        ctx.state.focus_seen = ctx.focus
     end,
 }
 

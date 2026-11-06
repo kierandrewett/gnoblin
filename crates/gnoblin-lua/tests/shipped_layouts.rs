@@ -14,6 +14,7 @@
 //! - removing the focused or only window, adding windows and re-adding windows keep state stable [add_and_remove_sequences_keep_every_window_placed]
 //! - scrolling columns may lie outside the area, and carousel3d uses depth, so bounds are not checked for them [every_layout_settles_for_every_count_and_area]
 //! - commands mutate state and change geometry as documented [command_tests]
+//! - scroll_to pins the view until focus moves, and clamps it to the strip [scroll_to_pins_the_view_until_focus_moves, scroll_to_clamps_the_view_to_the_strip]
 //! - the loader resolves `gnoblin.layouts.<name>` from the installed prefix alone [installed_layouts_load_from_their_prefix]
 //! - the CMake install rule (cmake/install-lua-data.cmake) copies the same tree that the loader then resolves [cmake_install_rule_installs_shipped_layouts]
 //!
@@ -450,6 +451,51 @@ fn command_tests() {
         assert!(
             (rect(&by_id(&fitted)[&id]).w - 1000.0 / 3.0).abs() < 1e-3,
             "window {id} takes a third"
+        );
+    }
+}
+
+#[test]
+fn scroll_to_pins_the_view_until_focus_moves() {
+    // The driver pins the view once, on the first arrange only: state.view is nil
+    // until the first arrange sets it.
+    let dir = driver(
+        "drv_sc_pin",
+        "scrolling",
+        "  if ctx.state.view == nil then\n    real.command.scroll_to(ctx, {x = 300})\n  end",
+    );
+    let host = hosted(vec![dir, PathBuf::from(SHIPPED)], &[("drv_sc_pin", "drv_sc_pin")]);
+    let x1 = |layout: &Layout| rect(&by_id(layout)[&1]).x;
+
+    // Columns read 1, 3, 2 at 500 px each; the pinned view is 300, so column 1 sits at -300.
+    let first = arrange(&host, "drv_sc_pin", Some(1), &[1, 2, 3], 1000.0, 600.0);
+    assert!((x1(&first) + 300.0).abs() < EPS, "pinned view: {}", x1(&first));
+
+    // The same focus keeps the pin: the view is not re-centred on column 1.
+    let again = arrange(&host, "drv_sc_pin", Some(1), &[1, 2, 3], 1000.0, 600.0);
+    assert!(
+        (x1(&again) + 300.0).abs() < EPS,
+        "pin survives an arrange: {}",
+        x1(&again)
+    );
+
+    // Focus moves to window 2, which is off screen: the pin ends and the view centres
+    // it, clamped to the strip's end at 500.
+    let moved = arrange(&host, "drv_sc_pin", Some(2), &[1, 2, 3], 1000.0, 600.0);
+    assert!((x1(&moved) + 500.0).abs() < EPS, "focus change unpins: {}", x1(&moved));
+}
+
+#[test]
+fn scroll_to_clamps_the_view_to_the_strip() {
+    // The strip is 1500 px and the area 1000 px, so the view runs from 0 to 500.
+    for (index, (x, expected)) in [(10000.0, -500.0), (-50.0, 0.0)].into_iter().enumerate() {
+        let test = format!("drv_sc_clamp_{index}");
+        let body = format!("  real.command.scroll_to(ctx, {{x = {x}}})");
+        let layout = driven(&test, "scrolling", &body, Some(1), &[1, 2, 3]);
+        let placed = rect(&by_id(&layout)[&1]).x;
+        assert!(
+            (placed - expected).abs() < EPS,
+            "scroll_to {x} places column 1 at {placed}"
         );
     }
 }
