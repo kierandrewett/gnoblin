@@ -20,10 +20,14 @@
 
 #![forbid(unsafe_code)]
 
+/// Client types the session binary links its compat adapters with. See the module docs.
 pub mod link;
+/// Passphrase and keyring prompt handling, gated by `prompts.enabled`.
 pub mod prompts;
+/// The services role: adopts the privileged connection, claims slots and serves agents.
 pub mod role;
 
+/// The role's D-Bus connections ([`Buses`]), the role itself, and the error it reports when it cannot run.
 pub use role::{Buses, Role, RoleError};
 
 /// The GeoClue agent, with the `location` table of the configuration as its policy. The
