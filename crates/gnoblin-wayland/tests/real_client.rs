@@ -33,7 +33,7 @@ use gnoblin_wayland::{Config, ControlHandle, LayoutControl, LoopError, Modal, Mo
 use gnoblin_wm::layout::{
     Camera, Handled, Job, LayoutEngine, LayoutFailure, LayoutOutcome, Params, Placement, Reply, Transform3,
 };
-use gnoblin_wm::{NewWindowFocus, WmOptions};
+use gnoblin_wm::{FocusMode, NewWindowFocus, WmOptions};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
@@ -196,8 +196,14 @@ struct App {
     closed: bool,
     /// How many times the keyboard entered this client's surface.
     keyboard_enters: u32,
+    /// The surface the keyboard entered last, cleared when it leaves.
+    keyboard_surface: Option<wl_surface::WlSurface>,
     /// How many times the pointer entered this client's surface.
     pointer_enters: u32,
+    /// How many times the pointer left this client's surface.
+    pointer_leaves: u32,
+    /// How many pointer button events the client received.
+    pointer_buttons: u32,
     /// How many pings the server sent.
     pings: u32,
     /// How many popup configures arrived.
@@ -328,6 +334,54 @@ impl Client {
         // The press is delivered by the loop, so read the events it caused.
         self.roundtrip();
     }
+
+    /// Sends a pointer motion to a global position, as the backend would, without waiting.
+    fn inject_motion(&self, session: &Handle, at: Point) {
+        let output = session.windows().outputs().first().copied().expect("an output");
+        session
+            .control
+            .inject_input(InputEvent::PointerMotion { output, position: at });
+    }
+
+    /// Moves the pointer to `at` and waits until it crosses into or out of a surface, which is
+    /// the event the window manager's focus decision follows.
+    fn move_pointer(&mut self, session: &Handle, at: Point) {
+        let crossings = self.crossings();
+        self.inject_motion(session, at);
+        self.wait_until(&format!("the pointer to cross a surface edge at {at:?}"), |seen| {
+            seen.crossings() != crossings
+        });
+    }
+
+    /// Sends a left button press or release and waits until the client receives it.
+    fn left_button(&mut self, session: &Handle, pressed: bool) {
+        let buttons = self.state.pointer_buttons;
+        session.control.inject_input(InputEvent::PointerButton {
+            button: BTN_LEFT,
+            pressed,
+        });
+        self.wait_until("the button event", |seen| seen.state.pointer_buttons != buttons);
+    }
+
+    /// Pointer enters and leaves seen so far.
+    fn crossings(&self) -> u32 {
+        self.state.pointer_enters + self.state.pointer_leaves
+    }
+
+    /// Reads events until `done` holds, failing after `TIMEOUT`.
+    fn wait_until(&mut self, what: &str, done: impl Fn(&Client) -> bool) {
+        let deadline = Instant::now() + TIMEOUT;
+        while !done(&*self) {
+            assert!(Instant::now() < deadline, "timed out waiting for {what}");
+            self.roundtrip();
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Whether the keyboard is on `window`'s surface, as of the last round trip.
+    fn keyboard_is_on(&self, window: &Window) -> bool {
+        self.state.keyboard_surface.as_ref() == Some(&window.surface)
+    }
 }
 
 /// A point inside `title` that no other window covers, so a press there reaches it.
@@ -361,6 +415,78 @@ fn headless_screen() -> (i32, i32) {
         gnoblin_backend::headless::DEFAULT_MODE.width as i32,
         gnoblin_backend::headless::DEFAULT_MODE.height as i32,
     )
+}
+
+/// A session whose layout puts two windows side by side, with a gap between them. The first
+/// window takes focus when it maps and the second does not, so pointer focus is what moves it.
+fn pair_session(focus_mode: FocusMode) -> Session {
+    scripted_session(focus_mode, Shape::Pair)
+}
+
+/// A session whose master-stack layout tiles two windows: `Left` takes the left half of the
+/// output and `Right` the right half. They touch, so the output has no empty space between them.
+fn master_session(focus_mode: FocusMode) -> Session {
+    scripted_session(focus_mode, Shape::Master)
+}
+
+fn scripted_session(focus_mode: FocusMode, shape: Shape) -> Session {
+    let mut session = Session::start_configured(
+        Headless::new(),
+        Config {
+            wm: WmOptions {
+                focus_mode,
+                ..WmOptions::default()
+            },
+            ..Config::default()
+        },
+    );
+    let shape: SharedShape = Arc::new(Mutex::new(shape));
+    let _made = install_scripted(&mut session, shape);
+    session
+}
+
+/// Waits until the master layout has tiled both windows, then checks the rectangles it chose.
+/// A layout change fails here, loudly, rather than letting the hover tests run on other geometry.
+/// The rectangles are the drawn ones: the observed geometry is not the placed rectangle.
+fn wait_for_master(session: &Handle) {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let left = drawn(session, window_id(session, "Left")).1;
+        let right = drawn(session, window_id(session, "Right")).1;
+        let tiled = (left.x, left.right(), left.bottom()) == (0, 512, 768)
+            && (right.x, right.right(), right.bottom()) == (512, 1024, 768);
+        if tiled {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the master layout never tiled the windows; left {left:?}, right {right:?}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Maps `Left` and `Right` on one client and waits until the master layout tiles them. The
+/// windows are created without a buffer, then configured and drawn at the size the master
+/// layout chose, as the master test does: a buffer attached before the first configure
+/// leaves the window at its default size and the layout never lands.
+fn map_master_pair(session: &Handle, client: &mut Client) -> (Window, Window) {
+    let (width, height) = headless_screen();
+    let left = client.create_window("org.gnoblin.Left", "Left");
+    let right = client.create_window("org.gnoblin.Right", "Right");
+    client.roundtrip();
+    settle_size(client, (width / 2, height));
+    draw_configured(client, &left);
+    draw_configured(client, &right);
+    wait_for_master(session);
+    (left, right)
+}
+
+/// A point outside both windows of `master_session` and outside the output. The two windows
+/// cover the whole output, so no point inside it is clear of both.
+fn master_gap_point() -> Point {
+    let (width, height) = headless_screen();
+    Point::new(width + 50, height / 2)
 }
 
 #[test]
@@ -817,7 +943,11 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { .. } => state.keyboard_enters += 1,
+            wl_keyboard::Event::Enter { surface, .. } => {
+                state.keyboard_enters += 1;
+                state.keyboard_surface = Some(surface);
+            }
+            wl_keyboard::Event::Leave { .. } => state.keyboard_surface = None,
             wl_keyboard::Event::Key { .. } => state.keys += 1,
             _ => {}
         }
@@ -833,8 +963,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Enter { .. } = event {
-            state.pointer_enters += 1;
+        match event {
+            wl_pointer::Event::Enter { .. } => state.pointer_enters += 1,
+            wl_pointer::Event::Leave { .. } => state.pointer_leaves += 1,
+            wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            _ => {}
         }
     }
 }
@@ -925,6 +1058,9 @@ enum Shape {
     Master,
     /// Every window is flat at `(100, 100)`, 300 by 200.
     Flat,
+    /// Window `i` is at `(100 + 500 * i, 100)`, 300 by 200: the windows sit side by side with
+    /// a gap between them.
+    Pair,
     /// The flat rectangle, rotated 40 degrees about Y and lifted 200 units in depth.
     Tilt,
     /// Every window is flat at `(100 * count, 0)`, 300 by 200: a placement moves
@@ -968,6 +1104,11 @@ impl ScriptedEngine {
             Shape::Flat => windows
                 .iter()
                 .map(|window| Placement::rect(window.id, 100.0, 100.0, 300.0, 200.0))
+                .collect(),
+            Shape::Pair => windows
+                .iter()
+                .enumerate()
+                .map(|(index, window)| Placement::rect(window.id, 100.0 + 500.0 * index as f64, 100.0, 300.0, 200.0))
                 .collect(),
             Shape::Tilt => windows
                 .iter()
@@ -1397,5 +1538,125 @@ fn a_click_in_an_overlap_goes_to_the_topmost_window() {
         older.roundtrip();
         assert!(newer.state.pointer_enters >= 1, "the topmost window received the click");
         assert_eq!(older.state.pointer_enters, 0, "the window underneath did not");
+    });
+}
+
+#[test]
+fn click_mode_leaves_focus_where_the_pointer_passes() {
+    let session = pair_session(FocusMode::Click);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let first = client.map_window("org.gnoblin.Left", "Left");
+        let second = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+        client.roundtrip();
+        assert!(client.keyboard_is_on(&first), "the first window holds the keyboard");
+
+        let entered = client.state.pointer_enters;
+        client.move_pointer(session, only_point_of(session, "Right"));
+        assert!(
+            client.state.pointer_enters > entered,
+            "the pointer entered the second window"
+        );
+        assert!(client.keyboard_is_on(&first), "click mode does not follow the pointer");
+        assert!(
+            !client.keyboard_is_on(&second),
+            "the second window did not take the keyboard"
+        );
+    });
+}
+
+#[test]
+fn hover_focuses_the_window_the_pointer_enters() {
+    let session = pair_session(FocusMode::Hover);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let first = client.map_window("org.gnoblin.Left", "Left");
+        let second = client.map_window("org.gnoblin.Right", "Right");
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+        client.roundtrip();
+        assert!(
+            client.keyboard_is_on(&second),
+            "the keyboard entered the window the pointer entered"
+        );
+        assert!(
+            !client.keyboard_is_on(&first),
+            "the window the pointer left lost the keyboard"
+        );
+    });
+}
+
+#[test]
+fn hover_keeps_focus_when_the_pointer_crosses_a_gap() {
+    let session = master_session(FocusMode::Hover);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (_first, second) = map_master_pair(session, &mut client);
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+
+        let left = client.state.pointer_leaves;
+        client.move_pointer(session, master_gap_point());
+        assert!(client.state.pointer_leaves > left, "the pointer left the second window");
+        assert!(
+            session
+                .windows()
+                .focused()
+                .is_some_and(|window| window.title == "Right"),
+            "a gap keeps focus under hover"
+        );
+        assert!(
+            client.keyboard_is_on(&second),
+            "the keyboard stayed on the second window"
+        );
+    });
+}
+
+#[test]
+fn hover_strict_clears_focus_when_the_pointer_crosses_a_gap() {
+    let session = master_session(FocusMode::HoverStrict);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (_first, second) = map_master_pair(session, &mut client);
+        client.move_pointer(session, only_point_of(session, "Right"));
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Right"));
+
+        let left = client.state.pointer_leaves;
+        client.move_pointer(session, master_gap_point());
+        assert!(client.state.pointer_leaves > left, "the pointer left the second window");
+        session.wait_for(|observation| observation.focused().is_none());
+        client.roundtrip();
+        assert!(!client.keyboard_is_on(&second), "the keyboard left the second window");
+        assert!(client.state.keyboard_surface.is_none(), "nothing holds the keyboard");
+    });
+}
+
+#[test]
+fn a_held_button_stops_hover_from_moving_focus() {
+    let session = master_session(FocusMode::Hover);
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        let (first, second) = map_master_pair(session, &mut client);
+        session.wait_for(|observation| observation.focused().is_some_and(|window| window.title == "Left"));
+        client.move_pointer(session, only_point_of(session, "Left"));
+        client.left_button(session, true);
+
+        // The press holds the pointer on the first window, so motion into the second does not
+        // move focus. The release that follows is the barrier proving the motion was handled.
+        client.inject_motion(session, only_point_of(session, "Right"));
+        client.left_button(session, false);
+        assert!(client.keyboard_is_on(&first), "a held button keeps focus where it is");
+        assert!(
+            !client.keyboard_is_on(&second),
+            "hover did not move focus during the press"
+        );
+
+        // Leave through the gap, then re-enter the second window to hover-focus it.
+        client.move_pointer(session, master_gap_point());
+        client.move_pointer(session, only_point_of(session, "Right"));
+        client.wait_until("the keyboard on the second window", |seen| seen.keyboard_is_on(&second));
     });
 }

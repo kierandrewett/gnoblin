@@ -455,6 +455,8 @@ pub struct State {
     /// The last pointer position the backend reported, in global logical
     /// coordinates.
     pointer_position: SmithayPoint<f64, Logical>,
+    /// How many pointer buttons are held. Focus does not follow the pointer while one is.
+    held_buttons: u32,
 
     /// The scene the frame path composes from: window nodes, stacking and damage.
     pub(crate) composer: Composer,
@@ -757,6 +759,7 @@ impl State {
             next_window: 1,
             protection_generation: None,
             pointer_position: SmithayPoint::from((0.0, 0.0)),
+            held_buttons: 0,
             composer: Composer::new(),
             modal: None,
             modal_events: Vec::new(),
@@ -2289,6 +2292,57 @@ impl State {
         self.publish();
     }
 
+    /// Reports the window under the pointer to the window manager, which decides whether
+    /// focus follows it.
+    fn report_pointer(&mut self) {
+        match self.surface_under(self.pointer_position) {
+            Some((surface, _)) => {
+                // A surface that is no window's toplevel (the lock surface) says nothing about
+                // the windows, so it is not reported as leaving them.
+                if let Some(window) = self.window_of(&surface) {
+                    self.report_window(Some(window));
+                }
+            }
+            None => self.report_window(None),
+        }
+    }
+
+    /// Sends the window the pointer is over, or none, to the window manager.
+    fn report_window(&mut self, window: Option<WindowId>) {
+        self.apply_pointer(Event::PointerMoved { window, at: self.clock });
+    }
+
+    /// Gives the window manager a pointer event. A locked session, a modal and an exclusive
+    /// layer surface keep focus where it is, so no pointer event reaches the window manager.
+    fn apply_pointer(&mut self, event: Event) {
+        let held = self.lock.state() != LockState::Unlocked || self.modal.is_some();
+        if held || self.layer_keyboard_focus().is_some() {
+            return;
+        }
+        let effects = self.wm.apply(event);
+        if !effects.is_empty() {
+            self.apply(effects);
+            self.publish();
+        }
+    }
+
+    /// Counts pointer button presses and releases. The window manager hears the grab when the
+    /// first button goes down and its release when the last one comes up.
+    fn button_grab(&mut self, pressed: bool) {
+        let was_held = self.held_buttons > 0;
+        self.held_buttons = if pressed {
+            self.held_buttons.saturating_add(1)
+        } else {
+            self.held_buttons.saturating_sub(1)
+        };
+        if (self.held_buttons > 0) != was_held {
+            let effects = self.wm.apply(Event::PointerGrab {
+                active: self.held_buttons > 0,
+            });
+            self.apply(effects);
+        }
+    }
+
     /// The surface under a global position, topmost first, with the surface's own
     /// origin in global logical coordinates.
     ///
@@ -2444,6 +2498,11 @@ impl Host for State {
         // notifications are derived from. It is recorded before the event is routed, so a
         // key a binding consumes still counts as the user being present.
         self.record_activity();
+        // Focus does not follow the pointer while a button is held. This is counted before the
+        // modal route, so a release that a modal takes still ends the grab.
+        if let InputEvent::PointerButton { pressed, .. } = event {
+            self.button_grab(pressed);
+        }
         // While a modal is set it takes the keys and pointer buttons, and the clients
         // see none of them; the rest of the input is dropped for the same reason.
         if self.modal.is_some() && self.route_to_modal(&event) {
@@ -2467,6 +2526,7 @@ impl Host for State {
                 }
                 let position = self.confine(position);
                 self.move_pointer(position, time);
+                self.report_pointer();
                 // The vector goes out with the position, so a client that only wants
                 // relative motion does not have to difference two positions.
                 self.send_relative_motion(delta, time);
@@ -2482,6 +2542,7 @@ impl Host for State {
                 ));
                 let position = self.within_layout(wanted);
                 self.move_pointer(position, time);
+                self.report_pointer();
             }
             InputEvent::PointerLeave => {
                 self.frame_pointer(None, None);
@@ -2496,6 +2557,7 @@ impl Host for State {
                         time,
                     },
                 );
+                self.report_window(None);
             }
             InputEvent::PointerButton { button, pressed } => {
                 self.frame_pointer(Some(self.pointer_position), Some(pressed));
