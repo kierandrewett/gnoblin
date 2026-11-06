@@ -26,7 +26,9 @@ use tracing_subscriber::fmt::{self, FormatEvent};
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 
+/// The retention policy the database is opened with, re-exported beside the options.
 pub use crate::store::Retention;
+/// The options a process sets up logging with, and the environment variables that name them.
 pub use options::{
     Console, ConsoleOutput, DATABASE_VARIABLE, FILTER_VARIABLE, FORMAT_VARIABLE, LogOptions, LogSettings, Probe,
 };

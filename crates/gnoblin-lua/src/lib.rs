@@ -99,9 +99,9 @@
 //! - `gnoblin.configure` is available while the configuration loads. IPC 0.2.0
 //!   declares no runtime configuration method yet, so a call at run time is
 //!   refused with that reason rather than mutating a document nothing applies.
-//! - `require` answers only for extension namespaces in the generated catalog. It reads
-//!   no file, so `gnoblin.load` stays the one loader of configuration; a host that
-//!   registers further module loaders (layouts) is a later lane.
+//! - `require` also answers for layout modules, read from the shipped and user layout
+//!   roots by `layout::Loader`, which holds one layout VM per configuration evaluation.
+//!   `gnoblin.load` stays the one loader of configuration files.
 //! - Requests (`RequestOffered` and `RequestFinished`) are dropped: prompts and
 //!   input policy are later lanes, and an unanswered request already fails closed
 //!   in the broker.
@@ -125,13 +125,22 @@ mod loader;
 mod lua_names;
 pub mod role;
 
+/// The `gnoblin.d.lua` stub, and the writer that copies it out for an editor.
 pub use bindings::{stub, write_stub};
+/// The error a host returns when it cannot start, and the error a script failure is
+/// reported as.
 pub use error::{HostError, ScriptError};
+/// The registry of loaded extension namespaces, and the reasons one is refused.
 pub use extensions::{ExtensionRegistry, RegistryError};
 /// How the runtime role reads its environment, re-exported from the client that reads a
 /// descriptor out of one.
 pub use gnoblin_client::Environment;
+/// The host, the report of one pump and the report of one configuration run, and the
+/// limit on nested loads.
 pub use host::{Host, MAX_LOADS, PumpReport, RunReport};
 
+/// The sandbox limits a host is sized with: the instruction budget, the memory limit and
+/// the per-entry deadline.
 pub use gnoblin_lua_sandbox::Limits;
+/// The runtime role and the error it ends with.
 pub use role::{RoleError, RoleRunner};

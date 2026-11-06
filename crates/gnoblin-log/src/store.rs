@@ -21,7 +21,10 @@ use tracing_subscriber::registry::LookupSpan;
 mod query;
 mod retention;
 
+/// The read side: a stored row as a record, the query that filters rows, the newest row id,
+/// and a reader over the matching rows. The reader opens the database read-only.
 pub use query::{LogRecord, Query, newest_id, read_entries};
+/// The age and size limits the store is pruned to; see [`Retention::max_age_days`].
 pub use retention::Retention;
 
 /// How many records may wait for the writer before new ones are counted as dropped.
@@ -160,6 +163,8 @@ pub struct DatabaseLayer {
 }
 
 impl DatabaseLayer {
+    /// Build the layer that writes to `sink`. `role` names the process in every record,
+    /// so records from different roles can be told apart in one database.
     pub fn new(sink: Sink, role: &'static str) -> Self {
         Self { sink, role }
     }
