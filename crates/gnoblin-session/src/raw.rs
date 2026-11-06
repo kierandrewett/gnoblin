@@ -130,8 +130,8 @@ pub fn read_lines(role: &str, stream: Stream, reader: impl Read, sink: &RawSink)
         let line = String::from_utf8_lossy(&buffer);
         let text = bound(&redactor.redact(line.trim_end_matches(['\n', '\r'])));
         if is_structured(&text) {
-            // The child formatted this line itself, so it goes out as the child wrote it.
-            forward(stream, &buffer);
+            // The child formatted this line itself; it goes out redacted and otherwise unchanged.
+            forward(stream, format!("{text}\n").as_bytes());
             continue;
         }
         sink.send(RawLine {
