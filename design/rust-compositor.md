@@ -483,7 +483,7 @@ gnoblin/
     gnoblin-testkit/          in-process fixture, test clients, input injection, observation recorder
     gnoblin-parity/           scenario runner, targets (Mutter reference, Rust candidate), normaliser, reports
     xtask/                    code generation: d.lua, API docs, schema dump, compatibility report
-  protocols/                  Gnoblin-owned Wayland XML (window frame, blur fade, session host) with version history
+  protocols/                  Gnoblin-owned Wayland XML (window frame, session host) with version history
   data/                       session entries, systemd units, portal config, default configuration
   tests/
     parity/                   scenarios, contract inventory, divergence ledger, reference recordings
@@ -636,7 +636,6 @@ Gnoblin writes these itself:
 | `zwlr_output_manager_v1`              | Deferred in `TODO.md` today; the new output crate makes transactional apply natural  |
 | `ext_background_effect_manager_v1`    | Upstream in Mutter 51; Gnoblin's blur depends on it                                  |
 | `gnoblin_window_frame_manager_v1`     | Gnoblin-owned; wire-compatible port                                                  |
-| `gnoblin_blur_fade_manager_v1`        | Gnoblin-owned; wire-compatible port                                                  |
 | `gnoblin_session_host_v1`             | Gnoblin-owned, new; lets a host Gnoblin run nested sessions (D4)                     |
 
 ## Parity and testing
@@ -820,7 +819,7 @@ wires the roles together.
 These run as parallel lanes and merge as each reaches its gate.
 
 - Visuals: shadows, rounded corners, opacity, tint, blur with background effect
-  and blur fade, user shaders, native frames and the frame protocol, open,
+  that follows window opacity, user shaders, native frames and the frame protocol, open,
   close, minimise and workspace animations, runtime tweens and window visual
   transforms.
 - Outputs: DRM and KMS through udev and libseat, hotplug, multi-monitor,
@@ -1604,6 +1603,7 @@ Each section below records the choice, its consequences, and the options conside
 | D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
 | D23 | Logging                      | **Decided 2026-11-06:** `tracing` everywhere; `gnoblin-log` installs one subscriber that prints to the console and writes every event to a SQLite database                                                                      |
+| D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
 
 ### D1: where scripts run
 
@@ -2769,7 +2769,7 @@ Path from XML to global:
 6. **Caps,** per client and per extension. Starting values [INFERENCE], set by the prototype: 256 live objects; 64 KiB per message; 4 fds per message; 10 000 requests per second. Over a cap the client gets `wl_display.error` with code `implementation`, naming the extension.
 7. **Fds.** Allowed only for arguments the XML declares as `fd`. The compositor passes them to the provider over the provider's Unix socket with `SCM_RIGHTS`. It never reads, maps or logs fd content, and it refuses any fd on a `sensitive` frame.
 8. **Provider death.** Every global is removed with `wl_registry.global_remove`. A live object gets the XML's destroy event if the XML declares one. Otherwise its client gets `wl_display.error` with code `implementation` and the message `extension <id> gone`, and is disconnected by default (open decision). Objects, fds and pending requests are freed on removal.
-9. **Built-in re-expression.** The window-frame, blur-fade and session-host protocols could later move from compiled bindings into built-in extension manifests. Their XML and wire stay the same, and `wayland-info` and wlcs results must not change. This needs steps 1 to 8 to pass first. `gnoblin_session_host_v1` stays stock (D21).
+9. **Built-in re-expression.** The window-frame and session-host protocols could later move from compiled bindings into built-in extension manifests. Their XML and wire stay the same, and `wayland-info` and wlcs results must not change. This needs steps 1 to 8 to pass first. `gnoblin_session_host_v1` stays stock (D21).
 
 #### Lifecycle
 
@@ -2870,6 +2870,16 @@ Consequences:
 - `gnoblin-log` depends on no other Gnoblin crate, so any lane may depend on it. `xtask deps` enforces that edge.
 - A test that runs a binary sets `GNOBLIN_LOG_DB=off`, or points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's database.
 - Each binary names its component once, at start, and every event carries that name.
+
+### D24: blur and opacity
+
+**Decided 2026-11-06: blur follows the opacity of the node it belongs to, as CSS `backdrop-filter` does under `opacity`. A node's effects form an ordered stack, drawn inside the node's opacity group.** A window that fades takes its blur with it, so a panel's fade-in and fade-out need no client help and no Gnoblin protocol. `gnoblin_blur_fade_v1` is removed and nothing replaces it. Blur, tint, shadow and corner rounding compose in the order the stack lists them, as `effect.rs` already models. The Lua and config shape of the stack is being redesigned and is decided separately; this decision fixes only the semantics.
+
+Consequences:
+
+- The renderer draws a node's effects at full opacity inside its group, then fades the finished group by the node's opacity. Blur and content therefore fade together.
+- No Gnoblin protocol carries blur fade metadata. A client that wants a fade sets the opacity of the surface that carries the blur, such as a subsurface.
+- The per-node effect list is an ordered `Vec` in the renderer API, so stacking changes the config and Lua shape only, not the renderer.
 
 ## Phase 0 checklist
 
