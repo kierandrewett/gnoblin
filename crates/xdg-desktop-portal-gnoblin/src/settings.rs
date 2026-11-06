@@ -349,3 +349,41 @@ fn convert(property: &str, value: &Value) -> Option<Setting> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use gnoblin_model::{ObjectId, Observation, Revision, Value};
+
+    use super::{Setting, Table};
+
+    fn changed(property: &str, value: Value) -> Observation {
+        Observation::Changed {
+            object: ObjectId::new(1),
+            property: property.to_owned(),
+            value,
+            revision: Revision::ZERO,
+        }
+    }
+
+    #[test]
+    fn announces_a_changed_value_once() {
+        let mut table = Table::new();
+        let first = table.apply(&changed("color_scheme", Value::Uint(1)));
+        assert_eq!(first.len(), 1, "a new value is announced");
+        assert_eq!(first[0].key, "color-scheme");
+        assert_eq!(first[0].value, Setting::Uint(1));
+
+        let repeat = table.apply(&changed("color_scheme", Value::Uint(1)));
+        assert!(repeat.is_empty(), "an unchanged value is not announced again");
+
+        let next = table.apply(&changed("color_scheme", Value::Uint(2)));
+        assert_eq!(next.len(), 1, "a different value is announced");
+    }
+
+    #[test]
+    fn an_unpublished_property_is_not_announced() {
+        let mut table = Table::new();
+        let changes = table.apply(&changed("no_such_property", Value::Uint(1)));
+        assert!(changes.is_empty(), "a property the backend does not publish is silent");
+    }
+}
