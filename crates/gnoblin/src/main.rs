@@ -46,6 +46,7 @@ mod gcr;
 mod idlemonitor;
 mod introspect;
 mod role;
+mod settings;
 
 use gnoblin_compat_core::Mode;
 
@@ -137,10 +138,13 @@ fn guardian() -> Result<(), Exit> {
         eprintln!("gnoblin: guardian: cannot find this executable to start its children: {error}");
         Exit(1)
     })?;
-    let config = gnoblin_session::SupervisorConfig::from_environment(program).map_err(|error| {
+    let mut config = gnoblin_session::SupervisorConfig::from_environment(program).map_err(|error| {
         eprintln!("gnoblin: guardian: {error}");
         Exit(1)
     })?;
+    // The settings targets are exported into the session every child inherits; a switched-off mode exports nothing.
+    let mode = gnoblin_compat_gnome_shell_introspect::mode_from_environment();
+    settings::export_qt_settings(&mut config.rules.environment.session, mode);
     match gnoblin_session::run_guardian(config) {
         Ok(0) => Ok(()),
         Ok(status) => Err(Exit(status)),

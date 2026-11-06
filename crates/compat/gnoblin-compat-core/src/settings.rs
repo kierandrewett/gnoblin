@@ -194,6 +194,48 @@ impl Default for DesktopSettings {
     }
 }
 
+/// The desktop settings the configuration declares, over [`DesktopSettings::default`].
+///
+/// The `cursor` section is the one table that names a value a publisher sends on: its theme and
+/// size. Every other field keeps the stock value until a section declares it.
+#[must_use]
+pub fn settings_from_config(config: &gnoblin_config::Config) -> DesktopSettings {
+    let mut settings = DesktopSettings::default();
+    if let Some(cursor) = &config.cursor {
+        if let Some(theme) = cursor.theme.as_ref().filter(|theme| !theme.trim().is_empty()) {
+            settings.cursor_theme = theme.clone();
+        }
+        if let Some(size) = cursor.size.and_then(|size| u32::try_from(size).ok()) {
+            settings.cursor_size = size;
+        }
+    }
+    settings
+}
+
+/// The desktop settings the session's configuration names, read from the environment.
+///
+/// A missing or unreadable configuration is the stock defaults, so a session that cannot read its
+/// configuration still publishes what GNOME publishes. The reason is logged.
+#[must_use]
+pub fn settings_from_environment() -> DesktopSettings {
+    let Some(store) = gnoblin_config::Store::from_env() else {
+        return DesktopSettings::default();
+    };
+    match gnoblin_config::locate(&gnoblin_config::SearchPaths::from_env()) {
+        Ok(path) => match store.load(path.path()) {
+            Ok(stored) => settings_from_config(&stored.config),
+            Err(error) => {
+                tracing::warn!(%error, "[settings] configuration not readable; publishing the defaults");
+                DesktopSettings::default()
+            }
+        },
+        Err(error) => {
+            tracing::debug!(%error, "[settings] no configuration file; publishing the defaults");
+            DesktopSettings::default()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +261,29 @@ mod tests {
         assert_eq!(Switch::from_enabled(false), Switch::Off);
         assert!(!Switch::Off.is_on());
         assert!(Switch::default().is_on());
+    }
+
+    /// A configuration's `cursor` section is the cursor a publisher sends, and a section that names
+    /// nothing leaves the stock cursor in place.
+    #[test]
+    fn the_cursor_section_is_the_published_cursor() {
+        let config = gnoblin_config::Config::from_value(
+            gnoblin_config::Value::from_json(&serde_json::json!({"cursor": {"theme": "Breeze", "size": 32}}))
+                .expect("an object"),
+        )
+        .expect("a valid configuration");
+        let settings = settings_from_config(&config);
+        assert_eq!(settings.cursor_theme, "Breeze");
+        assert_eq!(settings.cursor_size, 32);
+        assert_eq!(settings.font, DesktopSettings::default().font);
+    }
+
+    #[test]
+    fn a_configuration_without_a_cursor_keeps_the_stock_cursor() {
+        let config = gnoblin_config::Config::from_value(
+            gnoblin_config::Value::from_json(&serde_json::json!({})).expect("an object"),
+        )
+        .expect("a valid configuration");
+        assert_eq!(settings_from_config(&config), DesktopSettings::default());
     }
 }

@@ -92,4 +92,4 @@ pub use caller::CallerWatcher;
 pub use matrix::{Builder, Interface, InterfaceBuilder, Kind, MatrixError, Member, Support, SupportMatrix};
 pub use mode::{CallerContext, Decision, LockState, Mode, OperationClass, Sandbox, allow};
 pub use refusal::{Refusal, Rule};
-pub use settings::{ColourScheme, DesktopSettings, Switch};
+pub use settings::{ColourScheme, DesktopSettings, Switch, settings_from_config, settings_from_environment};

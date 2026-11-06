@@ -33,6 +33,8 @@ gnoblin-compat-core = { path = "../compat/gnoblin-compat-core" }
 # The display configuration adapter, served by the services role on its own compositor link.
 gnoblin-compat-mutter-displayconfig = { path = "../compat/gnoblin-compat-mutter-displayconfig" }
 gnoblin-compat-mutter-idlemonitor = { path = "../compat/gnoblin-compat-mutter-idlemonitor" }
+# The Qt settings adapter: the guardian exports the platform theme that points Qt at the portal.
+gnoblin-compat-qt-portal-settings = { path = "../compat/gnoblin-compat-qt-portal-settings" }
 zbus.workspace = true
 futures-lite.workspace = true
 tracing.workspace = true

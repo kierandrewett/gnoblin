@@ -16,6 +16,10 @@ serde_json.workspace = true
 # caller's watches and sessions when the caller leaves.
 futures-lite.workspace = true
 zbus.workspace = true
+# The settings publishers read the `cursor` section of the configuration, through the same store
+# the other adapters read their gates from.
+gnoblin-config = { path = "../../gnoblin-config" }
+tracing.workspace = true
 
 [lints]
 workspace = true
