@@ -6,6 +6,22 @@
 //! answered `failed` when it cannot be captured, and copies into the client's shm buffer
 //! once. The pixel work it shares with `ext_image_copy_capture_v1` lives in
 //! [`capture_shared`](super::capture_shared).
+//!
+//! # Refusals and failure modes
+//!
+//! 1. **No output, or capture not allowed.** A frame for an output the session does not
+//!    drive, or any frame while the lock forbids capture, is answered `failed` at once.
+//!    No pixels are copied and no previous frame is repeated.
+//! 2. **A buffer that does not match the frame.** The copy is refused when the shm
+//!    buffer's size or format differs from the one the frame announced.
+//! 3. **A second copy on one frame.** A frame copies once; a second request is a protocol
+//!    error for that client only.
+//!
+//! # Guarding tests
+//!
+//! `tests/capture.rs`: `a_screencopy_of_the_output_returns_the_window_pixels`,
+//! `a_screencopy_with_overlay_cursor_draws_the_cursor_and_one_without_does_not`,
+//! `a_capture_during_the_lock_is_refused`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

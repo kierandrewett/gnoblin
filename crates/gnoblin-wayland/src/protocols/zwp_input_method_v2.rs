@@ -6,6 +6,17 @@
 //! seat and answers the focused text input with `commit_string`, `preedit_string` and
 //! `delete_surrounding_text`. It is privileged: it sees what the user types everywhere, so
 //! [`AccessPolicy`](crate::access::AccessPolicy) decides who may bind the global.
+//!
+//! # Refusals and failure modes
+//!
+//! 1. **An unprivileged client.** The manager global is filtered by `AccessPolicy` at bind
+//!    time; an ordinary or sandboxed client never sees the input method.
+//! 2. **Popup placement.** Popups are positioned against the parent surface's geometry.
+//!
+//! # Guarding tests
+//!
+//! The privileged-global rules are guarded by `tests/access.rs`
+//! (`an_unprivileged_client_sees_no_privileged_global`).
 
 use std::sync::Arc;
 

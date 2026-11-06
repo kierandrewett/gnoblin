@@ -3,6 +3,13 @@
 //! `wl_shm` and `wl_shm_pool` (XML `wayland.xml`), plus the `wl_buffer` release hook.
 //!
 //! Smithay owns the pools and buffers; this module answers its handler traits.
+//!
+//! # Failure modes
+//!
+//! A buffer whose size, stride or format does not match its pool is a protocol error for
+//! that client only. Guarded by `tests/window_frame.rs`
+//! (`a_buffer_of_the_wrong_size_is_a_protocol_error`) and `tests/render.rs`
+//! (`a_stride_padded_buffer_is_read_from_the_right_offsets`).
 
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::wayland::buffer::BufferHandler;
