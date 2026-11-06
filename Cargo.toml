@@ -40,6 +40,7 @@ members = [
     "crates/gnoblin-input",
     "crates/gnoblin-location-service",
     "crates/gnoblin-lock",
+    "crates/gnoblin-log",
     "crates/gnoblin-lua",
     "crates/gnoblin-lua-sandbox",
     "crates/gnoblin-model",
@@ -270,6 +271,17 @@ futures-channel = "0.3.31"
 # Log lines. Every crate that logs names `tracing` directly rather than relying on
 # another crate's re-export, so a version bump is one line here.
 tracing = "0.1.37"
+# The subscriber `gnoblin-log` installs: the console layer and the composition of
+# the database layer. Default features are off; `env-filter` reads `GNOBLIN_LOG`.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+    "env-filter",
+    "fmt",
+    "registry",
+    "std",
+] }
+# The SQLite library behind the log database. `bundled` compiles SQLite into the
+# binary, so the database needs no system library and the same version everywhere.
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 
 # The gcr prompter's `prompt.secret` transport: `GcrSecretExchange` protocol 1 is
 # DH over the 1536-bit MODP group with HKDF-SHA256 and AES-128-CBC, so the adapter

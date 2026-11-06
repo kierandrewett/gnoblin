@@ -141,6 +141,11 @@ const BINARY_ROOTS: &[&str] = &[
     "gnoblin-services",
 ];
 
+/// The logging crate: the subscriber every role installs. It is the one workspace edge the
+/// session binary may take beyond the list above, and it names no workspace crate itself (see
+/// [`log_isolation`]), so it cannot become a second composition root.
+const LOG_CRATE: &str = "gnoblin-log";
+
 /// The shared compat frame every compat crate depends on.
 const COMPAT_CORE: &str = "gnoblin-compat-core";
 
@@ -201,6 +206,10 @@ const RULES: &[Rule] = &[
     Rule {
         id: "binary-roots",
         check: binary_roots,
+    },
+    Rule {
+        id: "log-isolation",
+        check: log_isolation,
     },
 ];
 
@@ -470,7 +479,7 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
     if package.name != SESSION_BINARY || dep.kind == DepKind::Dev {
         return None;
     }
-    if BINARY_ROOTS.contains(&dep.name.as_str()) || is_compat(&dep.name) {
+    if BINARY_ROOTS.contains(&dep.name.as_str()) || dep.name == LOG_CRATE || is_compat(&dep.name) {
         return None;
     }
     // Only the workspace's own crates can be a second composition root; `clap` and
@@ -493,6 +502,19 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
 /// list comes from outside the workspace.
 fn is_workspace_crate(name: &str) -> bool {
     name.starts_with("gnoblin") || name == "xdg-desktop-portal-gnoblin" || name == "xtask"
+}
+
+/// The logging crate sits beneath every process that logs, so it names no workspace crate: a
+/// dependency on one would drag that crate's whole graph into every role that installs the
+/// subscriber, and the logging layer would no longer be a leaf.
+fn log_isolation(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name != LOG_CRATE || !is_workspace_crate(&dep.name) {
+        return None;
+    }
+    Some(format!(
+        "`{LOG_CRATE}` is a leaf of the logging stack and may not depend on the workspace crate `{}`",
+        dep.name
+    ))
 }
 
 /// The test kit and the parity harness are development dependencies only.
@@ -545,6 +567,25 @@ mod tests {
                 &["gnoblin-compositor", "gnoblin-session", "gnoblin-compat-gtk-shell1"],
             )]),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_session_binary_may_depend_on_the_logging_crate() {
+        assert_eq!(
+            violations(&[
+                ("gnoblin", &["gnoblin-compositor", "gnoblin-log"]),
+                ("gnoblin-log", &["rusqlite"])
+            ]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn the_logging_crate_may_not_depend_on_a_workspace_crate() {
+        assert_eq!(
+            violations(&[("gnoblin-log", &["gnoblin-types"])]),
+            vec!["gnoblin-log -> gnoblin-types [log-isolation]: `gnoblin-log` is a leaf of the logging stack and may not depend on the workspace crate `gnoblin-types`".to_owned()]
         );
     }
 

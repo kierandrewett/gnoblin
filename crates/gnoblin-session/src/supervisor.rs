@@ -642,17 +642,16 @@ const SIGTERM: i32 = 15;
 
 /// One line on the guardian's log.
 ///
-/// The guardian's log is its standard error, because that is where a session manager reads
-/// it and there is no second destination to configure. The message already starts with
-/// `[guardian]`, per the redaction rule in `design/startup-recovery.md`.
+/// The line goes to the subscriber the binary installed, which writes it to standard error and
+/// to the log database. The message already starts with `[guardian]`, per the redaction rule in
+/// `design/startup-recovery.md`.
 fn log(level: Level, message: &str) {
-    let prefix = match level {
-        Level::Debug => "debug",
-        Level::Info => "info",
-        Level::Warning => "warning",
-        Level::Error => "error",
-    };
-    eprintln!("{prefix}: {message}");
+    match level {
+        Level::Debug => tracing::debug!("{message}"),
+        Level::Info => tracing::info!("{message}"),
+        Level::Warning => tracing::warn!("{message}"),
+        Level::Error => tracing::error!("{message}"),
+    }
 }
 
 /// Run the guardian role until the session ends.

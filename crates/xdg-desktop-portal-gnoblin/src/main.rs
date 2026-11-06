@@ -47,10 +47,11 @@ use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Por
 const CONSENT_LIFETIME: u64 = 120_000;
 
 fn main() -> ExitCode {
+    let _log = gnoblin_log::init("portal");
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("xdg-desktop-portal-gnoblin: {error}");
+            tracing::error!("{error}");
             ExitCode::FAILURE
         }
     }
@@ -61,9 +62,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (host, loop_) = match ipc() {
         Ok((host, loop_)) => (Box::new(host) as Box<dyn Host>, Some(loop_)),
         Err(error) => {
-            eprintln!(
-                "xdg-desktop-portal-gnoblin: no compositor IPC ({error}); capture, input and shortcuts will be refused"
-            );
+            tracing::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
             (Box::new(NoShell) as Box<dyn Host>, None)
         }
     };

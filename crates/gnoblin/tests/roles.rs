@@ -99,6 +99,7 @@ fn the_compositor_reports_a_refused_start() {
         .args(["--role", "compositor"])
         .env("GNOBLIN_IPC_SOCKET", &socket)
         .env("XDG_RUNTIME_DIR", directory.path())
+        .env("GNOBLIN_LOG_DB", "off")
         .output()
         .expect("the binary runs");
     assert_eq!(code(&output), 1, "a refused start is exit 1: {}", stderr(&output));
@@ -116,6 +117,7 @@ fn a_start_that_cannot_resolve_a_socket_names_both_variables() {
         .env("GNOBLIN_IPC_SOCKET", "")
         .env("XDG_RUNTIME_DIR", "")
         .env("HOME", directory.path())
+        .env("GNOBLIN_LOG_DB", "off")
         .output()
         .expect("the binary runs");
     // With neither variable naming a path there is nothing to serve, and the process

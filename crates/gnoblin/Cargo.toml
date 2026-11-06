@@ -20,6 +20,8 @@ gnoblin-compositor = { path = "../gnoblin-compositor" }
 # the supervisor that performs them. The guardian role is this crate's, because the
 # process that starts the other processes is the one that names them.
 gnoblin-session = { path = "../gnoblin-session" }
+# The logging subscriber: it prints every role's `tracing` events and stores them in the log database.
+gnoblin-log = { path = "../gnoblin-log" }
 # The runtime role: the Lua host as its own process (D1). A role entry point, not an
 # engine: the binary hands it the inherited connection and stays out of the way.
 gnoblin-lua = { path = "../gnoblin-lua" }

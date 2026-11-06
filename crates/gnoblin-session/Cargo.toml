@@ -8,6 +8,9 @@ publish.workspace = true
 
 [dependencies]
 gnoblin-types.workspace = true
+# The guardian's log lines are `tracing` events; the binary installs the subscriber that prints
+# and stores them, so the library names only the macros.
+tracing.workspace = true
 
 # The supervisor module performs the effects: it creates socket pairs and pipes, clears and
 # restores close-on-exec, and signals a child's process group. Every one of those calls is
