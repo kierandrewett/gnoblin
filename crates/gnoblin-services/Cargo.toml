@@ -25,11 +25,11 @@ gnoblin-proto = { path = "../gnoblin-proto" }
 # compositor through, so each service crate depends on them rather than on this crate.
 gnoblin-service-core = { path = "../gnoblin-service-core" }
 # The polkit authentication agent: the role serves it and offers its requests.
-gnoblin-polkit-service = { path = "../gnoblin-polkit-service" }
+gnoblin-service-polkit = { path = "../gnoblin-service-polkit" }
 # The ScreenSaver agent: the role serves it and offers its inhibits.
-gnoblin-screensaver-service = { path = "../gnoblin-screensaver-service" }
+gnoblin-service-screensaver = { path = "../gnoblin-service-screensaver" }
 # The GeoClue agent: the services role links it, and the session binary reaches it through there.
-gnoblin-location-service = { path = "../gnoblin-location-service" }
+gnoblin-service-location = { path = "../gnoblin-service-location" }
 # The D-Bus agents are objects on the system bus, served through zbus.
 zbus.workspace = true
 # One blocking wait per bus registration: the role has no async runtime of its own, and

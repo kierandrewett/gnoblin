@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 
 use futures_lite::future;
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
-use gnoblin_polkit_service::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE, Polkit};
 use gnoblin_service_core::{CapabilitySlot, Offerer, Proposition, Provider, Refusal};
+use gnoblin_service_polkit::{AGENT_PATH, AUTHORITY_PATH, AUTHORITY_SERVICE, Polkit};
 use gnoblin_service_testkit::Bus;
 use gnoblin_types::OwnerId;
 use zbus::connection::Builder;

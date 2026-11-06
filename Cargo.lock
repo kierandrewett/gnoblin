@@ -1540,21 +1540,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-location-service"
-version = "0.2.0-alpha.0"
-dependencies = [
- "futures-channel",
- "futures-lite",
- "gnoblin-config",
- "gnoblin-model",
- "gnoblin-service-core",
- "gnoblin-service-testkit",
- "tempfile",
- "tracing",
- "zbus",
-]
-
-[[package]]
 name = "gnoblin-lock"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1628,20 +1613,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-polkit-service"
-version = "0.2.0-alpha.0"
-dependencies = [
- "futures-channel",
- "futures-lite",
- "gnoblin-model",
- "gnoblin-service-core",
- "gnoblin-service-testkit",
- "gnoblin-types",
- "tracing",
- "zbus",
-]
-
-[[package]]
 name = "gnoblin-proto"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1676,18 +1647,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-screensaver-service"
-version = "0.2.0-alpha.0"
-dependencies = [
- "futures-lite",
- "gnoblin-model",
- "gnoblin-service-core",
- "gnoblin-service-testkit",
- "tracing",
- "zbus",
-]
-
-[[package]]
 name = "gnoblin-service-core"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1697,6 +1656,47 @@ dependencies = [
  "gnoblin-schema",
  "gnoblin-types",
  "tracing",
+]
+
+[[package]]
+name = "gnoblin-service-location"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-channel",
+ "futures-lite",
+ "gnoblin-config",
+ "gnoblin-model",
+ "gnoblin-service-core",
+ "gnoblin-service-testkit",
+ "tempfile",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
+name = "gnoblin-service-polkit"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-channel",
+ "futures-lite",
+ "gnoblin-model",
+ "gnoblin-service-core",
+ "gnoblin-service-testkit",
+ "gnoblin-types",
+ "tracing",
+ "zbus",
+]
+
+[[package]]
+name = "gnoblin-service-screensaver"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-model",
+ "gnoblin-service-core",
+ "gnoblin-service-testkit",
+ "tracing",
+ "zbus",
 ]
 
 [[package]]
@@ -1710,13 +1710,13 @@ dependencies = [
  "futures-lite",
  "gnoblin-client",
  "gnoblin-config",
- "gnoblin-location-service",
  "gnoblin-model",
- "gnoblin-polkit-service",
  "gnoblin-proto",
  "gnoblin-schema",
- "gnoblin-screensaver-service",
  "gnoblin-service-core",
+ "gnoblin-service-location",
+ "gnoblin-service-polkit",
+ "gnoblin-service-screensaver",
  "gnoblin-service-testkit",
  "gnoblin-types",
  "tracing",

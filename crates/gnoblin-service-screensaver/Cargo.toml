@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-screensaver-service"
+name = "gnoblin-service-screensaver"
 description = "The ScreenSaver agent: org.freedesktop.ScreenSaver inhibit and lock."
 version.workspace = true
 edition.workspace = true

@@ -1,6 +1,6 @@
 [package]
-name = "gnoblin-location-service"
-description = "GeoClue agent and location policy: org.freedesktop.GeoClue2.Agent."
+name = "gnoblin-service-polkit"
+description = "The polkit authentication agent: org.freedesktop.PolicyKit1.AuthenticationAgent."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,19 +9,15 @@ publish.workspace = true
 [dependencies]
 # The request vocabulary the agent's answers travel in, and the tick a deadline is measured in.
 gnoblin-model = { path = "../gnoblin-model" }
-# The `location` section the agent's policy is read from, and the store and locator the
-# configuration file is read through.
-gnoblin-config = { path = "../gnoblin-config" }
+# The primitives the agent names: the owner of a request.
+gnoblin-types = { path = "../gnoblin-types" }
 # The shared agent machinery: the offerer, the slots and the provider the agent reaches the
 # compositor through.
 gnoblin-service-core = { path = "../gnoblin-service-core" }
-# The GeoClue agent is an object on the system bus, served through zbus.
+# The D-Bus agent is an object on the system bus, served through zbus.
 zbus.workspace = true
-# One blocking wait per bus registration: the role has no async runtime of its own, and
-# `zbus` runs its connection on its own thread.
-futures-lite.workspace = true
-# The agent holds a one-shot channel for each `AuthorizeApp` it has offered, so the reply
-# does not wait on a locked mutex.
+# A `BeginAuthentication` reply waits for the provider's answer, so the waiting handler holds a
+# one-shot channel rather than a locked mutex.
 futures-channel.workspace = true
 # Every refusal, cancellation and registration is logged once, and never with the material of an
 # answer.
@@ -30,8 +26,8 @@ tracing.workspace = true
 [dev-dependencies]
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.
 gnoblin-service-testkit = { path = "../gnoblin-service-testkit" }
-# The policy tests write a configuration file into a temporary directory.
-tempfile = "3.23.0"
+# The tests drive the agent's object through a real client connection and await its replies.
+futures-lite.workspace = true
 
 [lints]
 workspace = true
