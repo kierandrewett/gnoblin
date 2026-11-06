@@ -10,9 +10,9 @@ use std::time::Duration;
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError};
+use gnoblin_log::warn;
 use gnoblin_model::{Fields, Filter, OperationOutcome, RequestId, RequestOutcome, Snapshot, Tick};
 use gnoblin_types::ObjectId;
-use tracing::warn;
 
 use crate::agent::{Offerer, Proposition, Refusal};
 

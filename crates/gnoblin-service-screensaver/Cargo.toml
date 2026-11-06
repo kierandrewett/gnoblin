@@ -18,7 +18,7 @@ zbus.workspace = true
 # `zbus` runs its connection on its own thread.
 futures-lite.workspace = true
 # Every refusal, inhibit and release is logged once, and never with the material of a cookie.
-tracing.workspace = true
+gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.

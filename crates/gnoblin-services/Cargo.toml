@@ -37,7 +37,7 @@ zbus.workspace = true
 futures-lite.workspace = true
 # Every refusal, cancellation and registration is logged once, and never with the
 # material of an answer.
-tracing.workspace = true
+gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
 # The tests build the graph from the checked-in schema, so the slot property names

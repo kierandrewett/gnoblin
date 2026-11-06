@@ -48,9 +48,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use futures_lite::StreamExt;
+use gnoblin_log::{info, warn};
 use gnoblin_model::{Fields, TypeKey, Value};
 use gnoblin_service_core::Host;
-use tracing::{info, warn};
 use zbus::fdo;
 use zbus::message::Header;
 use zbus::object_server::SignalEmitter;

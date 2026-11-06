@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use gnoblin_config::{SearchPaths, Store};
-use tracing::{debug, warn};
+use gnoblin_log::{debug, warn};
 
 /// Whether the configuration turns the prompter on: `prompts.enabled`, which defaults to `false`.
 /// With no state directory, no file or an unreadable file the prompter stays off.

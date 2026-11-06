@@ -25,7 +25,7 @@ futures-lite.workspace = true
 futures-channel.workspace = true
 # Every refusal, cancellation and registration is logged once, and never with the material of an
 # answer.
-tracing.workspace = true
+gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
 # The private bus the D-Bus tests start for themselves, shared with the other service crates.

@@ -24,8 +24,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use futures_channel::oneshot;
 use futures_lite::StreamExt;
 use gnoblin_config::{Inherit, LocationAccuracy, SearchPaths, Store};
+use gnoblin_log::{debug, info, warn};
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
-use tracing::{debug, info, warn};
 use zbus::names::{BusName, WellKnownName};
 use zbus::{Connection, fdo, proxy};
 

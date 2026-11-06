@@ -47,11 +47,11 @@ use std::time::Duration;
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
+use gnoblin_log::{info, warn};
 use gnoblin_model::{CapabilitySlot, RequestCompletion, RequestId, RequestOutcome, Tick};
 use gnoblin_service_core::{Host, LinkedAgent, Provider};
 use gnoblin_service_polkit::{AGENT_PATH, Polkit};
 use gnoblin_types::Version;
-use tracing::{info, warn};
 use zbus::Connection;
 
 use gnoblin_service_screensaver::ScreenSaver;
@@ -253,7 +253,7 @@ impl Agents {
         if let Some((polkit, _)) = &self.polkit
             && let Err(error) = polkit.answer(request, outcome)
         {
-            tracing::debug!(%error, request = request.get(), "[services] polkit did not own the answer");
+            gnoblin_log::debug!(%error, request = request.get(), "[services] polkit did not own the answer");
         }
         for agent in &self.linked {
             agent.answer(request, outcome);
