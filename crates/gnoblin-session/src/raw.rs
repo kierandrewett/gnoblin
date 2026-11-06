@@ -9,12 +9,18 @@
 //! The readers never block the supervisor: each stream has its own thread, the lines go through
 //! one bounded channel, and a full channel drops the line and counts it. The drop count is
 //! logged once a second while it changes, so a flood is visible without slowing anything down.
+//!
+//! Each line is scrubbed of what looks like a secret before it is logged. That scrubbing is
+//! best effort: heuristics cannot recognise every secret, so it never guarantees that a line is
+//! free of secrets. Only capture the output of a child that does not print secrets.
 
 use std::io::{BufRead, BufReader, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
 use std::time::Duration;
+
+use gnoblin_log::redact::Redactor;
 
 /// The longest line logged. A longer line is cut here and marked with [`TRUNCATED`].
 pub const MAX_LINE: usize = 8 * 1024;
@@ -101,13 +107,15 @@ pub fn capture(role: &str, stream: Stream, reader: impl Read + Send + 'static, s
 pub fn read_lines(role: &str, stream: Stream, reader: impl Read, sink: &RawSink) {
     let mut reader = BufReader::new(reader);
     let mut buffer = Vec::new();
+    let mut redactor = Redactor::new();
     loop {
         buffer.clear();
         match reader.read_until(b'\n', &mut buffer) {
             Ok(0) | Err(_) => return,
             Ok(_) => {}
         }
-        let text = bound(&String::from_utf8_lossy(&buffer));
+        let line = String::from_utf8_lossy(&buffer);
+        let text = bound(&redactor.redact(line.trim_end_matches(['\n', '\r'])));
         if is_structured(&text) {
             continue;
         }
@@ -241,5 +249,14 @@ mod tests {
         }
         assert_eq!(dropped.load(Ordering::Relaxed), 5);
         std::thread::sleep(Duration::from_millis(1));
+    }
+
+    #[test]
+    fn a_secret_in_a_raw_line_is_redacted_before_it_is_sent() {
+        let (sink, receiver, _) = RawSink::channel();
+        read_lines("compositor", Stream::Stdout, "password=hunter2 ok\n".as_bytes(), &sink);
+        drop(sink);
+        let texts: Vec<String> = receiver.try_iter().map(|line| line.text).collect();
+        assert_eq!(texts, ["password=[redacted] ok"]);
     }
 }

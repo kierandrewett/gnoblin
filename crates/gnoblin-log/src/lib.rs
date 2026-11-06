@@ -18,6 +18,9 @@
 //! sigils. This crate depends on `tracing` alone. The sinks live in `gnoblin-log-console` and
 //! `gnoblin-log-store`, and the composition that installs them in `gnoblin-log-init`.
 
+/// Best-effort scrubbing of secrets from free text. See the module documentation.
+pub mod redact;
+
 /// The `tracing` crate, for the sinks and the composition, which need its subscriber types.
 ///
 /// Crates other than this one must not use it to log; they use the macros.
