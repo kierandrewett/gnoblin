@@ -243,22 +243,49 @@ pub fn display_mode(mode: &Mode) -> DisplayMode {
     )
 }
 
-/// One connector's kernel side: its handle, its CRTC and surface, and the timings it offers.
+/// One connector's kernel side: its handle, what it is bound to, and the timings it offers.
 struct Port {
     connector: Connector,
     /// The connector's handle, which a re-read of the connector needs.
     handle: connector::Handle,
-    crtc: Option<crtc::Handle>,
+    state: PortState,
     /// Each timing the connector offers, with the kernel mode it is and the plan's view of it.
     modes: Vec<(DisplayMode, Mode)>,
-    surface: Option<DrmSurface>,
+}
+
+/// What a connector is bound to on the GPU. A bound connector has its CRTC and the surface that
+/// drives it; an unbound one has neither, and its CRTC is free for another connector.
+enum PortState {
+    /// Nothing drives the connector.
+    Unbound,
+    /// The connector is driven on `crtc` through `surface`.
+    Bound { crtc: crtc::Handle, surface: DrmSurface },
+}
+
+impl PortState {
+    fn crtc(&self) -> Option<crtc::Handle> {
+        match self {
+            Self::Unbound => None,
+            Self::Bound { crtc, .. } => Some(*crtc),
+        }
+    }
+
+    /// The surface of the connector `name`, or why there is none.
+    fn surface(&self, name: &str) -> Result<&DrmSurface, String> {
+        match self {
+            Self::Unbound => Err(format!("{name} has no KMS surface")),
+            Self::Bound { surface, .. } => Ok(surface),
+        }
+    }
 }
 
 impl Port {
+    fn crtc(&self) -> Option<crtc::Handle> {
+        self.state.crtc()
+    }
+
     fn surface(&self) -> Result<&DrmSurface, String> {
-        self.surface
-            .as_ref()
-            .ok_or_else(|| format!("{} has no KMS surface", self.connector.name))
+        self.state.surface(&self.connector.name)
     }
 }
 
@@ -305,7 +332,7 @@ impl Kms for Hardware {
                 ramp.matches(port.connector.gamma_length)
                     .map_err(|error| error.to_string())?;
                 let crtc = port
-                    .crtc
+                    .crtc()
                     .ok_or_else(|| format!("{name} has no CRTC to take a gamma table"))?;
                 let (red, green, blue) = ramp.channels();
                 self.device
@@ -352,9 +379,43 @@ pub enum HardwareChange {
     },
 }
 
+/// Whether the primary GPU is still driven. Losing it is sticky: the live hardware is dropped at
+/// the moment of loss, so nothing can be driven on that device again.
+enum GpuState<H> {
+    /// The device is open and its connectors are known.
+    Live(H),
+    /// The primary GPU was removed; the record names the node and the reason.
+    Lost(DeviceLost),
+}
+
+impl<H> GpuState<H> {
+    fn live(&self) -> Option<&H> {
+        match self {
+            Self::Live(hardware) => Some(hardware),
+            Self::Lost(_) => None,
+        }
+    }
+
+    fn live_mut(&mut self) -> Option<&mut H> {
+        match self {
+            Self::Live(hardware) => Some(hardware),
+            Self::Lost(_) => None,
+        }
+    }
+
+    fn lost(&self) -> Option<&DeviceLost> {
+        match self {
+            Self::Live(_) => None,
+            Self::Lost(lost) => Some(lost),
+        }
+    }
+}
+
 /// An opened GPU: the seat that lent its node, the device, and the record of what was applied.
 pub struct Gpu {
-    hardware: Hardware,
+    state: GpuState<Hardware>,
+    /// The device's file descriptor, handed out by [`Gpu::device_fd`] whatever the state.
+    device_fd: DrmDeviceFd,
     notifier: Option<DrmDeviceNotifier>,
     /// The CRTCs whose page flips completed, oldest first. The notifier fills it and
     /// [`Gpu::take_flips`] drains it.
@@ -365,8 +426,6 @@ pub struct Gpu {
     discovery: Discovery,
     /// The GPUs this session knows about, and which one it drives.
     devices: Devices,
-    /// Set once the primary GPU has gone. Nothing is driven after it.
-    device_lost: Option<DeviceLost>,
     /// Declared last so the device drops before the seat that lent its node.
     seat: Seat,
 }
@@ -375,7 +434,10 @@ impl fmt::Debug for Gpu {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Gpu")
-            .field("connectors", &self.hardware.ports.len())
+            .field(
+                "connectors",
+                &self.state.live().map_or(0, |hardware| hardware.ports.len()),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -406,27 +468,31 @@ impl Gpu {
         let (mut device, notifier) = DrmDevice::new(DrmDeviceFd::new(DeviceFd::from(fd)), true)
             .map_err(|error| DrmError::Device(format!("{}: {error}", node.display())))?;
         let ports = enumerate(&mut device).map_err(DrmError::Device)?;
+        let device_fd = device.device_fd().clone();
         Ok(Self {
             seat,
-            hardware: Hardware { device, ports },
+            state: GpuState::Live(Hardware { device, ports }),
+            device_fd,
             notifier: Some(notifier),
             flips: Arc::new(Mutex::new(VecDeque::new())),
             applied: Applied::new(),
             discovery,
             devices,
-            device_lost: None,
         })
     }
 
     /// Every connector the GPU has, connected or not, in the order the kernel lists them.
     pub fn outputs(&self) -> impl Iterator<Item = &Connector> {
-        self.hardware.ports.iter().map(|port| &port.connector)
+        self.state
+            .live()
+            .into_iter()
+            .flat_map(|hardware| hardware.ports.iter().map(|port| &port.connector))
     }
 
     /// The primary GPU's removal, once it has happened.
     #[must_use]
     pub fn device_lost(&self) -> Option<&DeviceLost> {
-        self.device_lost.as_ref()
+        self.state.lost()
     }
 
     /// Applies what the udev monitor reported since the last call and says what it changed.
@@ -437,7 +503,7 @@ impl Gpu {
     /// nothing, and [`Gpu::device_lost`] names the node.
     pub fn sync_hardware(&mut self) -> Vec<HardwareChange> {
         let mut changes = Vec::new();
-        if self.device_lost.is_some() {
+        if self.state.lost().is_some() {
             return changes;
         }
         for event in self.discovery.take_events() {
@@ -449,7 +515,7 @@ impl Gpu {
                     if self.devices.removed(&path) == DeviceChange::PrimaryLost {
                         let lost = DeviceLost { node: path };
                         changes.push(HardwareChange::DeviceLost(lost.clone()));
-                        self.device_lost = Some(lost);
+                        self.state = GpuState::Lost(lost);
                         break;
                     }
                 }
@@ -468,7 +534,9 @@ impl Gpu {
     /// When the kernel cannot be read the whole pass is skipped: an unreadable connector would
     /// otherwise look unplugged.
     fn reprobe(&mut self, changes: &mut Vec<HardwareChange>) {
-        let Hardware { device, ports } = &mut self.hardware;
+        let GpuState::Live(Hardware { device, ports }) = &mut self.state else {
+            return;
+        };
         let resources = match device.resource_handles() {
             Ok(resources) => resources,
             Err(error) => {
@@ -505,8 +573,7 @@ impl Gpu {
                     port.connector.connected = false;
                     port.connector.vrr = VrrSupport::Unsupported;
                     port.connector.gamma_length = 0;
-                    port.crtc = None;
-                    port.surface = None;
+                    port.state = PortState::Unbound;
                     self.applied.forget(&name);
                     changes.push(HardwareChange::OutputRemoved(port.connector.id));
                 }
@@ -514,7 +581,7 @@ impl Gpu {
                     let Some(index) = ports.iter().position(|port| port.connector.name == name) else {
                         continue;
                     };
-                    let taken: Vec<crtc::Handle> = ports.iter().filter_map(|port| port.crtc).collect();
+                    let taken: Vec<crtc::Handle> = ports.iter().filter_map(|port| port.crtc()).collect();
                     let id = ports[index].connector.id;
                     let handle = ports[index].handle;
                     let info = &infos[index];
@@ -573,7 +640,9 @@ impl Gpu {
 
     /// Releases DRM master for a VT switch away. Smithay's pause cannot fail.
     pub fn pause(&mut self) {
-        self.hardware.device.pause();
+        if let Some(hardware) = self.state.live_mut() {
+            hardware.device.pause();
+        }
     }
 
     /// Takes DRM master back after a VT switch returns. Connectors are disabled, so the next
@@ -583,7 +652,10 @@ impl Gpu {
     ///
     /// [`DrmError::Device`] when smithay cannot re-activate the device.
     pub fn activate(&mut self) -> Result<(), DrmError> {
-        self.hardware
+        let Some(hardware) = self.state.live_mut() else {
+            return Err(DrmError::Device("the primary GPU was removed".to_owned()));
+        };
+        hardware
             .device
             .activate(true)
             .map_err(|error| DrmError::Device(error.to_string()))
@@ -598,24 +670,24 @@ impl Gpu {
     /// The CRTC that scans out `output`, which is how a flip completion names its output.
     #[must_use]
     pub fn crtc_of(&self, output: OutputId) -> Option<crtc::Handle> {
-        self.hardware
-            .ports
-            .iter()
-            .find(|port| port.connector.id == output)
-            .and_then(|port| port.crtc)
+        self.state
+            .live()
+            .and_then(|hardware| hardware.ports.iter().find(|port| port.connector.id == output))
+            .and_then(|port| port.crtc())
     }
 
     /// The formats the primary plane of `crtc` can scan out, with their modifiers.
     #[must_use]
     pub fn plane_formats(&self, crtc: crtc::Handle) -> Option<smithay::backend::allocator::format::FormatSet> {
-        let port = self.hardware.ports.iter().find(|port| port.crtc == Some(crtc))?;
+        let hardware = self.state.live()?;
+        let port = hardware.ports.iter().find(|port| port.crtc() == Some(crtc))?;
         port.surface().ok().map(|surface| surface.plane_info().formats.clone())
     }
 
     /// The device node's file descriptor, which buffers and framebuffers are created on.
     #[must_use]
     pub fn device_fd(&self) -> DrmDeviceFd {
-        self.hardware.device.device_fd().clone()
+        self.device_fd.clone()
     }
 
     /// Queues a page flip on `crtc` that scans `framebuffer` out over the whole mode.
@@ -631,11 +703,14 @@ impl Gpu {
         framebuffer: framebuffer::Handle,
         size: Size<i32, Physical>,
     ) -> Result<(), String> {
-        let port = self
-            .hardware
+        let hardware = self
+            .state
+            .live()
+            .ok_or_else(|| format!("the primary GPU was removed, so CRTC {crtc:?} cannot flip"))?;
+        let port = hardware
             .ports
             .iter()
-            .find(|port| port.crtc == Some(crtc))
+            .find(|port| port.crtc() == Some(crtc))
             .ok_or_else(|| format!("no output is scanned out by CRTC {crtc:?}"))?;
         let surface = port.surface()?;
         let plane = PlaneState {
@@ -659,26 +734,38 @@ impl Gpu {
     ///
     /// [`ApplyError`] when an operation is refused; see [`apply_plan`].
     pub fn apply(&mut self, plan: &LayoutPlan) -> Result<(), ApplyError> {
-        apply_plan(&mut self.hardware, &mut self.applied, plan)
+        let hardware = match &mut self.state {
+            GpuState::Live(hardware) => hardware,
+            GpuState::Lost(lost) => return lost_refusal(plan, lost),
+        };
+        apply_plan(hardware, &mut self.applied, plan)
     }
 
     /// The number of entries in `output`'s gamma table, if the GPU has the output.
     #[must_use]
     pub fn gamma_length(&self, output: OutputId) -> Option<usize> {
-        self.hardware
-            .ports
-            .iter()
-            .find(|port| port.connector.id == output)
+        self.state
+            .live()
+            .and_then(|hardware| hardware.ports.iter().find(|port| port.connector.id == output))
             .map(|port| port.connector.gamma_length)
     }
 
-    fn name_of(&self, output: OutputId) -> Result<String, ControlError> {
-        self.hardware
+    /// The live hardware, and the name of the connector `output` is on it.
+    ///
+    /// # Errors
+    ///
+    /// [`ControlError::NoConnector`] when the GPU is lost or has no connector for `output`.
+    fn locate(state: &mut GpuState<Hardware>, output: OutputId) -> Result<(&mut Hardware, String), ControlError> {
+        let hardware = state
+            .live_mut()
+            .ok_or_else(|| ControlError::NoConnector(output.to_string()))?;
+        let name = hardware
             .ports
             .iter()
             .find(|port| port.connector.id == output)
             .map(|port| port.connector.name.clone())
-            .ok_or_else(|| ControlError::NoConnector(output.to_string()))
+            .ok_or_else(|| ControlError::NoConnector(output.to_string()))?;
+        Ok((hardware, name))
     }
 
     /// Loads `ramp` onto the CRTC that scans out `output`.
@@ -687,8 +774,8 @@ impl Gpu {
     ///
     /// [`ControlError`] from [`set_gamma`], or [`ControlError::NoConnector`] for an unknown output.
     pub fn set_gamma(&mut self, output: OutputId, ramp: &GammaRamp) -> Result<(), ControlError> {
-        let name = self.name_of(output)?;
-        set_gamma(&mut self.hardware, &name, ramp)
+        let (hardware, name) = Self::locate(&mut self.state, output)?;
+        set_gamma(hardware, &name, ramp)
     }
 
     /// Puts the identity ramp back on the CRTC that scans out `output`.
@@ -697,8 +784,8 @@ impl Gpu {
     ///
     /// [`ControlError`] from [`restore_gamma`], or [`ControlError::NoConnector`] for an unknown output.
     pub fn restore_gamma(&mut self, output: OutputId) -> Result<(), ControlError> {
-        let name = self.name_of(output)?;
-        restore_gamma(&mut self.hardware, &name)
+        let (hardware, name) = Self::locate(&mut self.state, output)?;
+        restore_gamma(hardware, &name)
     }
 
     /// Switches `output` on or off.
@@ -707,8 +794,8 @@ impl Gpu {
     ///
     /// [`ControlError`] from [`set_power`], or [`ControlError::NoConnector`] for an unknown output.
     pub fn set_power(&mut self, output: OutputId, on: bool) -> Result<(), ControlError> {
-        let name = self.name_of(output)?;
-        set_power(&mut self.hardware, &mut self.applied, &name, on)
+        let (hardware, name) = Self::locate(&mut self.state, output)?;
+        set_power(hardware, &mut self.applied, &name, on)
     }
 
     /// What each connector was last confirmed to be doing.
@@ -716,6 +803,19 @@ impl Gpu {
     pub fn applied(&self) -> &Applied {
         &self.applied
     }
+}
+
+/// The refusal for a plan applied after the primary GPU was removed: nothing is driven any more.
+fn lost_refusal(plan: &LayoutPlan, lost: &DeviceLost) -> Result<(), ApplyError> {
+    Err(ApplyError {
+        connector: plan
+            .all()
+            .next()
+            .map(|change| change.connector.clone())
+            .unwrap_or_default(),
+        reason: format!("the primary GPU at {} was removed", lost.node.display()),
+        rollback_failures: Vec::new(),
+    })
 }
 
 /// The name a person sees the connector by, such as `DP-1`.
@@ -743,9 +843,8 @@ fn port_of(device: &DrmDevice, handle: connector::Handle, info: &connector::Info
             vrr: VrrSupport::Unsupported,
             gamma_length: 0,
         },
-        crtc: None,
+        state: PortState::Unbound,
         modes: offered,
-        surface: None,
     }
 }
 
@@ -761,8 +860,10 @@ fn bring_up_port(
     port.connector.connected = true;
     port.connector.vrr = up.vrr;
     port.connector.gamma_length = up.gamma_length;
-    port.crtc = Some(up.crtc);
-    port.surface = Some(up.surface);
+    port.state = PortState::Bound {
+        crtc: up.crtc,
+        surface: up.surface,
+    };
     Ok(())
 }
 
@@ -781,7 +882,7 @@ fn enumerate(device: &mut DrmDevice) -> Result<Vec<Port>, String> {
         let mut port = port_of(device, handle, &info, id);
         if matches!(info.state(), connector::State::Connected) {
             match bring_up_port(&mut port, device, &resources, &info, &taken) {
-                Ok(()) => taken.extend(port.crtc),
+                Ok(()) => taken.extend(port.crtc()),
                 Err(reason) => {
                     gnoblin_log::warn!(connector = %port.connector.name, %reason, "[drm] the connector stays disconnected");
                 }
@@ -882,6 +983,29 @@ mod tests {
 
     use super::*;
     use crate::drm::plan;
+
+    #[test]
+    fn a_lost_gpu_has_no_live_hardware_and_names_its_node() {
+        let mut live: GpuState<u8> = GpuState::Live(7);
+        assert_eq!(live.live(), Some(&7));
+        assert_eq!(live.live_mut().copied(), Some(7));
+        assert!(live.lost().is_none());
+
+        let node = PathBuf::from("/dev/dri/card0");
+        let mut lost: GpuState<u8> = GpuState::Lost(DeviceLost { node: node.clone() });
+        assert!(lost.live().is_none());
+        assert!(lost.live_mut().is_none());
+        assert_eq!(lost.lost().map(|lost| lost.node.clone()), Some(node));
+    }
+
+    #[test]
+    fn an_unbound_port_has_no_crtc_and_no_surface() {
+        assert_eq!(PortState::Unbound.crtc(), None);
+        assert_eq!(
+            PortState::Unbound.surface("DP-1").err(),
+            Some("DP-1 has no KMS surface".to_owned())
+        );
+    }
 
     const FULL_HD: DisplayMode = DisplayMode::new(1920, 1080, 60_000);
     const FOUR_K: DisplayMode = DisplayMode::new(3840, 2160, 60_000);
