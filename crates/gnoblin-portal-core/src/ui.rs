@@ -335,8 +335,18 @@ mod tests {
             shell.run(&mut escapable, key_events(ScreenKey::Escape, false), Tick::new(0)),
             Some(Settled::Cancelled)
         );
+        // The surface is the measured content, clamped to the bounds: the 360 px
+        // minimum width is clamped to the 320 px output, and the height is the
+        // button's content, shorter than the output.
+        let (width, height) = shell.size();
+        assert_eq!(width, 320, "the minimum width is clamped to the bounds");
+        assert!(
+            height > 0 && height < 160,
+            "the surface fits the content, not the output"
+        );
         let frame = shell.render(&mut clickable, Tick::new(0));
-        assert_eq!(frame.bytes().len(), 320 * 160 * 4);
+        assert_eq!((frame.width(), frame.height()), (width, height));
+        assert_eq!(frame.bytes().len(), width * height * 4);
     }
 
     #[test]

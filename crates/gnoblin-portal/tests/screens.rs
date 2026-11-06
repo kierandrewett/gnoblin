@@ -94,8 +94,17 @@ fn escape_cancels_an_app_chooser() {
 fn a_rendered_dialog_is_not_one_flat_colour() {
     let mut screen = consent_screen();
     let frame = screen.render();
-    assert_eq!((frame.width(), frame.height()), (WIDTH, HEIGHT));
+    // The frame is the measured content: the 360 px minimum width clamped to the
+    // 320 px output, and a height shorter than the output.
+    let (width, height) = screen.size();
+    assert_eq!(width, WIDTH, "the minimum width is clamped to the bounds");
+    assert!(
+        height > 0 && height < HEIGHT,
+        "the frame fits the content, not the output"
+    );
+    assert_eq!((frame.width(), frame.height()), (width, height));
     let bytes = frame.bytes();
+    assert_eq!(bytes.len(), width * height * 4);
     assert!(
         bytes.iter().any(|&byte| byte != bytes[0]),
         "the dialog paints text and buttons"
