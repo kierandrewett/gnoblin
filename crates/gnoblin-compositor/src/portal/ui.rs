@@ -66,7 +66,7 @@
 
 use std::collections::VecDeque;
 
-use gnoblin_diag::portal::{PortalScreen, Setup, Theme};
+use gnoblin_portal::{PortalScreen, Setup, Theme};
 use gnoblin_portal_core::model::{Dialog, Interface, ScreenKey, Settled};
 use gnoblin_portal_core::paint::Frame;
 use gnoblin_types::{RequestId, Tick};

@@ -37,8 +37,11 @@ members = [
     "crates/gnoblin-compositor",
     "crates/gnoblin-config",
     "crates/gnoblin-config-codegen",
-    "crates/gnoblin-diag",
+    "crates/gnoblin-portal",
+    "crates/gnoblin-portal-appchooser",
+    "crates/gnoblin-portal-consent",
     "crates/gnoblin-portal-core",
+    "crates/gnoblin-portal-filechooser",
     "crates/gnoblin-input",
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
@@ -241,6 +244,9 @@ gnoblin-types = { path = "crates/gnoblin-types" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
 # The portal's shared pieces: dialog models, theme tokens, the CPU painter and widgets (D19).
 gnoblin-portal-core = { path = "crates/gnoblin-portal-core" }
+gnoblin-portal-consent = { path = "crates/gnoblin-portal-consent" }
+gnoblin-portal-filechooser = { path = "crates/gnoblin-portal-filechooser" }
+gnoblin-portal-appchooser = { path = "crates/gnoblin-portal-appchooser" }
 # The WebAssembly runtime the module host embeds (design/rust-compositor.md, D6).
 # The component model is the host API's shape: a WIT package generated from the
 # schema, so a module links against the object model and a member that moved is a

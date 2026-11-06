@@ -1,6 +1,6 @@
 [package]
-name = "gnoblin-diag"
-description = "Recovery and console overlay."
+name = "gnoblin-portal"
+description = "Recovery and console overlay, and the built-in portal dialog screens."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,9 @@ publish.workspace = true
 gnoblin-schema.workspace = true
 gnoblin-types.workspace = true
 gnoblin-portal-core.workspace = true
-# The overlay draws the dialog models; the models themselves never touch egui (`portal`).
+gnoblin-portal-consent.workspace = true
+gnoblin-portal-filechooser.workspace = true
+gnoblin-portal-appchooser.workspace = true
 egui.workspace = true
 
 [lints]

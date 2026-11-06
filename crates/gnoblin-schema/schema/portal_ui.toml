@@ -13,7 +13,7 @@
 # `filter_patterns[i]`, and `choice_ids[i]` with `choice_labels[i]`.
 #
 # The reply's bounds (a grant no wider than the request) are checked by
-# `gnoblin-diag::portal`, which owns the typed payloads; this file only names the wire.
+# `gnoblin-portal-core::model`, which owns the typed payloads; this file only names the wire.
 namespace = "gnoblin"
 version = "0.2.0"
 

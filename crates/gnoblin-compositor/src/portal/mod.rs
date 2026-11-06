@@ -6,7 +6,7 @@
 //! negotiation rules (fallback, requester-gone, first-terminal-wins), the queue
 //! caps and the reply validation live here so they can be tested without a
 //! session. The built-in dialogs they hand off to are the models in
-//! [`gnoblin_diag::portal`].
+//! [`gnoblin_portal`].
 //!
 //! This module is core logic, not part of the portal relay: the relay
 //! (`xdg-desktop-portal-gnoblin`) stays a removable thin relay (D19).

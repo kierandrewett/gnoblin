@@ -1,0 +1,14 @@
+[package]
+name = "gnoblin-portal-appchooser"
+description = "The AppChooser dialog of the portal: application list, filter, remember checkbox and buttons."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
+gnoblin-portal-core.workspace = true
+
+[lints]
+workspace = true

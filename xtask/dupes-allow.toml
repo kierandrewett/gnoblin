@@ -1448,7 +1448,7 @@ right = "gnoblin-compat-mutter-screencast::ScreenCastAdmission"
 kind = "same-shape"
 reason = "each adapter's admission applies its own declaration and matrix gate; the shape is the frame's, the declarations differ and cannot stand in for one another"
 
-# gnoblin-compositor and gnoblin-diag (D19) reuse generic state-machine names; each keeps its own meaning.
+# gnoblin-compositor and gnoblin-portal (D19) reuse generic state-machine names; each keeps its own meaning.
 
 [[allow]]
 left = "gnoblin-a11y::Effect"
@@ -1786,7 +1786,7 @@ kind = "same-name"
 reason = "the eis grant is the consent and capabilities a seat holds; the proto grant is an extension namespace and version on the wire"
 
 [[allow]]
-left = "gnoblin-diag::Theme"
+left = "gnoblin-portal::Theme"
 right = "gnoblin-portal-theme::Palette"
 kind = "near-shape"
 reason = "Theme is the screen-facing colour set and is built from Palette::for_mode; the two are the same shape by design, with Palette the single source of the values"

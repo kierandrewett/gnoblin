@@ -34,9 +34,9 @@ gnoblin-schema = { path = "../gnoblin-schema" }
 # sides use one description of them.
 gnoblin-proto = { path = "../gnoblin-proto" }
 gnoblin-client = { path = "../gnoblin-client" }
-# The portal's dialog models (payload and result types, dialog state). The negotiation
-# core names them; the models stay pure and draw nothing (D19).
-gnoblin-diag = { path = "../gnoblin-diag" }
+# The portal's built-in dialog screens (D19). The negotiation core names their models;
+# the screens draw them, and nothing else in the compositor depends on the dialog crates.
+gnoblin-portal = { path = "../gnoblin-portal" }
 gnoblin-portal-core = { path = "../gnoblin-portal-core" }
 gnoblin-input = { path = "../gnoblin-input" }
 # Who this process is, for the IPC socket directory's ownership check.

@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-portal-consent"
+description = "The consent card of the portal dialogs: prompt, requester, Deny and Allow."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
+gnoblin-types.workspace = true
+gnoblin-portal-core.workspace = true
+
+[lints]
+workspace = true

@@ -450,19 +450,28 @@ fn types_roots(package: &Package, dep: &Dep) -> Option<String> {
     ))
 }
 
-/// The portal's dialog models (design/rust-compositor.md, D19).
-///
-/// `gnoblin-diag` holds the built-in dialog models (its `portal` module), which the
-/// compositor's negotiation answers with. Only the compositor may depend on it: the
-/// relay `xdg-desktop-portal-gnoblin` stays a thin, removable relay and names neither
-/// the compositor nor the models.
+/// The portal's built-in dialog screens and their dialog crates (design/rust-compositor.md,
+/// D19). `gnoblin-portal` draws the dialogs, and only the compositor may depend on it,
+/// where portal.ui requests land. The dialog crates are drawn by `gnoblin-portal` alone.
+/// The relay `xdg-desktop-portal-gnoblin` stays a thin, removable relay and names neither.
 fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
-    const DIAG: &str = "gnoblin-diag";
+    const SCREENS: &str = "gnoblin-portal";
+    const DIALOGS: [&str; 3] = [
+        "gnoblin-portal-consent",
+        "gnoblin-portal-filechooser",
+        "gnoblin-portal-appchooser",
+    ];
 
-    if dep.name == DIAG && package.name != "gnoblin-compositor" {
+    if dep.name == SCREENS && package.name != "gnoblin-compositor" {
         return Some(format!(
-            "the portal dialog models in `{DIAG}` are used only by the compositor, where portal.ui requests land (D19); `{}` may not depend on it",
+            "the portal dialog screens in `{SCREENS}` are used only by the compositor, where portal.ui requests land (D19); `{}` may not depend on it",
             package.name
+        ));
+    }
+    if DIALOGS.iter().any(|name| dep.name == *name) && package.name != SCREENS {
+        return Some(format!(
+            "the portal dialog crates are drawn only by `{SCREENS}` (D19); `{}` may not depend on `{}`",
+            package.name, dep.name
         ));
     }
     None

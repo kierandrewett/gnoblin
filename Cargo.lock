@@ -1493,11 +1493,11 @@ dependencies = [
  "gnoblin-backend",
  "gnoblin-client",
  "gnoblin-config",
- "gnoblin-diag",
  "gnoblin-input",
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-model",
+ "gnoblin-portal",
  "gnoblin-portal-core",
  "gnoblin-proto",
  "gnoblin-schema",
@@ -1531,16 +1531,6 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
-]
-
-[[package]]
-name = "gnoblin-diag"
-version = "0.2.0-alpha.0"
-dependencies = [
- "egui",
- "gnoblin-portal-core",
- "gnoblin-schema",
- "gnoblin-types",
 ]
 
 [[package]]
@@ -1658,12 +1648,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-portal"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+ "gnoblin-portal-appchooser",
+ "gnoblin-portal-consent",
+ "gnoblin-portal-core",
+ "gnoblin-portal-filechooser",
+ "gnoblin-schema",
+ "gnoblin-types",
+]
+
+[[package]]
+name = "gnoblin-portal-appchooser"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+ "gnoblin-portal-core",
+]
+
+[[package]]
+name = "gnoblin-portal-consent"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+ "gnoblin-portal-core",
+ "gnoblin-types",
+]
+
+[[package]]
 name = "gnoblin-portal-core"
 version = "0.2.0-alpha.0"
 dependencies = [
  "egui",
  "gnoblin-schema",
  "gnoblin-types",
+]
+
+[[package]]
+name = "gnoblin-portal-filechooser"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "egui",
+ "gnoblin-portal-core",
 ]
 
 [[package]]
