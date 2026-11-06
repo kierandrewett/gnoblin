@@ -170,7 +170,7 @@ impl DialogShell {
         // The laid-out widgets' extent, plus the margin, is the content's size.
         let mut content = Vec2::ZERO;
         let mut output = self.ctx.run_ui(raw, |root| {
-            CentralPanel::default().frame(panel_frame.clone()).show(root, |panel| {
+            CentralPanel::default().frame(panel_frame).show(root, |panel| {
                 settled = dialog.show(panel, now);
                 content = panel.min_rect().size() + margin;
             });
