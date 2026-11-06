@@ -180,14 +180,24 @@ pub fn create(profile: Profile, limits: &Limits, guard: Rc<Guard>) -> Result<Lua
         Profile::Layout => restrict_layout(&lua)?,
     }
     if profile == Profile::Config {
+        // Stock Lua seeds `math.random` from the clock and a stack address when a state
+        // opens, so two identical configs would draw different numbers. A fixed seed
+        // makes the draws a pure function of the script.
+        let math: Table = lua.globals().get("math")?;
+        let randomseed: Function = math.get("randomseed")?;
+        randomseed.call::<()>(CONFIG_RANDOM_SEED)?;
         strlib::install(&lua, Rc::clone(&guard), limits.instructions)?;
     }
+
     install_hook(&lua, limits, Rc::clone(&guard))?;
     if profile == Profile::Config {
         guard_protected_calls(&lua, guard)?;
     }
     Ok(lua)
 }
+
+/// The seed the configuration profile gives `math.random` at every state open.
+const CONFIG_RANDOM_SEED: i64 = 0x6f6d_7073;
 
 /// Wrap `pcall` and `xpcall` so a limit abort cannot be caught.
 ///
@@ -830,6 +840,17 @@ mod tests {
             .exec()
             .expect_err("a terabyte string must not be built");
         assert!(error.to_string().to_lowercase().contains("memory"), "{error}");
+    }
+
+    #[test]
+    fn config_random_is_seeded_identically_in_every_state() {
+        let draw = || -> String {
+            let lua = lua(Profile::Config);
+            lua.load("return table.concat({math.random(1, 1000), math.random(1, 1000)}, ',')")
+                .eval()
+                .expect("random draws")
+        };
+        assert_eq!(draw(), draw(), "two fresh states must draw the same numbers");
     }
 
     #[test]
