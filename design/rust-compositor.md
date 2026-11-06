@@ -1239,6 +1239,7 @@ Accessibility is its own lane, not a side effect of input and rendering.
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
+- **Platform-wide gap:** no Gnoblin surface reaches assistive technology yet. `gnoblin-a11y` has no AT-SPI tree, so the window menu, window frames and portal dialogs are not readable through AT-SPI. This gap is accepted until that tree lands.
 - **Why the keyboard monitor stays in the compositor:** key grabs must decide
   before the focused client sees the key, so a process hop would add latency to
   every key press. It is the one D-Bus name the compositor serves itself.
@@ -2979,7 +2980,7 @@ Decisions:
 
 - **Stack.** A node's effects are one ordered list. Each pass is drawn in list order inside the node's opacity group (D24). The renderer already applies a list in order, so no renderer type changes.
 - **Adding.** `window.effects:add(kind, value)` appends a pass and returns an `Effect` handle. The handle has read-only `kind` and `index`, and the methods `set(value)` and `revoke()`. Revoking removes that pass and keeps the order of the rest. `set_effect` is removed: replacing a pass is `effect:set(value)`.
-- **Config.** A window rule gets `effects`, an array of one-key tables in stack order, such as `{ blur = 24 }` and `{ shader = "...", uniforms = { ... } }`. The flat rule keys `blur` and `shader` are removed in the same cutover, with their docs. `corners.shadow` is unchanged by this decision (open question 2).
+- **Config.** A window rule gets `effects`, an array of one-key tables in stack order, such as `{ blur = 24 }` and `{ shader = "...", uniforms = { ... } }`. The flat rule keys `blur` and `shader` are removed in the same cutover, with their docs. `corners.shadow` becomes a `shadow` pass in the stack, because a shadow is an effect (decided).
 - **Limits.** A node holds at most 32 passes (`MAX_PASSES`). An add over the limit, or a value out of range, is refused and the stack is unchanged. A config entry that fails is a named problem; the entry is dropped and the rest of the rule loads, as other invalid rule fields do.
 - **Ending.** Passes added from Lua end when they are revoked, when the window closes and when a configuration reload commits. Passes from a rule end at reload, as rules do now.
 - **Renderer support.** GLES draws all three kinds. A blur or shadow on a transformed layer is skipped with the existing `unsupported-effect-on-3d` warning. Software and Vulkan draw no effect passes yet. A pass the active renderer skips stays in the stack and is reported as not drawn.
@@ -2992,13 +2993,13 @@ Consequences:
 - Tests (not run): pass limit and refusal in `gnoblin-render`; compounding and order in the GLES tests; rule parse, salvage and order in `gnoblin-config`; add, set, revoke and end reasons in the Lua host.
 - Parity: new scope. Mutter has no per-window effect stack, so this adds one entry to `tests/parity/divergences.toml` under "new scope", reason "D26: stackable effects".
 
+Decided 2026-11-06: `corners.shadow` becomes a `shadow` pass in the stack, because a shadow is an effect. No `gnoblinctl window effects` command is added.
+
 Needs Kieran:
 
 1. Confirm the names `window.effects:add` and `effect:set`, and whether `set_effect` is removed or kept as a shorthand.
-2. Whether `corners.shadow` moves into the stack as a `shadow` pass, or stays the frame's own shadow.
-3. Whether the flat `blur` and `shader` rule keys are removed, as proposed, or kept as one-entry shorthand after `effects`.
-4. Whether a pass the active renderer cannot draw is refused at add time, as proposed, or kept and reported.
-5. Whether `gnoblinctl window effects <id>` lists the stack with a drawn or not-drawn flag. Proposed: yes.
+2. Whether the flat `blur` and `shader` rule keys are removed, as proposed, or kept as one-entry shorthand after `effects`.
+3. Whether a pass the active renderer cannot draw is refused at add time, as proposed, or kept and reported.
 
 #### Shaped windows (amendment)
 
@@ -3027,7 +3028,7 @@ Per-effect rule, applied to one silhouette mask so that effects stack over the s
 - **Blur:** the backdrop, clipped to the silhouette's coverage.
 - **Tint:** multiplied by the same coverage, so it never leaves the outline.
 
-Cost and caching: the mask is an R8 texture at physical size, rebuilt only when the buffer commits or the size or scale changes. Shadow and blur use a half-resolution mask. A 4096 by 4096 window costs about 16 MiB at full size. Above the cap the window falls back to its rectangle, logged once. A fully transparent window draws no effect.
+Cost and caching: the mask is an R8 texture at physical size, rebuilt only when the buffer commits or the size or scale changes. Shadow and blur use a half-resolution mask. A 4096 by 4096 window costs about 16 MiB at full size. Above the cap, 4096 pixels on the long side (decided), the window falls back to its rectangle, logged once. A fully transparent window draws no effect.
 
 Renderer support:
 
@@ -3041,11 +3042,12 @@ Tests (not run): golden images on GLES for a circle, a ring with a hole, two dis
 
 Ordering: shaped windows land before stacking. The stack then samples one mask per window, rather than each pass gaining its own shape handling.
 
+Decided 2026-11-06: the mask cap is 4096 pixels on the long side.
+
 Needs Kieran:
 
 1. Confirm the buffer alpha as the silhouette, against the input-region alternative.
 2. Whether `corner_radius` still clips a shaped window (proposed: intersect with the alpha).
-3. The mask cap, proposed 4096 pixels on the long side.
 
 ### D27: keyring service
 
@@ -3086,12 +3088,11 @@ Consequences:
 - Tests (not run): band order; window-layer stacking and follow rules; one live `gnoblin.portals` per output; a repeated local name within one provider is refused; the same local name under two providers is fine; an extension with id `gnoblin` is refused; end on provider disconnect, target close and output removal; the lock; the capture filter under `mask` (a shaped window captures as its silhouette) and `omit` (underlay shows by design); a config override flips a layer both ways, including `gnoblin.portals`; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
 
-Needs Kieran: the full list is in `design/layers.md`. Each item is marked (A), a policy choice about an invariant, or (B), a default for an option. Two block the first phase:
+**Role, provider, built-in default, override.** Each registry slot follows one pattern. A role names the slot, such as `portals`, `alerts` or `window_menu`. A provider registers into the role. The built-in provider is the default when no other provider claims it. A config leaf overrides the choice, by provider name or by selecting the built-in. The compositor sets the provider, and one role has one claimant: a second claim is refused and logged.
 
-1. Name of the toplevel kind: `surface_toplevel` (proposed; `design/layers.md` item 10).
-2. Whether a window-targeted `portals` modal blocks the whole output (A, proposed) or only its target (`design/layers.md` item 1).
+Decided 2026-11-06: a window-targeted `portals` dialog blocks its parent window only. With no usable parent, it is centred on the output and blocks that output. The toplevel kind is `surface_toplevel`. The secure-capture default is `mask`.
 
-Item 13 in `design/layers.md` (B) sets the capture default for secure nodes: `mask` (proposed) or `omit`. It does not block the first phase.
+Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are in its "Decided" list.
 
 ### D29: window menu
 
@@ -3112,7 +3113,7 @@ Items are disabled, not hidden, when the window cannot do them. Restore shows on
 - Each item has `id`, `label`, `icon` (a name), `enabled`, `checked`, `kind` (`action`, `separator` or `submenu`), `children` and an `accelerator` hint.
 - Actions are named: `window.restore`, `window.move`, `window.resize`, `window.minimize`, `window.maximize`, `window.toggle-above`, `window.toggle-visible-on-all-workspaces`, `window.move-to-workspace.<n>` and `window.close`. The compositor owns the table of names and their actions.
 - A provider returns the chosen item id, or cancels. The compositor checks that the id is in the model and enabled, then runs the named action. A provider never moves, resizes or closes a window itself.
-- Extension items are namespaced `<extension>.<id>`. Choosing one sends the choice back to that extension as an event, not to a compositor action (see Needs Kieran 3).
+- Extension items are namespaced `<extension>.<id>`. Choosing one sends the choice back to that extension as an event, not to a compositor action (decided: extensions may contribute items under `menu.contribute`).
 
 **Providers.** Two modes share the model:
 
@@ -3135,7 +3136,7 @@ Unset means the claimant when one claims `window_menu`, else `"builtin"`. There 
 
 After the menu is shown, a provider that disconnects or crashes closes the menu, and the close is logged. The built-in does not take over a menu half way through. A reply that arrives after the menu closed is ignored.
 
-**Opening and placement.** A menu opens from a titlebar button, the titlebar gesture, the keyboard (Alt+Space, proposed in Needs Kieran 2), or `xdg_toplevel.show_window_menu`. Pointer invocations anchor to the button rectangle or the point. Keyboard invocation anchors to the top-left of the window's titlebar and selects the first enabled item.
+**Opening and placement.** A menu opens from a titlebar button, the titlebar gesture, the keyboard (Alt+Space, decided), or `xdg_toplevel.show_window_menu`. Pointer invocations anchor to the button rectangle or the point. Keyboard invocation anchors to the top-left of the window's titlebar and selects the first enabled item.
 
 Placement opens below the anchor, flips above when it does not fit, then clamps into the output's work area, outside exclusive zones. It clamps horizontally too.
 
@@ -3162,15 +3163,14 @@ A window menu is not a portal. Folding it into `gnoblin-portal` would put a comp
 
 **Tests (not run).** Model contents per window state; refusal of an unknown or disabled id; each fallback case; placement below, flip and clamp; each dismissal; a stale `show_window_menu` serial is ignored; the layer sits above its target and ends when the target closes.
 
+Decided 2026-11-06: the keyboard invocation is Alt+Space. Extensions may contribute items under `menu.contribute`, with namespaced ids. The accessibility gap is accepted until `gnoblin-a11y` has an AT-SPI tree (see the platform-wide gap in the accessibility table).
+
 Needs Kieran:
 
 1. The leaf name `window_menu.provider` and its three values, as proposed above.
-2. The default keyboard invocation: Alt+Space (proposed).
-3. Whether extensions may add items under a `menu.contribute` grant with namespaced ids (proposed: yes).
-4. Whether `xdg_toplevel.show_window_menu` is served by the configured provider with the built-in fallback (proposed: yes).
-5. The fallback timeout: 2 seconds (proposed).
-6. Whether the window menu declares `secure`, which keeps it out of captures (B, proposed: no; `design/layers.md`, Options).
-7. Accept the accessibility gap until `gnoblin-a11y` has an AT-SPI tree, or block cutover on it.
+2. Whether `xdg_toplevel.show_window_menu` is served by the configured provider with the built-in fallback (proposed: yes).
+3. The fallback timeout: 2 seconds (proposed).
+4. Whether the window menu declares `secure`, which keeps it out of captures (proposed: no; `design/layers.md`, Options).
 
 ### D30: store
 
@@ -3190,11 +3190,13 @@ Needs Kieran:
 
 **Surfaces.** One API serves Lua `gnoblin.store.open`, the IPC `store` object, wasm host imports and `gnoblinctl store`. The Secret Service and Secret portal are adapters over a `secret` store. Rust crates use the `gnoblin-store` library, which joins the foundation set in `xtask/src/deps.rs`.
 
-**Backends.** Backends are a provider's detail: one SQLite file per store by default, SQLCipher for `secret`, and the existing `logs.sqlite3` for `log`. The file layout is not a v1 contract.
+**Backends.** Backends are a provider's detail: one SQLite file per store by default, SQLCipher for `secret`, and for `log` the existing `logs.sqlite3`, copied into the store once by a one-off migration (decided). The file layout is not a v1 contract.
 
 **Keyring.** The keyring stays a separate service with its own SQLCipher file (D27). It is a provider of kind `secret`. Its decisions are unchanged.
 
 **Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal, read-only boot and a locked `secret` read. A `secret` value read through each generic frontend, and a plaintext `secret` export, must both be refused.
+
+Decided 2026-11-06: logs become the `log` kind, and the existing `logs.sqlite3` is migrated once. Query operators are equality, key prefix, ranges, text search over an FTS index, order, limit, count, and group-by-count. No raw SQL is exposed.
 
 Needs Kieran (details and pros and cons in `design/store.md`):
 
@@ -3202,11 +3204,9 @@ Needs Kieran (details and pros and cons in `design/store.md`):
 2. Whether an extension may define a new kind (option, proposed no).
 3. Whether `secret` attributes are readable while locked (option).
 4. A `writable` flag, or a seventh lifecycle state (option, proposed flag).
-5. Logs through the store API as the `log` kind, or keep `logs.sqlite3` (option).
-6. Default quota, TTL and retention per kind (option).
-7. Query operators beyond key prefix, attribute equality and time range (option).
-8. Backend layout: one file per store, or one per kind (option, backend detail).
-9. The `secret` unlock credential, and whether a D28 prompt layer supplies it (option).
+5. Default quota, TTL and retention per kind (option).
+6. Backend layout: one file per store, or one per kind (option, backend detail).
+7. The `secret` unlock credential, and whether a D28 prompt layer supplies it (option).
 
 ## Phase 0 checklist
 
