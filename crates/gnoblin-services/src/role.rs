@@ -168,7 +168,7 @@ impl Role {
         reporter.ready(&[]);
         info!(
             slots = ?holding.iter().map(|slot| slot.name()).collect::<Vec<_>>(),
-            polkit = agents.polkit.is_some(),
+            polkit = agents.polkit.describe(),
             screensaver = agents.screensaver.is_some(),
             linked = agents.linked.len(),
             "[services] serving"
@@ -193,7 +193,7 @@ impl Role {
 /// The agents this process is serving, when their buses were available.
 #[derive(Default)]
 struct Agents {
-    polkit: Option<(Polkit, Connection)>,
+    polkit: PolkitSlot,
     screensaver: Option<(ScreenSaver, Connection)>,
     linked: Vec<Box<dyn LinkedAgent>>,
 }
@@ -250,7 +250,7 @@ impl Agents {
     /// `unknown-request`, which is the cheapest correct answer: neither registry knows
     /// which slot another agent's request came from.
     fn answer(&self, request: RequestId, outcome: &RequestOutcome) {
-        if let Some((polkit, _)) = &self.polkit
+        if let PolkitSlot::Running(polkit, _) = &self.polkit
             && let Err(error) = polkit.answer(request, outcome)
         {
             gnoblin_log::debug!(%error, request = request.get(), "[services] polkit did not own the answer");
@@ -262,32 +262,59 @@ impl Agents {
 
     /// Give the agents back: polkitd stops calling this process only once it is told.
     fn shutdown(&self) {
-        if let Some((polkit, connection)) = &self.polkit {
+        if let PolkitSlot::Running(polkit, connection) = &self.polkit {
             block_on(polkit.unregister_registration(connection));
         }
     }
 }
 
+/// The polkit agent's lifecycle in this role.
+///
+/// `Absent` when there is no system bus to serve on. `Failed` when the agent could not be
+/// exported or polkitd refused its registration, and keeps the reason for the log. Only
+/// `Running` answers requests and unregisters on shutdown.
+#[derive(Default)]
+enum PolkitSlot {
+    /// No system bus, or the role was started without buses: nothing to serve.
+    #[default]
+    Absent,
+    /// The agent could not be exported, or polkitd refused its registration.
+    Failed(String),
+    /// Exported and registered with polkitd.
+    Running(Polkit, Connection),
+}
+
+impl PolkitSlot {
+    /// What the serving log reports for this slot.
+    fn describe(&self) -> String {
+        match self {
+            PolkitSlot::Absent => "absent".to_owned(),
+            PolkitSlot::Failed(reason) => format!("failed: {reason}"),
+            PolkitSlot::Running(..) => "running".to_owned(),
+        }
+    }
+}
+
 /// The polkit agent, when the system bus is reachable and accepts the registration.
-fn start_polkit(host: &Host, deadline: Tick) -> Option<(Polkit, Connection)> {
+fn start_polkit(host: &Host, deadline: Tick) -> PolkitSlot {
     let connection = match block_on(Connection::system()) {
         Ok(connection) => connection,
         Err(error) => {
             info!(%error, "[services] no system bus, so no polkit agent");
-            return None;
+            return PolkitSlot::Absent;
         }
     };
     let polkit = Polkit::new(host.clone(), deadline);
     let exported = block_on(async { connection.object_server().at(AGENT_PATH, polkit.clone()).await });
     if let Err(error) = exported {
         warn!(%error, "[services] the polkit agent could not be exported");
-        return None;
+        return PolkitSlot::Failed(error.to_string());
     }
     if let Err(error) = block_on(polkit.register(&connection)) {
         warn!(%error, "[services] polkitd refused the agent");
-        return None;
+        return PolkitSlot::Failed(error.to_string());
     }
-    Some((polkit, connection))
+    PolkitSlot::Running(polkit, connection)
 }
 
 /// Start each linked agent, keeping the ones whose bus and name were available.
