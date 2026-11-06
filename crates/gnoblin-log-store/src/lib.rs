@@ -21,7 +21,7 @@ use tracing_subscriber::registry::LookupSpan;
 mod query;
 mod retention;
 
-pub use query::{Entry, Query, read_entries};
+pub use query::{LogRecord, Query, read_entries};
 pub use retention::Retention;
 
 /// How many records may wait for the writer before new ones are counted as dropped.
@@ -58,7 +58,7 @@ const INSERT: &str = "INSERT INTO log_records (time_ms, level, component, role, 
 
 /// One logged event, as stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LogRecord {
+pub(crate) struct NewRecord {
     /// Milliseconds since the Unix epoch.
     pub(crate) time_ms: i64,
     pub(crate) level: &'static str,
@@ -74,7 +74,7 @@ pub(crate) struct LogRecord {
 
 /// What the layer sends to the writer thread.
 pub(crate) enum Message {
-    Record(LogRecord),
+    Record(NewRecord),
     /// Asks the writer to acknowledge once every earlier message is written.
     Flush(SyncSender<()>),
 }
@@ -141,7 +141,7 @@ pub fn open(path: &Path, role: &'static str, retention: Retention) -> Result<Sin
     Ok(Sink { sender, dropped })
 }
 
-/// The layer that turns each event into a [`LogRecord`] and queues it without blocking.
+/// The layer that turns each event into a [`NewRecord`] and queues it without blocking.
 pub struct DatabaseLayer {
     sink: Sink,
     role: &'static str,
@@ -160,7 +160,7 @@ where
     fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
         let logged = Logged::from_event(event);
         let fields = logged.fields_line();
-        let record = LogRecord {
+        let record = NewRecord {
             time_ms: now_ms(),
             level: event.metadata().level().as_str(),
             component: logged.component,
@@ -206,8 +206,8 @@ fn write_loop(mut connection: Connection, receiver: Receiver<Message>, role: &'s
 }
 
 /// The record that says how many events the full queue discarded.
-fn dropped_record(role: &'static str, lost: u64) -> LogRecord {
-    LogRecord {
+fn dropped_record(role: &'static str, lost: u64) -> NewRecord {
+    NewRecord {
         time_ms: now_ms(),
         level: "WARN",
         component: STORE_COMPONENT.to_owned(),
@@ -251,7 +251,7 @@ fn has_column(connection: &Connection, name: &str) -> rusqlite::Result<bool> {
 }
 
 /// Writes `records` in one transaction.
-fn insert_batch(connection: &mut Connection, records: &[LogRecord]) -> rusqlite::Result<()> {
+fn insert_batch(connection: &mut Connection, records: &[NewRecord]) -> rusqlite::Result<()> {
     let transaction = connection.transaction()?;
     {
         let mut statement = transaction.prepare_cached(INSERT)?;
@@ -282,8 +282,8 @@ fn now_ms() -> i64 {
 mod tests {
     use super::*;
 
-    fn record(message: &str, fields: &str) -> LogRecord {
-        LogRecord {
+    fn record(message: &str, fields: &str) -> NewRecord {
+        NewRecord {
             time_ms: 1_000,
             level: "INFO",
             component: "wayland".to_owned(),

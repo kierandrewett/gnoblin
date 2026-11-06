@@ -29,7 +29,7 @@ pub struct Query {
 
 /// One stored record, as read back.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Entry {
+pub struct LogRecord {
     pub id: i64,
     pub time_ms: i64,
     pub level: String,
@@ -45,7 +45,7 @@ pub struct Entry {
 /// Reads the records matching `query` from the database at `path`, oldest first.
 ///
 /// The database is opened read-only, so reading never changes it.
-pub fn read_entries(path: &Path, query: &Query) -> Result<Vec<Entry>, String> {
+pub fn read_entries(path: &Path, query: &Query) -> Result<Vec<LogRecord>, String> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
     connection
@@ -55,7 +55,7 @@ pub fn read_entries(path: &Path, query: &Query) -> Result<Vec<Entry>, String> {
 }
 
 /// Reads the records matching `query` from an open connection, oldest first.
-pub(crate) fn read_from(connection: &Connection, query: &Query) -> rusqlite::Result<Vec<Entry>> {
+pub(crate) fn read_from(connection: &Connection, query: &Query) -> rusqlite::Result<Vec<LogRecord>> {
     let limit = i64::from(query.limit.max(1));
     let min_rank = query.min_level.as_deref().map_or(0, level_rank);
     let role = query.role.as_deref();
@@ -64,14 +64,14 @@ pub(crate) fn read_from(connection: &Connection, query: &Query) -> rusqlite::Res
         let mut statement = connection.prepare_cached(FOLLOW_SQL)?;
         let rows = statement.query_map(
             params![after_id, query.since_ms, query.until_ms, min_rank, role, target, limit],
-            read_entry,
+            read_record,
         )?;
         return rows.collect();
     }
     let mut statement = connection.prepare_cached(NEWEST_SQL)?;
     let rows = statement.query_map(
         params![query.since_ms, query.until_ms, min_rank, role, target, limit],
-        read_entry,
+        read_record,
     )?;
     let mut entries = rows.collect::<rusqlite::Result<Vec<_>>>()?;
     entries.reverse();
@@ -113,8 +113,8 @@ const FOLLOW_SQL: &str = "SELECT id, time_ms, level, component, role, target, me
     ORDER BY id ASC
     LIMIT ?7";
 
-fn read_entry(row: &Row<'_>) -> rusqlite::Result<Entry> {
-    Ok(Entry {
+fn read_record(row: &Row<'_>) -> rusqlite::Result<LogRecord> {
+    Ok(LogRecord {
         id: row.get(0)?,
         time_ms: row.get(1)?,
         level: row.get(2)?,
@@ -155,7 +155,7 @@ mod tests {
         connection
     }
 
-    fn messages(entries: &[Entry]) -> Vec<&str> {
+    fn messages(entries: &[LogRecord]) -> Vec<&str> {
         entries.iter().map(|entry| entry.message.as_str()).collect()
     }
 

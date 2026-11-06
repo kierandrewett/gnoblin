@@ -8,7 +8,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use gnoblin_log_store::{Entry, Query, default_database_path, read_entries};
+use gnoblin_log_store::{LogRecord, Query, default_database_path, read_entries};
 
 /// Print the records matching `query` from `database`, or from the default database when none
 /// is given. Text is one line per record; `--json` prints one JSON object per line.
@@ -37,7 +37,7 @@ fn print(database: Option<&Path>, query: &Query, json: bool, out: &mut dyn Write
 }
 
 /// One record as a JSON object. `time_ms` is milliseconds since the epoch, for scripts.
-fn json_line(entry: &Entry) -> String {
+fn json_line(entry: &LogRecord) -> String {
     serde_json::json!({
         "id": entry.id,
         "time_ms": entry.time_ms,
@@ -52,7 +52,7 @@ fn json_line(entry: &Entry) -> String {
 }
 
 /// One record as text: UTC time, level, component, target, message, then the fields if any.
-fn text_line(entry: &Entry) -> String {
+fn text_line(entry: &LogRecord) -> String {
     let mut line = format!(
         "{} {:<5} {} {}: {}",
         iso8601_utc(entry.time_ms),
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn a_text_line_names_the_time_level_component_target_and_message_then_the_fields() {
-        let entry = Entry {
+        let entry = LogRecord {
             id: 7,
             time_ms: 0,
             level: "WARN".to_owned(),
