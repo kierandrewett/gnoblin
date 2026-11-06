@@ -1275,7 +1275,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-cli-ui"
+name = "gnoblin-cli-style"
 version = "0.2.0-alpha.0"
 dependencies = [
  "unicode-width 0.2.3",

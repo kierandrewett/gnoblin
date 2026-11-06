@@ -1,13 +1,13 @@
 //! Prints every component for the current terminal.
 //!
-//! `cargo run -p gnoblin-cli-ui --example gallery` prints to the terminal.
-//! `cargo run -p gnoblin-cli-ui --example gallery -- --html` prints the same
+//! `cargo run -p gnoblin-cli-style --example gallery` prints to the terminal.
+//! `cargo run -p gnoblin-cli-style --example gallery -- --html` prints the same
 //! components as an HTML page instead: forced colour, 80 and 40 columns, Unicode
 //! and ASCII glyphs. Redirect it to `design/cli-gallery.html` to screenshot it.
 
 use std::fmt::Write as _;
 
-use gnoblin_cli_ui::{
+use gnoblin_cli_style::{
     ColorChoice, ColourToken, ErrorReport, LineOutcome, OutputEnvironment, OutputTheme, badge, definition_list,
     error_block, event_line, identifier, kv_list, section, status_line, table, waiting_line,
 };
@@ -186,8 +186,8 @@ fn html_page(sections: &[(String, String)]) -> String {
     }
     format!(
         "<!doctype html>\n<html lang=\"en-GB\">\n<head>\n<meta charset=\"utf-8\">\n\
-         <title>gnoblin-cli-ui gallery</title>\n<style>{css}</style>\n</head>\n\
-         <body>\n<h1>gnoblin-cli-ui gallery</h1>\n{body}</body>\n</html>\n"
+         <title>gnoblin-cli-style gallery</title>\n<style>{css}</style>\n</head>\n\
+         <body>\n<h1>gnoblin-cli-style gallery</h1>\n{body}</body>\n</html>\n"
     )
 }
 

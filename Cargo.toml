@@ -32,7 +32,7 @@ members = [
     "crates/gnoblin-authority",
     "crates/gnoblin-backend",
     "crates/gnoblin-capture",
-    "crates/gnoblin-cli-ui",
+    "crates/gnoblin-cli-style",
     "crates/gnoblin-client",
     "crates/gnoblin-compositor",
     "crates/gnoblin-config",

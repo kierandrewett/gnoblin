@@ -1,7 +1,7 @@
 //! Exact output of every component, with colour on and off, Unicode and ASCII
 //! glyphs, and widths 80 and 40, plus properties that must hold for all of them.
 
-use gnoblin_cli_ui::{
+use gnoblin_cli_style::{
     ColourToken, ErrorReport, LineOutcome, OutputTheme, badge, clear_waiting, definition_list, error_block, event_line,
     identifier, kv_list, section, status_line, strip_ansi, table, waiting_line, width,
 };

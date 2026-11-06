@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-cli-ui"
+name = "gnoblin-cli-style"
 description = "The shared look of Gnoblin's command-line tools: colour, glyphs, tables and error blocks."
 version.workspace = true
 edition.workspace = true

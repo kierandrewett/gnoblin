@@ -1,7 +1,7 @@
 # CLI design system
 
 One visual language for every Gnoblin command-line tool: `gnoblinctl`, `gnoblin`,
-`gnoblin-parity` and `xtask`. The shared code lives in the `gnoblin-cli-ui` crate.
+`gnoblin-parity` and `xtask`. The shared code lives in the `gnoblin-cli-style` crate.
 The rules for command shape, arguments and exit codes stay in
 [cli-development.md](cli-development.md); this document covers how output looks.
 
@@ -161,7 +161,7 @@ and the change.
 
 ## Adding a command
 
-1. Build the output from `gnoblin-cli-ui` components. Do not write ANSI escapes
+1. Build the output from `gnoblin-cli-style` components. Do not write ANSI escapes
    or box characters by hand.
 2. Take the `Theme` from `Theme::for_stream` with the `--color` choice and pass it
    down; do not read environment variables in the command.
