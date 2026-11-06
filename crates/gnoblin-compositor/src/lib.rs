@@ -112,6 +112,7 @@ pub use eis::EisGate;
 pub use extensions::{configure_from_environment, configure_from_store};
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot};
+pub use gnoblin_xwayland::xsettings::XSettings;
 pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync};
 pub use layout::{
     LayoutSettings, configure_from_environment as configure_layouts_from_environment,
@@ -152,6 +153,11 @@ pub struct SessionConfig {
     /// [`None`] is the default. [`Some`] starts Xwayland under `gnoblin-xwayland`'s
     /// supervisor with these settings, and the compositor ticks it and owns its window policy.
     pub xwayland: Option<gnoblin_xwayland::Settings>,
+    /// The XSETTINGS owner the X11 session publishes to X11 clients, or [`None`] for none.
+    ///
+    /// Only read when [`Self::xwayland`] is [`Some`]: without an X server there is no root window to
+    /// publish on. The owner is asked for its values once the X11 window manager is up.
+    pub xsettings: Option<Box<dyn gnoblin_xwayland::xsettings::XSettings>>,
     /// How the Wayland session itself is configured: its socket, seat, workspaces
     /// and window management options.
     pub wayland: gnoblin_wayland::Config,
@@ -303,7 +309,8 @@ impl Compositor {
             // No X11: the server has no X server, no grab manager and no process.
             None => Server::new(backend, wayland),
             Some(settings) => {
-                let supervisor = gnoblin_xwayland::Xwayland::with_settings(settings, std::env::var_os("PATH"), None);
+                let supervisor =
+                    gnoblin_xwayland::Xwayland::with_settings(settings, std::env::var_os("PATH"), config.xsettings);
                 let (handle, windows) = supervisor.parts();
                 let session = gnoblin_wayland::XwaylandSession::new(Box::new(handle), Box::new(windows));
                 Server::with_xwayland(backend, wayland, session)

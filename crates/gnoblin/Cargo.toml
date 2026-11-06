@@ -40,6 +40,8 @@ gnoblin-compat-mutter-idlemonitor = { path = "../compat/gnoblin-compat-mutter-id
 gnoblin-compat-qt-portal-settings = { path = "../compat/gnoblin-compat-qt-portal-settings" }
 # The dconf settings adapter: the services role writes the layer GTK reads, and the guardian points dconf at it.
 gnoblin-compat-gtk-dconf-settings = { path = "../compat/gnoblin-compat-gtk-dconf-settings" }
+# The XSETTINGS adapter, served by the compositor role to the X11 session's clients.
+gnoblin-compat-x11-xsettings = { path = "../compat/gnoblin-compat-x11-xsettings" }
 zbus.workspace = true
 futures-lite.workspace = true
 tracing.workspace = true
@@ -57,7 +59,11 @@ tempfile = "3.23.0"
 # and read the version the compositor advertises from the crate that serves it.
 gnoblinctl = { path = "../gnoblinctl" }
 gnoblin-compositor = { path = "../gnoblin-compositor" }
+# The XSETTINGS seam the test reads the session's settings through, named by the compat wiring.
+gnoblin-xwayland = { path = "../gnoblin-xwayland" }
 # A test kills a child the way a crash does, which is one signal to one process group.
 rustix = { workspace = true, features = ["process"] }
 # The probe's real client, so the test reads what the session advertises on its socket.
 wayland-client = "0.31.14"
+# The X11 client the XSETTINGS test connects as, the way a toolkit reads the selection.
+x11rb = "0.14.0"

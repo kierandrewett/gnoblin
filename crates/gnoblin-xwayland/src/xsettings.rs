@@ -36,7 +36,7 @@ pub use gnoblin_backend::x11::Setting;
 ///
 /// The compositor asks for the values when the X11 window manager is up and after
 /// every restart, because a new connection has no property yet.
-pub trait XSettings: Send {
+pub trait XSettings: std::fmt::Debug + Send {
     /// The settings to publish, in name order.
     ///
     /// The whole list replaces what is published: a name that is absent is removed from
