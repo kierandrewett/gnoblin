@@ -64,15 +64,24 @@
 
 #![forbid(unsafe_code)]
 
+/// The compositor seam: one capture session, opened and closed through the IPC.
 pub mod bridge;
+/// Caller identity as far as the session bus can tell.
 pub mod caller;
+/// The admission gate: the support matrix and the mode check for each call.
 pub mod compat;
+/// The `ScreenCast` error type, returned when a session cannot be served.
 pub mod error;
+/// The D-Bus service objects and the export that serves them.
 pub mod service;
 
+/// The compositor-side capture bridge, its error and its session handle.
 pub use bridge::{BridgeError, CaptureBridge, CaptureHandle};
+/// Admission types and the support matrix, re-exported from `compat`.
 pub use compat::{MATRIX, NAME, ScreenCastAdmission, ScreenCastCall};
+/// The error returned when a `ScreenCast` call cannot be served.
 pub use error::ScreenCastError;
+/// Service constants, the service object, the export function and the watch lookup.
 pub use service::{
     BUS_NAME, INTERFACE, PATH, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, VERSION, export, watch_callers,
 };
