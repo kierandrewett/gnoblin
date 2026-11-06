@@ -129,6 +129,8 @@ pub struct Composer {
     tracks: BTreeMap<(WindowId, VisualProperty), TrackId>,
     /// When set, a change lands at once instead of being animated.
     reduced_motion: bool,
+    /// Where the cursor was last drawn, in global layout coordinates, or `None` when hidden.
+    cursor: Option<Rect>,
 }
 
 impl Default for Composer {
@@ -151,6 +153,7 @@ impl Composer {
             motion: TweenPlayer::new(),
             tracks: BTreeMap::new(),
             reduced_motion: false,
+            cursor: None,
         }
     }
 
@@ -197,6 +200,20 @@ impl Composer {
     /// even though no window moved.
     pub fn damage_output(&mut self, output: OutputId) {
         self.scene.damage_output(output);
+    }
+
+    /// Sets where the cursor is drawn, in global layout coordinates, or hides it with
+    /// `None`. The old and new rectangles are damaged when they differ. `redraw` damages
+    /// them even when the rectangle did not move, for a change of shape, which paints the
+    /// same place with other pixels.
+    pub fn set_cursor(&mut self, cursor: Option<Rect>, redraw: bool) {
+        if cursor == self.cursor && !redraw {
+            return;
+        }
+        for rect in [self.cursor, cursor].into_iter().flatten() {
+            self.scene.damage_rect(rect);
+        }
+        self.cursor = cursor;
     }
 
     /// Takes every output's damage for this iteration.
@@ -1014,6 +1031,53 @@ mod tests {
         composer.end_frame();
         let mut third = OutputFrame::new();
         assert!(!composer.compose(output, &mut third), "the next iteration starts empty");
+    }
+
+    /// Whether some damage rectangle covers `rect` in full.
+    fn covers(damage: &[Rect], rect: Rect) -> bool {
+        let right = i64::from(rect.x) + i64::from(rect.width);
+        let bottom = i64::from(rect.y) + i64::from(rect.height);
+        damage.iter().any(|outer| {
+            let outer_right = i64::from(outer.x) + i64::from(outer.width);
+            let outer_bottom = i64::from(outer.y) + i64::from(outer.height);
+            outer.x <= rect.x && outer.y <= rect.y && outer_right >= right && outer_bottom >= bottom
+        })
+    }
+
+    #[test]
+    fn moving_the_cursor_damages_both_rectangles() {
+        let (mut composer, output) = screen();
+        let before = Rect::new(10, 10, 24, 24);
+        let after = Rect::new(100, 40, 24, 24);
+        composer.set_cursor(Some(before), false);
+        assert!(
+            damage_of(&mut composer, output).is_some(),
+            "a cursor that appears is drawn"
+        );
+        composer.set_cursor(Some(after), false);
+        let damage = damage_of(&mut composer, output).expect("a moved cursor is drawn");
+        assert!(covers(&damage, before), "the old cursor is erased");
+        assert!(covers(&damage, after), "the new cursor is painted");
+    }
+
+    #[test]
+    fn a_cursor_that_stays_put_damages_nothing() {
+        let (mut composer, output) = screen();
+        composer.set_cursor(Some(Rect::new(10, 10, 24, 24)), false);
+        assert!(damage_of(&mut composer, output).is_some());
+        composer.set_cursor(Some(Rect::new(10, 10, 24, 24)), false);
+        assert!(damage_of(&mut composer, output).is_none(), "no motion, no damage");
+    }
+
+    #[test]
+    fn a_shape_change_at_the_same_place_redraws_the_cursor() {
+        let (mut composer, output) = screen();
+        let at = Rect::new(10, 10, 24, 24);
+        composer.set_cursor(Some(at), false);
+        assert!(damage_of(&mut composer, output).is_some());
+        composer.set_cursor(Some(at), true);
+        let damage = damage_of(&mut composer, output).expect("a new shape is drawn");
+        assert!(covers(&damage, at));
     }
 
     #[test]

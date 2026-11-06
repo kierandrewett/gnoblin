@@ -420,6 +420,8 @@ pub struct State {
     pub(crate) announced_text_inputs: HashSet<ObjectId>,
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
+    /// Set when a client changes the pointer image; the composer is told at the next frame.
+    pub(crate) cursor_shape_changed: bool,
     /// The logical cursor size in pixels, from the configuration.
     pub(crate) cursor_size: u16,
     /// The cursor chain that resolves a named shape to the image drawn for it.
@@ -732,6 +734,7 @@ impl State {
             input_method_popups: Vec::new(),
             announced_text_inputs: HashSet::new(),
             cursor_image: CursorImageStatus::default_named(),
+            cursor_shape_changed: false,
             cursor_chain: gnoblin_backend::render::cursor::CursorChain::new(
                 std::sync::Arc::new(gnoblin_backend::render::cursor::FsFiles::from_environment()),
                 &cursor.theme,
@@ -2400,6 +2403,10 @@ pub(crate) fn has_buffer(surface: &WlSurface) -> bool {
 
 impl Host for State {
     fn begin_frame(&mut self) {
+        // The pointer may have moved since the last frame; its old and new places are
+        // damaged before the damage is taken.
+        let redraw = std::mem::take(&mut self.cursor_shape_changed);
+        self.update_cursor(redraw);
         // The damage is taken once for every output, because the backend renders one
         // output at a time and a per-output take would clear the others' damage.
         self.composer.begin_frame();

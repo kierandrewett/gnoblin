@@ -114,13 +114,14 @@ fn load(bytes: &[u8], physical: u32, label: &str) -> Result<CursorImages, String
 
     let mut frames = Vec::with_capacity(chosen.len());
     for image in &chosen {
-        // The format stores straight-alpha bytes in A, R, G, B order.
+        // Each pixel is one little-endian ARGB word, so its bytes are B, G, R, A. The
+        // crate's `pixels_rgba` holds those raw bytes; its `pixels_argb` is rotated.
         let pixels = image
-            .pixels_argb
+            .pixels_rgba
             .as_chunks::<4>()
             .0
             .iter()
-            .map(|px| premultiplied(px[1], px[2], px[3], px[0]))
+            .map(|px| premultiplied(px[2], px[1], px[0], px[3]))
             .collect();
         let frame = CursorFrame::new(image.width, image.height, pixels, image.delay)
             .map_err(|error| format!("{label}: {error}"))?;

@@ -46,6 +46,27 @@ impl State {
             "[cursor] a client set the pointer image"
         );
         self.cursor_image = image;
+        // Called from inside smithay's seat callback, where the pointer is locked, so the
+        // composer is updated at the next frame instead.
+        self.cursor_shape_changed = true;
+    }
+
+    /// Tells the composer where the cursor is drawn now, in global layout coordinates, so
+    /// the places it was and is get damaged. `redraw` is set when the shape changed, so the
+    /// cursor repaints where it stands.
+    pub(crate) fn update_cursor(&mut self, redraw: bool) {
+        let cursor = self.outputs.iter().find_map(|entry| {
+            let overlay = self.pointer_cursor(entry.backend)?;
+            let origin = self.output_rect(entry.backend)?;
+            let dst = overlay.dst();
+            Some(gnoblin_types::Rect {
+                x: origin.x + dst.x,
+                y: origin.y + dst.y,
+                width: dst.width,
+                height: dst.height,
+            })
+        });
+        self.composer.set_cursor(cursor, redraw);
     }
 }
 

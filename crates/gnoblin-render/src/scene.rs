@@ -566,6 +566,15 @@ impl Scene {
         }
     }
 
+    /// Damages a global rectangle on every output it touches, for a change the scene
+    /// graph does not hold, such as the pointer's cursor. An empty rectangle damages
+    /// nothing.
+    pub fn damage_rect(&mut self, rect: Rect) {
+        if !rect.is_empty() {
+            self.pending.push(rect);
+        }
+    }
+
     /// Every declared output.
     #[must_use]
     pub fn outputs(&self) -> &BTreeMap<OutputId, Rect> {
