@@ -386,6 +386,8 @@ Secure nodes are replaced in a capture by one treatment, set once for the whole 
 - `mask` (default): fill the node's silhouette with one neutral colour. The silhouette is the node's alpha mask, as D26 defines it for shaped windows, and a full rectangle for a layer with no alpha. The capture never shows more than the display did, and a viewer can see that something is hidden.
 - `omit`: draw nothing for the node. The capture shows whatever lies underneath. That can be content the display did not show, because the node covered it. The underlay is non-secure by its own flag, so the rule allows it. A secure dialog over an unsecured window therefore lets that window's content into the capture.
 
+Decided: `mask` is the default (Kieran 13, "yeah mask"). Its cost is a neutral shape in screenshots and an alpha mask per secure node per capture frame, which D26 already keeps for shaped windows. `omit` gives clean captures with no mask cost, but a secure dialog over an unsecured window lets that window's content into a capture, which the display did not show. Config switches to `omit` when that trade is acceptable.
+
 Effects the node draws outside its silhouette, such as a shadow, are not masked. A shadow carries the shape, not the content [INFERENCE].
 
 Capture paths found in code, checked 2026-11-06 [INFERENCE: not traced end to end]:
