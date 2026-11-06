@@ -44,6 +44,10 @@ impl XdgShellHandler for State {
         &mut self.xdg_shell_state
     }
 
+    fn client_pong(&mut self, client: smithay::wayland::shell::xdg::ShellClient) {
+        self.record_pong(&client);
+    }
+
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         // The configure is sent on the first commit, not here: see the module
         // documentation.

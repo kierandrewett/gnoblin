@@ -179,6 +179,7 @@
 mod access;
 mod frame;
 mod keyboard;
+mod liveness;
 mod modal;
 mod observation;
 mod output_config;

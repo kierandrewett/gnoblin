@@ -430,6 +430,8 @@ pub struct State {
     pub(crate) clock: Tick,
     /// The input activity the idle state is derived from.
     pub(crate) activity: Activity,
+    /// The liveness pings and the clients that have missed them.
+    pub(crate) liveness: crate::liveness::Liveness,
 
     /// The window management policy.
     ///
@@ -745,6 +747,7 @@ impl State {
             tearing: Vec::new(),
             clock: Tick::ZERO,
             activity: Activity::new(),
+            liveness: crate::liveness::Liveness::new(std::time::Duration::from_secs(5)),
             wm: Wm::new(options),
             windows: BTreeMap::new(),
             outputs: Vec::new(),
@@ -2091,6 +2094,35 @@ impl State {
         self.x11.as_ref()?.window_for_x11(xwindow)
     }
 
+    /// Pings the clients with mapped toplevels, and publishes the window state when a
+    /// client's unresponsive state changed.
+    pub(crate) fn poll_liveness(&mut self) {
+        let clients: Vec<_> = self
+            .windows
+            .values()
+            .filter(|entry| entry.mapped)
+            .filter_map(|entry| match &entry.surface {
+                Managed::Wayland(surface) => Some((crate::liveness::owner(surface)?, surface.client())),
+                Managed::X11(_) => None,
+            })
+            .collect();
+        if self.liveness.poll(self.clock, &clients) {
+            self.publish();
+        }
+    }
+
+    /// Records a pong from `client`, publishing the window state when the client had
+    /// been unresponsive.
+    pub(crate) fn record_pong(&mut self, client: &smithay::wayland::shell::xdg::ShellClient) {
+        let owner = self.windows.values().find_map(|entry| match &entry.surface {
+            Managed::Wayland(surface) if surface.client() == *client => crate::liveness::owner(surface),
+            _ => None,
+        });
+        if owner.is_some_and(|id| self.liveness.pong(&id)) {
+            self.publish();
+        }
+    }
+
     /// Publishes the window state for the tests and for a diagnostics reader.
     pub(crate) fn publish(&mut self) {
         let active = self.wm.active_workspace();
@@ -2148,7 +2180,10 @@ impl State {
                     tag: entry.and_then(|entry| entry.tag.clone()),
                     modal: window.kind == WindowKind::Modal,
                     floating: window.state.floating,
-                    unresponsive: false,
+                    unresponsive: matches!(
+                        entry.map(|entry| &entry.surface),
+                        Some(Managed::Wayland(surface)) if crate::liveness::owner(surface).is_some_and(|id| self.liveness.is_unresponsive(&id))
+                    ),
                     transient_for: window.transient_for,
                 },
             );

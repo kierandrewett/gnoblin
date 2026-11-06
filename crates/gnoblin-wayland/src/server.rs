@@ -257,6 +257,7 @@ impl Server {
         // The host's per-output controls are learnt before any client connects, so an
         // unsupported control's global is removed before it is ever advertised.
         state.start_output_controls(&mut crate::output_control::BackendControl(backend.as_mut()));
+        state.liveness = crate::liveness::Liveness::new(config.check_alive_timeout);
         let heads = crate::output_config::BackendOutputConfig::new(backend.as_mut(), state.output_positions()).heads();
         state.publish_output_heads(heads);
         // The keyboard is configured before the socket is bound, so the first client that
@@ -500,6 +501,7 @@ impl Server {
                     state.advance_motion(u32::try_from(elapsed).unwrap_or(u32::MAX));
                 }
                 last_turn = Some(now);
+                state.poll_liveness();
                 state.flush();
                 // A locker that dies sends no request, so the lock is told to look for
                 // a connection that is gone, once per turn.

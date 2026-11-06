@@ -105,10 +105,16 @@ struct Session {
 impl Session {
     /// Creates a session on a socket of its own.
     fn start(backend: Headless) -> Self {
+        Self::start_with_timeout(backend, Config::default().check_alive_timeout)
+    }
+
+    /// Creates a session whose clients must answer a ping within `timeout`.
+    fn start_with_timeout(backend: Headless, timeout: Duration) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
+            check_alive_timeout: timeout,
             ..Config::default()
         };
         let server = Server::new(Box::new(backend), config).expect("the session starts");
@@ -176,6 +182,10 @@ struct App {
     popup_done: bool,
     /// How many key edges the keyboard delivered.
     keys: u32,
+    /// Whether the client holds its pings back instead of answering them.
+    silent: bool,
+    /// The pings held back while `silent`, with the `xdg_wm_base` that received each.
+    held: Vec<(xdg_wm_base::XdgWmBase, u32)>,
 }
 
 /// A real Wayland client for one connection.
@@ -610,6 +620,78 @@ fn a_socket_left_by_a_crashed_session_is_replaced() {
     assert!(!socket.exists(), "the socket is removed when the session stops");
 }
 
+#[test]
+fn a_client_that_never_pongs_is_unresponsive_until_it_answers() {
+    let session = Session::start_with_timeout(Headless::new(), Duration::from_millis(1000));
+    session.run(|session| {
+        let mut silent = Client::connect(session.socket());
+        silent.state.silent = true;
+        let _window = silent.map_window("org.gnoblin.Silent", "Silent");
+        session.wait_for(|observation| observation.titled("Silent").is_some_and(|window| window.mapped));
+        for _ in 0..5 {
+            session.control.advance(600);
+            silent.roundtrip();
+        }
+        let observation =
+            session.wait_for(|observation| observation.titled("Silent").is_some_and(|window| window.unresponsive));
+        assert!(observation.titled("Silent").is_some_and(|window| window.unresponsive));
+
+        // Answering the held pings clears the mark.
+        silent.state.silent = false;
+        for (wm_base, serial) in std::mem::take(&mut silent.state.held) {
+            wm_base.pong(serial);
+        }
+        silent.roundtrip();
+        session.wait_for(|observation| observation.titled("Silent").is_some_and(|window| !window.unresponsive));
+    });
+}
+
+#[test]
+fn a_client_that_answers_its_pings_is_never_unresponsive() {
+    let session = Session::start_with_timeout(Headless::new(), Duration::from_millis(1000));
+    session.run(|session| {
+        let mut prompt = Client::connect(session.socket());
+        let _window = prompt.map_window("org.gnoblin.Prompt", "Prompt");
+        session.wait_for(|observation| observation.titled("Prompt").is_some_and(|window| window.mapped));
+        for _ in 0..10 {
+            session.control.advance(300);
+            prompt.roundtrip();
+        }
+        assert!(
+            prompt.state.pings >= 2,
+            "the client was pinged more than once, got {}",
+            prompt.state.pings
+        );
+        assert!(
+            !session
+                .windows()
+                .titled("Prompt")
+                .is_some_and(|window| window.unresponsive),
+            "a client that answers is never marked"
+        );
+    });
+}
+
+#[test]
+fn a_zero_timeout_turns_the_pings_off() {
+    let session = Session::start_with_timeout(Headless::new(), Duration::ZERO);
+    session.run(|session| {
+        let mut silent = Client::connect(session.socket());
+        silent.state.silent = true;
+        let _window = silent.map_window("org.gnoblin.Quiet", "Quiet");
+        session.wait_for(|observation| observation.titled("Quiet").is_some_and(|window| window.mapped));
+        session.control.advance(60_000);
+        silent.roundtrip();
+        assert_eq!(silent.state.pings, 0, "no ping is sent when the timeout is zero");
+        assert!(
+            !session
+                .windows()
+                .titled("Quiet")
+                .is_some_and(|window| window.unresponsive)
+        );
+    });
+}
+
 // The interfaces this client binds but only ever listens to.
 
 wayland_client::delegate_noop!(App: ignore wl_compositor::WlCompositor);
@@ -698,8 +780,12 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         if let xdg_wm_base::Event::Ping { serial } = event {
-            wm_base.pong(serial);
             state.pings += 1;
+            if state.silent {
+                state.held.push((wm_base.clone(), serial));
+            } else {
+                wm_base.pong(serial);
+            }
         }
     }
 }
