@@ -1470,13 +1470,13 @@ reason = "a portal Event is a negotiation value of this crate; the other crate's
 
 [[allow]]
 left = "gnoblin-a11y::Key"
-right = "gnoblin-diag::Key"
+right = "gnoblin-portal-model::Key"
 kind = "same-name"
 reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-authority::Consent"
-right = "gnoblin-diag::Consent"
+right = "gnoblin-portal-model::Consent"
 kind = "same-name"
 reason = "a portal Consent is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1494,7 +1494,7 @@ reason = "a portal Event is a negotiation value of this crate; the other crate's
 
 [[allow]]
 left = "gnoblin-authority::Grant"
-right = "gnoblin-diag::Grant"
+right = "gnoblin-portal-model::Grant"
 kind = "same-name"
 reason = "a portal Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1518,7 +1518,7 @@ reason = "a portal Event is a negotiation value of this crate; the other crate's
 
 [[allow]]
 left = "gnoblin-compat-core::Interface"
-right = "gnoblin-diag::Interface"
+right = "gnoblin-portal-model::Interface"
 kind = "same-name"
 reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1566,13 +1566,13 @@ reason = "a portal Event is a negotiation value of this crate; the other crate's
 
 [[allow]]
 left = "gnoblin-input::Grant"
-right = "gnoblin-diag::Grant"
+right = "gnoblin-portal-model::Grant"
 kind = "same-name"
 reason = "a portal Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
 left = "gnoblin-input::Key"
-right = "gnoblin-diag::Key"
+right = "gnoblin-portal-model::Key"
 kind = "same-name"
 reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
@@ -1649,19 +1649,19 @@ kind = "same-name"
 reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-diag::Interface"
+left = "gnoblin-portal-model::Interface"
 right = "gnoblin-portal-backend::Interface"
 kind = "same-name"
 reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-diag::Interface"
+left = "gnoblin-portal-model::Interface"
 right = "xtask::Interface"
 kind = "same-name"
 reason = "a portal Interface is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-diag::Key"
+left = "gnoblin-portal-model::Key"
 right = "gnoblin-portal-backend::Key"
 kind = "same-name"
 reason = "a portal Key is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
@@ -1680,13 +1680,13 @@ reason = "a portal Refusal is a negotiation value of this crate; the other crate
 
 [[allow]]
 left = "gnoblin-authority::Answer"
-right = "gnoblin-diag::ConsentFocus"
+right = "gnoblin-portal-model::ConsentFocus"
 kind = "same-shape"
 reason = "a portal consent value and an authority value share a shape but answer different questions"
 
 [[allow]]
 left = "gnoblin-authority::Decision"
-right = "gnoblin-diag::ConsentDecision"
+right = "gnoblin-portal-model::ConsentDecision"
 kind = "same-shape"
 reason = "a portal consent value and an authority value share a shape but answer different questions"
 [[allow]]
@@ -1780,7 +1780,7 @@ kind = "same-name"
 reason = "the authority's grant is a consent record for a portal requester; the proto grant is an extension namespace and version on the wire"
 
 [[allow]]
-left = "gnoblin-diag::Grant"
+left = "gnoblin-portal-model::Grant"
 right = "gnoblin-proto::Grant"
 kind = "same-name"
 reason = "the portal's grant is the outcome a provider returns for a request; the proto grant is an extension namespace and version on the wire"
@@ -1790,3 +1790,21 @@ left = "gnoblin-input::Grant"
 right = "gnoblin-proto::Grant"
 kind = "same-name"
 reason = "the eis grant is the consent and capabilities a seat holds; the proto grant is an extension namespace and version on the wire"
+
+[[allow]]
+left = "gnoblin-diag::Theme"
+right = "gnoblin-portal-theme::Palette"
+kind = "near-shape"
+reason = "Theme is the screen-facing colour set and is built from Palette::for_mode; the two are the same shape by design, with Palette the single source of the values"
+
+[[allow]]
+left = "gnoblin-a11y::Mode"
+right = "gnoblin-portal-theme::Mode"
+kind = "same-name"
+reason = "the a11y mode is the accessibility setting; the portal theme mode is the light or dark palette selector; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-compat-core::Mode"
+right = "gnoblin-portal-theme::Mode"
+kind = "same-name"
+reason = "the compat mode is a compatibility-layer state; the portal theme mode is the light or dark palette selector; the name is shared, the meaning is not"
