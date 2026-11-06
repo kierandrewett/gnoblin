@@ -25,10 +25,15 @@
 //! returns. A stale handle is therefore an error the frontend can act on instead of a
 //! call that reaches a session nobody owns.
 
+/// Screenshot and ScreenCast: frame reads, gated by a capture grant.
 pub mod capture;
+/// Inhibit: the request handle and monitor sessions that hold an inhibition.
 pub mod inhibit;
+/// RemoteDesktop and InputCapture: input injection, delivered over EIS.
 pub mod remote;
+/// Settings: the read-only settings object, fed from the compositor's `settings` graph.
 pub mod settings;
+/// GlobalShortcuts and Clipboard: session state machines whose compositor calls are seams.
 pub mod shortcuts;
 
 use std::collections::BTreeMap;

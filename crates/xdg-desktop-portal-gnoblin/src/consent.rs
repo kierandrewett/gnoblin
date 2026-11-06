@@ -46,35 +46,33 @@
 //!
 //! # Failure modes first
 //!
-//! The test names below are owed for these rules. `tests/failure_modes.rs` covers the
-//! grant, refusal, expiry and leaving paths; the named tests here are not yet written.
+//! Each rule below names the test that pins it in `tests/failure_modes.rs`, or says that
+//! no test pins it yet. The tests drive [`Guard`] against a fake host with no bus.
 //!
 //! 1. **A prompt is asked with no `portal.ui` provider.** Refused with an error naming
-//!    the slot, and nothing is offered:
-//!    `a_screencast_without_a_portal_ui_provider_is_refused_naming_the_slot`.
-//! 2. **The provider declines.** Nothing is started and the wait ends as the user's own
-//!    answer: `a_declined_prompt_starts_nothing`.
-//! 3. **Capture runs with no consent.** A session nobody granted never reaches the
-//!    capture backend: `a_stream_is_never_opened_without_consent`.
-//! 4. **A grant outlives its requester.** The app's connection ends, its sessions close
-//!    and its grant is gone: `a_grant_and_its_sessions_end_with_the_requester`.
-//! 5. **A prompt nobody answers stays pending.** A tick expires it closed and a late
-//!    answer cannot revive it: `a_pending_consent_expires_closed_on_a_tick`.
-//! 6. **An answer arrives after the caller left.** Refused as unknown, and nothing is
-//!    opened: `a_late_answer_after_the_requester_left_opens_nothing`.
-//! 7. **Two sessions share a grant, not a stream.** The second session is allowed
-//!    without a prompt and closing the first leaves the second alone:
-//!    `two_sessions_share_a_grant_and_keep_their_own_streams`.
-//! 8. **A session outlives a crash.** A session handle a stranger names is refused, and
-//!    a vanishing owner closes it: `a_stranger_cannot_close_another_callers_session`.
-//! 9. **The session locks while a prompt waits.** The wait ends closed and the lock is
-//!    refused afterwards: `a_locked_session_consents_to_nothing`.
+//!    the slot, and nothing is offered. No test in this crate pins this yet.
+//! 2. **The provider declines.** Nothing is started. No test in this crate pins this yet.
+//! 3. **Capture runs with no consent.** Not pinned by a test in this crate yet.
+//! 4. **A grant outlives its requester.** `requester_gone_releases_prompt` pins the
+//!    release of a waiting prompt when the caller leaves.
+//! 5. **A prompt nobody answers stays pending.** `unanswered_prompt_expires` pins expiry
+//!    closed on a tick.
+//! 6. **An answer arrives after the caller left.** Not pinned by a test in this crate yet.
+//! 7. **Two sessions share a grant.** `granted_capability_is_not_asked_twice` pins that a
+//!    repeat ask is answered from the grant.
+//! 8. **The provider leaves while a prompt waits.** `provider_gone_releases_prompt` pins
+//!    the release.
+//! 9. **A grant answer opens the capability; a refusal opens nothing.**
+//!    `allow_answer_grants_capability` and `refusal_grants_nothing` pin both halves.
+//!
+//! Session ownership between callers and the lock rule have no test in this crate yet.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
 use futures_channel::oneshot;
 use gnoblin_authority::{Answer, Authority, Decision, Denial, Effect, Event, RequestId as PromptId, RequesterId};
+/// The grant vocabulary, re-exported so a frontend names the same capabilities the authority does.
 pub use gnoblin_authority::{Consent, PortalCapability};
 use gnoblin_model::Value;
 use gnoblin_types::{ClientId, RequestId, Tick};

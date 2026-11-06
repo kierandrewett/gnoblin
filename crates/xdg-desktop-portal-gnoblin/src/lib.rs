@@ -35,7 +35,7 @@
 //! | [`settings`] | the `settings` object's properties as the namespaces toolkits read |
 //! | [`backends`] | the compositor calls, each a trait, all refusing by default |
 //! | [`iface`] | the `org.freedesktop.impl.portal.*` objects, and their D-Bus types |
-//! | [`data`] | `portals.conf`, checked in as data so a routing mistake is reviewable |
+//! | [`PORTALS_CONF`] | `portals.conf`, checked in as data so a routing mistake is reviewable |
 //!
 //! # What is real, and what is a seam
 //!
@@ -77,16 +77,26 @@
 
 #![forbid(unsafe_code)]
 
+/// Compositor-side calls each portal request ends in; all refuse by default.
 pub mod backends;
+/// The consent core: portal sessions, grants and the `portal.ui` offer.
 pub mod consent;
+/// The privileged IPC connection: offers out, answers and graph diffs in.
 pub mod host;
+/// The D-Bus objects, one per served `org.freedesktop.impl.portal.*` interface.
 pub mod iface;
+/// The `settings` object's properties as the namespaces toolkits read.
 pub mod settings;
 
+/// Backend traits and the refusing default set, re-exported from [`backends`].
 pub use backends::{Backends, CaptureBackend, ClipboardBackend, EisBackend, InhibitBackend, ShortcutsBackend};
+/// Consent types and the guard, re-exported from [`consent`].
 pub use consent::{Consent, ConsentOutcome, Guard, Host, Interface, PortalCapability, Refusal, Session, State};
+/// The IPC host and its read loop, re-exported from [`host`].
 pub use host::{IpcHost, IpcLoop};
+/// The bus name, object path and object root, re-exported from [`iface`].
 pub use iface::{BUS_NAME, PATH, Portal};
+/// Settings table types, re-exported from [`settings`].
 pub use settings::{Change, Setting, Table};
 
 /// The `portals.conf` this backend ships, checked in beside the source.
