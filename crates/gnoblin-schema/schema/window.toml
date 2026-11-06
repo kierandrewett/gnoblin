@@ -197,6 +197,72 @@ name = "entry"
 type = "string"
 since = "0.2.0"
 
+# The user or a client asked for this window's menu. `source` is `client`, `keyboard`
+# or `extension`. `seat` is the seat that made the request, which is the seat a popup
+# grab goes to. `x` and `y` are an anchor in output logical coordinates; a point has
+# zero size. The compositor validates any client serial and never forwards it. Any
+# extension may subscribe and show a menu.
+[[object.signal]]
+name = "menu_requested"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "source"
+type = "string"
+since = "0.2.0"
+
+[[object.signal.field]]
+name = "seat"
+type = "string"
+since = "0.2.0"
+
+# Ask for this window's menu at the given anchor. The compositor emits
+# `menu_requested` with `source = "extension"`, so a titlebar button or a script can
+# ask without knowing which extension shows the menu.
+[[object.method]]
+name = "request_menu"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "x"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "y"
+type = "int"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "width"
+type = "uint"
+since = "0.2.0"
+
+[[object.method.param]]
+name = "height"
+type = "uint"
+since = "0.2.0"
+
 # The window's effects already use all `MAX_PASSES` (32) passes between them, so
 # the requested effect was not added.
 [[error]]
