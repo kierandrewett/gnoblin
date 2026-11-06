@@ -15,7 +15,7 @@ use gnoblin_lua_sandbox::Limits;
 use super::LayoutReason;
 use super::data::Data;
 use super::lua::{LayoutCall, LayoutFault, LayoutManifest};
-use super::require::LayoutRoots;
+use super::require::{LayoutRoots, fnv1a, read_source, resolve};
 use super::snapshot::LayoutSnapshot;
 use super::worker::{Done, LayoutFinished, Spawn, Worker, WorkerJob};
 
@@ -185,6 +185,51 @@ impl Host {
             }
         };
         Err(failure)
+    }
+
+    /// Loads a layout that a configuration named by reference, after checking that the
+    /// file the compositor is about to load is the file the configuration was checked
+    /// against. `root_shipped` says which fixed root the reference was written for: a
+    /// shipped reference must name a `gnoblin.` module and a user reference must not.
+    ///
+    /// The hash is a change detector, not a security boundary. Anyone who can edit the
+    /// user's layout files can already run code in the session, so it only answers
+    /// "did this file change since the configuration was accepted?". A change is refused
+    /// as `hash-mismatch` rather than loaded silently.
+    pub fn register_reference(
+        &mut self,
+        name: &str,
+        root_shipped: bool,
+        module: &str,
+        expected_hash: &str,
+        options: Data,
+    ) -> Result<(), HostFailure> {
+        if root_shipped != module.starts_with("gnoblin.") {
+            return Err(HostFailure {
+                reason: LayoutReason::UnknownModule,
+                message: format!("layout `{module}` is not in the root the configuration names"),
+            });
+        }
+        let path = resolve(&self.config.roots, module).map_err(|message| HostFailure {
+            reason: LayoutReason::UnknownModule,
+            message,
+        })?;
+        let source = read_source(&path, module).map_err(|message| HostFailure {
+            reason: LayoutReason::MissingModule,
+            message,
+        })?;
+        // The same hash `Modules::fetch` reports, so a reference written from a load
+        // compares equal to the file it was written from.
+        let actual = format!("{:016x}", fnv1a(source.as_bytes()));
+        if actual != expected_hash {
+            return Err(HostFailure {
+                reason: LayoutReason::HashMismatch,
+                message: format!(
+                    "layout `{module}` has hash {actual} but the configuration expects {expected_hash}; the file changed after the configuration was checked"
+                ),
+            });
+        }
+        self.register(name, module, options)
     }
 
     /// Starts `call` on layout `name` over `snapshot` and returns its run generation

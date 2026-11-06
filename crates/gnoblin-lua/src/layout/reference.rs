@@ -21,8 +21,7 @@ use gnoblin_lua_sandbox::Limits;
 /// A layout module named by a configuration file.
 ///
 /// Scripts see it as a userdata with read-only fields. `root` says which fixed
-/// directory the module came from, `module` is its name, `hash` is the FNV-1a hash of
-/// its source as a decimal string, and `options` are its declared defaults.
+/// its source as sixteen lowercase hex digits, and `options` are its declared defaults.
 #[derive(Clone, Debug)]
 pub(crate) struct LayoutRef {
     /// `shipped` for a `gnoblin.` name, `user` for any other.
@@ -73,7 +72,8 @@ impl UserData for LayoutRef {
         fields.add_field_method_get("root", |_, this| Ok(this.root));
         fields.add_field_method_get("module", |_, this| Ok(this.module.clone()));
         // A string, because a 64-bit hash does not survive a round trip through a Lua number.
-        fields.add_field_method_get("hash", |_, this| Ok(this.hash.to_string()));
+        // Sixteen lowercase hex digits, the same spelling the configuration writes.
+        fields.add_field_method_get("hash", |_, this| Ok(format!("{:016x}", this.hash)));
         fields.add_field_method_get("options", |lua, this| this.options.to_lua(lua));
     }
 

@@ -145,7 +145,7 @@ fn is_component(part: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn read_source(path: &Path, name: &str) -> Result<String, String> {
+pub(crate) fn read_source(path: &Path, name: &str) -> Result<String, String> {
     let size = std::fs::metadata(path)
         .map_err(|error| format!("module `{name}`: {error}"))?
         .len();
@@ -156,7 +156,7 @@ fn read_source(path: &Path, name: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("module `{name}` is not UTF-8"))
 }
 
-fn fnv1a(bytes: &[u8]) -> u64 {
+pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
     })

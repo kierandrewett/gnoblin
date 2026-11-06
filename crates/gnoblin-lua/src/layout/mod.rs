@@ -101,6 +101,11 @@ pub enum LayoutReason {
     MissingModule,
     /// The module loaded but does not define a layout.
     InvalidLayout,
+    /// The configuration names a layout module that is not under the root it names, or
+    /// that does not exist.
+    UnknownModule,
+    /// The module's source no longer has the hash the configuration was checked with.
+    HashMismatch,
 }
 
 impl LayoutReason {
@@ -116,6 +121,8 @@ impl LayoutReason {
             LayoutReason::VmDown => "vm-down",
             LayoutReason::MissingModule => "missing-module",
             LayoutReason::InvalidLayout => "invalid-layout",
+            LayoutReason::UnknownModule => "unknown-module",
+            LayoutReason::HashMismatch => "hash-mismatch",
         }
     }
 }
