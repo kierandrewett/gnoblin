@@ -39,6 +39,30 @@
 //!   point through the inverse of the same matrix chain, so a hit cannot
 //!   disagree with the drawn position.
 //!
+//! # Modules
+//!
+//! | Module | Owns |
+//! |---|---|
+//! | `scene` | The node tree, transforms, damage recording, hit testing |
+//! | `damage` | Per-output damage rectangles and the merge rule |
+//! | `tween` | Animation tracks and their terminal reports |
+//! | `effect` | Per-node visual effects (blur, shadow, shader) |
+//! | `property` | Typed visual property values and their kinds |
+//! | `camera`, `matrix` | Perspective and orthographic projection, 4x4 matrices |
+//! | `easing` | Timing curves for tracks |
+//! | `cursor` | Cursor image selection and loading |
+//!
+//! # Frame hand-off
+//!
+//! The consumer is `crates/gnoblin-backend/src/render/compose.rs`. Per iteration it
+//! calls `Composer::begin_frame`, which takes the scene's damage once. For each
+//! output it calls `compose`, which clips each damaged rectangle to output-local
+//! pixels and then walks windows in stacking order. Each visible window with
+//! content and a buffer becomes one surface layer at `geometry - output.origin`.
+//! A window whose world matrix is not planar, or whose projection is not
+//! orthographic, carries a model and forces full-output repaint. A rotated window
+//! is skipped by the software path. The cursor is drawn above all windows.
+//!
 //! # Failure modes first
 //!
 //! Each entry is a way this crate could be wrong, and the test that covers it:

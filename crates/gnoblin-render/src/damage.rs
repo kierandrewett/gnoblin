@@ -20,6 +20,21 @@
 //! The plan's 3D rule lives here too: a node under a perspective camera falls
 //! back to full damage on its output, because a projected bound is not the
 //! union of the node's own rectangle. [`OutputDamage::full`] is that fallback.
+//!
+//! # Coordinate spaces
+//!
+//! Damage rectangles are in scene space, which is global: one origin shared by
+//! every output. [`OutputDamage::rects`] are reported in the same space, and the
+//! consumer converts them to output-local pixels by subtracting the output's
+//! origin (`local = rect - output.origin`). A rectangle on an output whose origin
+//! is `(1920, 0)` therefore starts at `x = 0` in that output's frame.
+//!
+//! # Frame timing
+//!
+//! The scene collects damage on every mutation and the renderer takes it once per
+//! iteration with `Scene::take_damage`, through `Composer::begin_frame`. A second
+//! take in the same iteration would find an empty set and leave pixels stale, so
+//! the take is not repeated.
 
 use gnoblin_types::{OutputId, Rect};
 
