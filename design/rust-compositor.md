@@ -1607,7 +1607,8 @@ Each section below records the choice, its consequences, and the options conside
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
 | D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; `gnoblin-log-init` installs a console and a SQLite sink, and only a binary may name it                                                               |
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
-| D25 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
+| D25 | Layout kinds                 | to be written by the layout lane                                                                                                                                                                                                |
+| D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 
 ### D1: where scripts run
 
@@ -2885,7 +2886,7 @@ Consequences:
 - No Gnoblin protocol carries blur fade metadata. A client that wants a fade sets the opacity of the surface that carries the blur, such as a subsurface.
 - The per-node effect list is an ordered `Vec` in the renderer API, so stacking changes the config and Lua shape only, not the renderer.
 
-### D25: stackable surface effects
+### D26: stackable surface effects
 
 **Proposed 2026-11-06: a node carries an ordered stack of effect passes. Lua and config add and remove passes one at a time, and the renderer draws them in stack order.** Today a window has one slot per effect name. `window:set_effect("blur", 24)` replaces the earlier blur, and the window rule has one `blur` and one `shader` key.
 
@@ -2912,9 +2913,9 @@ Consequences:
 - `gnoblin-render` keeps `Effects` as it is. The work is in the Lua host, the config schema and the rule engine, which build the list.
 - Docs to change when built: `docs/config/window_rule.md`, `docs/shell-api/overrides.md` and `docs/shell-api/windows.md`, and the generated Lua annotations.
 - Tests (not run): pass limit and refusal in `gnoblin-render`; compounding and order in the GLES tests; rule parse, salvage and order in `gnoblin-config`; add, set, revoke and end reasons in the Lua host.
-- Parity: new scope. Mutter has no per-window effect stack, so this adds one entry to `tests/parity/divergences.toml` under "new scope", reason "D25: stackable effects".
+- Parity: new scope. Mutter has no per-window effect stack, so this adds one entry to `tests/parity/divergences.toml` under "new scope", reason "D26: stackable effects".
 
-Open decisions for Kieran:
+Needs Kieran:
 
 1. Confirm the names `window.effects:add` and `effect:set`, and whether `set_effect` is removed or kept as a shorthand.
 2. Whether `corners.shadow` moves into the stack as a `shadow` pass, or stays the frame's own shadow.
