@@ -51,8 +51,8 @@ gnoblin-render = { path = "../gnoblin-render" }
 # cannot exist. It is a foundation crate, so this direction is the allowed one.
 gnoblin-config = { path = "../gnoblin-config" }
 # `[tag]` log lines for a refused frame or a client buffer that went away. Smithay
-# already brings `tracing` in, so this adds no crate to the graph.
-tracing = "0.1.37"
+# The logging facade is a path dependency and adds no crate beyond `tracing`, which Smithay already brings in.
+gnoblin-log = { path = "../gnoblin-log" }
 # The nested backend is a Wayland *client* of the compositor that hosts the session,
 # so this crate depends on the client library as well as the server one Smithay
 # re-exports. It is the same version `gnoblin-wayland` tests its server with, so the

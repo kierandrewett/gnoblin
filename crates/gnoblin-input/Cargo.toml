@@ -26,8 +26,8 @@ reis = { version = "0.7.1", default-features = false }
 # every client socket and a wake socket in one call. The workspace entry covers the
 # process module the composition root uses; `event` adds the poller.
 rustix = { workspace = true, features = ["event"] }
-# `[tag]` lines for a refused session, the same crate every other engine crate logs with.
-tracing = "0.1.37"
+# `[tag]` lines for a refused session, logged through the `gnoblin-log` facade.
+gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
 # The headless compositor the real-client suite drives: one real EI client moves a real

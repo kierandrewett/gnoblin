@@ -53,9 +53,9 @@
 
 use std::path::{Path, PathBuf};
 
+use gnoblin_log::{debug, info, warn};
 use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::reexports::calloop::LoopHandle;
-use tracing::{debug, info, warn};
 
 /// The environment variable that names the card node to drive.
 ///

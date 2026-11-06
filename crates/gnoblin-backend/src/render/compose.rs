@@ -57,9 +57,9 @@
 
 use std::collections::BTreeMap;
 
+use gnoblin_log::debug;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
-use tracing::debug;
 
 use gnoblin_render::{
     Color, Damage, Easing, Effects, Mat4, NodeId, NodeKind, NodeSpec, Projection, PropertyValue, Scene, TrackId,

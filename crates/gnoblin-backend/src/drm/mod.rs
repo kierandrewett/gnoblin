@@ -49,7 +49,7 @@ pub(crate) mod scanout;
 use std::fmt;
 use std::io;
 
-use tracing::warn;
+use gnoblin_log::warn;
 
 use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
@@ -222,7 +222,7 @@ impl Drm {
         let input = match Libinput::open(gpu.seat().libseat()) {
             Ok(libinput) => Input::Live(Box::new(libinput)),
             Err(error) => {
-                tracing::warn!(%error, "[input] libinput is not open; the session runs without input");
+                gnoblin_log::warn!(%error, "[input] libinput is not open; the session runs without input");
                 Input::Refused(Refused {
                     refusal: InputRefusal::NotOpened,
                 })
@@ -275,7 +275,7 @@ impl Drm {
             return;
         };
         if let Err(error) = self.gpu.activate() {
-            tracing::error!(%error, "[drm] the device could not be re-activated after the seat returned");
+            gnoblin_log::error!(%error, "[drm] the device could not be re-activated after the seat returned");
         }
         for channel in &mut self.channels {
             channel.presenter.resume();

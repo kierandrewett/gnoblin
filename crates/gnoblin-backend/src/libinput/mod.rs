@@ -43,6 +43,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::rc::Rc;
 
+use gnoblin_log::{debug, info, warn};
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, Event, GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputEvent as BackendEvent,
     KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
@@ -52,7 +53,6 @@ use smithay::backend::session::Session as _;
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::input as libinput;
-use tracing::{debug, info, warn};
 
 use crate::drm::{RawEvent, RawGestureKind};
 use crate::{InputEvent, InputSource, TouchPhase};

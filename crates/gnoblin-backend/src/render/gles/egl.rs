@@ -22,13 +22,13 @@
 //! display the caller holds.
 #![allow(unsafe_code)]
 
+use gnoblin_log::{debug, info};
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::egl::context::{GlAttributes, PixelFormatRequirements};
 use smithay::backend::egl::native::EGLSurfacelessDisplay;
 use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::renderer::glow::GlowRenderer;
-use tracing::{debug, info};
 
 use crate::render::RenderError;
 

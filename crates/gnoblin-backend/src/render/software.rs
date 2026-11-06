@@ -55,6 +55,7 @@
 //!    and the composer asks for full damage, so the next frame repaints everything:
 //!    `a_resize_replaces_the_buffer`.
 
+use gnoblin_log::warn;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::pixman::{PixmanRenderer, PixmanTarget, PixmanTexture};
 use smithay::backend::renderer::{
@@ -62,7 +63,6 @@ use smithay::backend::renderer::{
 };
 use smithay::reexports::pixman::Image as PixmanImage;
 use smithay::utils::{Buffer as BufferCoords, Physical, Rectangle, Size as PhysicalSize, Transform};
-use tracing::warn;
 
 use gnoblin_render::Color;
 use gnoblin_types::{Scale, Size};

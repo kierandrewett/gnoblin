@@ -5,6 +5,7 @@
 //! render target, and registered as a KMS framebuffer. [`crate::drm::frame::present`] chooses the
 //! slot; this module draws into it and queues its flip.
 
+use gnoblin_log::warn;
 use gnoblin_types::{Scale, Size};
 use smithay::backend::allocator::dmabuf::AsDmabuf;
 use smithay::backend::allocator::format::FormatSet;
@@ -17,7 +18,6 @@ use smithay::backend::drm::exporter::gbm::{GbmFramebufferExporter, NodeFilter};
 use smithay::backend::egl::EGLDisplay;
 use smithay::reexports::drm::control::crtc;
 use smithay::utils::{Physical, Size as PhysicalSize};
-use tracing::warn;
 
 use crate::drm::frame::Scanout;
 use crate::drm::gpu::Gpu;

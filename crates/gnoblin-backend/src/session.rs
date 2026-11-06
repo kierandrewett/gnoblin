@@ -60,11 +60,11 @@ use std::os::unix::io::OwnedFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use gnoblin_log::{debug, warn};
 use smithay::backend::session::Session as _;
 use smithay::backend::session::libseat::{LibSeatSession, LibSeatSessionNotifier};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::rustix::fs::OFlags;
-use tracing::{debug, warn};
 
 /// Whether this process is the one driving the seat's devices.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

@@ -50,8 +50,8 @@ use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use gnoblin_log::{debug, warn};
 use gnoblin_types::{Rect, Scale, Size};
-use tracing::{debug, warn};
 use wayland_client::protocol::wl_buffer;
 use wayland_client::protocol::{wl_shm, wl_shm_pool, wl_surface};
 use wayland_client::{Proxy, QueueHandle};

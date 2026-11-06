@@ -30,13 +30,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 
 use gnoblin_backend::InputEvent;
+use gnoblin_log::{debug, warn};
 use reis::PendingRequestResult;
 use reis::eis;
 use reis::enumflags2::BitFlags;
 use reis::handshake::EisHandshaker;
 use reis::request::{Connection, DeviceCapability, EisRequest, EisRequestConverter, Seat};
 use rustix::event::{PollFd, PollFlags, poll};
-use tracing::{debug, warn};
 
 use super::service::{
     Action, Caps, Command, ContextId, ContextType, DeviceId, Ending, Grant, Quota, Region, Service, Violation,

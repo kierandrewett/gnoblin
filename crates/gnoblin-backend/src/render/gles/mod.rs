@@ -103,11 +103,11 @@ pub(crate) mod gl;
 mod program;
 mod shaders;
 
+use gnoblin_log::warn;
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
 use smithay::utils::{Physical, Rectangle};
-use tracing::warn;
 
 use gnoblin_render::{Color, Effects, Mat4, Pass, UniformSchema};
 use gnoblin_types::{Rect, RectF, Scale, Size};

@@ -24,10 +24,10 @@
 use std::num::NonZeroU32;
 
 use glow::HasContext;
+use gnoblin_log::debug;
 use smithay::backend::renderer::Texture as _;
 use smithay::backend::renderer::gles::{GlesError, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
-use tracing::debug;
 
 use gnoblin_render::{Color, ResolvedUniform};
 use gnoblin_types::{Rect, Size};

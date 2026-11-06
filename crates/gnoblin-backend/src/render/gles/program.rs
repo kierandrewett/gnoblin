@@ -40,11 +40,11 @@
 
 use std::fmt;
 
+use gnoblin_log::debug;
 use naga::back::glsl::{Options as GlslOptions, PipelineOptions, Version, Writer};
 use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
-use tracing::debug;
 
 use gnoblin_render::{Color, ResolvedUniform, UniformType, UniformValue};
 use gnoblin_types::Rect;
