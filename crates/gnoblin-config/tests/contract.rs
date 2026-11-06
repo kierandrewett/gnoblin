@@ -71,11 +71,18 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
 /// because a rewrite lane added it belongs here, with the release that added it
 /// and why, so the difference between the two lists is a reviewed decision in one
 /// place rather than a loosened assertion.
-const REWRITE_ONLY_PROTOCOLS: &[(&str, &str, &str)] = &[(
-    "ext-image-copy-capture",
-    "0.2.0",
-    "ext-image-copy-capture-v1, added by the capture lane; the C tree only has wlr-screencopy",
-)];
+const REWRITE_ONLY_PROTOCOLS: &[(&str, &str, &str)] = &[
+    (
+        "ext-image-copy-capture",
+        "0.2.0",
+        "ext-image-copy-capture-v1, added by the capture lane; the C tree only has wlr-screencopy",
+    ),
+    (
+        "wlr-output-management",
+        "0.2.0",
+        "zwlr_output_manager_v1, added by the WlrOutputManagement lane so a configuration tool can read and test the outputs; the C tree has no output manager",
+    ),
+];
 
 #[test]
 fn the_protocol_enum_matches_the_recorded_enumeration() {
