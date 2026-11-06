@@ -1,7 +1,10 @@
 //! The loader behind a layout VM's `require`. It resolves layout modules only, and
-//! only from the configured directories. A module name is a dot-separated list of
-//! identifiers, so it cannot name a path outside its directory; the canonical path is
-//! checked as well, so a symlink cannot escape either.
+//! only from the two fixed roots in [`LayoutRoots`]: `shipped` for `gnoblin.` names and
+//! `user` (the config directory) for every other name. The roots are fixed, not taken
+//! from the document being built, so a module is found before that document is
+//! complete. A module name is a dot-separated list of identifiers, so it cannot name a
+//! path outside its root; the canonical path is checked as well, so a symlink cannot
+//! escape either.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -13,9 +16,34 @@ use mlua::{Lua, RegistryKey, Value as LuaValue};
 /// The largest module file the loader reads.
 const MODULE_BYTES: u64 = 256 * 1024;
 
+/// The two fixed directories a layout reference can name. Nothing else is searched, and
+/// the roots do not come from the document being built, so a module is found before that
+/// document is complete, and not from the last accepted store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayoutRoots {
+    /// The installed `share/gnoblin/lua`. A name with the `gnoblin.` prefix loads from here.
+    pub shipped: PathBuf,
+    /// The directory of the configuration file being evaluated. Every other name loads
+    /// from here. `None` when no configuration file is known, so such a name fails.
+    pub user: Option<PathBuf>,
+}
+
+impl LayoutRoots {
+    /// The directory a module name loads from: `shipped` for a `gnoblin.` name, `user`
+    /// for any other.
+    pub(crate) fn for_name(&self, name: &str) -> Result<&Path, String> {
+        if name.starts_with("gnoblin.") {
+            return Ok(&self.shipped);
+        }
+        self.user
+            .as_deref()
+            .ok_or_else(|| format!("module `{name}` has no user directory to load from"))
+    }
+}
+
 /// The modules one VM has loaded, and the module currently loading, for cycle checks.
 pub(crate) struct Modules {
-    dirs: Vec<PathBuf>,
+    roots: LayoutRoots,
     loaded: RefCell<HashMap<String, Loaded>>,
     loading: RefCell<HashSet<String>>,
 }
@@ -26,9 +54,9 @@ struct Loaded {
 }
 
 impl Modules {
-    pub(crate) fn new(dirs: Vec<PathBuf>) -> Self {
+    pub(crate) fn new(roots: LayoutRoots) -> Self {
         Self {
-            dirs,
+            roots,
             loaded: RefCell::new(HashMap::new()),
             loading: RefCell::new(HashSet::new()),
         }
@@ -61,7 +89,7 @@ impl Modules {
     }
 
     fn load(&self, lua: &Lua, name: &str) -> mlua::Result<(LuaValue, u64)> {
-        let path = resolve(&self.dirs, name).map_err(runtime)?;
+        let path = resolve(&self.roots, name).map_err(runtime)?;
         let source = read_source(&path, name).map_err(runtime)?;
         let hash = fnv1a(source.as_bytes());
         let value = match lua.load(source.as_str()).set_name(name).call::<LuaValue>(())? {
@@ -84,25 +112,26 @@ pub(crate) fn is_module_name(name: &str) -> bool {
     name.split('.').all(is_component)
 }
 
-/// The file a module name stands for, in the first configured directory that holds it.
-pub(crate) fn resolve(dirs: &[PathBuf], name: &str) -> Result<PathBuf, String> {
+/// The file a module name stands for, read from the root its name selects. A name with
+/// the `gnoblin.` prefix is read from the shipped root and any other name from the user
+/// root, and the name is a path under that root: `gnoblin.layouts.grid` is
+/// `gnoblin/layouts/grid.lua` under the shipped root. The canonical path is checked
+/// against the root, so a symlink cannot lead out of it.
+pub(crate) fn resolve(roots: &LayoutRoots, name: &str) -> Result<PathBuf, String> {
     if !name.split('.').all(is_component) {
         return Err(format!("`{name}` is not a layout module name"));
     }
-    let relative = PathBuf::from(format!("{}.lua", name.replace('.', "/")));
-    for dir in dirs {
-        let candidate = dir.join(&relative);
-        if !candidate.is_file() {
-            continue;
-        }
-        let root = dir.canonicalize().map_err(|error| error.to_string())?;
-        let real = candidate.canonicalize().map_err(|error| error.to_string())?;
-        if !real.starts_with(&root) {
-            return Err(format!("module `{name}` resolves outside its directory"));
-        }
-        return Ok(real);
+    let dir = roots.for_name(name)?;
+    let candidate = dir.join(format!("{}.lua", name.replace('.', "/")));
+    if !candidate.is_file() {
+        return Err(format!("module `{name}` is not found"));
     }
-    Err(format!("module `{name}` is not found"))
+    let root = dir.canonicalize().map_err(|error| error.to_string())?;
+    let real = candidate.canonicalize().map_err(|error| error.to_string())?;
+    if !real.starts_with(&root) {
+        return Err(format!("module `{name}` resolves outside its directory"));
+    }
+    Ok(real)
 }
 
 fn is_component(part: &str) -> bool {

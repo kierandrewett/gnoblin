@@ -15,6 +15,7 @@ use gnoblin_lua_sandbox::Limits;
 use super::LayoutReason;
 use super::data::Data;
 use super::lua::{LayoutCall, LayoutFault, LayoutManifest};
+use super::require::LayoutRoots;
 use super::snapshot::LayoutSnapshot;
 use super::worker::{Done, LayoutFinished, Spawn, Worker, WorkerJob};
 
@@ -27,8 +28,10 @@ pub type WedgeHook = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 pub struct HostConfig {
     /// The budgets each entry into Lua runs under.
     pub limits: Limits,
-    /// The only directories layout modules are loaded from.
-    pub module_dirs: Vec<PathBuf>,
+    /// The two fixed roots layout modules are found under: the shipped tree for
+    /// `gnoblin.` names and the user's config directory for all others. See
+    /// [`LayoutRoots`] for why these are fixed rather than read from the document.
+    pub roots: LayoutRoots,
     /// How long a worker may stay silent with work outstanding before it is abandoned.
     /// Registration waits at most this long for its load.
     pub hard_limit: Duration,
@@ -39,25 +42,15 @@ pub struct HostConfig {
 }
 
 impl HostConfig {
-    /// The production settings for layouts loaded from `module_dirs`.
-    pub fn new(module_dirs: Vec<PathBuf>) -> Self {
+    /// The production settings for layouts found under `roots`.
+    pub fn new(roots: LayoutRoots) -> Self {
         Self {
             limits: Limits::default(),
-            module_dirs,
+            roots,
             hard_limit: Duration::from_millis(100),
             leak_cap: 3,
             wedge: None,
         }
-    }
-
-    /// The settings for layouts installed under `prefix`, in `share/gnoblin/lua`.
-    pub fn installed(prefix: &Path) -> Self {
-        Self::new(vec![installed_module_dir(prefix)])
-    }
-
-    /// The settings for the session's installed prefix: `GNOBLIN_PREFIX`, or `/usr`.
-    pub fn from_environment() -> Self {
-        Self::installed(&default_prefix(std::env::var_os("GNOBLIN_PREFIX").as_deref()))
     }
 }
 
@@ -391,7 +384,7 @@ impl Host {
 fn spawn_worker(config: &HostConfig) -> Worker {
     Worker::spawn(Spawn {
         limits: config.limits,
-        module_dirs: config.module_dirs.clone(),
+        roots: config.roots.clone(),
         wedge: config.wedge.clone(),
     })
 }

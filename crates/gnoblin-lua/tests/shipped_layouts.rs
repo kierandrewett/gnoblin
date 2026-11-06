@@ -30,7 +30,7 @@ use std::process::Command;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, default_prefix, installed_module_dir};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, default_prefix, installed_module_dir};
 use gnoblin_types::{OutputId, Scale, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Camera, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
@@ -99,9 +99,15 @@ fn write_module(dir: &Path, name: &str, source: &str) {
     fs::write(dir.join(format!("{name}.lua")), source).expect("a module file");
 }
 
-/// A host with `dirs` searched in order and `layouts` registered as `(name, module)`.
-fn hosted(dirs: Vec<PathBuf>, layouts: &[(&str, &str)]) -> Rc<RefCell<Host>> {
-    let host = Rc::new(RefCell::new(Host::new(HostConfig::new(dirs))));
+/// A host whose roots are `user` (the directory of the config file, if any) and the
+/// shipped tree `SHIPPED`, with `layouts` registered as `(name, module)`. A name with
+/// the `gnoblin.` prefix loads from the shipped root; any other from `user`.
+fn hosted(user: Option<PathBuf>, layouts: &[(&str, &str)]) -> Rc<RefCell<Host>> {
+    let roots = LayoutRoots {
+        shipped: PathBuf::from(SHIPPED),
+        user,
+    };
+    let host = Rc::new(RefCell::new(Host::new(HostConfig::new(roots))));
     for (name, module) in layouts {
         host.borrow_mut()
             .register(name, module, Data::Table(BTreeMap::new()))
@@ -112,7 +118,7 @@ fn hosted(dirs: Vec<PathBuf>, layouts: &[(&str, &str)]) -> Rc<RefCell<Host>> {
 
 fn shipped(layout: &str) -> Rc<RefCell<Host>> {
     let module = format!("gnoblin.layouts.{layout}");
-    hosted(vec![PathBuf::from(SHIPPED)], &[(layout, module.as_str())])
+    hosted(None, &[(layout, module.as_str())])
 }
 
 fn params(ids: &[u64], width: f64, height: f64) -> Params {
@@ -309,7 +315,7 @@ fn driver(test: &str, layout: &str, body: &str) -> PathBuf {
 /// Arranges `ids` through the driver module for `test` on the 1000 by 600 output.
 fn driven(test: &str, layout: &str, body: &str, focus: Option<u64>, ids: &[u64]) -> Layout {
     let dir = driver(test, layout, body);
-    let host = hosted(vec![dir, PathBuf::from(SHIPPED)], &[(test, test)]);
+    let host = hosted(Some(dir), &[(test, test)]);
     arrange(&host, test, focus, ids, 1000.0, 600.0)
 }
 
@@ -467,7 +473,7 @@ fn scroll_to_pins_the_view_until_focus_moves() {
         "scrolling",
         "  if ctx.state.view == nil then\n    real.command.scroll_to(ctx, {x = 300})\n  end",
     );
-    let host = hosted(vec![dir, PathBuf::from(SHIPPED)], &[("drv_sc_pin", "drv_sc_pin")]);
+    let host = hosted(Some(dir), &[("drv_sc_pin", "drv_sc_pin")]);
     let x1 = |layout: &Layout| rect(&by_id(layout)[&1]).x;
 
     // Columns read 1, 3, 2 at 500 px each; the pinned view is 300, so column 1 sits at -300.
@@ -541,7 +547,11 @@ fn installed_layouts_load_from_their_prefix() {
     let dir = installed_module_dir(&resolved);
     assert_eq!(dir, prefix.join("share/gnoblin/lua"));
 
-    let host = Rc::new(RefCell::new(Host::new(HostConfig::installed(&resolved))));
+    let roots = LayoutRoots {
+        shipped: installed_module_dir(&resolved),
+        user: None,
+    };
+    let host = Rc::new(RefCell::new(Host::new(HostConfig::new(roots))));
     for layout in LAYOUTS {
         let module = format!("gnoblin.layouts.{layout}");
         assert!(
@@ -560,7 +570,11 @@ fn installed_layouts_load_from_their_prefix() {
 fn installed_host_refuses_path_traversal() {
     let prefix = scratch_dir("install-traversal");
     copy_tree(Path::new(SHIPPED), &installed_module_dir(&prefix));
-    let host = Rc::new(RefCell::new(Host::new(HostConfig::installed(&prefix))));
+    let roots = LayoutRoots {
+        shipped: installed_module_dir(&prefix),
+        user: None,
+    };
+    let host = Rc::new(RefCell::new(Host::new(HostConfig::new(roots))));
     for module in ["../escape", "../../etc/passwd"] {
         assert!(
             host.borrow_mut()
@@ -572,8 +586,9 @@ fn installed_host_refuses_path_traversal() {
 }
 
 /// Runs the real install rule, cmake/install-lua-data.cmake, in CMake script mode against a
-/// temp prefix, then loads the result through `HostConfig::installed`. install-session.cmake
-/// includes this same file, so the rule under test is the one the install step runs.
+/// temp prefix, then loads the result with a `LayoutRoots` whose shipped root is the
+/// installed tree. install-session.cmake includes this same file, so the rule under test
+/// is the one the install step runs.
 /// The test is skipped with a notice when no `cmake` binary is on PATH.
 #[test]
 fn cmake_install_rule_installs_shipped_layouts() {
@@ -612,7 +627,11 @@ fn cmake_install_rule_installs_shipped_layouts() {
         tree_files(Path::new(SHIPPED)),
         "the install copies every shipped module"
     );
-    let host = Rc::new(RefCell::new(Host::new(HostConfig::installed(&prefix))));
+    let roots = LayoutRoots {
+        shipped: installed_module_dir(&prefix),
+        user: None,
+    };
+    let host = Rc::new(RefCell::new(Host::new(HostConfig::new(roots))));
     for layout in LAYOUTS {
         host.borrow_mut()
             .register(

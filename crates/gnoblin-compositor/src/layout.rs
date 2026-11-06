@@ -27,7 +27,7 @@ use std::time::Instant;
 
 use gnoblin_config::{Layout, SearchPaths, Store};
 use gnoblin_log::{debug, warn};
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, default_prefix, installed_module_dir};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, default_prefix, installed_module_dir};
 use gnoblin_types::WorkspaceId;
 use gnoblin_wayland::LayoutControl;
 use gnoblin_wm::layout::{
@@ -49,18 +49,26 @@ pub struct LayoutSettings {
     pub outputs: Vec<(String, String)>,
     /// Layout names by workspace id, as the decimal id the wm uses.
     pub workspaces: Vec<(String, String)>,
-    /// Directories searched for layout modules, before the installed ones.
-    pub module_dirs: Vec<PathBuf>,
+    /// The directory of the configuration file, which is the user root: a layout name
+    /// without the `gnoblin.` prefix loads from here. `None` when no configuration file is
+    /// known, so such names fail to load. Set from the store by [`configure_from_store`].
+    pub config_dir: Option<PathBuf>,
+    /// The installed `share/gnoblin/lua` tree: the shipped root that a `gnoblin.` layout
+    /// name loads from. [`Default`] reads it from `GNOBLIN_PREFIX`. Tests set it directly,
+    /// because a test process cannot set its own environment safely.
+    pub shipped_dir: PathBuf,
 }
 
 impl Default for LayoutSettings {
-    /// Every workspace floats and no configured directory is searched.
+    /// Every workspace floats, the shipped tree is the installed prefix's, and no
+    /// configuration directory is known.
     fn default() -> Self {
         Self {
             default: FLOATING.to_owned(),
             outputs: Vec::new(),
             workspaces: Vec::new(),
-            module_dirs: Vec::new(),
+            config_dir: None,
+            shipped_dir: installed_module_dir(&default_prefix(std::env::var_os("GNOBLIN_PREFIX").as_deref())),
         }
     }
 }
@@ -83,12 +91,7 @@ impl LayoutSettings {
                 .into_iter()
                 .filter_map(|w| Some((w.workspace?, w.layout?)))
                 .collect(),
-            module_dirs: section
-                .module_dirs
-                .unwrap_or_default()
-                .into_iter()
-                .map(PathBuf::from)
-                .collect(),
+            ..Self::default()
         }
     }
 }
@@ -99,7 +102,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     match store.load(source) {
         Ok(stored) => {
             let section = stored.config.layout.clone().unwrap_or_default();
-            let settings = LayoutSettings::from_section(section);
+            let mut settings = LayoutSettings::from_section(section);
+            // The user root is the directory the accepted document was read from, so a
+            // `require` in that document and the layouts it names resolve from one place.
+            settings.config_dir = source.parent().map(Path::to_path_buf);
             debug!(default = %settings.default, "[layout] loaded from the last accepted configuration");
             config.layouts = settings;
         }
@@ -136,11 +142,14 @@ impl WorkspaceLayouts {
     /// Loads every layout the settings name. A layout that cannot be loaded is named
     /// in a warning, and every workspace that asks for it floats.
     pub fn new(settings: LayoutSettings) -> Self {
-        let mut dirs = settings.module_dirs;
-        dirs.push(installed_module_dir(&default_prefix(
-            std::env::var_os("GNOBLIN_PREFIX").as_deref(),
-        )));
-        let mut host = Host::new(HostConfig::new(dirs));
+        // The shipped root is the settings' installed tree. The user root is the
+        // configuration directory, when the session knows one. Both are fixed, so a
+        // layout resolves the same way whatever document names it.
+        let roots = LayoutRoots {
+            shipped: settings.shipped_dir.clone(),
+            user: settings.config_dir,
+        };
+        let mut host = Host::new(HostConfig::new(roots));
         let mut failed = BTreeSet::new();
         let names: BTreeSet<&str> = std::iter::once(settings.default.as_str())
             .chain(settings.outputs.iter().map(|(_, layout)| layout.as_str()))
@@ -148,8 +157,7 @@ impl WorkspaceLayouts {
             .filter(|name| *name != FLOATING)
             .collect();
         for name in names {
-            if let Err(failure) = host.register(name, &format!("gnoblin.layouts.{name}"), Data::Table(BTreeMap::new()))
-            {
+            if let Err(failure) = host.register(name, name, Data::Table(BTreeMap::new())) {
                 warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] layout cannot be loaded; workspaces that use it float");
                 failed.insert(name.to_owned());
             }
@@ -208,7 +216,7 @@ impl WorkspaceLayouts {
             return Err(format!("layout `{name}` failed to load"));
         }
         let mut host = self.host.borrow_mut();
-        match host.register(name, &format!("gnoblin.layouts.{name}"), Data::Table(BTreeMap::new())) {
+        match host.register(name, name, Data::Table(BTreeMap::new())) {
             Ok(()) => Ok(()),
             Err(failure) => {
                 warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] runtime layout cannot be loaded");
@@ -315,11 +323,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
-    use gnoblin_lua::layout::{Gaps, Host, HostConfig, LuaEngine};
+    use gnoblin_lua::layout::{Gaps, Host, HostConfig, LayoutRoots, LuaEngine};
     use gnoblin_types::{OutputId, WindowId, WorkspaceId};
     use gnoblin_wm::layout::{Job, LayoutEngine, LayoutOutput, LayoutWindow, Params, Slot};
 
-    use super::{FLOATING, FloatingEngine, LayoutSettings, WorkspaceLayouts};
+    use super::FloatingEngine;
 
     /// The repository's shipped Lua layouts, which `gnoblin.layouts.floating` lives in.
     fn shipped_modules() -> PathBuf {
@@ -360,35 +368,14 @@ mod tests {
     /// The floating module is equivalent to the native `FloatingEngine`: both give the
     /// same arrange reply (no placements, a float per window) and decline geometry
     /// requests, so a floating workspace behaves the same with or without a Lua VM.
-    /// A module in a configured directory wins over the shipped layout of the same
-    /// name. The user copy here does not load, so the name fails: the shipped
-    /// `monocle` would load, and resolving to floating shows the user copy was read.
-    #[test]
-    fn a_configured_module_overrides_the_shipped_layout_of_the_same_name() {
-        let user = tempfile::tempdir().expect("a temporary module directory");
-        let layouts = user.path().join("gnoblin/layouts");
-        std::fs::create_dir_all(&layouts).expect("the layouts directory");
-        std::fs::write(layouts.join("monocle.lua"), "this is not lua (").expect("the broken module");
-        let settings = LayoutSettings {
-            default: "monocle".to_owned(),
-            module_dirs: vec![user.path().to_path_buf()],
-            ..LayoutSettings::default()
-        };
-        let layouts = WorkspaceLayouts::new(settings);
-        assert_eq!(layouts.resolve(WorkspaceId::new(1), None), FLOATING);
-
-        let shipped = WorkspaceLayouts::new(LayoutSettings {
-            default: "monocle".to_owned(),
-            module_dirs: vec![shipped_modules()],
-            ..LayoutSettings::default()
-        });
-        assert_eq!(shipped.resolve(WorkspaceId::new(1), None), "monocle");
-    }
-
     #[test]
     fn native_floating_matches_the_shipped_floating_module() {
         let params = params();
-        let host = Host::new(HostConfig::new(vec![shipped_modules()]));
+        let roots = LayoutRoots {
+            shipped: shipped_modules(),
+            user: None,
+        };
+        let host = Host::new(HostConfig::new(roots));
         let host = std::rc::Rc::new(std::cell::RefCell::new(host));
         host.borrow_mut()
             .register(

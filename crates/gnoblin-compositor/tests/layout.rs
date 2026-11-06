@@ -97,8 +97,8 @@ fn settled_rects(session: &Session, ids: &[u64; 3]) -> Vec<[i64; 4]> {
 #[test]
 fn master_stack_tiles_three_toplevels_on_the_headless_output() {
     let session = session_with(LayoutSettings {
-        default: "master_stack".to_owned(),
-        module_dirs: vec![shipped_modules()],
+        default: "gnoblin.layouts.master_stack".to_owned(),
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -119,8 +119,8 @@ fn an_unknown_layout_is_refused_and_its_workspaces_float() {
     };
 
     let session = session_with(LayoutSettings {
-        default: "no_such_layout".to_owned(),
-        module_dirs: vec![shipped_modules()],
+        default: "gnoblin.layouts.no_such_layout".to_owned(),
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -133,7 +133,7 @@ fn an_unknown_layout_is_refused_and_its_workspaces_float() {
 #[test]
 fn a_module_that_errors_falls_back_and_the_session_keeps_running() {
     let modules = tempfile::tempdir().expect("a module directory");
-    let layouts = modules.path().join("gnoblin/layouts");
+    let layouts = modules.path().join("layouts");
     std::fs::create_dir_all(&layouts).expect("the layouts directory");
     std::fs::write(
         layouts.join("broken.lua"),
@@ -150,8 +150,8 @@ fn a_module_that_errors_falls_back_and_the_session_keeps_running() {
     };
 
     let session = session_with(LayoutSettings {
-        default: "broken".to_owned(),
-        module_dirs: vec![modules.path().to_path_buf()],
+        default: "layouts.broken".to_owned(),
+        config_dir: Some(modules.path().to_path_buf()),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -165,46 +165,12 @@ fn a_module_that_errors_falls_back_and_the_session_keeps_running() {
 }
 
 #[test]
-fn a_user_module_overrides_the_shipped_layout_of_the_same_name() {
-    // Every window takes the whole area, which the shipped master_stack never does for
-    // three windows. The user directory is listed first, so its module is the one that runs.
-    let modules = tempfile::tempdir().expect("a module directory");
-    let layouts = modules.path().join("gnoblin/layouts");
-    std::fs::create_dir_all(&layouts).expect("the layouts directory");
-    std::fs::write(
-        layouts.join("master_stack.lua"),
-        "local M = {}\nM.kind = 'tiling'\n\
-         function M.arrange(ctx)\n\
-           local a = ctx.area\n\
-           local placements = {}\n\
-           for i, window in ipairs(ctx.windows) do\n\
-             placements[i] = { window = window.id, x = a.x, y = a.y, width = a.width, height = a.height }\n\
-           end\n\
-           return { placements = placements }\n\
-         end\n\
-         function M.on_request(_ctx) return nil end\n\
-         return M\n",
-    )
-    .expect("the user module");
-
-    let session = session_with(LayoutSettings {
-        default: "master_stack".to_owned(),
-        module_dirs: vec![modules.path().to_path_buf(), shipped_modules()],
-        ..LayoutSettings::default()
-    });
-    let mut client = Client::connect(session.wayland());
-    let windows = map_three(&mut client);
-
-    assert_eq!(settled_sizes(&mut client, &windows), vec![(1024, 768); 3]);
-}
-
-#[test]
 fn an_output_override_applies_to_the_workspaces_on_that_output() {
     // The headless output is HEADLESS-1 and the workspace has no override of its own,
     // so the output's layout arranges it.
     let session = session_with(LayoutSettings {
-        outputs: vec![("HEADLESS-1".to_owned(), "master_stack".to_owned())],
-        module_dirs: vec![shipped_modules()],
+        outputs: vec![("HEADLESS-1".to_owned(), "gnoblin.layouts.master_stack".to_owned())],
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -227,9 +193,9 @@ fn a_workspace_override_wins_over_the_output_override() {
     };
 
     let session = session_with(LayoutSettings {
-        outputs: vec![("HEADLESS-1".to_owned(), "master_stack".to_owned())],
+        outputs: vec![("HEADLESS-1".to_owned(), "gnoblin.layouts.master_stack".to_owned())],
         workspaces: vec![("1".to_owned(), "floating".to_owned())],
-        module_dirs: vec![shipped_modules()],
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -252,7 +218,7 @@ fn workspace_id(session: &Session) -> u64 {
 #[test]
 fn set_layout_retiles_the_windows_on_the_workspace() {
     let session = session_with(LayoutSettings {
-        module_dirs: vec![shipped_modules()],
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -266,7 +232,7 @@ fn set_layout_retiles_the_windows_on_the_workspace() {
             "call",
             &workspace.to_string(),
             "set_layout",
-            "name=master_stack",
+            "name=gnoblin.layouts.master_stack",
         ])
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
@@ -276,8 +242,8 @@ fn set_layout_retiles_the_windows_on_the_workspace() {
 #[test]
 fn master_stack_publishes_the_rectangles_it_placed() {
     let session = session_with(LayoutSettings {
-        default: "master_stack".to_owned(),
-        module_dirs: vec![shipped_modules()],
+        default: "gnoblin.layouts.master_stack".to_owned(),
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -297,7 +263,7 @@ fn master_stack_publishes_the_rectangles_it_placed() {
 #[test]
 fn set_layout_publishes_the_retiled_rectangles() {
     let session = session_with(LayoutSettings {
-        module_dirs: vec![shipped_modules()],
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -316,7 +282,7 @@ fn set_layout_publishes_the_retiled_rectangles() {
             "call",
             &workspace.to_string(),
             "set_layout",
-            "name=master_stack",
+            "name=gnoblin.layouts.master_stack",
         ])
         .ok();
     wait_for_sizes(&mut client, &windows, &[(512, 768), (512, 384), (512, 384)]);
@@ -330,7 +296,7 @@ fn layout_command_is_delivered_to_the_layout_that_answers_it() {
     // The `fill` command places every window at the size its parameters name, so the
     // configure sizes show the command reached this module with those parameters.
     let modules = tempfile::tempdir().expect("a module directory");
-    let layouts = modules.path().join("gnoblin/layouts");
+    let layouts = modules.path().join("layouts");
     std::fs::create_dir_all(&layouts).expect("the layouts directory");
     std::fs::write(
         layouts.join("probe.lua"),
@@ -353,7 +319,7 @@ return M
     .expect("the probe module");
 
     let session = session_with(LayoutSettings {
-        module_dirs: vec![modules.path().to_path_buf()],
+        config_dir: Some(modules.path().to_path_buf()),
         ..LayoutSettings::default()
     });
     let mut client = Client::connect(session.wayland());
@@ -362,7 +328,7 @@ return M
 
     let workspace = workspace_id(&session).to_string();
     session
-        .ctl(&["workspace", "call", &workspace, "set_layout", "name=probe"])
+        .ctl(&["workspace", "call", &workspace, "set_layout", "name=layouts.probe"])
         .ok();
     session
         .ctl(&[
@@ -381,12 +347,18 @@ return M
 #[test]
 fn an_unknown_layout_name_is_refused_over_ipc() {
     let session = session_with(LayoutSettings {
-        module_dirs: vec![shipped_modules()],
+        shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
     let workspace = workspace_id(&session).to_string();
 
-    let refusal = session.ctl(&["workspace", "call", &workspace, "set_layout", "name=no_such_layout"]);
+    let refusal = session.ctl(&[
+        "workspace",
+        "call",
+        &workspace,
+        "set_layout",
+        "name=gnoblin.layouts.no_such_layout",
+    ]);
     assert_ne!(refusal.code, 0, "an unknown layout is refused");
     assert!(
         refusal.out.contains("unknown-layout") || refusal.err.contains("unknown-layout"),
@@ -406,7 +378,7 @@ fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
     };
 
     let modules = tempfile::tempdir().expect("a module directory");
-    let layouts = modules.path().join("gnoblin/layouts");
+    let layouts = modules.path().join("layouts");
     std::fs::create_dir_all(&layouts).expect("the layouts directory");
     std::fs::write(
         layouts.join("broken.lua"),
@@ -416,8 +388,8 @@ fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
     .expect("the broken module");
 
     let session = session_with(LayoutSettings {
-        default: "broken".to_owned(),
-        module_dirs: vec![modules.path().to_path_buf()],
+        default: "layouts.broken".to_owned(),
+        config_dir: Some(modules.path().to_path_buf()),
         ..LayoutSettings::default()
     });
     // Watch the workspace before any window maps: the failing run happens on the first

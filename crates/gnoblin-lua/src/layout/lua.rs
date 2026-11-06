@@ -3,7 +3,6 @@
 //! thread that owns the VM, because a Lua state is not `Send`.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use super::LayoutReason;
@@ -13,7 +12,7 @@ use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
 
 use super::data::Data;
 use super::reply;
-use super::require::{self, Modules, message, runtime};
+use super::require::{self, LayoutRoots, Modules, message, runtime};
 use super::snapshot::{LayoutSnapshot, SnapshotWindow};
 
 /// Why a VM call failed: the reason the host reports, and the Lua message.
@@ -81,10 +80,10 @@ pub(crate) struct Vm {
 }
 
 impl Vm {
-    pub(crate) fn new(limits: Limits, module_dirs: Vec<PathBuf>) -> mlua::Result<Self> {
+    pub(crate) fn new(limits: Limits, roots: LayoutRoots) -> mlua::Result<Self> {
         let guard = Rc::new(Guard::new());
         let lua = sandbox::create(Profile::Layout, &limits, guard.clone())?;
-        let modules = Rc::new(Modules::new(module_dirs));
+        let modules = Rc::new(Modules::new(roots));
         require::install(&lua, modules.clone())?;
         Ok(Self {
             lua,

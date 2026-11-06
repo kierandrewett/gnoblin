@@ -10,7 +10,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, WedgeHook, install, take_registrations};
+use gnoblin_lua::layout::{
+    Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, WedgeHook, install, take_registrations,
+};
 use gnoblin_types::{OutputId, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Collected, Generation, Job, Layout, LayoutEngine, LayoutExtent, LayoutFailure, LayoutOutcome, LayoutOutput,
@@ -28,8 +30,18 @@ fn modules(test: &str, files: &[(&str, &str)]) -> PathBuf {
     dir
 }
 
+/// The roots a test host loads from. Every name these tests use lacks the `gnoblin.`
+/// prefix, so the shipped root is never read; it points at the same directory only so
+/// the struct is complete.
+fn user_roots(dir: PathBuf) -> LayoutRoots {
+    LayoutRoots {
+        shipped: dir.clone(),
+        user: Some(dir),
+    }
+}
+
 fn host(dir: PathBuf) -> Rc<RefCell<Host>> {
-    Rc::new(RefCell::new(Host::new(HostConfig::new(vec![dir]))))
+    Rc::new(RefCell::new(Host::new(HostConfig::new(user_roots(dir)))))
 }
 
 fn params(ids: &[u64], width: f64, height: f64) -> Params {
@@ -397,10 +409,10 @@ fn duplicate_register_is_refused_and_previous_registration_survives() {
 #[test]
 fn wedged_worker_is_abandoned_and_the_leak_cap_disables_layouts() {
     let wedge: WedgeHook = Arc::new(|name: &str| name == "wedged");
-    let mut config = HostConfig::new(vec![modules(
+    let mut config = HostConfig::new(user_roots(modules(
         "wedge",
         &[("wedged", MASTER_STACK), ("fine", MASTER_STACK)],
-    )]);
+    )));
     config.wedge = Some(wedge);
     config.hard_limit = Duration::from_millis(50);
     let h = Rc::new(RefCell::new(Host::new(config)));

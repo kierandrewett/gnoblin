@@ -1,7 +1,6 @@
 //! The worker thread that owns one layout VM. A Lua state is not `Send`, so the VM is
 //! built on the thread and never leaves it; only jobs and results cross the channels.
 
-use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -12,7 +11,7 @@ use super::LayoutReason;
 use super::data::Data;
 use super::host::WedgeHook;
 use super::lua::{LayoutCall, LayoutFault, LayoutManifest, Ran, Vm};
-use super::require::message;
+use super::require::{LayoutRoots, message};
 use super::snapshot::LayoutSnapshot;
 
 /// Work the host sends to a worker. Generation 0 marks a load the host replays after a
@@ -58,7 +57,7 @@ pub(crate) struct Done {
 /// What a worker thread needs to build its VM.
 pub(crate) struct Spawn {
     pub(crate) limits: Limits,
-    pub(crate) module_dirs: Vec<PathBuf>,
+    pub(crate) roots: LayoutRoots,
     pub(crate) wedge: Option<WedgeHook>,
 }
 
@@ -96,7 +95,7 @@ impl Worker {
 }
 
 fn serve(jobs: Receiver<WorkerJob>, done: Sender<Done>, spawn: Spawn) {
-    let mut vm = Vm::new(spawn.limits, spawn.module_dirs).map_err(message);
+    let mut vm = Vm::new(spawn.limits, spawn.roots).map_err(message);
     for job in jobs {
         let generation = job.generation();
         let result = match (&mut vm, job) {

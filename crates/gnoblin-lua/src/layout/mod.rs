@@ -46,6 +46,7 @@ use mlua::{Lua, Table};
 pub use data::{Data, DataError, LayoutKey};
 pub use engine::LuaEngine;
 pub use host::{Host, HostConfig, HostFailure, WedgeHook, default_prefix, installed_module_dir};
+pub use require::LayoutRoots;
 pub use snapshot::{Gaps, LayoutRequest, LayoutSnapshot, SizeHints, SnapshotWindow};
 
 /// The arguments of a layout command, from the JSON object a client sends as `params`.
