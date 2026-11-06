@@ -34,6 +34,11 @@ test:
 deps:
     cargo xtask deps
 
+# Forbid stock logging: no logging crate named outside gnoblin-log and its sinks, and no
+# `println!`-style or `tracing::` macro in library sources. `xtask/logging-allow.toml` lists the exceptions.
+logging:
+    cargo xtask logging
+
 # Write the generated .proto text and sensitive table to target/gen-proto, for
 # reading. The build generates them itself, in OUT_DIR, so this is a convenience:
 # nothing it writes is checked in.
@@ -61,4 +66,4 @@ deny:
     cargo deny check
 
 # The whole gate, in the order that fails fastest.
-ci: fmt-check build clippy test deps deny
+ci: fmt-check build clippy test deps logging deny

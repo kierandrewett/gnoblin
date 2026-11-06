@@ -6,6 +6,7 @@ mod compat_report;
 mod deps;
 mod dupes;
 mod gen_proto;
+mod logging;
 mod metadata;
 
 use std::path::Path;
@@ -20,6 +21,7 @@ subcommands:
   compat-report      print every compat adapter's declared support matrix
   dupes              fail on a struct or enum two crates declare twice
   dupes --warn       the same report, printing every hit and exiting zero
+  logging            fail on a direct logging-crate dependency or a stock print in library code
   compat-report --json  the same report as JSON";
 
 fn main() -> ExitCode {
@@ -32,12 +34,13 @@ fn main() -> ExitCode {
     match (subcommand.as_str(), rest.as_slice()) {
         ("deps", []) => deps_command(),
         ("gen-proto", []) => gen_proto::run(),
+        ("logging", []) => logging::run(),
         ("compat-report", []) => compat_report::run(false),
         ("compat-report", [flag]) if flag == "--json" => compat_report::run(true),
         ("dupes", []) => dupes::run(true),
         ("dupes", [flag]) if flag == "--deny" => dupes::run(true),
         ("dupes", [flag]) if flag == "--warn" => dupes::run(false),
-        ("deps" | "gen-proto" | "dupes" | "compat-report", _) => usage_error("unexpected argument"),
+        ("deps" | "gen-proto" | "dupes" | "compat-report" | "logging", _) => usage_error("unexpected argument"),
         (other, _) => usage_error(&format!("unknown subcommand `{other}`")),
     }
 }
