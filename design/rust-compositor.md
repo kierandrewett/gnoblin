@@ -1634,7 +1634,7 @@ Each section below records the choice, its consequences, and the options conside
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source is the login password via a PAM module, with one unlock prompt when there is none (`design/keyring.md`)                               |
 | D28 | Layer registry               | **Proposed 2026-11-06:** layer registry; full names `<provider>.<local>` (`gnoblin.`, `ext.<id>.`); closed bands. `secure` defaults off unless declared; config overrides. Captures mask secure nodes by default.               |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
-| D30 | Store                        | **Proposed 2026-11-06:** one store abstraction; keyring, logs and extension state are kinds (`design/store.md`).                                                                                                                |
+| D30 | Store                        | **Proposed 2026-11-06:** one store API: open by name, then put, get, delete, list, search, watch, batch (`design/store.md`).                                                                                                    |
 
 ### D1: where scripts run
 
@@ -3180,13 +3180,13 @@ Needs Kieran:
 
 ### D30: store
 
-**Proposed 2026-11-06: a store is the one storage abstraction. The keyring (D27), the logs, extension state and later storage are kinds of store. A store has a common core, and capabilities are discovered at runtime.** The design, invariants and options are in `design/store.md`.
+**Proposed 2026-11-06: a store is where Gnoblin keeps data. You open a store by name and use the same verbs on it: `put`, `get`, `delete`, `list`, `search`, `watch` and `batch`. The keyring (D27), logs and extension state are stores of different kinds.** The API and examples are in `design/store.md`.
 
 **Today.** Persisted state is small. The log store writes `$XDG_STATE_HOME/gnoblin/logs.sqlite3` (`gnoblin-log/src/store.rs:103-113`). Session recovery lives under `state_home` (`gnoblin-session/src/supervisor.rs:136`). The last accepted configuration is `last-good-config.json` (`gnoblin-config/src/last_good.rs:45`). Extensions have no storage, because the wasm host has no filesystem (`gnoblin-wasm/src/host.rs:457`).
 
-**Core.** Every store has an identity, a lifecycle state, usage, a capability set, a change signal, an export policy and access grants. The states are `opening`, `ready`, `locked`, `unavailable`, `quarantined` and `closing`. Only the registry moves a store between them.
+**Provider side.** Behind the API, each store has an identity, a lifecycle state, usage, a change signal, an export policy and access grants. The states are `opening`, `ready`, `locked`, `unavailable`, `quarantined` and `closing`. Only the registry moves a store between them.
 
-**Capabilities and kinds.** Capabilities are traits: `Items`, `Search`, `Append`, `Lock`, `Watch` and `Transact`. A kind is a named bundle of them with a policy: `kv`, `log` and `secret`. A consumer may call a method only when the capability and its grant allow it.
+**Kinds and capabilities.** A kind is a compiled-in set of rules: `kv`, `log` and `secret`. Extensions cannot add kinds. Providers report internal capabilities (`Items`, `Search`, `Append`, `Lock`, `Watch`, `Transact`), so a locked keyring or an append-only log can say so. Consumers never see or check them.
 
 **Item model.** Key-value and the Secret Service share one item: a key, attributes, a value and a revision. It breaks for logs, which are sequences and use `Append`, and for Secret Service collections, which are stores, not items.
 
@@ -3196,23 +3196,25 @@ Needs Kieran:
 
 **Surfaces.** One API serves Lua `gnoblin.store.open`, the IPC `store` object, wasm host imports and `gnoblinctl store`. The Secret Service and Secret portal are adapters over a `secret` store. Rust crates use the `gnoblin-store` library, which joins the foundation set in `xtask/src/deps.rs`.
 
-**Backends.** Backends are a provider's detail: one SQLite file per store by default, SQLCipher for `secret`, and for `log` the existing `logs.sqlite3`, copied into the store once by a one-off migration (decided). The file layout is not a v1 contract.
+**Backends.** One SQLite file per store (decided). SQLCipher for `secret`. For `log`, a one-off migration moves the existing `logs.sqlite3` into its store (decided). The old file is renamed, not deleted, so a failed migration leaves it intact. The file layout is not a v1 contract.
 
 **Keyring.** The keyring stays a separate service with its own SQLCipher file (D27). It is a provider of kind `secret`. Its decisions are unchanged.
 
 **Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal, read-only boot and a locked `secret` read. A `secret` value read through each generic frontend, and a plaintext `secret` export, must both be refused.
 
-Decided 2026-11-06: logs become the `log` kind, and the existing `logs.sqlite3` is migrated once. Query operators are equality, key prefix, ranges, text search over an FTS index, order, limit, count, and group-by-count. No raw SQL is exposed.
+Decided 2026-11-06, from Kieran:
 
-Needs Kieran (details and pros and cons in `design/store.md`):
+- The API is the verbs in `design/store.md`. Callers never ask about capabilities.
+- A document is a value in a `kv` store.
+- `kv` ships first. Extensions do not define new kinds.
+- `writable` is a flag, not a lifecycle state. Each store is one file.
+- `kv` quotas are 64 KiB per value and 16 MiB per store. Host configuration can override the store quota.
+- Logs move onto the store now, as kind `log`, with a one-off migration of `logs.sqlite3`.
+- Query: equality, key prefix, time and number ranges, contains text (full-text where available), order, limit, count and group-by-count. Never raw SQL.
+- AppChooser's "remember this choice" persists in a `kv` store.
+- `secret` locked behaviour: follow what GNOME and KDE do. The KeyringResearch lane is verifying the exact behaviour.
 
-1. Which capabilities ship first (option, proposed: `kv` gets Items, Search, Transact and Watch; `log` adopts Append; `secret` adopts Lock with the keyring).
-2. Whether an extension may define a new kind (option, proposed no).
-3. Whether `secret` attributes are readable while locked (option).
-4. A `writable` flag, or a seventh lifecycle state (option, proposed flag).
-5. Default quota, TTL and retention per kind (option).
-6. Backend layout: one file per store, or one per kind (option, backend detail).
-7. The `secret` unlock credential, and whether a D28 prompt layer supplies it (option).
+Still open: the `secret` unlock credential, and whether a D28 prompt layer supplies it.
 
 ## Phase 0 checklist
 
