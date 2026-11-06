@@ -6,6 +6,9 @@
 
 - `Window.client_type` (`"wayland"` or `"x11"`, bridge API 1.93) in window records, `gnoblin.find("Window", {client_type = ...})`,
   the window rule `match.client_type` key and `gnoblinctl window list` and `window match`.
+- The services role starts the GeoClue agent next to the polkit agent, with the policy of the `location` table
+  in the configuration. Until now the role claimed the `location.agent` slot but never served it. With no system
+  bus the agent is skipped and the role carries on.
 
 ### Changed
 

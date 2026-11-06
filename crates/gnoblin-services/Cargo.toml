@@ -16,6 +16,9 @@ gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-model = { path = "../gnoblin-model" }
 # The primitives the role loop names: the tick a deadline is measured in.
 gnoblin-types = { path = "../gnoblin-types" }
+# The `location` section the GeoClue agent's policy is read from, and the store and
+# locator the configuration file is read through.
+gnoblin-config = { path = "../gnoblin-config" }
 # The version the handshake advertises is the schema's, and the wire crate is where both
 # sides of a handshake read it from.
 gnoblin-proto = { path = "../gnoblin-proto" }

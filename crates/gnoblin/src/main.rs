@@ -164,9 +164,19 @@ fn runtime() -> Result<(), Exit> {
     }
 }
 
+/// The agents the services role links in: the prompt adapter and the GeoClue agent, which
+/// takes the `location` table of the configuration as its policy.
+fn linked_agents() -> Vec<Box<dyn gnoblin_services::LinkedAgent>> {
+    let policy = gnoblin_services::location::policy_from_environment();
+    vec![
+        Box::new(gcr::GcrPrompter::new()),
+        Box::new(gnoblin_services::location::LocationAgent::new(policy)),
+    ]
+}
+
 /// Runs the services role: the D-Bus agents, until the session ends.
 fn services() -> Result<(), Exit> {
-    let linked: Vec<Box<dyn gnoblin_services::LinkedAgent>> = vec![Box::new(gcr::GcrPrompter::new())];
+    let linked = linked_agents();
     match gnoblin_services::Role::from_environment().run(never_stopped, linked) {
         Ok(()) => Ok(()),
         Err(error) => {
@@ -186,7 +196,14 @@ fn never_stopped() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Exit, run};
+    use super::{Exit, linked_agents, run};
+
+    #[test]
+    fn the_services_role_is_given_the_location_agent() {
+        // The role claims the location.agent slot as the services provider, so the GeoClue agent
+        // has to be in the list it starts, next to the prompt adapter.
+        assert_eq!(linked_agents().len(), 2);
+    }
 
     #[test]
     fn the_guardian_is_the_default_role() {

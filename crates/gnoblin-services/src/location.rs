@@ -18,10 +18,12 @@
 //!    request.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use futures_channel::oneshot;
 use futures_lite::StreamExt;
+use gnoblin_config::{Inherit, LocationAccuracy, SearchPaths, Store};
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use tracing::{debug, info, warn};
 use zbus::names::{BusName, WellKnownName};
@@ -78,6 +80,71 @@ impl Policy {
 impl Default for Policy {
     fn default() -> Policy {
         Policy::DENY
+    }
+}
+
+/// The GeoClue level a configured `max-accuracy` names.
+fn level_of(accuracy: LocationAccuracy) -> u32 {
+    match accuracy {
+        LocationAccuracy::Country => 1,
+        LocationAccuracy::City => 4,
+        LocationAccuracy::Neighborhood => 5,
+        LocationAccuracy::Street => 6,
+        LocationAccuracy::Exact => 8,
+    }
+}
+
+/// The policy a `location` section asks for.
+///
+/// `enabled = false` denies every request whatever the cap says. An omitted or inherited
+/// `enabled` is `false`, and an omitted or inherited `max-accuracy` is `exact`: those are
+/// the schema defaults. Gnoblin does not read the system setting an inherited value would
+/// follow, so it fails closed rather than guess at it.
+pub fn policy(section: Option<&gnoblin_config::Location>) -> Policy {
+    let enabled = section
+        .and_then(|location| location.enabled.as_ref())
+        .and_then(Inherit::value)
+        .copied()
+        .unwrap_or(false);
+    if !enabled {
+        return Policy::DENY;
+    }
+    let accuracy = section
+        .and_then(|location| location.max_accuracy.as_ref())
+        .and_then(Inherit::value)
+        .copied()
+        .unwrap_or(LocationAccuracy::Exact);
+    Policy {
+        max_level: level_of(accuracy),
+    }
+}
+
+/// The policy the configuration file in the environment asks for.
+///
+/// Like the compositor's monitors section, this reads the last accepted document. With no
+/// state directory, no file or an unreadable file, the policy is [`Policy::DENY`].
+pub fn policy_from_environment() -> Policy {
+    let Some(store) = Store::from_env() else {
+        debug!("[services] no state directory is set; location is denied");
+        return Policy::DENY;
+    };
+    match gnoblin_config::locate(&SearchPaths::from_env()) {
+        Ok(path) => policy_from_store(&store, path.path()),
+        Err(error) => {
+            debug!(%error, "[services] no configuration file; location is denied");
+            Policy::DENY
+        }
+    }
+}
+
+/// [`policy_from_environment`] for the document at `source`, read through `store`.
+pub fn policy_from_store(store: &Store, source: &Path) -> Policy {
+    match store.load(source) {
+        Ok(stored) => policy(stored.config.location.as_ref()),
+        Err(error) => {
+            warn!(%error, "[services] configuration not readable; location is denied");
+            Policy::DENY
+        }
     }
 }
 
@@ -381,6 +448,19 @@ impl crate::LinkedAgent for LocationAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_config::{Config, Value};
+
+    fn location<const N: usize>(entries: [(&str, Value); N]) -> gnoblin_config::Location {
+        let document = Value::table([("location", Value::table(entries))]);
+        Config::from_value(document)
+            .expect("the document is accepted")
+            .location
+            .expect("the section is present")
+    }
+
+    fn text(value: &str) -> Value {
+        Value::String(value.to_owned())
+    }
 
     fn answered(text: &str) -> RequestOutcome {
         RequestOutcome::Answered(text.as_bytes().to_vec())
@@ -425,5 +505,71 @@ mod tests {
     fn the_default_policy_denies() {
         assert_eq!(Policy::default(), Policy::DENY);
         assert_eq!(snap(0), 0);
+    }
+
+    #[test]
+    fn each_accuracy_cap_maps_to_its_geoclue_level() {
+        let cases = [
+            ("country", 1),
+            ("city", 4),
+            ("neighborhood", 5),
+            ("street", 6),
+            ("exact", 8),
+        ];
+        for (spelling, level) in cases {
+            let section = location([("enabled", Value::Bool(true)), ("max-accuracy", text(spelling))]);
+            assert_eq!(policy(Some(&section)), Policy { max_level: level }, "{spelling}");
+        }
+    }
+
+    #[test]
+    fn enabled_false_denies_whatever_the_cap_says() {
+        let section = location([("enabled", Value::Bool(false)), ("max-accuracy", text("exact"))]);
+        assert_eq!(policy(Some(&section)), Policy::DENY);
+    }
+
+    #[test]
+    fn an_omitted_section_denies() {
+        assert_eq!(policy(None), Policy::DENY);
+    }
+
+    #[test]
+    fn an_omitted_leaf_takes_its_schema_default() {
+        // `enabled` defaults to false, so a cap alone grants nothing.
+        let capped = location([("max-accuracy", text("city"))]);
+        assert_eq!(policy(Some(&capped)), Policy::DENY);
+        // `max-accuracy` defaults to exact, so enabling alone grants the full level.
+        let enabled = location([("enabled", Value::Bool(true))]);
+        assert_eq!(policy(Some(&enabled)), Policy { max_level: 8 });
+    }
+
+    #[test]
+    fn an_inherited_leaf_takes_its_schema_default() {
+        let section = location([("enabled", text("inherit")), ("max-accuracy", text("inherit"))]);
+        assert_eq!(policy(Some(&section)), Policy::DENY);
+        let enabled = location([("enabled", Value::Bool(true)), ("max-accuracy", text("inherit"))]);
+        assert_eq!(policy(Some(&enabled)), Policy { max_level: 8 });
+    }
+
+    #[test]
+    fn a_bad_accuracy_is_refused_naming_the_leaf() {
+        let document = Value::table([("location", Value::table([("max-accuracy", text("mouse"))]))]);
+        let Err(report) = Config::from_value(document) else {
+            panic!("a bad accuracy must be refused");
+        };
+        let names: Vec<String> = report
+            .problems()
+            .iter()
+            .map(|problem| problem.path.to_string())
+            .collect();
+        assert!(names.iter().any(|name| name.contains("max-accuracy")), "{names:?}");
+    }
+
+    #[test]
+    fn a_missing_configuration_file_denies() {
+        let directory = tempfile::tempdir().expect("a directory");
+        let store = Store::new(directory.path());
+        let source = directory.path().join("config.toml");
+        assert_eq!(policy_from_store(&store, &source), Policy::DENY);
     }
 }
