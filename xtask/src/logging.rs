@@ -28,14 +28,10 @@ const ALLOW_FILE: &str = "xtask/logging-allow.toml";
 
 /// Every logging crate a workspace crate may name directly, by the crate that may name it.
 ///
-/// A crate absent from this table names none of them. `gnoblin-log` is the facade over `tracing`;
-/// the sinks and the composition need `tracing-subscriber`, which in turn needs `tracing`.
-const MAY_NAME: &[(&str, &[&str])] = &[
-    ("gnoblin-log", &["tracing"]),
-    ("gnoblin-log-console", &["tracing", "tracing-subscriber"]),
-    ("gnoblin-log-store", &["tracing", "tracing-subscriber"]),
-    ("gnoblin-log-init", &["tracing", "tracing-subscriber"]),
-];
+/// A crate absent from this table names none of them. `gnoblin-log` is the one logging crate: the
+/// facade over `tracing`, and the sinks and the composition behind its features, which need
+/// `tracing-subscriber`.
+const MAY_NAME: &[(&str, &[&str])] = &[("gnoblin-log", &["tracing", "tracing-subscriber"])];
 
 /// The logging crates the table governs. Any direct dependency on one outside [`MAY_NAME`] fails.
 const LOGGING_CRATES: &[&str] = &["tracing", "tracing-subscriber", "log", "env_logger"];
@@ -330,8 +326,10 @@ mod tests {
                 .map(|(name, kind)| Dep {
                     name: (*name).to_owned(),
                     kind: *kind,
+                    features: Vec::new(),
                 })
                 .collect(),
+            is_binary: false,
         }
     }
 
@@ -339,8 +337,10 @@ mod tests {
     fn only_the_table_may_name_a_logging_crate() {
         let graph = Graph {
             packages: vec![
-                package("gnoblin-log", &[("tracing", DepKind::Normal)]),
-                package("gnoblin-log-init", &[("tracing-subscriber", DepKind::Normal)]),
+                package(
+                    "gnoblin-log",
+                    &[("tracing", DepKind::Normal), ("tracing-subscriber", DepKind::Normal)],
+                ),
                 package(
                     "gnoblin-wm",
                     &[("tracing", DepKind::Normal), ("serde", DepKind::Normal)],

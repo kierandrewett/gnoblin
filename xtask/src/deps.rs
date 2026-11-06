@@ -142,13 +142,11 @@ const BINARY_ROOTS: &[&str] = &[
     "gnoblin-services",
 ];
 
-/// The logging facade: the macros every crate logs through. It names no workspace crate (see
-/// [`log_isolation`]), so it cannot become a second composition root; every crate may depend on it.
+/// The logging facade: the macros every crate logs through, and the one crate that carries the
+/// sinks behind its features. It names no workspace crate (see [`log_isolation`]), so it cannot
+/// become a second composition root. Every crate may depend on it, but only a binary may enable a
+/// sink or `init` (see [`log_features`]).
 const LOG_CRATE: &str = "gnoblin-log";
-
-/// The logging composition: the sinks wired up for one process. Only a binary may name it (see
-/// [`log_init_roots`]), and the session binary is the one that does.
-const LOG_INIT_CRATE: &str = "gnoblin-log-init";
 
 /// The shared compat frame every compat crate depends on.
 const COMPAT_CORE: &str = "gnoblin-compat-core";
@@ -220,8 +218,8 @@ const RULES: &[Rule] = &[
         check: log_isolation,
     },
     Rule {
-        id: "log-init-roots",
-        check: log_init_roots,
+        id: "log-features",
+        check: log_features,
     },
 ];
 
@@ -517,11 +515,7 @@ fn binary_roots(package: &Package, dep: &Dep) -> Option<String> {
     if package.name != SESSION_BINARY || dep.kind == DepKind::Dev {
         return None;
     }
-    if BINARY_ROOTS.contains(&dep.name.as_str())
-        || dep.name == LOG_CRATE
-        || dep.name == LOG_INIT_CRATE
-        || is_compat(&dep.name)
-    {
+    if BINARY_ROOTS.contains(&dep.name.as_str()) || dep.name == LOG_CRATE || is_compat(&dep.name) {
         return None;
     }
     // Only the workspace's own crates can be a second composition root; `clap` and
@@ -546,39 +540,30 @@ fn is_workspace_crate(name: &str) -> bool {
     name.starts_with("gnoblin") || name == "xtask"
 }
 
-/// The logging stack sits beneath every process that logs, so each piece names only the pieces
-/// beneath it: the facade names no workspace crate, each sink names the facade, and the
-/// composition names the facade and both sinks. A wider edge would drag that crate's graph into
-/// every role that logs.
+/// The logging stack sits beneath every process that logs, so the facade names no workspace crate:
+/// a wider edge would drag that crate's graph into every role that logs.
 fn log_isolation(package: &Package, dep: &Dep) -> Option<String> {
-    let allowed: &[&str] = match package.name.as_str() {
-        LOG_CRATE => &[],
-        "gnoblin-log-console" | "gnoblin-log-store" => &[LOG_CRATE],
-        LOG_INIT_CRATE => &[LOG_CRATE, "gnoblin-log-console", "gnoblin-log-store"],
-        _ => return None,
-    };
-    if !is_workspace_crate(&dep.name) || allowed.contains(&dep.name.as_str()) {
+    if package.name != LOG_CRATE || !is_workspace_crate(&dep.name) {
         return None;
     }
     Some(format!(
-        "`{}` is part of the logging stack and may not depend on the workspace crate `{}`",
-        package.name, dep.name
+        "`{LOG_CRATE}` is the logging facade and may not depend on the workspace crate `{}`",
+        dep.name
     ))
 }
 
-/// The composition installs the log for a process, so only a binary may depend on it: a library
-/// that installed a subscriber would decide the log for a process it does not own.
-fn log_init_roots(package: &Package, dep: &Dep) -> Option<String> {
-    if dep.name != LOG_INIT_CRATE
-        || dep.kind == DepKind::Dev
-        || package.name == SESSION_BINARY
-        || package.name == "xdg-desktop-portal-gnoblin"
-    {
+/// A library takes the logging facade alone. The features switch on the sinks and the composition,
+/// and only a binary installs them for its process: a library that enabled `init` would decide the
+/// log for a process it does not own, and one that enabled a sink would ship a database into every
+/// role that logs. A dev-dependency is exempt, because a test target may drive a sink.
+fn log_features(package: &Package, dep: &Dep) -> Option<String> {
+    if dep.name != LOG_CRATE || dep.kind == DepKind::Dev || dep.features.is_empty() || package.is_binary {
         return None;
     }
     Some(format!(
-        "`{LOG_INIT_CRATE}` installs the log for a process and may only be depended on by a binary, not by `{}`",
-        package.name
+        "`{}` enables the features {} of `{LOG_CRATE}`, but a library takes the facade alone: only a binary may enable a sink or `init`",
+        package.name,
+        dep.features.join(", ")
     ))
 }
 
@@ -636,9 +621,9 @@ mod tests {
     }
 
     #[test]
-    fn the_session_binary_may_depend_on_the_logging_facade_and_composition() {
+    fn the_session_binary_may_depend_on_the_logging_facade() {
         assert_eq!(
-            violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-log", "gnoblin-log-init"])]),
+            violations(&[("gnoblin", &["gnoblin-compositor", "gnoblin-log"])]),
             Vec::<String>::new()
         );
     }
@@ -662,32 +647,62 @@ mod tests {
     }
 
     #[test]
-    fn the_sinks_may_depend_on_the_facade_alone() {
+    fn a_library_may_depend_on_the_logging_facade_without_features() {
         assert_eq!(
-            violations(&[
-                ("gnoblin-log-console", &["gnoblin-log"]),
-                ("gnoblin-log-store", &["gnoblin-log"]),
-            ]),
+            violations(&[("gnoblin-wayland", &["gnoblin-log", "gnoblin-types"])]),
             Vec::<String>::new()
-        );
-        let found = violations(&[("gnoblin-log-store", &["gnoblin-types"])]);
-        assert!(
-            found.iter().any(|message| message.contains("[log-isolation]")),
-            "{found:?}"
         );
     }
 
     #[test]
-    fn only_a_binary_may_depend_on_the_log_composition() {
-        let found = violations(&[("gnoblin-wayland", &["gnoblin-log-init"])]);
-        assert!(
-            found.iter().any(|message| message.contains("[log-init-roots]")),
-            "{found:?}"
-        );
-        assert_eq!(
-            violations(&[("xdg-desktop-portal-gnoblin", &["gnoblin-log-init"])]),
-            Vec::<String>::new()
-        );
+    fn a_library_may_not_enable_a_logging_feature() {
+        for feature in ["console", "store", "journal", "init"] {
+            let found = library_enabling_logging(false, &[feature]);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert!(found[0].contains("[log-features]"), "{found:?}");
+        }
+    }
+
+    #[test]
+    fn a_binary_may_enable_the_logging_features() {
+        assert_eq!(library_enabling_logging(true, &["init"]), Vec::<String>::new());
+        assert_eq!(library_enabling_logging(true, &["store"]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_dev_dependency_may_enable_a_logging_feature() {
+        let document = serde_json::json!({
+            "packages": [{
+                "name": "gnoblin-wayland",
+                "targets": [{ "kind": ["lib"] }],
+                "dependencies": [{
+                    "name": "gnoblin-log",
+                    "kind": "dev",
+                    "features": ["store"],
+                }],
+            }],
+        });
+        let graph = from_json(&document.to_string()).expect("the fixture parses");
+        assert!(check(&graph).is_empty());
+    }
+
+    /// The violations for one package that enables a feature of the logging facade, which is a
+    /// binary when `binary` is set and a library otherwise.
+    fn library_enabling_logging(binary: bool, features: &[&str]) -> Vec<String> {
+        let kind = if binary { "bin" } else { "lib" };
+        let document = serde_json::json!({
+            "packages": [{
+                "name": "gnoblin-wayland",
+                "targets": [{ "kind": [kind] }],
+                "dependencies": [{
+                    "name": "gnoblin-log",
+                    "kind": null,
+                    "features": features,
+                }],
+            }],
+        });
+        let graph = from_json(&document.to_string()).expect("the fixture parses");
+        check(&graph).iter().map(Violation::to_string).collect()
     }
 
     #[test]

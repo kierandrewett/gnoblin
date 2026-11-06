@@ -22,12 +22,17 @@ pub struct Graph {
 pub struct Package {
     pub name: String,
     pub deps: Vec<Dep>,
+    /// Whether the package has a binary target. Only a binary may be a composition root, so a rule
+    /// that gates a feature on the root reads this.
+    pub is_binary: bool,
 }
 
 #[derive(Debug)]
 pub struct Dep {
     pub name: String,
     pub kind: DepKind,
+    /// The features this package enables on the dependency.
+    pub features: Vec<String>,
 }
 
 /// How a dependency is declared. `Normal` is a regular build and runtime
@@ -107,12 +112,34 @@ pub fn from_json(json: &str) -> Result<Graph, String> {
                     ));
                 }
             };
+            let features = raw_dep
+                .get("features")
+                .and_then(Value::as_array)
+                .map(|features| features.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+                .unwrap_or_default();
             deps.push(Dep {
                 name: dep_name.to_owned(),
                 kind,
+                features,
             });
         }
-        packages.push(Package { name, deps });
+        let is_binary = has_binary_target(raw_package);
+        packages.push(Package { name, deps, is_binary });
     }
     Ok(Graph { packages })
+}
+
+/// Whether a package's `targets` include a binary: `cargo metadata` lists each target with its kinds.
+fn has_binary_target(raw_package: &Value) -> bool {
+    raw_package
+        .get("targets")
+        .and_then(Value::as_array)
+        .is_some_and(|targets| {
+            targets.iter().any(|target| {
+                target
+                    .get("kind")
+                    .and_then(Value::as_array)
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("bin")))
+            })
+        })
 }
