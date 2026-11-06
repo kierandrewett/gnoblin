@@ -100,7 +100,7 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
     let options = gnoblin_log::init::LogOptions::from_environment(&log_settings(&logging));
     let _log = gnoblin_log::init::init(log_role(&role), &options);
     if let Some(problem) = problem {
-        gnoblin_log::warn!("[logging] {problem}; the default logging is used");
+        gnoblin_log::warn_in!("gnoblin", "[logging] {problem}; the default logging is used");
     }
     dispatch(role)
 }
@@ -164,7 +164,7 @@ fn compositor() -> Result<(), Exit> {
     let privileged = match gnoblin_compositor::Privileged::from_environment() {
         Ok(privileged) => privileged,
         Err(error) => {
-            gnoblin_log::error!("{error}");
+            gnoblin_log::error_in!("gnoblin", "{error}");
             return Err(Exit(1));
         }
     };
@@ -177,7 +177,10 @@ fn compositor() -> Result<(), Exit> {
     // The compat adapters are served with the session's default mode until a configuration
     // key selects one. A failure to build them starts the session without them.
     if let Err(error) = compat::configure(&mut config, gnoblin_compat_core::Mode::default()) {
-        gnoblin_log::warn!("compat adapters not loaded, starting without them: {error:?}");
+        gnoblin_log::warn_in!(
+            "gnoblin",
+            "compat adapters not loaded, starting without them: {error:?}"
+        );
     }
     gnoblin_compositor::configure_layouts_from_environment(&mut config);
     gnoblin_compositor::configure_cursor_from_environment(&mut config);
@@ -189,7 +192,7 @@ fn compositor() -> Result<(), Exit> {
     match gnoblin_compositor::Compositor::run(config) {
         Ok(()) => Ok(()),
         Err(error) => {
-            gnoblin_log::error!("{error}");
+            gnoblin_log::error_in!("gnoblin", "{error}");
             Err(Exit(1))
         }
     }
@@ -198,11 +201,11 @@ fn compositor() -> Result<(), Exit> {
 /// Runs the guardian: the session's supervisor, until the session ends.
 fn guardian() -> Result<(), Exit> {
     let program = std::env::current_exe().map_err(|error| {
-        gnoblin_log::error!("cannot find this executable to start its children: {error}");
+        gnoblin_log::error_in!("gnoblin", "cannot find this executable to start its children: {error}");
         Exit(1)
     })?;
     let mut config = gnoblin_session::SupervisorConfig::from_environment(program).map_err(|error| {
-        gnoblin_log::error!("{error}");
+        gnoblin_log::error_in!("gnoblin", "{error}");
         Exit(1)
     })?;
     // The settings targets are exported into the session every child inherits; a switched-off mode exports nothing.
@@ -215,7 +218,7 @@ fn guardian() -> Result<(), Exit> {
         Ok(0) => Ok(()),
         Ok(status) => Err(Exit(status)),
         Err(error) => {
-            gnoblin_log::error!("{error}");
+            gnoblin_log::error_in!("gnoblin", "{error}");
             Err(Exit(1))
         }
     }
@@ -227,13 +230,13 @@ fn guardian() -> Result<(), Exit> {
 /// gone is exactly what the compositor needs to see to release its connection.
 fn runtime() -> Result<(), Exit> {
     let catalog = gnoblin_compositor::catalog().map_err(|error| {
-        gnoblin_log::error!("the stock schemas do not load: {error}");
+        gnoblin_log::error_in!("gnoblin", "the stock schemas do not load: {error}");
         Exit(1)
     })?;
     match gnoblin_lua::RoleRunner::from_environment(catalog.schemas().to_vec()).run(never_stopped) {
         Ok(()) => Ok(()),
         Err(error) => {
-            gnoblin_log::error!("{error}");
+            gnoblin_log::error_in!("gnoblin", "{error}");
             Err(Exit(1))
         }
     }
@@ -266,7 +269,7 @@ fn services() -> Result<(), Exit> {
     match gnoblin_services::Role::from_environment().run(never_stopped, linked) {
         Ok(()) => Ok(()),
         Err(error) => {
-            gnoblin_log::error!("{error}");
+            gnoblin_log::error_in!("gnoblin", "{error}");
             Err(Exit(1))
         }
     }

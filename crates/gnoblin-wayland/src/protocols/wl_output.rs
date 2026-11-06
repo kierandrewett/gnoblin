@@ -7,7 +7,7 @@
 //! is the client-facing half: it counts the bindings so a hotplug can log who is
 //! watching, and it is where an output's per-client state would live.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::output::Output;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -17,6 +17,6 @@ use crate::State;
 
 impl OutputHandler for State {
     fn output_bound(&mut self, output: Output, wl_output: WlOutput) {
-        debug!(output = %output.name(), instance = ?wl_output.id(), "[output] bound by a client");
+        debug_in!("wayland", output = %output.name(), instance = ?wl_output.id(), "[output] bound by a client");
     }
 }

@@ -47,7 +47,7 @@ use std::time::Duration;
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
-use gnoblin_log::{info, warn};
+use gnoblin_log::{info_in, warn_in};
 use gnoblin_model::{CapabilitySlot, RequestCompletion, RequestId, RequestOutcome, Tick};
 use gnoblin_service_core::{Host, LinkedAgent, Provider};
 use gnoblin_service_polkit::{AGENT_PATH, Polkit};
@@ -166,7 +166,7 @@ impl Role {
 
         let agents = Agents::start(&host, self.deadline, self.buses, linked);
         reporter.ready(&[]);
-        info!(
+        info_in!("services",
             slots = ?holding.iter().map(|slot| slot.name()).collect::<Vec<_>>(),
             polkit = agents.polkit.describe(),
             screensaver = agents.screensaver.is_some(),
@@ -180,7 +180,7 @@ impl Role {
                 Err(ClientError::Idle) => continue,
                 Err(ClientError::Disconnected) => break,
                 Err(error) => {
-                    warn!(%error, "[services] the privileged connection failed");
+                    warn_in!("services", %error, "[services] the privileged connection failed");
                     break;
                 }
             }
@@ -222,7 +222,7 @@ impl Agents {
             gnoblin_client::Event::RequestOffered { request, slot, .. } => {
                 // This role provides the slot and draws nothing, so the offer ends here
                 // rather than waiting for a deadline nobody will meet.
-                info!(request = request.get(), %slot, "[services] declining an offer this role cannot draw");
+                info_in!("services", request = request.get(), %slot, "[services] declining an offer this role cannot draw");
                 host.claim(request);
                 host.decline(request);
             }
@@ -253,7 +253,7 @@ impl Agents {
         if let PolkitSlot::Running(polkit, _) = &self.polkit
             && let Err(error) = polkit.answer(request, outcome)
         {
-            gnoblin_log::debug!(%error, request = request.get(), "[services] polkit did not own the answer");
+            gnoblin_log::debug_in!("services", %error, request = request.get(), "[services] polkit did not own the answer");
         }
         for agent in &self.linked {
             agent.answer(request, outcome);
@@ -300,18 +300,18 @@ fn start_polkit(host: &Host, deadline: Tick) -> PolkitSlot {
     let connection = match block_on(Connection::system()) {
         Ok(connection) => connection,
         Err(error) => {
-            info!(%error, "[services] no system bus, so no polkit agent");
+            info_in!("services", %error, "[services] no system bus, so no polkit agent");
             return PolkitSlot::Absent;
         }
     };
     let polkit = Polkit::new(host.clone(), deadline);
     let exported = block_on(async { connection.object_server().at(AGENT_PATH, polkit.clone()).await });
     if let Err(error) = exported {
-        warn!(%error, "[services] the polkit agent could not be exported");
+        warn_in!("services", %error, "[services] the polkit agent could not be exported");
         return PolkitSlot::Failed(error.to_string());
     }
     if let Err(error) = block_on(polkit.register(&connection)) {
-        warn!(%error, "[services] polkitd refused the agent");
+        warn_in!("services", %error, "[services] polkitd refused the agent");
         return PolkitSlot::Failed(error.to_string());
     }
     PolkitSlot::Running(polkit, connection)

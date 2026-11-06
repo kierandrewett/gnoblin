@@ -13,7 +13,7 @@
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
 use gnoblin_compat_mutter_displayconfig::{DisplayConfigService, DisplayLink, OutputApplier, export};
-use gnoblin_log::{debug, info, warn};
+use gnoblin_log::{debug_in, info_in, warn_in};
 use gnoblin_services::link::{
     Client, Fields, Host, LinkedAgent, RequestId, RequestOutcome, Tick, UnixTransport, Version, socket_path,
 };
@@ -59,14 +59,14 @@ impl LinkedAgent for MutterDisplayConfig {
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                info!(%error, "[services] no session bus, so no display configuration adapter");
+                info_in!("gnoblin", %error, "[services] no session bus, so no display configuration adapter");
                 return false;
             }
         };
         let mut link = match connect_link() {
             Ok(link) => link,
             Err(error) => {
-                warn!(%error, "[services] the display configuration adapter has no compositor link");
+                warn_in!("gnoblin", %error, "[services] the display configuration adapter has no compositor link");
                 return false;
             }
         };
@@ -74,16 +74,16 @@ impl LinkedAgent for MutterDisplayConfig {
         let service = match DisplayConfigService::with_gate(gate, Box::new(WritesOff)) {
             Ok(service) => service,
             Err(error) => {
-                warn!(%error, "[services] the display configuration adapter refused its support matrix");
+                warn_in!("gnoblin", %error, "[services] the display configuration adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service)) {
-            warn!(%error, "[services] the display configuration name is unavailable");
+            warn_in!("gnoblin", %error, "[services] the display configuration name is unavailable");
             return false;
         }
         if let Err(error) = block_on(service.publish(link.state().clone(), link.lock())) {
-            warn!(%error, "[services] the display configuration could not publish its monitors");
+            warn_in!("gnoblin", %error, "[services] the display configuration could not publish its monitors");
         }
         let handle = std::thread::Builder::new()
             .name("gnoblin-displayconfig".to_owned())
@@ -94,15 +94,18 @@ impl LinkedAgent for MutterDisplayConfig {
                     match link.advance() {
                         Ok(true) => {
                             if let Err(error) = block_on(service.publish(link.state().clone(), link.lock())) {
-                                debug!(%error, "[services] the display configuration did not publish");
+                                debug_in!("gnoblin", %error, "[services] the display configuration did not publish");
                             }
                         }
                         Ok(false) => {
-                            info!("[services] the compositor link ended; display configuration stops");
+                            info_in!(
+                                "gnoblin",
+                                "[services] the compositor link ended; display configuration stops"
+                            );
                             break;
                         }
                         Err(error) => {
-                            warn!(%error, "[services] the display configuration link failed");
+                            warn_in!("gnoblin", %error, "[services] the display configuration link failed");
                             break;
                         }
                     }
@@ -111,7 +114,7 @@ impl LinkedAgent for MutterDisplayConfig {
         match handle {
             Ok(_) => true,
             Err(error) => {
-                warn!(%error, "[services] the display configuration loop could not be started");
+                warn_in!("gnoblin", %error, "[services] the display configuration loop could not be started");
                 false
             }
         }

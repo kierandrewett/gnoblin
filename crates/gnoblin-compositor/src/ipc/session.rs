@@ -38,7 +38,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use gnoblin_log::error;
+use gnoblin_log::error_in;
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
 use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
@@ -183,7 +183,7 @@ impl SessionSync {
     /// is an event, and the state it leaves behind is the version.
     pub fn ready(&mut self) {
         if let Err(error) = self.graph.signal(self.session, member::READY, Fields::new()) {
-            error!(%error, "[ipc] the session object declares no ready signal");
+            error_in!("compositor", %error, "[ipc] the session object declares no ready signal");
         }
     }
     /// Writes the `settings` object from the configuration's `appearance` and `cursor`
@@ -227,7 +227,7 @@ impl SessionSync {
             let mut fields = Fields::new();
             fields.insert(member::COUNT.to_owned(), Value::Uint(self.bells));
             if let Err(error) = self.graph.signal(self.session, member::BELL, fields) {
-                error!(%error, "[ipc] the session object declares no bell signal");
+                error_in!("compositor", %error, "[ipc] the session object declares no bell signal");
                 return;
             }
         }
@@ -278,7 +278,7 @@ impl SessionSync {
             return;
         }
         if let Err(error) = self.graph.set(object, property, value) {
-            error!(%error, property, "[ipc] an object declares no such property");
+            error_in!("compositor", %error, property, "[ipc] an object declares no such property");
         }
     }
 

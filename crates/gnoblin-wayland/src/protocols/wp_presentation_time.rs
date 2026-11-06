@@ -40,7 +40,7 @@
 
 use std::time::Duration;
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -93,7 +93,7 @@ impl State {
                 cached.current().callbacks.split_off(0)
             });
             for callback in callbacks {
-                debug!(
+                debug_in!("wayland",
                     surface = ?surface.id(),
                     milliseconds = time.as_millis(),
                     sequence,

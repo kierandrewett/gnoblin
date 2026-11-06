@@ -44,7 +44,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use futures_channel::oneshot;
 use futures_lite::StreamExt;
 use gnoblin_config::{Inherit, LocationAccuracy, SearchPaths, Store};
-use gnoblin_log::{debug, info, warn};
+use gnoblin_log::{debug_in, info_in, warn_in};
 use gnoblin_model::{RequestId, RequestOutcome, Tick};
 use zbus::names::{BusName, WellKnownName};
 use zbus::{Connection, fdo, proxy};
@@ -145,13 +145,13 @@ pub fn policy(section: Option<&gnoblin_config::Location>) -> Policy {
 /// state directory, no file or an unreadable file, the policy is [`Policy::DENY`].
 pub fn policy_from_environment() -> Policy {
     let Some(store) = Store::from_env() else {
-        debug!("[services] no state directory is set; location is denied");
+        debug_in!("location", "[services] no state directory is set; location is denied");
         return Policy::DENY;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => policy_from_store(&store, path.path()),
         Err(error) => {
-            debug!(%error, "[services] no configuration file; location is denied");
+            debug_in!("location", %error, "[services] no configuration file; location is denied");
             Policy::DENY
         }
     }
@@ -162,7 +162,7 @@ pub fn policy_from_store(store: &Store, source: &Path) -> Policy {
     match store.load(source) {
         Ok(stored) => policy(stored.config.location.as_ref()),
         Err(error) => {
-            warn!(%error, "[services] configuration not readable; location is denied");
+            warn_in!("location", %error, "[services] configuration not readable; location is denied");
             Policy::DENY
         }
     }
@@ -325,7 +325,8 @@ impl Location {
             let request = match state.offerer.offer(&proposition, self.deadline) {
                 Ok(request) => request,
                 Err(refusal) => {
-                    warn!(
+                    warn_in!(
+                        "location",
                         ?refusal,
                         app = desktop_id,
                         "[services] location request refused by the offer path"
@@ -392,14 +393,14 @@ impl Location {
         let dbus = match fdo::DBusProxy::new(&connection).await {
             Ok(dbus) => dbus,
             Err(error) => {
-                info!(%error, "[services] no bus proxy, so no GeoClue agent");
+                info_in!("location", %error, "[services] no bus proxy, so no GeoClue agent");
                 return;
             }
         };
         let mut owners = match dbus.receive_name_owner_changed_with_args(&[(0, GEOCLUE_SERVICE)]).await {
             Ok(owners) => owners,
             Err(error) => {
-                info!(%error, "[services] GeoClue name watch unavailable, so no GeoClue agent");
+                info_in!("location", %error, "[services] GeoClue name watch unavailable, so no GeoClue agent");
                 return;
             }
         };
@@ -415,7 +416,10 @@ impl Location {
         let owned = dbus.name_has_owner(BusName::WellKnown(name)).await.unwrap_or(false);
         if !owned {
             if self.is_available() {
-                info!("[services] GeoClue left the bus; location requests are denied");
+                info_in!(
+                    "location",
+                    "[services] GeoClue left the bus; location requests are denied"
+                );
             }
             self.withdraw();
             return;
@@ -424,8 +428,8 @@ impl Location {
             return;
         }
         match self.register(connection).await {
-            Ok(()) => info!("[services] registered the GeoClue agent"),
-            Err(error) => info!(%error, "[services] GeoClue refused the agent, so no location agent"),
+            Ok(()) => info_in!("location", "[services] registered the GeoClue agent"),
+            Err(error) => info_in!("location", %error, "[services] GeoClue refused the agent, so no location agent"),
         }
     }
 
@@ -434,7 +438,7 @@ impl Location {
         let manager = match ManagerProxy::new(&connection).await {
             Ok(manager) => manager,
             Err(error) => {
-                debug!(%error, "[services] no GeoClue manager proxy, so no InUse watch");
+                debug_in!("location", %error, "[services] no GeoClue manager proxy, so no InUse watch");
                 return;
             }
         };
@@ -445,7 +449,7 @@ impl Location {
                     let mut state = self.lock();
                     state.state = state.state.watch_in_use(in_use);
                 }
-                Err(error) => debug!(%error, "[services] unreadable GeoClue InUse change"),
+                Err(error) => debug_in!("location", %error, "[services] unreadable GeoClue InUse change"),
             }
         }
     }
@@ -488,13 +492,13 @@ impl gnoblin_service_core::LinkedAgent for LocationAgent {
         let connection = match futures_lite::future::block_on(zbus::Connection::system()) {
             Ok(connection) => connection,
             Err(error) => {
-                info!(%error, "[services] no system bus, so no GeoClue agent");
+                info_in!("location", %error, "[services] no system bus, so no GeoClue agent");
                 return false;
             }
         };
         let location = Location::new(host.clone(), self.policy, deadline);
         if let Err(error) = futures_lite::future::block_on(location.start(&connection)) {
-            warn!(%error, "[services] the GeoClue agent could not be exported");
+            warn_in!("location", %error, "[services] the GeoClue agent could not be exported");
             return false;
         }
         self.location = Some((location, connection));

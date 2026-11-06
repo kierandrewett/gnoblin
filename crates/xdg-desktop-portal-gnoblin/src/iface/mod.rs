@@ -232,7 +232,7 @@ impl Portal {
         let mut owners = match bus::Owners::watch(&self.connection).await {
             Ok(owners) => owners,
             Err(error) => {
-                gnoblin_log::warn!(%error, "the name-owner watch cannot start; grants will outlive a crashed caller");
+                gnoblin_log::warn_in!("portal", %error, "the name-owner watch cannot start; grants will outlive a crashed caller");
                 return self.expire_only().await;
             }
         };
@@ -244,7 +244,11 @@ impl Portal {
                 shared.guard.tick(now)
             };
             for request in due {
-                gnoblin_log::debug!(request = request.get(), "a consent prompt passed its deadline");
+                gnoblin_log::debug_in!(
+                    "portal",
+                    request = request.get(),
+                    "a consent prompt passed its deadline"
+                );
             }
             // Wake on whichever comes first: a caller left the bus, or the next tick. The
             // tick expires prompts nobody answers, so it runs even on a quiet bus.
@@ -263,7 +267,7 @@ impl Portal {
                         shared.capture.close_stream(stream);
                     }
                 }
-                gnoblin_log::info!(%name, "a caller left; its grants and sessions ended");
+                gnoblin_log::info_in!("portal", %name, "a caller left; its grants and sessions ended");
             }
         }
     }
@@ -311,13 +315,13 @@ impl Portal {
         let emitter = match SignalEmitter::new(&self.connection, PATH) {
             Ok(emitter) => emitter,
             Err(error) => {
-                gnoblin_log::warn!(%error, "the settings signal has no emitter");
+                gnoblin_log::warn_in!("portal", %error, "the settings signal has no emitter");
                 return;
             }
         };
         for change in changes {
             if let Err(error) = settings::Settings::emit(&emitter, change).await {
-                gnoblin_log::warn!(%error, "a settings change could not be announced");
+                gnoblin_log::warn_in!("portal", %error, "a settings change could not be announced");
             }
         }
     }
@@ -515,7 +519,10 @@ mod bus {
             use futures_lite::StreamExt as _;
             loop {
                 let Some(signal) = self.stream.next().await else {
-                    gnoblin_log::warn!("the name-owner watch ended; grants will outlive a crashed caller");
+                    gnoblin_log::warn_in!(
+                        "portal",
+                        "the name-owner watch ended; grants will outlive a crashed caller"
+                    );
                     return std::future::pending().await;
                 };
                 let Ok(args) = signal.args() else {

@@ -72,7 +72,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use gnoblin_log::{debug, trace};
+use gnoblin_log::{debug_in, trace_in};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::xdg_activation::{
@@ -188,7 +188,11 @@ impl XdgActivationHandler for State {
             .as_ref()
             .is_some_and(|client| matches!(self.access.role(client), ClientRole::Privileged | ClientRole::Trusted));
         if !trusted_context && !privileged {
-            debug!(?serial, "[activation] a token was refused: no trusted context");
+            debug_in!(
+                "wayland",
+                ?serial,
+                "[activation] a token was refused: no trusted context"
+            );
             return false;
         }
         // The token is bound to the session rather than to a process: `xdg-activation`'s
@@ -222,7 +226,8 @@ impl XdgActivationHandler for State {
             match effect {
                 gnoblin_authority::Effect::IssueToken { .. } => issued = true,
                 gnoblin_authority::Effect::RefuseLaunch { reason, .. } => {
-                    debug!(
+                    debug_in!(
+                        "wayland",
                         reason = reason.as_str(),
                         "[activation] the authority refused to mint a token"
                     );
@@ -240,7 +245,7 @@ impl XdgActivationHandler for State {
                 leader,
             },
         );
-        debug!(leader, ?serial, "[activation] token minted");
+        debug_in!("wayland", leader, ?serial, "[activation] token minted");
         true
     }
 
@@ -259,7 +264,7 @@ impl State {
     fn redeem_activation(&mut self, text: String, data: XdgActivationTokenData, surface: &WlSurface) {
         let window = self.window_of(surface);
         let Some(minted) = self.activation.tokens.get(&text).cloned() else {
-            debug!("[activation] a token that was never issued");
+            debug_in!("wayland", "[activation] a token that was never issued");
             self.refuse_activation(window, gnoblin_authority::Denial::UnknownToken.as_str());
             return;
         };
@@ -287,7 +292,7 @@ impl State {
             // next mint prunes the spent ones.
             match window {
                 Some(window) => {
-                    debug!(%window, "[activation] allowed");
+                    debug_in!("wayland", %window, "[activation] allowed");
                     let effects = self.wm.apply(gnoblin_wm::Event::ActivationRequested {
                         window,
                         decision: ActivationDecision::Allow,
@@ -297,7 +302,7 @@ impl State {
                 None => {
                     // A token is about a surface; a surface that is not a managed
                     // window has nothing to focus, so the claim buys nothing.
-                    debug!("[activation] the token named a surface that is not a window");
+                    debug_in!("wayland", "[activation] the token named a surface that is not a window");
                     self.activation.denied = Some(ActivationDenial {
                         window: None,
                         reason: "not-a-window".to_owned(),
@@ -308,7 +313,7 @@ impl State {
             return;
         }
         let reason = refusal.map_or("no-authority", |reason| reason.as_str());
-        debug!(reason, "[activation] refused");
+        debug_in!("wayland", reason, "[activation] refused");
         self.refuse_activation(window, reason);
     }
 
@@ -357,7 +362,8 @@ impl State {
             .activation
             .authority
             .apply(now, Event::LockChanged { active: locked });
-        trace!(
+        trace_in!(
+            "wayland",
             locked,
             effects = effects.len(),
             "[activation] the authority heard about the lock"

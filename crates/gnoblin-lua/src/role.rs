@@ -176,7 +176,7 @@ impl RoleRunner {
             .map_err(|error| RoleError::Config(error.to_string()))?;
         bind_configured_extensions(&mut host, &loaded, &self.stock)?;
         let revision = commit(&mut host, &loaded, &mut reporter)?;
-        gnoblin_log::info!(
+        gnoblin_log::info_in!("lua",
             path = %loaded.path.path().display(),
             revision,
             "[runtime] configuration committed"
@@ -205,7 +205,7 @@ fn commit<T: Transport + 'static>(
             );
             // The guardian's log and the recovery state both need this: a runtime that exits
             // saying nothing leaves the session degraded with no reason in it.
-            gnoblin_log::error!("[runtime] {reason}");
+            gnoblin_log::error_in!("lua", "[runtime] {reason}");
             reporter.write(&report::config_rejected(0, &reason));
             return Err(RoleError::Invalid(reason));
         }
@@ -237,13 +237,13 @@ fn bind_configured_extensions<T: Transport + 'static>(
     let base = report.path.path().parent().unwrap_or_else(|| Path::new("."));
     let loaded = load_extensions(&report.document, base, stock);
     for refusal in &loaded.refused {
-        gnoblin_log::warn!("[runtime] {refusal}");
+        gnoblin_log::warn_in!("lua", "[runtime] {refusal}");
     }
     let mut registry = ExtensionRegistry::new();
     for extension in loaded.accepted {
         let namespace = extension.namespace.clone();
         if let Err(error) = registry.register_extension(extension.schema) {
-            gnoblin_log::warn!(namespace = %namespace, error = ?error, "[runtime] extension refused at registration");
+            gnoblin_log::warn_in!("lua", namespace = %namespace, error = ?error, "[runtime] extension refused at registration");
         }
     }
     host.bind_extensions(&registry)
@@ -258,7 +258,7 @@ fn serve<T: Transport + 'static>(host: &mut Host<T>, stop: &impl Fn() -> bool) -
         match host.pump(now) {
             Ok(report) => {
                 for error in &report.errors {
-                    gnoblin_log::warn!(%error, "[runtime] handler failed");
+                    gnoblin_log::warn_in!("lua", %error, "[runtime] handler failed");
                 }
                 if report.handlers >= PUMP_HANDLERS {
                     // A handler that wakes another handler could otherwise spin inside one

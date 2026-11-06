@@ -288,7 +288,8 @@ fn a_passphrase_never_reaches_the_log() {
         .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
         .expect("the request is pending");
     let effect = fixture.effect().expect("the caller is told");
-    gnoblin_log::debug_in!("compat-keyring", ?effect, "the effect was queued");
+    // Logged at `info`: the default filter drops `debug`, and this line must reach the capture.
+    gnoblin_log::info_in!("compat-keyring", ?effect, "the effect was queued");
 
     let lines = captured.lines();
     assert_eq!(lines.len(), 2, "the test's own lines were captured: {lines:?}");

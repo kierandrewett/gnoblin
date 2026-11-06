@@ -557,7 +557,7 @@ impl Gpu {
         let resources = match device.resource_handles() {
             Ok(resources) => resources,
             Err(error) => {
-                gnoblin_log::warn!(%error, "[drm] the GPU's resources could not be re-read; the change is skipped");
+                gnoblin_log::warn_in!("backend", %error, "[drm] the GPU's resources could not be re-read; the change is skipped");
                 return;
             }
         };
@@ -566,7 +566,7 @@ impl Gpu {
             match device.get_connector(port.handle, true) {
                 Ok(info) => infos.push(info),
                 Err(error) => {
-                    gnoblin_log::warn!(connector = %port.connector.name, %error, "[drm] the connector could not be re-read; the change is skipped");
+                    gnoblin_log::warn_in!("backend", connector = %port.connector.name, %error, "[drm] the connector could not be re-read; the change is skipped");
                     return;
                 }
             }
@@ -648,7 +648,7 @@ impl Gpu {
                     queue.push_back(crtc);
                 }
                 DrmEvent::Error(error) => {
-                    gnoblin_log::warn!(%error, "[drm] the device reported an error on its event queue");
+                    gnoblin_log::warn_in!("backend", %error, "[drm] the device reported an error on its event queue");
                 }
             })
             .map_err(|error| io::Error::other(error.to_string()))?;
@@ -901,7 +901,7 @@ fn enumerate(device: &mut DrmDevice) -> Result<Vec<Port>, String> {
             match bring_up_port(&mut port, device, &resources, &info, &taken) {
                 Ok(()) => taken.extend(port.crtc()),
                 Err(reason) => {
-                    gnoblin_log::warn!(connector = %port.connector.name, %reason, "[drm] the connector stays disconnected");
+                    gnoblin_log::warn_in!("backend", connector = %port.connector.name, %reason, "[drm] the connector stays disconnected");
                 }
             }
         }

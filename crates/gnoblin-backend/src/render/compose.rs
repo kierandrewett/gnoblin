@@ -57,7 +57,7 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
@@ -552,7 +552,7 @@ impl Composer {
                 // scene's damage already covers the rotated bounds, so skipping the
                 // layer repaints those pixels with the background rather than leaving
                 // stale ones.
-                debug!(%window, "[render] a rotated window is not drawn by the software renderer");
+                debug_in!("backend", %window, "[render] a rotated window is not drawn by the software renderer");
                 continue;
             }
             frame.push_layer(Layer::Surface(Surface {

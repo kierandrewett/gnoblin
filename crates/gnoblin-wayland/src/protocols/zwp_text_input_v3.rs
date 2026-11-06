@@ -23,7 +23,7 @@
 
 use std::collections::HashSet;
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_v3::{
     ContentHint, ContentPurpose,
 };
@@ -70,7 +70,7 @@ pub(crate) fn announce_new_text_inputs(state: &mut State) {
 
 impl TextInputActivation for State {
     fn activated(&mut self, content_type: Option<(ContentHint, ContentPurpose)>) {
-        debug!(
+        debug_in!("wayland",
             hint = ?content_type.map(|(hint, _)| hint),
             "[text-input] a client enabled its text input"
         );
@@ -80,6 +80,6 @@ impl TextInputActivation for State {
     }
 
     fn deactivated(&mut self) {
-        debug!("[text-input] the active text input was disabled");
+        debug_in!("wayland", "[text-input] the active text input was disabled");
     }
 }

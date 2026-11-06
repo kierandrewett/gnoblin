@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use smithay::backend::input::{ButtonState, InputTime};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::desktop::PopupManager;
@@ -893,7 +893,7 @@ impl State {
             )),
             ClientRole::Sandboxed,
         )?;
-        debug!(client = ?client.id(), "[access] a sandboxed connection joined");
+        debug_in!("wayland", client = ?client.id(), "[access] a sandboxed connection joined");
         Ok(client)
     }
 
@@ -1032,7 +1032,11 @@ impl State {
         let layout = match compute(&descriptors, &LayoutConfig::row_over(&connectors)) {
             Ok(layout) => layout,
             Err(error) => {
-                warn!(?error, "[output] the layout was refused; keeping the previous one");
+                warn_in!(
+                    "wayland",
+                    ?error,
+                    "[output] the layout was refused; keeping the previous one"
+                );
                 return;
             }
         };
@@ -1040,7 +1044,7 @@ impl State {
         self.remove_outputs_unless(&connected.iter().map(|output| output.id).collect::<Vec<_>>());
         for output in &connected {
             let Some(monitor) = layout.monitor_of(output.id) else {
-                warn!(connector = %output.connector, "[output] the layout does not place this output");
+                warn_in!("wayland", connector = %output.connector, "[output] the layout does not place this output");
                 continue;
             };
             match self.outputs.iter().position(|entry| entry.backend == output.id) {
@@ -1068,7 +1072,7 @@ impl State {
             self.display_handle.remove_global::<Self>(entry.global);
             self.composer.remove_output(entry.backend);
             self.output_controls_removed(entry.backend);
-            debug!(connector = %entry.output.name(), "[output] disconnected");
+            debug_in!("wayland", connector = %entry.output.name(), "[output] disconnected");
             let effects = self.wm.apply(Event::OutputDisconnected { output: entry.policy });
             self.apply(effects);
         }
@@ -1121,7 +1125,7 @@ impl State {
         });
         self.apply(identified);
         self.composer.set_output(output.id, rect);
-        debug!(connector = %output.connector, ?rect, "[output] connected");
+        debug_in!("wayland", connector = %output.connector, ?rect, "[output] connected");
         self.outputs.push(OutputEntry {
             backend: output.id,
             policy,
@@ -1176,17 +1180,17 @@ impl State {
                     // The policy states the order topmost first; the scene keeps its
                     // paint order bottom first.
                     self.composer.set_stacking(&order);
-                    debug!(log = ?order, "[stack]");
+                    debug_in!("wayland", log = ?order, "[stack]");
                 }
                 Effect::Focus { focused, .. } => self.move_focus(focused),
                 Effect::ActivationDenied { window } => {
-                    debug!(%window, "[focus] activation refused by the caller");
+                    debug_in!("wayland", %window, "[focus] activation refused by the caller");
                 }
-                Effect::WorkspaceShown { workspace } => debug!(%workspace, "[workspace] shown"),
+                Effect::WorkspaceShown { workspace } => debug_in!("wayland", %workspace, "[workspace] shown"),
                 Effect::RuleRejected { window, rule, reason } => {
-                    warn!(%window, rule, ?reason, "[rules] rule did not apply")
+                    warn_in!("wayland", %window, rule, ?reason, "[rules] rule did not apply")
                 }
-                Effect::Rejected { reason } => debug!(?reason, "[wm] the event changed nothing"),
+                Effect::Rejected { reason } => debug_in!("wayland", ?reason, "[wm] the event changed nothing"),
                 // A settled layout places its window: its transform reaches the scene whole.
                 Effect::PlacementTarget { workspace, placement } => self.place_tiled(workspace, placement),
                 Effect::LayoutFailed { workspace, reason } => self.layout_failed(workspace, reason),
@@ -1223,11 +1227,11 @@ impl State {
                 // surface's `last_configure` in step, which is what popup positioning
                 // reads.
                 if let Err(error) = surface.configure(Some(x11_geometry(geometry))) {
-                    debug!(%error, %window, "[wm] the X11 configure failed");
+                    debug_in!("wayland", %error, %window, "[wm] the X11 configure failed");
                 }
             }
         }
-        debug!(%window, width = geometry.width, height = geometry.height, "[wm] configured");
+        debug_in!("wayland", %window, width = geometry.width, height = geometry.height, "[wm] configured");
     }
 
     /// Shows or hides a window's surface.
@@ -1254,7 +1258,7 @@ impl State {
     /// applied again when the reveal completes.
     fn move_focus(&mut self, focused: Option<WindowId>) {
         if self.lock.state() != LockState::Unlocked {
-            debug!(?focused, "[focus] withheld while the session is covered");
+            debug_in!("wayland", ?focused, "[focus] withheld while the session is covered");
             return;
         }
         // A keyboard-exclusive layer surface above the shell layer keeps the keyboard:
@@ -1274,7 +1278,7 @@ impl State {
             if let Managed::X11(surface) = &entry.surface
                 && let Err(error) = surface.set_activated(Some(*window) == focused)
             {
-                debug!(%error, %window, "[focus] the X11 activation state was not sent");
+                debug_in!("wayland", %error, %window, "[focus] the X11 activation state was not sent");
             }
         }
         self.set_keyboard_focus(target);
@@ -1470,7 +1474,7 @@ impl State {
             self.composer.insert_window(window, managed.geometry);
         }
         self.apply(effects);
-        debug!(%window, surface = ?wl_surface.id(), "[window] opened");
+        debug_in!("wayland", %window, surface = ?wl_surface.id(), "[window] opened");
         self.publish();
     }
 
@@ -1487,7 +1491,7 @@ impl State {
                 // A constraint the window's client held cannot outlive the surface it
                 // was created for.
                 self.constraint_tables.held.retain(|held| held.surface != wl_surface);
-                debug!(%window, surface = ?wl_surface.id(), "[window] closed");
+                debug_in!("wayland", %window, surface = ?wl_surface.id(), "[window] closed");
             }
             self.composer.remove_window(window);
             // The layout a window remembered goes with it: a recycled identity must not
@@ -1799,7 +1803,7 @@ impl State {
             scale,
         } = placement.transform
         else {
-            warn!(%window, %workspace, "[layout] a matrix placement is refused: unsupported-transform");
+            warn_in!("wayland", %window, %workspace, "[layout] a matrix placement is refused: unsupported-transform");
             return;
         };
         // A window closed since the run was submitted has nothing left to place.
@@ -1824,7 +1828,7 @@ impl State {
     /// Records that a workspace's layout run failed. The window manager already runs that
     /// workspace floating; the reason is kept for the compositor to report.
     fn layout_failed(&mut self, workspace: WorkspaceId, reason: &'static str) {
-        warn!(%workspace, reason, "[layout] failed; the workspace runs floating");
+        warn_in!("wayland", %workspace, reason, "[layout] failed; the workspace runs floating");
         self.layout_failures.insert(workspace, reason);
     }
 
@@ -1957,7 +1961,7 @@ impl State {
         let result = display.flush_clients();
         self.restore_display(display);
         if let Err(error) = result {
-            warn!(%error, "[wayland] flushing a client failed");
+            warn_in!("wayland", %error, "[wayland] flushing a client failed");
         }
     }
 
@@ -2114,7 +2118,7 @@ impl State {
     /// bell itself is the count.
     pub(crate) fn ring_bell(&mut self, window: Option<WindowId>) {
         self.bells = self.bells.saturating_add(1);
-        debug!(?window, bells = self.bells, "[bell] rung");
+        debug_in!("wayland", ?window, bells = self.bells, "[bell] rung");
         self.publish();
     }
 
@@ -2387,7 +2391,7 @@ fn remove_disabled_globals(display_handle: &DisplayHandle, protocols: &Protocols
             continue;
         }
         display_handle.remove_global::<State>(id.clone());
-        debug!(global = global.as_str(), "[access] not advertised");
+        debug_in!("wayland", global = global.as_str(), "[access] not advertised");
     }
 }
 

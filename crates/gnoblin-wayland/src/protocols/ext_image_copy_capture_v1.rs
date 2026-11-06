@@ -7,7 +7,7 @@
 //! [`capture_shared`](super::capture_shared). Its refusals map onto the protocol's
 //! failure reasons here.
 
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::utils::{Buffer as BufferSpace, Rectangle, Transform};
@@ -47,7 +47,10 @@ impl ImageCopyCaptureHandler for State {
 
     fn new_session(&mut self, session: CaptureSession) {
         let Some(target) = self.capture.target_of(&session.source()) else {
-            warn!("[capture] a session names a source this session does not know");
+            warn_in!(
+                "wayland",
+                "[capture] a session names a source this session does not know"
+            );
             return;
         };
         let Some(bounds) = self.capture_bounds(target) else {
@@ -62,7 +65,7 @@ impl ImageCopyCaptureHandler for State {
         let id = self.capture.table.open(owner, target, CaptureStream::Requested, format);
         session.user_data().insert_if_missing(|| SessionKey(id));
         self.capture.sessions.push(session);
-        debug!(%target, session = %id, "[capture] session opened");
+        debug_in!("wayland", %target, session = %id, "[capture] session opened");
         self.publish();
     }
 
@@ -85,7 +88,11 @@ impl ImageCopyCaptureHandler for State {
         let claim = match self.capture.table.request(id, buffer_id, tick) {
             Ok(claim) => claim,
             Err(refusal) => {
-                debug!(reason = refusal.as_str(), "[capture] the frame could not be claimed");
+                debug_in!(
+                    "wayland",
+                    reason = refusal.as_str(),
+                    "[capture] the frame could not be claimed"
+                );
                 frame.fail(failure_reason(refusal));
                 return;
             }
@@ -141,7 +148,7 @@ impl ImageCopyCaptureHandler for State {
     fn session_destroyed(&mut self, session: SessionRef) {
         if let Some(id) = key_of(session.user_data()) {
             self.capture.table.close(id);
-            debug!(session = %id, "[capture] session closed");
+            debug_in!("wayland", session = %id, "[capture] session closed");
         }
         self.capture.sessions.retain(|held| held.as_ref() != session);
         self.publish();

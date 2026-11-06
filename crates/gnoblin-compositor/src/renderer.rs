@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use gnoblin_config::{RendererChoice, SearchPaths, Store};
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 
 use crate::SessionConfig;
 
@@ -21,9 +21,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
                 config,
                 stored.config.compositor.as_ref().and_then(|section| section.renderer),
             );
-            debug!("[renderer] loaded from the last accepted configuration");
+            debug_in!("compositor", "[renderer] loaded from the last accepted configuration");
         }
-        Err(error) => warn!(%error, "[renderer] configuration not readable; the default is used"),
+        Err(error) => warn_in!("compositor", %error, "[renderer] configuration not readable; the default is used"),
     }
 }
 
@@ -32,12 +32,15 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the default is used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug!("[renderer] no state directory is set; the default is used");
+        debug_in!(
+            "compositor",
+            "[renderer] no state directory is set; the default is used"
+        );
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => debug!(%error, "[renderer] no configuration file; the default is used"),
+        Err(error) => debug_in!("compositor", %error, "[renderer] no configuration file; the default is used"),
     }
 }
 

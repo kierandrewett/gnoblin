@@ -279,7 +279,11 @@ impl Polkit {
                 reason: error.to_string(),
             });
         }
-        gnoblin_log::info!(path = AGENT_PATH, "registered as the polkit authentication agent");
+        gnoblin_log::info_in!(
+            "polkit",
+            path = AGENT_PATH,
+            "registered as the polkit authentication agent"
+        );
         Ok(())
     }
 
@@ -290,7 +294,8 @@ impl Polkit {
     pub async fn unregister_registration(&self, connection: &Connection) {
         let finished = self.unregister();
         if !finished.is_empty() {
-            gnoblin_log::info!(
+            gnoblin_log::info_in!(
+                "polkit",
                 cancelled = finished.len(),
                 "unregistering ended pending authentications"
             );
@@ -305,7 +310,7 @@ impl Polkit {
             .unregister_authentication_agent(subject::unix_process(), &path)
             .await
         {
-            gnoblin_log::warn!(%error, "polkitd refused the unregistration");
+            gnoblin_log::warn_in!("polkit", %error, "polkitd refused the unregistration");
         }
     }
 }
@@ -365,10 +370,10 @@ impl Polkit {
             shared.replies.insert(offered.request, sender);
             (offered.request, receiver)
         };
-        gnoblin_log::info!(request = request.get(), "offered a polkit authentication");
+        gnoblin_log::info_in!("polkit", request = request.get(), "offered a polkit authentication");
         match receiver.await {
             Ok(Decision::Allowed { identity }) => {
-                gnoblin_log::info!(request = request.get(), %identity, "authentication allowed");
+                gnoblin_log::info_in!("polkit", request = request.get(), %identity, "authentication allowed");
                 Ok(())
             }
             Ok(Decision::Denied) | Err(_) => Err(fdo::Error::AuthFailed("Not authorized".to_owned())),
@@ -385,7 +390,11 @@ impl Polkit {
     async fn cancel_authentication(&self, cookie: String) -> fdo::Result<()> {
         let finished = self.lock().agent.cancel_cookie(&cookie);
         if let Some(finished) = finished {
-            gnoblin_log::info!(request = finished.request.get(), "polkitd cancelled an authentication");
+            gnoblin_log::info_in!(
+                "polkit",
+                request = finished.request.get(),
+                "polkitd cancelled an authentication"
+            );
             self.settle(vec![finished]);
         }
         Ok(())

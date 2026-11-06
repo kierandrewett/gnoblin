@@ -85,7 +85,7 @@ impl GlobalShortcuts {
         let _ = remove(&self.portal.connection, handle.as_str()).await;
         let mut results = BTreeMap::new();
         results.insert("session_id".to_owned(), text(&path));
-        gnoblin_log::info!(app = %app_id, session = %path, "a global shortcuts session was created");
+        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "a global shortcuts session was created");
         Ok((0, results))
     }
 
@@ -231,7 +231,7 @@ fn shortcut_list(shortcuts: &[Shortcut]) -> OwnedVariant {
         }
         let entry = Structure::from((shortcut.id.clone(), properties));
         if let Err(error) = array.append(Variant::Structure(entry)) {
-            gnoblin_log::warn!(%error, "a shortcut could not be added to the reply");
+            gnoblin_log::warn_in!("portal", %error, "a shortcut could not be added to the reply");
         }
     }
     OwnedVariant::try_from(Variant::Array(array)).expect("an array of shortcuts is a value")

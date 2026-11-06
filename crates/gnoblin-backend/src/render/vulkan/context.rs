@@ -38,7 +38,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ash::ext::debug_utils;
 use ash::{Device, Entry, Instance, vk};
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 
 use super::error::VulkanError;
 
@@ -260,7 +260,7 @@ impl VkContext {
             Ok(created) => created,
             Err(error @ VulkanError::Driver { .. }) if wants_validation => {
                 // A layer that is listed but cannot load must not take the renderer down.
-                warn!(%error, "[render] the Vulkan validation layer could not be enabled");
+                warn_in!("backend", %error, "[render] the Vulkan validation layer could not be enabled");
                 create_instance(&entry, false, &messages)?
             }
             Err(error) => return Err(error),
@@ -439,7 +439,7 @@ fn build(
         Ok(candidate) => candidate,
         Err(error) => return Err(Box::new((error, entry, instance, messenger))),
     };
-    debug!(device = %candidate.info.name, kind = ?candidate.info.kind, "[render] Vulkan device chosen");
+    debug_in!("backend", device = %candidate.info.name, kind = ?candidate.info.kind, "[render] Vulkan device chosen");
     let priorities = [1.0_f32];
     let queues = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(candidate.family)

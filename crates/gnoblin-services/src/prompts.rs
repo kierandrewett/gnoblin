@@ -7,19 +7,19 @@
 use std::path::Path;
 
 use gnoblin_config::{SearchPaths, Store};
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 
 /// Whether the configuration turns the prompter on: `prompts.enabled`, which defaults to `false`.
 /// With no state directory, no file or an unreadable file the prompter stays off.
 pub fn enabled_from_environment() -> bool {
     let Some(store) = Store::from_env() else {
-        debug!("[services] no state directory is set; prompts are off");
+        debug_in!("services", "[services] no state directory is set; prompts are off");
         return false;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => enabled_from_store(&store, path.path()),
         Err(error) => {
-            debug!(%error, "[services] no configuration file; prompts are off");
+            debug_in!("services", %error, "[services] no configuration file; prompts are off");
             false
         }
     }
@@ -35,7 +35,7 @@ pub fn enabled_from_store(store: &Store, source: &Path) -> bool {
             .and_then(|section| section.enabled)
             .unwrap_or(false),
         Err(error) => {
-            warn!(%error, "[services] configuration not readable; prompts are off");
+            warn_in!("services", %error, "[services] configuration not readable; prompts are off");
             false
         }
     }

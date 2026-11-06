@@ -73,7 +73,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use gnoblin_log::{debug, info, warn};
+use gnoblin_log::{debug_in, info_in, warn_in};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::Resource;
@@ -199,7 +199,7 @@ impl SessionLockHandler for State {
         // object and that the lock is `Locked`; the state machine answers with the
         // reveal or with nothing.
         let Some(locker) = self.lock.locker() else {
-            warn!("[lock] an unlock arrived with no owner; the cover stays");
+            warn_in!("wayland", "[lock] an unlock arrived with no owner; the cover stays");
             return;
         };
         let effects = self.lock.apply(LockEvent::UnlockRequested { locker });
@@ -214,7 +214,7 @@ impl SessionLockHandler for State {
             // A lock surface for an output this session does not drive cannot be
             // configured, so it is not tracked and never receives input. The cover
             // stays up regardless, so nothing is exposed by ignoring it.
-            warn!("[lock] a lock surface names an output that is not connected");
+            warn_in!("wayland", "[lock] a lock surface names an output that is not connected");
             return;
         };
         let Some(size) = self.output_size(target) else {
@@ -224,7 +224,7 @@ impl SessionLockHandler for State {
         // it carries the output's whole logical size.
         surface.with_pending_state(|state| state.size = Some(size));
         surface.send_configure();
-        debug!(?locker, %target, "[lock] lock surface created");
+        debug_in!("wayland", ?locker, %target, "[lock] lock surface created");
         self.lock_tables.surfaces.push(ExtSessionLockV1LockSurfaceEntry {
             locker,
             output: target,
@@ -236,7 +236,7 @@ impl SessionLockHandler for State {
     fn ack_configure(&mut self, surface: WlSurface, configure: LockSurfaceConfigure) {
         // Nothing waits on the acknowledgement: the client's commit is what says the
         // surface has content, and that is what moves input onto it.
-        debug!(
+        debug_in!("wayland",
             serial = ?configure.serial,
             surface = ?surface.id(),
             "[lock] configure acknowledged"
@@ -289,7 +289,7 @@ impl State {
         while let Some(effect) = queue.pop_front() {
             match effect {
                 LockEffect::Cover { generation, subjects } => {
-                    debug!(generation, ?subjects, "[lock] the cover is up");
+                    debug_in!("wayland", generation, ?subjects, "[lock] the cover is up");
                     self.lock_tables.cover_generation = generation;
                     // Nothing a client captured survives the cover: a pointer lock and a
                     // shortcut inhibitor are both claims on the session's input, and the
@@ -297,7 +297,7 @@ impl State {
                     self.cover_raised();
                 }
                 LockEffect::AwaitPresentation { generation, outputs } => {
-                    debug!(generation, ?outputs, "[lock] waiting for a covering frame");
+                    debug_in!("wayland", generation, ?outputs, "[lock] waiting for a covering frame");
                     self.lock_tables.barrier = Some(ExtSessionLockV1Barrier {
                         generation,
                         pending: outputs,
@@ -317,17 +317,18 @@ impl State {
                     queue.extend(self.lock.apply(LockEvent::RevealComplete));
                 }
                 LockEffect::KeepCovered { reason } => {
-                    info!(
+                    info_in!(
+                        "wayland",
                         reason = reason.as_str(),
                         "[lock] the cover stays and nothing is revealed"
                     );
                 }
                 LockEffect::Embargo(embargo) => {
-                    debug!(?embargo, "[lock] embargo changed");
+                    debug_in!("wayland", ?embargo, "[lock] embargo changed");
                     self.lock_embargo = embargo;
                 }
                 LockEffect::Publish(published) => {
-                    debug!(?published, "[lock] published");
+                    debug_in!("wayland", ?published, "[lock] published");
                 }
             }
         }
@@ -487,7 +488,7 @@ impl State {
         } else {
             LockEvent::LockerSurfaceUnmapped { locker, output }
         };
-        debug!(?locker, %output, mapped, "[lock] lock surface commit");
+        debug_in!("wayland", ?locker, %output, mapped, "[lock] lock surface commit");
         let effects = self.lock.apply(event);
         self.apply_lock(effects);
     }
@@ -552,13 +553,21 @@ impl State {
             .iter()
             .position(|pending| pending.locker == locker)
         else {
-            warn!(?locker, "[lock] a lock was granted with no request to confirm");
+            warn_in!(
+                "wayland",
+                ?locker,
+                "[lock] a lock was granted with no request to confirm"
+            );
             return;
         };
         let pending = self.lock_tables.pending.remove(index);
         self.lock_tables.owner = Some(pending.object);
         pending.confirmation.lock();
-        info!(?locker, "[lock] the cover is presented; the session is locked");
+        info_in!(
+            "wayland",
+            ?locker,
+            "[lock] the cover is presented; the session is locked"
+        );
     }
 
     /// Refuses a request: a dropped confirmation is what the client sees as
@@ -579,12 +588,17 @@ impl State {
                 // lock that was not granted.
                 drop(refused);
             }
-            info!(?locker, reason = reason.as_str(), "[lock] the request was refused");
+            info_in!(
+                "wayland",
+                ?locker,
+                reason = reason.as_str(),
+                "[lock] the request was refused"
+            );
             return;
         }
         // The remaining reasons are protocol errors the client caused, and Smithay
         // has already posted the error that ends its connection.
-        debug!(?locker, reason = reason.as_str(), "[lock] refused");
+        debug_in!("wayland", ?locker, reason = reason.as_str(), "[lock] refused");
     }
 
     /// Sends a fresh configure for the current layout to the owner's surfaces.
@@ -614,7 +628,7 @@ impl State {
         // The composer drew nothing while the session was covered, so the desktop has
         // to be painted again rather than waiting for a window to move.
         self.damage_outputs();
-        debug!("[lock] the reveal is complete");
+        debug_in!("wayland", "[lock] the reveal is complete");
     }
 
     /// Forgets lock surfaces whose surface or connection is gone.

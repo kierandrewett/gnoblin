@@ -31,7 +31,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gnoblin_log::{debug, trace};
+use gnoblin_log::{debug_in, trace_in};
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_output;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource, WEnum};
@@ -183,13 +183,16 @@ impl State {
             }
             if pending.serial != self.output_manager.serial {
                 pending.object.cancelled();
-                debug!("[output-manager] a configuration on a stale serial was cancelled");
+                debug_in!(
+                    "wayland",
+                    "[output-manager] a configuration on a stale serial was cancelled"
+                );
                 continue;
             }
             let known = self.output_manager.heads.iter().map(|head| head.id).collect::<Vec<_>>();
             if pending.requests.iter().any(|request| !known.contains(&request.head)) {
                 pending.object.failed();
-                debug!("[output-manager] a configuration named a head that is gone");
+                debug_in!("wayland", "[output-manager] a configuration named a head that is gone");
                 continue;
             }
             match host.apply(&pending.requests, pending.test_only) {
@@ -198,7 +201,7 @@ impl State {
                     pending.object.succeeded();
                 }
                 Err(error) => {
-                    debug!(%error, "[output-manager] the host refused the configuration");
+                    debug_in!("wayland", %error, "[output-manager] the host refused the configuration");
                     pending.object.failed();
                 }
             }
@@ -304,7 +307,7 @@ impl GlobalDispatch2<ZwlrOutputManagementV1, State> for ManagerGlobalData {
             serial,
             &state.output_manager.display,
         );
-        debug!(client = ?client.id(), "[output-manager] a client bound the output manager");
+        debug_in!("wayland", client = ?client.id(), "[output-manager] a client bound the output manager");
     }
 
     fn can_view(&self, client: &Client) -> bool {
@@ -334,7 +337,7 @@ impl Dispatch2<ZwlrOutputManagementV1, State> for ManagerUserData {
                 manager.finished();
                 state.output_manager.managers.retain(|bound| bound != manager);
             }
-            _ => trace!("[output-manager] an unknown manager request"),
+            _ => trace_in!("wayland", "[output-manager] an unknown manager request"),
         }
     }
 
@@ -356,7 +359,7 @@ impl Dispatch2<ZwlrOutputManagementV1Head, State> for HeadUserData {
     ) {
         match request {
             head::Request::Release => {}
-            _ => trace!("[output-manager] an unknown head request"),
+            _ => trace_in!("wayland", "[output-manager] an unknown head request"),
         }
     }
 }
@@ -373,7 +376,7 @@ impl Dispatch2<ZwlrOutputManagementV1Mode, State> for ModeUserData {
     ) {
         match request {
             mode::Request::Release => {}
-            _ => trace!("[output-manager] an unknown mode request"),
+            _ => trace_in!("wayland", "[output-manager] an unknown mode request"),
         }
     }
 }
@@ -464,7 +467,7 @@ impl Dispatch2<ZwlrOutputManagementV1Configuration, State> for ConfigUserData {
             config::Request::Apply => queue(state, object, &self.inner, false),
             config::Request::Test => queue(state, object, &self.inner, true),
             config::Request::Destroy => {}
-            _ => trace!("[output-manager] an unknown configuration request"),
+            _ => trace_in!("wayland", "[output-manager] an unknown configuration request"),
         }
     }
 }
@@ -598,7 +601,7 @@ impl Dispatch2<ZwlrOutputManagementV1ConfigurationHead, State> for ConfigHeadUse
                     ),
                 }
             }
-            _ => trace!("[output-manager] an unknown configuration-head request"),
+            _ => trace_in!("wayland", "[output-manager] an unknown configuration-head request"),
         }
     }
 }

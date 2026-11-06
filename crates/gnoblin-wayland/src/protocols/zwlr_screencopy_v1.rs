@@ -10,7 +10,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -171,7 +171,7 @@ impl ZwlrScreencopyV1ScreencopyFrame {
         // Checked again at the copy boundary: a frame object created before the cover
         // went up must never expose the desktop after it did.
         if !state.capture_allowed() {
-            debug!(output = %self.output, "[capture] a screencopy frame is refused during the lock");
+            debug_in!("wayland", output = %self.output, "[capture] a screencopy frame is refused during the lock");
             resource.failed();
             state.flush();
             return;

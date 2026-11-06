@@ -11,7 +11,7 @@
 use std::fmt;
 
 use ash::vk;
-use gnoblin_log::warn;
+use gnoblin_log::warn_in;
 
 use crate::render::RenderError;
 
@@ -110,7 +110,7 @@ impl VulkanError {
         match self {
             Self::Degenerate { width, height } => RenderError::Degenerate { width, height },
             other => {
-                warn!(error = %other, "[render] the Vulkan renderer could not be created");
+                warn_in!("backend", error = %other, "[render] the Vulkan renderer could not be created");
                 RenderError::Unavailable
             }
         }

@@ -20,7 +20,7 @@
 //!    changes nothing about placement or focus.
 //! 4. **A description shown.** Not exposed: only the tag reaches the snapshot.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
@@ -35,10 +35,10 @@ pub(crate) fn global(display: &DisplayHandle) -> XdgToplevelTagManager {
 
 impl XdgToplevelTagHandler for State {
     fn set_tag(&mut self, toplevel: XdgToplevel, tag: String) {
-        debug!(toplevel = %toplevel.id(), %tag, "[xdg-toplevel-tag] tag set; read on the next toplevel commit");
+        debug_in!("wayland", toplevel = %toplevel.id(), %tag, "[xdg-toplevel-tag] tag set; read on the next toplevel commit");
     }
 
     fn set_description(&mut self, toplevel: XdgToplevel, description: String) {
-        debug!(toplevel = %toplevel.id(), %description, "[xdg-toplevel-tag] description set");
+        debug_in!("wayland", toplevel = %toplevel.id(), %description, "[xdg-toplevel-tag] description set");
     }
 }

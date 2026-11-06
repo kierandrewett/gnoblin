@@ -41,7 +41,7 @@
 
 use std::sync::Arc;
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::ext::idle_notify::v1::server::{
     ext_idle_notification_v1::{self, ExtIdleNotificationV1},
     ext_idle_notifier_v1::{self, ExtIdleNotifierV1},
@@ -183,7 +183,7 @@ impl Dispatch2<ExtIdleNotificationV1, State> for ExtIdleNotifyV1NotificationUser
         client: smithay::reexports::wayland_server::backend::ClientId,
         resource: &ExtIdleNotificationV1,
     ) {
-        debug!(?client, instance = ?resource.id(), "[idle] a notification is gone");
+        debug_in!("wayland", ?client, instance = ?resource.id(), "[idle] a notification is gone");
         state.forget_idle_notification(resource);
     }
 }
@@ -202,7 +202,7 @@ impl State {
     /// Records a notification a client created and answers it at once if the session is
     /// already idle.
     pub(crate) fn add_idle_notification(&mut self, resource: ExtIdleNotificationV1, timeout: u64) {
-        debug!(instance = ?resource.id(), timeout, "[idle] a client asked to be told");
+        debug_in!("wayland", instance = ?resource.id(), timeout, "[idle] a client asked to be told");
         self.idle_tables.notifications.push(ExtIdleNotifyV1Notification {
             resource,
             timeout,
@@ -305,10 +305,10 @@ impl State {
         }
         for (resource, idle) in changes {
             if idle {
-                debug!(instance = ?resource.id(), "[idle] the session is idle");
+                debug_in!("wayland", instance = ?resource.id(), "[idle] the session is idle");
                 resource.idled();
             } else {
-                debug!(instance = ?resource.id(), "[idle] the session resumed");
+                debug_in!("wayland", instance = ?resource.id(), "[idle] the session resumed");
                 resource.resumed();
             }
         }

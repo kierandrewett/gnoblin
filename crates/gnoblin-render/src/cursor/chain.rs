@@ -61,7 +61,8 @@ impl CursorChain {
         let theme = if files.theme_exists(theme) {
             theme.to_owned()
         } else {
-            gnoblin_log::warn!(
+            gnoblin_log::warn_in!(
+                "render",
                 theme,
                 fallback = selection::DEFAULT_CURSOR_THEME,
                 "cursor theme not found; using the default theme"
@@ -109,11 +110,11 @@ impl CursorChain {
                 Ok(Lookup::Miss) => {}
                 Ok(Lookup::Failed(reason)) => {
                     clean = false;
-                    gnoblin_log::warn!(provider = kind, shape, reason = %reason, "cursor provider failed");
+                    gnoblin_log::warn_in!("render", provider = kind, shape, reason = %reason, "cursor provider failed");
                 }
                 Err(_) => {
                     clean = false;
-                    gnoblin_log::warn!(provider = kind, shape, "cursor provider panicked");
+                    gnoblin_log::warn_in!("render", provider = kind, shape, "cursor provider panicked");
                 }
             }
         }

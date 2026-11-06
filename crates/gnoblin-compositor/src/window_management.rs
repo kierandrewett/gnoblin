@@ -12,7 +12,7 @@ use std::time::Duration;
 use gnoblin_config::{
     FocusMode as ConfiguredFocusMode, FocusNewWindows, NewWindowPlacement, SearchPaths, Store, WindowManagement,
 };
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use gnoblin_wayland::TitlebarActions;
 use gnoblin_wm::{DragConstraint, FocusMode, NewWindowFocus, PlacementMode, WmOptions};
 
@@ -25,9 +25,14 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.window_management.clone().unwrap_or_default();
             apply(config, &section);
-            debug!("[window-management] loaded from the last accepted configuration");
+            debug_in!(
+                "compositor",
+                "[window-management] loaded from the last accepted configuration"
+            );
         }
-        Err(error) => warn!(%error, "[window-management] configuration not readable; the defaults are used"),
+        Err(error) => {
+            warn_in!("compositor", %error, "[window-management] configuration not readable; the defaults are used")
+        }
     }
 }
 
@@ -36,12 +41,17 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug!("[window-management] no state directory is set; the defaults are used");
+        debug_in!(
+            "compositor",
+            "[window-management] no state directory is set; the defaults are used"
+        );
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => debug!(%error, "[window-management] no configuration file; the defaults are used"),
+        Err(error) => {
+            debug_in!("compositor", %error, "[window-management] no configuration file; the defaults are used")
+        }
     }
 }
 

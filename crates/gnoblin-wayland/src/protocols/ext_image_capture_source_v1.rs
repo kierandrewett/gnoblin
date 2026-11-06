@@ -5,7 +5,7 @@
 //! An output source names an output and a toplevel source names a window; the source is
 //! remembered under its object id so a session can resolve it later.
 
-use gnoblin_log::warn;
+use gnoblin_log::warn_in;
 use smithay::output::Output as SmithayOutput;
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 use smithay::wayland::image_capture_source::{
@@ -41,7 +41,10 @@ impl OutputCaptureSourceHandler for State {
 
     fn output_source_created(&mut self, source: ImageCaptureSource, output: &SmithayOutput) {
         let Some(id) = self.output_id_of(output) else {
-            warn!("[capture] a capture source names an output this session does not drive");
+            warn_in!(
+                "wayland",
+                "[capture] a capture source names an output this session does not drive"
+            );
             return;
         };
         self.capture.sources.insert(source.id(), Target::Output(id));
@@ -58,7 +61,7 @@ impl ToplevelCaptureSourceHandler for State {
         // its identity (`protocols::ext_foreign_toplevel_list_v1`), so a source names a window
         // without capture keeping a second table that could disagree with the shell's.
         let Some(window) = window_of_identifier(&toplevel.identifier()) else {
-            warn!(
+            warn_in!("wayland",
                 identifier = %toplevel.identifier(),
                 "[capture] a capture source names a toplevel this session does not publish"
             );

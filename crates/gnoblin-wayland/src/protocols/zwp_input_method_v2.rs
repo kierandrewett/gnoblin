@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -32,7 +32,7 @@ pub(crate) fn input_method_global(display: &DisplayHandle, access: &Arc<Access>)
 
 impl InputMethodHandler for State {
     fn new_popup(&mut self, surface: PopupSurface) {
-        debug!(popup = ?surface.wl_surface().id(), "[input-method] the input method created a popup");
+        debug_in!("wayland", popup = ?surface.wl_surface().id(), "[input-method] the input method created a popup");
         self.input_method_popups.push(surface);
     }
 
@@ -42,7 +42,7 @@ impl InputMethodHandler for State {
     }
 
     fn popup_repositioned(&mut self, surface: PopupSurface) {
-        debug!(
+        debug_in!("wayland",
             popup = ?surface.wl_surface().id(),
             "[input-method] the input method moved its popup"
         );

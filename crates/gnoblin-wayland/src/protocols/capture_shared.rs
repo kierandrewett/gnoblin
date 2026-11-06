@@ -61,7 +61,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
 use smithay::reexports::wayland_server::Resource;
@@ -288,7 +288,7 @@ impl CaptureTables {
             self.stop(session, Stop::TargetGone);
         }
         if ended > 0 {
-            debug!(%window, ended, "[capture] the window's sessions ended");
+            debug_in!("wayland", %window, ended, "[capture] the window's sessions ended");
         }
     }
 
@@ -325,7 +325,7 @@ impl CaptureTables {
                 frame.failed();
             }
         }
-        debug!("[capture] every session stopped for the lock");
+        debug_in!("wayland", "[capture] every session stopped for the lock");
         true
     }
 }
@@ -403,7 +403,7 @@ impl PixelSource for Pixels<'_> {
         match copy_into_shm(image, region, from, &self.buffer) {
             Ok(_) => Copied::Copied,
             Err(error) => {
-                warn!(%error, %target, "[capture] the frame could not be written into the client's buffer");
+                warn_in!("wayland", %error, %target, "[capture] the frame could not be written into the client's buffer");
                 Copied::Nothing
             }
         }
@@ -575,7 +575,11 @@ impl State {
             Ok(frame) => frame,
             Err(refusal) => {
                 self.capture.table.close(session);
-                debug!(reason = refusal.as_str(), "[capture] the frame could not be claimed");
+                debug_in!(
+                    "wayland",
+                    reason = refusal.as_str(),
+                    "[capture] the frame could not be claimed"
+                );
                 return None;
             }
         };
@@ -594,7 +598,7 @@ impl State {
         match outcome {
             CaptureOutcome::Copied(report) => Some((report.region, presented)),
             CaptureOutcome::Refused(refusal) => {
-                debug!(reason = refusal.as_str(), "[capture] the frame was refused");
+                debug_in!("wayland", reason = refusal.as_str(), "[capture] the frame was refused");
                 None
             }
         }

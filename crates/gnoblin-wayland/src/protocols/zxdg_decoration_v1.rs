@@ -12,7 +12,7 @@
 //! and the frame module draws it; the handler and its single decision point are
 //! already here, so the change is the `Mode` and nothing else.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
@@ -25,7 +25,7 @@ impl XdgDecorationHandler for State {
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: Mode) {
-        debug!(?mode, "[decoration] the client asked for a mode");
+        debug_in!("wayland", ?mode, "[decoration] the client asked for a mode");
         self.answer(toplevel);
     }
 

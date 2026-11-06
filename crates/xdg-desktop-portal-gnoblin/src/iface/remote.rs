@@ -118,7 +118,7 @@ impl RemoteDesktop {
             "session_id".to_owned(),
             zbus::OwnedVariant::try_from(zbus::Variant::from(path.as_str())).expect("a string is a value"),
         );
-        gnoblin_log::info!(app = %app_id, session = %path, "a remote desktop session was created");
+        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "a remote desktop session was created");
         Ok((0, results))
     }
 
@@ -145,7 +145,7 @@ impl RemoteDesktop {
             shared.guard.configure(&caller, &path, selection).map_err(refused)?;
         }
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        gnoblin_log::info!(app = %app_id, session = %path, "a remote desktop device selection was recorded");
+        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "a remote desktop device selection was recorded");
         Ok((0, BTreeMap::new()))
     }
 
@@ -222,7 +222,7 @@ impl RemoteDesktop {
             "streams".to_owned(),
             super::capture::streams(&[(stream.node, properties)]),
         );
-        gnoblin_log::info!(app = %app_id, session = %path, "a remote desktop session started");
+        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "a remote desktop session started");
         Ok((0, results))
     }
 
@@ -513,7 +513,7 @@ impl InputCapture {
             "session_id".to_owned(),
             zbus::OwnedVariant::try_from(zbus::Variant::from(path.as_str())).expect("a string is a value"),
         );
-        gnoblin_log::info!(app = %app_id, session = %path, "an input capture session was created");
+        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "an input capture session was created");
         Ok((0, results))
     }
 
@@ -584,7 +584,7 @@ impl InputCapture {
             Err(refusal) => return Err(refusal),
         };
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        gnoblin_log::info!(app = %app_id, session = %path, response = reply.0, "an input capture start finished");
+        gnoblin_log::info_in!("portal", app = %app_id, session = %path, response = reply.0, "an input capture start finished");
         Ok(reply)
     }
 

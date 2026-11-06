@@ -5,7 +5,7 @@
 //! render target, and registered as a KMS framebuffer. [`crate::drm::frame::present`] chooses the
 //! slot; this module draws into it and queues its flip.
 
-use gnoblin_log::warn;
+use gnoblin_log::warn_in;
 use gnoblin_types::{Scale, Size};
 use smithay::backend::allocator::dmabuf::AsDmabuf;
 use smithay::backend::allocator::format::FormatSet;
@@ -42,7 +42,7 @@ impl Device {
     /// [`RenderError::Unavailable`] when GBM or EGL cannot be brought up on the node.
     pub(crate) fn open(drm: DrmDeviceFd) -> Result<Self, RenderError> {
         let gbm = GbmDevice::new(drm.clone()).map_err(|error| {
-            warn!(%error, "[render] no GBM device on the DRM node");
+            warn_in!("backend", %error, "[render] no GBM device on the DRM node");
             RenderError::Unavailable
         })?;
         let display = egl::gbm_display(&gbm)?;
@@ -136,7 +136,7 @@ impl Buffers {
             .map(|format| format.modifier)
             .collect();
         if modifiers.is_empty() {
-            warn!("[drm] the plane scans out no XRGB8888 format");
+            warn_in!("backend", "[drm] the plane scans out no XRGB8888 format");
             return Err(RenderError::Unavailable);
         }
         Ok(Self {

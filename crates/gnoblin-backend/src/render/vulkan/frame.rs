@@ -29,7 +29,7 @@
 use std::rc::Rc;
 
 use ash::vk;
-use gnoblin_log::warn;
+use gnoblin_log::warn_in;
 use gnoblin_render::Color;
 use gnoblin_types::{Rect, Scale, Size};
 
@@ -406,7 +406,8 @@ impl Vulkan {
             ) {
                 Ok(image) => image,
                 Err(result) => {
-                    warn!(
+                    warn_in!(
+                        "backend",
                         ?result,
                         ?slot,
                         "[render] a texture could not be made; the layer is skipped"
@@ -435,7 +436,8 @@ impl Vulkan {
         let planned = plan(frame, scale, self.physical, &sizes);
         if planned.skipped_models > 0 && !self.warned_models {
             self.warned_models = true;
-            warn!(
+            warn_in!(
+                "backend",
                 layers = planned.skipped_models,
                 "unsupported-3d: the Vulkan renderer has no depth pass, so a layer with a model is not drawn"
             );
@@ -856,7 +858,12 @@ impl Vulkan {
         if error == RenderError::Lost {
             self.lost = true;
         }
-        warn!(?result, ?error, "[render] the Vulkan renderer failed a frame");
+        warn_in!(
+            "backend",
+            ?result,
+            ?error,
+            "[render] the Vulkan renderer failed a frame"
+        );
         error
     }
 }
@@ -879,7 +886,9 @@ fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
                     shape,
                 },
             )),
-            Err(error) => warn!(%error, "[render] a client buffer could not be read; the layer is skipped"),
+            Err(error) => {
+                warn_in!("backend", %error, "[render] a client buffer could not be read; the layer is skipped")
+            }
         }
     }
     if let Some(overlay) = frame.overlay() {
@@ -897,7 +906,7 @@ fn fill(source: &PixelSource<'_>, destination: &mut [u8]) -> bool {
         PixelSource::Shm { buffer, .. } => match shm::read_packed(buffer, destination) {
             Ok(_) => true,
             Err(error) => {
-                warn!(%error, "[render] a client buffer could not be read; the layer is skipped");
+                warn_in!("backend", %error, "[render] a client buffer could not be read; the layer is skipped");
                 false
             }
         },

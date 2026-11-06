@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::virtual_keyboard::{VirtualKeyboardBackend, VirtualKeyboardHandler, VirtualKeyboardManagerState};
 
@@ -36,9 +36,12 @@ impl VirtualKeyboardHandler for State {
                 self.dispatch_key(u32::from(event.key_code()), state, serial, event.time());
             }
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {
-                debug!("[virtual-keyboard] the device set changed");
+                debug_in!("wayland", "[virtual-keyboard] the device set changed");
             }
-            _ => warn!("[virtual-keyboard] a virtual keyboard sent an event it cannot send"),
+            _ => warn_in!(
+                "wayland",
+                "[virtual-keyboard] a virtual keyboard sent an event it cannot send"
+            ),
         }
     }
 }

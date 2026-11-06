@@ -715,7 +715,7 @@ impl Guard {
                 wake,
             },
         );
-        gnoblin_log::info!(request = offer.request.get(),
+        gnoblin_log::info_in!("portal", request = offer.request.get(),
         app = %session.owner.app_id,
         capability = capability.as_str(),
         interface = session.interface.as_str(),
@@ -789,7 +789,8 @@ impl Guard {
         let reply = match answer {
             Some(b"allow") => Answer::Allow,
             Some(other) => {
-                gnoblin_log::warn!(
+                gnoblin_log::warn_in!(
+                    "portal",
                     request = request.get(),
                     length = other.len(),
                     "a consent answer was not `allow`; treating it as a refusal"
@@ -845,7 +846,7 @@ impl Guard {
             }
             self.host.withdraw(*request);
             let _ = waiting.wake.send(ConsentOutcome::Expired);
-            gnoblin_log::info!(request = request.get(), "a consent prompt expired closed");
+            gnoblin_log::info_in!("portal", request = request.get(), "a consent prompt expired closed");
         }
         overdue
     }
@@ -1011,7 +1012,7 @@ impl Guard {
                 | Effect::Capture { .. }
                 | Effect::PortalUi { .. }
                 | Effect::Gate { .. } => {}
-                other => gnoblin_log::debug!(?other, "the authority produced an effect no prompt uses"),
+                other => gnoblin_log::debug_in!("portal", ?other, "the authority produced an effect no prompt uses"),
             }
         }
         decision

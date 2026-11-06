@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use gnoblin_log::{debug, info, warn};
+use gnoblin_log::{debug_in, info_in, warn_in};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::ping::{Ping, make_ping};
 use smithay::reexports::calloop::{Error as CalloopError, EventLoop, Interest, LoopSignal, Mode, PostAction};
@@ -222,7 +222,7 @@ fn apply_global_scale(backend: &mut dyn Backend<State>, global_scale: Option<u32
             .collect();
         for (id, mode) in targets {
             if let Err(error) = backend.configure_output(id, mode, gnoblin_types::Scale::integral(scale)) {
-                warn!(%error, "[monitors] global-scale {scale} refused; the output keeps its scale");
+                warn_in!("wayland", %error, "[monitors] global-scale {scale} refused; the output keeps its scale");
             }
         }
     }
@@ -325,7 +325,7 @@ impl Server {
 
         let socket_path = config.socket_path.unwrap_or_else(default_socket_path);
         let listener = bind(&socket_path)?;
-        info!(socket = %socket_path.display(), "[wayland] listening");
+        info_in!("wayland", socket = %socket_path.display(), "[wayland] listening");
 
         event_loop
             .handle()
@@ -340,7 +340,7 @@ impl Server {
 
         if let Some(path) = &config.privileged_socket_path {
             let privileged = bind(path)?;
-            info!(socket = %path.display(), "[wayland] listening for privileged clients");
+            info_in!("wayland", socket = %path.display(), "[wayland] listening for privileged clients");
             event_loop
                 .handle()
                 .insert_source(
@@ -437,7 +437,7 @@ impl Server {
                             Command::Advance(milliseconds) => state.tick_clock(milliseconds),
                             Command::SelectSource(index) => {
                                 if !state.select_input_source(index) {
-                                    warn!(index, "[keyboard] no such input source");
+                                    warn_in!("wayland", index, "[keyboard] no such input source");
                                 }
                             }
                             Command::SetModal(modal) => state.set_modal(modal),
@@ -446,7 +446,7 @@ impl Server {
                             }
                             Command::Bind { name, chord } => {
                                 if !state.add_binding(&name, &chord) {
-                                    warn!(name, chord, "[input] the binding was refused");
+                                    warn_in!("wayland", name, chord, "[input] the binding was refused");
                                 }
                             }
                         }
@@ -574,11 +574,11 @@ impl Server {
                 for source in state.take_pending_contexts() {
                     let inserted = handle.insert_source(source, |stream, (), state: &mut State| {
                         if let Err(error) = state.accept_sandbox(stream) {
-                            warn!(%error, "[access] a sandboxed client could not be inserted");
+                            warn_in!("wayland", %error, "[access] a sandboxed client could not be inserted");
                         }
                     });
                     if let Err(error) = inserted {
-                        warn!(?error, "[access] a sandbox listener could not be watched");
+                        warn_in!("wayland", ?error, "[access] a sandbox listener could not be watched");
                     }
                 }
                 // A layout run that finished since the last turn places its windows before
@@ -1059,7 +1059,7 @@ fn bind(path: &Path) -> Result<UnixListener, StartupError> {
     // A socket file left by a session that crashed makes bind fail with
     // `AddrInUse`; removing it first is what every compositor does.
     match std::fs::remove_file(path) {
-        Ok(()) => debug!(socket = %path.display(), "[wayland] removed a stale socket"),
+        Ok(()) => debug_in!("wayland", socket = %path.display(), "[wayland] removed a stale socket"),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(StartupError::Socket(error)),
     }
@@ -1108,13 +1108,13 @@ fn accept_clients(listener: &UnixListener, state: &mut State, role: ClientRole) 
                 if let Err(error) =
                     state.insert_client(stream, Arc::new(WlCompositorClientState::new(&state.access())), role)
                 {
-                    warn!(%error, "[wayland] a client could not be inserted");
+                    warn_in!("wayland", %error, "[wayland] a client could not be inserted");
                 }
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => return,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => {
-                warn!(%error, "[wayland] accept failed");
+                warn_in!("wayland", %error, "[wayland] accept failed");
                 return;
             }
         }

@@ -57,7 +57,7 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use smithay::backend::input::{InputTime, KeyState as SmithayKeyState};
 use smithay::input::keyboard::Keysym as SmithayKeysym;
 use smithay::input::keyboard::{FilterResult, KeysymHandle, ModifiersState, XkbConfig, xkb};
@@ -242,14 +242,14 @@ impl State {
         };
         let handle = self.keyboard.clone();
         match handle.set_xkb_config(self, config) {
-            Ok(()) => debug!(
+            Ok(()) => debug_in!("wayland",
                 layout = %source.layout,
                 variant = %source.variant,
                 "[keyboard] the keymap changed"
             ),
             // The previous keymap stays installed: a session with a stale layout is usable
             // and one with no keymap is not.
-            Err(error) => warn!(?error, layout = %source.layout, "[keyboard] the keymap was refused"),
+            Err(error) => warn_in!("wayland", ?error, layout = %source.layout, "[keyboard] the keymap was refused"),
         }
     }
 
@@ -391,7 +391,7 @@ impl State {
         );
         let consumed = routed.target != Target::Client;
         if consumed {
-            debug!(keycode, target = %routed.target, fired = ?routed.fired, "[key] consumed");
+            debug_in!("wayland", keycode, target = %routed.target, fired = ?routed.fired, "[key] consumed");
         }
         consumed
     }

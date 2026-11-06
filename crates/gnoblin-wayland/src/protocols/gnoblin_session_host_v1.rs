@@ -78,7 +78,7 @@
 //! path. Until then a manager reads them through the control handle.
 use std::collections::{BTreeMap, HashMap};
 
-use gnoblin_log::{debug, info, warn};
+use gnoblin_log::{debug_in, info_in, warn_in};
 use smithay::reexports::wayland_server::backend::ClientId as WaylandClientId;
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource, WEnum};
 use smithay::wayland::{Dispatch2, GlobalDispatch2};
@@ -323,7 +323,8 @@ impl GnoblinSessionHostV1Tables {
     fn offer(&mut self, session: ClientId, kind: GnoblinSessionHostV1RequestKind, deadline: Tick) -> RequestId {
         let request = self.requests.offer(deadline);
         self.kinds.insert(request, (session, kind, deadline));
-        info!(
+        info_in!(
+            "wayland",
             ?session,
             kind = kind.as_str(),
             ?request,
@@ -369,7 +370,12 @@ impl GlobalDispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1Global
         let pid = client
             .get_credentials(&state.display_handle)
             .map_or(0, |credentials| u32::try_from(credentials.pid).unwrap_or(0));
-        debug!(?identity, pid, "[host] a session connection bound its channel");
+        debug_in!(
+            "wayland",
+            ?identity,
+            pid,
+            "[host] a session connection bound its channel"
+        );
         if state.session_host.hosts.contains_key(&key) {
             // A second object on one connection would give the session two ways to
             // answer one protection, so it is refused and the first stays.
@@ -431,7 +437,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
                     return;
                 }
                 host.ready = true;
-                info!(?identity, "[host] the session can be shown");
+                info_in!("wayland", ?identity, "[host] the session can be shown");
                 state.publish();
             }
             host::Request::Protected { serial } => {
@@ -507,7 +513,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
                 // acts on a half-updated layout.
                 session.hints = std::mem::take(&mut session.staged);
                 let count = session.hints.len();
-                debug!(?identity, count, "[host] the session published its outputs");
+                debug_in!("wayland", ?identity, count, "[host] the session published its outputs");
             }
         }
     }
@@ -521,7 +527,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
             .protection
             .apply(ProtectionEvent::SessionGone { client: host.client });
         state.apply_protection(effects);
-        debug!(client = ?host.client, "[host] the session channel is gone");
+        debug_in!("wayland", client = ?host.client, "[host] the session channel is gone");
     }
 }
 
@@ -675,7 +681,12 @@ impl State {
             match effect {
                 ProtectionEffect::Hide { client, generation } => {
                     self.hide_hosted_windows(client);
-                    debug!(?client, generation, "[host] the session's surfaces are hidden");
+                    debug_in!(
+                        "wayland",
+                        ?client,
+                        generation,
+                        "[host] the session's surfaces are hidden"
+                    );
                 }
                 ProtectionEffect::Ask { client, serial } => {
                     let serial = u32::try_from(serial).unwrap_or(u32::MAX);
@@ -691,22 +702,24 @@ impl State {
                     }
                 }
                 ProtectionEffect::AwaitPresentation { generation, outputs } => {
-                    debug!(generation, ?outputs, "[host] waiting for a covered frame");
+                    debug_in!("wayland", generation, ?outputs, "[host] waiting for a covered frame");
                 }
                 ProtectionEffect::Protected { client, serial } => {
-                    info!(?client, serial, "[host] the session is protected");
+                    info_in!("wayland", ?client, serial, "[host] the session is protected");
                 }
                 ProtectionEffect::Show { client } => {
                     self.show_hosted_windows(client);
-                    debug!(?client, "[host] the session may be shown again");
+                    debug_in!("wayland", ?client, "[host] the session may be shown again");
                 }
                 ProtectionEffect::KeepCovered { client, reason } => {
-                    info!(?client, reason = reason.as_str(), "[host] the cover stays");
+                    info_in!("wayland", ?client, reason = reason.as_str(), "[host] the cover stays");
                 }
                 ProtectionEffect::UnknownAck { client, serial } => {
-                    warn!(
+                    warn_in!(
+                        "wayland",
                         ?client,
-                        serial, "[host] the session acknowledged a protection it never got"
+                        serial,
+                        "[host] the session acknowledged a protection it never got"
                     );
                     let object = self
                         .session_host
@@ -807,7 +820,7 @@ impl State {
             // A request nobody claimed fails closed: the session hears nothing and
             // the manager sees it expire, exactly as a lock request with no
             // subscriber does today.
-            debug!(expired, "[host] unanswered session requests expired");
+            debug_in!("wayland", expired, "[host] unanswered session requests expired");
             self.session_host.kinds.retain(|request, _| {
                 !matches!(
                     self.session_host.requests.state(*request),

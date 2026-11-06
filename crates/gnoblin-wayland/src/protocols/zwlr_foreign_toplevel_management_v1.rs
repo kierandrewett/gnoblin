@@ -48,7 +48,7 @@
 
 use std::sync::Arc;
 
-use gnoblin_log::{debug, trace};
+use gnoblin_log::{debug_in, trace_in};
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
@@ -140,7 +140,7 @@ impl GlobalDispatch2<ZwlrForeignToplevelManagerV1, State> for ZwlrForeignTopleve
     ) {
         let registered = data_init.init(resource, ZwlrForeignToplevelManagementV1ManagerUserData);
         state.foreign_toplevels.managers.push(registered);
-        debug!(client = ?client.id(), "[toplevel] a taskbar bound the manager");
+        debug_in!("wayland", client = ?client.id(), "[toplevel] a taskbar bound the manager");
         state.introduce_foreign_toplevels(client);
     }
 
@@ -168,9 +168,9 @@ impl Dispatch2<ZwlrForeignToplevelManagerV1, State> for ZwlrForeignToplevelManag
                 for entry in &mut state.foreign_toplevels.entries {
                     entry.handles.retain(|known| known.manager != *manager);
                 }
-                debug!("[toplevel] a taskbar stopped the manager");
+                debug_in!("wayland", "[toplevel] a taskbar stopped the manager");
             }
-            _ => trace!("[toplevel] an unknown manager request"),
+            _ => trace_in!("wayland", "[toplevel] an unknown manager request"),
         }
     }
 
@@ -210,7 +210,7 @@ impl Dispatch2<ZwlrForeignToplevelHandleV1, State> for ZwlrForeignToplevelManage
                 height,
             } => state.toplevel_rectangle(window, &surface, x, y, width, height),
             handle::Request::Destroy => {}
-            _ => trace!("[toplevel] an unknown handle request"),
+            _ => trace_in!("wayland", "[toplevel] an unknown handle request"),
         }
     }
 
@@ -280,7 +280,7 @@ impl State {
                 })
             }
             Err(error) => {
-                debug!(?error, "[toplevel] a handle could not be created");
+                debug_in!("wayland", ?error, "[toplevel] a handle could not be created");
                 None
             }
         }
@@ -296,7 +296,7 @@ impl State {
             window,
             decision: ActivationDecision::Allow,
         });
-        debug!(%window, "[toplevel] activated by a taskbar");
+        debug_in!("wayland", %window, "[toplevel] activated by a taskbar");
         self.apply(effects);
         self.publish();
     }
@@ -304,17 +304,17 @@ impl State {
     /// A taskbar asked for a window to be closed.
     fn toplevel_close(&mut self, window: WindowId) {
         let Some(entry) = self.toplevel_of(window) else {
-            trace!(%window, "[toplevel] close for a window that is gone");
+            trace_in!("wayland", %window, "[toplevel] close for a window that is gone");
             return;
         };
         entry.send_close();
-        debug!(%window, "[toplevel] asked to close");
+        debug_in!("wayland", %window, "[toplevel] asked to close");
     }
 
     /// A taskbar asked for a window to be maximised or restored.
     fn toplevel_maximise(&mut self, window: WindowId, maximised: bool) {
         let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
-            trace!(%window, "[toplevel] maximise for a window that is gone");
+            trace_in!("wayland", %window, "[toplevel] maximise for a window that is gone");
             return;
         };
         if state.maximised != maximised {
@@ -327,7 +327,7 @@ impl State {
     /// A taskbar asked for a window to be minimised or restored.
     fn toplevel_minimise(&mut self, window: WindowId, minimised: bool) {
         let Some(managed) = self.wm.window(window) else {
-            trace!(%window, "[toplevel] minimise for a window that is gone");
+            trace_in!("wayland", %window, "[toplevel] minimise for a window that is gone");
             return;
         };
         if managed.state.minimised != minimised {
@@ -346,7 +346,7 @@ impl State {
     fn toplevel_fullscreen(&mut self, window: WindowId, fullscreen: bool, output: Option<&WlOutput>) {
         let _ = output;
         let Some(state) = self.wm.window(window).map(|managed| managed.state) else {
-            trace!(%window, "[toplevel] fullscreen for a window that is gone");
+            trace_in!("wayland", %window, "[toplevel] fullscreen for a window that is gone");
             return;
         };
         if state.fullscreen != fullscreen {
@@ -367,10 +367,10 @@ impl State {
             .surface_of(window)
             .is_some_and(|owned| owned.client() == surface.client());
         if !owned || width < 0 || height < 0 {
-            debug!(%window, "[toplevel] an invalid rectangle was ignored");
+            debug_in!("wayland", %window, "[toplevel] an invalid rectangle was ignored");
             return;
         }
-        trace!(%window, x, y, width, height, "[toplevel] rectangle");
+        trace_in!("wayland", %window, x, y, width, height, "[toplevel] rectangle");
     }
 }
 

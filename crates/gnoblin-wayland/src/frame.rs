@@ -34,7 +34,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use gnoblin_log::warn;
+use gnoblin_log::warn_in;
 use smithay::reexports::calloop::ping::Ping;
 
 use gnoblin_backend::render::Image;
@@ -204,7 +204,7 @@ pub fn render(
             // A frame that cannot be drawn leaves the output's previous pixels in
             // place, which is the only safe state: showing a half-composed frame
             // or ending the session would both be worse.
-            warn!(?error, %output, "[frame] a frame could not be drawn");
+            warn_in!("wayland", ?error, %output, "[frame] a frame could not be drawn");
         }
         if changed {
             if let Some(rects) = state.frame_damage(output) {

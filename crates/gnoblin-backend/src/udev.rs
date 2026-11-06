@@ -53,7 +53,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gnoblin_log::{debug, info, warn};
+use gnoblin_log::{debug_in, info_in, warn_in};
 use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::reexports::calloop::LoopHandle;
 
@@ -280,7 +280,7 @@ impl Devices {
         if self.known.iter().any(|known| known.path == node.path) {
             return DeviceChange::Ignored;
         }
-        debug!(path = %node.path.display(), "[udev] a GPU arrived");
+        debug_in!("backend", path = %node.path.display(), "[udev] a GPU arrived");
         self.known.push(node);
         self.known.sort_by(|left, right| left.path.cmp(&right.path));
         DeviceChange::Recorded
@@ -291,11 +291,11 @@ impl Devices {
         let was_known = self.known.iter().any(|node| node.path == path);
         self.known.retain(|node| node.path != path);
         if path == self.primary {
-            warn!(path = %path.display(), "[udev] the GPU this session draws with is gone");
+            warn_in!("backend", path = %path.display(), "[udev] the GPU this session draws with is gone");
             return DeviceChange::PrimaryLost;
         }
         if was_known {
-            info!(path = %path.display(), "[udev] a GPU this session does not drive went away");
+            info_in!("backend", path = %path.display(), "[udev] a GPU this session does not drive went away");
             return DeviceChange::Recorded;
         }
         DeviceChange::Ignored

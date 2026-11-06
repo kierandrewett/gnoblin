@@ -102,7 +102,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use gnoblin_log::info;
+use gnoblin_log::info_in;
 use gnoblin_wayland::{ControlHandle, LoopError, Server, StartupError};
 
 pub use backend::Backend;
@@ -367,7 +367,7 @@ impl Compositor {
             ("WAYLAND_DISPLAY".to_owned(), display_name.clone()),
             ("GNOBLIN_IPC_SOCKET".to_owned(), path.display().to_string()),
         ]);
-        info!(
+        info_in!("compositor",
             socket = %path.display(),
             display = %display_name,
             version = %version,

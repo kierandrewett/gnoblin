@@ -59,7 +59,7 @@ use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Rectangle, SERIAL_COUNTER};
 
-use gnoblin_log::{debug, error, info, warn};
+use gnoblin_log::{debug_in, error_in, info_in, warn_in};
 use smithay::wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrab, XWaylandKeyboardGrabHandler};
 use smithay::wayland::xwayland_shell::{XWaylandShellHandler, XWaylandShellState};
 use smithay::xwayland::xwm::settings::Value as SettingValue;
@@ -199,7 +199,7 @@ impl Running {
                 // Disabled is not a temporary condition: the configuration or the
                 // machine will not change under a running session.
                 self.stopped = true;
-                warn!("[xwayland] {reason}");
+                warn_in!("wayland", "[xwayland] {reason}");
             }
             Start::Spawn(launch) => self.spawn(state, launch, now),
         }
@@ -233,13 +233,13 @@ impl Running {
                     data.compositor_state.set_client_scale(scale);
                 }
                 let number = process.display_number();
-                info!(display_number = number, "[xwayland] starting");
+                info_in!("wayland", display_number = number, "[xwayland] starting");
                 self.process = Some(process);
                 self.client = Some(client);
                 self.deadline = Some(now + self.session.startup_deadline());
             }
             Err(error) => {
-                warn!("[xwayland] the server could not be started: {error}");
+                warn_in!("wayland", "[xwayland] the server could not be started: {error}");
                 self.fail(state, now, "the server could not be started");
             }
         }
@@ -262,7 +262,7 @@ impl Running {
         self.session.ready(number, now);
         match X11Wm::start_wm(handle.clone(), &state.display_handle, socket, client) {
             Ok(wm) => {
-                info!(display_number = number, "[xwayland] ready");
+                info_in!("wayland", display_number = number, "[xwayland] ready");
                 self.wm = Some(wm);
                 self.publish_settings();
             }
@@ -297,7 +297,7 @@ impl Running {
         });
         let result = wm.set_xsettings(values).map_err(|error| error.to_string());
         if let Err(reason) = &result {
-            debug!(%reason, "[xwayland] XSETTINGS were not published");
+            debug_in!("wayland", %reason, "[xwayland] XSETTINGS were not published");
         }
         self.session.settings_published(result);
     }
@@ -319,7 +319,7 @@ impl Running {
         self.surfaces.clear();
         match self.session.failed(now) {
             Restart::RetryAfter(after) => {
-                warn!(
+                warn_in!("wayland",
                     %why,
                     display_number = number,
                     retry_ms = after.as_millis(),
@@ -328,7 +328,7 @@ impl Running {
                 self.next_start = Some(now + after);
             }
             Restart::Stop(reason) => {
-                error!(%why, "[xwayland] {reason}");
+                error_in!("wayland", %why, "[xwayland] {reason}");
                 self.stopped = true;
                 self.next_start = None;
             }
@@ -406,14 +406,14 @@ impl State {
                     if let Some(surface) = running.surfaces.get(&window).cloned()
                         && let Err(error) = surface.set_mapped(mapped)
                     {
-                        debug!(%error, %window, "[xwayland] a mapping request failed");
+                        debug_in!("wayland", %error, %window, "[xwayland] a mapping request failed");
                     }
                 }
                 Command::Close { window } => {
                     if let Some(surface) = running.surfaces.get(&window).cloned()
                         && let Err(error) = surface.close()
                     {
-                        debug!(%error, %window, "[xwayland] a close request failed");
+                        debug_in!("wayland", %error, %window, "[xwayland] a close request failed");
                     }
                 }
             }
@@ -613,14 +613,16 @@ impl XwmHandler for State {
     }
 
     fn resize_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32, _resize_edge: ResizeEdge) {
-        debug!(
+        debug_in!(
+            "wayland",
             window = window.window_id(),
             "[xwayland] a resize request is not interactive yet"
         );
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
-        debug!(
+        debug_in!(
+            "wayland",
             window = window.window_id(),
             "[xwayland] a move request is not interactive yet"
         );
@@ -659,7 +661,7 @@ impl XWaylandKeyboardGrabHandler for State {
         if !allowed {
             // A grab the configuration refused is not installed: the key that opened a
             // menu reaches the focused window instead.
-            debug!("[xwayland] a keyboard grab was refused");
+            debug_in!("wayland", "[xwayland] a keyboard grab was refused");
             return;
         }
         if let Some(keyboard) = seat.get_keyboard() {

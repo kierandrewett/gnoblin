@@ -6,7 +6,7 @@
 //! a shell that reads the other. This module keeps the one record and works out what
 //! changed; each protocol module sends its own events for those changes.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::ClientId as ClientKey;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -153,7 +153,7 @@ impl State {
                 let entry = self.foreign_toplevels.entries.remove(index);
                 wlr::send_closed(&entry);
                 self.foreign_toplevel_list_state.remove_toplevel(&entry.ext);
-                debug!(%window, "[toplevel] closed");
+                debug_in!("wayland", %window, "[toplevel] closed");
             }
         }
 

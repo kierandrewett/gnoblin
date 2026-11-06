@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use gnoblin_client::wire;
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use gnoblin_proto::{Envelope, Kind};
 use gnoblin_types::ClientId;
 
@@ -151,14 +151,16 @@ impl ExtensionRouter {
         match &envelope.kind {
             Some(Kind::Reply(_)) | Some(Kind::Error(_)) => {
                 let Some(pending) = self.pending.remove(&envelope.request_id) else {
-                    debug!(
+                    debug_in!(
+                        "compositor",
                         id = envelope.request_id,
                         "[ipc] a provider answered a request nobody is waiting for"
                     );
                     return Vec::new();
                 };
                 if pending.provider != provider || pending.namespace != envelope.namespace {
-                    debug!(
+                    debug_in!(
+                        "compositor",
                         id = envelope.request_id,
                         "[ipc] a provider answered a request addressed to another"
                     );
@@ -232,7 +234,7 @@ impl ExtensionRouter {
 /// Anything that is not a request has no one waiting for it, so it is dropped.
 fn refuse(client: ClientId, envelope: &Envelope, code: &str, message: &str) -> Vec<FrameDelivery> {
     if !matches!(&envelope.kind, Some(Kind::Request(_))) {
-        debug!(code, message, "[ipc] an extension frame was refused");
+        debug_in!("compositor", code, message, "[ipc] an extension frame was refused");
         return Vec::new();
     }
     vec![FrameDelivery {

@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 
 use gnoblin_backend::InputEvent;
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use reis::PendingRequestResult;
 use reis::eis;
 use reis::enumflags2::BitFlags;
@@ -300,7 +300,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
         let targets = match wait(&listener, &sessions, wake_read) {
             Ok(targets) => targets,
             Err(error) => {
-                warn!(%error, "[eis] the poll failed; the endpoint stops");
+                warn_in!("input", %error, "[eis] the poll failed; the endpoint stops");
                 break;
             }
         };
@@ -316,7 +316,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
                 Target::Listener => {
                     while let Ok(Some(socket)) = listener.accept() {
                         let handshaker = EisHandshaker::new(&socket, 1);
-                        debug!("[eis] a client connected");
+                        debug_in!("input", "[eis] a client connected");
                         sessions.insert(
                             next_session,
                             Peer {
@@ -338,7 +338,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
                             let actions = releases(&mut service, context);
                             perform_all(session, actions, &*sink);
                             if let Some(ended) = service.context(context) {
-                                debug!(
+                                debug_in!("input",
                                     %context,
                                     name = ended.name().unwrap_or(""),
                                     ending = ?ended.ended(),
@@ -358,7 +358,7 @@ fn serve(listener: eis::Listener, mut service: Service, sink: Box<Sink>, shared:
             if let Progress::Connected(connected) = &session.state
                 && let Err(error) = connected.connection.flush()
             {
-                debug!(%error, "[eis] a flush failed; the client will see it as a read error");
+                debug_in!("input", %error, "[eis] a flush failed; the client will see it as a read error");
             }
         }
     }
@@ -455,7 +455,7 @@ fn handle(session: &mut Peer, service: &mut Service, sink: &Sink) -> Next {
         if error.kind() == ErrorKind::WouldBlock {
             return Next::Continue;
         }
-        debug!(%error, "[eis] the client's socket ended");
+        debug_in!("input", %error, "[eis] the client's socket ended");
         return Next::Close;
     }
     loop {
@@ -468,7 +468,7 @@ fn handle(session: &mut Peer, service: &mut Service, sink: &Sink) -> Next {
                 // A stream the protocol cannot parse leaves the object table out of step,
                 // so the client is told and closed instead of every later request being
                 // answered against the wrong object.
-                warn!(%error, "[eis] the client sent an unparseable request");
+                warn_in!("input", %error, "[eis] the client sent an unparseable request");
                 if let Progress::Connected(connected) = &mut session.state {
                     refuse(connected, service, &error.to_string(), sink);
                 }
@@ -503,7 +503,7 @@ fn handshake(session: &mut Peer, request: eis::Request, service: &mut Service, s
         match handshaker.handle_request(request) {
             Ok(finished) => finished,
             Err(error) => {
-                warn!(%error, "[eis] the handshake failed");
+                warn_in!("input", %error, "[eis] the handshake failed");
                 return Next::Close;
             }
         }
@@ -515,7 +515,8 @@ fn handshake(session: &mut Peer, request: eis::Request, service: &mut Service, s
         eis::handshake::ContextType::Sender => ContextType::Sender,
         eis::handshake::ContextType::Receiver => ContextType::Receiver,
     };
-    debug!(
+    debug_in!(
+        "input",
         name = response.name.as_deref().unwrap_or(""),
         ?context_type,
         "[eis] the handshake finished"
@@ -567,7 +568,7 @@ fn request_connected(session: &mut Peer, request: eis::Request, service: &mut Se
 /// been told, and a second `ei_connection.disconnected` on a connection that is closing is
 /// noise.
 fn refuse(connected: &mut Connected, service: &mut Service, explanation: &str, sink: &Sink) {
-    warn!(explanation, "[eis] the session ends");
+    warn_in!("input", explanation, "[eis] the session ends");
     connected
         .connection
         .disconnected(eis::connection::DisconnectReason::Protocol, Some(explanation));
@@ -655,7 +656,7 @@ fn advertise(connected: &mut Connected, capabilities: Caps) {
 /// Creates a device and remembers which context identity its events name.
 fn create_device(connected: &mut Connected, device: DeviceId, capabilities: Caps, regions: &[Region]) {
     let Some(seat) = &connected.seat else {
-        warn!(%device, "[eis] a device was asked for before the seat existed");
+        warn_in!("input", %device, "[eis] a device was asked for before the seat existed");
         return;
     };
     let profile = profile(capabilities);
@@ -686,7 +687,7 @@ fn create_device(connected: &mut Connected, device: DeviceId, capabilities: Caps
             }
         },
     );
-    debug!(%device, ?profile, "[eis] a device was created");
+    debug_in!("input", %device, ?profile, "[eis] a device was created");
     // The device is ready for the client to emulate on: `resumed` is the event that says
     // so, and the client answers it with `ei_device.start_emulating`.
     added.resumed();
@@ -832,15 +833,20 @@ fn command(request: EisRequest, devices: &[(reis::request::Device, DeviceId)]) -
             contact: touch.touch_id,
         },
         EisRequest::ScrollStop(stop) => {
-            debug!(x = stop.x, y = stop.y, "[eis] a scroll stop has no seat event");
+            debug_in!("input", x = stop.x, y = stop.y, "[eis] a scroll stop has no seat event");
             return None;
         }
         EisRequest::ScrollCancel(stop) => {
-            debug!(x = stop.x, y = stop.y, "[eis] a scroll cancel has no seat event");
+            debug_in!(
+                "input",
+                x = stop.x,
+                y = stop.y,
+                "[eis] a scroll cancel has no seat event"
+            );
             return None;
         }
         EisRequest::TextKeysym(_) | EisRequest::TextUtf8(_) => {
-            debug!("[eis] a text event has no seat path yet");
+            debug_in!("input", "[eis] a text event has no seat path yet");
             return None;
         }
         EisRequest::Ready(_) | EisRequest::RequestDevice(_) => return None,

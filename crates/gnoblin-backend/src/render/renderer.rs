@@ -124,7 +124,10 @@ impl AnyRenderer {
 
     #[cfg(not(feature = "vulkan"))]
     fn vulkan(_physical: Size) -> Result<Self, RenderError> {
-        gnoblin_log::warn!("[render] this build has no Vulkan renderer (the `vulkan` feature is off)");
+        gnoblin_log::warn_in!(
+            "backend",
+            "[render] this build has no Vulkan renderer (the `vulkan` feature is off)"
+        );
         Err(RenderError::Unavailable)
     }
 

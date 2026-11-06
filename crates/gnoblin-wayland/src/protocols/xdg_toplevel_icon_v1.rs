@@ -23,7 +23,7 @@
 //! 5. **The icon drawn in a taskbar.** Not done: the compositor exposes the icon and does
 //!    not draw it.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
@@ -39,7 +39,7 @@ pub(crate) fn global(display: &DisplayHandle) -> XdgToplevelIconManager {
 
 impl XdgToplevelIconHandler for State {
     fn set_icon(&mut self, toplevel: XdgToplevel, wl_surface: WlSurface) {
-        debug!(
+        debug_in!("wayland",
             toplevel = %toplevel.id(),
             surface = %wl_surface.id(),
             "[xdg-toplevel-icon] icon assigned; read on the next toplevel commit"

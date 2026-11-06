@@ -31,7 +31,7 @@
 
 use std::sync::Arc;
 
-use gnoblin_log::{debug, trace};
+use gnoblin_log::{debug_in, trace_in};
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::backend::{ClientId as ClientKey, GlobalId};
 use smithay::reexports::wayland_server::{Client, DataInit, DisplayHandle, New, Resource, WEnum};
@@ -82,7 +82,7 @@ impl GlobalDispatch2<ZwlrOutputPowerManagerV1, State> for ZwlrOutputPowerManagem
         data_init: &mut DataInit<'_, State>,
     ) {
         data_init.init(resource, ZwlrOutputPowerManagementV1ManagerUserData);
-        debug!(client = ?client.id(), "[power] a client bound the output power manager");
+        debug_in!("wayland", client = ?client.id(), "[power] a client bound the output power manager");
     }
 
     fn can_view(&self, client: &Client) -> bool {
@@ -116,17 +116,20 @@ impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ZwlrOutputPowerManagementV1M
                             Mode::Off
                         };
                         object.mode(mode);
-                        debug!(%output, "[power] a client took output power control");
+                        debug_in!("wayland", %output, "[power] a client took output power control");
                     }
                     _ => {
                         let object = data_init.init(id, ZwlrOutputPowerManagementV1PowerUserData { output: None });
                         object.failed();
-                        debug!("[power] power control was refused: no such output, no support, or already held");
+                        debug_in!(
+                            "wayland",
+                            "[power] power control was refused: no such output, no support, or already held"
+                        );
                     }
                 }
             }
             manager::Request::Destroy => {}
-            _ => trace!("[power] an unknown manager request"),
+            _ => trace_in!("wayland", "[power] an unknown manager request"),
         }
     }
 }
@@ -156,7 +159,7 @@ impl Dispatch2<ZwlrOutputPowerV1, State> for ZwlrOutputPowerManagementV1PowerUse
                 }
             }
             power::Request::Destroy => {}
-            _ => trace!("[power] an unknown power request"),
+            _ => trace_in!("wayland", "[power] an unknown power request"),
         }
     }
 

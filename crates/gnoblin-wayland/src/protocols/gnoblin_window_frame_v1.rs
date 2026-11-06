@@ -85,7 +85,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use gnoblin_log::{debug, warn};
+use gnoblin_log::{debug_in, warn_in};
 use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::reexports::wayland_server::backend::{ClientId as WaylandClientId, GlobalId};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -325,7 +325,7 @@ impl GlobalDispatch2<GnoblinWindowFrameManagerV1, State> for GnoblinWindowFrameV
         data_init: &mut DataInit<'_, State>,
     ) {
         let manager = data_init.init(resource, GnoblinWindowFrameV1ManagerObject);
-        debug!(client = ?client.id(), "[frame] a renderer bound its manager");
+        debug_in!("wayland", client = ?client.id(), "[frame] a renderer bound its manager");
         if let Err(duplicate) = state.frame_tables.check_manager_in(&client.id(), &manager) {
             // The manager interface has no error enum of its own, so the code is
             // the protocol's first one: the connection is ended either way.
@@ -434,7 +434,7 @@ impl Dispatch2<GnoblinWindowFrameV1, State> for GnoblinWindowFrameV1FrameObject 
                     return;
                 }
                 entry.surface = Some(surface);
-                debug!(window = %self.window, "[frame] a renderer attached its surface");
+                debug_in!("wayland", window = %self.window, "[frame] a renderer attached its surface");
             }
             frame::Request::AckConfigure { serial } => {
                 if entry.surface.is_none() {
@@ -607,7 +607,7 @@ impl State {
                     .and_then(|entry| entry.surface.toplevel().cloned());
                 if let Some(toplevel) = toplevel {
                     toplevel.send_close();
-                    debug!(%window, "[frame] the window was asked to close");
+                    debug_in!("wayland", %window, "[frame] the window was asked to close");
                 }
             }
             GnoblinWindowFrameV1Action::Maximize => {
@@ -627,7 +627,7 @@ impl State {
             | GnoblinWindowFrameV1Action::SouthWest
             | GnoblinWindowFrameV1Action::West
             | GnoblinWindowFrameV1Action::NorthWest => {
-                debug!(
+                debug_in!("wayland",
                     %window,
                     action = action.to_wire(),
                     "[frame] a move or resize was asked for; the interactive grab owns it"
@@ -748,12 +748,12 @@ impl State {
         ) {
             Ok(object) => object,
             Err(error) => {
-                warn!(%window, ?error, "[frame] a frame object could not be created");
+                warn_in!("wayland", %window, ?error, "[frame] a frame object could not be created");
                 return;
             }
         };
         manager.frame(&object);
-        debug!(%window, serial, ?size, "[frame] a frame was offered");
+        debug_in!("wayland", %window, serial, ?size, "[frame] a frame was offered");
         let entry = GnoblinWindowFrameV1FrameRecord {
             object,
             surface: None,
@@ -838,7 +838,7 @@ impl State {
         entry.committed.clear();
         entry.committed.append(&mut entry.pending);
         entry.presented = true;
-        debug!(%window, serial = entry.serial, "[frame] a frame was presented");
+        debug_in!("wayland", %window, serial = entry.serial, "[frame] a frame was presented");
     }
 
     /// Forgets frames whose object or surface is gone.

@@ -97,10 +97,10 @@ impl Sink for LogSink {
         let module = record.module;
         let message = record.message;
         match record.level {
-            Level::Error => gnoblin_log::error!(module = module, "{message}"),
-            Level::Warn => gnoblin_log::warn!(module = module, "{message}"),
-            Level::Info => gnoblin_log::info!(module = module, "{message}"),
-            Level::Debug => gnoblin_log::debug!(module = module, "{message}"),
+            Level::Error => gnoblin_log::error_in!("wasm", module = module, "{message}"),
+            Level::Warn => gnoblin_log::warn_in!("wasm", module = module, "{message}"),
+            Level::Info => gnoblin_log::info_in!("wasm", module = module, "{message}"),
+            Level::Debug => gnoblin_log::debug_in!("wasm", module = module, "{message}"),
         }
     }
 }

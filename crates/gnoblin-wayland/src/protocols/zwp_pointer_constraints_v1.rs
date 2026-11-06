@@ -43,7 +43,7 @@
 //!    the region's bounding box, and a motion that would leave it is held at the edge:
 //!    `a_confined_pointer_stays_inside_its_region`.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::input::pointer::PointerHandle;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
@@ -186,7 +186,7 @@ impl State {
         for entry in held {
             with_pointer_constraint(&entry.surface, &entry.pointer, |constraint| {
                 if let Some(constraint) = constraint {
-                    debug!(
+                    debug_in!("wayland",
                         surface = ?entry.surface.id(),
                         "[pointer-constraints] released while the session is covered"
                     );
@@ -218,7 +218,7 @@ impl PointerConstraintsHandler for State {
             surface: surface.clone(),
             pointer: pointer.clone(),
         });
-        debug!(surface = ?surface.id(), "[pointer-constraints] activated");
+        debug_in!("wayland", surface = ?surface.id(), "[pointer-constraints] activated");
     }
 
     fn remove_constraint(&mut self, surface: &WlSurface, _pointer: &PointerHandle<Self>, _reason: ConstraintRemove) {

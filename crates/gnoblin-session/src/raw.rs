@@ -125,7 +125,7 @@ pub fn capture(role: &str, stream: OutputStream, policy: RawPolicy, reader: impl
     if let Err(error) = spawned {
         // Without a reader the child would block once its pipe fills, so this is worth a log
         // line even though the guardian carries on.
-        gnoblin_log::warn!("cannot read the {} of a child: {error}", stream.as_str());
+        gnoblin_log::warn_in!("session", "cannot read the {} of a child: {error}", stream.as_str());
     }
 }
 
@@ -207,7 +207,7 @@ pub fn run_logger(receiver: &Receiver<RawLine>, dropped: &AtomicU64) {
         }
         let total = dropped.load(Ordering::Relaxed);
         if total != reported {
-            gnoblin_log::warn!(component: "raw", "dropped {} raw child lines", total - reported);
+            gnoblin_log::warn_in!("raw", "dropped {} raw child lines", total - reported);
             reported = total;
         }
     }
@@ -232,10 +232,10 @@ pub fn finish(logger: std::thread::JoinHandle<()>, sink: RawSink) {
 fn log_line(line: &RawLine) {
     match line.stream {
         OutputStream::Stdout => {
-            gnoblin_log::info!(component: "raw", role = %line.role, stream = "stdout", "{}", line.text);
+            gnoblin_log::info_in!("raw", role = %line.role, stream = "stdout", "{}", line.text);
         }
         OutputStream::Stderr => {
-            gnoblin_log::warn!(component: "raw", role = %line.role, stream = "stderr", "{}", line.text);
+            gnoblin_log::warn_in!("raw", role = %line.role, stream = "stderr", "{}", line.text);
         }
     }
 }

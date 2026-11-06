@@ -24,7 +24,7 @@
 //! 3. **A destroyed manager destroys a live control object.** The control objects outlive
 //!    the manager, so the hint keeps working after the manager is destroyed.
 
-use gnoblin_log::debug;
+use gnoblin_log::debug_in;
 use smithay::reexports::wayland_protocols::wp::tearing_control::v1::server::{
     wp_tearing_control_manager_v1::{self, WpTearingControlManagerV1},
     wp_tearing_control_v1::{self, WpTearingControlV1},
@@ -129,7 +129,7 @@ impl Dispatch2<WpTearingControlV1, State> for WpTearingControlV1TearingControlUs
                     // asks: ignore it rather than guess what it means.
                     _ => return,
                 };
-                debug!(surface = ?self.surface.id(), ?hint, "[tearing] a client set a hint");
+                debug_in!("wayland", surface = ?self.surface.id(), ?hint, "[tearing] a client set a hint");
                 state.set_tearing_hint(&self.surface, hint);
             }
             wp_tearing_control_v1::Request::Destroy => {

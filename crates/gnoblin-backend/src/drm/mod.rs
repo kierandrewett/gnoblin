@@ -55,7 +55,7 @@ pub(crate) mod scanout;
 use std::fmt;
 use std::io;
 
-use gnoblin_log::warn;
+use gnoblin_log::warn_in;
 
 use gnoblin_types::{OutputId, Scale};
 use smithay::reexports::calloop::LoopHandle;
@@ -228,7 +228,7 @@ impl Drm {
         let input = match Libinput::open(gpu.seat().libseat()) {
             Ok(libinput) => Input::Live(Box::new(libinput)),
             Err(error) => {
-                gnoblin_log::warn!(%error, "[input] libinput is not open; the session runs without input");
+                gnoblin_log::warn_in!("backend", %error, "[input] libinput is not open; the session runs without input");
                 Input::Refused(Refused {
                     refusal: InputRefusal::NotOpened,
                 })
@@ -281,7 +281,7 @@ impl Drm {
             return;
         };
         if let Err(error) = self.gpu.activate() {
-            gnoblin_log::error!(%error, "[drm] the device could not be re-activated after the seat returned");
+            gnoblin_log::error_in!("backend", %error, "[drm] the device could not be re-activated after the seat returned");
         }
         for channel in &mut self.channels {
             channel.presenter.resume();
@@ -319,7 +319,7 @@ impl Drm {
                     .and_then(output_of);
                 let crtc = self.gpu.crtc_of(id);
                 let (Some(output), Some(crtc)) = (output, crtc) else {
-                    warn!(output = %id, "[drm] an added output has no mode or CRTC and is not presented");
+                    warn_in!("backend", output = %id, "[drm] an added output has no mode or CRTC and is not presented");
                     return Vec::new();
                 };
                 self.outputs.push(output.clone());
@@ -331,11 +331,11 @@ impl Drm {
                 vec![BackendEvent::OutputConnected(output)]
             }
             gpu::HardwareChange::DeviceLost(lost) => {
-                warn!(%lost, "[drm] the primary GPU is gone; the backend reports it disconnected");
+                warn_in!("backend", %lost, "[drm] the primary GPU is gone; the backend reports it disconnected");
                 vec![BackendEvent::Disconnected]
             }
             gpu::HardwareChange::Refused { connector, reason } => {
-                warn!(%connector, %reason, "[drm] a hotplug change was refused");
+                warn_in!("backend", %connector, %reason, "[drm] a hotplug change was refused");
                 Vec::new()
             }
         }
@@ -412,7 +412,7 @@ impl<S: Host + 'static> Backend<S> for Drm {
             Presented::Queued { .. } => Ok(Present::Rendered),
             Presented::Refused { slot, first, error } => {
                 if first {
-                    warn!(output = %output, slot, %error, "[drm] a frame was refused; the output retries it");
+                    warn_in!("backend", output = %output, slot, %error, "[drm] a frame was refused; the output retries it");
                 }
                 Ok(Present::Nothing)
             }
@@ -495,7 +495,7 @@ fn control_error(output: OutputId, error: gpu::ControlError) -> BackendError {
         gpu::ControlError::Gamma(gamma::GammaError::Degenerate) => BackendError::Unsupported(output),
         gpu::ControlError::Gamma(_) => BackendError::InvalidGamma(output),
         gpu::ControlError::Refused(reason) => {
-            warn!(output = %output, %reason, "[drm] the kernel refused a gamma or power change");
+            warn_in!("backend", output = %output, %reason, "[drm] the kernel refused a gamma or power change");
             BackendError::Unpresentable(output)
         }
     }
