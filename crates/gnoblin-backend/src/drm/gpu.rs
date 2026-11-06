@@ -93,7 +93,10 @@ pub trait Kms {
 ///
 /// [`ApplyError`] naming the connector that refused, and any restore that was refused as well.
 pub fn apply_plan<K: Kms>(kms: &mut K, applied: &mut Applied, plan: &LayoutPlan) -> Result<(), ApplyError> {
+    // Connectors that already accepted their change, so a later refusal can undo them.
     let mut done: Vec<&Change> = Vec::new();
+    // Ops for one connector run in order and stop at the first refusal. Connectors run in
+    // plan order, so a refusal on one leaves earlier connectors to be rolled back below.
     for change in plan.all() {
         let outcome = if kms.connector(&change.connector).is_some() {
             change.ops.iter().try_for_each(|op| kms.apply(&change.connector, op))
@@ -114,6 +117,8 @@ pub fn apply_plan<K: Kms>(kms: &mut K, applied: &mut Applied, plan: &LayoutPlan)
         }
         done.push(change);
     }
+    // Only a plan that fully held becomes the record. Recording a partial plan would make
+    // the next diff assume hardware state that was rolled back.
     applied.record_plan(plan);
     Ok(())
 }
@@ -122,10 +127,14 @@ pub fn apply_plan<K: Kms>(kms: &mut K, applied: &mut Applied, plan: &LayoutPlan)
 ///
 /// A connector with no confirmed state is left alone: there is nothing to return to, and the
 /// plan that lit it was never recorded.
+// Restore failures are collected, not returned early: every connector still gets its
+// rollback attempt, and the caller sees the full list in `ApplyError::rollback_failures`.
 fn restore<K: Kms>(kms: &mut K, applied: &Applied, name: &str, attempted: &OutputState, failures: &mut Vec<String>) {
     let Some(connector) = kms.connector(name).cloned() else {
         return;
     };
+    // `applied.restore` decides what to write back from the record. `Ok(None)` means the
+    // record has nothing confirmed for this connector, so there is nothing to undo.
     match applied.restore(&connector, attempted) {
         Ok(None) => {}
         Ok(Some(ops)) => {
@@ -173,6 +182,8 @@ pub fn set_gamma<K: Kms>(kms: &mut K, name: &str, ramp: &GammaRamp) -> Result<()
     let connector = kms
         .connector(name)
         .ok_or_else(|| ControlError::NoConnector(name.to_owned()))?;
+    // Length is checked here, not in the kernel, so a bad table never costs a device
+    // round-trip. A zero-length CRTC table is caught by `GammaRamp::matches` too.
     ramp.matches(connector.gamma_length).map_err(ControlError::Gamma)?;
     kms.apply(name, &Op::Gamma(ramp.clone())).map_err(ControlError::Refused)
 }
@@ -188,6 +199,8 @@ pub fn restore_gamma<K: Kms>(kms: &mut K, name: &str) -> Result<(), ControlError
         .ok_or_else(|| ControlError::NoConnector(name.to_owned()))?
         .gamma_length;
     if length == 0 {
+        // A CRTC that reports no gamma table cannot be restored to identity, so the call fails
+        // instead of writing an empty ramp that the kernel would reject with a less useful error.
         return Err(ControlError::Gamma(GammaError::Degenerate));
     }
     kms.apply(name, &Op::Gamma(GammaRamp::identity(length)))
@@ -207,6 +220,7 @@ pub fn set_power<K: Kms>(kms: &mut K, applied: &mut Applied, name: &str, on: boo
     kms.connector(name)
         .ok_or_else(|| ControlError::NoConnector(name.to_owned()))?;
     let power = if on { Power::On } else { Power::Off };
+    // Recorded only after the kernel accepted the change: a refused power-off must not look applied.
     kms.apply(name, &Op::Power(power)).map_err(ControlError::Refused)?;
     if let Some(current) = applied.state(name).copied() {
         let state = OutputState { power, ..current };
@@ -225,10 +239,13 @@ pub fn set_power<K: Kms>(kms: &mut K, applied: &mut Applied, name: &str, on: boo
 /// computed rather than read from `vrefresh`, the rounded figure the kernel also reports.
 #[must_use]
 pub fn refresh_mhz(clock_khz: u32, htotal: u16, vtotal: u16) -> u32 {
+    // The product is taken in u64 so no kernel timing can overflow; the division rounds down,
+    // which matches the rounding the kernel uses for `vrefresh`.
     let frame = u64::from(htotal) * u64::from(vtotal);
     if frame == 0 {
         return 0;
     }
+    // A timing whose totals do not fit in u32 millihertz reports 0 rather than wrapping.
     u32::try_from(u64::from(clock_khz) * 1_000_000 / frame).unwrap_or(0)
 }
 

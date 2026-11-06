@@ -162,6 +162,8 @@ impl Presenter {
             PresenterState::Clean { .. } => FrameStep::Idle,
             PresenterState::InFlight { .. } => FrameStep::Wait,
             PresenterState::Dirty { front, .. } => {
+                // Two slots, so the one that is not on screen is always free to draw into.
+                // With no front yet (first frame, or after resume) the search returns slot 0.
                 let slot = (0..SLOTS).find(|slot| Some(*slot) != front).unwrap_or(0);
                 FrameStep::Draw { slot }
             }
@@ -172,6 +174,8 @@ impl Presenter {
     /// slot stays in flight until its vblank. A second submit while one is in flight is refused
     /// and changes nothing.
     pub fn flip_submitted(&mut self, slot: usize) {
+        // A second flip on one CRTC is not accepted by the kernel until the first completes,
+        // so the state refuses it here instead of queuing a flip that would be rejected.
         self.state = match self.state {
             PresenterState::Clean { front } | PresenterState::Dirty { front, .. } => PresenterState::InFlight {
                 front,
@@ -188,6 +192,8 @@ impl Presenter {
     /// rest of the streak is retried without another line. A refusal while a flip is in flight is
     /// refused: nothing was drawn for it, so it changes nothing and returns `false`.
     pub fn flip_failed(&mut self) -> bool {
+        // A refused flip drew into a slot that is not on screen, so the old front is still
+        // valid. The output stays dirty and the next step picks the same slot again.
         match self.state {
             PresenterState::Clean { front } => {
                 self.state = PresenterState::Dirty { front, failing: true };
@@ -206,6 +212,8 @@ impl Presenter {
     ///
     /// Returns whether a flip completed.
     pub fn vblank(&mut self) -> bool {
+        // A vblank with nothing queued is stale: it can arrive after a resume abandoned the
+        // flip it belonged to. Moving the front on it would show a buffer nobody drew.
         match self.state {
             PresenterState::InFlight { slot, dirty, .. } => {
                 self.state = if dirty {
@@ -225,6 +233,8 @@ impl Presenter {
     /// The seat came back. Nothing is on screen any more as far as this output knows, and any
     /// flip queued before the switch is abandoned, so the output redraws in full.
     pub fn resume(&mut self) {
+        // After a seat switch the kernel may have reset the CRTC, so the presenter cannot know
+        // which buffer is scanned out. Forgetting the front forces a full redraw.
         self.state = PresenterState::Dirty {
             front: None,
             failing: false,

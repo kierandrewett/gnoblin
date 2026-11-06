@@ -64,6 +64,42 @@
 //! block, and nothing else in the crate contains `unsafe`. A session that draws with the
 //! software path reaches neither the EGL shim nor the GL one.
 //!
+//! # Lifecycle of a frame
+//!
+//! One iteration of the compositor's loop, as this contract sees it:
+//!
+//! 1. **Wake.** A source the backend registered with [`Backend::register`] fires: a
+//!    libseat or udev event for DRM, the parent's events for nested. The backend turns
+//!    the wake-up into queued [`InputEvent`]s and pending [`BackendEvent`]s. It does not
+//!    draw.
+//! 2. **Input and changes.** [`Backend::dispatch`] hands every queued event to
+//!    [`Host::input`] before it returns the pending [`BackendEvent`]s. Input goes first
+//!    so the host reacts to a mode change with the pointer where the user left it.
+//! 3. **Begin.** The caller calls [`Host::begin_frame`] once, before any output is
+//!    rendered. Damage is snapshotted here and not per output (see the trait docs).
+//! 4. **Describe, per output.** [`Backend::render`] checks the output is known, then calls
+//!    [`Host::frame`] with a cleared [`render::OutputFrame`]. A `false` answer ends the
+//!    call with nothing drawn and nothing presented.
+//! 5. **Draw and present.** Otherwise the output's [`Target`] draws the frame and presents
+//!    the damage it reports, and [`Backend::render`] returns that as a [`Present`]. A
+//!    backend may also hold a present and return [`Present::Nothing`] (the headless
+//!    backend does while its presenting is paused), which leaves the output as it was.
+//! 6. **Capture, if asked.** [`Backend::capture`] reads back the last frame a target drew.
+//!    It does not describe a new one.
+//!
+//! Who owns what:
+//!
+//! | Thing | Owned by | Lives until |
+//! |---|---|---|
+//! | Device (DRM fd, libinput context, parent connection) | the backend | the backend is dropped |
+//! | Output table and [`OutputId`]s | the backend | the output is unplugged |
+//! | [`Target`] and its renderer | the backend | the output is unplugged |
+//! | Scene and damage accumulation | the host | the host is dropped |
+//! | Input queue | the backend fills it, the host drains it | drained in `dispatch` |
+//!
+//! The host is passed as `&mut S` on every call, so the backend never stores a reference
+//! to it and the two values stay separate owners.
+//!
 //! # Failure modes first
 //!
 //! Each entry names the test that covers it, in `src/headless.rs` unless it says
