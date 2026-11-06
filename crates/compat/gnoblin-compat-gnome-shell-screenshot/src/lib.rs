@@ -63,12 +63,20 @@
 
 #![forbid(unsafe_code)]
 
+/// Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.
 pub mod compat;
+/// Why a screenshot call could not be answered.
 pub mod error;
+/// The IPC client half: one subscription, for the one thing this adapter needs from it.
 pub mod link;
+/// The served interface: `org.gnome.Shell.Screenshot`.
 pub mod service;
 
+/// The admission check, the call it gates, the support matrix and the adapter's name and bus names.
 pub use compat::{MATRIX, NAME, NAMES, ScreenshotAdmission, ScreenshotCall};
+/// Why a screenshot call could not be answered.
 pub use error::ScreenshotError;
+/// One subscription to the compositor, and the lock state it has delivered.
 pub use link::ScreenshotLink;
+/// The bus name, interface, object path and version, plus the exportable service and its export helper.
 pub use service::{BUS_NAME, INTERFACE, PATH, ScreenshotService, VERSION, export};
