@@ -58,7 +58,7 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use gnoblin_layers::{Band, LayerProvider, LayerRegistry, LayerScope, LayerSpec, LocalName};
+use gnoblin_layers::{Band, LayerHandle, LayerProvider, LayerRegistry, LayerScope, LayerSpec, LocalName};
 use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
 use crate::activation::{ActivationDecision, NewWindowFocus};
@@ -346,7 +346,18 @@ impl Wm {
         Vec::new()
     }
 
+    /// Applies one event, then brings window layers in line with the new state.
+    ///
+    /// Every path that changes which windows are drawn goes through here, so a
+    /// layer cannot drift from its window however the change arrived.
     fn apply_event(&mut self, event: Event) -> Vec<Effect> {
+        let effects = self.dispatch(event);
+        self.sync_layer_visibility();
+        effects
+    }
+
+    /// Routes one event to the handler that owns it.
+    fn dispatch(&mut self, event: Event) -> Vec<Effect> {
         match event {
             Event::OutputConnected { output, rect } => self.output_connected(output, rect),
             Event::Frame { deadline } => self.collect_layouts(deadline),
@@ -491,6 +502,44 @@ impl Wm {
         self.windows
             .get(&id)
             .is_some_and(|window| window.is_visible(self.active_workspace))
+    }
+
+    /// Returns the live window-scope layers, bottom to top, grouped by the window
+    /// they follow in stacking order.
+    ///
+    /// The registry orders layers within one window through `paint_order`, but it
+    /// does not know where the window sits in the stack. This walks the stack from
+    /// the bottom and emits each window's layers in the registry's order, so a
+    /// layer always paints with the window it follows. Layers that follow no
+    /// window are left out.
+    #[must_use]
+    pub fn layer_order(&self) -> Vec<LayerHandle> {
+        let painted = gnoblin_layers::paint_order(&self.layers);
+        let mut order = Vec::with_capacity(painted.len());
+        for &window in self.stack.order().iter().rev() {
+            let scope = LayerScope::Window(Some(window));
+            order.extend(
+                painted
+                    .iter()
+                    .copied()
+                    .filter(|&handle| self.layers.get(handle).is_some_and(|record| record.spec.scope == scope)),
+            );
+        }
+        order
+    }
+
+    /// Brings every window's layers in line with whether the window is drawn now.
+    ///
+    /// A layer follows its window: a minimised window, or one on another
+    /// workspace, hides its layers, and restoring it shows them again. Ended
+    /// layers are not touched, and layers already in the right state are left
+    /// alone, so running this after every event never repeats a change.
+    fn sync_layer_visibility(&mut self) {
+        let windows: Vec<WindowId> = self.windows.keys().copied().collect();
+        for id in windows {
+            let visible = self.is_visible(id);
+            self.layers.set_target_visible(id, visible);
+        }
     }
 
     /// Checks every invariant the state machine promises, counting the checks it ran.
@@ -2134,5 +2183,139 @@ mod tests {
             decision,
         });
         assert_eq!(wm.focused(), Some(WindowId::new(2)));
+    }
+
+    /// The `layer_order` window sequence, bottom to top, one entry per window-scope layer.
+    fn layer_windows(wm: &Wm) -> Vec<WindowId> {
+        wm.layer_order()
+            .into_iter()
+            .filter_map(|handle| match wm.layers().get(handle)?.spec.scope {
+                LayerScope::Window(Some(id)) => Some(id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The state of the `surface_toplevel` record for `id`, or `None` once the
+    /// window has closed and its layers have left the registry.
+    fn surface_state(wm: &Wm, id: WindowId) -> Option<gnoblin_layers::LayerState> {
+        wm.layers()
+            .records()
+            .find(|record| record.spec.scope == LayerScope::Window(Some(id)))
+            .map(|record| record.state)
+    }
+
+    #[test]
+    fn layer_order_follows_the_window_stack() {
+        // Window 2 opens above window 1. Raising window 1 moves its layer last, so
+        // the order follows the stack, not the order the windows opened in.
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        assert_eq!(layer_windows(&wm), vec![WindowId::new(1), WindowId::new(2)]);
+        wm.apply(Event::Raise {
+            window: WindowId::new(1),
+        });
+        assert_eq!(layer_windows(&wm), vec![WindowId::new(2), WindowId::new(1)]);
+    }
+
+    #[test]
+    fn extension_layer_paints_below_the_builtin_layer_on_its_window() {
+        // An extension cannot bury the compositor's own record on the window it follows.
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        let spec = LayerSpec::new(
+            LocalName::new("panel").expect("a plain local name is valid"),
+            LayerScope::Window(Some(WindowId::new(1))),
+            Band::Windows,
+        );
+        wm.layers
+            .register(&LayerProvider::Extension("example".to_owned()), spec)
+            .expect("the extension layer registers");
+        let extension: Vec<bool> = wm
+            .layer_order()
+            .into_iter()
+            .filter_map(|handle| wm.layers().get(handle))
+            .map(|record| matches!(record.provider, LayerProvider::Extension(_)))
+            .collect();
+        assert_eq!(extension, vec![true, false]);
+    }
+
+    #[test]
+    fn above_target_layer_sits_directly_above_its_window_record() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowOpened(WindowSpec::normal(
+            WindowId::new(2),
+            "org.example.Two",
+        )));
+        let mut spec = LayerSpec::new(
+            LocalName::new("chrome").expect("a plain local name is valid"),
+            LayerScope::Window(Some(WindowId::new(1))),
+            Band::Windows,
+        );
+        spec.order = gnoblin_layers::Order::AboveTarget;
+        wm.layers
+            .register(&LayerProvider::Gnoblin("gnoblin-wm"), spec)
+            .expect("the chrome layer registers");
+        let order = wm.layer_order();
+        // Window 1's record, then the chrome directly above it, then window 2.
+        assert_eq!(
+            layer_windows(&wm),
+            vec![WindowId::new(1), WindowId::new(1), WindowId::new(2)]
+        );
+        let middle = wm.layers().get(order[1]).expect("the middle layer is live");
+        assert!(matches!(middle.spec.order, gnoblin_layers::Order::AboveTarget));
+    }
+
+    #[test]
+    fn minimising_hides_a_windows_layers_and_restoring_shows_them() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::Minimise {
+            window: WindowId::new(1),
+        });
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Hidden)
+        );
+        wm.apply(Event::Unminimise {
+            window: WindowId::new(1),
+        });
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Mapped)
+        );
+    }
+
+    #[test]
+    fn switching_workspace_hides_layers_of_windows_left_behind() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WorkspaceAdded {
+            workspace: WorkspaceId::new(2),
+        });
+        wm.apply(Event::WorkspaceActivated {
+            workspace: WorkspaceId::new(2),
+        });
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Hidden)
+        );
+        wm.apply(Event::WorkspaceActivated {
+            workspace: WorkspaceId::new(1),
+        });
+        assert_eq!(
+            surface_state(&wm, WindowId::new(1)),
+            Some(gnoblin_layers::LayerState::Mapped)
+        );
+    }
+
+    #[test]
+    fn closing_a_window_removes_its_layers() {
+        let mut wm = wm_with_focused_window(WmOptions::default());
+        wm.apply(Event::WindowClosed {
+            window: WindowId::new(1),
+        });
+        assert!(layer_windows(&wm).is_empty());
+        assert_eq!(surface_state(&wm, WindowId::new(1)), None);
     }
 }
