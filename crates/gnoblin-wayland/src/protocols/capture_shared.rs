@@ -85,6 +85,7 @@ use gnoblin_types::{ClientId, OutputId, Point, Rect, Size, Tick, WindowId};
 use super::zwlr_screencopy_v1::ZwlrScreencopyV1Global;
 use crate::State;
 use crate::access::{Access, AccessPolicy, Global};
+use crate::pipewire_export::{ExportError, PipewireExport, PlaneSource, write_region};
 
 /// The last frame an output presented, which is what a capture copies out of.
 #[derive(Clone, Debug)]
@@ -194,6 +195,8 @@ pub(crate) struct CaptureTables {
     /// The image-copy-capture manager's identity, so a disabled configuration can remove
     /// the global rather than skip it.
     image_copy_global: GlobalId,
+    /// The PipeWire streams of the granted capture sessions.
+    pipewire: PipewireExport,
 }
 
 impl CaptureTables {
@@ -233,6 +236,7 @@ impl CaptureTables {
             image_copy,
             output_source,
             toplevel_source,
+            pipewire: PipewireExport::new(),
         }
     }
 
@@ -406,10 +410,51 @@ impl PixelSource for Pixels<'_> {
     }
 }
 
+/// The pixels a PipeWire stream reads: the last frame of each output, cropped to the target
+/// the stream serves, written into one plane of a stream buffer.
+struct PlanePixels<'a> {
+    /// Where every target is.
+    targets: Targets,
+    /// The last frame of every output.
+    frames: &'a BTreeMap<OutputId, Cached>,
+}
+
+impl PlaneSource for PlanePixels<'_> {
+    fn bounds(&self, target: Target) -> Option<Rect> {
+        self.targets.bounds(target)
+    }
+
+    fn copy_into(&mut self, target: Target, region: Rect, format: Format, plane: &mut [u8]) -> Copied {
+        let Some(output) = self.targets.output(target) else {
+            return Copied::Nothing;
+        };
+        let Some(cached) = self.frames.get(&output) else {
+            return Copied::Nothing;
+        };
+        let origin = self.targets.origin(target);
+        write_region(&cached.image, region.translate(origin.x, origin.y), format, plane)
+    }
+}
+
 impl State {
     /// The lock's answer for `stream` right now.
     pub(crate) fn lock_capture(&self, stream: CaptureStream) -> Capture {
         self.lock.capture(stream)
+    }
+
+    /// Starts the PipeWire stream for `session` and answers its node id, for the connection
+    /// that owns the session. The table decides whether the session may stream at all.
+    #[allow(dead_code)]
+    pub(crate) fn pipewire_start(&mut self, client: &WaylandClientId, session: SessionId) -> Result<u32, ExportError> {
+        let owner = self.capture.owner(client);
+        self.capture.pipewire.start(&self.capture.table, session, owner)
+    }
+
+    /// The node id of `session`, answered only to the connection that opened it.
+    #[allow(dead_code)]
+    pub(crate) fn pipewire_node(&mut self, client: &WaylandClientId, session: SessionId) -> Result<u32, ExportError> {
+        let owner = self.capture.owner(client);
+        self.capture.pipewire.node_id(&self.capture.table, session, owner)
     }
 
     /// Runs once per loop iteration: advances the capture tick and cuts every session the
@@ -418,6 +463,17 @@ impl State {
         self.capture.tick = self.capture.tick.saturating_add(1);
         if !self.capture_allowed() && self.capture.stop_all() {
             self.publish();
+        }
+        if self.capture.pipewire.is_live() {
+            let capture = self.lock_capture(CaptureStream::Granted);
+            let tick = self.capture.tick;
+            let mut source = PlanePixels {
+                targets: self.capture_targets(),
+                frames: &self.capture.pixels,
+            };
+            self.capture
+                .pipewire
+                .pump(&mut self.capture.table, tick, capture, &mut source);
         }
     }
 

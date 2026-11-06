@@ -184,6 +184,8 @@ mod modal;
 mod observation;
 mod output_config;
 mod output_control;
+#[allow(dead_code)]
+mod pipewire_export;
 mod process;
 mod protocols;
 mod server;

@@ -81,6 +81,10 @@ bitflags = "2"
 # `Request` objects the session manager claims and answers, never actions this crate
 # performs (design/rust-compositor.md, "Main data paths").
 gnoblin-model = { path = "../gnoblin-model" }
+# The PipeWire client the portal ScreenCast stream is served through. The `v0_3_34`
+# feature adds the trigger call a DRIVER stream needs to produce a frame on its own
+# schedule (design/pipewire-capture-spike.md).
+pipewire = { version = "0.10", features = ["v0_3_34"] }
 
 [dev-dependencies]
 # The real client the integration tests run against the server. A `wayland-client`
