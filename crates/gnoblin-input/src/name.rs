@@ -31,6 +31,8 @@ impl Name {
                 problem: Problem::Empty,
             });
         }
+        // `len` counts bytes, not characters. The character rule below refuses every
+        // non-ASCII byte, so any name that passes it has its byte length as its length.
         if text.len() > MAX_NAME_LENGTH {
             return Err(NameError {
                 text: text.to_owned(),

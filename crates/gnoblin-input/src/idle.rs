@@ -31,6 +31,8 @@ impl Activity {
     /// one recorded still counts as activity, but does not move the clock back, so the
     /// return value is `false` in that case.
     pub fn record(&mut self, tick: Tick) -> bool {
+        // Saturates rather than wraps: a counter at u64::MAX stays there instead of
+        // resetting to zero and making the session look newly busy.
         self.events = self.events.saturating_add(1);
         match self.last {
             Some(last) if tick <= last => false,

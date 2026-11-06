@@ -175,6 +175,8 @@ impl BindingTable {
         allow_when_inhibited: bool,
     ) -> Result<Insertion, Conflict> {
         let existing = self.by_name.get(name.as_str()).copied();
+        // A chord already owned by a different binding is a conflict. Re-declaring the same
+        // name with the same chord is not, because the owner is then that name's own row.
         if let Some(owner) = self.by_chord.get(&chord).copied()
             && Some(owner) != existing
         {
@@ -198,6 +200,8 @@ impl BindingTable {
                 Ok(Insertion::Replaced(id))
             }
             None => {
+                // Ids are never reused: `remove` does not free a number, so a press that
+                // still names a removed binding cannot resolve to a later declaration.
                 let id = BindingId(self.next_id);
                 self.next_id += 1;
                 self.entries.insert(

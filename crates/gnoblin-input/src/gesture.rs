@@ -511,6 +511,7 @@ impl Recogniser {
             });
         }
 
+        // More contacts than the recogniser tracks: drop the whole gather rather than guess which form the gesture.
         if self.contacts.len() > usize::from(MAX_FINGERS) {
             self.contacts.clear();
             self.start.clear();
@@ -531,6 +532,7 @@ impl Recogniser {
     /// next contact starts cleanly.
     pub fn expire(&mut self, tick: Tick) -> Option<GestureEvent> {
         if let Some(stream) = self.stream() {
+            // Compared in ticks against stale_ticks: a stream the device stopped reporting must not run forever.
             if tick.since(stream.last) < self.config.stale_ticks {
                 return None;
             }
@@ -543,6 +545,7 @@ impl Recogniser {
                 reason: CancelReason::Stale,
             });
         }
+        // A gather that stops advancing is dropped so a stale contact cannot block the next gesture.
         if matches!(self.phase, RecogniserPhase::Gathering) && tick.since(self.last_activity) >= self.config.stale_ticks
         {
             self.reset();
@@ -599,9 +602,11 @@ impl Recogniser {
         } else {
             0.0
         };
+        // Neither threshold crossed yet: keep gathering. Ratios of 1.0 or more mean the threshold was reached.
         if swipe_ratio < 1.0 && pinch_ratio < 1.0 {
             return None;
         }
+        // Pinch wins only when the spread changed proportionally more than the centroid moved; ties go to swipe.
         let kind = if pinch_ratio > swipe_ratio {
             GestureKind::Pinch
         } else {
@@ -671,6 +676,7 @@ impl Recogniser {
         let RecogniserPhase::Streaming(stream) = std::mem::replace(&mut self.phase, RecogniserPhase::Idle) else {
             return None;
         };
+        // The end reports the last spread, not the start, so a finished pinch keeps its final scale.
         let scale = if stream.start_spread > SPREAD_EPSILON {
             stream.last_spread / stream.start_spread
         } else {
@@ -722,6 +728,7 @@ fn resample(path: &[(f64, f64)]) -> Option<Vec<(f64, f64)>> {
     for point in path {
         scale = scale.max(point.0.abs()).max(point.1.abs());
     }
+    // A path that never moves has no shape to compare.
     if scale < SPREAD_EPSILON {
         return None;
     }
@@ -807,6 +814,7 @@ fn rotate(previous: &mut BTreeMap<u8, f64>, contacts: &BTreeMap<u8, (f64, f64)>,
         next.insert(*slot, angle);
     }
     *previous = next;
+    // Averaged only over slots present in both frames, so a lifted finger cannot cause a jump.
     if counted == 0.0 { 0.0 } else { total / counted }
 }
 
@@ -814,6 +822,7 @@ fn rotate(previous: &mut BTreeMap<u8, f64>, contacts: &BTreeMap<u8, (f64, f64)>,
 fn wrap(angle: f64) -> f64 {
     let turn = std::f64::consts::TAU;
     let mut wrapped = angle % turn;
+    // `%` keeps the sign of its input; the branches map the result into (-pi, pi].
     if wrapped <= -std::f64::consts::PI {
         wrapped += turn;
     } else if wrapped > std::f64::consts::PI {
@@ -833,9 +842,11 @@ fn push_path(path: &mut Vec<(f64, f64)>, point: (f64, f64)) {
         path.push(point);
         return;
     };
+    // Skip points closer than PATH_STEP so a resting finger does not fill the path with duplicates.
     if distance(last, point) < PATH_STEP {
         return;
     }
+    // At capacity, overwrite the last point so the path keeps the latest end without growing.
     if path.len() < MAX_PATH_POINTS {
         path.push(point);
     } else if let Some(last) = path.last_mut() {
