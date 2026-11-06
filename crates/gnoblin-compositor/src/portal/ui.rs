@@ -146,10 +146,29 @@ impl PortalUi {
         }
     }
 
-    /// The frame size in pixels: the coordinate space for pointer input.
+    /// The frame size in pixels: the coordinate space for pointer input. It is the open
+    /// dialog's size, which fits its content, or the bounds when nothing is open.
     #[must_use]
-    pub const fn size(&self) -> (usize, usize) {
-        (self.setup.width, self.setup.height)
+    pub fn size(&self) -> (usize, usize) {
+        match self.active.as_ref() {
+            Some(active) => active.screen.size(),
+            None => (self.setup.width, self.setup.height),
+        }
+    }
+
+    /// Sets the largest frame a dialog may take, in pixels. The owner passes the size
+    /// of the output the dialog sits on, so a dialog never outgrows its output. An open
+    /// dialog is redrawn at its new bounds on the next `take_frame`.
+    pub fn set_bounds(&mut self, width: usize, height: usize) {
+        if self.setup.width == width && self.setup.height == height {
+            return;
+        }
+        self.setup.width = width;
+        self.setup.height = height;
+        if let Some(active) = self.active.as_mut() {
+            active.screen.set_bounds(width, height);
+            active.dirty = true;
+        }
     }
 
     /// The request whose dialog is open, if any.
@@ -616,13 +635,40 @@ mod tests {
         assert!(ui.take_frame().is_none(), "nothing open, nothing to draw");
         start_consent(&mut ui, 1, "org.example.App", at(0));
         let first = ui.take_frame().expect("a new dialog draws");
-        assert_eq!((first.width(), first.height()), (640, 480));
+        assert_eq!(
+            (first.width(), first.height()),
+            ui.size(),
+            "the frame is the dialog's fitted size"
+        );
         assert!(ui.take_frame().is_none(), "no input, no new frame");
 
         ui.tick(at(600));
         ui.take_frame();
         ui.key(ScreenKey::Tab, false);
         assert!(ui.take_frame().is_some(), "moving focus changes pixels");
+    }
+
+    #[test]
+    fn a_dialog_fits_its_content_and_follows_the_output_bounds() {
+        let mut ui = PortalUi::new(640, 480);
+        start_consent(&mut ui, 1, "org.example.App", at(0));
+        ui.take_frame();
+        let (width, height) = ui.size();
+        assert!(
+            (320..=640).contains(&width),
+            "the width is at least the floor and at most the bounds"
+        );
+        assert!(height <= 480, "the height is at most the bounds");
+
+        // An output smaller than the dialog pulls it in: the dialog is redrawn at once
+        // within the new bounds, so it never outgrows the output it sits on.
+        ui.set_bounds(200, 120);
+        let frame = ui.take_frame().expect("new bounds redraw the open dialog");
+        assert!(
+            frame.width() <= 200 && frame.height() <= 120,
+            "the frame fits the output"
+        );
+        assert_eq!((frame.width(), frame.height()), ui.size());
     }
 
     #[test]

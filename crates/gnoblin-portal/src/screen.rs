@@ -55,6 +55,19 @@ impl PortalScreen {
         self.now = now;
     }
 
+    /// Sets the largest frame the dialog may take, in pixels. The next render fits the
+    /// dialog to its content within these bounds.
+    pub fn set_bounds(&mut self, width: usize, height: usize) {
+        self.shell.set_bounds(width, height);
+    }
+
+    /// The size the dialog is drawn at: its content, within the bounds. This is the
+    /// size of the frame `render` returns.
+    #[must_use]
+    pub const fn size(&self) -> (usize, usize) {
+        self.shell.size()
+    }
+
     /// Feeds a key. Returns the result when this key settles the dialog.
     pub fn key(&mut self, key: ScreenKey, repeat: bool) -> Option<Settled> {
         self.run(key_events(key, repeat))

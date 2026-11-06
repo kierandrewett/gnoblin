@@ -353,13 +353,21 @@ impl PortalService {
                 replies,
             };
         }
+        // A dialog never outgrows the output it sits on, so the output's size is the
+        // bound the dialog fits within. It is set before placement so this frame's
+        // pointer routing uses the same bounds the dialog was last drawn within.
+        if let Some((_, rect)) = output {
+            let width = usize::try_from(rect.width).unwrap_or(usize::MAX);
+            let height = usize::try_from(rect.height).unwrap_or(usize::MAX);
+            self.ui.set_bounds(width, height);
+        }
         let placement = self.placement(output);
         for event in events {
             self.route(event, placement);
         }
         let replies = self.settle();
-        let modal = match (output, placement) {
-            (Some((output_id, _)), Some(placement)) => self.frame_modal(output_id, placement),
+        let modal = match output {
+            Some((output_id, rect)) if placement.is_some() => self.frame_modal(output_id, rect),
             _ => self.clear_modal(),
         };
         PortalScene { modal, replies }
@@ -405,10 +413,13 @@ impl PortalService {
 
     /// Takes the frame the dialog just drew, if its pixels changed, and wraps it as the
     /// modal. `None` when nothing changed, so the modal stays as it is.
-    fn frame_modal(&mut self, output: OutputId, placement: Rect) -> Option<Option<Modal>> {
+    fn frame_modal(&mut self, output: OutputId, rect: Rect) -> Option<Option<Modal>> {
         let frame = self.ui.take_frame()?;
         let width = u32::try_from(frame.width()).ok()?;
         let height = u32::try_from(frame.height()).ok()?;
+        // The frame is placed from its own size, not the size the pointer was routed
+        // with: a settled or resized dialog may have drawn at a new size in this take.
+        let placement = dialog_placement(rect, width, height);
         let image = Image::new(Size::new(width, height), frame.width() * 4, frame.bytes().to_vec())?;
         let overlay = Overlay::new(placement, &image)?;
         self.shown = Some(output);

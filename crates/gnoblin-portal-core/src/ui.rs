@@ -18,10 +18,18 @@ use crate::paint::{Frame, Textures, rasterise};
 /// One egui point is one frame pixel. The headless renderer does not scale.
 const PIXELS_PER_POINT: f32 = 1.0;
 
-/// The frame a dialog is drawn into.
+/// The narrowest a dialog frame is drawn, in pixels. A dialog with one short line
+/// would otherwise be a sliver. This is a floor on width only: height follows the
+/// content, and the bounds still win when they are narrower.
+const MIN_WIDTH: f32 = 320.0;
+
+/// The largest frame a dialog may be drawn into, in pixels. A dialog is drawn at
+/// its content's size, up to these bounds; the owner sets them to the output's size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Setup {
+    /// The largest width in pixels.
     pub width: usize,
+    /// The largest height in pixels.
     pub height: usize,
     /// Reduced motion: egui's animations finish at once.
     pub reduced_motion: bool,
@@ -51,10 +59,13 @@ pub struct DialogShell {
     ctx: Context,
     textures: Textures,
     setup: Setup,
+    /// The surface size: the content's size, within the bounds.
+    size: (usize, usize),
 }
 
 impl DialogShell {
-    /// A shell for frames of `setup`. The look is egui's stock dark visuals.
+    /// A shell for frames of `setup`. The look is egui's stock dark visuals. The
+    /// surface starts at the bounds; the first render fits it to the content.
     #[must_use]
     pub fn new(setup: Setup) -> Self {
         let ctx = Context::default();
@@ -63,16 +74,35 @@ impl DialogShell {
         if setup.reduced_motion {
             ctx.style_mut_of(Theme::Dark, |style| style.animation_time = 0.0);
         }
+        let size = (setup.width, setup.height);
         Self {
             ctx,
             textures: Textures::default(),
             setup,
+            size,
         }
     }
 
-    /// Runs one frame with no input. Pointer hit-testing needs a laid-out frame, so
-    /// the owner runs this once before the first event.
+    /// Sets the largest frame the dialog may take; the owner passes the output's
+    /// size. The surface shrinks at once if it is now too large, and the next render
+    /// fits it to the content within the new bounds.
+    pub fn set_bounds(&mut self, width: usize, height: usize) {
+        self.setup.width = width;
+        self.setup.height = height;
+        self.size = (self.size.0.min(width), self.size.1.min(height));
+    }
+
+    /// The size the dialog is drawn at: its content, within the bounds.
+    #[must_use]
+    pub const fn size(&self) -> (usize, usize) {
+        self.size
+    }
+
+    /// Fits the surface to the dialog and runs one frame with no input. Pointer
+    /// hit-testing needs a laid-out frame, and the owner needs the true size before
+    /// it places the dialog, so the owner runs this once before the first event.
     pub fn layout(&mut self, dialog: &mut dyn DialogUi, now: Tick) {
+        self.fit(dialog, now);
         self.run_frame(dialog, Vec::new(), now);
     }
 
@@ -88,18 +118,33 @@ impl DialogShell {
         None
     }
 
-    /// Lays out and rasterises the dialog's current state.
+    /// Lays out and rasterises the dialog's current state. The surface is first fitted
+    /// to the dialog's content, so the frame is only as large as the dialog needs.
     #[must_use]
     pub fn render(&mut self, dialog: &mut dyn DialogUi, now: Tick) -> Frame {
-        let (_, shapes) = self.run_frame(dialog, Vec::new(), now);
+        self.fit(dialog, now);
+        let (_, shapes, _) = self.run_frame(dialog, Vec::new(), now);
         let primitives = self.ctx.tessellate(shapes, PIXELS_PER_POINT);
         let mut frame = Frame::filled(
-            self.setup.width,
-            self.setup.height,
+            self.size.0,
+            self.size.1,
             self.ctx.style_of(Theme::Dark).visuals.panel_fill.to_array(),
         );
         rasterise(&mut frame, &self.textures, &primitives, PIXELS_PER_POINT);
         frame
+    }
+
+    /// Sizes the surface to the dialog's content, within the bounds.
+    ///
+    /// The dialog is measured once with the surface at the bounds, then the surface
+    /// takes the content's size. Measuring at the bounds rather than at the current
+    /// size is deliberate: a label wraps and a list fills the space it is given, so a
+    /// measurement made in a surface already shrunk to an earlier guess could describe
+    /// a different dialog.
+    fn fit(&mut self, dialog: &mut dyn DialogUi, now: Tick) {
+        self.size = (self.setup.width, self.setup.height);
+        let (_, _, content) = self.run_frame(dialog, Vec::new(), now);
+        self.size = fitted_size(content, (self.setup.width, self.setup.height));
     }
 
     fn run_frame(
@@ -107,25 +152,43 @@ impl DialogShell {
         dialog: &mut dyn DialogUi,
         events: Vec<Event>,
         now: Tick,
-    ) -> (Option<Settled>, Vec<ClippedShape>) {
+    ) -> (Option<Settled>, Vec<ClippedShape>, Vec2) {
         let raw = RawInput {
             screen_rect: Some(Rect::from_min_size(
                 Pos2::ZERO,
-                Vec2::new(self.setup.width as f32, self.setup.height as f32),
+                Vec2::new(self.size.0 as f32, self.size.1 as f32),
             )),
             time: Some(now.get() as f64 / 1000.0),
             events,
             ..RawInput::default()
         };
+        // The panel frame is egui's own central-panel frame, so the margin added to the
+        // measured content is the margin the panel really draws, not one of our own.
+        let panel_frame = egui::Frame::central_panel(&self.ctx.style_of(Theme::Dark));
+        let margin = panel_frame.inner_margin.sum();
         let mut settled = None;
+        // The laid-out widgets' extent, plus the margin, is the content's size.
+        let mut content = Vec2::ZERO;
         let mut output = self.ctx.run_ui(raw, |root| {
-            CentralPanel::default().show(root, |panel| settled = dialog.show(panel, now));
+            CentralPanel::default().frame(panel_frame.clone()).show(root, |panel| {
+                settled = dialog.show(panel, now);
+                content = panel.min_rect().size() + margin;
+            });
         });
         self.textures.update(&output.textures_delta);
         self.textures.free(&output.textures_delta);
         output.textures_delta.clear();
-        (settled, output.shapes)
+        (settled, output.shapes, content)
     }
+}
+
+/// The surface size for a dialog whose content, margin included, is `content`: at
+/// least [`MIN_WIDTH`] wide, and never larger than `bounds` on either axis.
+#[must_use]
+fn fitted_size(content: Vec2, bounds: (usize, usize)) -> (usize, usize) {
+    let width = content.x.ceil().max(MIN_WIDTH).min(bounds.0 as f32);
+    let height = content.y.ceil().min(bounds.1 as f32);
+    (width as usize, height as usize)
 }
 
 /// The egui events for one compositor key: a press then a release, or one text event.
