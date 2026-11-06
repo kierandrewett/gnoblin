@@ -72,7 +72,9 @@ impl TextureSlot {
 /// One quad to draw.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct PlannedDraw {
+    /// Which fragment stage the draw runs.
     pub kind: PassKind,
+    /// The texture the draw samples, or `None` for a pass that samples none.
     pub slot: Option<TextureSlot>,
     /// The damage rectangle the draw is clipped to, in physical pixels.
     pub scissor: Rect,
@@ -85,9 +87,11 @@ pub(super) struct PlannedDraw {
 /// The sizes of the textures that exist for a frame, by slot.
 #[derive(Clone, Debug, Default)]
 pub(super) struct TextureSizes {
-    /// One entry per layer, `None` for a solid or a surface that has no texture.
+    /// Dimensions in pixels of each layer's texture, `None` for a solid or a surface with no texture.
     pub layers: Vec<Option<(u32, u32)>>,
+    /// Dimensions in pixels of the overlay texture, if one exists this frame.
     pub overlay: Option<(u32, u32)>,
+    /// Dimensions in pixels of the cursor texture, if one exists this frame.
     pub cursor: Option<(u32, u32)>,
 }
 

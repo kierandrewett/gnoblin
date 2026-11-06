@@ -5,11 +5,11 @@
 // gets its declared uniforms appended to the same struct at the offset the layout
 // rules give them.
 //
-// Layout rule: every member is a `vec4` except the three scalars at the end, so the
-// struct is 96 bytes, a multiple of 16, which is the alignment WGSL's uniform layout
-// and GLSL's `std140` both give it. A user field therefore starts at offset 96 in
-// both languages, and `UniformLayout` in `program.rs` is the CPU side of that
-// agreement.
+// Layout rule: every member is a `vec4` except the trailing `corner` and `opacity`
+// scalars and the `vec2` padding. The struct is therefore 96 bytes, a multiple of 16,
+// which is the alignment that WGSL's uniform layout and GLSL's `std140` both give it.
+// A user field therefore starts at offset 96 in both languages, and `UniformLayout` in
+// `program.rs` is the CPU side of that agreement.
 //
 // The `textureSample` pair is declared here rather than in each body so a user shader
 // can sample the layer it is shading without declaring anything.

@@ -25,9 +25,13 @@ use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
 /// One buffer the client creates, with the bytes in its pool.
 pub(super) struct BufferSpec {
+    /// Width in pixels.
     pub width: i32,
+    /// Height in pixels.
     pub height: i32,
+    /// Bytes from one row to the next, which may exceed `width * 4` for padding.
     pub stride: i32,
+    /// The pixel format the client declares for the buffer.
     pub format: wl_shm::Format,
     /// The pool's bytes, `stride * height` of them, in the buffer's own byte order.
     pub bytes: Vec<u8>,

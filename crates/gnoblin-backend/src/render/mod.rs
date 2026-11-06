@@ -79,34 +79,56 @@
 //! colour, and nothing here applies a transfer function: colour management is
 //! Gnoblin's own pipeline, which D12 leaves for later.
 
+/// The scene and the drawing of one output's frame from it. See [`compose::Composer`].
 pub mod compose;
+/// Why a renderer could not draw.
 pub mod error;
+/// The description of one output's frame that a renderer draws.
 pub mod frame;
+/// The one rule every renderer converts logical rectangles to pixels with.
 pub mod geometry;
+/// The GLES renderer, built on Smithay's glow renderer and EGL.
 pub mod gles;
+/// A frame's pixels, copied out of a renderer.
 pub mod image;
+/// Which renderer draws an output, and the one type that holds it.
 pub mod renderer;
+/// The renderer-neutral half of the shader pipeline.
 pub mod shader;
 // The one module in this crate that needs `unsafe`: writing a frame into a client's
 // `wl_shm` pool. Its own documentation says why.
+/// Writes rendered pixels into a client's `wl_shm` buffer.
 pub mod shm;
+/// The CPU renderer, built on Pixman.
 pub mod software;
 // The Vulkan renderer: the same frame drawn through `ash`, with its own `unsafe` shim
 // modules. See `design/vulkan-backend.md`.
+/// The Vulkan renderer, enabled by the `vulkan` feature.
 #[cfg(feature = "vulkan")]
 pub mod vulkan;
 
+/// The scene composer and the per-window content it draws.
 pub use compose::{Composer, Content};
+/// The error type of every renderer.
 pub use error::RenderError;
 // The colour a frame is described with, so a caller that paints a surface the scene
 // graph does not know about names the same type the renderer does.
+/// The layers, overlays and solid fills that make up an output frame.
 pub use frame::{Layer, OutputFrame, Overlay, Solid, Surface};
+/// The GLES renderer.
 pub use gles::Gles;
+/// Cursor types from the scene crate.
 pub use gnoblin_render::cursor;
+/// Colour and matrix types shared with the scene crate.
 pub use gnoblin_render::{Color, Mat4};
+/// The readback pixels of a frame.
 pub use image::Image;
+/// The enum that dispatches to each backend, and its kind selector.
 pub use renderer::{AnyRenderer, RendererKind};
+/// Copies an [`Image`] into a client's `wl_shm` buffer.
 pub use shm::copy_into as copy_into_shm;
+/// The Pixman CPU renderer.
 pub use software::Software;
 #[cfg(feature = "vulkan")]
+/// The Vulkan renderer.
 pub use vulkan::Vulkan;

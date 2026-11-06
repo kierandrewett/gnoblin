@@ -35,8 +35,11 @@ use super::shader::{StageKind, compile};
 /// The WGSL of each module of the two pipelines.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShaderSources<'a> {
+    /// The vertex stage, shared by every pass.
     pub vertex: &'a str,
+    /// The solid-colour fragment stage (also used for the background).
     pub solid: &'a str,
+    /// The textured fragment stage for client surfaces and bitmaps.
     pub surface: &'a str,
 }
 

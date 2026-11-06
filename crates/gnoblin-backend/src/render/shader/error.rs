@@ -59,6 +59,7 @@ pub struct ShaderError {
 }
 
 impl ShaderError {
+    /// Builds an error for `detail` at `line` and `column` of the source named by `context`.
     pub(crate) fn new(context: ShaderOrigin, stage: Stage, line: usize, column: usize, detail: String) -> Self {
         Self {
             context,
