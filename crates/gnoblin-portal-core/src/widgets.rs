@@ -1,10 +1,9 @@
 //! Painter helpers the portal dialogs share: text runs that record their label
 //! for headless checks, centred button labels, and focus outlines. They draw
-//! with the tokens of `gnoblin-portal-theme` and know nothing about portal
-//! interfaces.
+//! with the tokens of `crate::theme` and know nothing about portal interfaces.
 
+use crate::theme::{RADII, SPACING};
 use egui::{Color32, CornerRadius, FontId, Painter, Pos2, Rect, Stroke, StrokeKind};
-use gnoblin_portal_theme::{RADII, SPACING};
 
 /// A text run the last layout drew: its text and the rectangle its galley
 /// occupies, in frame pixels.

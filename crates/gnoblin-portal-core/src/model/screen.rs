@@ -2,8 +2,8 @@
 //! the result it settles with, the dialog it draws and a directory listing it is
 //! given. These are plain data; drawing them is the UI crates' job.
 
-use crate::dialog::{AppChooser, Consent, FileChooser, FileEntry};
-use crate::interface::Grant;
+use super::dialog::{AppChooser, Consent, FileChooser, FileEntry};
+use super::interface::Grant;
 
 /// A key as the screens receive it. Keys a dialog does not use are ignored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

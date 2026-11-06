@@ -1,12 +1,13 @@
 [package]
-name = "gnoblin-portal-model"
-description = "Portal interface names, typed payloads and the built-in dialog models, free of any UI engine."
+name = "gnoblin-portal-core"
+description = "Shared portal pieces: dialog models and interface payloads, design tokens, the CPU egui painter and the dialog widgets."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
+egui.workspace = true
 gnoblin-schema.workspace = true
 gnoblin-types.workspace = true
 

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 
 use gnoblin_types::Tick;
 
-use crate::interface::Grant;
+use super::interface::Grant;
 
 /// Consent dialogs arm this many milliseconds after they appear (D19, proposed).
 pub const ARM_DELAY_MS: u64 = 500;

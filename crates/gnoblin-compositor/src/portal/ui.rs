@@ -67,8 +67,8 @@
 use std::collections::VecDeque;
 
 use gnoblin_diag::portal::{PortalScreen, Setup, Theme};
-use gnoblin_portal_model::{Dialog, Interface, ScreenKey, Settled};
-use gnoblin_portal_paint::Frame;
+use gnoblin_portal_core::model::{Dialog, Interface, ScreenKey, Settled};
+use gnoblin_portal_core::paint::Frame;
 use gnoblin_types::{RequestId, Tick};
 
 use super::negotiate::{Effect, Event, Negotiation, Provider};
@@ -384,7 +384,7 @@ impl PortalUi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_portal_model::{Consent, FileChooser, FileChooserMode};
+    use gnoblin_portal_core::model::{Consent, FileChooser, FileChooserMode};
 
     const UI_TIMEOUT_MS: u64 = 60_000;
 

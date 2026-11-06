@@ -37,8 +37,7 @@ gnoblin-client = { path = "../gnoblin-client" }
 # The portal's dialog models (payload and result types, dialog state). The negotiation
 # core names them; the models stay pure and draw nothing (D19).
 gnoblin-diag = { path = "../gnoblin-diag" }
-gnoblin-portal-model = { path = "../gnoblin-portal-model" }
-gnoblin-portal-paint = { path = "../gnoblin-portal-paint" }
+gnoblin-portal-core = { path = "../gnoblin-portal-core" }
 gnoblin-input = { path = "../gnoblin-input" }
 # Who this process is, for the IPC socket directory's ownership check.
 rustix.workspace = true

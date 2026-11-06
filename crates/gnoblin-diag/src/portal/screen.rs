@@ -25,15 +25,15 @@ use std::fmt::Write as _;
 
 use egui::epaint::ClippedPrimitive;
 use egui::{Color32, Context, CornerRadius, FontId, Painter, Pos2, RawInput, Rect, Stroke, StrokeKind, Ui, Vec2};
-use gnoblin_portal_model::{
+use gnoblin_portal_core::model::{
     AppChooser, Confirmation, Consent, ConsentFocus, ConsentInput, ConsentTarget, Dialog, DialogError,
     DirectoryListing, FileChooser, FileChooserMode, FileEntry, Key, ScreenKey, Settled,
 };
 use gnoblin_types::Tick;
 
-use gnoblin_portal_paint::{Frame, Textures, rasterise};
-use gnoblin_portal_theme::{Mode, Palette, RADII, SPACING, TYPE};
-use gnoblin_portal_widgets as widgets;
+use gnoblin_portal_core::paint::{Frame, Textures, rasterise};
+use gnoblin_portal_core::theme::{Mode, Palette, RADII, SPACING, TYPE};
+use gnoblin_portal_core::widgets;
 
 /// One egui point is one frame pixel. The headless renderer does not scale.
 const PIXELS_PER_POINT: f32 = 1.0;
@@ -89,7 +89,7 @@ pub struct Setup {
     pub reduced_motion: bool,
 }
 
-pub use gnoblin_portal_widgets::Label;
+pub use gnoblin_portal_core::widgets::Label;
 
 /// The control a chooser's keys reach. Tab moves between the ones a dialog has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -4,7 +4,7 @@ use gnoblin_compositor::portal::{
     CancelReason, Deviation, Effect, Event, InterfaceContract, Negotiation, PortalError, Provider, Queue, Refusal,
     Request, Stage, Verdict, validate_reply,
 };
-use gnoblin_portal_model::{Grant, Interface};
+use gnoblin_portal_core::model::{Grant, Interface};
 use gnoblin_types::{RequestId, Tick};
 
 const TIMEOUT_MS: u64 = 5_000;

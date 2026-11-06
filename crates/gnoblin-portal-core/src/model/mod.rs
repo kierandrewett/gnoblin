@@ -1,12 +1,12 @@
 //! Portal interface names, typed payloads and dialog models (design/rust-compositor.md, D19).
 //!
-//! This crate owns the interface names the compositor serves, the typed payload and
+//! This module owns the interface names the compositor serves, the typed payload and
 //! result of each interface a dialog renders and fills, and the dialog models
 //! themselves. The models do not draw, read a clock, touch D-Bus or spawn a process.
 //!
-//! It must not know egui, any renderer or any engine crate: the compositor links it
-//! for its negotiation types, and a UI crate draws the models. Its only dependencies
-//! are `gnoblin-types` and `gnoblin-schema`.
+//! Keep egui out of this module: the compositor links it for its negotiation types,
+//! and the UI crates draw the models. Its only dependencies are `gnoblin-types` and
+//! `gnoblin-schema`.
 
 mod dialog;
 mod interface;
