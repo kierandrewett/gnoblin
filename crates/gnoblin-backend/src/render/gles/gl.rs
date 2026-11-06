@@ -21,6 +21,7 @@
 //! time, which is exactly the state this module cannot promise on a failure path.
 #![allow(unsafe_code)]
 
+use std::fmt;
 use std::num::NonZeroU32;
 
 use glow::HasContext;
@@ -33,9 +34,26 @@ use gnoblin_render::{Color, ResolvedUniform};
 use gnoblin_types::{Rect, Size};
 
 use crate::render::RenderError;
-use crate::render::gles::program::CompileFailure;
 use crate::render::shader::uniforms::{UniformLayout, Uniforms};
 use crate::render::shader::{ShaderError, Stage};
+
+/// A driver failure, before it is known which line of a source it came from.
+pub(crate) struct CompileFailure {
+    /// The stage that failed.
+    pub stage: Stage,
+    /// The driver's log.
+    pub log: String,
+}
+
+impl fmt::Debug for CompileFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CompileFailure")
+            .field("stage", &self.stage)
+            .field("log", &self.log)
+            .finish()
+    }
+}
 
 /// The binding the uniform buffer is uploaded to.
 const UNIFORM_BINDING: u32 = 0;

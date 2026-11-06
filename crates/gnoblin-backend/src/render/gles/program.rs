@@ -20,8 +20,6 @@
 //!    preamble's line count is subtracted, so the number a caller reports is the number the
 //!    user can count to: `tests::a_syntax_error_names_the_user_line`.
 
-use std::fmt;
-
 use gnoblin_log::debug;
 use naga::back::glsl::{Options as GlslOptions, PipelineOptions, Version, Writer};
 use naga::front::wgsl::Frontend;
@@ -29,28 +27,10 @@ use naga::proc::BoundsCheckPolicies;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 
 use crate::render::RenderError;
-use crate::render::gles::gl::{Device, Program};
+use crate::render::gles::gl::{CompileFailure, Device, Program};
 use crate::render::shader::sources as shaders;
 use crate::render::shader::uniforms::UniformLayout;
 use crate::render::shader::{ENTRY, ShaderError, ShaderOrigin, Stage};
-
-/// A driver failure, before it is known which line of a source it came from.
-pub(crate) struct CompileFailure {
-    /// The stage that failed.
-    pub stage: Stage,
-    /// The driver's log.
-    pub log: String,
-}
-
-impl fmt::Debug for CompileFailure {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("CompileFailure")
-            .field("stage", &self.stage)
-            .field("log", &self.log)
-            .finish()
-    }
-}
 
 /// How a line in the generated module maps to a line of the source that was written.
 ///
