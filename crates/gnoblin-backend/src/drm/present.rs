@@ -5,18 +5,44 @@
 //! rules that matter for a display that must never wedge are tested without a device. The
 //! hardware path reports each kernel call's outcome back here.
 //!
-//! # Rules
+//! # Transitions
 //!
-//! 1. **At most one frame is in flight per output.** A flip is queued only when the previous
-//!    one has completed: [`Presenter::step`] answers [`FrameStep::Wait`] until [`Presenter::vblank`]
-//!    reports it.
-//! 2. **A buffer that is on screen is never drawn into.** The frame to draw goes to a slot
-//!    other than the one in [`Presenter::front`].
-//! 3. **A refused flip keeps the output dirty.** The next call to [`Presenter::step`] draws again
-//!    and retries the same slot, so a flip that failed once cannot leave the output frozen. The
-//!    failure is logged once per streak: [`Presenter::flip_failed`] says whether this is the first.
-//! 4. **Resume starts from nothing.** After the seat returns, nothing is known to be on screen,
-//!    so the output is dirty and a vblank from before the switch is ignored.
+//! The output is in one of three states. `Clean` has nothing in flight and the screen is
+//! current. `Dirty` has content the screen lacks; `failing` is set while the last flip was
+//! refused. `InFlight` has a flip queued; `dirty` is set if content changed since it was queued.
+//! Every method consumes the state it is in and moves to the next one. A row marked *refused*
+//! is a call the frame path must not make: it leaves the state unchanged.
+//!
+//! | State    | Event               | Next state                      | Returns                       |
+//! |----------|---------------------|---------------------------------|-------------------------------|
+//! | Clean    | `step`              | Clean                           | `Idle`                        |
+//! | Dirty    | `step`              | Dirty                           | `Draw` into a slot not `front` |
+//! | InFlight | `step`              | InFlight                        | `Wait`                        |
+//! | Clean    | `mark_dirty`        | Dirty, not failing              |                               |
+//! | Dirty    | `mark_dirty`        | Dirty                           |                               |
+//! | InFlight | `mark_dirty`        | InFlight, dirty                 |                               |
+//! | Clean    | `flip_submitted`    | InFlight, clean                 |                               |
+//! | Dirty    | `flip_submitted`    | InFlight, clean                 |                               |
+//! | InFlight | `flip_submitted`    | *refused*, unchanged            |                               |
+//! | Clean    | `flip_failed`       | Dirty, failing                  | `true`                        |
+//! | Dirty    | `flip_failed`       | Dirty, failing                  | `true` unless already failing |
+//! | InFlight | `flip_failed`       | *refused*, unchanged            | `false`                       |
+//! | InFlight | `vblank`, clean     | Clean, front = the flip's slot  | `true`                        |
+//! | InFlight | `vblank`, dirty     | Dirty, front = the flip's slot  | `true`                        |
+//! | Clean    | `vblank`            | unchanged                       | `false`                       |
+//! | Dirty    | `vblank`            | unchanged                       | `false`                       |
+//! | any      | `resume`            | Dirty, no front, not failing    |                               |
+//!
+//! The guarantees this table gives the frame path:
+//!
+//! 1. **At most one frame is in flight per output.** `step` answers [`FrameStep::Wait`] for
+//!    as long as the state is `InFlight`.
+//! 2. **A buffer that is on screen is never drawn into.** A `Draw` never names `front`.
+//! 3. **A refused flip keeps the output dirty.** The next `step` draws again into the same
+//!    slot. The failure is logged once per streak: [`Presenter::flip_failed`] says whether it is
+//!    the first.
+//! 4. **Resume starts from nothing.** Nothing is known to be on screen afterwards, and a vblank
+//!    from before the switch is ignored.
 
 /// The number of buffers an output cycles through. Two is the double buffer a flip needs: one
 /// slot is scanned out while the other is drawn into.
@@ -37,17 +63,36 @@ pub enum FrameStep {
     Wait,
 }
 
+/// The state of one output's swapchain. Every variant is a row of the table in the module doc.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PresenterState {
+    /// Nothing is in flight and the screen shows the latest content.
+    Clean {
+        /// The slot scanned out now.
+        front: Option<usize>,
+    },
+    /// The screen lacks content. `failing` is set while the last flip was refused.
+    Dirty {
+        /// The slot scanned out now.
+        front: Option<usize>,
+        /// The last flip was refused and no flip has succeeded since.
+        failing: bool,
+    },
+    /// A flip of `slot` is queued and not yet completed.
+    InFlight {
+        /// The slot scanned out before this flip completes.
+        front: Option<usize>,
+        /// The slot whose flip is queued.
+        slot: usize,
+        /// The output has content that changed since the flip was queued.
+        dirty: bool,
+    },
+}
+
 /// The state of one output's swapchain, as far as the frame path is concerned.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Presenter {
-    /// The slot scanned out now, once a flip has completed.
-    front: Option<usize>,
-    /// The slot whose flip is queued and not yet completed.
-    pending: Option<usize>,
-    /// The output has content the screen does not show yet.
-    dirty: bool,
-    /// The last flip was refused and no flip has succeeded since.
-    failing: bool,
+    state: PresenterState,
 }
 
 impl Default for Presenter {
@@ -61,67 +106,99 @@ impl Presenter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            front: None,
-            pending: None,
-            dirty: true,
-            failing: false,
+            state: PresenterState::Dirty {
+                front: None,
+                failing: false,
+            },
         }
     }
 
     /// The slot on screen, once a flip has completed.
     #[must_use]
     pub fn front(&self) -> Option<usize> {
-        self.front
+        match self.state {
+            PresenterState::Clean { front }
+            | PresenterState::Dirty { front, .. }
+            | PresenterState::InFlight { front, .. } => front,
+        }
     }
 
     /// The slot whose flip is in flight, if any.
     #[must_use]
     pub fn pending(&self) -> Option<usize> {
-        self.pending
+        match self.state {
+            PresenterState::InFlight { slot, .. } => Some(slot),
+            PresenterState::Clean { .. } | PresenterState::Dirty { .. } => None,
+        }
     }
 
     /// Whether the output has content the screen does not show.
     #[must_use]
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        matches!(
+            self.state,
+            PresenterState::Dirty { .. } | PresenterState::InFlight { dirty: true, .. }
+        )
     }
 
     /// The host changed what the output shows.
     pub fn mark_dirty(&mut self) {
-        self.dirty = true;
+        self.state = match self.state {
+            PresenterState::Clean { front } => PresenterState::Dirty { front, failing: false },
+            PresenterState::InFlight { front, slot, .. } => PresenterState::InFlight {
+                front,
+                slot,
+                dirty: true,
+            },
+            dirty @ PresenterState::Dirty { .. } => dirty,
+        };
     }
 
     /// What the next frame needs. A frame in flight always wins: nothing is drawn over a buffer
     /// the kernel is still scanning out or about to.
     #[must_use]
     pub fn step(&self) -> FrameStep {
-        if self.pending.is_some() {
-            return FrameStep::Wait;
+        match self.state {
+            PresenterState::Clean { .. } => FrameStep::Idle,
+            PresenterState::InFlight { .. } => FrameStep::Wait,
+            PresenterState::Dirty { front, .. } => {
+                let slot = (0..SLOTS).find(|slot| Some(*slot) != front).unwrap_or(0);
+                FrameStep::Draw { slot }
+            }
         }
-        if !self.dirty {
-            return FrameStep::Idle;
-        }
-        let slot = (0..SLOTS).find(|slot| Some(*slot) != self.front).unwrap_or(0);
-        FrameStep::Draw { slot }
     }
 
     /// The kernel accepted a flip of `slot`. The output is clean until the next change, and the
-    /// slot stays in flight until its vblank.
+    /// slot stays in flight until its vblank. A second submit while one is in flight is refused
+    /// and changes nothing.
     pub fn flip_submitted(&mut self, slot: usize) {
-        self.pending = Some(slot);
-        self.dirty = false;
-        self.failing = false;
+        self.state = match self.state {
+            PresenterState::Clean { front } | PresenterState::Dirty { front, .. } => PresenterState::InFlight {
+                front,
+                slot,
+                dirty: false,
+            },
+            in_flight @ PresenterState::InFlight { .. } => in_flight,
+        };
     }
 
     /// The kernel refused a flip. The output stays dirty so the next [`Presenter::step`] retries.
     ///
     /// Returns `true` for the first refusal of a streak, which is the one the caller logs; the
-    /// rest of the streak is retried without another line.
+    /// rest of the streak is retried without another line. A refusal while a flip is in flight is
+    /// refused: nothing was drawn for it, so it changes nothing and returns `false`.
     pub fn flip_failed(&mut self) -> bool {
-        let first = !self.failing;
-        self.failing = true;
-        self.dirty = true;
-        first
+        match self.state {
+            PresenterState::Clean { front } => {
+                self.state = PresenterState::Dirty { front, failing: true };
+                true
+            }
+            PresenterState::Dirty { front, failing } => {
+                self.state = PresenterState::Dirty { front, failing: true };
+                !failing
+            }
+            PresenterState::InFlight { .. } => false,
+        }
     }
 
     /// A vblank arrived. It completes the flip in flight, if there is one; the slot it showed
@@ -129,22 +206,29 @@ impl Presenter {
     ///
     /// Returns whether a flip completed.
     pub fn vblank(&mut self) -> bool {
-        match self.pending.take() {
-            Some(slot) => {
-                self.front = Some(slot);
+        match self.state {
+            PresenterState::InFlight { slot, dirty, .. } => {
+                self.state = if dirty {
+                    PresenterState::Dirty {
+                        front: Some(slot),
+                        failing: false,
+                    }
+                } else {
+                    PresenterState::Clean { front: Some(slot) }
+                };
                 true
             }
-            None => false,
+            PresenterState::Clean { .. } | PresenterState::Dirty { .. } => false,
         }
     }
 
     /// The seat came back. Nothing is on screen any more as far as this output knows, and any
     /// flip queued before the switch is abandoned, so the output redraws in full.
     pub fn resume(&mut self) {
-        self.front = None;
-        self.pending = None;
-        self.dirty = true;
-        self.failing = false;
+        self.state = PresenterState::Dirty {
+            front: None,
+            failing: false,
+        };
     }
 }
 
@@ -183,7 +267,7 @@ pub fn complete_flips<C: PartialEq, I: Copy>(channels: &mut [OutputPresenter<C, 
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameStep, OutputPresenter, Presenter, complete_flips};
+    use super::{FrameStep, OutputPresenter, Presenter, PresenterState, complete_flips};
     /// A channel driving `crtc` for output `id`, with nothing in flight.
     fn channel(id: u32, crtc: u32) -> OutputPresenter<u32, u32> {
         OutputPresenter {
@@ -352,5 +436,154 @@ mod tests {
         assert!(presenter.flip_failed());
         presenter.resume();
         assert!(presenter.flip_failed(), "a streak that began before the resume is over");
+    }
+
+    #[test]
+    fn a_clean_output_steps_to_idle_and_stays_clean() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        presenter.vblank();
+        assert_eq!(presenter.step(), FrameStep::Idle);
+        assert_eq!(presenter.state, PresenterState::Clean { front: Some(0) });
+    }
+
+    #[test]
+    fn marking_a_clean_output_dirty_makes_it_dirty_and_not_failing() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        presenter.vblank();
+        presenter.mark_dirty();
+        assert_eq!(
+            presenter.state,
+            PresenterState::Dirty {
+                front: Some(0),
+                failing: false
+            }
+        );
+    }
+
+    #[test]
+    fn marking_an_in_flight_output_dirty_keeps_the_flip_and_records_the_change() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        presenter.mark_dirty();
+        assert_eq!(
+            presenter.state,
+            PresenterState::InFlight {
+                front: None,
+                slot: 0,
+                dirty: true
+            }
+        );
+        assert_eq!(presenter.step(), FrameStep::Wait);
+    }
+
+    #[test]
+    fn a_submitted_flip_from_dirty_leaves_the_output_in_flight_and_clean() {
+        let mut presenter = Presenter::new();
+        presenter.flip_submitted(1);
+        assert_eq!(
+            presenter.state,
+            PresenterState::InFlight {
+                front: None,
+                slot: 1,
+                dirty: false
+            }
+        );
+    }
+
+    #[test]
+    fn a_vblank_with_no_change_since_the_flip_makes_the_output_clean() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        assert!(presenter.vblank());
+        assert_eq!(presenter.state, PresenterState::Clean { front: Some(0) });
+    }
+
+    #[test]
+    fn a_vblank_after_a_change_during_the_flip_leaves_the_output_dirty() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        presenter.mark_dirty();
+        assert!(presenter.vblank());
+        assert_eq!(
+            presenter.state,
+            PresenterState::Dirty {
+                front: Some(0),
+                failing: false
+            }
+        );
+        assert_eq!(presenter.step(), FrameStep::Draw { slot: 1 });
+    }
+
+    #[test]
+    fn a_refused_flip_from_a_clean_output_makes_it_failing_and_dirty() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        presenter.vblank();
+        assert!(presenter.flip_failed());
+        assert_eq!(
+            presenter.state,
+            PresenterState::Dirty {
+                front: Some(0),
+                failing: true
+            }
+        );
+    }
+
+    #[test]
+    fn a_refused_flip_while_in_flight_is_refused_and_changes_nothing() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        let before = presenter.clone();
+        assert!(!presenter.flip_failed());
+        assert_eq!(presenter, before);
+    }
+
+    #[test]
+    fn a_second_submit_while_in_flight_is_refused_and_changes_nothing() {
+        let mut presenter = Presenter::new();
+        present(&mut presenter, 0);
+        let before = presenter.clone();
+        presenter.flip_submitted(1);
+        assert_eq!(presenter, before);
+        assert_eq!(presenter.pending(), Some(0));
+    }
+
+    #[test]
+    fn a_vblank_on_an_output_with_nothing_in_flight_is_refused_and_changes_nothing() {
+        let mut presenter = Presenter::new();
+        let before = presenter.clone();
+        assert!(!presenter.vblank());
+        assert_eq!(presenter, before);
+        presenter.vblank();
+        presenter.mark_dirty();
+        let clean_dirty = presenter.clone();
+        assert!(!presenter.vblank());
+        assert_eq!(presenter, clean_dirty);
+    }
+
+    #[test]
+    fn resume_from_every_state_makes_the_output_dirty_with_nothing_on_screen() {
+        let expected = PresenterState::Dirty {
+            front: None,
+            failing: false,
+        };
+        let mut clean = Presenter::new();
+        present(&mut clean, 0);
+        clean.vblank();
+        clean.resume();
+        assert_eq!(clean.state, expected);
+
+        let mut dirty = Presenter::new();
+        dirty.flip_failed();
+        dirty.resume();
+        assert_eq!(dirty.state, expected);
+
+        let mut in_flight = Presenter::new();
+        present(&mut in_flight, 0);
+        in_flight.mark_dirty();
+        in_flight.resume();
+        assert_eq!(in_flight.state, expected);
     }
 }
