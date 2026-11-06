@@ -1,11 +1,13 @@
 //! The Gnoblin desktop portal backend: `org.freedesktop.impl.portal.desktop.gnoblin`.
 //!
-//! Design/rust-compositor.md's "Portals" card splits `xdg-desktop-portal`'s backends by what
-//! an interface needs. This crate is the compositor-bound half: ScreenCast, Screenshot,
-//! RemoteDesktop, InputCapture, GlobalShortcuts, Clipboard, Settings and Inhibit. The
-//! toolkit-bound half (FileChooser, AppChooser, Print, Account, Email, Notification,
-//! Wallpaper, Lockdown) is not here at all, and `data/portals.conf` is what routes each
-//! interface to a backend that serves it.
+//! Design/rust-compositor.md's D19 has Gnoblin serve every interface a desktop needs. This
+//! crate is the relay for them. Today it implements the compositor-bound set: ScreenCast,
+//! Screenshot, RemoteDesktop, InputCapture, GlobalShortcuts, Clipboard, Settings and
+//! Inhibit, which `gnoblin.portal` lists. FileChooser, AppChooser, Print, Account, Email,
+//! Notification, Wallpaper, Background, Lockdown and DynamicLauncher are routed to Gnoblin
+//! first in `data/portals.conf` but are not implemented here yet, so `gnoblin.portal` does
+//! not list them and the frontend falls through to `gtk` or `kde` until it does. Secret,
+//! OpenURI and Trash stay with a generic backend.
 //!
 //! # The one rule this crate is built around
 //!
