@@ -65,7 +65,6 @@ members = [
     "crates/gnoblin-types",
     "crates/gnoblin-wasm",
     "crates/gnoblin-wayland",
-    "crates/gnoblin-window-menu-core",
     "crates/gnoblin-wm",
     "crates/gnoblin-xwayland",
     "crates/gnoblinctl",

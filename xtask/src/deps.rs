@@ -44,7 +44,6 @@ const FOUNDATION: &[&str] = &[
     "gnoblin-proto",
     "gnoblin-schema",
     "gnoblin-types",
-    "gnoblin-window-menu-core",
     "gnoblin-wm",
 ];
 
