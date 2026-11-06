@@ -2293,10 +2293,7 @@ impl State {
         let Some(window) = self.window_of(&surface) else {
             return;
         };
-        let effects = self.wm.apply(Event::ActivationRequested {
-            window,
-            decision: ActivationDecision::Allow,
-        });
+        let effects = self.wm.apply(Event::PointerPressed { window });
         self.apply(effects);
         self.publish();
     }

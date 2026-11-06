@@ -73,6 +73,12 @@ fn apply(config: &mut SessionConfig, section: &WindowManagement) {
         focus_change_on_pointer_rest: section
             .focus_change_on_pointer_rest
             .unwrap_or(wm_defaults.focus_change_on_pointer_rest),
+        raise_on_click: section.raise_on_click.unwrap_or(wm_defaults.raise_on_click),
+        auto_raise: section.auto_raise.unwrap_or(wm_defaults.auto_raise),
+        auto_raise_delay: section
+            .auto_raise_delay
+            .and_then(|ms| u64::try_from(ms).ok())
+            .unwrap_or(wm_defaults.auto_raise_delay),
     };
     config.wayland.titlebar_actions = TitlebarActions::of(section);
     let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
@@ -206,6 +212,58 @@ mod tests {
 
         assert!(
             paths.iter().any(|path| path == "window-management.focus-mode"),
+            "the refusal names the leaf, got {paths:?}"
+        );
+    }
+
+    #[test]
+    fn the_raise_leaves_keep_their_defaults_when_omitted() {
+        let mut config = SessionConfig::default();
+        apply(&mut config, &WindowManagement::default());
+
+        assert!(config.wayland.wm.raise_on_click);
+        assert!(!config.wayland.wm.auto_raise);
+        assert_eq!(config.wayland.wm.auto_raise_delay, 500);
+    }
+
+    #[test]
+    fn every_raise_leaf_value_maps_into_the_compositor_configuration() {
+        let section = WindowManagement {
+            raise_on_click: Some(false),
+            auto_raise: Some(true),
+            auto_raise_delay: Some(0),
+            ..WindowManagement::default()
+        };
+        let mut config = SessionConfig::default();
+        apply(&mut config, &section);
+        assert!(!config.wayland.wm.raise_on_click);
+        assert!(config.wayland.wm.auto_raise);
+        assert_eq!(config.wayland.wm.auto_raise_delay, 0);
+
+        let section = WindowManagement {
+            auto_raise_delay: Some(10000),
+            ..WindowManagement::default()
+        };
+        apply(&mut config, &section);
+        assert_eq!(config.wayland.wm.auto_raise_delay, 10000);
+    }
+
+    #[test]
+    fn a_bad_auto_raise_delay_is_refused_naming_the_leaf() {
+        let document = Value::table([(
+            "window-management",
+            Value::table([("auto-raise-delay", Value::Integer(10001))]),
+        )]);
+
+        let report = Config::from_value(document).expect_err("an out-of-range auto-raise-delay must be refused");
+        let paths: Vec<String> = report
+            .problems()
+            .iter()
+            .map(|problem| problem.path.to_string())
+            .collect();
+
+        assert!(
+            paths.iter().any(|path| path == "window-management.auto-raise-delay"),
             "the refusal names the leaf, got {paths:?}"
         );
     }
