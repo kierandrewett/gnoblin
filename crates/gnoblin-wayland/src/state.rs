@@ -420,6 +420,8 @@ pub struct State {
     pub(crate) announced_text_inputs: HashSet<ObjectId>,
     /// The last cursor image a client set.
     pub(crate) cursor_image: CursorImageStatus,
+    /// The cursor chain that resolves a named shape to the image drawn for it.
+    pub(crate) cursor_chain: gnoblin_backend::render::cursor::CursorChain,
     /// The tearing hints clients set, keyed by surface.
     pub(crate) tearing: Vec<(WlSurface, WpTearingControlV1Hint)>,
     /// The session clock, in milliseconds, which idle and the router read.
@@ -725,6 +727,15 @@ impl State {
             input_method_popups: Vec::new(),
             announced_text_inputs: HashSet::new(),
             cursor_image: CursorImageStatus::default_named(),
+            cursor_chain: gnoblin_backend::render::cursor::CursorChain::new(
+                std::sync::Arc::new(gnoblin_backend::render::cursor::FsFiles::from_environment()),
+                gnoblin_backend::render::cursor::DEFAULT_CURSOR_THEME,
+                gnoblin_backend::render::cursor::ProviderKind::DEFAULT_ORDER
+                    .into_iter()
+                    .map(gnoblin_backend::render::cursor::ProviderKind::provider)
+                    .collect(),
+                crate::protocols::wp_cursor_shape_v1::CURSOR_CACHE_BYTES,
+            ),
             tearing: Vec::new(),
             clock: Tick::ZERO,
             activity: Activity::new(),
@@ -2331,6 +2342,7 @@ impl Host for State {
             // a frame queued before the cover worthless.
             self.protection_generation = Some(self.session_host.protection.generation());
         }
+        frame.set_cursor_image(self.pointer_cursor(output));
         // The modal overlay is set on the output it covers and cleared everywhere else, so
         // a cleared or moved modal leaves no stale overlay behind.
         frame.set_overlay(

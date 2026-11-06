@@ -48,3 +48,79 @@ impl State {
         self.cursor_image = image;
     }
 }
+
+/// The byte budget of the cursor chain's image cache.
+pub(crate) const CURSOR_CACHE_BYTES: usize = 8 * 1024 * 1024;
+
+impl State {
+    /// The cursor to draw on `output` this frame. A named shape is drawn when the pointer
+    /// is on that output; a client's own surface cursor is not drawn here.
+    pub(crate) fn pointer_cursor(&self, output: gnoblin_types::OutputId) -> Option<gnoblin_backend::render::Overlay> {
+        let smithay::input::pointer::CursorImageStatus::Named(icon) = &self.cursor_image else {
+            return None;
+        };
+        let pointer = self.seat.get_pointer()?.current_location();
+        let rect = self.output_rect(output)?;
+        let scale = self.output_scale(output)?;
+        let inside = pointer.x >= f64::from(rect.x)
+            && pointer.y >= f64::from(rect.y)
+            && pointer.x < f64::from(rect.x) + f64::from(rect.width)
+            && pointer.y < f64::from(rect.y) + f64::from(rect.height);
+        if !inside {
+            return None;
+        }
+        let output_scale = gnoblin_types::Scale::new((scale * 1000.0).round() as u32, 1000);
+        let images = self.cursor_chain.lookup(
+            icon.name(),
+            gnoblin_backend::render::cursor::DEFAULT_CURSOR_SIZE,
+            output_scale,
+        );
+        let at = (pointer.x - f64::from(rect.x), pointer.y - f64::from(rect.y));
+        cursor_overlay(&images, at, scale)
+    }
+}
+
+/// Builds the overlay that draws the first frame of `images` with its hotspot at `at`,
+/// a point in the output's logical space. The frame is straight-alpha `0xAARRGGBB`, which
+/// [`gnoblin_backend::render::Image`] takes as RGBA bytes; the overlay premultiplies it.
+/// Animated cursors show their first frame only for now.
+pub(crate) fn cursor_overlay(
+    images: &gnoblin_backend::render::cursor::CursorImages,
+    at: (f64, f64),
+    scale: f64,
+) -> Option<gnoblin_backend::render::Overlay> {
+    let frame = images.frames().first()?;
+    let (width, height) = (frame.width(), frame.height());
+    let mut data = Vec::with_capacity(frame.pixels().len() * 4);
+    for &pixel in frame.pixels() {
+        data.extend_from_slice(&[
+            (pixel >> 16) as u8,
+            (pixel >> 8) as u8,
+            pixel as u8,
+            (pixel >> 24) as u8,
+        ]);
+    }
+    let image = gnoblin_backend::render::Image::new(gnoblin_types::Size { width, height }, width as usize * 4, data)?;
+    let (hotspot_x, hotspot_y) = images.hotspot();
+    let dst = gnoblin_types::Rect {
+        x: (at.0 - f64::from(hotspot_x) / scale).round() as i32,
+        y: (at.1 - f64::from(hotspot_y) / scale).round() as i32,
+        width: (f64::from(width) / scale).round() as u32,
+        height: (f64::from(height) / scale).round() as u32,
+    };
+    gnoblin_backend::render::Overlay::new(dst, &image)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cursor_overlay;
+    use gnoblin_backend::render::cursor::{CursorFrame, CursorImages};
+
+    #[test]
+    fn cursor_overlay_draws_the_first_frame_at_its_hotspot() {
+        let frame = CursorFrame::new(2, 2, vec![0xff00_ff00; 4], 0).expect("frame");
+        let images = CursorImages::new((1, 1), vec![frame]).expect("images");
+        assert!(cursor_overlay(&images, (10.0, 10.0), 1.0).is_some());
+        assert!(cursor_overlay(&images, (10.0, 10.0), 2.0).is_some());
+    }
+}

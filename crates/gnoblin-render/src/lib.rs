@@ -130,7 +130,7 @@
 
 mod camera;
 mod color;
-mod cursor;
+pub mod cursor;
 mod damage;
 mod easing;
 mod effect;
