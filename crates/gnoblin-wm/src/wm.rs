@@ -58,6 +58,7 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+use gnoblin_layers::{Band, LayerProvider, LayerRegistry, LayerScope, LayerSpec, LocalName};
 use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, WindowId, WorkspaceId};
 
 use crate::activation::{ActivationDecision, NewWindowFocus};
@@ -283,6 +284,9 @@ pub struct Wm {
     pointer: PointerFocus,
     /// A window the pointer focused, which `auto_raise` raises at the given tick.
     auto_raise: Option<(WindowId, Tick)>,
+    /// The layer records that mirror managed windows, one `surface_toplevel` per
+    /// window. `window_opened` adds each record and `window_closed` ends it.
+    layers: LayerRegistry,
 }
 
 impl Wm {
@@ -299,6 +303,16 @@ impl Wm {
             options,
             ..Self::default()
         }
+    }
+
+    /// The layer registry: every live layer the policy mirrors, including one
+    /// `gnoblin.surface_toplevel:<id>` record per managed window.
+    ///
+    /// The registry is read-only from outside, so no second writer can change a
+    /// record without the window it mirrors.
+    #[must_use]
+    pub fn layers(&self) -> &LayerRegistry {
+        &self.layers
     }
 
     /// The configuration in force.
@@ -857,6 +871,24 @@ impl Wm {
         effects
     }
 
+    /// Registers the `gnoblin.surface_toplevel:<id>` record for a window, so layer
+    /// tooling sees every window as a layer in the `windows` band.
+    ///
+    /// The record is a mirror, not a second source of truth: the stack still
+    /// decides where the window paints. The name is always well formed and the id
+    /// is unique in `windows`, so the registry refusing it is an invariant break.
+    /// That is reported in debug builds; in release the window is still managed
+    /// without its record rather than being dropped.
+    fn register_surface_record(&mut self, id: WindowId) {
+        let Ok(local) = LocalName::keyed("surface_toplevel", &id.get().to_string()) else {
+            debug_assert!(false, "a numeric window id always forms a valid local name");
+            return;
+        };
+        let spec = LayerSpec::new(local, LayerScope::Window(Some(id)), Band::Windows);
+        let result = self.layers.register(&LayerProvider::Gnoblin("gnoblin-wm"), spec);
+        debug_assert!(result.is_ok(), "surface record for {id} refused: {result:?}");
+    }
+
     fn window_opened(&mut self, spec: WindowSpec) -> Vec<Effect> {
         if self.windows.contains_key(&spec.id) {
             return vec![Effect::rejected(Rejection::DuplicateWindow(spec.id))];
@@ -938,6 +970,7 @@ impl Wm {
         self.windows.insert(window_id, window);
         let before = self.stack.order().to_vec();
         self.stack.insert(window_id, layer, anchor);
+        self.register_surface_record(window_id);
         if let Some(effect) = self.configured(window_id) {
             effects.push(effect);
         }
@@ -1011,6 +1044,9 @@ impl Wm {
         }
         let before = self.stack.order().to_vec();
         self.stack.remove(id);
+        // Ending every layer that targets the window also ends its surface record, so
+        // a reused window id starts with a clean name.
+        self.layers.end_target(id);
         self.history.retain(|entry| *entry != id);
         let mut effects = self.stack_changed(&before);
         if self.focus == Some(id) {
