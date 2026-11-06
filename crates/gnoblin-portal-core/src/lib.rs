@@ -15,4 +15,5 @@ pub mod canvas;
 pub mod model;
 pub mod paint;
 pub mod theme;
+pub mod ui;
 pub mod widgets;
