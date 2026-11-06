@@ -94,8 +94,13 @@ mod model;
 #[cfg(test)]
 mod tests;
 
+/// The machine, how far a grant has got ([`Consent`]), and the caps on what it tracks ([`Limits`]).
 pub use authority::{Authority, Consent, Limits};
+/// The decision a request reaches and the denial that explains a refusal.
 pub use denial::{Decision, Denial};
+/// An instruction authority gives the compositor or the portal, in the order it must happen.
 pub use effect::Effect;
+/// The events the authority answers, and the gesture and launch types they carry.
 pub use event::{Answer, Claimant, ContextRequest, Event, Gesture, GestureKind, LaunchOrigin, PortalCapability};
+/// Identifiers for apps, gestures, requests, requesters, leaders, surfaces and tokens.
 pub use ids::{AppId, GestureId, RequestId, RequesterId, SessionLeader, SurfaceId, TokenId};
