@@ -111,12 +111,21 @@ mod output;
 mod physical;
 mod transaction;
 
+/// EDID parsing: what a monitor reports about itself, and why a bad block is refused.
 pub use edid::{Edid, EdidError};
+/// Effects the compositor applies and the reasons a request or proposal is refused or abandoned.
 pub use effect::{Effect, Rejection, RollbackReason};
+/// The layout engine: resolves a configuration against the connected outputs.
 pub use engine::{LayoutError, compute};
+/// Layout types: alignment, edges, placements, logical monitors and per-output configuration.
 pub use layout::{Align, Edge, Layout, LayoutConfig, LogicalMonitor, OutputConfig, Placement};
+/// A display mode (size and refresh rate) for one connector.
 pub use mode::DisplayMode;
+/// The output model: events in, effects out, plus the errors it reports when broken.
 pub use model::{Broken, Event, ModelOptions, OutputModel};
+/// Output identity as discovery reports it, and VRR capability.
 pub use output::{OutputDescriptor, VrrSupport};
+/// Physical size of a panel in millimetres, as reported (zero when unknown).
 pub use physical::PhysicalSize;
+/// Transactions for proposed layouts: lifecycle phases, tokens and the caller's verdict.
 pub use transaction::{Phase, Transaction, TransactionToken, Verdict};
