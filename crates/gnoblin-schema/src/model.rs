@@ -134,22 +134,30 @@ impl fmt::Display for Type {
 pub struct Schema {
     /// The file the schema was read from, used in errors and generated headers.
     pub origin: String,
+    /// The namespace the schema declares.
     pub namespace: Namespace,
+    /// The schema version, as written in the schema file.
     pub version: Version,
+    /// The object types declared, in file order.
     pub objects: Vec<ObjectType>,
+    /// The error codes declared, in file order.
     pub errors: Vec<ErrorDecl>,
 }
 
 /// An object type: an identity with typed properties, methods and signals.
 #[derive(Clone, Debug)]
 pub struct ObjectType {
+    /// The object's name as declared in the schema.
     pub name: String,
     /// The version that added the object.
     pub since: Version,
     /// Marks the whole object secret, as if every member were.
     pub secret: bool,
+    /// Typed properties of the object.
     pub properties: Vec<Property>,
+    /// Calls a client can make on the object.
     pub methods: Vec<Method>,
+    /// Notifications the object sends to its clients.
     pub signals: Vec<Signal>,
 }
 
@@ -225,10 +233,13 @@ impl ObjectType {
 /// A typed property published in a property diff.
 #[derive(Clone, Debug)]
 pub struct Property {
+    /// The property name as declared.
     pub name: String,
+    /// The value type of the property.
     pub ty: Type,
     /// The version that added the property.
     pub since: Version,
+    /// True when the value must be redacted from unauthorised readers.
     pub secret: bool,
 }
 
@@ -246,10 +257,13 @@ impl Property {
 /// parameters only.
 #[derive(Clone, Debug)]
 pub struct Method {
+    /// The method name as declared.
     pub name: String,
     /// The version that added the method.
     pub since: Version,
+    /// True when the method is secret regardless of its parameters.
     pub secret: bool,
+    /// Request parameters, in declaration order.
     pub params: Vec<Field>,
 }
 
@@ -266,10 +280,13 @@ impl Method {
 /// A notification the compositor sends to clients.
 #[derive(Clone, Debug)]
 pub struct Signal {
+    /// The signal name as declared.
     pub name: String,
     /// The version that added the signal.
     pub since: Version,
+    /// True when the signal is secret regardless of its fields.
     pub secret: bool,
+    /// Payload fields, in declaration order.
     pub fields: Vec<Field>,
 }
 
@@ -283,10 +300,13 @@ impl Signal {
 /// A named, typed value: a method parameter or a signal field.
 #[derive(Clone, Debug)]
 pub struct Field {
+    /// The field name as declared.
     pub name: String,
+    /// The value type of the field.
     pub ty: Type,
     /// The version that added the field; defaults to the member's version.
     pub since: Version,
+    /// True when the value must be redacted from unauthorised readers.
     pub secret: bool,
 }
 
