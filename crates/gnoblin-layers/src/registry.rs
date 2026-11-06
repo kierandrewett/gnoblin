@@ -122,6 +122,30 @@ impl fmt::Display for RegisterError {
 
 impl std::error::Error for RegisterError {}
 
+/// Why [`LayerRegistry::set_secure`] refused a change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SecureError {
+    /// No live layer has that handle, so there is nothing to change.
+    NotFound,
+    /// The caller is not the provider that registered the layer. Only the owner
+    /// may change its `secure` flag.
+    NotOwner,
+    /// The layer is in the lock band, which is always secure.
+    LockIsFixed,
+}
+
+impl fmt::Display for SecureError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound => f.write_str("no live layer has that handle"),
+            Self::NotOwner => f.write_str("only the owning provider may change a layer's secure flag"),
+            Self::LockIsFixed => f.write_str("a lock-band layer is always secure"),
+        }
+    }
+}
+
+impl std::error::Error for SecureError {}
+
 /// One live layer, as the registry holds it.
 ///
 /// Records are returned by reference from the registry, so callers read them but
@@ -163,6 +187,11 @@ pub struct LayerRegistry {
     /// The name index. It maps each live full name to its handle, so the
     /// `NameTaken` check is one lookup.
     by_name: BTreeMap<LayerName, LayerHandle>,
+    /// The per-name secure override. A compositor config may force a layer
+    /// secure or insecure by its full name; `None` means the layer's own
+    /// `spec.secure` decides. Kept separate from the record so an override set
+    /// before a layer registers still applies.
+    secure_overrides: BTreeMap<LayerName, bool>,
 }
 
 impl Default for LayerRegistry {
@@ -188,6 +217,7 @@ impl LayerRegistry {
             next_sequence: 1,
             by_handle: BTreeMap::new(),
             by_name: BTreeMap::new(),
+            secure_overrides: BTreeMap::new(),
         }
     }
 
@@ -349,6 +379,58 @@ impl LayerRegistry {
             .into_iter()
             .filter_map(|handle| self.end(handle, reason))
             .collect()
+    }
+
+    /// Sets the compositor config override for `name`, so the layer's effective
+    /// secure value is `secure` whatever the provider asked for. Only the
+    /// compositor may call this; the provider path has no caller for it.
+    pub fn set_secure_override(&mut self, name: LayerName, secure: bool) {
+        self.secure_overrides.insert(name, secure);
+    }
+
+    /// Removes the config override for `name`, returning the layer to its own
+    /// `spec.secure`.
+    pub fn clear_secure_override(&mut self, name: &LayerName) {
+        self.secure_overrides.remove(name);
+    }
+
+    /// Whether the layer `record` is secure right now. The config override wins
+    /// when set; otherwise the provider's `spec.secure` decides. A lock-band layer
+    /// is always secure, whatever either says, because the lock surface must not
+    /// leak.
+    #[must_use]
+    pub fn effective_secure(&self, record: &LayerRecord) -> bool {
+        if record.spec.band == Band::Lock {
+            return true;
+        }
+        self.secure_overrides
+            .get(&record.name)
+            .copied()
+            .unwrap_or(record.spec.secure)
+    }
+
+    /// Changes the `secure` flag of a live layer on behalf of its owner.
+    ///
+    /// Only the provider that registered the layer may change it, so a second
+    /// provider cannot flip a neighbour's layer. Returns the new effective value,
+    /// or [`SecureError`] when the layer is missing, not owned by `provider`, or
+    /// in the lock band (always secure).
+    ///
+    /// # Errors
+    ///
+    /// [`SecureError::NotFound`] when the handle is not live,
+    /// [`SecureError::NotOwner`] when `provider` did not register it, and
+    /// [`SecureError::LockIsFixed`] for a lock-band layer.
+    pub fn set_secure(&mut self, provider: &Provider, handle: LayerHandle, secure: bool) -> Result<bool, SecureError> {
+        let record = self.by_handle.get_mut(&handle).ok_or(SecureError::NotFound)?;
+        if &record.provider != provider {
+            return Err(SecureError::NotOwner);
+        }
+        if record.spec.band == Band::Lock {
+            return Err(SecureError::LockIsFixed);
+        }
+        record.spec.secure = secure;
+        Ok(secure)
     }
 
     /// The live record for `handle`, or `None` when the layer has ended.
@@ -653,5 +735,61 @@ mod follow_tests {
             ended.transition(LayerState::Mapped),
             Err(TransitionError::EndedIsTerminal)
         );
+    }
+}
+
+#[cfg(test)]
+mod secure_tests {
+    use super::*;
+    use crate::name::LocalName;
+
+    fn spec(local: &str, band: Band, secure: bool) -> LayerSpec {
+        let mut s = LayerSpec::new(LocalName::new(local).unwrap(), Scope::Output(OutputId::new(1)), band);
+        s.secure = secure;
+        s
+    }
+
+    #[test]
+    fn override_beats_the_spec_and_clears_back() {
+        let provider = Provider::Gnoblin("gnoblin-wayland");
+        let mut reg = LayerRegistry::new();
+        let h = reg.register(&provider, spec("a", Band::Top, false)).unwrap();
+        let name = reg.get(h).unwrap().name.clone();
+        assert!(!reg.effective_secure(reg.get(h).unwrap()));
+        reg.set_secure_override(name.clone(), true);
+        assert!(reg.effective_secure(reg.get(h).unwrap()));
+        reg.clear_secure_override(&name);
+        assert!(!reg.effective_secure(reg.get(h).unwrap()));
+    }
+
+    #[test]
+    fn lock_band_is_always_secure() {
+        let provider = Provider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
+        let mut reg = LayerRegistry::new();
+        let h = reg.register(&provider, spec("lock", Band::Lock, false)).unwrap();
+        let name = reg.get(h).unwrap().name.clone();
+        reg.set_secure_override(name, false);
+        assert!(reg.effective_secure(reg.get(h).unwrap()));
+    }
+
+    #[test]
+    fn only_the_owner_may_set_secure() {
+        let owner = Provider::Extension("alice".into());
+        let other = Provider::Extension("bob".into());
+        let mut reg = LayerRegistry::new();
+        let h = reg.register(&owner, spec("a", Band::Top, false)).unwrap();
+        assert_eq!(reg.set_secure(&other, h, true), Err(SecureError::NotOwner));
+        assert_eq!(reg.set_secure(&owner, h, true), Ok(true));
+        assert!(reg.get(h).unwrap().spec.secure);
+    }
+
+    #[test]
+    fn set_secure_refuses_lock_and_missing_handles() {
+        let owner = Provider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
+        let mut reg = LayerRegistry::new();
+        let lock = reg.register(&owner, spec("lock", Band::Lock, true)).unwrap();
+        assert_eq!(reg.set_secure(&owner, lock, false), Err(SecureError::LockIsFixed));
+        reg.end(lock, EndReason::Removed);
+        assert_eq!(reg.set_secure(&owner, lock, true), Err(SecureError::NotFound));
     }
 }
