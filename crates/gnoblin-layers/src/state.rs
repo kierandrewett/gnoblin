@@ -45,3 +45,30 @@ pub enum LayerState {
     /// Gone for good, with the reason. This is terminal.
     Ended(EndReason),
 }
+
+/// Why a state change was refused. Callers match on the variant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TransitionError {
+    /// The layer has ended. `Ended` is terminal, so nothing leaves it.
+    EndedIsTerminal,
+    /// The layer is already in the requested state, so there is nothing to change.
+    NoChange,
+}
+
+impl LayerState {
+    /// Returns `to` when the move is allowed, following the table in the module
+    /// docs. An `Ended` layer never changes, and a same-state move is refused so a
+    /// caller that repeats a change notices it.
+    ///
+    /// # Errors
+    ///
+    /// [`TransitionError::EndedIsTerminal`] when `self` is `Ended`, and
+    /// [`TransitionError::NoChange`] when `to` equals `self`.
+    pub fn transition(self, to: LayerState) -> Result<LayerState, TransitionError> {
+        match (self, to) {
+            (LayerState::Ended(_), _) => Err(TransitionError::EndedIsTerminal),
+            (from, to) if from == to => Err(TransitionError::NoChange),
+            (_, to) => Ok(to),
+        }
+    }
+}

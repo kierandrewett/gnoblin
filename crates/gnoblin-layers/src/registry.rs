@@ -39,6 +39,7 @@ use crate::provider::Provider;
 use crate::scope::{Order, Scope};
 use crate::spec::LayerSpec;
 use crate::state::{EndReason, LayerState};
+use gnoblin_types::{OutputId, WindowId};
 
 /// The default number of live layers one provider may hold. It bounds a single
 /// extension so it cannot fill the stack, and a built-in cannot leak layers
@@ -299,6 +300,57 @@ impl LayerRegistry {
             .collect()
     }
 
+    /// Ends every live layer whose scope is the window `window`, with
+    /// [`EndReason::TargetGone`], and returns them. Called when a window closes.
+    pub fn end_target(&mut self, window: WindowId) -> Vec<LayerRecord> {
+        self.end_matching(|scope| *scope == Scope::Window(Some(window)), EndReason::TargetGone)
+    }
+
+    /// Ends every live layer attached to `output`, with [`EndReason::OutputGone`],
+    /// and returns them. Called when an output is removed. Window-scoped layers
+    /// on that output are not touched here; they follow their window.
+    pub fn end_output(&mut self, output: OutputId) -> Vec<LayerRecord> {
+        self.end_matching(|scope| *scope == Scope::Output(output), EndReason::OutputGone)
+    }
+
+    /// Moves every live layer on `window` between `Mapped` and `Hidden`, so a
+    /// minimised window hides its layers and a restored one shows them again.
+    /// Layers already in the requested state are left alone. Returns how many
+    /// changed.
+    pub fn set_target_visible(&mut self, window: WindowId, visible: bool) -> usize {
+        let wanted = if visible {
+            LayerState::Mapped
+        } else {
+            LayerState::Hidden
+        };
+        let mut changed = 0;
+        for record in self.by_handle.values_mut() {
+            if record.spec.scope != Scope::Window(Some(window)) {
+                continue;
+            }
+            if let Ok(next) = record.state.transition(wanted) {
+                record.state = next;
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    /// Ends every live layer whose scope satisfies `matches`, in registration
+    /// order. Shared by the follow functions so each one is a single rule.
+    fn end_matching(&mut self, matches: impl Fn(&Scope) -> bool, reason: EndReason) -> Vec<LayerRecord> {
+        let handles: Vec<LayerHandle> = self
+            .by_handle
+            .values()
+            .filter(|record| matches(&record.spec.scope))
+            .map(|record| record.handle)
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|handle| self.end(handle, reason))
+            .collect()
+    }
+
     /// The live record for `handle`, or `None` when the layer has ended.
     #[must_use]
     pub fn get(&self, handle: LayerHandle) -> Option<&LayerRecord> {
@@ -516,5 +568,90 @@ mod tests {
         let a = reg.register(&ext("bar"), spec("a", Band::Top)).unwrap();
         let b = reg.register(&ext("bar"), spec("b", Band::Top)).unwrap();
         assert!(reg.get(a).unwrap().sequence < reg.get(b).unwrap().sequence);
+    }
+}
+
+#[cfg(test)]
+mod follow_tests {
+    use super::*;
+    use crate::name::LocalName;
+
+    fn gnoblin() -> Provider {
+        Provider::Gnoblin("gnoblin-wayland")
+    }
+
+    fn on_window(local: &str, window: WindowId) -> LayerSpec {
+        let mut spec = LayerSpec::new(
+            LocalName::new(local).unwrap(),
+            Scope::Window(Some(window)),
+            Band::Windows,
+        );
+        spec.order = Order::Default;
+        spec
+    }
+
+    fn on_output(local: &str, output: OutputId) -> LayerSpec {
+        LayerSpec::new(LocalName::new(local).unwrap(), Scope::Output(output), Band::Top)
+    }
+
+    #[test]
+    fn closing_a_window_ends_its_layers_with_target_gone() {
+        let window = WindowId::new(1);
+        let mut reg = LayerRegistry::new();
+        reg.register(&gnoblin(), on_window("a", window)).unwrap();
+        reg.register(&gnoblin(), on_window("b", WindowId::new(2))).unwrap();
+        let ended = reg.end_target(window);
+        assert_eq!(ended.len(), 1);
+        assert_eq!(ended[0].state, LayerState::Ended(EndReason::TargetGone));
+        assert_eq!(reg.len(), 1);
+    }
+
+    #[test]
+    fn removing_an_output_ends_its_layers_and_leaves_window_layers() {
+        let output = OutputId::new(1);
+        let mut reg = LayerRegistry::new();
+        reg.register(&gnoblin(), on_output("bar", output)).unwrap();
+        reg.register(&gnoblin(), on_window("w", WindowId::new(1))).unwrap();
+        let ended = reg.end_output(output);
+        assert_eq!(ended.len(), 1);
+        assert_eq!(ended[0].state, LayerState::Ended(EndReason::OutputGone));
+        assert_eq!(reg.len(), 1);
+    }
+
+    #[test]
+    fn hiding_and_showing_a_window_moves_only_its_layers() {
+        let window = WindowId::new(1);
+        let mut reg = LayerRegistry::new();
+        let h = reg.register(&gnoblin(), on_window("a", window)).unwrap();
+        let other = reg.register(&gnoblin(), on_window("b", WindowId::new(2))).unwrap();
+        assert_eq!(reg.set_target_visible(window, false), 1);
+        assert_eq!(reg.get(h).unwrap().state, LayerState::Hidden);
+        assert_eq!(reg.get(other).unwrap().state, LayerState::Mapped);
+        // Repeating the change is a no-op, so the count is zero.
+        assert_eq!(reg.set_target_visible(window, false), 0);
+        assert_eq!(reg.set_target_visible(window, true), 1);
+        assert_eq!(reg.get(h).unwrap().state, LayerState::Mapped);
+    }
+
+    #[test]
+    fn transitions_follow_the_table() {
+        use crate::state::TransitionError;
+        assert_eq!(
+            LayerState::Mapped.transition(LayerState::Hidden),
+            Ok(LayerState::Hidden)
+        );
+        assert_eq!(
+            LayerState::Hidden.transition(LayerState::Mapped),
+            Ok(LayerState::Mapped)
+        );
+        assert_eq!(
+            LayerState::Mapped.transition(LayerState::Mapped),
+            Err(TransitionError::NoChange)
+        );
+        let ended = LayerState::Ended(EndReason::Removed);
+        assert_eq!(
+            ended.transition(LayerState::Mapped),
+            Err(TransitionError::EndedIsTerminal)
+        );
     }
 }
