@@ -132,11 +132,12 @@ The service implements these methods on the session bus at
 - `Service.SearchItems`, `Service.Unlock`, `Service.Lock`, `Service.GetSecrets`:
   the store's lock state is per collection. `Unlock` returns a `Prompt` path,
   or `/` when no prompt is needed.
-- `Service.ReadAlias`, `Service.SetAlias`, `Service.CreateCollection`: the
-  `default` alias points at one collection, created on first run.
-- `Collection` and `Item` interfaces: create, read, update and delete items.
-  Attributes are stored in an indexed table, so `SearchItems` does not decrypt
-  every item.
+- `Service.ReadAlias`: the `default` alias points at one collection, created on
+  first run. `SetAlias` and `CreateCollection` are refused over the bus.
+- `Collection` and `Item` interfaces: read and search only. `SearchItems`,
+  `GetSecret` and property reads work. Create, update and delete are refused
+  over the bus. Attributes are stored in an indexed table, so `SearchItems`
+  does not decrypt every item.
 - `Prompt` objects: `Prompt(window-id)` and `Dismiss`. The `Completed` signal
   carries the result. Gnoblin's prompt UI draws them.
 
@@ -233,7 +234,11 @@ Acceptance is compatibility with existing software:
 
 These are real choices. Each one changes the work.
 
-1. **Key source:** option 1, 2 or 3, alone or combined, with option 4 as cache.
+1. **Key source (open, `confirm`):** option 1, 2 or 3, alone or combined, with
+   option 4 as cache. Lean: option 1 (PAM hand-off) first, so login unlocks the
+   store with no second password. It needs a new PAM module in each greeter
+   stack and is untested on greetd and cosmic-greeter. The key source stays open
+   until Kieran confirms it.
 2. **Import of an existing gnome-keyring file:** yes or no.
 3. **Coexistence default:** keep the safe default above, or take the name when
    free and fall back otherwise.
