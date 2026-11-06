@@ -142,9 +142,11 @@ Every client surface that takes a place on screen is a layer record. A built-in 
 
 | Kind                  | Scope    | Band                                | Provider           | Record covers                           |
 | --------------------- | -------- | ----------------------------------- | ------------------ | --------------------------------------- |
-| `surface_toplevel`    | `window` | `windows`                           | `gnoblin-wayland`  | One xdg_toplevel window                 |
+| `surface_toplevel`    | `window` | `windows`                           | `gnoblin-wm`       | One xdg_toplevel window                 |
 | `surface_layer_shell` | `output` | `background` to `overlay`, by layer | `gnoblin-wayland`  | One zwlr_layer_surface_v1               |
 | `surface_x11`         | `window` | `windows`                           | `gnoblin-xwayland` | One managed or override-redirect window |
+
+The window manager registers `surface_toplevel` records, not the Wayland provider, because it owns the window stack and the records mirror that stack.
 
 **Names.** Built-in per-object records are named `gnoblin.<kind>:<key>`. The key is the window id for `surface_toplevel` and `surface_x11`, and the client namespace for `surface_layer_shell`, as in `gnoblin.surface_layer_shell:org.gnoblin.TestBar`. A second live surface with the same namespace gets `#2`. The parity test changes its lookup key only, not its assertions [INFERENCE: check the lookup in `tests/layer_shell.rs`].
 
@@ -216,7 +218,7 @@ Four Gnoblin claims and three built-in surface kinds use the registry. Each repl
 | `gnoblin.alerts`              | `window`                                   | `windows`, above target                | `modal-to-target`                                                       | `gnoblin-compositor` [INFERENCE]; content per Kieran 4                                | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
 | `gnoblin.window_menu`         | `window`                                   | `windows`, above target                | `grab`                                                                  | `gnoblin-window-menu` (D29), or a claimant                                            | New in Rust. Replaces Bingux `WindowMenu.qml`.                                              |
 | `gnoblin.window_frame`        | `window`                                   | `windows`, above target, below `top`   | Paint and input areas (see Window frames)                               | `gnoblin-compositor`; any provider may register its own (Kieran 14)                   | New. Frames are not in the layer model today.                                               |
-| `gnoblin.surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wayland`                                                       | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
+| `gnoblin.surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wm`                                                            | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
 | `gnoblin.surface_layer_shell` | `output`                                   | `background` to `overlay`              | `gnoblin-wayland`                                                       | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface.      |
 | `gnoblin.surface_x11`         | `window`                                   | `windows`, X stacking                  | `gnoblin-xwayland`                                                      | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.              |
 
@@ -469,7 +471,7 @@ Each path below moves to the registry, with no shim.
   `wayland`) and is passed on, not dropped.
 - `crates/gnoblin-wm/src/stack.rs:21-26`: `StackLayer` keeps `Normal` and `Fullscreen` as the WM's order inside `windows`. Window-scope layers enter the stack as entries directly above their target.
 - `crates/gnoblin-wayland/src/protocols/zwlr_layer_shell_v1.rs` and `state.rs:376`: each zwlr surface registers a `surface_layer_shell` record, and its wlr layer selects the band. The four-layer sort moves into the registry.
-- `xdg_shell.rs` (toplevels; popups at `:59`) and the Xwayland window code (`xwayland.rs:501`): windows register `surface_toplevel` and `surface_x11`. Popups follow their root instead of their own stacking.
+- `xdg_shell.rs` (toplevels; popups at `:59`): the window manager registers `surface_toplevel` for each window, so `xdg_shell.rs` only reports the surface. The Xwayland window code (`xwayland.rs:501`) registers `surface_x11`. Popups follow their root instead of their own stacking.
 - Docs: `docs/shell-api/layer-surfaces.md` (the `gnoblin.layers` section) and
   `docs/public/gnoblin.d.lua` (`register` and the handle). `layers.list` keeps its
   record shape, plus a `band` filter (Kieran 7).
