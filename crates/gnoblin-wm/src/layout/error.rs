@@ -1,5 +1,6 @@
 //! Reasons a layout reply is refused, and the failures a host reports.
 
+use super::kind::LayoutExtent;
 use gnoblin_types::{ErrorCode, WindowId};
 
 /// The wire code for a refused reply.
@@ -47,6 +48,13 @@ pub enum ReplyError {
     NotInvertible(Subject),
     /// An opacity is outside `0.0..=1.0`.
     OpacityOutOfRange(WindowId),
+    /// A placement's rectangle, before its transform, lies outside the extent.
+    OutsideExtent {
+        /// The window whose placement lies outside.
+        window: WindowId,
+        /// The extent the placement was checked against.
+        extent: LayoutExtent,
+    },
     /// A perspective camera has a field of view outside `(0, 180)` degrees.
     FieldOfViewOutOfRange,
     /// A perspective camera has a near plane that is not positive.

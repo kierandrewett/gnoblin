@@ -47,6 +47,13 @@ impl LayoutKind {
         matches!(self, Self::Tiling)
     }
 
+    /// Whether a layout of this kind may arrange in `extent`. Only a tiling
+    /// layout may leave the output; floating and kiosk layouts stay inside it.
+    #[must_use]
+    pub const fn allows_extent(self, extent: LayoutExtent) -> bool {
+        matches!(self, Self::Tiling) || matches!(extent, LayoutExtent::Output)
+    }
+
     /// The placement a window takes when it enters a layout of this kind.
     /// Transients always start free, whatever the kind.
     #[must_use]
@@ -133,5 +140,14 @@ mod tests {
         assert!(LayoutKind::Tiling.allows_toggle_float());
         assert!(!LayoutKind::Floating.allows_toggle_float());
         assert!(!LayoutKind::Kiosk.allows_toggle_float());
+    }
+
+    #[test]
+    fn only_a_tiling_layout_may_leave_the_output() {
+        assert!(LayoutKind::Tiling.allows_extent(LayoutExtent::Unbounded));
+        assert!(LayoutKind::Tiling.allows_extent(LayoutExtent::Output));
+        assert!(!LayoutKind::Floating.allows_extent(LayoutExtent::Unbounded));
+        assert!(!LayoutKind::Kiosk.allows_extent(LayoutExtent::Unbounded));
+        assert!(LayoutKind::Kiosk.allows_extent(LayoutExtent::Output));
     }
 }

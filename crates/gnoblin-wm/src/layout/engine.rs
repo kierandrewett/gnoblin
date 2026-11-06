@@ -126,7 +126,7 @@ pub trait LayoutEngine {
     /// The kind the layout declares. Required: the host derives placement policy from it.
     fn kind(&self) -> LayoutKind;
 
-    /// The extent the layout arranges in. Only [`LayoutExtent::Output`] is supported.
+    /// The extent the layout arranges in. Every placement must lie inside it.
     fn extent(&self) -> LayoutExtent;
 
     /// Whether the layout's manifest declares support for the named standard command.
@@ -222,12 +222,13 @@ impl Slot {
             LayoutOutcome::Pending => Collected::Pending,
             LayoutOutcome::Ready { generation: found, .. } if found != generation => Collected::Pending,
             LayoutOutcome::Ready { result, .. } => {
+                let extent = self.engine.extent();
                 let Some(in_flight) = self.in_flight.take() else {
                     return Collected::Idle;
                 };
                 match result {
                     Ok(Reply::Declined) if in_flight.declinable => Collected::Declined,
-                    result => match result.and_then(|reply| settle(&in_flight.params, reply)) {
+                    result => match result.and_then(|reply| settle(&in_flight.params, extent, reply)) {
                         Ok(layout) => Collected::Settled(layout),
                         Err(failure) => Collected::Failed(failure),
                     },

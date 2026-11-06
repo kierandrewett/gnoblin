@@ -136,6 +136,7 @@ fn params(ids: &[u64], width: f64, height: f64) -> Params {
 fn arrange(host: &Rc<RefCell<Host>>, layout: &str, focus: Option<u64>, ids: &[u64], width: f64, height: f64) -> Layout {
     let mut engine = LuaEngine::new(Rc::clone(host), layout, WorkspaceId::new(1), Gaps::default())
         .with_focus(focus.map(WindowId::new));
+    let extent = engine.extent();
     let _ = engine.submit(Job::Arrange(params(ids, width, height)), Generation::FIRST);
     let reply = match engine.collect(Generation::FIRST, Instant::now() + Duration::from_secs(5)) {
         LayoutOutcome::Ready { generation, result } => {
@@ -145,7 +146,8 @@ fn arrange(host: &Rc<RefCell<Host>>, layout: &str, focus: Option<u64>, ids: &[u6
         LayoutOutcome::Pending => panic!("no answer within 5s"),
     };
     let reply: Result<Reply, LayoutFailure> = reply;
-    settle(&params(ids, width, height), reply.expect("the layout answered")).expect("the reply passes the wm validator")
+    settle(&params(ids, width, height), extent, reply.expect("the layout answered"))
+        .expect("the reply passes the wm validator")
 }
 
 fn finite(value: f64) -> bool {
@@ -293,6 +295,7 @@ fn driver(test: &str, layout: &str, body: &str) -> PathBuf {
          local M = {{}}\n\
          M.options = real.options\n\
          M.kind = real.kind\n\
+         M.extent = real.extent\n\
          function M.arrange(ctx)\n\
          {body}\n\
          \x20 return real.arrange(ctx)\n\

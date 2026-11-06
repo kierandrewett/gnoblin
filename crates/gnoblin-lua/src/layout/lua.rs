@@ -181,9 +181,10 @@ fn classify(error: &mlua::Error, default: LayoutReason) -> LayoutReason {
 /// Check that a module declares a layout, and read its manifest and option defaults.
 ///
 /// A layout is a table with an `arrange` function, a `kind` (`floating`, `tiling` or
-/// `kiosk`) and optionally an `extent` (`output`, the default, or `unbounded`). It may
-/// also have `on_request`, `on_added`, `on_removed`, `command` (a table of functions)
-/// and `options` (plain data). A bare function declares no kind, so it is refused.
+/// `kiosk`) and optionally an `extent` (`output`, the default, or `unbounded`, which only a
+/// `tiling` layout may use). It may also have `on_request`, `on_added`, `on_removed`,
+/// `command` (a table of functions) and `options` (plain data). A bare function declares
+/// no kind, so it is refused.
 fn shape(value: &LuaValue) -> mlua::Result<(Data, LayoutManifest)> {
     let LuaValue::Table(table) = value else {
         return Err(runtime(format!(
@@ -204,6 +205,9 @@ fn shape(value: &LuaValue) -> mlua::Result<(Data, LayoutManifest)> {
             .ok_or_else(|| runtime(format!("layout extent `{name}` must be output or unbounded")))?,
         None => LayoutExtent::default(),
     };
+    if !kind.allows_extent(extent) {
+        return Err(runtime("layout extent `unbounded` needs kind `tiling`"));
+    }
     for key in ["on_request", "on_added", "on_removed"] {
         match table.get::<Option<LuaValue>>(key)? {
             None | Some(LuaValue::Function(_)) => {}

@@ -23,6 +23,11 @@
 
 ### Changed
 
+- Layouts with `extent = "unbounded"` must declare `kind = "tiling"`; a floating or kiosk layout that asks for it is
+  refused when it loads. The wm now enforces `extent` when it settles a reply: a placement whose rectangle (before its
+  transform) lies outside the output, or past the coordinate bound when unbounded, refuses the whole reply. The
+  `carousel3d` layout declares `extent = "unbounded"`.
+
 - Xwayland windows get Gnoblin's own frame, rules and effects like Wayland windows. Mutter no longer launches
   `mutter-x11-frames` or reparents X11 clients into frame windows. An X11 window that does not turn decorations off is
   framed under `frame.mode = "auto"` (the default for X11 when no rule sets a mode), `_GTK_FRAME_EXTENTS` feeds the

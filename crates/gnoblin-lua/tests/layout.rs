@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, WedgeHook, install, take_registrations};
 use gnoblin_types::{OutputId, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
-    Collected, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
-    Reply, Request, RequestKind, Slot, Transform3, settle,
+    Collected, Generation, Job, Layout, LayoutEngine, LayoutExtent, LayoutFailure, LayoutOutcome, LayoutOutput,
+    LayoutWindow, Params, Reply, Request, RequestKind, Slot, Transform3, settle,
 };
 
 /// A fresh module directory holding the given `name -> source` modules.
@@ -75,7 +75,7 @@ fn arrange(engine: &mut LuaEngine, ids: &[u64], width: f64, height: f64) -> Resu
 /// Settles a reply the way the slot does, so every placement passes the wm validator.
 fn settled(params: &Params, reply: Result<Reply, LayoutFailure>) -> Layout {
     let reply = reply.expect("the layout answered");
-    settle(params, reply).expect("the reply passes the wm validator")
+    settle(params, LayoutExtent::Output, reply).expect("the reply passes the wm validator")
 }
 
 fn no_options() -> Data {
@@ -325,12 +325,35 @@ fn bad_returns_are_refused() {
         let h = host(modules(name, &[(name, source)]));
         h.borrow_mut().register(name, name, no_options()).expect("registers");
         let p = params(&[1], 100.0, 100.0);
-        let verdict = arrange(&mut engine(&h, name), &[1], 100.0, 100.0).and_then(|reply| settle(&p, reply));
+        let verdict = arrange(&mut engine(&h, name), &[1], 100.0, 100.0)
+            .and_then(|reply| settle(&p, LayoutExtent::Output, reply));
         assert!(
             matches!(verdict, Err(LayoutFailure::InvalidReply(_) | LayoutFailure::Error)),
             "{name}: {verdict:?}"
         );
     }
+}
+
+#[test]
+fn unbounded_extent_needs_a_tiling_kind() {
+    for kind in ["floating", "kiosk"] {
+        let source = format!("return {{kind = '{kind}', extent = 'unbounded', arrange = function() return {{}} end}}");
+        let h = host(modules(&format!("extent-{kind}"), &[(kind, source.as_str())]));
+        let failure = h
+            .borrow_mut()
+            .register(kind, kind, no_options())
+            .expect_err("an unbounded extent is refused off tiling");
+        assert!(
+            failure.message.contains("needs kind `tiling`"),
+            "{kind}: {}",
+            failure.message
+        );
+    }
+    let source = "return {kind = 'tiling', extent = 'unbounded', arrange = function() return {} end}";
+    let h = host(modules("extent-tiling", &[("tiling", source)]));
+    h.borrow_mut()
+        .register("tiling", "tiling", no_options())
+        .expect("a tiling layout may be unbounded");
 }
 
 #[test]

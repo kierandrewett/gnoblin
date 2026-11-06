@@ -2,8 +2,8 @@
 
 use gnoblin_types::{OutputId, Scale, Vec3, WindowId};
 use gnoblin_wm::layout::{
-    Camera, Handled, LayoutEffect, LayoutFailure, LayoutOutput, LayoutWindow, Origin, Params, ParamsError, Placement,
-    REFUSED_CODE, Reply, ReplyError, Subject, Transform3, fallback, settle,
+    Camera, Handled, LayoutEffect, LayoutExtent, LayoutFailure, LayoutOutput, LayoutWindow, Origin, Params,
+    ParamsError, Placement, REFUSED_CODE, Reply, ReplyError, Subject, Transform3, fallback, settle,
 };
 
 fn win(id: u64) -> WindowId {
@@ -39,7 +39,7 @@ fn handled(placements: Vec<Placement>, effects: Vec<LayoutEffect>) -> Reply {
 }
 
 fn refused(reply: Reply, ids: &[u64]) -> ReplyError {
-    match settle(&params(ids), reply) {
+    match settle(&params(ids), LayoutExtent::Output, reply) {
         Err(LayoutFailure::InvalidReply(error)) => error,
         other => panic!("expected a refused reply, got {other:?}"),
     }
@@ -54,7 +54,7 @@ fn accepts_full_cover_and_sorts_by_window() {
         ],
         vec![],
     );
-    let layout = settle(&params(&[1, 2]), reply).expect("accepted");
+    let layout = settle(&params(&[1, 2]), LayoutExtent::Output, reply).expect("accepted");
     assert_eq!(layout.origin, Origin::Reply);
     let order: Vec<WindowId> = layout.placements.iter().map(|p| p.window).collect();
     assert_eq!(order, vec![win(1), win(2)]);
@@ -66,7 +66,7 @@ fn accepts_float_effect_in_place_of_placement() {
         vec![Placement::rect(win(1), 0.0, 0.0, 100.0, 50.0)],
         vec![LayoutEffect::Float { window: win(2) }],
     );
-    let layout = settle(&params(&[1, 2]), reply).expect("accepted");
+    let layout = settle(&params(&[1, 2]), LayoutExtent::Output, reply).expect("accepted");
     assert_eq!(layout.effects, vec![LayoutEffect::Float { window: win(2) }]);
 }
 
@@ -142,6 +142,68 @@ fn refuses_out_of_bound_translation() {
         ReplyError::OutOfBounds {
             subject: Subject::Window(win(1)),
             field: "position",
+        }
+    );
+}
+
+#[test]
+fn refuses_placement_outside_output() {
+    let reply = handled(vec![Placement::rect(win(1), 750.0, 0.0, 100.0, 50.0)], vec![]);
+    assert_eq!(
+        refused(reply, &[1]),
+        ReplyError::OutsideExtent {
+            window: win(1),
+            extent: LayoutExtent::Output,
+        }
+    );
+}
+
+#[test]
+fn refuses_raw_matrix_origin_outside_output() {
+    let mut matrix = Transform3::IDENTITY.to_matrix();
+    matrix[12] = -5.0;
+    let mut placement = Placement::rect(win(1), 0.0, 0.0, 1.0, 1.0);
+    placement.transform = Transform3::Matrix(matrix);
+    assert_eq!(
+        refused(handled(vec![placement], vec![]), &[1]),
+        ReplyError::OutsideExtent {
+            window: win(1),
+            extent: LayoutExtent::Output,
+        }
+    );
+}
+
+#[test]
+fn extent_checks_rectangle_before_transform() {
+    let mut placement = Placement::rect(win(1), 0.0, 0.0, 100.0, 50.0);
+    placement.transform = Transform3::Trs {
+        position: Vec3::new(700.0, 500.0, 0.0),
+        rotation_degrees: Vec3::new(0.0, 0.0, 45.0),
+        scale: Vec3::new(1.0, 1.0, 1.0),
+    };
+    let layout = settle(&params(&[1]), LayoutExtent::Output, handled(vec![placement], vec![])).expect("accepted");
+    assert_eq!(layout.placements.len(), 1);
+}
+
+#[test]
+fn accepts_placement_beyond_output_when_unbounded() {
+    let reply = handled(vec![Placement::rect(win(1), 900.0, -200.0, 100.0, 50.0)], vec![]);
+    let layout = settle(&params(&[1]), LayoutExtent::Unbounded, reply).expect("accepted");
+    assert_eq!(layout.placements.len(), 1);
+}
+
+#[test]
+fn refuses_placement_past_unbounded_edge() {
+    let reply = handled(vec![Placement::rect(win(1), 1_048_500.0, 0.0, 100.0, 50.0)], vec![]);
+    let error = match settle(&params(&[1]), LayoutExtent::Unbounded, reply) {
+        Err(LayoutFailure::InvalidReply(error)) => error,
+        other => panic!("expected a refused reply, got {other:?}"),
+    };
+    assert_eq!(
+        error,
+        ReplyError::OutsideExtent {
+            window: win(1),
+            extent: LayoutExtent::Unbounded,
         }
     );
 }
@@ -267,7 +329,7 @@ fn refused_reply_carries_wire_code() {
 
 #[test]
 fn declined_reply_uses_fallback() {
-    let layout = settle(&params(&[2, 1]), Reply::Declined).expect("fallback");
+    let layout = settle(&params(&[2, 1]), LayoutExtent::Output, Reply::Declined).expect("fallback");
     assert_eq!(layout.origin, Origin::Fallback);
     assert_eq!(layout, fallback(&params(&[2, 1])));
     let order: Vec<WindowId> = layout.placements.iter().map(|p| p.window).collect();

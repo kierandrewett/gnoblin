@@ -6,8 +6,9 @@ use gnoblin_types::WindowId;
 
 use super::error::{LayoutFailure, ReplyError, Subject};
 use super::fallback::fallback;
+use super::kind::LayoutExtent;
 use super::placement::{Camera, Handled, LayoutEffect, Origin, Params, Placement, Reply};
-use super::transform::BOUND;
+use super::transform::{BOUND, Transform3};
 
 /// A reply that passed every check, in canonical order.
 ///
@@ -30,16 +31,17 @@ pub struct Layout {
 /// A [`Reply::Declined`] becomes the built-in fallback. A
 /// [`Reply::Handled`] is checked in full: every tiled window must be placed or
 /// floated exactly once, no unknown window may appear, every number must be
-/// finite and bounded, every transform invertible, and the camera well formed.
-/// Any failure refuses the whole reply, so a layout is never applied in part.
-pub fn settle(params: &Params, reply: Reply) -> Result<Layout, LayoutFailure> {
+/// finite and bounded, every transform invertible, every placement inside
+/// `extent`, and the camera well formed. Any failure refuses the whole reply,
+/// so a layout is never applied in part.
+pub fn settle(params: &Params, extent: LayoutExtent, reply: Reply) -> Result<Layout, LayoutFailure> {
     match reply {
         Reply::Declined => Ok(fallback(params)),
-        Reply::Handled(handled) => validate(params, handled).map_err(LayoutFailure::InvalidReply),
+        Reply::Handled(handled) => validate(params, extent, handled).map_err(LayoutFailure::InvalidReply),
     }
 }
 
-fn validate(params: &Params, handled: Handled) -> Result<Layout, ReplyError> {
+fn validate(params: &Params, extent: LayoutExtent, handled: Handled) -> Result<Layout, ReplyError> {
     let tiled: BTreeSet<WindowId> = params.windows().iter().map(|window| window.id).collect();
 
     let mut placed = BTreeSet::new();
@@ -51,6 +53,7 @@ fn validate(params: &Params, handled: Handled) -> Result<Layout, ReplyError> {
             return Err(ReplyError::DuplicatePlacement(placement.window));
         }
         check_placement(placement)?;
+        check_extent(placement, params, extent)?;
     }
 
     let mut floated = BTreeSet::new();
@@ -105,6 +108,41 @@ fn check_placement(placement: &Placement) -> Result<(), ReplyError> {
         return Err(ReplyError::OpacityOutOfRange(placement.window));
     }
     placement.transform.check(subject)
+}
+
+/// Checks that a placement's rectangle lies inside `extent`.
+///
+/// The rectangle is taken before the transform: its origin is the transform's
+/// position, or the translation column of a raw matrix, and its size is the
+/// placement's width and height. A window may therefore project outside the
+/// output through rotation or scale, as a tilted carousel does.
+fn check_extent(placement: &Placement, params: &Params, extent: LayoutExtent) -> Result<(), ReplyError> {
+    let (x, y) = pre_transform_origin(&placement.transform);
+    let (right, bottom) = (x + placement.width, y + placement.height);
+    let inside = match extent {
+        LayoutExtent::Output => {
+            x >= 0.0 && y >= 0.0 && right <= params.output_width() && bottom <= params.output_height()
+        }
+        LayoutExtent::Unbounded => [x, y, right, bottom].into_iter().all(|edge| edge.abs() <= BOUND),
+    };
+    if inside {
+        Ok(())
+    } else {
+        Err(ReplyError::OutsideExtent {
+            window: placement.window,
+            extent,
+        })
+    }
+}
+
+/// The origin of a placement before its transform: the position of a `Trs`,
+/// or the translation column of a raw matrix. The transform is checked finite
+/// before this is called.
+fn pre_transform_origin(transform: &Transform3) -> (f64, f64) {
+    match *transform {
+        Transform3::Trs { position, .. } => (position.x, position.y),
+        Transform3::Matrix(matrix) => (matrix[12], matrix[13]),
+    }
 }
 
 fn check_length(subject: Subject, field: &'static str, value: f64) -> Result<(), ReplyError> {

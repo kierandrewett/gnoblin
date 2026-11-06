@@ -2115,6 +2115,12 @@ Validation of a reply, all or nothing:
   reply is HANDLED only for an empty set; otherwise it is DECLINED;
 - every number finite, sizes non-negative, and every transform invertible, so a
   scale of zero or a singular matrix is refused;
+- every placement's rectangle lies inside the layout's `extent`. The rectangle is
+  the position (the transform's position, or a raw matrix's translation) and the
+  placement's width and height, taken before the transform. An `output` layout
+  keeps it in the work area; an `unbounded` layout keeps its origin and far edge
+  within 2^20. A transform may still project the window outside the rectangle
+  (rotation, scale, perspective), as a tilted carousel does;
 - a perspective camera has `0 < near < far` and `0 < fov < 180`;
 - coordinates within a bound of 2^20 device pixels, so no value overflows the
   renderer.
@@ -2945,17 +2951,17 @@ Every layout module returns a table with a `kind`. The kind sets the default pla
 - `floating`: every window is free.
 - `tiling` and `kiosk`: every window is managed, except a transient, which is free.
 
-The `extent` says where placements may lie. `output` (the default) keeps them in the work area. `unbounded` lets them lie anywhere in layout space; the renderer clips to the output. A scrolling layout is `tiling` with extent `unbounded` and a viewport: a finite offset into its strip that picks the visible part. The viewport is module state (`state.view`), not a field on the workspace.
+The `extent` says where placements may lie. `output` (the default) keeps each placement's rectangle in the work area; only a `tiling` layout may be `unbounded`, which lets the rectangle lie anywhere within the 2^20 coordinate bound. The rectangle is the position and the width and height, taken before the transform: a window that its transform rotates, scales or tilts may project past the edge, and the renderer clips to the output. The wm refuses a whole reply whose rectangle lies outside its extent. A scrolling layout is `tiling` with extent `unbounded` and a viewport: a finite offset into its strip that picks the visible part. The viewport is module state (`state.view`), not a field on the workspace.
 
 Removed: the `floating` property and `set_floating` method on `window`, with their IPC handler and wasm binding. Migration: remove calls to `set_floating` and reads of `floating`. To float windows, put their workspace on the `floating` layout.
 
 The names `workspace.layout_kind`, `window.workspace`, `window.placement` and `layout_viewport` are not provided. The workspace exposes its layout by name in `layout`, and the kind is read from the module. Toggling float is refused on a `floating` or `kiosk` workspace, and a transient never becomes managed.
 
-Failure modes, each refused when the module loads: a bare function, a table without `kind`, an unknown `kind` or `extent`, a `command` table whose names are not strings or whose values are not functions, and `options` that are not a table. A failed load runs the workspace floating, as `layout-failed` reports.
+Failure modes, each refused when the module loads: a bare function, a table without `kind`, an unknown `kind` or `extent`, an `unbounded` extent off `tiling`, a `command` table whose names are not strings or whose values are not functions, and `options` that are not a table. A failed load runs the workspace floating, as `layout-failed` reports.
 
 Status: the `kind` and `extent` fields and the window placement landed in `79ad3bf9`. The scrolling viewport landed with its module: `scroll_to` is reached as `workspace.layout_command` with `{"x": n}`, and the offset is clamped to the strip. There is no viewport flag.
 
-Not done: the wm does not enforce `extent`. Placements are applied as the layout gives them, so an `output` layout can place a window outside the work area.
+The wm enforces `extent` when it settles a reply: a placement outside its bounds refuses the whole reply.
 
 ### D26: stackable surface effects
 
