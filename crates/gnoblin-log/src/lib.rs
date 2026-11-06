@@ -32,6 +32,9 @@ pub mod redact;
 /// The shape of one logged event, read once and shared by every sink.
 pub mod event;
 
+/// Which components log, and at what level: the specification and the process-wide registry.
+pub mod filter;
+
 /// The console sink: one line per event on stderr. Needs the `console` feature.
 #[cfg(feature = "console")]
 pub mod console;
