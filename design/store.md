@@ -72,6 +72,22 @@ is in the set and the grant allows it. Lua omits the method. IPC returns
 `Search` is one query language for every kind. It has no raw SQL, and no
 consumer gets a SQL handle.
 
+### Secret gating
+
+Generic frontends must not bypass the Secret Service authorization path (D27).
+The frontends are Lua, IPC, `gnoblinctl` and WASM. For a `secret` store they
+expose metadata only: names, counts, usage, state, lock state and, if Needs
+Kieran 3 allows it, attribute keys. They never return a secret value.
+
+A secret value comes only from the secret store's own path. That path needs the
+keyring unlocked, and it applies the consent and prompt policy of D27: confirm
+first retrieval per application, wherever that policy applies.
+
+A `secret` store is never exported in plaintext. The only export form is an
+encrypted backup of the whole store file. `gnoblinctl store get` on a secret
+item returns `secret-value-refused`, which names the keyring tooling
+(`secret-tool`, `design/keyring.md`).
+
 ### One item model, and where it breaks
 
 An item is a key, a set of attributes, a value and a revision. Each attribute
@@ -241,13 +257,16 @@ properties: `name`, `kind`, `provider`, `state`, `capabilities`, `usage`.
 - **Lua: `gnoblin.store.open(name)`.** Returns a handle. The handle carries
   only the methods its capabilities allow. Async calls return `Operation<Result>`,
   as in `design/lua-api.md:204`. Opening another owner's store needs a grant.
+  For `secret`, the handle exposes metadata only; see Secret gating.
 - **IPC: `store` object.** Properties as above. Methods are gated by
-  capability and grant. The signal `changed` carries keys and revisions.
+  capability and grant. The signal `changed` carries keys and revisions. For
+  `secret`, metadata only; see Secret gating.
 - **`gnoblinctl store`.** Subcommands `list`, `usage`, `get`, `search`, `export`
-  and `purge`. The output is the same for every kind. A `secret` store in
-  `get` while locked fails with `store-locked`. Writes need the compositor.
+  and `purge`. The output is the same for every kind, except that `secret` is
+  metadata only; see Secret gating. Writes need the compositor.
 - **WASM.** A host import in the extension world (D22, `gnoblin:ext@0.2.0`,
   `rust-compositor.md:2700`). The same functions, with values as WIT variants.
+  A `secret` value is not exposed here either; see Secret gating.
 - **Secret Service adapter.** The D-Bus Secret Service API (keyring, D27) is an
   adapter over a `secret` store. The keyring service runs it.
 - **Secret portal adapter.** The Secret portal serves per-app secrets from the
@@ -287,6 +306,8 @@ grant, and its choice is open.
 | Lifecycle moves only through the registry             | invariant |
 | No raw SQL reaches any consumer                       | invariant |
 | `secret` never returns plaintext while locked         | invariant |
+| Generic frontends never return a `secret` value       | invariant |
+| `secret` export is encrypted whole-file only          | invariant |
 | Secrets never enter a `kv` or `log` store (D27)       | invariant |
 | Grants and capability sets live in host configuration | invariant |
 | Uninstalled data is kept until `purge`                | invariant |
@@ -371,6 +392,10 @@ Grep limits: the search covered `XDG_STATE_HOME`, `XDG_DATA_HOME`, `rusqlite`,
   the current total and the limit. A batch is refused whole.
 - **Locked.** A `secret` read or write while `locked` fails with `store-locked`.
   The file stays closed.
+- **Secret value asked of a generic frontend.** `get` on a `secret` item returns
+  `secret-value-refused` in every frontend. No value is read from the file.
+- **Plaintext export asked for.** `export` of a `secret` store returns
+  `secret-export-refused`, and names the encrypted whole-file backup.
 - **Migration fails.** The step's transaction rolls back and the version stays.
   The store opens with `writable = false` if that option is chosen, and the
   failure is logged.
@@ -385,9 +410,8 @@ Grep limits: the search covered `XDG_STATE_HOME`, `XDG_DATA_HOME`, `rusqlite`,
   and the cause is logged.
 - **Export and backup.** `export` writes JSON Lines: a header (format 1, name,
   owner, kind, time), then one line per key, with bytes in base64. A `secret`
-  store exports only ciphertext, unless the user takes the unlock path. `import`
-  runs in one transaction and refuses an owner mismatch unless `--as` names
-  another owner.
+  store is refused here; see Secret gating. `import` runs in one transaction and
+  refuses an owner mismatch unless `--as` names another owner.
 
 ## Interactions
 
@@ -428,13 +452,16 @@ Each phase is one reviewable commit. Its tests are named here but not run.
    decided. Verify: retention by age and size, and writes only through the
    facade.
 8. **`secret` kind and the keyring provider.** `Lock`, after the D27 key source
-   is chosen. Verify: the Secret Service and portal adapters, and `gnoblinctl
-store list` shows the keyring store.
+   is chosen. Verify: the Secret Service and portal adapters, `gnoblinctl store
+list` shows the keyring store, and every generic frontend refuses a `secret`
+   value.
 9. **Export, import, purge and orphaning.** Verify: an export and import round
    trip, and `purge` refuses without `--yes`.
 10. **WASM host import.** After the D22 wasm gate. Verify: a component test.
 11. **Fault injection.** Quarantine, disk full, lock, migration failure. Verify:
-    one test per failure mode above.
+    one test per failure mode above. Also: a plaintext `secret` export is
+    refused, and a `secret` value read through each generic frontend (IPC, Lua,
+    `gnoblinctl`, WASM) returns `secret-value-refused`.
 
 ## Needs Kieran
 
@@ -452,11 +479,12 @@ decided here.
       Gnoblin change.
     - Pros: each kind has one reviewed policy.
     - Cons: every new kind needs a release, which an extension author cannot do.
-3. **Are `secret` attributes readable while locked.** Option.
+3. **Are `secret` attribute keys readable while locked.** Option. Values never are.
     - Pros of yes: an app can find its item without unlocking.
-    - Cons of yes: a locked store reveals which apps hold secrets.
+    - Cons of yes: a locked store reveals which apps hold secrets and under which keys.
     - Pros of no: nothing about the store leaks while locked.
     - Cons of no: every lookup needs an unlock first.
+    - Item names and counts while locked are a separate question. This item does not settle them.
 4. **A `writable` flag, or a seventh lifecycle state.** Option.
     - Pros of the flag: the state enum stays at six.
     - Cons of the flag: consumers must read two fields to know if a write works.
@@ -487,4 +515,5 @@ decided here.
 
 - 2026-11-06: rewritten as a store abstraction. Keyring, log and extension state
   are kinds. The v1 key-value design is now the `kv` kind. The earlier open
-  items are folded into items 1 to 9 above.
+  items are folded into items 1 to 9 above. Generic frontends are metadata
+  only for `secret`; see Secret gating.

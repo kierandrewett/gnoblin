@@ -3171,7 +3171,7 @@ Needs Kieran:
 
 **Keyring.** The keyring stays a separate service with its own SQLCipher file (D27). It is a provider of kind `secret`. Its decisions are unchanged.
 
-**Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal, read-only boot and a locked `secret` read.
+**Tests (not run).** Each failure mode in `design/store.md` gets a headless test on temp directories: corruption, disk full, quota, migration failure, huge value, name traversal, read-only boot and a locked `secret` read. A `secret` value read through each generic frontend, and a plaintext `secret` export, must both be refused.
 
 Needs Kieran (details and pros and cons in `design/store.md`):
 
