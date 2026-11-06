@@ -9,10 +9,10 @@
 //!
 //! Inhibits are recorded here but the compositor's idle policy does not read them, so an
 //! inhibit does not yet stop the screen from blanking. `GetActive` reports the lock object
-//! only. `Lock` calls the compositor's lock method, which the schema does not declare yet,
-//! so production refuses it with a D-Bus error. `SimulateUserActivity` is refused for the
-//! same reason. `ActiveChanged` is declared but not emitted, since no lock change is
-//! watched.
+//! only. `Lock` asks the compositor and succeeds only once the compositor confirms the
+//! session locked, within its bound; a refusal, a failed cover or a timeout is a D-Bus
+//! error. `SimulateUserActivity` is refused, since the schema declares no member for it.
+//! `ActiveChanged` is declared but not emitted, since no lock change is watched.
 //!
 //! # Failure modes first
 //!
@@ -23,7 +23,9 @@
 //! 3. **A sender holds 64 inhibits** and asks for a 65th: refused with `LimitsExceeded`,
 //!    and the other senders are unaffected: `tests::the_65th_inhibit_from_one_sender_is_refused`.
 //! 4. **`Lock` is called** and reaches the compositor's lock method exactly once:
-//!    `tests::lock_calls_the_compositor_once`.
+//!    `tests::lock_calls_the_compositor_once`. A lock the compositor does not confirm is a
+//!    D-Bus error, never success: `tests::a_lock_the_compositor_does_not_confirm_is_an_error`.
+//!    A confirmed lock starts the clock: `tests::a_confirmed_lock_starts_the_clock`.
 //! 5. **`SetActive(true)` is called**: refused with `false`, since clients cannot lock the
 //!    screen by setting a flag: `tests::set_active_is_refused`.
 //! 6. **The compositor's idle or lock object is missing**: the call fails rather than
@@ -58,7 +60,9 @@ pub trait Compositor: Send + Sync {
     fn idle_ms(&self) -> Result<u64, String>;
     /// Whether the session is locked, from the `lock` object.
     fn locked(&self) -> Result<bool, String>;
-    /// Ask the compositor to lock the session.
+    /// Ask the compositor to lock the session, and wait for it to confirm the lock. `Ok`
+    /// means the compositor has proven the session locked; an error means it refused, the
+    /// cover failed, or it did not confirm within its bound.
     fn lock(&self) -> Result<(), String>;
 }
 
@@ -320,7 +324,21 @@ impl Compositor for Host {
     }
 
     fn lock(&self) -> Result<(), String> {
-        Err("the compositor schema declares no lock method yet".to_owned())
+        let snapshot = self.snapshot().map_err(|error| error.to_string())?;
+        let view = snapshot
+            .objects()
+            .iter()
+            .find(|view| view.ty() == &TypeKey::gnoblin("lock"))
+            .ok_or_else(|| "the compositor publishes no lock object".to_owned())?;
+        // The compositor answers `done` only once it has proven the session locked. Its
+        // refusal, failed cover or timeout arrives as `failed`, and that is an error here.
+        match self.call_operation(view.id(), "lock_session") {
+            Ok(gnoblin_model::OperationOutcome::Done) => Ok(()),
+            Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
+                Err(format!("the compositor did not lock the session: {}", code.as_str()))
+            }
+            Err(error) => Err(error.to_string()),
+        }
     }
 }
 
@@ -350,6 +368,8 @@ mod tests {
     struct Fake {
         idle: Result<u64, String>,
         locked: Result<bool, String>,
+        /// What the compositor answers a lock with: `Ok` once it has confirmed the lock.
+        lock: Result<(), String>,
         locks: Mutex<u32>,
     }
 
@@ -362,7 +382,7 @@ mod tests {
         }
         fn lock(&self) -> Result<(), String> {
             *self.locks.lock().unwrap() += 1;
-            Ok(())
+            self.lock.clone()
         }
     }
 
@@ -370,6 +390,7 @@ mod tests {
         let fake = Arc::new(Fake {
             idle,
             locked: Ok(false),
+            lock: Ok(()),
             locks: Mutex::new(0),
         });
         (fake.clone(), ScreenSaver::new(Box::new(fake)))
@@ -413,6 +434,30 @@ mod tests {
         let (fake, service) = fake(Ok(0));
         service.request_lock().unwrap();
         assert_eq!(*fake.locks.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_lock_the_compositor_does_not_confirm_is_an_error() {
+        let fake = Arc::new(Fake {
+            idle: Ok(0),
+            locked: Ok(false),
+            lock: Err("the compositor did not lock the session: not-locked".to_owned()),
+            locks: Mutex::new(0),
+        });
+        let service = ScreenSaver::new(Box::new(fake.clone()));
+        assert!(matches!(service.request_lock(), Err(fdo::Error::Failed(_))));
+        assert_eq!(*fake.locks.lock().unwrap(), 1);
+        assert!(
+            service.inner.locked_since.lock().unwrap().is_none(),
+            "an unconfirmed lock starts no clock"
+        );
+    }
+
+    #[test]
+    fn a_confirmed_lock_starts_the_clock() {
+        let (_, service) = fake(Ok(0));
+        service.request_lock().unwrap();
+        assert!(service.inner.locked_since.lock().unwrap().is_some());
     }
 
     #[test]

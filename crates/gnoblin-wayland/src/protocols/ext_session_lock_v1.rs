@@ -133,6 +133,12 @@ struct ExtSessionLockV1Barrier {
     pending: Vec<OutputId>,
 }
 
+/// The locker the compositor's own `lock` method takes. Protocol identities count up
+/// from zero, so the largest value is never one of them.
+fn internal_locker() -> ClientId {
+    ClientId::new(u64::MAX)
+}
+
 /// The per-lock bookkeeping: held confirmations, lock surfaces, the barrier and the
 /// client identities this session handed out.
 ///
@@ -158,6 +164,8 @@ pub(crate) struct ExtSessionLockV1Tables {
     clients: HashMap<WaylandClientId, ClientId>,
     /// The next connection identity.
     next_client: u64,
+    /// The replies owed to the compositor's `lock` method, sent once the lock settles.
+    lock_waiters: Vec<std::sync::mpsc::SyncSender<bool>>,
 }
 
 impl SessionLockHandler for State {
@@ -324,7 +332,31 @@ impl State {
             }
         }
         self.refresh_lock_focus();
+        self.settle_lock_waiters();
         self.publish();
+    }
+
+    /// Takes the session lock for the compositor's `lock` method and answers `reply`
+    /// once the lock settles: `true` only when the cover has proven the session `locked`.
+    pub(crate) fn request_lock(&mut self, reply: std::sync::mpsc::SyncSender<bool>) {
+        self.lock_tables.lock_waiters.push(reply);
+        let effects = self.lock.apply(LockEvent::LockRequested {
+            locker: internal_locker(),
+        });
+        self.apply_lock(effects);
+    }
+
+    /// Answers every waiting `lock` call once the lock has a final state. `Locking`
+    /// waits for a covering frame on every output, so the answer waits for that too.
+    fn settle_lock_waiters(&mut self) {
+        let answer = match self.lock.state() {
+            LockState::Locked => true,
+            LockState::Unlocked | LockState::CoverFailed => false,
+            LockState::Locking | LockState::Unlocking => return,
+        };
+        for reply in self.lock_tables.lock_waiters.drain(..) {
+            let _ = reply.send(answer);
+        }
     }
 
     /// Notices everything that happened to a connection without a protocol request
@@ -509,6 +541,11 @@ impl State {
 
     /// Sends `locked` and keeps the owner's object for liveness checks.
     fn send_locked(&mut self, locker: ClientId) {
+        if locker == internal_locker() {
+            // The compositor's own lock has no protocol confirmation to send; its
+            // waiters are answered by `settle_lock_waiters`.
+            return;
+        }
         let Some(index) = self
             .lock_tables
             .pending

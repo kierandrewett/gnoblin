@@ -48,8 +48,10 @@ use std::time::Duration;
 use futures_lite::future::block_on;
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Environment, Inherited, Reporter, inherited_stream, privilege};
-use gnoblin_model::{CapabilitySlot, Filter, RequestCompletion, RequestId, RequestOutcome, Snapshot, Tick};
-use gnoblin_types::Version;
+use gnoblin_model::{
+    CapabilitySlot, Fields, Filter, OperationOutcome, RequestCompletion, RequestId, RequestOutcome, Snapshot, Tick,
+};
+use gnoblin_types::{ObjectId, Version};
 use tracing::{info, warn};
 use zbus::Connection;
 
@@ -230,6 +232,13 @@ impl Host {
     /// A snapshot of the compositor's objects, which the screensaver service reads.
     pub fn snapshot(&self) -> Result<Snapshot, ClientError> {
         self.lock().subscribe(Filter::All)
+    }
+
+    /// Calls a declared method on an object and waits for the operation's outcome.
+    pub(crate) fn call_operation(&self, object: ObjectId, method: &str) -> Result<OperationOutcome, ClientError> {
+        let mut client = self.lock();
+        let operation = client.call(object, method, &Fields::new())?;
+        client.await_operation(operation)
     }
 
     /// Claim a request this role was offered, so it can end it.

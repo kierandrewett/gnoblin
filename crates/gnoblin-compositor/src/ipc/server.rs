@@ -1113,6 +1113,9 @@ impl Dispatcher {
             (Some(ty), _, _, Some((_, name))) if ty == "output" && method == "set_layout" => {
                 self.set_output_layout(client, envelope, object, &method, &arguments, &name);
             }
+            (Some(ty), _, _, _) if ty == "lock" && method == "lock_session" => {
+                self.lock_call(client, envelope, object, &method, &arguments);
+            }
             (None, _, _, _) => self.refuse(
                 client,
                 envelope,
@@ -1182,6 +1185,39 @@ impl Dispatcher {
         if let Some(outcome) = outcome {
             let _ = self.store.graph_mut().complete(operation.id(), outcome);
         }
+    }
+
+    /// Serves `lock.lock_session`: the loop locks the session, and the operation completes `done`
+    /// only once the cover has proven `locked`. A refusal, a failed cover, or no
+    /// confirmation within the loop's bound completes `not-locked`, so a caller never takes
+    /// a queued request for a protected screen.
+    fn lock_call(
+        &mut self,
+        client: ClientId,
+        envelope: &Envelope,
+        object: gnoblin_types::ObjectId,
+        method: &str,
+        arguments: &gnoblin_model::Fields,
+    ) {
+        let operation = match self.store.graph_mut().call(object, method, arguments.clone()) {
+            Ok(operation) => operation,
+            Err(error) => {
+                let code = refusal_code(&error);
+                self.refuse(client, envelope, code, &error.to_string());
+                return;
+            }
+        };
+        self.reply_with_operation(client, envelope, &operation);
+        // The loop answers `Some(true)` once the cover proves `locked`, and `Some(false)` on a
+        // refusal or a failed cover. `None` is the bound: a lock that never confirms fails here
+        // rather than leaving the caller waiting on a screen that may not be covered.
+        let confirmed = self.control.lock();
+        self.sync();
+        let outcome = match confirmed {
+            Some(true) => OperationOutcome::Done,
+            Some(false) | None => OperationOutcome::Failed(NOT_LOCKED),
+        };
+        self.finish(object, &operation, Some(outcome));
     }
 
     /// Serves `window.set_floating`: the window manager moves the window in or out of the
@@ -1664,6 +1700,9 @@ fn refusal_code(error: &ModelError) -> &'static str {
         _ => wire::code::UNKNOWN_MEMBER,
     }
 }
+
+/// The code a `lock` call completes with when the session is not confirmed locked.
+const NOT_LOCKED: ErrorCode = ErrorCode::from_static("not-locked");
 
 /// A locked map, with a poisoned lock read as its contents rather than a panic.
 fn lock<T>(map: &Arc<Mutex<T>>) -> MutexGuard<'_, T> {

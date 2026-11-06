@@ -796,6 +796,14 @@ mod gnoblin_objects {
             Ok(self.boolean(object, "locked"))
         }
 
+        fn lock_session(
+            &mut self,
+            handle: Resource<ObjectRep>,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "lock", "lock_session", gnoblin_model::Fields::new())
+        }
+
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
             Ok(match self.watch(&handle) {
                 Ok(()) => Ok(true),

@@ -78,6 +78,8 @@ mod member {
     pub const REASON: &str = "reason";
     pub const LAYOUT_CHANGED: &str = "layout_changed";
     pub const LAYOUT_FAILED: &str = "layout_failed";
+    /// The `lock` object's locked property: whether the lock is holding the desktop.
+    pub const LOCKED: &str = "locked";
 }
 
 /// What the graph last published for one workspace.
@@ -116,6 +118,8 @@ struct PublishedWindow {
 pub struct SessionSync {
     graph: Graph,
     session: ObjectId,
+    /// The `lock` object, whose `locked` property `apply` writes from the snapshot.
+    lock: ObjectId,
     /// How many bells the last snapshot counted, so `apply` raises the signal once per
     /// ring rather than once per snapshot.
     bells: u64,
@@ -140,9 +144,12 @@ impl SessionSync {
         let mut properties = Fields::from([(member::VERSION.to_owned(), Value::Text(version.to_string()))]);
         properties.extend(gnoblin_model::Slots::new().fields());
         let session = graph.create(TypeKey::gnoblin("session"), properties)?;
+        let lock_properties = Fields::from([(member::LOCKED.to_owned(), Value::Bool(false))]);
+        let lock = graph.create(TypeKey::gnoblin("lock"), lock_properties)?;
         Ok(SessionSync {
             graph,
             session,
+            lock,
             bells: 0,
             windows: BTreeMap::new(),
             workspaces: BTreeMap::new(),
@@ -225,10 +232,21 @@ impl SessionSync {
         self.apply_windows(snapshot, &mut failures);
         self.apply_outputs(snapshot, &mut failures);
         self.apply_workspaces(snapshot, &mut failures);
+        self.publish_lock(snapshot.lock_active());
         if failures.is_empty() {
             Ok(())
         } else {
             Err(PublishError { failures })
+        }
+    }
+
+    /// Writes the `lock` object's `locked` property from the snapshot's lock state.
+    ///
+    /// This is `ScreenSaver.GetActive`, true from the moment a lock is asked for. It is not
+    /// the confirmation a `lock` call waits for: that is the operation's own outcome.
+    fn publish_lock(&mut self, locked: bool) {
+        if let Err(error) = self.graph.set(self.lock, member::LOCKED, Value::Bool(locked)) {
+            error!(%error, "[ipc] the lock object declares no locked property");
         }
     }
 

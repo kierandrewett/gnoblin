@@ -24,3 +24,17 @@ since = "0.2.0"
 name = "locked"
 type = "bool"
 since = "0.2.0"
+
+# Lock the session and wait until the cover is up on every output. The operation
+# completes `done` only once the lock is `locked`, which is the state a covered,
+# protected frame has proven; it fails when that does not happen within the
+# compositor's bound, or when the lock cannot be taken.
+[[object.method]]
+name = "lock_session"
+since = "0.2.0"
+
+# The lock did not reach `locked` within the compositor's bound, or the lock was
+# refused or its cover failed. The session is not protected in that case.
+[[error]]
+name = "not-locked"
+since = "0.2.0"
