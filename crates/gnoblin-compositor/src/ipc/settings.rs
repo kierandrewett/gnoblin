@@ -14,21 +14,37 @@ use gnoblin_model::{Fields, Value};
 
 /// The schema's property names for the `settings` object.
 pub mod member {
+    /// The `settings` object's color_scheme property, the light or dark preference.
     pub const COLOR_SCHEME: &str = "color_scheme";
+    /// The accent colour's red component, in [0, 1] or unset.
     pub const ACCENT_RED: &str = "accent_red";
+    /// The accent colour's green component, in [0, 1] or unset.
     pub const ACCENT_GREEN: &str = "accent_green";
+    /// The accent colour's blue component, in [0, 1] or unset.
     pub const ACCENT_BLUE: &str = "accent_blue";
+    /// The contrast preference.
     pub const CONTRAST: &str = "contrast";
+    /// The reduced-motion preference.
     pub const REDUCED_MOTION: &str = "reduced_motion";
+    /// The GTK theme name.
     pub const GTK_THEME: &str = "gtk_theme";
+    /// The icon theme name.
     pub const ICON_THEME: &str = "icon_theme";
+    /// The cursor theme name.
     pub const CURSOR_THEME: &str = "cursor_theme";
+    /// The cursor size, in pixels.
     pub const CURSOR_SIZE: &str = "cursor_size";
+    /// The interface font name.
     pub const FONT_NAME: &str = "font_name";
+    /// The document font name.
     pub const DOCUMENT_FONT_NAME: &str = "document_font_name";
+    /// The monospace font name.
     pub const MONOSPACE_FONT_NAME: &str = "monospace_font_name";
+    /// The text scaling factor.
     pub const TEXT_SCALING_FACTOR: &str = "text_scaling_factor";
+    /// The window button layout string.
     pub const BUTTON_LAYOUT: &str = "button_layout";
+    /// Whether animations are enabled.
     pub const ENABLE_ANIMATIONS: &str = "enable_animations";
 }
 

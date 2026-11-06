@@ -1,5 +1,9 @@
 //! Admission for built-in UI requests: queue caps, a per-app rate limit and the
 //! lock embargo (D19 "Rate and queue caps" and "Lock embargo").
+//!
+//! The queue owns the requests waiting for a dialog and a sliding rate history per
+//! app id. It has no clock: callers pass the current [`Tick`] to `admit`, so tests can
+//! drive it directly. A refused request is not recorded, so a refusal uses no budget.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -43,7 +47,8 @@ pub enum Admission {
     Admitted,
 }
 
-/// The queue of UI requests, and the per-app rate history.
+/// The queue of UI requests, and the per-app rate history. Queued entries keep their
+/// arrival order; `recent` holds each app's admission ticks, oldest first.
 #[derive(Clone, Debug, Default)]
 pub struct Queue {
     queued: Vec<(RequestId, String)>,

@@ -1,4 +1,8 @@
 //! What a provider or the built-in UI returns, and what the caller finally gets.
+//!
+//! [`Verdict`] is the internal result of one portal request. [`Verdict::Declined`] is
+//! never sent to the caller: a provider decline starts the built-in fallback instead.
+//! The wire names come from `as_str` and must match `portal-call-reply`.
 
 use gnoblin_portal_core::model::Grant;
 

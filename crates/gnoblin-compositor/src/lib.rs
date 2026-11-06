@@ -89,6 +89,7 @@ mod extensions;
 mod ipc;
 mod layout;
 mod monitors;
+/// Portal negotiation, the pure decision layer behind the `org.freedesktop.impl.portal` services.
 pub mod portal;
 mod renderer;
 mod schema;

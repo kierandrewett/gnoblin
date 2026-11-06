@@ -78,6 +78,10 @@ impl Default for PortalService {
 }
 
 impl PortalService {
+    /// Builds an empty portal service with no owners and no dialog shown.
+    ///
+    /// The dialog frame is sized to the fixed `FRAME_WIDTH` by `FRAME_HEIGHT`, so every
+    /// portal dialog has the same geometry regardless of the request that opened it.
     #[must_use]
     pub fn new() -> Self {
         Self {

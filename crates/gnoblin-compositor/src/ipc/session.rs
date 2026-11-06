@@ -59,22 +59,37 @@ mod member {
     pub const COUNT: &str = "count";
     /// The `window` object's identity.
     pub const ID: &str = "id";
+    /// The `window` object's title property.
     pub const TITLE: &str = "title";
+    /// The `window` object's app_id property.
     pub const APP_ID: &str = "app_id";
+    /// The `window` object's focused property.
     pub const FOCUSED: &str = "focused";
+    /// The `window` object's x property.
     pub const X: &str = "x";
+    /// The `window` object's y property.
     pub const Y: &str = "y";
+    /// The `window` object's width property.
     pub const WIDTH: &str = "width";
+    /// The `window` object's height property.
     pub const HEIGHT: &str = "height";
+    /// The `window` object's icon property.
     pub const ICON: &str = "icon";
+    /// The `window` object's tag property.
     pub const TAG: &str = "tag";
+    /// The `window` object's modal property.
     pub const MODAL: &str = "modal";
     /// The `window` object's unresponsive property.
     pub const UNRESPONSIVE: &str = "unresponsive";
+    /// The layout name of an `output` or `workspace` object.
     pub const LAYOUT: &str = "layout";
+    /// The name of an `output` object, as the compositor reports it.
     pub const NAME: &str = "name";
+    /// The reason field of a `layout_failed` signal.
     pub const REASON: &str = "reason";
+    /// The `layout_changed` signal, sent when an object's layout changes.
     pub const LAYOUT_CHANGED: &str = "layout_changed";
+    /// The `layout_failed` signal, sent when a layout change is refused.
     pub const LAYOUT_FAILED: &str = "layout_failed";
     /// The `lock` object's locked property: whether the lock is holding the desktop.
     pub const LOCKED: &str = "locked";
