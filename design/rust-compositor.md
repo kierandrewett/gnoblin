@@ -2018,18 +2018,20 @@ D18, which is new scope and not a divergence from Mutter.
 - a table `{ arrange = fn, on_request = fn, command = { name = fn, ... },
 options = schema }` for a stateful or message-driven layout.
 
-Layouts live in modules. `require("my.layout")` in the configuration returns a
-layout reference, not the module's code. The reference is an immutable value
-with two fields: `module`, the module name, and `hash`, the 64-bit FNV-1a hash
-of the module's source as a decimal string. The runtime reads the source to take
-the hash and never runs it.
+Layouts live in modules. `require` in the configuration returns a layout reference for a layout module, not the module's code. Two roots are searched, and nothing else:
 
-The reference is passed to `workspace:set_layout(ref)` or `output:set_layout(ref)`.
-A closure cannot cross from the runtime role into the compositor, so the
-reference travels as the module name and hash. The compositor VM loads the
-module through its own sandboxed `require` and refuses it when the hash differs.
-Shipped layouts use the same form: `require("gnoblin.layouts.grid")`. A layout
-defined inline in the config file is not supported. Move it into a module.
+- `shipped`: the installed `share/gnoblin/lua` directory. `require("gnoblin.layouts.grid")` names `gnoblin/layouts/grid.lua` there.
+- `user`: the directory of the configuration file being evaluated. `require("layouts.mine")` names `<config dir>/layouts/mine.lua`.
+
+The root follows the name: a name with the `gnoblin.` prefix is `shipped`, any other name is `user`. The roots are fixed. They do not come from the document being built, so a module is found before the document is complete, and they do not come from the last accepted store. The compositor resolves a reference against the same two roots, by the same path logic `gnoblin.load` uses.
+
+A reference is an immutable table with four fields: `root` (`"shipped"` or `"user"`), `module` (the name as written), `hash` (the 64-bit FNV-1a hash of the module's source, as a decimal string) and `options` (the module's declared options, as plain data).
+
+The hash pins the source. The compositor checks its own copy against it and refuses a mismatch as `invalid-layout`, so an edit made between configuration and run cannot take effect silently. Requiring a module runs its top-level chunk in the configuration VM; `arrange` and the other layout functions are never called there.
+
+The reference is passed to `workspace:set_layout(ref)` or `output:set_layout(ref)`. A closure cannot cross from the runtime role into the compositor, so the reference travels as `root`, `module` and `hash`. The compositor VM loads the module through its own sandboxed `require` under the same root. A layout defined inline in the config file is not supported. Move it into a module.
+
+`module-dirs` is removed. Its only use was layout resolution, which the fixed roots now cover, so the `layout.module-dirs` key, its schema entry and its tests go in the same change.
 
 **Authority and messages.** `gnoblin-wm` forwards every geometry-affecting
 request to the layout before it applies its own default:
@@ -2276,7 +2278,6 @@ shadows the shipped file. Layouts are not special-cased.
 - `default`: the layout of a workspace with no override. Default `floating`.
 - `workspaces`: a list of `{ workspace, layout }`, keyed by the decimal workspace id. These win over `outputs` and `default`.
 - `outputs`: a list of `{ output, layout }`, keyed by connector id. **Not applied yet:** the wayland factory receives only a `WorkspaceId`, so the override is logged at startup and otherwise ignored. Closing this gap means passing the output with the workspace to the factory. It is a known gap, not a design change.
-- `module-dirs`: extra directories searched for layout modules, before the installed ones. The first directory with the module wins, so a file here shadows the shipped module. The schema's description says "after the shipped ones"; that is wrong and is listed for fixing with the schema.
 
 The Lua surface `workspace:set_layout(ref)`, `output:set_layout(ref)` and the rule key `layout` select a layout at run time. `ref` is a layout reference from `require`; a plain string is refused, because the module it names would not be pinned by hash. A workspace with no layout uses its output's layout, and an output with none uses `floating`.
 
@@ -2296,11 +2297,11 @@ The Lua surface `workspace:set_layout(ref)`, `output:set_layout(ref)` and the ru
 - `window.column`: read-only, `{ index, position }` on a scrolling workspace,
   otherwise null.
 - Rule keys: `layout`, `float`, `column-width`.
-- Internal runtime-to-compositor path: `set_layout` on `workspace` and `output` carries the module name and the source hash of a layout reference. The compositor refuses a module it cannot load with `missing-module`, a module that does not define a layout with `invalid-layout`, and a hash that differs from its own source with `invalid-layout`.
+- Internal runtime-to-compositor path: `set_layout` on `workspace` and `output` carries `root`, `module` and `hash` of a layout reference. The compositor refuses a module it cannot load with `missing-module`, a module that does not define a layout with `invalid-layout`, and a hash that differs from its own source with `invalid-layout`.
 
 **Lua surface.**
 
-- The configuration has no layout-registration call. A layout is a module: `require("my.layout")` returns its reference, and a reload re-requires it so a changed module is the one that runs. A shadowed shipped name is a module-dirs concern (`module-dirs`), not a registration error.
+- The configuration has no layout-registration call. A layout is a module: `require("layouts.mine")` returns its reference. A reload re-requires it, so a changed module is the one that runs. A name with the `gnoblin.` prefix always selects the shipped root; any other name selects the user root, so a user module cannot shadow a shipped one.
 - `require("gnoblin.layouts.<name>")`: the shipped modules, for copying and
   composing.
 - `layout.stack`, `layout.with_gaps` and `layout.per_output`, as above.
