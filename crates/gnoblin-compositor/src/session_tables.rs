@@ -1,5 +1,6 @@
 //! The session-wide tables the Wayland host reads at startup: the advertised protocols,
-//! from the `protocols` configuration section.
+//! from the `protocols` configuration section, and the keyboard repeat and XKB options,
+//! from `input.keyboard`.
 //!
 //! A document with no such section keeps the built-in defaults. The values are checked by
 //! the schema before they reach this module, so an unknown protocol name or a non-boolean
@@ -18,10 +19,11 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     match store.load(source) {
         Ok(stored) => {
             config.wayland.protocols = stored.config.protocols.unwrap_or_default();
-            debug!("[protocols] loaded from the last accepted configuration");
+            config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
+            debug!("[session tables] loaded from the last accepted configuration");
         }
         Err(error) => {
-            warn!(%error, "[protocols] configuration not readable; the defaults are used");
+            warn!(%error, "[session tables] configuration not readable; the defaults are used");
         }
     }
 }
@@ -31,19 +33,21 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        debug!("[protocols] no state directory is set; the defaults are used");
+        debug!("[session tables] no state directory is set; the defaults are used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => debug!(%error, "[protocols] no configuration file; the defaults are used"),
+        Err(error) => {
+            debug!(%error, "[session tables] no configuration file; the defaults are used");
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_config::{Config, Protocol, Value};
+    use gnoblin_config::{Config, Inherit, Protocol, Value};
 
     /// A document with one `protocols` table holding `entries`.
     fn document(entries: Vec<(&str, Value)>) -> Value {
@@ -54,12 +58,32 @@ mod tests {
         Value::table([("protocols", Value::Map(protocols))])
     }
 
+    /// A document with one `input.keyboard` table holding `entries`.
+    fn keyboard_document(entries: Vec<(&str, Value)>) -> Value {
+        let keyboard = entries
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect();
+        Value::table([("input", Value::table([("keyboard", Value::Map(keyboard))]))])
+    }
+
     /// Maps an accepted document into a session configuration, as the store path does.
     fn session_from(document: Value) -> SessionConfig {
         let config = Config::from_value(document).expect("the document is valid");
         let mut session = SessionConfig::default();
         session.wayland.protocols = config.protocols.unwrap_or_default();
+        session.wayland.keyboard = config.input.and_then(|input| input.keyboard);
         session
+    }
+
+    /// The paths of every problem in a refused document.
+    fn refused_paths(document: Value) -> Vec<String> {
+        Config::from_value(document)
+            .expect_err("the document is refused")
+            .problems()
+            .iter()
+            .map(|problem| problem.path.to_string())
+            .collect()
     }
 
     #[test]
@@ -67,10 +91,11 @@ mod tests {
         let session = session_from(Value::table([]));
         assert_eq!(session.wayland.protocols, gnoblin_wayland::Config::default().protocols);
         assert!(session.wayland.protocols.toggles.is_empty());
+        assert_eq!(session.wayland.keyboard, None);
     }
 
     #[test]
-    fn every_leaf_maps_into_the_compositor_configuration() {
+    fn every_protocol_leaf_maps_into_the_compositor_configuration() {
         let names = [
             "wlr-layer-shell",
             "ext-foreign-toplevel-list",
@@ -106,25 +131,50 @@ mod tests {
 
     #[test]
     fn a_non_boolean_toggle_is_refused_naming_the_leaf() {
-        let report = Config::from_value(document(vec![("wlr-screencopy", Value::string("no"))]))
-            .expect_err("a string is not a protocol toggle");
-        let paths: Vec<String> = report
-            .problems()
-            .iter()
-            .map(|problem| problem.path.to_string())
-            .collect();
+        let paths = refused_paths(document(vec![("wlr-screencopy", Value::string("no"))]));
         assert!(paths.iter().any(|path| path.contains("wlr-screencopy")), "{paths:?}");
     }
 
     #[test]
     fn an_unknown_protocol_is_refused_naming_the_leaf() {
-        let report = Config::from_value(document(vec![("not-a-protocol", Value::Bool(false))]))
-            .expect_err("an unknown protocol is not in the schema");
-        let paths: Vec<String> = report
-            .problems()
-            .iter()
-            .map(|problem| problem.path.to_string())
-            .collect();
+        let paths = refused_paths(document(vec![("not-a-protocol", Value::Bool(false))]));
         assert!(paths.iter().any(|path| path.contains("not-a-protocol")), "{paths:?}");
+    }
+
+    #[test]
+    fn an_absent_keyboard_table_keeps_the_host_defaults() {
+        let session = session_from(Value::table([("input", Value::table([]))]));
+        assert_eq!(session.wayland.keyboard, None);
+    }
+
+    #[test]
+    fn every_keyboard_leaf_the_host_reads_maps_into_the_compositor_configuration() {
+        let session = session_from(keyboard_document(vec![
+            ("repeat", Value::Bool(false)),
+            ("delay", Value::Integer(500)),
+            ("repeat-interval", Value::Integer(30)),
+            (
+                "xkb-options",
+                Value::List(vec![Value::string("ctrl:nocaps"), Value::string("compose:ralt")]),
+            ),
+        ]));
+        let keyboard = session.wayland.keyboard.expect("the keyboard table is present");
+
+        assert_eq!(keyboard.repeat, Some(Inherit::Value(false)));
+        assert_eq!(keyboard.delay, Some(Inherit::Value(500)));
+        assert_eq!(keyboard.repeat_interval, Some(Inherit::Value(30)));
+        assert_eq!(
+            keyboard.xkb_options,
+            Some(Inherit::Value(vec![
+                "ctrl:nocaps".to_owned(),
+                "compose:ralt".to_owned(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn a_non_integer_repeat_interval_is_refused_naming_the_leaf() {
+        let paths = refused_paths(keyboard_document(vec![("repeat-interval", Value::string("fast"))]));
+        assert!(paths.iter().any(|path| path.contains("repeat-interval")), "{paths:?}");
     }
 }
