@@ -69,14 +69,24 @@
 
 #![forbid(unsafe_code)]
 
+/// The admission gate: the support matrix and the mode check for each call.
 pub mod compat;
+/// The `IdleMonitor` error type, returned when a call cannot be answered.
 pub mod error;
+/// The IPC client that subscribes to the compositor and folds its idle state.
 pub mod link;
+/// The D-Bus service object and the export that serves it.
 pub mod service;
+/// The watch registry: who asked to be told, and when each watch fires.
 pub mod watches;
 
+/// Admission types and the support matrix, re-exported from `compat`.
 pub use compat::{IdleMonitorAdmission, IdleMonitorCall, MATRIX, NAME, NAMES};
+/// The error returned when an `IdleMonitor` call cannot be answered.
 pub use error::IdleError;
+/// The IPC subscription and the idle state it reports.
 pub use link::{IdleLink, IdleState};
+/// Service constants, the service object, the export function and the watch lookup.
 pub use service::{BUS_NAME, INTERFACE, IdleMonitorService, PATH, VERSION, export, watch_callers};
+/// The watch types the registry hands out.
 pub use watches::{Watch, WatchKind, Watches};
