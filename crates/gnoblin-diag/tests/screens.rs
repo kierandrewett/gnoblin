@@ -2,9 +2,10 @@
 //! arm delay, cancellation, reduced motion, and rasterised pixels.
 
 use gnoblin_diag::paint::Frame;
-use gnoblin_diag::portal::{
+use gnoblin_diag::portal::{Label, PortalScreen, Setup, Theme};
+use gnoblin_portal_model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, DirectoryListing, FileChooser, FileChooserMode, FileEntry,
-    FileFilter, Grant, Label, PortalScreen, ScreenKey, Settled, Setup, Theme,
+    FileFilter, Grant, ScreenKey, Settled,
 };
 use gnoblin_types::Tick;
 

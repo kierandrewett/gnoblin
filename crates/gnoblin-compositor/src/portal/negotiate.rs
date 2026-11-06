@@ -5,7 +5,7 @@
 //! services role or the compositor must carry out. The first terminal outcome
 //! wins; after it, every event is ignored.
 
-use gnoblin_diag::portal::Interface;
+use gnoblin_portal_model::Interface;
 use gnoblin_types::{RequestId, Tick};
 
 use super::outcome::{CancelReason, PortalError, Verdict};

@@ -27,7 +27,7 @@
 
 use gnoblin_backend::render::{Image, Overlay};
 use gnoblin_client::wire::{self, PortalRequest};
-use gnoblin_diag::portal::{Consent, Dialog, Grant, Interface, ScreenKey};
+use gnoblin_portal_model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_proto::Envelope;
 use gnoblin_types::{ClientId, KeyState, OutputId, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent};

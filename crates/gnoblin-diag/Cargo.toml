@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 gnoblin-schema.workspace = true
 gnoblin-types.workspace = true
+gnoblin-portal-model.workspace = true
 # The overlay draws the dialog models; the models themselves never touch egui (`portal`).
 egui.workspace = true
 

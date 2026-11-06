@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use gnoblin_diag::portal::Grant;
+use gnoblin_portal_model::Grant;
 
 /// The request side of a validation: what the caller asked for.
 #[derive(Clone, Debug, PartialEq, Eq)]

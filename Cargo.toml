@@ -37,6 +37,7 @@ members = [
     "crates/gnoblin-config",
     "crates/gnoblin-config-codegen",
     "crates/gnoblin-diag",
+    "crates/gnoblin-portal-model",
     "crates/gnoblin-input",
     "crates/gnoblin-lock",
     "crates/gnoblin-log",
@@ -226,6 +227,8 @@ rustix = { version = "1.1.6", features = ["process"] }
 # of declaring its own.
 gnoblin-types = { path = "crates/gnoblin-types" }
 gnoblin-schema = { path = "crates/gnoblin-schema" }
+# The portal's interface names, typed payloads and dialog models. Egui-free (D19).
+gnoblin-portal-model = { path = "crates/gnoblin-portal-model" }
 # The WebAssembly runtime the module host embeds (design/rust-compositor.md, D6).
 # The component model is the host API's shape: a WIT package generated from the
 # schema, so a module links against the object model and a member that moved is a

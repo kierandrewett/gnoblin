@@ -25,13 +25,12 @@ use std::fmt::Write as _;
 
 use egui::epaint::ClippedPrimitive;
 use egui::{Color32, Context, CornerRadius, FontId, Painter, Pos2, RawInput, Rect, Stroke, StrokeKind, Ui, Vec2};
+use gnoblin_portal_model::{
+    AppChooser, Confirmation, Consent, ConsentFocus, ConsentInput, ConsentTarget, Dialog, DialogError,
+    DirectoryListing, FileChooser, FileChooserMode, FileEntry, Key, ScreenKey, Settled,
+};
 use gnoblin_types::Tick;
 
-use super::dialog::{
-    AppChooser, Confirmation, Consent, ConsentFocus, ConsentInput, ConsentTarget, DialogError, FileChooser,
-    FileChooserMode, FileEntry, Key,
-};
-use super::interface::Grant;
 use crate::paint::{Frame, Textures, rasterise};
 
 /// One egui point is one frame pixel. The headless renderer does not scale.
@@ -87,52 +86,12 @@ pub struct Setup {
     pub reduced_motion: bool,
 }
 
-/// A key as the screens receive it. Keys a dialog does not use are ignored.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ScreenKey {
-    Escape,
-    Enter,
-    Tab,
-    Up,
-    Down,
-    Space,
-    Backspace,
-    Text(char),
-}
-
-/// The result a screen reports once its model has decided.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Settled {
-    Granted(Grant),
-    Denied,
-    Cancelled,
-}
-
 /// A text run the last layout drew: its text and the rectangle its galley
 /// occupies, in frame pixels.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Label {
     pub text: String,
     pub rect: Rect,
-}
-
-/// The dialog a screen draws. The model is the source of truth; the screen adds
-/// only presentation state (cursor, focus, the last refusal) beside it.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Dialog {
-    Consent(Consent),
-    /// A FileChooser in any of its modes.
-    Files(FileChooser),
-    /// An AppChooser.
-    App(AppChooser),
-}
-
-/// A directory listing the caller read for a FileChooser. The screen does no
-/// I/O: it shows exactly the entries it is given.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DirectoryListing {
-    pub folder: String,
-    pub entries: Vec<FileEntry>,
 }
 
 /// The control a chooser's keys reach. Tab moves between the ones a dialog has.
