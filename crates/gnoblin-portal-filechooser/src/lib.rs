@@ -142,36 +142,50 @@ impl DialogUi for FileChooserUi {
             settled = self.activate(index);
         }
 
+        let save = self.chooser.mode() == FileChooserMode::Save;
+        let choose_filter = self.chooser.filters().len() > 1;
         let mut name_response = None;
-        if self.chooser.mode() == FileChooserMode::Save {
-            ui.horizontal(|ui| {
-                ui.label("Name");
-                let mut name = self.chooser.name().to_owned();
-                let response = ui.add(TextEdit::singleline(&mut name));
-                if !self.focused {
-                    response.request_focus();
-                    self.focused = true;
+        let mut next_filter = None;
+        if save || choose_filter {
+            // A grid puts the Name and Filter labels in one column, so their fields line up
+            // with each other rather than with whatever width each label happens to have.
+            egui::Grid::new("file-chooser-form").num_columns(2).show(ui, |ui| {
+                if save {
+                    ui.label("Name");
+                    let mut name = self.chooser.name().to_owned();
+                    let response = ui.add(TextEdit::singleline(&mut name));
+                    if !self.focused {
+                        response.request_focus();
+                        self.focused = true;
+                    }
+                    if response.changed() {
+                        self.chooser.set_name(name);
+                    }
+                    name_response = Some(response);
+                    ui.end_row();
                 }
-                if response.changed() {
-                    self.chooser.set_name(name);
+                if choose_filter {
+                    let current = self.chooser.filter_index();
+                    let mut next = current;
+                    let label = self.chooser.filters()[current].name.clone();
+                    ui.label("Filter");
+                    // An id salt, not a label: the label sits in the grid's own column.
+                    egui::ComboBox::from_id_salt("file-chooser-filter")
+                        .selected_text(label)
+                        .show_ui(ui, |ui| {
+                            for (index, filter) in self.chooser.filters().iter().enumerate() {
+                                ui.selectable_value(&mut next, index, filter.name.as_str());
+                            }
+                        });
+                    if next != current {
+                        next_filter = Some(next);
+                    }
+                    ui.end_row();
                 }
-                name_response = Some(response);
             });
         }
-        if self.chooser.filters().len() > 1 {
-            let current = self.chooser.filter_index();
-            let mut next = current;
-            let label = self.chooser.filters()[current].name.clone();
-            egui::ComboBox::from_label("Filter")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    for (index, filter) in self.chooser.filters().iter().enumerate() {
-                        ui.selectable_value(&mut next, index, filter.name.as_str());
-                    }
-                });
-            if next != current {
-                self.chooser.set_filter(next);
-            }
+        if let Some(next) = next_filter {
+            self.chooser.set_filter(next);
         }
 
         let typing = name_response.as_ref().is_some_and(egui::Response::has_focus);
