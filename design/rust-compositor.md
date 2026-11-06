@@ -1631,7 +1631,7 @@ Each section below records the choice, its consequences, and the options conside
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
-| D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
+| D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source is the login password via a PAM module, with one unlock prompt when there is none (`design/keyring.md`)                               |
 | D28 | Layer registry               | **Proposed 2026-11-06:** layer registry; full names `<provider>.<local>` (`gnoblin.`, `ext.<id>.`); closed bands. `secure` defaults off unless declared; config overrides. Captures mask secure nodes by default.               |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
 | D30 | Store                        | **Proposed 2026-11-06:** one store abstraction; keyring, logs and extension state are kinds (`design/store.md`).                                                                                                                |
@@ -2518,11 +2518,11 @@ A process provider (`command = {...}`) is started by `gnoblin-compositor::portal
 
 Secret needs a store. Gnoblin has no keyring dependency and stores no secrets today. The options were weighed as follows:
 
-| Option                                   | What it is                                                                                                                              | Trade-off                                                                                             |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| A. Delegate to `org.freedesktop.secrets` | Gnoblin asks a running Secret Service (gnome-keyring, or KWallet's bridge) for the master secret. Gnoblin adds only the consent dialog. | Not chosen. No new crypto in Gnoblin, but Gnoblin then owns no store and needs a provider on the bus. |
-| B. Own encrypted store (chosen, D27)     | A SQLCipher database under `$XDG_DATA_HOME/gnoblin/`, served by the keyring service.                                                    | Chosen by Kieran 2026-11-06. The key source is an open problem (`design/keyring.md`).                 |
-| C. Stay on the next backend              | Gnoblin serves no Secret. `gtk`, then `kde`, answer.                                                                                    | Not chosen. Nothing new to build, but Gnoblin does not serve this portal.                             |
+| Option                                   | What it is                                                                                                                              | Trade-off                                                                                                    |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| A. Delegate to `org.freedesktop.secrets` | Gnoblin asks a running Secret Service (gnome-keyring, or KWallet's bridge) for the master secret. Gnoblin adds only the consent dialog. | Not chosen. No new crypto in Gnoblin, but Gnoblin then owns no store and needs a provider on the bus.        |
+| B. Own encrypted store (chosen, D27)     | A SQLCipher database under `$XDG_DATA_HOME/gnoblin/`, served by the keyring service.                                                    | Chosen by Kieran 2026-11-06. The key source is the login password, handed over by PAM (`design/keyring.md`). |
+| C. Stay on the next backend              | Gnoblin serves no Secret. `gtk`, then `kde`, answer.                                                                                    | Not chosen. Nothing new to build, but Gnoblin does not serve this portal.                                    |
 
 Decided 2026-11-06 by Kieran (D27): option B, a SQLCipher store owned by Gnoblin's keyring service. Option A is not chosen, so Gnoblin takes no secret from another provider. Coexistence with a provider that already owns `org.freedesktop.secrets` is in `design/keyring.md`.
 
@@ -2597,13 +2597,13 @@ Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts).
 
 #### Parity and ledger
 
-Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger, with two open items: the key source for the keyring store (D27), and the removability verification.
+Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger, with one open item: the removability verification.
 
 #### Conflicts with the plan
 
 - **Phase 1 gate** (the line "FileChooser and Email route to `gtk`"): superseded by D19; those routes become `gnoblin;gtk;kde;*`. Not edited here.
 - **Config keys:** `gnoblin.configure.portals.<Interface>` is the provider. Routing is `gnoblin.configure.portal_routing`. Kieran needs to confirm.
-- **Secret:** served by Gnoblin's own keyring service, with a SQLCipher store (D27). The key source is open.
+- **Secret:** served by Gnoblin's own keyring service, with a SQLCipher store (D27). The key source is the login password (PAM); with none, one unlock prompt per login session.
 - **Relay optionality:** the plan's `xdg-desktop-portal-gnoblin` is a required package; D19 makes it optional. Packaging changes follow.
 - **`portals.conf`:** not edited by this decision. The implementation lane changes the routes and adds Background.
 
@@ -3058,7 +3058,7 @@ Decided 2026-11-06 (Kieran, items 22, 23, 24):
 
 **Decided 2026-11-06 by Kieran: Gnoblin runs its own keyring service, and its secrets sit in a SQLCipher-encrypted store. The service speaks the Secret Service API, and the Secret portal serves per-app secrets from the same store.** The full design is in `design/keyring.md`.
 
-Options weighed in `design/keyring.md`: A, a client of another provider on `org.freedesktop.secrets` (not chosen); B, an own encrypted store (chosen); C, no Secret (not chosen). The key source is an open problem: until one is chosen, the store cannot unlock. The coexistence default is in that file too.
+Options weighed in `design/keyring.md`: A, a client of another provider on `org.freedesktop.secrets` (not chosen); B, an own encrypted store (chosen); C, no Secret (not chosen). The key source is the login password, handed over by a PAM module. With no password (fingerprint or autologin), the service shows one unlock prompt per login session. The coexistence default is in that file too.
 
 Consequences:
 
