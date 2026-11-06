@@ -25,8 +25,9 @@ const JOURNAL_STREAM_VARIABLE: &str = "JOURNAL_STREAM";
 /// The filter used when neither `GNOBLIN_LOG` nor the configured level names one.
 pub(crate) const DEFAULT_FILTER: &str = "info";
 
-/// The console output a process asks for. [`Console::Auto`] is resolved to an [`Output`] from the
-/// environment, in the order the variants of [`Output`] describe.
+/// The console output a process asks for. [`Console::Auto`] is resolved to a
+/// [`ConsoleOutput`] from the environment, in the order the variants of
+/// [`ConsoleOutput`] describe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Console {
     /// Chosen from the environment: the native journal when systemd connects stderr to it and
@@ -66,7 +67,7 @@ impl Console {
 
 /// The console output a process uses, once [`Console::Auto`] has been resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Output {
+pub enum ConsoleOutput {
     /// Nothing is printed.
     Off,
     /// The native journal, see [`Console::Journal`].
@@ -137,7 +138,7 @@ pub struct LogOptions {
     /// The `tracing` filter, which governs every console output and the database.
     pub filter: String,
     /// The console output, which is never [`Console::Auto`].
-    pub output: Output,
+    pub output: ConsoleOutput,
     /// The database file, or `None` when the database is off.
     pub database: Option<PathBuf>,
     /// The limits on what the database keeps.
@@ -198,20 +199,20 @@ impl LogOptions {
 }
 
 /// The output a console names, with [`Console::Auto`] chosen from `probe`.
-fn output(console: Console, probe: Probe) -> Output {
+fn output(console: Console, probe: Probe) -> ConsoleOutput {
     match console {
         Console::Auto => match (probe.journal_stream, probe.journal_socket, probe.terminal) {
-            (true, true, _) => Output::Journal,
-            (true, false, _) => Output::JournalStream,
-            (false, _, true) => Output::Pretty,
-            (false, _, false) => Output::Plain,
+            (true, true, _) => ConsoleOutput::Journal,
+            (true, false, _) => ConsoleOutput::JournalStream,
+            (false, _, true) => ConsoleOutput::Pretty,
+            (false, _, false) => ConsoleOutput::Plain,
         },
-        Console::Off => Output::Off,
-        Console::Journal => Output::Journal,
-        Console::JournalStream => Output::JournalStream,
-        Console::Pretty => Output::Pretty,
-        Console::Json => Output::Json,
-        Console::Plain => Output::Plain,
+        Console::Off => ConsoleOutput::Off,
+        Console::Journal => ConsoleOutput::Journal,
+        Console::JournalStream => ConsoleOutput::JournalStream,
+        Console::Pretty => ConsoleOutput::Pretty,
+        Console::Json => ConsoleOutput::Json,
+        Console::Plain => ConsoleOutput::Plain,
     }
 }
 
@@ -248,7 +249,7 @@ mod tests {
             options(&[("HOME", "/home/kieran")]),
             LogOptions {
                 filter: "info".to_owned(),
-                output: Output::Plain,
+                output: ConsoleOutput::Plain,
                 database: Some(PathBuf::from("/home/kieran/.local/state/gnoblin/logs.sqlite3")),
                 retention: Retention::default(),
                 problems: Vec::new(),
@@ -314,7 +315,7 @@ mod tests {
             options_with(&[("HOME", "/home/kieran")], &settings),
             LogOptions {
                 filter: "warn".to_owned(),
-                output: Output::Off,
+                output: ConsoleOutput::Off,
                 database: Some(PathBuf::from("/srv/logs.sqlite3")),
                 retention: settings.retention,
                 problems: Vec::new(),
@@ -371,7 +372,7 @@ mod tests {
         };
         assert_eq!(
             options_probed(&[], &LogSettings::default(), probe).output,
-            Output::Journal
+            ConsoleOutput::Journal
         );
     }
 
@@ -384,7 +385,7 @@ mod tests {
         };
         assert_eq!(
             options_probed(&[], &LogSettings::default(), probe).output,
-            Output::JournalStream
+            ConsoleOutput::JournalStream
         );
     }
 
@@ -396,7 +397,7 @@ mod tests {
         };
         assert_eq!(
             options_probed(&[], &LogSettings::default(), probe).output,
-            Output::Pretty
+            ConsoleOutput::Pretty
         );
     }
 
@@ -413,19 +414,19 @@ mod tests {
         };
         assert_eq!(
             options_probed(&[("GNOBLIN_LOG_FORMAT", "json")], &settings, probe).output,
-            Output::Json
+            ConsoleOutput::Json
         );
     }
 
     #[test]
     fn every_format_name_is_accepted() {
         for (name, output) in [
-            ("off", Output::Off),
-            ("journal", Output::Journal),
-            ("journal-stream", Output::JournalStream),
-            ("pretty", Output::Pretty),
-            ("json", Output::Json),
-            ("plain", Output::Plain),
+            ("off", ConsoleOutput::Off),
+            ("journal", ConsoleOutput::Journal),
+            ("journal-stream", ConsoleOutput::JournalStream),
+            ("pretty", ConsoleOutput::Pretty),
+            ("json", ConsoleOutput::Json),
+            ("plain", ConsoleOutput::Plain),
         ] {
             assert_eq!(options(&[("GNOBLIN_LOG_FORMAT", name)]).output, output, "{name}");
         }
@@ -438,7 +439,7 @@ mod tests {
             ..LogSettings::default()
         };
         let resolved = options_with(&[("GNOBLIN_LOG_FORMAT", "xml")], &settings);
-        assert_eq!(resolved.output, Output::Json);
+        assert_eq!(resolved.output, ConsoleOutput::Json);
         assert_eq!(resolved.problems.len(), 1);
         assert!(resolved.problems[0].contains("GNOBLIN_LOG_FORMAT"));
     }

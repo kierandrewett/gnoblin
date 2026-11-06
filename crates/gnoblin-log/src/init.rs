@@ -1,7 +1,7 @@
 //! Installs the gnoblin log for one process.
 //!
 //! [`init`] installs one `tracing` subscriber. Its console layer follows the resolved
-//! [`Output`]: the native journal (the `journal` module), the `<N>` stream format, the pretty or
+//! [`ConsoleOutput`]: the native journal (the `journal` module), the `<N>` stream format, the pretty or
 //! plain line format, JSON lines, or nothing. Its database layer, the `store` module, stores each
 //! event as a row in a SQLite file, so that a session can be inspected after the fact; it is on
 //! in every mode. All layers share one filter, taken from `GNOBLIN_LOG`, and the database location
@@ -28,7 +28,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 pub use crate::store::Retention;
 pub use options::{
-    Console, DATABASE_VARIABLE, FILTER_VARIABLE, FORMAT_VARIABLE, LogOptions, LogSettings, Output, Probe,
+    Console, ConsoleOutput, DATABASE_VARIABLE, FILTER_VARIABLE, FORMAT_VARIABLE, LogOptions, LogSettings, Probe,
 };
 
 /// Keeps the database writer alive. Dropping it waits, for a bounded time, for pending
@@ -69,8 +69,8 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
 
     let mut layers: Vec<Box<dyn Layer<Registry> + Send + Sync>> = Vec::new();
     match options.output {
-        Output::Off => {}
-        Output::Journal => match JournalLayer::connect(role) {
+        ConsoleOutput::Off => {}
+        ConsoleOutput::Journal => match JournalLayer::connect(role) {
             Ok(journal) => layers.push(journal.with_filter(filter.clone()).boxed()),
             Err(error) => {
                 problems.push(format!(
@@ -79,16 +79,16 @@ pub fn init(role: ProcessRole, options: &LogOptions) -> LogGuard {
                 layers.push(console_layer(StreamFormat, filter.clone()));
             }
         },
-        Output::JournalStream => layers.push(console_layer(StreamFormat, filter.clone())),
-        Output::Pretty => layers.push(console_layer(
+        ConsoleOutput::JournalStream => layers.push(console_layer(StreamFormat, filter.clone())),
+        ConsoleOutput::Pretty => layers.push(console_layer(
             ConsoleFormat {
                 role,
                 colour: std::io::stderr().is_terminal(),
             },
             filter.clone(),
         )),
-        Output::Json => layers.push(console_layer(JsonFormat { role }, filter.clone())),
-        Output::Plain => layers.push(console_layer(ConsoleFormat { role, colour: false }, filter.clone())),
+        ConsoleOutput::Json => layers.push(console_layer(JsonFormat { role }, filter.clone())),
+        ConsoleOutput::Plain => layers.push(console_layer(ConsoleFormat { role, colour: false }, filter.clone())),
     }
 
     let mut sink = None;

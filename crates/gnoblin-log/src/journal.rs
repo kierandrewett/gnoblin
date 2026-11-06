@@ -64,10 +64,10 @@ pub struct JournalLayer {
     identifier: String,
     role: String,
     path: PathBuf,
-    state: Mutex<State>,
+    state: Mutex<JournalState>,
 }
 
-struct State {
+struct JournalState {
     /// The connected socket, or `None` when the last send failed and the next one must reconnect.
     socket: Option<UnixDatagram>,
     /// Records dropped since the last report.
@@ -102,7 +102,7 @@ impl JournalLayer {
             identifier: format!("gnoblin-{role}"),
             role: role.to_owned(),
             path: path.to_owned(),
-            state: Mutex::new(State {
+            state: Mutex::new(JournalState {
                 socket,
                 dropped: 0,
                 last_report: None,
@@ -113,7 +113,7 @@ impl JournalLayer {
 
     /// Acts on what became of one record: counts a drop, warns once when the journal is
     /// unreachable, and writes such a record to stderr.
-    fn settle(state: &mut State, outcome: Outcome, logged: &Logged, level: Level) {
+    fn settle(state: &mut JournalState, outcome: Outcome, logged: &Logged, level: Level) {
         match outcome {
             Outcome::Delivered => state.warned = false,
             Outcome::Full => {
@@ -135,7 +135,7 @@ impl JournalLayer {
 }
 
 /// Prints the drop count, unless it was printed less than [`REPORT_INTERVAL`] ago.
-fn report_drops(state: &mut State) {
+fn report_drops(state: &mut JournalState) {
     let now = Instant::now();
     if state
         .last_report
@@ -165,7 +165,7 @@ impl<S: Subscriber> Layer<S> for JournalLayer {
 
 /// Sends `datagram` on the connected socket. A send that fails for any reason other than a full
 /// buffer drops the socket and reconnects once, then sends again.
-fn deliver(path: &Path, state: &mut State, datagram: &[u8]) -> Outcome {
+fn deliver(path: &Path, state: &mut JournalState, datagram: &[u8]) -> Outcome {
     if let Some(socket) = state.socket.as_ref() {
         match socket.send(datagram) {
             Ok(_) => return Outcome::Delivered,
@@ -357,7 +357,7 @@ mod tests {
     fn a_missing_journal_is_unavailable_then_delivers_once_it_returns() {
         let path = scratch_path("missing.sock");
         let _ = std::fs::remove_file(&path);
-        let mut state = State {
+        let mut state = JournalState {
             socket: None,
             dropped: 0,
             last_report: None,
@@ -406,7 +406,7 @@ mod tests {
         let path = scratch_path("restart.sock");
         let _ = std::fs::remove_file(&path);
         let first = UnixDatagram::bind(&path).expect("bind first receiver");
-        let mut state = State {
+        let mut state = JournalState {
             socket: Some(open(&path).expect("open")),
             dropped: 0,
             last_report: None,
@@ -427,7 +427,7 @@ mod tests {
     #[test]
     fn a_warning_is_printed_once_and_rearmed_by_a_delivery() {
         let logged = sample("lost", Vec::new());
-        let mut state = State {
+        let mut state = JournalState {
             socket: None,
             dropped: 0,
             last_report: None,
