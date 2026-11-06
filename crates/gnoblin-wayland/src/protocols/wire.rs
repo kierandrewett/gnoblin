@@ -28,6 +28,7 @@ pub(crate) mod window_frame {
     use wayland_server::backend as wayland_backend;
     use wayland_server::protocol::wl_surface;
 
+    /// Interface descriptors generated from the window frame XML.
     pub(crate) mod __interfaces {
         use super::wayland_backend;
         use super::wayland_server::protocol::__interfaces::*;
@@ -46,6 +47,7 @@ pub(crate) mod session_host {
     use smithay::reexports::wayland_server;
     use wayland_server::backend as wayland_backend;
 
+    /// Interface descriptors generated from the session host XML.
     pub(crate) mod __interfaces {
         use super::wayland_backend;
 

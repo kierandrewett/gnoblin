@@ -5,6 +5,25 @@
 //! the same windows, so a shell that reads one cannot see a different set of windows than
 //! a shell that reads the other. This module keeps the one record and works out what
 //! changed; each protocol module sends its own events for those changes.
+//!
+//! # Failure modes
+//!
+//! 1. **A window that leaves the window manager.** Its entry is removed and each handle is
+//!    sent `closed` on the wlr side; the standardised list is told through
+//!    `remove_toplevel`.
+//! 2. **A value that did not change.** Nothing is sent. Only a changed title, app id,
+//!    state flag or visible output produces an event, and a window's first sync is
+//!    always an introduction.
+//! 3. **A manager without a live client.** It is skipped when outputs are bound, so a
+//!    taskbar only hears about outputs of its own connection.
+//!
+//! # Guarding tests
+//!
+//! The lists are guarded by `tests/foreign_toplevel.rs`:
+//! `a_taskbar_lists_a_mapped_window`, `activate_reaches_the_window_manager`,
+//! `minimise_and_restore_reach_the_window_manager`,
+//! `maximise_and_fullscreen_reach_the_window_manager` and
+//! `a_request_for_a_closed_window_does_nothing`.
 
 use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::Resource;
@@ -23,9 +42,13 @@ use crate::State;
 pub(super) struct States(pub(super) u32);
 
 impl States {
+    /// The window is maximised.
     pub(super) const MAXIMISED: u32 = 1 << 0;
+    /// The window is minimised.
     pub(super) const MINIMISED: u32 = 1 << 1;
+    /// The window holds keyboard focus.
     pub(super) const ACTIVATED: u32 = 1 << 2;
+    /// The window is fullscreen.
     pub(super) const FULLSCREEN: u32 = 1 << 3;
 }
 
@@ -61,6 +84,7 @@ pub(super) struct ToplevelEntry {
 /// The published window list.
 #[derive(Default)]
 pub(crate) struct ForeignToplevels {
+    /// Every window currently published, in the order they were introduced.
     pub(super) entries: Vec<ToplevelEntry>,
     /// The manager bindings that asked for events.
     ///
@@ -71,19 +95,28 @@ pub(crate) struct ForeignToplevels {
 
 /// One window, as the window manager states it for publication.
 pub(super) struct ToplevelState {
+    /// The window manager's identity for the window.
     pub(super) window: WindowId,
+    /// The title as the window manager reports it.
     pub(super) title: String,
+    /// The application id as the window manager reports it.
     pub(super) app_id: String,
+    /// The state flags as the window manager reports them.
     pub(super) states: States,
+    /// The outputs the window is visible on; empty when it is on another workspace.
     pub(super) outputs: Vec<OutputId>,
 }
 
 /// Which values of one window changed since they were last sent.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct ToplevelChanges {
+    /// The title changed.
     pub(super) title: bool,
+    /// The application id changed.
     pub(super) app_id: bool,
+    /// The state flags changed.
     pub(super) states: bool,
+    /// The visible outputs changed.
     pub(super) outputs: bool,
     /// The window has not been introduced to the lists yet.
     pub(super) introduce: bool,
