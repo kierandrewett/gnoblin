@@ -1626,7 +1626,7 @@ Each section below records the choice, its consequences, and the options conside
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
-| D28 | Layer registry               | **Proposed 2026-11-06:** runtime layer registry; named, attributed layers; a closed band set orders them. Client surfaces are layers. `secure` defaults off.                                                                    |
+| D28 | Layer registry               | **Proposed 2026-11-06:** layer registry; owned names; closed bands. `secure` defaults off unless declared; config overrides. Captures mask secure nodes by default.                                                             |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
 | D30 | Store                        | **Proposed 2026-11-06:** one `gnoblin-store` API, one SQLite file per owner; extensions never open SQLite (`design/store.md`).                                                                                                  |
 
@@ -3050,15 +3050,17 @@ Consequences:
 - `OutputFrame` holds one ordered list of band content. The single `overlay` slot goes. This is a frame type change in `gnoblin-backend`.
 - `layers.list` keeps its wlr record shape. Registered layers appear in the same list, with `band`, `scope`, `target`, `provider` and `state` properties.
 - Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, count limits, and the `secure` owner check. Per-layer options (scope, order, input, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
-- `secure` defaults to off for every layer, extension layers included. A provider sets it on its own layer, and the user sets it per layer name or window rule in config. The lock surface is the one built-in exception.
-- Secure content is never drawn into any capture. The capture paths and their gaps are in `design/layers.md`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
-- Tests (not run): band order; window-layer stacking and follow rules; one live `portals` per output; name collision; end on provider disconnect, target close and output removal; the lock; the capture filter; a config override flips a layer both ways; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
+- Name ownership: a layer name belongs to its first registrant, and built-in names are reserved for their providers. `secure` defaults to off only where a layer declares no value. `portals` declares `secure = true`. The user overrides `secure` per layer name or window rule, in either direction, including built-ins. The lock surface is fixed secure.
+- Secure content is never drawn into any capture. Under `capture.secure-treatment` (default `mask`) a secure node becomes a neutral silhouette in a capture, or nothing under `omit`. The capture paths and their gaps are in `design/layers.md`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
+- Tests (not run): band order; window-layer stacking and follow rules; one live `portals` per output; name collision and reserved built-in names; end on provider disconnect, target close and output removal; the lock; the capture filter under `mask` (a shaped window captures as its silhouette) and `omit` (underlay shows by design); a config override flips a layer both ways, including `portals`; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
 
 Needs Kieran: the full list is in `design/layers.md`. Each item is marked (A), a policy choice about an invariant, or (B), a default for an option. Two block the first phase:
 
 1. Name of the toplevel kind: `surface_toplevel` (proposed; `design/layers.md` item 10).
 2. Whether a window-targeted `portals` modal blocks the whole output (A, proposed) or only its target (`design/layers.md` item 1).
+
+Item 13 in `design/layers.md` (B) sets the capture default for secure nodes: `mask` (proposed) or `omit`. It does not block the first phase.
 
 ### D29: window menu
 

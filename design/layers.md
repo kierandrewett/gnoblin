@@ -363,22 +363,29 @@ The compositor sees two kinds of capture. Client protocols are open to any clien
 
 One rule covers all of them: secure content is never drawn into any capture. The user's display is unchanged. There is no "user-initiated" exemption. The compositor cannot prove who is behind a request, so an exemption would be the bypass. To screenshot a secure dialog, the user sets `secure = false` for that layer in config.
 
+Secure nodes are replaced in a capture by one treatment, set once for the whole compositor (`capture.secure-treatment`, see Options).
+
+- `mask` (default): fill the node's silhouette with one neutral colour. The silhouette is the node's alpha mask, as D26 defines it for shaped windows, and a full rectangle for a layer with no alpha. The capture never shows more than the display did, and a viewer can see that something is hidden.
+- `omit`: draw nothing for the node. The capture shows whatever lies underneath. That can be content the display did not show, because the node covered it. The underlay is non-secure by its own flag, so the rule allows it. A secure dialog over an unsecured window therefore lets that window's content into the capture.
+
+Effects the node draws outside its silhouette, such as a shadow, are not masked. A shadow carries the shape, not the content [INFERENCE].
+
 Capture paths found in code, checked 2026-11-06 [INFERENCE: not traced end to end]:
 
-| Path                     | Where (`path:line`)                                                                                    | Honours `secure` today                  | Work needed                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------- | ---------------------------------------------------------------- |
-| Backend readback         | `gnoblin-backend/src/lib.rs:463`; `render/gles/mod.rs:476`                                             | No. Reads pre-overlay pixels only.      | Compose captures without secure layers. The main item.           |
-| Screenshot queue         | `gnoblin-wayland/src/frame.rs:141`; `server.rs:875`                                                    | No. Serves the readback above.          | Inherits the readback fix.                                       |
-| Capture embargo          | `gnoblin-capture/src/table.rs:277`, `:344`                                                             | Partly. Checks embargo per target only. | Give the capture a secure-free source.                           |
-| wlr-screencopy           | `gnoblin-wayland/src/protocols/zwlr_screencopy_v1.rs:79`                                               | No.                                     | Inherits the fix if it keeps reading through the table.          |
-| ext-image-copy-capture   | `protocols/ext_image_copy_capture_v1.rs:32`; global `capture_shared.rs:249`                            | No.                                     | As above.                                                        |
-| Portal Screenshot        | `xdg-desktop-portal-gnoblin/src/iface/capture.rs:62`; compositor side `gnoblin-compositor/src/portal/` | No. Compositor does not read `secure`.  | Request the secure-free frame.                                   |
-| Portal ScreenCast        | `xdg-desktop-portal-gnoblin/src/iface/capture.rs`; `gnoblin-wayland/src/pipewire_export.rs:292`        | No.                                     | Stream frames come from the table. Re-check `secure` each frame. |
-| Shell Screenshot compat  | `compat/gnoblin-compat-gnome-shell-screenshot/src/service.rs:182`                                      | Refuses. Returns `unsupported` today.   | None now. If enabled, route through the portal path.             |
-| Mutter ScreenCast compat | `compat/gnoblin-compat-mutter-screencast/src/service.rs:219`                                           | No.                                     | Routes through PipeWire export; inherits the fix.                |
-| Screenshot key           | None in code                                                                                           | Not applicable.                         | Build it with the rule. No key exists yet.                       |
-| `gnoblinctl screenshot`  | None in `crates/gnoblinctl`; only `shortcut capture` exists                                            | Not applicable.                         | Build it with the rule.                                          |
-| Legacy C portal          | `src/portal/backend/gnoblin-screenshot-capture.c`                                                      | Not checked.                            | Pre-rewrite tree. Confirm it is unused, or remove it.            |
+| Path                     | Where (`path:line`)                                                                                    | Honours `secure` today                  | Work needed                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------- | ---------------------------------------------------------------------------- |
+| Backend readback         | `gnoblin-backend/src/lib.rs:463`; `render/gles/mod.rs:476`                                             | No. Reads pre-overlay pixels only.      | Compose the capture view with secure nodes masked or omitted. The main item. |
+| Screenshot queue         | `gnoblin-wayland/src/frame.rs:141`; `server.rs:875`                                                    | No. Serves the readback above.          | Inherits the readback fix.                                                   |
+| Capture embargo          | `gnoblin-capture/src/table.rs:277`, `:344`                                                             | Partly. Checks embargo per target only. | Give the capture a secure-free source.                                       |
+| wlr-screencopy           | `gnoblin-wayland/src/protocols/zwlr_screencopy_v1.rs:79`                                               | No.                                     | Inherits the fix if it keeps reading through the table.                      |
+| ext-image-copy-capture   | `protocols/ext_image_copy_capture_v1.rs:32`; global `capture_shared.rs:249`                            | No.                                     | As above.                                                                    |
+| Portal Screenshot        | `xdg-desktop-portal-gnoblin/src/iface/capture.rs:62`; compositor side `gnoblin-compositor/src/portal/` | No. Compositor does not read `secure`.  | Request the secure-free frame.                                               |
+| Portal ScreenCast        | `xdg-desktop-portal-gnoblin/src/iface/capture.rs`; `gnoblin-wayland/src/pipewire_export.rs:292`        | No.                                     | Stream frames come from the table. Re-check `secure` each frame.             |
+| Shell Screenshot compat  | `compat/gnoblin-compat-gnome-shell-screenshot/src/service.rs:182`                                      | Refuses. Returns `unsupported` today.   | None now. If enabled, route through the portal path.                         |
+| Mutter ScreenCast compat | `compat/gnoblin-compat-mutter-screencast/src/service.rs:219`                                           | No.                                     | Routes through PipeWire export; inherits the fix.                            |
+| Screenshot key           | None in code                                                                                           | Not applicable.                         | Build it with the rule. No key exists yet.                                   |
+| `gnoblinctl screenshot`  | None in `crates/gnoblinctl`; only `shortcut capture` exists                                            | Not applicable.                         | Build it with the rule.                                                      |
+| Legacy C portal          | `src/portal/backend/gnoblin-screenshot-capture.c`                                                      | Not checked.                            | Pre-rewrite tree. Confirm it is unused, or remove it.                        |
 
 The readback is the one path that needs real work. The others inherit its fix only if they keep reading frames through the table, which is the intent [INFERENCE].
 
@@ -393,31 +400,37 @@ Two kinds of rule. An invariant is enforced by the compositor, and no provider o
 - **Input grant.** An extension requests `passive`. `modal-to-target`, `modal-to-output` and `grab` need a manifest power and a host grant. The compositor draws the attribution label on every modal or grab layer.
 - **Consent blocks its output.** A `portals` layer blocks its whole output, so a consent dialog cannot be bypassed by clicking elsewhere (Kieran 1).
 - **Secure content is never captured.** A layer with `secure = true` is never drawn into any capture, on any path in Capture paths. No grant, manifest power, provider or config setting turns that off. The user's display still shows it.
-- **Only the owner changes `secure`.** The provider sets it on its own layer. The user sets it in config, per layer name or per window rule, in either direction. No provider can change another provider's layer, and an extension cannot set it on a Gnoblin layer.
+- **Only the owner or the user changes `secure`.** The provider sets it on its own layer. The user sets it in config, per layer name or per window rule, in either direction. That includes built-in layers such as `portals`; config is the only way to change a provider's declared value. No provider can change another provider's layer, and an extension cannot set it on a Gnoblin layer.
+- **Layer names are owned.** A name belongs to its first registrant. The built-in names `portals`, `alerts`, `window_menu`, `surface_toplevel`, `surface_layer_shell`, `surface_x11` and the lock layer are reserved for their built-in providers. An extension cannot register or re-register them.
 - **The lock surface is secure.** It is the one built-in exception to the default of `false`, because it is compositor-owned and shows the unlock prompt over the locked session. No provider or config can remove it from capture.
 - **Lock.** Nothing draws above the lock except the compositor's allow-list. Extensions cannot join it.
 - **Count limits.** Each provider and each target has a maximum number of live layers. The numbers are proposed; the limits themselves are not optional.
 
 ### Options (B)
 
-| Option                         | Set by                   | Default                                     | Bounded by                                                             |
-| ------------------------------ | ------------------------ | ------------------------------------------- | ---------------------------------------------------------------------- |
-| Scope: `output` or `window`    | Provider                 | The kind's default                          | The kind's allowed scopes                                              |
-| Order within its band          | Provider                 | Per the Ordering rules                      | Band ceiling; Gnoblin claims stay above                                |
-| `passive` or `modal-to-target` | Provider                 | `passive`                                   | Invariant "Input grant"                                                |
-| `secure`                       | Provider; user in config | `false`                                     | Invariant "Only the owner changes `secure`"; lock surface fixed `true` |
-| Dim the target                 | Provider                 | Off (proposed)                              | Compositor draws the dim; target untouched                             |
-| Content kind                   | Provider                 | Surface, or compositor-painted for `alerts` | Lua: compositor-painted unless `wayland` power (Kieran 5)              |
+| Option                         | Set by                   | Default                                     | Bounded by                                                                         |
+| ------------------------------ | ------------------------ | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Scope: `output` or `window`    | Provider                 | The kind's default                          | The kind's allowed scopes                                                          |
+| Order within its band          | Provider                 | Per the Ordering rules                      | Band ceiling; Gnoblin claims stay above                                            |
+| `passive` or `modal-to-target` | Provider                 | `passive`                                   | Invariant "Input grant"                                                            |
+| `secure`                       | Provider; user in config | `false`, unless the layer declares a value  | Invariant "Only the owner or the user changes `secure`"; lock surface fixed `true` |
+| Dim the target                 | Provider                 | Off (proposed)                              | Compositor draws the dim; target untouched                                         |
+| Content kind                   | Provider                 | Surface, or compositor-painted for `alerts` | Lua: compositor-painted unless `wayland` power (Kieran 5)                          |
 
 An option never widens an invariant. A request outside the grant is refused and logged.
 
-**Config shape (proposed).** `config.toml` gets a `layers` section: a `record-map` keyed by layer name, each record with one `secure` bool, so `[layers.portals] secure = false`. The schema's record-map ids are `hex-pair`, `renderer` and `serial`, so layer names need a new id kind. The window rule takes `secure = true|false`, spelled like the other snake_case rule fields (`blur_ignore_shadows`).
+**Config shape (proposed).** `config.toml` gets a `layers` section: a `record-map` keyed by layer name, each record with one `secure` bool, so `[layers.portals] secure = false`. The schema's record-map ids are `hex-pair`, `renderer` and `serial`, so layer names need a new id kind. A window rule takes `secure = true|false`, spelled as in `docs/config/window_rule.md`, which uses snake_case rule keys.
+
+**Capture config (proposed).** A `capture` section holds one leaf, `secure-treatment = "mask" | "omit"`, default `mask`. Schema field keys are kebab-case (`delay-ms`, `privacy-screen`), so the leaf is spelled `secure-treatment`, not `secure_treatment`.
+
+**Default.** `secure = false` applies only to a layer that does not declare a value. The portal crates declare `secure = true` on `portals` when they register it. The lock surface is fixed `true`, and config cannot change it.
 
 ## Cutover
 
 Each path below moves to the registry, with no shim.
 
 - `crates/gnoblin-backend/src/render/frame.rs:236`: the `overlay` slot goes. `layers` (`:235`) becomes the one ordered list, walked in registry order. `cursor` (`:237`) stays. A breaking change to the frame type, shared by every renderer.
+  The capture view is a second walk of the same list. It draws a masked silhouette in place of each secure node, not the node itself. Cost: one alpha-mask fill per secure node per capture frame, and the mask itself, which D26 already keeps for shaped windows. A rectangle needs no mask.
 - `crates/gnoblin-wayland/src/modal.rs:1-54`: `Modal` and `ModalEvent` become the
   input policy of the `portals` and `alerts` layers.
 - `crates/gnoblin-compositor/src/ipc/portal.rs:91` (`submit`) gains the typed
@@ -450,11 +463,16 @@ Each path below moves to the registry, with no shim.
 - A name collision is refused with `name-taken`.
 - A provider disconnect ends its layers and sends `closed`.
 - `secure` defaults to `false` for every layer, extension layers included.
-- A `secure = true` layer is absent from each path in Capture paths, and still drawn on the display.
+- A `secure = true` layer is replaced under each path in Capture paths by the `secure-treatment` option, and still drawn on the display.
 - A config override flips a layer both ways: `layers.<name>.secure` hides a `false` layer, and `false` shows a `true` layer such as `portals`.
 - A window rule's `secure` flips a window or layer surface both ways.
 - A provider cannot change another provider's layer's `secure`. An extension cannot set it on a Gnoblin layer.
 - The lock surface stays secure. A config override on it is refused and logged.
+- A layer name is owned by its first registrant. An extension cannot register or re-register a built-in name, and one provider cannot change another provider's layer.
+- Mask follows a shaped window: a secure window with an oval alpha silhouette captures as a filled oval in the neutral colour. Pixels outside the oval match the underlay.
+- Omit reveals underlay by design: a secure node over a non-secure window captures that window where the node sat. The test asserts it, so the trade-off stays visible.
+- Under `mask`, a capture differs from the display only inside secure silhouettes.
+- The default `capture.secure-treatment` is `mask`. An unknown value is refused.
 - The lock removes `hide` layers and settles pending portal requests.
 - An extension cannot register in `system`, `lock` or `cursor`, cannot use `grab`
   without a grant, and cannot order above a Gnoblin claim.
@@ -470,12 +488,12 @@ Each path below moves to the registry, with no shim.
 
 1. `gnoblin-layers` crate: the registry, bands, ordering and follow rules, the `secure` field (default `false`) and its owner check, and their tests. No behaviour change.
 2. `gnoblin-wm` stack gains window-scope entries above their targets. `StackLayer` keeps `Normal` and `Fullscreen`. Follow rules and stack tests.
-3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy. The capture composition skips secure layers and replaces the pre-overlay readback (Capture paths).
+3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy. The capture view masks or omits secure nodes (`capture.secure-treatment`) and replaces the pre-overlay readback (Capture paths).
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
 6. `window_menu` (D29), built in.
 7. `alerts`, with its content provider.
-8. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by layer name.
+8. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by layer name, and a `capture` section with `secure-treatment`.
 9. Extension `[powers.layers]` through D22.
 
 Each phase names the tests that fail without its rule.
@@ -496,3 +514,7 @@ Real choices only. Each item is marked (A) if it is a policy choice about an inv
 10. Neither: name for the toplevel kind, `surface_toplevel` (proposed, matching `xdg_toplevel`). Kieran suggested `surface_top_level`, "or something".
 11. (B) Bar visibility while a fullscreen window is on its output: hidden (proposed). The alternative lifts fullscreen windows above `top`, as wlroots does, which breaks one band per record.
 12. (B) Override-redirect X11 windows: X's own stacking inside `windows` (proposed), or lifted to `top` as menus.
+13. (B) Default capture treatment for secure nodes: `mask` (proposed) or `omit`. Config leaf: `capture.secure-treatment`. Both keep the invariant; this only sets what a capture shows where a secure node is.
+
+- `mask`: fails safe. A capture never shows more than the display did, and a viewer can see that something is hidden. Cost: a neutral shape in screenshots, and an alpha mask per secure node per capture frame (D26 already keeps one for shaped windows).
+- `omit`: clean captures, no mask cost. Cost: a secure dialog over an unsecured window lets that window's content into a capture, which the display did not show.
