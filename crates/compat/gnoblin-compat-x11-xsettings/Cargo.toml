@@ -12,7 +12,7 @@ workspace = true
 [dependencies]
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
 tempfile = "3.23.0"

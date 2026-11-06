@@ -7,9 +7,9 @@
 use std::fmt::{self, Write as _};
 use std::sync::{Arc, Mutex};
 
-use tracing::field::{Field, Visit};
-use tracing::span::{Attributes, Id, Record};
-use tracing::{Event, Metadata, Subscriber};
+use gnoblin_log::__tracing::field::{Field, Visit};
+use gnoblin_log::__tracing::span::{Attributes, Id, Record};
+use gnoblin_log::__tracing::{Event, Metadata, Subscriber};
 
 /// The captured lines, shared with the test that asserts on them.
 #[derive(Clone, Default)]
@@ -33,8 +33,8 @@ impl Captured {
     ///
     /// Thread-local on purpose: `tests` runs every test in its own thread, so two tests
     /// capturing logs at once never see each other's events.
-    pub fn install(&self) -> tracing::subscriber::DefaultGuard {
-        tracing::subscriber::set_default(Recorder { captured: self.clone() })
+    pub fn install(&self) -> gnoblin_log::__tracing::subscriber::DefaultGuard {
+        gnoblin_log::__tracing::subscriber::set_default(Recorder { captured: self.clone() })
     }
 }
 

@@ -10,8 +10,8 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+use gnoblin_log::debug;
 use gnoblin_wayland::{Dispatch2, Extension, ExtensionError, GlobalDispatch2, State, Surface, X11InteropHost};
-use tracing::debug;
 use wayland_server::{Client, DataInit, DisplayHandle, New};
 
 use crate::compat::{Admission, Call};

@@ -389,7 +389,7 @@ impl DisplayConfigService {
         if method == ApplyMethod::Verify {
             // Verification is a real answer: the plan was checked and nothing was
             // written, which is exactly what the method asks for.
-            tracing::debug!("a configuration verified without being applied");
+            gnoblin_log::debug!("a configuration verified without being applied");
             return Ok(());
         }
         for (connector, fields) in plan.calls(&state) {
@@ -398,7 +398,7 @@ impl DisplayConfigService {
                 .apply(&connector, &fields)
                 .map_err(|reason| fdo::Error::Failed(format!("`{connector}` refused the configuration: {reason}")))?;
         }
-        tracing::info!(serial, outputs = state.outputs.len(), "applied a monitor configuration");
+        gnoblin_log::info!(serial, outputs = state.outputs.len(), "applied a monitor configuration");
         Ok(())
     }
 
@@ -627,6 +627,6 @@ pub async fn export(connection: &Connection, service: &DisplayConfigService) -> 
         .map_err(|_| DisplayError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    tracing::info!(name = BUS_NAME, path = PATH, "serving the display configuration");
+    gnoblin_log::info!(name = BUS_NAME, path = PATH, "serving the display configuration");
     Ok(())
 }

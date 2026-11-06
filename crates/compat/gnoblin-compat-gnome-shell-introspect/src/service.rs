@@ -328,7 +328,7 @@ pub async fn export(connection: &Connection, service: &IntrospectService) -> Res
         .map_err(|_| IntrospectError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    tracing::info!(name = BUS_NAME, path = PATH, "serving shell introspection");
+    gnoblin_log::info!(name = BUS_NAME, path = PATH, "serving shell introspection");
     Ok(())
 }
 

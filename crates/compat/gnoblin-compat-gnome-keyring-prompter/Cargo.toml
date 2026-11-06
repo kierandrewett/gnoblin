@@ -18,7 +18,7 @@ gnoblin-types = { path = "../../gnoblin-types" }
 # The two gcr names are D-Bus services, so this crate speaks the bus and nothing
 # else: no libgcr, no GObject.
 zbus.workspace = true
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 # The queue between the interface handlers and the loop that performs their bus work, and
 # the `StreamExt` that drains it. `futures-lite` also runs the tests' service loop and
 # caller on one thread.

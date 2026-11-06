@@ -22,7 +22,7 @@ all = { level = "deny", priority = -1 }
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-config = { path = "../../gnoblin-config" }
 gnoblin-wayland = { path = "../../gnoblin-wayland" }
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 wayland-backend.workspace = true
 wayland-server.workspace = true
 wayland-scanner.workspace = true

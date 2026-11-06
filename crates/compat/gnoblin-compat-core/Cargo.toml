@@ -19,7 +19,7 @@ zbus.workspace = true
 # The settings publishers read the `cursor` section of the configuration, through the same store
 # the other adapters read their gates from.
 gnoblin-config = { path = "../../gnoblin-config" }
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 
 [lints]
 workspace = true

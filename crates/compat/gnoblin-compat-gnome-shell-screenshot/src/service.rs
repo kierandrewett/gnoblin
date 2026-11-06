@@ -253,6 +253,6 @@ pub async fn export(connection: &Connection, service: &ScreenshotService) -> Res
         .map_err(|_| ScreenshotError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    tracing::info!(name = BUS_NAME, path = PATH, "refusing screenshots on the shell's name");
+    gnoblin_log::info!(name = BUS_NAME, path = PATH, "refusing screenshots on the shell's name");
     Ok(())
 }

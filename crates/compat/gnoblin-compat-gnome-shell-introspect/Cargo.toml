@@ -17,7 +17,7 @@ gnoblin-config = { path = "../../gnoblin-config" }
 gnoblin-proto = { path = "../../gnoblin-proto" }
 gnoblin-model = { path = "../../gnoblin-model" }
 zbus.workspace = true
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
 futures-lite.workspace = true

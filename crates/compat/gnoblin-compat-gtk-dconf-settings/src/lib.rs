@@ -52,7 +52,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gnoblin_compat_core::{DesktopSettings, Switch};
-use tracing::debug;
+use gnoblin_log::debug;
 
 /// The checked-in declaration, compiled in so the file a reviewer approved is the one
 /// `cargo xtask compat-report` prints and this build honours.

@@ -256,7 +256,7 @@ impl IdleMonitorService {
         self.admit(IdleMonitorCall::AddIdleWatch)?;
         let owner = Self::owner(&header)?;
         let id = self.watches_lock().add_idle(&owner, interval);
-        tracing::debug!(id, interval, "an idle watch was added");
+        gnoblin_log::debug!(id, interval, "an idle watch was added");
         Ok(id)
     }
 
@@ -265,7 +265,7 @@ impl IdleMonitorService {
         self.admit(IdleMonitorCall::AddUserActiveWatch)?;
         let owner = Self::owner(&header)?;
         let id = self.watches_lock().add_active(&owner);
-        tracing::debug!(id, "a user-active watch was added");
+        gnoblin_log::debug!(id, "a user-active watch was added");
         Ok(id)
     }
 
@@ -295,13 +295,13 @@ impl IdleMonitorService {
 /// connection does.
 pub async fn watch_callers(connection: Connection, service: IdleMonitorService) {
     let Ok(mut watcher) = CallerWatcher::new(&connection).await else {
-        tracing::error!("[compat] the idle adapter could not watch caller lifetimes");
+        gnoblin_log::error!("[compat] the idle adapter could not watch caller lifetimes");
         return;
     };
     while let Some(owner) = watcher.next().await {
         let removed = service.forget_owner(&owner);
         if removed > 0 {
-            tracing::debug!(caller = %owner, removed, "a caller left the bus and its watches ended");
+            gnoblin_log::debug!(caller = %owner, removed, "a caller left the bus and its watches ended");
         }
     }
 }
@@ -332,7 +332,7 @@ pub async fn export(connection: &Connection, service: &IdleMonitorService) -> Re
         .map_err(|_| IdleError::NameTaken {
             name: BUS_NAME.to_owned(),
         })?;
-    tracing::info!(name = BUS_NAME, path = PATH, "serving the idle monitor");
+    gnoblin_log::info!(name = BUS_NAME, path = PATH, "serving the idle monitor");
     Ok(())
 }
 

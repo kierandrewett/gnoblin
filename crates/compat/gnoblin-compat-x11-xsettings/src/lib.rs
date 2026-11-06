@@ -37,8 +37,8 @@
 #![forbid(unsafe_code)]
 
 use gnoblin_compat_core::{DesktopSettings, Switch};
+use gnoblin_log::debug;
 use gnoblin_xwayland::xsettings::{Setting, XSettings};
-use tracing::debug;
 
 /// The checked-in declaration, compiled in so the file a reviewer approved is the one
 /// `cargo xtask compat-report` prints and this build honours.

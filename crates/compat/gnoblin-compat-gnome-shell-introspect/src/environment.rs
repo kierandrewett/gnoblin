@@ -7,8 +7,8 @@
 use gnoblin_client::{Client, UnixTransport, socket_path};
 use gnoblin_compat_core::Mode;
 use gnoblin_config::{SearchPaths, Store};
+use gnoblin_log::{debug, warn};
 use gnoblin_proto::Version;
-use tracing::{debug, warn};
 
 use crate::{IntrospectError, IntrospectLink};
 

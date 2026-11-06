@@ -12,7 +12,7 @@ workspace = true
 [dependencies]
 gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 zbus.workspace = true
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
 futures-lite.workspace = true

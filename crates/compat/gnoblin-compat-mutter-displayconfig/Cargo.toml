@@ -14,7 +14,7 @@ gnoblin-compat-core = { path = "../gnoblin-compat-core" }
 gnoblin-client = { path = "../../gnoblin-client" }
 gnoblin-model = { path = "../../gnoblin-model" }
 zbus.workspace = true
-tracing.workspace = true
+gnoblin-log = { path = "../../gnoblin-log" }
 
 [dev-dependencies]
 futures-lite.workspace = true

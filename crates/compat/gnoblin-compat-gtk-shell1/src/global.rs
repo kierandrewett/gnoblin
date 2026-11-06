@@ -24,11 +24,11 @@
 use std::sync::Arc;
 
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
+use gnoblin_log::debug;
 use gnoblin_wayland::{
     Activation, Dispatch2, Extension, ExtensionError, GlobalDispatch2, Shell1Host, State, Surface, Titlebar,
     TitlebarActions,
 };
-use tracing::debug;
 use wayland_backend::protocol::WEnum;
 use wayland_server::protocol::wl_surface::WlSurface;
 use wayland_server::{Client, DataInit, DisplayHandle, New, Resource};
