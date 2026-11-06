@@ -2,9 +2,10 @@
 //! looked at without a running session.
 //!
 //! `cargo run -p gnoblin-portal --example gallery -- <dir>` writes one PNG per
-//! state into `<dir>`, creating it if needed. Each image is the 640x360 frame the
-//! compositor opens a portal dialog in. The model has one palette (dark) and no
-//! scale, so every screen is drawn once, at 1x, in the default theme.
+//! state into `<dir>`, creating it if needed. Each image is the frame the compositor
+//! opens a portal dialog in: fitted to its content, within the 640x360 bounds of an
+//! output that size. The model has one palette (dark) and no scale, so every screen
+//! is drawn once, at 1x, in the default theme.
 
 use std::error::Error;
 use std::fs::File;
@@ -92,6 +93,13 @@ fn pictures() -> Vec<FileEntry> {
     ]
 }
 
+/// Forty plain files: enough to overflow the listing, so the list must scroll.
+fn many_files() -> Vec<FileEntry> {
+    (1..=40)
+        .map(|n| file(&format!("scan-{n:02}.png"), "image/png"))
+        .collect()
+}
+
 fn filters() -> Vec<FileFilter> {
     vec![
         FileFilter {
@@ -155,6 +163,10 @@ fn shots() -> Vec<Shot> {
     shots.push((
         "file-chooser-open",
         chooser(FileChooserMode::Open, false, "", pictures()),
+    ));
+    shots.push((
+        "file-chooser-open-40",
+        chooser(FileChooserMode::Open, false, "", many_files()),
     ));
     let mut multiple = chooser(FileChooserMode::Open, true, "", pictures());
     press(
