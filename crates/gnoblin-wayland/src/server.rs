@@ -125,6 +125,9 @@ pub struct Config {
     pub workspaces: u32,
     /// The window management options from the configuration document.
     pub wm: WmOptions,
+    /// How long a client may leave a ping unanswered before its windows are marked
+    /// unresponsive. Zero disables the liveness pings.
+    pub check_alive_timeout: Duration,
     /// A reader outside the loop that is told when the observable state changed.
     ///
     /// It is how the composition root feeds its object graph from the same
@@ -166,6 +169,7 @@ impl Default for Config {
             seat_name: "seat0".to_owned(),
             workspaces: 1,
             wm: WmOptions::default(),
+            check_alive_timeout: Duration::from_secs(5),
             observer: None,
             protocols: Protocols::default(),
             input_sources: None,
