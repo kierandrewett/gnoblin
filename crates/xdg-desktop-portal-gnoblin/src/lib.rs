@@ -48,6 +48,22 @@
 //! missing, and the composition root supplies a real implementation when the members exist.
 //! No interface returns success for work it did not do.
 //!
+//! # How it starts
+//!
+//! Two ways, and both end in the same [`Portal`]:
+//!
+//! - **Bus activation.** `data/org.freedesktop.impl.portal.desktop.gnoblin.service` names the
+//!   binary, so the first call to the bus name starts it. `data/gnoblin.portal` lists the
+//!   interfaces it serves and `data/portals.conf` routes to it. Installed under
+//!   `/usr/share/dbus-1/services` and `/usr/share/xdg-desktop-portal/portals`. An activated
+//!   process has no privileged IPC connection, so it runs with [`host::NoShell`]: consent is
+//!   refused, and `Settings` still answers.
+//! - **The services role.** Starts the same binary with the IPC connection as an inherited
+//!   descriptor, which is what lets a capture be offered to the shell at all.
+//!
+//! `tests/activation.rs` starts the built binary on a private bus, with no IPC, and checks
+//! the name, `Settings`, the refusals and the exit on bus loss.
+//!
 //! # Failure modes first
 //!
 //! Covered by `tests/failure_modes.rs` (the consent state machine, against a fake host):

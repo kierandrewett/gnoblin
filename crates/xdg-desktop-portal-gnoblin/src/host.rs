@@ -1,7 +1,8 @@
 //! The privileged IPC connection: offers out, answers and settings observations in.
 //!
-//! The plan gives the portal one connection, "and it is not D-Bus activated. That
-//! connection is the capability to capture and inject input." This module is that
+//! The plan gives the portal one connection, "and it is the capability to capture and inject
+//! input." The services role passes it when it starts the portal; a bus activation has none,
+//! and then [`NoShell`] takes its place. This module is that
 //! connection's whole life. One thread owns it ([`IpcLoop`]), because a [`Client`] is a
 //! single reader: the answers to our prompts and the settings object's property diffs
 //! arrive on the same socket, and two readers would split a frame stream.
@@ -117,6 +118,22 @@ impl Host for IpcHost {
         // nothing waits on it.
         let _ = self.commands.unbounded_send(Command::Decline(request));
     }
+}
+
+/// The host of a session with no compositor IPC: no shell can draw a prompt.
+///
+/// Every offer is refused before it is made, naming `portal.ui` as the missing slot, which
+/// is the same answer [`IpcHost`] gives once its connection has gone (D14). The portal
+/// still serves what needs no prompt, such as `Settings`, and refuses what does.
+#[derive(Debug, Default)]
+pub struct NoShell;
+
+impl Host for NoShell {
+    fn offer(&mut self, _prompt: &Prompt, _timeout: Duration) -> Result<Offer, Refusal> {
+        Err(Refusal::NoProvider { slot: SLOT })
+    }
+
+    fn withdraw(&mut self, _request: RequestId) {}
 }
 
 /// The thread that owns the connection.

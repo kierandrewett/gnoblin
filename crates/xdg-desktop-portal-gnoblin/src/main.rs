@@ -1,16 +1,18 @@
 //! The portal process: one bus name, one privileged IPC connection, one service loop.
 //!
 //! Design/rust-compositor.md's "Portals" card says the services role starts this backend
-//! with a privileged connection and it is not D-Bus activated. This file is the
+//! with a privileged connection. The bus can also start it on demand, through the
+//! `org.freedesktop.impl.portal.desktop.gnoblin` activation file, and then no privileged
+//! connection is passed. This file is the
 //! composition root that does the three things such a process must: own
 //! `org.freedesktop.impl.portal.desktop.gnoblin`, serve the interfaces, and read the
 //! privileged connection for as long as it lives.
 //!
 //! # The order, and why
 //!
-//! 1. **The IPC connection first.** Every interface can need it, and a portal that owns the
-//!    bus name with no way to ask the shell would refuse every capture with the wrong
-//!    reason.
+//! 1. **The IPC connection first, if there is one.** Every interface can need it, so the
+//!    shell is looked for before the name is taken. Without it the portal still starts:
+//!    it serves what needs no prompt and refuses the rest (see the last section).
 //! 2. **The objects, then the name.** A caller that resolves the name must find an object
 //!    behind it; a name without an object is a method call that never answers.
 //! 3. **The loop on its own thread, the bus loop on this one.** The IPC client is a
@@ -19,18 +21,24 @@
 //!
 //! # What the connection is, in this build
 //!
-//! The services role passes one as an inherited descriptor when it starts this process;
-//! otherwise the socket at `$GNOBLIN_IPC_SOCKET` (or `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`) is
-//! used, which is what a developer session has. A connection that cannot be made is fatal:
-//! every capture would be refused with "no `portal.ui` provider" and the user would be told
-//! the wrong thing about their session.
+//! The services role passes the connection as an inherited descriptor when it starts this
+//! process; otherwise the socket at `$GNOBLIN_IPC_SOCKET` (or `$XDG_RUNTIME_DIR/gnoblin/ipc.sock`)
+//! is used, which is what a developer session has.
+//!
+//! # A session with no shell
+//!
+//! When neither is reachable, the process logs that once and runs with [`NoShell`]: every
+//! consent offer is refused naming `portal.ui`, so no capture, input or shortcut can start,
+//! and `Settings` still answers from its (empty) table. The bus is then the only thing this
+//! process waits on: it exits when the session bus goes away.
 
 use std::process::ExitCode;
 
 use futures_lite::future;
 use gnoblin_client::{Client, UnixTransport, inherited_stream, socket_path};
 use gnoblin_types::Version;
-use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, IpcHost, Portal};
+use xdg_desktop_portal_gnoblin::host::NoShell;
+use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Portal};
 
 /// How long one consent prompt stays open, in milliseconds.
 ///
@@ -48,21 +56,21 @@ fn main() -> ExitCode {
     }
 }
 
-/// Connect, export, own the name and serve.
+/// Connect if a shell is reachable, export, own the name and serve until the bus goes.
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let transport = transport()?;
-    let (major, minor, patch) = gnoblin_proto_version();
-    let client = Client::connect(transport, Version::new(major, minor, patch))?;
-    let (host, loop_) = IpcHost::pair(client);
+    let (host, loop_) = match ipc() {
+        Ok((host, loop_)) => (Box::new(host) as Box<dyn Host>, Some(loop_)),
+        Err(error) => {
+            eprintln!(
+                "xdg-desktop-portal-gnoblin: no compositor IPC ({error}); capture, input and shortcuts will be refused"
+            );
+            (Box::new(NoShell) as Box<dyn Host>, None)
+        }
+    };
 
     zbus::block_on(async move {
         let connection = zbus::Connection::session().await?;
-        let portal = Portal::new(
-            connection.clone(),
-            Box::new(host),
-            Backends::default(),
-            CONSENT_LIFETIME,
-        );
+        let portal = Portal::new(connection.clone(), host, Backends::default(), CONSENT_LIFETIME);
         portal.export().await?;
         // The name is requested after the objects exist, and without queueing: a second
         // portal for one session is a configuration mistake, and the one that lost says so
@@ -72,15 +80,27 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
         tracing::info!(name = BUS_NAME, "serving the Gnoblin portal backend");
 
-        let serving = portal.clone();
-        std::thread::Builder::new()
-            .name("gnoblin-portal-ipc".to_owned())
-            .spawn(move || loop_.run(serving))
-            .map_err(|error| format!("the IPC loop could not be started: {error}"))?;
+        if let Some(loop_) = loop_ {
+            let serving = portal.clone();
+            std::thread::Builder::new()
+                .name("gnoblin-portal-ipc".to_owned())
+                .spawn(move || loop_.run(serving))
+                .map_err(|error| format!("the IPC loop could not be started: {error}"))?;
+        }
 
-        future::pending::<()>().await;
+        // The owner watch and the expiry loop run here. The bus closing is the end of the
+        // process: a bus-activated backend has no other reason to outlive its session.
+        future::or(portal.run(), connection.closed()).await;
         Ok(())
     })
+}
+
+/// The privileged connection and its IPC loop, or why there is none.
+fn ipc() -> Result<(IpcHost, IpcLoop<UnixTransport>), Box<dyn std::error::Error>> {
+    let transport = transport()?;
+    let (major, minor, patch) = gnoblin_proto_version();
+    let client = Client::connect(transport, Version::new(major, minor, patch))?;
+    Ok(IpcHost::pair(client))
 }
 
 /// The privileged connection, as an inherited descriptor or the session's socket.
