@@ -1772,6 +1772,61 @@ impl State {
         Ok(())
     }
 
+    /// The most render passes one window's effects may use together. It is the cap the
+    /// renderer enforces and the window schema documents as `MAX_PASSES`. This crate only
+    /// dev-depends on `gnoblin-render`, so the value is repeated here and must be kept in step.
+    const PASS_BUDGET: usize = 32;
+
+    /// Appends an effect to a window's stack, in paint order, and publishes the window.
+    ///
+    /// A blur costs `passes` passes of the renderer's budget; a shadow or shader costs
+    /// one. The request is refused, and the stack is unchanged, when the kind is unknown
+    /// or the total would exceed `PASS_BUDGET`. A shader with an
+    /// empty `source` is kept but inactive, since it has nothing to run.
+    ///
+    /// # Errors
+    /// `unknown-effect-kind:`, `too-many-passes:` or `unknown window`; each message
+    /// begins with the error code the caller reports.
+    pub(crate) fn add_effect(
+        &mut self,
+        window: WindowId,
+        mut spec: crate::observation::EffectSpec,
+    ) -> Result<(), String> {
+        let cost = match spec.kind.as_str() {
+            "blur" => spec.passes as usize,
+            "shadow" | "shader" => 1,
+            other => return Err(format!("unknown-effect-kind: `{other}` is not blur, shadow or shader")),
+        };
+        let entry = self
+            .windows
+            .get_mut(&window)
+            .ok_or_else(|| "unknown window".to_owned())?;
+        let used: usize = entry
+            .effects
+            .iter()
+            .map(|effect| match effect.kind.as_str() {
+                "blur" => effect.passes as usize,
+                _ => 1,
+            })
+            .sum();
+        let budget = Self::PASS_BUDGET;
+        if used + cost > budget {
+            return Err(format!(
+                "too-many-passes: {used} of {budget} passes are in use and this effect needs {cost}"
+            ));
+        }
+        if spec.kind == "shader" && spec.source.is_empty() {
+            spec.active = false;
+            spec.reason = "no shader source".to_owned();
+        } else {
+            spec.active = true;
+            spec.reason.clear();
+        }
+        entry.effects.push(spec);
+        self.publish();
+        Ok(())
+    }
+
     /// What is known about the process behind a window's client. `None` when no such
     /// window exists.
     pub(crate) fn window_process(&self, window: WindowId) -> Option<crate::WindowProcess> {

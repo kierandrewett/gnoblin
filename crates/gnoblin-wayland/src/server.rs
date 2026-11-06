@@ -434,6 +434,9 @@ impl Server {
                             } => {
                                 let _ = reply.send(state.layout_command(workspace, command));
                             }
+                            Command::AddEffect { window, spec, reply } => {
+                                let _ = reply.send(state.add_effect(window, spec));
+                            }
                             Command::Advance(milliseconds) => state.tick_clock(milliseconds),
                             Command::SelectSource(index) => {
                                 if !state.select_input_source(index) {
@@ -727,6 +730,14 @@ impl ControlHandle {
         answer.recv_timeout(FOCUS_TIMEOUT).ok()
     }
 
+    /// Appends an effect to a window's stack. `None` when the loop did not answer in time;
+    /// otherwise `Err` carries the refusal (`unknown-effect-kind:` or `too-many-passes:`).
+    pub fn add_effect(&self, window: WindowId, spec: crate::observation::EffectSpec) -> Option<Result<(), String>> {
+        let (reply, answer) = std::sync::mpsc::sync_channel(1);
+        self.control.push(Command::AddEffect { window, spec, reply });
+        answer.recv_timeout(FOCUS_TIMEOUT).ok()
+    }
+
     /// Promises a role to a process the compositor is about to start.
     ///
     /// A frame renderer and a hosted session are ordinary clients of the session
@@ -966,6 +977,12 @@ enum Command {
     Layout {
         workspace: WorkspaceId,
         command: gnoblin_wm::layout::LayoutCommand,
+        reply: std::sync::mpsc::SyncSender<Result<(), String>>,
+    },
+    /// Adds an effect to a window's stack; see `ControlHandle::add_effect`.
+    AddEffect {
+        window: WindowId,
+        spec: crate::observation::EffectSpec,
         reply: std::sync::mpsc::SyncSender<Result<(), String>>,
     },
     /// Promise a role to a process the compositor is about to start.
