@@ -89,6 +89,15 @@ const REWRITE_ONLY_PROTOCOLS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Protocols the C reference advertises that the Rust compositor removed on
+/// purpose, with the reason. The C tree keeps them until its session is retired,
+/// so they stay in the recorded list; this is the one reviewed place that
+/// explains their absence from Rust.
+const RETIRED_PROTOCOLS: &[(&str, &str)] = &[(
+    "blur-fade",
+    "blur follows the opacity of the layer it is on, so no protocol is needed to fade it",
+)];
+
 #[test]
 fn the_protocol_enum_matches_the_recorded_enumeration() {
     let inventory = inventory();
@@ -120,12 +129,25 @@ fn the_protocol_enum_matches_the_recorded_enumeration() {
         );
         assert!(!reason.is_empty(), "{name} has no reason");
     }
-    let mut expected: BTreeSet<&str> = recorded.iter().copied().collect();
+    let retired: BTreeSet<&str> = RETIRED_PROTOCOLS.iter().map(|(name, _)| *name).collect();
+    let mut expected: BTreeSet<&str> = recorded
+        .iter()
+        .copied()
+        .filter(|name| !retired.contains(name))
+        .collect();
     for (name, _, _) in REWRITE_ONLY_PROTOCOLS {
         let added = expected.insert(name);
         assert!(added, "{name} is listed twice as a rewrite-only protocol");
     }
     let ours: BTreeSet<&str> = Protocol::VARIANT_TEXTS.iter().copied().collect();
+    for (name, reason) in RETIRED_PROTOCOLS {
+        assert!(
+            recorded.contains(name),
+            "{name} is retired but the C reference does not record it"
+        );
+        assert!(!ours.contains(name), "{name} is retired but the Rust enum still has it");
+        assert!(!reason.is_empty(), "{name} has no reason");
+    }
     let unreviewed: Vec<&&str> = ours.difference(&expected).collect();
     assert!(
         unreviewed.is_empty(),
