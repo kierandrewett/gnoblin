@@ -82,7 +82,7 @@ impl ImageCopyCaptureHandler for State {
             .map_or(CaptureStream::Requested, Session::stream);
         let capture = self.lock_capture(stream);
         let buffer_id = BufferId::new(u64::from(buffer.id().protocol_id()));
-        let mut claim = match self.capture.table.request(id, buffer_id, tick) {
+        let claim = match self.capture.table.request(id, buffer_id, tick) {
             Ok(claim) => claim,
             Err(refusal) => {
                 debug!(reason = refusal.as_str(), "[capture] the frame could not be claimed");
@@ -99,7 +99,7 @@ impl ImageCopyCaptureHandler for State {
             // This protocol has no cursor option, so its frames never carry the cursor.
             with_cursor: false,
         };
-        let outcome = self.capture.table.capture(&mut claim, tick, capture, &mut source);
+        let outcome = self.capture.table.capture(claim, tick, capture, &mut source);
         match outcome {
             CaptureOutcome::Copied(report) => {
                 let damage: Vec<Rectangle<i32, BufferSpace>> = report
@@ -152,8 +152,6 @@ impl ImageCopyCaptureHandler for State {
 fn failure_reason(refusal: Refusal) -> CaptureFailureReason {
     match refusal {
         Refusal::Locked | Refusal::Stopped(_) | Refusal::Closed | Refusal::TargetGone => CaptureFailureReason::Stopped,
-        Refusal::Source | Refusal::Paced | Refusal::Busy | Refusal::Stale | Refusal::Used => {
-            CaptureFailureReason::Unknown
-        }
+        Refusal::Source | Refusal::Paced | Refusal::Busy | Refusal::Stale => CaptureFailureReason::Unknown,
     }
 }

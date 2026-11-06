@@ -209,32 +209,32 @@ impl PipewireExportStream {
         if self.stream.state() != StreamState::Streaming {
             return;
         }
-        let Ok(mut claim) = table.request(self.session, BufferId::new(BUFFER), tick) else {
+        let Ok(claim) = table.request(self.session, BufferId::new(BUFFER), tick) else {
             return;
         };
         let Some(mut buffer) = self.stream.dequeue_buffer() else {
-            table.cancel(&mut claim);
+            table.cancel(claim);
             return;
         };
         let Some(data) = buffer.datas_mut().first_mut() else {
-            table.cancel(&mut claim);
+            table.cancel(claim);
             return;
         };
         let Some(length) = self.format.bytes() else {
-            table.cancel(&mut claim);
+            table.cancel(claim);
             return;
         };
         let Some(bytes) = data.data() else {
-            table.cancel(&mut claim);
+            table.cancel(claim);
             return;
         };
         let Some(plane) = bytes.get_mut(..length) else {
-            table.cancel(&mut claim);
+            table.cancel(claim);
             return;
         };
         let outcome = {
             let mut plane_source = Plane { source, plane };
-            table.capture(&mut claim, tick, capture, &mut plane_source)
+            table.capture(claim, tick, capture, &mut plane_source)
         };
         let chunk = data.chunk_mut();
         match outcome {

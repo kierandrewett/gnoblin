@@ -123,8 +123,6 @@ pub enum Refusal {
     Busy,
     /// The claim belongs to an earlier request, which this session superseded.
     Stale,
-    /// The same frame object was resolved once already.
-    Used,
     /// The source had no pixels for the region.
     Source,
     /// The target no longer exists.
@@ -146,9 +144,106 @@ impl Refusal {
             Self::Paced => "paced",
             Self::Busy => "busy",
             Self::Stale => "stale",
-            Self::Used => "used",
             Self::Source => "source",
             Self::TargetGone => "target-gone",
+        }
+    }
+}
+
+/// Where a session stands between frames.
+///
+/// The claim lives inside the variant that owns it, so a stopped session cannot hold
+/// a buffer and a claim cannot exist without the tick it was taken at. Every change
+/// goes through [`CaptureSessionState::step`], which is this transition table:
+///
+/// | From      | Event                      | Result    | To                 |
+/// |-----------|----------------------------|-----------|--------------------|
+/// | `Live`    | `Request`                  | ok        | `Claimed`          |
+/// | `Live`    | `Resolve`                  | `Stale`   | `Live`             |
+/// | `Live`    | `Release`                  | ok        | `Live`             |
+/// | `Claimed` | `Request`, same tick       | `Busy`    | `Claimed`          |
+/// | `Claimed` | `Request`, later tick      | ok        | `Claimed` (new)    |
+/// | `Claimed` | `Resolve`, same claim      | ok        | `Live`             |
+/// | `Claimed` | `Resolve`, other claim     | `Stale`   | `Claimed`          |
+/// | `Claimed` | `Release`, same sequence   | ok        | `Live`             |
+/// | `Claimed` | `Release`, other sequence  | ok        | `Claimed`          |
+/// | `Stopped` | `Request` or `Resolve`     | `Stopped` | `Stopped`          |
+/// | `Stopped` | `Release`                  | ok        | `Stopped`          |
+/// | `Live` or `Claimed` | `Stop(reason)`   | ok        | `Stopped(reason)`  |
+/// | `Stopped` | `Stop(reason)`             | ok        | `Stopped` (first)  |
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CaptureSessionState {
+    /// Between frames: a request may claim the next one.
+    Live,
+    /// A claim is out: `buffer` will be copied as frame `sequence`, taken at `tick`.
+    Claimed {
+        buffer: BufferId,
+        sequence: u32,
+        tick: Tick,
+    },
+    /// Terminal: no frame is ever produced again.
+    Stopped(Stop),
+}
+
+/// One thing that happens to a session's claim lifecycle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CaptureSessionEvent {
+    /// A client asks for the next frame, to be copied into `buffer` as `sequence`.
+    Request {
+        buffer: BufferId,
+        tick: Tick,
+        sequence: u32,
+    },
+    /// A copy of the claim `buffer`/`sequence` is being made, so the claim is spent.
+    Resolve { buffer: BufferId, sequence: u32 },
+    /// The frame numbered `sequence` gave up its claim without copying.
+    Release { sequence: u32 },
+    /// The session ends for this reason.
+    Stop(Stop),
+}
+
+impl CaptureSessionState {
+    /// Applies `event`, or refuses it and leaves the state exactly as it was.
+    pub(crate) fn step(&mut self, event: CaptureSessionEvent) -> Result<(), Refusal> {
+        match (*self, event) {
+            (Self::Stopped(stop), CaptureSessionEvent::Request { .. } | CaptureSessionEvent::Resolve { .. }) => {
+                Err(Refusal::Stopped(stop))
+            }
+            (Self::Stopped(_), CaptureSessionEvent::Release { .. } | CaptureSessionEvent::Stop(_)) => Ok(()),
+            (_, CaptureSessionEvent::Stop(reason)) => {
+                *self = Self::Stopped(reason);
+                Ok(())
+            }
+            (Self::Claimed { tick: held, .. }, CaptureSessionEvent::Request { tick, .. }) if held == tick => {
+                Err(Refusal::Busy)
+            }
+            (Self::Live | Self::Claimed { .. }, CaptureSessionEvent::Request { buffer, tick, sequence }) => {
+                *self = Self::Claimed { buffer, sequence, tick };
+                Ok(())
+            }
+            (Self::Live, CaptureSessionEvent::Resolve { .. }) => Err(Refusal::Stale),
+            (
+                Self::Claimed {
+                    buffer: held,
+                    sequence: held_sequence,
+                    ..
+                },
+                CaptureSessionEvent::Resolve { buffer, sequence },
+            ) => {
+                if held == buffer && held_sequence == sequence {
+                    *self = Self::Live;
+                    Ok(())
+                } else {
+                    Err(Refusal::Stale)
+                }
+            }
+            (Self::Live, CaptureSessionEvent::Release { .. }) => Ok(()),
+            (Self::Claimed { sequence: held, .. }, CaptureSessionEvent::Release { sequence }) => {
+                if held == sequence {
+                    *self = Self::Live;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -178,14 +273,10 @@ pub struct Session {
     pub(crate) frames: u32,
     /// The tick the last frame was copied at, which is what paces the stream.
     pub(crate) last_tick: Option<Tick>,
-    /// The tick the outstanding claim was taken at.
-    pub(crate) claim_tick: Option<Tick>,
-    /// The outstanding claim: the buffer and the frame number it will be copied as.
-    pub(crate) claim: Option<(BufferId, u32)>,
+    /// Whether the session is live, holds a claim, or has stopped.
+    pub(crate) state: CaptureSessionState,
     /// The damage owed to the next frame.
     pub(crate) damage: Vec<Rect>,
-    /// Why the session may produce no further frames.
-    pub(crate) stop: Option<Stop>,
 }
 
 impl Session {
@@ -205,29 +296,22 @@ impl Session {
             format,
             frames: 0,
             last_tick: None,
-            claim_tick: None,
-            claim: None,
             damage: Vec::new(),
-            stop: None,
+            state: CaptureSessionState::Live,
         }
     }
 
     /// Ends the session for `reason`, if it is still live.
     pub(crate) fn end(&mut self, reason: Stop) {
-        if self.stop.is_none() {
-            self.stop = Some(reason);
-        }
-        self.claim = None;
-        self.claim_tick = None;
+        // A stop is never refused: the state itself keeps the first reason.
+        let _ = self.state.step(CaptureSessionEvent::Stop(reason));
         self.damage.clear();
     }
 
     /// Drops the outstanding claim, if it is this frame's.
     pub(crate) fn release(&mut self, sequence: u32) {
-        if self.claim.is_some_and(|(_, claimed)| claimed == sequence) {
-            self.claim = None;
-            self.claim_tick = None;
-        }
+        // A release is never refused: a claim that is not this one is left alone.
+        let _ = self.state.step(CaptureSessionEvent::Release { sequence });
     }
 
     /// The whole target, for a frame that must repaint everything it returns.
@@ -301,22 +385,27 @@ impl Session {
     /// Why it may produce no further frames, if it may not.
     #[must_use]
     pub const fn stopped(&self) -> Option<Stop> {
-        self.stop
+        match self.state {
+            CaptureSessionState::Stopped(stop) => Some(stop),
+            CaptureSessionState::Live | CaptureSessionState::Claimed { .. } => None,
+        }
     }
 
     /// Whether the session may still be asked for a frame.
     pub(crate) const fn live(&self) -> bool {
-        self.stop.is_none()
+        !matches!(self.state, CaptureSessionState::Stopped(_))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use gnoblin_lock::CaptureStream;
-    use gnoblin_types::{ClientId, OutputId, Rect, Size};
+    use gnoblin_types::{ClientId, OutputId, Rect, Size, Tick};
 
     use crate::format::{Format, PixelFormat};
-    use crate::session::{Session, SessionId, Stop, Target};
+    use crate::session::{
+        BufferId, CaptureSessionEvent, CaptureSessionState, Refusal, Session, SessionId, Stop, Target,
+    };
 
     fn session() -> Session {
         let format = Format::new(Size::new(8, 4), 32, PixelFormat::Argb8888).expect("a valid format");
@@ -336,7 +425,7 @@ mod tests {
         let mut session = session();
         session.end(Stop::Embargoed);
         session.end(Stop::TargetGone);
-        assert_eq!(session.stop, Some(Stop::Embargoed));
+        assert_eq!(session.stopped(), Some(Stop::Embargoed));
         assert!(!session.live());
     }
 
@@ -365,5 +454,133 @@ mod tests {
         session.damage.push(Rect::new(2, 0, 4, 4));
         let region = Rect::new(0, 0, 8, 4);
         assert_eq!(session.take_damage(region, false), vec![Rect::new(2, 0, 4, 4)]);
+    }
+
+    /// Failure mode: a transition the table does not list is taken, or a listed one
+    /// is refused. Every (state, event) pair the table covers is enumerated here, and
+    /// each refused pair must leave its state exactly as it was.
+    #[test]
+    fn every_session_transition_matches_the_table() {
+        let buffer = BufferId::new(1);
+        let other = BufferId::new(2);
+        let tick = Tick::new(1);
+        let later = Tick::new(2);
+        let live = CaptureSessionState::Live;
+        let claimed = CaptureSessionState::Claimed {
+            buffer,
+            sequence: 1,
+            tick,
+        };
+        let stopped = CaptureSessionState::Stopped(Stop::Embargoed);
+        let claimed_after = |buffer, sequence, tick| CaptureSessionState::Claimed { buffer, sequence, tick };
+        let cases: [(
+            CaptureSessionState,
+            CaptureSessionEvent,
+            Result<(), Refusal>,
+            CaptureSessionState,
+        ); 16] = [
+            (
+                live,
+                CaptureSessionEvent::Request {
+                    buffer: other,
+                    tick: later,
+                    sequence: 2,
+                },
+                Ok(()),
+                claimed_after(other, 2, later),
+            ),
+            (
+                live,
+                CaptureSessionEvent::Resolve { buffer, sequence: 1 },
+                Err(Refusal::Stale),
+                live,
+            ),
+            (live, CaptureSessionEvent::Release { sequence: 1 }, Ok(()), live),
+            (
+                live,
+                CaptureSessionEvent::Stop(Stop::TargetGone),
+                Ok(()),
+                CaptureSessionState::Stopped(Stop::TargetGone),
+            ),
+            (
+                claimed,
+                CaptureSessionEvent::Request {
+                    buffer: other,
+                    tick,
+                    sequence: 2,
+                },
+                Err(Refusal::Busy),
+                claimed,
+            ),
+            (
+                claimed,
+                CaptureSessionEvent::Request {
+                    buffer: other,
+                    tick: later,
+                    sequence: 2,
+                },
+                Ok(()),
+                claimed_after(other, 2, later),
+            ),
+            (
+                claimed,
+                CaptureSessionEvent::Resolve { buffer, sequence: 1 },
+                Ok(()),
+                live,
+            ),
+            (
+                claimed,
+                CaptureSessionEvent::Resolve {
+                    buffer: other,
+                    sequence: 1,
+                },
+                Err(Refusal::Stale),
+                claimed,
+            ),
+            (
+                claimed,
+                CaptureSessionEvent::Resolve { buffer, sequence: 9 },
+                Err(Refusal::Stale),
+                claimed,
+            ),
+            (claimed, CaptureSessionEvent::Release { sequence: 1 }, Ok(()), live),
+            (claimed, CaptureSessionEvent::Release { sequence: 9 }, Ok(()), claimed),
+            (
+                claimed,
+                CaptureSessionEvent::Stop(Stop::Embargoed),
+                Ok(()),
+                CaptureSessionState::Stopped(Stop::Embargoed),
+            ),
+            (
+                stopped,
+                CaptureSessionEvent::Request {
+                    buffer: other,
+                    tick: later,
+                    sequence: 2,
+                },
+                Err(Refusal::Stopped(Stop::Embargoed)),
+                stopped,
+            ),
+            (
+                stopped,
+                CaptureSessionEvent::Resolve { buffer, sequence: 1 },
+                Err(Refusal::Stopped(Stop::Embargoed)),
+                stopped,
+            ),
+            (stopped, CaptureSessionEvent::Release { sequence: 1 }, Ok(()), stopped),
+            (stopped, CaptureSessionEvent::Stop(Stop::TargetGone), Ok(()), stopped),
+        ];
+        for (index, (start, event, result, expected)) in cases.into_iter().enumerate() {
+            let mut state = start;
+            assert_eq!(
+                state.step(event),
+                result,
+                "case {index}: the result of {event:?} from {start:?}"
+            );
+            assert_eq!(
+                state, expected,
+                "case {index}: the state after {event:?} from {start:?}"
+            );
+        }
     }
 }

@@ -571,7 +571,7 @@ impl State {
             .capture
             .table
             .open(owner, Target::Output(output), CaptureStream::Requested, format);
-        let mut frame = match self.capture.table.request(session, BufferId::new(1), tick) {
+        let frame = match self.capture.table.request(session, BufferId::new(1), tick) {
             Ok(frame) => frame,
             Err(refusal) => {
                 self.capture.table.close(session);
@@ -589,7 +589,7 @@ impl State {
         };
         let target = Target::Output(output);
         let presented = source.presented(target).unwrap_or(tick);
-        let outcome = self.capture.table.capture(&mut frame, tick, capture, &mut source);
+        let outcome = self.capture.table.capture(frame, tick, capture, &mut source);
         self.capture.table.close(session);
         match outcome {
             CaptureOutcome::Copied(report) => Some((report.region, presented)),
