@@ -40,16 +40,23 @@
 // generated module and nowhere else. `Cargo.toml` says the same thing.
 #![deny(unsafe_code)]
 
+/// The admission gate: the support matrix and the mode check for each call.
 pub mod compat;
+/// The global, its object and the dispatch that records a parent relation.
 pub mod global;
+/// The recorded parent relations between Wayland and X11 windows.
 pub mod relations;
 
+/// Admission types and the support matrix, re-exported from `compat`.
 pub use compat::{Admission, Call, MATRIX, NAME};
+/// The redirect a session is given, and the recorded parent relations.
 pub use global::Interop;
+/// The parent of each Wayland window that has one.
 pub use relations::ParentRelations;
 
 /// The protocol's own names, for a client that has to speak it.
 pub mod names {
+    /// The protocol module, re-exported for clients.
     pub use crate::protocol::mutter_x11_interop;
 }
 

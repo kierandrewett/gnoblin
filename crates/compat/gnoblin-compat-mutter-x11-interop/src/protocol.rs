@@ -14,6 +14,7 @@ pub mod interop {
     use wayland_server;
     use wayland_server::protocol::*;
 
+    /// The generated interface tables that `wayland-scanner` emits from the XML.
     pub mod __interfaces {
         use wayland_server::protocol::__interfaces::*;
         wayland_scanner::generate_interfaces!("protocols/mutter-x11-interop.xml");
@@ -24,4 +25,5 @@ pub mod interop {
     wayland_scanner::generate_server_code!("protocols/mutter-x11-interop.xml");
 }
 
+/// The generated `mutter_x11_interop` protocol module, re-exported for the adapter.
 pub use interop::mutter_x11_interop;
