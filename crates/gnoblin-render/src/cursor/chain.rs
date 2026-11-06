@@ -156,6 +156,9 @@ impl CursorChain {
         }
     }
 
+    /// Finds the slot of a cached image for this exact shape, physical size and
+    /// theme. A linear scan over the entries, matching on all three fields that
+    /// identify an image.
     fn position(&self, cache: &Cache, shape: &str, physical: u32) -> Option<usize> {
         cache
             .entries

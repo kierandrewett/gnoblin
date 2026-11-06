@@ -849,6 +849,7 @@ fn locate(world: &Mat4, point: PointF) -> Option<(PointF, f64)> {
     Some((PointF { x: u, y: v }, depth))
 }
 
+/// Determinant of a 3x3 matrix, by cofactor expansion along the first row.
 fn det3(a: [[f64; 3]; 3]) -> f64 {
     a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
         + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])

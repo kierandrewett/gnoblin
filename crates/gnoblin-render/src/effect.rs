@@ -387,6 +387,8 @@ impl Pass {
     }
 }
 
+/// Checks a blur radius before a pass is built: it must be finite and lie within
+/// the largest radius the renderer accepts.
 fn validate_blur(radius: f32) -> Result<(), EffectError> {
     if !radius.is_finite() {
         return Err(EffectError::NonFinite { field: "blur.radius" });

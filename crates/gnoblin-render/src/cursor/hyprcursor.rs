@@ -220,6 +220,7 @@ fn settings(text: &str) -> impl Iterator<Item = (&str, &str)> {
     })
 }
 
+/// The label prefix every file failure carries, so a log line names the file.
 fn file_failure(label: &str, error: &FileError) -> String {
     format!("{label}: {error}")
 }

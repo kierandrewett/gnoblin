@@ -104,6 +104,9 @@ fn parse_metadata(bytes: &[u8]) -> Result<Vec<SvgFrameEntry>, String> {
     entries.iter().map(parse_frame).collect()
 }
 
+/// Reads one frame entry of `metadata.json`. Every number must be present and
+/// fit in a u32. A zero nominal size names no cursor size, so it is refused here
+/// rather than surfacing later as a broken cursor.
 fn parse_frame(entry: &Value) -> Result<SvgFrameEntry, String> {
     let filename = entry
         .get("filename")
@@ -131,6 +134,7 @@ fn parse_frame(entry: &Value) -> Result<SvgFrameEntry, String> {
     })
 }
 
+/// The label prefix every file failure carries, so a log line names the file.
 fn file_failure(label: &str, error: &FileError) -> String {
     format!("{label}: {error}")
 }

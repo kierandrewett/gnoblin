@@ -203,6 +203,8 @@ struct Track {
 }
 
 impl Track {
+    /// Consumes the track and builds the record reported when it ends. It carries
+    /// the last applied value, so the caller sees where the property stopped.
     fn end(self, track: TrackId, reason: TrackEndReason) -> TrackEnd {
         TrackEnd {
             track,

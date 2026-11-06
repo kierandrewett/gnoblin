@@ -131,6 +131,7 @@ impl FsFiles {
         }
     }
 
+    /// The directories searched for one kind of theme, in the order configured.
     fn roots(&self, root: SearchPath) -> &[PathBuf] {
         match root {
             SearchPath::Xcursor => &self.xcursor,
@@ -140,6 +141,8 @@ impl FsFiles {
     }
 }
 
+/// Removes repeated search directories, keeping the first occurrence so the
+/// configured order still decides which copy of a theme wins.
 fn dedupe(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen = Vec::with_capacity(paths.len());
     for path in paths {
