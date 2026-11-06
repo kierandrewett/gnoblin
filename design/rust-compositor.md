@@ -1626,7 +1626,7 @@ Each section below records the choice, its consequences, and the options conside
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
 | D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
-| D28 | Layer registry               | **Proposed 2026-11-06:** runtime layer registry; named, attributed layers; a closed band set orders them. Client surfaces are layers too.                                                                                       |
+| D28 | Layer registry               | **Proposed 2026-11-06:** runtime layer registry; named, attributed layers; a closed band set orders them. Client surfaces are layers. `secure` defaults off.                                                                    |
 | D29 | Window menu                  | **Proposed 2026-11-06:** compositor data, built with stock egui by default; config can name another provider; window-targeted `window_menu` layer (D28).                                                                        |
 
 ### D1: where scripts run
@@ -3045,19 +3045,19 @@ Consequences:
 - A layer has a unique `name`, a `provider` that the compositor sets (never the caller), a `scope` of `output` or `window`, a `band`, an `order`, and input, focus, capture, lock and effects policies. `design/layers.md` has the full table.
 - Bands, bottom to top: `background`, `bottom`, `windows`, `top`, `overlay`, `system`, `lock`, `cursor`. Configuration and extensions cannot add one. Only the compositor registers in `system`, `lock` or `cursor`.
 - A window-scope layer sits directly above its target, and follows it through move, minimise, workspace switch and output move. It ends when the target closes.
-- Gnoblin registers `portals`, `alerts` (the not-responding layer; `unresponsive` stays the property and reason) and `window_menu` (D29). Built-in Wayland providers register `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11` through the same registry. Extensions register under `ext.<id>.`, with powers granted in `extension.toml` (D22).
+- Gnoblin registers `portals`, `alerts` (the not-responding layer; `unresponsive` stays the property and reason) and `window_menu` (D29). `portals` declares `secure = true` when it registers. Built-in Wayland providers register `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11` through the same registry. Extensions register under `ext.<id>.`, with powers granted in `extension.toml` (D22).
 - `OutputFrame` holds one ordered list of band content. The single `overlay` slot goes. This is a frame type change in `gnoblin-backend`.
 - `layers.list` keeps its wlr record shape. Registered layers appear in the same list, with `band`, `scope`, `target`, `provider` and `state` properties.
-- Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, and no capture of secret-bearing layers. Per-layer options (scope, order, input, capture inclusion, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
-- Captures leave out secret-bearing layers always, and other Gnoblin layers by default (`design/layers.md`, Needs Kieran 4).
-- Tests (not run): band order; window-layer stacking and follow rules; one live `portals` per output; name collision; end on provider disconnect, target close and output removal; the lock; the capture filter. Each names the rule it guards in `design/layers.md`.
+- Invariants are enforced by the compositor: parent ownership, band ceiling, input grant, lock, count limits, and the `secure` owner check. Per-layer options (scope, order, input, dimming, content kind) sit within the grant. Detail: `design/layers.md`, "Invariants and options".
+- `secure` defaults to off for every layer, extension layers included. A provider sets it on its own layer, and the user sets it per layer name or window rule in config. The lock surface is the one built-in exception.
+- Secure content is never drawn into any capture. The capture paths and their gaps are in `design/layers.md`, "Capture paths". The main gap: backend readback includes secure layers today (`gnoblin-backend/src/lib.rs:463`).
+- Tests (not run): band order; window-layer stacking and follow rules; one live `portals` per output; name collision; end on provider disconnect, target close and output removal; the lock; the capture filter; a config override flips a layer both ways; a provider cannot change another provider's layer. Each names the rule it guards in `design/layers.md`.
 - Parity: new scope. Mutter's stacking is internal [INFERENCE], so the registry is a Gnoblin contract. Add one entry to `tests/parity/divergences.toml` under "new scope", reason "D28: layer registry".
 
-Needs Kieran: the full list is in `design/layers.md`. Each item is marked (A), a policy choice about an invariant, or (B), a default for an option. Three block the first phase:
+Needs Kieran: the full list is in `design/layers.md`. Each item is marked (A), a policy choice about an invariant, or (B), a default for an option. Two block the first phase:
 
-1. Name of the toplevel kind: `surface_toplevel` (proposed; `design/layers.md` item 12).
-2. Whether a window-targeted `portals` modal blocks the whole output (A, proposed) or only its target (`design/layers.md` item 2).
-3. Default capture inclusion for `alerts` and `window_menu` (B, proposed: excluded; item 4).
+1. Name of the toplevel kind: `surface_toplevel` (proposed; `design/layers.md` item 10).
+2. Whether a window-targeted `portals` modal blocks the whole output (A, proposed) or only its target (`design/layers.md` item 1).
 
 ### D29: window menu
 
@@ -3135,7 +3135,7 @@ Needs Kieran:
 3. Whether extensions may add items under a `menu.contribute` grant with namespaced ids (proposed: yes).
 4. Whether `xdg_toplevel.show_window_menu` is served by the configured provider with the built-in fallback (proposed: yes).
 5. The fallback timeout: 2 seconds (proposed).
-6. Whether the menu appears in captures (proposed: no, as with the portal dialog; `design/layers.md`, Needs Kieran 4).
+6. Whether the window menu declares `secure`, which keeps it out of captures (B, proposed: no; `design/layers.md`, Options).
 7. Accept the accessibility gap until `gnoblin-a11y` has an AT-SPI tree, or block cutover on it.
 
 ## Phase 0 checklist

@@ -68,7 +68,7 @@ marks a claim not checked against code or a primary source.
 - `ModalEvent` routes the input (`modal.rs:44`).
 - On lock, `pump` clears the modal and settles pending requests with `error(locked)`
   (`portal.rs:348-356`).
-- Screen captures leave the overlay out (`Modal` doc).
+- Today, screen captures leave the overlay out (`Modal` doc). That is the only capture rule in the code. It becomes `secure = true` on `portals` (see Capture paths).
 
 ### Not-responding dialog and window menu
 
@@ -100,21 +100,21 @@ A layer is a runtime object with an identity and a lifetime. `register` creates 
 the same registry as an extension claim. The compositor enforces the same rules,
 with trust levels only where stated.
 
-| Field      | Meaning                                                                      |
-| ---------- | ---------------------------------------------------------------------------- |
-| `name`     | Unique while live. Gnoblin names are bare. Extensions use `ext.<id>.`.       |
-| `provider` | Set by the compositor from the registering crate or extension id. Read-only. |
-| `scope`    | `output` or `window`. A `window` layer names one target.                     |
-| `target`   | Window id for `window` scope. Read-only. The layer follows it.               |
-| `band`     | Ordering substrate: one of the closed bands below.                           |
-| `order`    | `above` or `below` a named layer in the same band.                           |
-| `input`    | `passive`, `modal-to-target`, `modal-to-output` or `grab`.                   |
-| `focus`    | `takes` or `none`.                                                           |
-| `capture`  | `include` or `exclude`.                                                      |
-| `lock`     | `hide` (removed on lock) or `keep`. Gnoblin providers only.                  |
-| `effects`  | `inherit` or `none`, per D24 and D26.                                        |
-| `content`  | A surface the provider owns, or a named compositor painter.                  |
-| `state`    | `mapped`, `hidden` or `ended`, with a reason when ended.                     |
+| Field      | Meaning                                                                           |
+| ---------- | --------------------------------------------------------------------------------- |
+| `name`     | Unique while live. Gnoblin names are bare. Extensions use `ext.<id>.`.            |
+| `provider` | Set by the compositor from the registering crate or extension id. Read-only.      |
+| `scope`    | `output` or `window`. A `window` layer names one target.                          |
+| `target`   | Window id for `window` scope. Read-only. The layer follows it.                    |
+| `band`     | Ordering substrate: one of the closed bands below.                                |
+| `order`    | `above` or `below` a named layer in the same band.                                |
+| `input`    | `passive`, `modal-to-target`, `modal-to-output` or `grab`.                        |
+| `focus`    | `takes` or `none`.                                                                |
+| `secure`   | `false` (default) or `true`. Secure content is never captured. See Capture paths. |
+| `lock`     | `hide` (removed on lock) or `keep`. Gnoblin providers only.                       |
+| `effects`  | `inherit` or `none`, per D24 and D26.                                             |
+| `content`  | A surface the provider owns, or a named compositor painter.                       |
+| `state`    | `mapped`, `hidden` or `ended`, with a reason when ended.                          |
 
 ### Bands: ordering substrate, not identity
 
@@ -131,7 +131,7 @@ default slot. A layer's identity is its name, and its place is `order` inside th
 - `system` holds output-scope Gnoblin claims, such as a portal with no parent.
 - `lock` and `cursor` take no registrations from anyone but the compositor.
 
-Fullscreen placement is Needs Kieran 13. The wlr bands match wlr's own order.
+Fullscreen placement is Needs Kieran 11. The wlr bands match wlr's own order.
 
 ## Client surfaces are layers
 
@@ -147,7 +147,7 @@ Every client surface that takes a place on screen is a layer record. A built-in 
 
 **Four wlr layers are four bands.** A record has one band, and the band is the trust boundary. So `surface_layer_shell` is four band positions, not one record across four bands. The closed band set already holds the four wlr layers in the same order, so nothing sorts inside the kind. `layers.list` reports the wlr layer as `band`, which keeps the parity test's `layer = "top"`.
 
-**Toplevels and fullscreen.** A fullscreen toplevel stays in `windows`, and the stack keeps `Fullscreen` as its order there. A `top` bar stays above it. The WM hides the bars of an output while a fullscreen window is on that output (proposed; Needs Kieran 13).
+**Toplevels and fullscreen.** A fullscreen toplevel stays in `windows`, and the stack keeps `Fullscreen` as its order there. A `top` bar stays above it. The WM hides the bars of an output while a fullscreen window is on that output (proposed; Needs Kieran 11).
 
 **Popups are not records.** An xdg popup or zwlr popup is drawn directly above its root record, in the root's band, and ends with it. A popup of a popup follows the same rule. Popups are transient and numerous, so listing them would bury `layers.list`.
 
@@ -194,14 +194,14 @@ Fullscreen aside, the wlr bands match wlr's own order.
 
 Three Gnoblin claims and three built-in surface kinds use the registry. Each replaces existing code or is new.
 
-| Layer                 | Scope                                      | Band and order                         | Input                        | Provider                                                                         | Replaces or adds                                                                            |
-| --------------------- | ------------------------------------------ | -------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `portals`             | `window` if parent resolves, else `output` | `windows`, above target; else `system` | `modal-to-output` (Kieran 2) | `gnoblin-portal`, registered by the compositor's portal service                  | `Modal` and overlay slot (`modal.rs`, `frame.rs:236`); `dialog_placement` (`portal.rs:310`) |
-| `alerts`              | `window`                                   | `windows`, above target                | `modal-to-target`            | `gnoblin-compositor` [INFERENCE]; content per Kieran 6                           | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
-| `window_menu`         | `window`                                   | `windows`, above target                | `grab`                       | `gnoblin-window-menu` (D29), or a claimant                                       | New in Rust. Replaces Bingux `WindowMenu.qml`.                                              |
-| `surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wayland`            | Existing window stack (`stack.rs:21-26`). Adds a record per window.              |
-| `surface_layer_shell` | `output`                                   | `background` to `overlay`              | `gnoblin-wayland`            | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface. |
-| `surface_x11`         | `window`                                   | `windows`, X stacking                  | `gnoblin-xwayland`           | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.         |
+| Layer                 | Scope                                      | Band and order                         | Input                        | Provider                                                                              | Replaces or adds                                                                            |
+| --------------------- | ------------------------------------------ | -------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `portals`             | `window` if parent resolves, else `output` | `windows`, above target; else `system` | `modal-to-output` (Kieran 1) | `gnoblin-portal`, registered by the compositor's portal service, with `secure = true` | `Modal` and overlay slot (`modal.rs`, `frame.rs:236`); `dialog_placement` (`portal.rs:310`) |
+| `alerts`              | `window`                                   | `windows`, above target                | `modal-to-target`            | `gnoblin-compositor` [INFERENCE]; content per Kieran 4                                | New. Detection exists (`session.rs:72-73`); kill exists (`server.rs:1260`).                 |
+| `window_menu`         | `window`                                   | `windows`, above target                | `grab`                       | `gnoblin-window-menu` (D29), or a claimant                                            | New in Rust. Replaces Bingux `WindowMenu.qml`.                                              |
+| `surface_toplevel`    | `window`                                   | `windows`, one per window              | `gnoblin-wayland`            | Existing window stack (`stack.rs:21-26`). Adds a record per window.                   |
+| `surface_layer_shell` | `output`                                   | `background` to `overlay`              | `gnoblin-wayland`            | Existing wlr code (`zwlr_layer_shell_v1.rs:482-486`). Adds a record per surface.      |
+| `surface_x11`         | `window`                                   | `windows`, X stacking                  | `gnoblin-xwayland`           | Existing Xwayland windows (`xwayland.rs:501`). Adds a record per window.              |
 
 ### portals
 
@@ -212,10 +212,11 @@ Three Gnoblin claims and three built-in surface kinds use the registry. Each rep
 - With a resolved parent, the layer sits above that window and follows it. The
   dialog is centred on the parent's rectangle, not the output's.
 - `x11:` resolves through `gnoblin-xwayland` [INFERENCE]. `wayland:` has no resolver
-  today. It is blocked until Phase 6 chooses one (Kieran 8).
+  today. It is blocked until Phase 5 chooses one (Kieran 6).
 - If the parent closes while the dialog is open, the layer ends `target-gone`, and
   the request continues on output scope, logged.
 - One live `portals` dialog per output. Others queue (today: one `active_request`).
+- The portal service declares `secure = true` when it registers `portals`. The compositor does not force it. It is the provider's own declaration, the same flag an extension would set. The user can still change it in config (see Invariants).
 
 ### alerts
 
@@ -225,8 +226,8 @@ Three Gnoblin claims and three built-in surface kinds use the registry. Each rep
   (`session.rs:359-361`), and removes it when the window responds or closes.
 - The content offers Wait and Force Quit. Force Quit calls `window.kill`
   (`server.rs:1260`). The content is drawn by a provider, not by the compositor
-  alone (Kieran 6).
-- It blocks its target only (proposed; Kieran 3). A hung window cannot take input,
+  alone (Kieran 4).
+- It blocks its target only (proposed; Kieran 2). A hung window cannot take input,
   so the rest of the desktop keeps working.
 
 ### window_menu
@@ -292,7 +293,7 @@ note:remove()
 
 Lua may register `passive` or `modal-to-target` layers, window-scope in `windows`
 or output-scope in `top` or `overlay`. It cannot register in `system`, `lock` or
-`cursor`, and cannot use `grab` or `modal-to-output` (Kieran 7).
+`cursor`, and cannot use `grab` or `modal-to-output` (Kieran 5).
 
 The surface kinds are Rust-only. Their records follow Wayland objects, not Lua calls.
 
@@ -349,9 +350,37 @@ Who may register above whom:
 - `portals`, `alerts`, `window_menu` and the `surface_` prefix are reserved. The `ext.<id>.` prefix stops an extension from claiming the first three. Only built-in kinds use `surface_`.
 - `parent_window` is a client's hint. The compositor places a portal dialog over a
   resolved window only when that window belongs to the requesting client (proposed;
-  Kieran 11). Otherwise it falls back to output scope.
+  Kieran 9). Otherwise it falls back to output scope.
 - Nothing sits above the lock, except layers on the compositor's allow-list. The lock screen is the only entry. A provider cannot draw over the lock.
-- Capture of a secret-bearing layer is never provider-controlled. Other capture inclusion is an option (see Invariants and options).
+- `secure` is set by the layer's provider on its own layer, or by the user in config. Nothing else sets it. The lock surface is the one built-in exception (see Invariants).
+
+## Capture paths
+
+The compositor sees two kinds of capture. Client protocols are open to any client. Compositor-internal capture is started by the compositor itself.
+
+- Client protocols: `wlr-screencopy`, `ext-image-copy-capture`, and the portal `Screenshot` and `ScreenCast` requests relayed by `xdg-desktop-portal-gnoblin`. The portal knows one frame from a stream. A client on the raw protocols can do either, so the protocol cannot tell a screenshot from a recording.
+- Compositor-internal: the screenshot key and `gnoblinctl screenshot`. Neither exists in code yet.
+
+One rule covers all of them: secure content is never drawn into any capture. The user's display is unchanged. There is no "user-initiated" exemption. The compositor cannot prove who is behind a request, so an exemption would be the bypass. To screenshot a secure dialog, the user sets `secure = false` for that layer in config.
+
+Capture paths found in code, checked 2026-11-06 [INFERENCE: not traced end to end]:
+
+| Path                     | Where (`path:line`)                                                                                    | Honours `secure` today                  | Work needed                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------- | ---------------------------------------------------------------- |
+| Backend readback         | `gnoblin-backend/src/lib.rs:463`; `render/gles/mod.rs:476`                                             | No. Reads pre-overlay pixels only.      | Compose captures without secure layers. The main item.           |
+| Screenshot queue         | `gnoblin-wayland/src/frame.rs:141`; `server.rs:875`                                                    | No. Serves the readback above.          | Inherits the readback fix.                                       |
+| Capture embargo          | `gnoblin-capture/src/table.rs:277`, `:344`                                                             | Partly. Checks embargo per target only. | Give the capture a secure-free source.                           |
+| wlr-screencopy           | `gnoblin-wayland/src/protocols/zwlr_screencopy_v1.rs:79`                                               | No.                                     | Inherits the fix if it keeps reading through the table.          |
+| ext-image-copy-capture   | `protocols/ext_image_copy_capture_v1.rs:32`; global `capture_shared.rs:249`                            | No.                                     | As above.                                                        |
+| Portal Screenshot        | `xdg-desktop-portal-gnoblin/src/iface/capture.rs:62`; compositor side `gnoblin-compositor/src/portal/` | No. Compositor does not read `secure`.  | Request the secure-free frame.                                   |
+| Portal ScreenCast        | `xdg-desktop-portal-gnoblin/src/iface/capture.rs`; `gnoblin-wayland/src/pipewire_export.rs:292`        | No.                                     | Stream frames come from the table. Re-check `secure` each frame. |
+| Shell Screenshot compat  | `compat/gnoblin-compat-gnome-shell-screenshot/src/service.rs:182`                                      | Refuses. Returns `unsupported` today.   | None now. If enabled, route through the portal path.             |
+| Mutter ScreenCast compat | `compat/gnoblin-compat-mutter-screencast/src/service.rs:219`                                           | No.                                     | Routes through PipeWire export; inherits the fix.                |
+| Screenshot key           | None in code                                                                                           | Not applicable.                         | Build it with the rule. No key exists yet.                       |
+| `gnoblinctl screenshot`  | None in `crates/gnoblinctl`; only `shortcut capture` exists                                            | Not applicable.                         | Build it with the rule.                                          |
+| Legacy C portal          | `src/portal/backend/gnoblin-screenshot-capture.c`                                                      | Not checked.                            | Pre-rewrite tree. Confirm it is unused, or remove it.            |
+
+The readback is the one path that needs real work. The others inherit its fix only if they keep reading frames through the table, which is the intent [INFERENCE].
 
 ## Invariants and options
 
@@ -362,23 +391,27 @@ Two kinds of rule. An invariant is enforced by the compositor, and no provider o
 - **Parent ownership.** A `parent_window` must name a window of the requesting client. Otherwise the request is refused and falls back to output scope.
 - **Band ceiling.** A built-in provider uses the bands its kind allows. An extension stays at or below `band_max`, and never enters `system`, `lock` or `cursor`.
 - **Input grant.** An extension requests `passive`. `modal-to-target`, `modal-to-output` and `grab` need a manifest power and a host grant. The compositor draws the attribution label on every modal or grab layer.
-- **Consent blocks its output.** A `portals` layer blocks its whole output, so a consent dialog cannot be bypassed by clicking elsewhere (Kieran 2).
-- **Secret-bearing capture.** A secret-bearing layer, such as any `portals` dialog, is never captured. No grant, manifest power or provider setting overrides this.
+- **Consent blocks its output.** A `portals` layer blocks its whole output, so a consent dialog cannot be bypassed by clicking elsewhere (Kieran 1).
+- **Secure content is never captured.** A layer with `secure = true` is never drawn into any capture, on any path in Capture paths. No grant, manifest power, provider or config setting turns that off. The user's display still shows it.
+- **Only the owner changes `secure`.** The provider sets it on its own layer. The user sets it in config, per layer name or per window rule, in either direction. No provider can change another provider's layer, and an extension cannot set it on a Gnoblin layer.
+- **The lock surface is secure.** It is the one built-in exception to the default of `false`, because it is compositor-owned and shows the unlock prompt over the locked session. No provider or config can remove it from capture.
 - **Lock.** Nothing draws above the lock except the compositor's allow-list. Extensions cannot join it.
 - **Count limits.** Each provider and each target has a maximum number of live layers. The numbers are proposed; the limits themselves are not optional.
 
 ### Options (B)
 
-| Option                         | Set by   | Default                                     | Bounded by                                                |
-| ------------------------------ | -------- | ------------------------------------------- | --------------------------------------------------------- |
-| Scope: `output` or `window`    | Provider | The kind's default                          | The kind's allowed scopes                                 |
-| Order within its band          | Provider | Per the Ordering rules                      | Band ceiling; Gnoblin claims stay above                   |
-| `passive` or `modal-to-target` | Provider | `passive`                                   | Invariant "Input grant"                                   |
-| Capture inclusion              | Provider | Excluded                                    | Manifest power and visible indicator                      |
-| Dim the target                 | Provider | Off (proposed)                              | Compositor draws the dim; target untouched                |
-| Content kind                   | Provider | Surface, or compositor-painted for `alerts` | Lua: compositor-painted unless `wayland` power (Kieran 7) |
+| Option                         | Set by                   | Default                                     | Bounded by                                                             |
+| ------------------------------ | ------------------------ | ------------------------------------------- | ---------------------------------------------------------------------- |
+| Scope: `output` or `window`    | Provider                 | The kind's default                          | The kind's allowed scopes                                              |
+| Order within its band          | Provider                 | Per the Ordering rules                      | Band ceiling; Gnoblin claims stay above                                |
+| `passive` or `modal-to-target` | Provider                 | `passive`                                   | Invariant "Input grant"                                                |
+| `secure`                       | Provider; user in config | `false`                                     | Invariant "Only the owner changes `secure`"; lock surface fixed `true` |
+| Dim the target                 | Provider                 | Off (proposed)                              | Compositor draws the dim; target untouched                             |
+| Content kind                   | Provider                 | Surface, or compositor-painted for `alerts` | Lua: compositor-painted unless `wayland` power (Kieran 5)              |
 
 An option never widens an invariant. A request outside the grant is refused and logged.
+
+**Config shape (proposed).** `config.toml` gets a `layers` section: a `record-map` keyed by layer name, each record with one `secure` bool, so `[layers.portals] secure = false`. The schema's record-map ids are `hex-pair`, `renderer` and `serial`, so layer names need a new id kind. The window rule takes `secure = true|false`, spelled like the other snake_case rule fields (`blur_ignore_shadows`).
 
 ## Cutover
 
@@ -402,7 +435,7 @@ Each path below moves to the registry, with no shim.
 - `xdg_shell.rs` (toplevels; popups at `:59`) and the Xwayland window code (`xwayland.rs:501`): windows register `surface_toplevel` and `surface_x11`. Popups follow their root instead of their own stacking.
 - Docs: `docs/shell-api/layer-surfaces.md` (the `gnoblin.layers` section) and
   `docs/public/gnoblin.d.lua` (`register` and the handle). `layers.list` keeps its
-  record shape. A `band` filter is Kieran 9.
+  record shape. A `band` filter is Kieran 7.
 - Bingux, out of tree: `WindowMenu.qml` and the not-responding dialog move to
   providers.
 
@@ -416,7 +449,12 @@ Each path below moves to the registry, with no shim.
 - One live `portals` dialog per output; a second request queues.
 - A name collision is refused with `name-taken`.
 - A provider disconnect ends its layers and sends `closed`.
-- A capture omits `system` and Gnoblin claims by default.
+- `secure` defaults to `false` for every layer, extension layers included.
+- A `secure = true` layer is absent from each path in Capture paths, and still drawn on the display.
+- A config override flips a layer both ways: `layers.<name>.secure` hides a `false` layer, and `false` shows a `true` layer such as `portals`.
+- A window rule's `secure` flips a window or layer surface both ways.
+- A provider cannot change another provider's layer's `secure`. An extension cannot set it on a Gnoblin layer.
+- The lock surface stays secure. A config override on it is refused and logged.
 - The lock removes `hide` layers and settles pending portal requests.
 - An extension cannot register in `system`, `lock` or `cursor`, cannot use `grab`
   without a grant, and cannot order above a Gnoblin claim.
@@ -430,14 +468,14 @@ Each path below moves to the registry, with no shim.
 
 ## Phases
 
-1. `gnoblin-layers` crate: the registry, bands, ordering and follow rules, and their tests. No behaviour change.
+1. `gnoblin-layers` crate: the registry, bands, ordering and follow rules, the `secure` field (default `false`) and its owner check, and their tests. No behaviour change.
 2. `gnoblin-wm` stack gains window-scope entries above their targets. `StackLayer` keeps `Normal` and `Fullscreen`. Follow rules and stack tests.
-3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy.
+3. The frame takes one ordered list. The `overlay` slot goes; `cursor` stays. `Modal` becomes the `portals` input policy. The capture composition skips secure layers and replaces the pre-overlay readback (Capture paths).
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
 5. `parent_window` is typed. `x11:` resolves through `gnoblin-xwayland`. `wayland:` needs one of: (a) a Smithay change exposing handle-to-surface lookup on `XdgForeignState`; (b) a Gnoblin table filled when the exporter mints a handle, which needs a wrapper around Smithay's exporter; (c) the dialog becomes a Wayland child toplevel that imports the handle, which changes it from an overlay to a surface. [INFERENCE: (a) is smallest.]
 6. `window_menu` (D29), built in.
 7. `alerts`, with its content provider.
-8. Lua `gnoblin.layers.register`, its handle and signals, and the docs.
+8. Lua `gnoblin.layers.register`, its handle and signals, and the docs. `gnoblin.window_rule` gains `secure`. The config schema gains a `layers` section keyed by layer name.
 9. Extension `[powers.layers]` through D22.
 
 Each phase names the tests that fail without its rule.
@@ -446,17 +484,15 @@ Each phase names the tests that fail without its rule.
 
 Real choices only. Each item is marked (A) if it is a policy choice about an invariant, or (B) if it only sets a default for an option. Do not read (A) as a customisation hook. Naming items are neither.
 
-1. Closed (Main, 2026-11-06): the not-responding layer is `alerts`. Naming only. `unresponsive` stays the property and the reason.
-2. (A) Whether a window-targeted `portals` modal blocks the whole output (proposed) or only its target. Proposed: the whole output, so a consent dialog cannot be bypassed.
-3. (B) Default input policy for a window-scope `alerts`: blocks its target only (proposed: yes).
-4. (A) for `portals`: never captured, by invariant. (B) for `alerts` and `window_menu`: default capture excluded (proposed), as the portal dialog is today.
-5. (B) Default ordering of window-scope layers: in `windows` and below top bars (proposed), or above the top bars too.
-6. (B) Default content kind for `alerts`: the compositor's built-in painter (proposed), or a provider only.
-7. (A) Lua content: compositor-painted only, or a manifest `wayland` power for extensions that need a surface. A `wayland` power is a capability grant.
-8. (A) How to resolve `wayland:<handle>`. It enforces parent ownership (invariant 1). Phase 5 options a, b, c. Option (a) is a Smithay change; choose whether Gnoblin carries a Smithay patch.
-9. Neither: whether `layers.list` gains a `band` filter in the same change (proposed: yes). This is API shape.
-10. (A) Default `band_max` for extensions: `top` (proposed) or `overlay`. The ceiling is invariant 2; this is its value.
-11. (A) Whether the compositor checks that a `parent_window` belongs to the requesting client before placing a dialog over it. Invariant 1. Proposed: yes, and it is not optional.
-12. Neither: name for the toplevel kind, `surface_toplevel` (proposed, matching `xdg_toplevel`). Kieran suggested `surface_top_level`, "or something".
-13. (B) Bar visibility while a fullscreen window is on its output: hidden (proposed). The alternative lifts fullscreen windows above `top`, as wlroots does, which breaks one band per record.
-14. (B) Override-redirect X11 windows: X's own stacking inside `windows` (proposed), or lifted to `top` as menus.
+1. (A) Whether a window-targeted `portals` modal blocks the whole output (proposed) or only its target. Proposed: the whole output, so a consent dialog cannot be bypassed.
+2. (B) Default input policy for a window-scope `alerts`: blocks its target only (proposed: yes).
+3. (B) Default ordering of window-scope layers: in `windows` and below top bars (proposed), or above the top bars too.
+4. (B) Default content kind for `alerts`: the compositor's built-in painter (proposed), or a provider only.
+5. (A) Lua content: compositor-painted only, or a manifest `wayland` power for extensions that need a surface. A `wayland` power is a capability grant.
+6. (A) How to resolve `wayland:<handle>`. It enforces parent ownership (invariant 1). Phase 5 options a, b, c. Option (a) is a Smithay change; choose whether Gnoblin carries a Smithay patch.
+7. Neither: whether `layers.list` gains a `band` filter in the same change (proposed: yes). This is API shape.
+8. (A) Default `band_max` for extensions: `top` (proposed) or `overlay`. The ceiling is invariant 2; this is its value.
+9. (A) Whether the compositor checks that a `parent_window` belongs to the requesting client before placing a dialog over it. Invariant 1. Proposed: yes, and it is not optional.
+10. Neither: name for the toplevel kind, `surface_toplevel` (proposed, matching `xdg_toplevel`). Kieran suggested `surface_top_level`, "or something".
+11. (B) Bar visibility while a fullscreen window is on its output: hidden (proposed). The alternative lifts fullscreen windows above `top`, as wlroots does, which breaks one band per record.
+12. (B) Override-redirect X11 windows: X's own stacking inside `windows` (proposed), or lifted to `top` as menus.
