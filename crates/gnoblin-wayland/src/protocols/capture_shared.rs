@@ -108,12 +108,12 @@ pub(super) struct Targets {
     /// Every output, in physical pixels.
     outputs: BTreeMap<OutputId, Size>,
     /// Every window: the output it is drawn on and its physical origin in that frame.
-    windows: BTreeMap<WindowId, WindowPlacement>,
+    windows: BTreeMap<WindowId, CapturedPlacement>,
 }
 
 /// Where a window is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct WindowPlacement {
+struct CapturedPlacement {
     /// The output whose frame holds it.
     output: OutputId,
     /// Its top-left corner inside that output's frame, in physical pixels.
@@ -537,7 +537,7 @@ impl State {
             };
             targets.windows.insert(
                 window,
-                WindowPlacement {
+                CapturedPlacement {
                     output,
                     origin: Point::new(
                         scale_axis(shown.x.saturating_sub(monitor.x), scale),
