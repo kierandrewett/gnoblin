@@ -30,7 +30,7 @@
 //!
 //! # State tables
 //!
-//! Each output is an [`OutputState`] and the connection is a [`Connection`]. Every
+//! Each output is an [`OutputState`] and the connection is a [`ParentConnection`]. Every
 //! event either takes a row below or is refused, and each row has a named test.
 //!
 //! Output (`configure` and `prefer_scale` take a size or scale only while `Open`):
@@ -48,7 +48,7 @@
 //! | `Closed`  | `prefer_scale`| refused   | `tests::a_closed_output_refuses_a_scale_preference`        |
 //! | `Closed`  | `close`       | refused   | `tests::a_closed_output_refuses_a_close`                   |
 //!
-//! Connection:
+//! ParentConnection:
 //!
 //! | From       | Event         | To         | Test                                                      |
 //! |------------|---------------|------------|-----------------------------------------------------------|
@@ -90,7 +90,7 @@ enum OutputState {
 
 /// Whether the connection to the parent is up, and whether its end has been reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Connection {
+enum ParentConnection {
     /// The parent is connected.
     Open,
     /// The parent is gone, and the backend has not been told yet.
@@ -121,7 +121,7 @@ struct Record {
 pub(crate) struct Table {
     records: Vec<Record>,
     seat: Seat,
-    connection: Connection,
+    connection: ParentConnection,
 }
 
 impl Table {
@@ -130,7 +130,7 @@ impl Table {
         Self {
             records: Vec::new(),
             seat: Seat::new(),
-            connection: Connection::Open,
+            connection: ParentConnection::Open,
         }
     }
 
@@ -208,14 +208,14 @@ impl Table {
 
     /// The connection to the parent ended.
     pub fn disconnected(&mut self) {
-        if self.connection == Connection::Open {
-            self.connection = Connection::Lost;
+        if self.connection == ParentConnection::Open {
+            self.connection = ParentConnection::Lost;
         }
     }
 
     /// Whether the connection to the parent is still up.
     pub fn is_connected(&self) -> bool {
-        self.connection == Connection::Open
+        self.connection == ParentConnection::Open
     }
 
     /// The seat the parent's input arrives on.
@@ -235,8 +235,8 @@ impl Table {
     /// the earlier ones in the record.
     pub fn take_changes(&mut self) -> Changes {
         let mut changes = Changes::default();
-        if self.connection == Connection::Lost {
-            self.connection = Connection::Reported;
+        if self.connection == ParentConnection::Lost {
+            self.connection = ParentConnection::Reported;
             changes.disconnected = true;
         }
         for (index, record) in self.records.iter_mut().enumerate() {
