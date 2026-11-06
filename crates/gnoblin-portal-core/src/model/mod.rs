@@ -12,9 +12,12 @@ mod dialog;
 mod interface;
 mod screen;
 
+/// Dialog models: the file chooser, the app chooser, consent and their types.
 pub use dialog::{
     ARM_DELAY_MS, AppChoice, AppChooser, Confirmation, Consent, ConsentDecision, ConsentInput, ConsentTarget,
     DialogError, FileChooser, FileChooserMode, FileEntry, FileFilter,
 };
+/// Grant, interface and error types for the portal interfaces.
 pub use interface::{Grant, Interface, UnknownInterface};
+/// The dialog screen model, its listing and its settled state.
 pub use screen::{Dialog, DirectoryListing, ScreenKey, Settled};

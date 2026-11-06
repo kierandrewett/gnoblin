@@ -41,6 +41,8 @@ pub enum Dialog {
 /// I/O: it shows exactly the entries it is given.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoryListing {
+    /// The folder this listing is for, as the caller named it.
     pub folder: String,
+    /// The entries to show, in the order given.
     pub entries: Vec<FileEntry>,
 }

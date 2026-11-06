@@ -141,15 +141,20 @@ pub enum FileChooserMode {
 /// or an exact MIME type matched against the entry's MIME.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileFilter {
+    /// The filter's display name.
     pub name: String,
+    /// The patterns a file must match to pass the filter.
     pub patterns: Vec<String>,
 }
 
 /// One entry in the directory listing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
+    /// The file or folder name, without its parent path.
     pub name: String,
+    /// Whether the entry is a folder.
     pub is_dir: bool,
+    /// The entry's MIME type, when it could be determined.
     pub mime: Option<String>,
 }
 
@@ -454,7 +459,9 @@ fn filter_matches(filter: &FileFilter, entry: &FileEntry) -> bool {
 /// One application the AppChooser offers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppChoice {
+    /// The `.desktop` file id the app is launched by, such as `org.example.App.desktop`.
     pub desktop_file_id: String,
+    /// The name shown to the user in the chooser.
     pub name: String,
 }
 

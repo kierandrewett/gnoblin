@@ -10,6 +10,9 @@
 //! The crate names no engine crate. It may name egui and the primitive and schema
 //! crates only; the UI crates depend on it, never the other way round.
 
+/// The dialog models and their state, independent of any renderer.
 pub mod model;
+/// Painting helpers that turn a model into egui draw calls.
 pub mod paint;
+/// The egui dialog UIs for each portal dialog kind.
 pub mod ui;
