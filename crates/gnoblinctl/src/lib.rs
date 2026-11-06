@@ -21,6 +21,7 @@
 //! gnoblinctl ipc dump [FILE]
 //! gnoblinctl completions <bash|zsh|fish> [--output PATH]
 //! gnoblinctl log [--database PATH] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]
+//!     [--since TIME] [--until TIME] [--follow [--interval DURATION]]
 //! ```
 //!
 //! A property, a method or an argument the schema does not declare is refused by
@@ -131,7 +132,7 @@ pub fn run(
     match invocation {
         cli::Invocation::IpcDump { source } => dump::run(&source, out, err),
         cli::Invocation::Completions { shell, output } => completions(shell, output, out, err),
-        cli::Invocation::Log { database, query, json } => logs::run(database.as_deref(), &query, json, out, err),
+        cli::Invocation::Log { request } => logs::run(&request, out, err),
         cli::Invocation::Object { object, action, json } => match connection.connect() {
             Ok(mut client) => commands::execute(&mut client, object, &action, json, out, err),
             Err(failure) => {

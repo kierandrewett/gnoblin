@@ -23,6 +23,7 @@ use gnoblin_log::store::Query;
 use gnoblin_model::Fields;
 
 use crate::args;
+use crate::logs;
 use crate::tree::{self, CliObject};
 
 /// The shells `completions` writes a script for.
@@ -44,12 +45,8 @@ pub(crate) enum Invocation {
     IpcDump { source: DumpSource },
     /// Write a completion script.
     Completions { shell: Shell, output: Option<PathBuf> },
-    /// Print the stored log records.
-    Log {
-        database: Option<PathBuf>,
-        query: Query,
-        json: bool,
-    },
+    /// Print the stored log records, or follow them.
+    Log { request: logs::LogRequest },
 }
 
 /// The action taken on an object.
@@ -289,7 +286,7 @@ fn completions_command() -> Command {
         )
 }
 
-/// `log [--database PATH] [--level LEVEL] [--role ROLE] [--target TARGET] [--limit N]`.
+/// `log` with its filters, time bounds and follow options.
 fn log_command() -> Command {
     Command::new("log")
         .about("Print the stored log records, oldest first, from the log database.")
@@ -319,6 +316,29 @@ fn log_command() -> Command {
                 .long("target")
                 .value_name("TARGET")
                 .help("Only records whose event target matches exactly."),
+        )
+        .arg(Arg::new("since").long("since").value_name("TIME").help(
+            "Only records at or after this time: RFC 3339 (2026-11-06T09:00:00Z), or an age such as 10m, 2h or 1d.",
+        ))
+        .arg(
+            Arg::new("until")
+                .long("until")
+                .value_name("TIME")
+                .help("Only records before this time, in the same forms as --since."),
+        )
+        .arg(
+            Arg::new("follow")
+                .long("follow")
+                .action(ArgAction::SetTrue)
+                .conflicts_with("until")
+                .help("Keep printing new records as they are written, until interrupted."),
+        )
+        .arg(
+            Arg::new("interval")
+                .long("interval")
+                .value_name("DURATION")
+                .requires("follow")
+                .help("How often --follow polls the database: 500ms or 2s. Defaults to 500ms."),
         )
         .arg(
             Arg::new("limit")
@@ -376,6 +396,14 @@ fn completions_invocation(matches: &ArgMatches) -> Result<Invocation, Usage> {
     Ok(Invocation::Completions { shell, output })
 }
 
+/// A refusal of the `log` options, with the message the parser produced.
+fn log_usage(message: String) -> Usage {
+    Usage {
+        text: format!("error: {message}\n"),
+        help: false,
+    }
+}
+
 /// The `log` subcommand.
 fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage> {
     let database = matches.get_one::<PathBuf>("database").cloned();
@@ -390,7 +418,31 @@ fn log_invocation(matches: &ArgMatches, json: bool) -> Result<Invocation, Usage>
             .expect("clap supplies the default limit"),
         ..Query::default()
     };
-    Ok(Invocation::Log { database, query, json })
+    let time = |name: &str| {
+        matches
+            .get_one::<String>(name)
+            .map(|text| logs::parse_bound(text).map_err(log_usage))
+            .transpose()
+    };
+    let since = time("since")?;
+    let until = time("until")?;
+    let follow = matches
+        .get_flag("follow")
+        .then(|| match matches.get_one::<String>("interval") {
+            Some(text) => logs::parse_interval(text).map_err(log_usage),
+            None => Ok(logs::DEFAULT_INTERVAL),
+        })
+        .transpose()?;
+    Ok(Invocation::Log {
+        request: logs::LogRequest {
+            database,
+            query,
+            since,
+            until,
+            follow,
+            json,
+        },
+    })
 }
 
 /// One object's action.

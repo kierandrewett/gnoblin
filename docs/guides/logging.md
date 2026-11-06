@@ -61,6 +61,10 @@ gnoblinctl log --role compositor --level warn --limit 50
 
 `--database PATH` reads another file, and `--json` prints one JSON object per line. The command opens the database read-only, so it works while the session is down.
 
+`--since` and `--until` bound the records by time, as an RFC 3339 timestamp or an age such as `2h`.
+
+`--follow` keeps printing records as they are written, polling every `--interval` (default `500ms`) until interrupted. The full flag reference is in [gnoblinctl](../gnoblinctl.md#logs).
+
 ## Adding logging to a crate
 
 Every crate logs through `gnoblin-log`, and never through `tracing` directly. A crate defines its component once, at module or crate root:

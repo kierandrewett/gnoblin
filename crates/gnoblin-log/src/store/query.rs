@@ -23,6 +23,9 @@ pub struct Query {
     pub target: Option<String>,
     /// Only records with an id above this, oldest first. Used to follow the log.
     pub after_id: Option<i64>,
+    /// Only records with an id at or below this. A follower sets it to the newest id it has seen
+    /// before each read, so one poll never runs past the rows it has already counted.
+    pub up_to_id: Option<i64>,
     /// The most records to return.
     pub limit: u32,
 }
@@ -54,6 +57,18 @@ pub fn read_entries(path: &Path, query: &Query) -> Result<Vec<LogRecord>, String
     read_from(&connection, query).map_err(|error| format!("cannot read {}: {error}", path.display()))
 }
 
+/// The id of the newest record, or `0` when the database holds none. A follower starts from it.
+pub fn newest_id(path: &Path) -> Result<i64, String> {
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
+    connection
+        .busy_timeout(READ_BUSY_TIMEOUT)
+        .map_err(|error| format!("cannot set the busy timeout: {error}"))?;
+    connection
+        .query_row("SELECT COALESCE(MAX(id), 0) FROM log_records", [], |row| row.get(0))
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))
+}
+
 /// Reads the records matching `query` from an open connection, oldest first.
 pub(crate) fn read_from(connection: &Connection, query: &Query) -> rusqlite::Result<Vec<LogRecord>> {
     let limit = i64::from(query.limit.max(1));
@@ -63,14 +78,31 @@ pub(crate) fn read_from(connection: &Connection, query: &Query) -> rusqlite::Res
     if let Some(after_id) = query.after_id {
         let mut statement = connection.prepare_cached(FOLLOW_SQL)?;
         let rows = statement.query_map(
-            params![after_id, query.since_ms, query.until_ms, min_rank, role, target, limit],
+            params![
+                after_id,
+                query.since_ms,
+                query.until_ms,
+                min_rank,
+                role,
+                target,
+                limit,
+                query.up_to_id
+            ],
             read_record,
         )?;
         return rows.collect();
     }
     let mut statement = connection.prepare_cached(NEWEST_SQL)?;
     let rows = statement.query_map(
-        params![query.since_ms, query.until_ms, min_rank, role, target, limit],
+        params![
+            query.since_ms,
+            query.until_ms,
+            min_rank,
+            role,
+            target,
+            limit,
+            query.up_to_id
+        ],
         read_record,
     )?;
     let mut entries = rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -90,19 +122,21 @@ pub(crate) fn level_rank(name: &str) -> i64 {
     }
 }
 
-/// The newest `?6` records matching the filters. `?1`/`?2` bound the time, `?3` is the minimum
-/// level rank, `?4` the role and `?5` the target; a `NULL` parameter disables its filter.
+/// The newest `?6` records matching the filters, at or below id `?7`. `?1`/`?2` bound the time,
+/// `?3` is the minimum level rank, `?4` the role and `?5` the target; a `NULL` parameter disables
+/// its filter.
 const NEWEST_SQL: &str = "SELECT id, time_ms, level, component, role, target, message, fields FROM log_records
     WHERE (?1 IS NULL OR time_ms >= ?1)
       AND (?2 IS NULL OR time_ms < ?2)
       AND (CASE level WHEN 'TRACE' THEN 0 WHEN 'DEBUG' THEN 1 WHEN 'INFO' THEN 2 WHEN 'WARN' THEN 3 ELSE 4 END) >= ?3
       AND (?4 IS NULL OR role = ?4)
       AND (?5 IS NULL OR target = ?5)
+      AND (?7 IS NULL OR id <= ?7)
     ORDER BY id DESC
     LIMIT ?6";
 
-/// The oldest `?7` records after id `?1` matching the filters, with the same parameters as
-/// [`NEWEST_SQL`] shifted by one.
+/// The oldest `?7` records after id `?1` and at or below id `?8` matching the filters, with the
+/// same parameters as [`NEWEST_SQL`] shifted by one.
 const FOLLOW_SQL: &str = "SELECT id, time_ms, level, component, role, target, message, fields FROM log_records
     WHERE id > ?1
       AND (?2 IS NULL OR time_ms >= ?2)
@@ -110,6 +144,7 @@ const FOLLOW_SQL: &str = "SELECT id, time_ms, level, component, role, target, me
       AND (CASE level WHEN 'TRACE' THEN 0 WHEN 'DEBUG' THEN 1 WHEN 'INFO' THEN 2 WHEN 'WARN' THEN 3 ELSE 4 END) >= ?4
       AND (?5 IS NULL OR role = ?5)
       AND (?6 IS NULL OR target = ?6)
+      AND (?8 IS NULL OR id <= ?8)
     ORDER BY id ASC
     LIMIT ?7";
 

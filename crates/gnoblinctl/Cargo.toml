@@ -15,6 +15,7 @@ gnoblin-client = { path = "../gnoblin-client" }
 # The log database's reader, for `gnoblinctl log`: the same query the writer's
 # schema defines, so the two cannot disagree about a column.
 gnoblin-log = { path = "../gnoblin-log", features = ["store"] }
+gnoblin-cli-style = { path = "../gnoblin-cli-style" }
 # The vocabulary a caller sees: identities, values, observations, operations.
 gnoblin-model = { path = "../gnoblin-model" }
 # The wire, for the handshake version and for `ipc dump`'s frame decoding.

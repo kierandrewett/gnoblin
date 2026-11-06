@@ -21,7 +21,7 @@ use tracing_subscriber::registry::LookupSpan;
 mod query;
 mod retention;
 
-pub use query::{LogRecord, Query, read_entries};
+pub use query::{LogRecord, Query, newest_id, read_entries};
 pub use retention::Retention;
 
 /// How many records may wait for the writer before new ones are counted as dropped.
@@ -139,6 +139,18 @@ pub fn open(path: &Path, role: &'static str, retention: Retention) -> Result<Sin
         .spawn(move || write_loop(connection, receiver, role, &writer_dropped))
         .map_err(|error| format!("cannot start the log writer: {error}"))?;
     Ok(Sink { sender, dropped })
+}
+
+/// Runs `body` with a subscriber that stores its events through `sink` as `role`, then waits until
+/// they are written. It installs the subscriber for this thread only, so tests and tools can fill a
+/// database without a global subscriber.
+pub fn with_database<T>(sink: &Sink, role: &'static str, body: impl FnOnce() -> T) -> T {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let subscriber = tracing_subscriber::registry().with(DatabaseLayer::new(sink.clone(), role));
+    let result = crate::__tracing::subscriber::with_default(subscriber, body);
+    sink.flush();
+    result
 }
 
 /// The layer that turns each event into a [`NewRecord`] and queues it without blocking.

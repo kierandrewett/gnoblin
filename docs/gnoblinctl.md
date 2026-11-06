@@ -1027,9 +1027,21 @@ Run `gnoblinctl --json log` to print the stored records, oldest first. The compo
 ```sh
 gnoblinctl log --level WARN --limit 50
 gnoblinctl --json log --role compositor
+gnoblinctl log --since 2h --until 10m
+gnoblinctl log --since 2026-11-05T09:00:00Z
+gnoblinctl log --follow --level WARN --interval 2s
 ```
 
 `--database PATH` reads another database. `--level` keeps records at that level or above. `--role` and `--target` match exactly. `--limit` caps the count and defaults to 100.
+
+`--since` and `--until` bound the records by time. A bound is one of these forms:
+
+- an RFC 3339 timestamp, such as `2026-11-05T09:00:00Z`; or
+- an age counted back from now: `10m`, `2h` or `1d`.
+
+Any other bound is a usage error that names the value.
+
+`--follow` keeps printing new records as they are written, until interrupted. It polls the database every `--interval`, which is `500ms` or `2s` and defaults to `500ms`. `--interval` needs `--follow`, and `--follow` cannot be combined with `--until`, since a followed log has no end.
 
 ## Output for scripts
 
