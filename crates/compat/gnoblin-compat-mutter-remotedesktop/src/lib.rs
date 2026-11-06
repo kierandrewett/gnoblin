@@ -32,7 +32,10 @@
 
 #![forbid(unsafe_code)]
 
+/// The compositor seam: the one place a host meets the compositor's IPC.
 pub mod bridge;
+/// The admission gate: the support matrix and the mode check for each call.
 pub mod compat;
 
+/// Interface, session and version constants, the admission types and the support matrix.
 pub use compat::{INTERFACE, MATRIX, NAME, RemoteDesktopAdmission, RemoteDesktopCall, SESSION_INTERFACE, VERSION};
