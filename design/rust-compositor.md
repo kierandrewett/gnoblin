@@ -1333,7 +1333,7 @@ The session object lists each slot with its provider and state, so a shell,
 today's separate switches (`auth.polkit_agent`, `prompts.enabled`,
 `location.enabled`) with one model.
 
-Gnoblin stores no secrets and depends on no keyring. The Secret portal is a client of the running Secret Service (D27), and holds no secret itself. The
+Gnoblin runs its own keyring service (D27), which holds the Secret store. The Secret portal serves per-app secrets from that store and holds none itself. The
 `prompt.secret` slot only shows a passphrase or confirm prompt and returns the
 answer. Programs reach it through an adapter:
 
@@ -1360,7 +1360,8 @@ interface and its contract is in D19, table "Interfaces and their contracts".
 - **Portal-served:** FileChooser, AppChooser, Print, Account, Email, Notification,
   Lockdown, DynamicLauncher. The portal crate provides the behaviour through system
   services (CUPS, `mailto:`, the notification owner, passwd).
-- **Not served:** Secret (D27, pending sign-off), OpenURI and Trash. These stay on `gtk;*`.
+- **Keyring-served:** Secret, by Gnoblin's keyring service (D27).
+- **Not served:** OpenURI and Trash. These stay on `gtk;*`.
 
 `gnoblin.configure.portal_routing` keeps the per-interface routing. Each routed
 interface lists `gnoblin` first, then `gtk;*` as the fallback where Gnoblin does not
@@ -1609,7 +1610,7 @@ Each section below records the choice, its consequences, and the options conside
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
-| D27 | Keyring                      | **Proposed 2026-11-06, pending sign-off:** Gnoblin stores no secrets; Secret is a client of the Secret Service (`design/keyring.md`)                                                                                            |
+| D27 | Keyring                      | **Decided 2026-11-06:** own keyring service with an encrypted SQLCipher store; key source open (`design/keyring.md`)                                                                                                            |
 
 ### D1: where scripts run
 
@@ -2424,7 +2425,7 @@ Every interface is served by Gnoblin. Each routes `gnoblin;gtk;kde;*` in `portal
 | Lockdown                | `org.freedesktop.impl.portal.Lockdown` (1)             | services reads `gnoblin.configure.lockdown`                           | no                                   | yes        |
 | DynamicLauncher         | `org.freedesktop.impl.portal.DynamicLauncher` (1)      | services writes a `.desktop` file under `$XDG_DATA_HOME/applications` | yes: confirm                         | no         |
 | Background              | `org.freedesktop.impl.portal.Background` (1)           | services records a session-only grant                                 | yes: confirm                         | no         |
-| Secret                  | `org.freedesktop.impl.portal.Secret` (1)               | services: client of the Secret Service (D27, pending sign-off)        | yes: confirm first retrieval per app | no         |
+| Secret                  | `org.freedesktop.impl.portal.Secret` (1)               | services: keyring store of the keyring service (D27)                  | yes: confirm first retrieval per app | no         |
 | OpenURI, Trash          | `org.freedesktop.impl.portal.OpenURI`, `Trash`         | services: `xdg-open`; Trash via `gio trash`                           | no                                   | no         |
 
 `idempotent: yes` means a repeated or abandoned request has no effect at the provider, so a timeout may fall back. `no` means the provider may act; an ambiguous outcome is terminal. For consent rows, `yes` covers the consent step only: session creation after consent is compositor work the provider has not started.
@@ -2448,7 +2449,7 @@ The "UI step" column is the built-in UI. A provider may replace it (handler rule
 | ScreenCast, RemoteDesktop, InputCapture | consent, then a source or device choice; each request is a fresh consent                                                              | persistent per-app permission; "remember" for capture or input                   |
 | Screenshot                              | consent; full screen or an interactive region                                                                                         | annotate, save dialog, delay                                                     |
 | PickColor                               | full-screen pick overlay: a click picks the pixel's colour; Escape cancels. Same consent rules as Screenshot                          | magnifier, palette, pick history                                                 |
-| Secret                                  | confirm "let this app read its secret?" on first retrieval per app. The secret comes from the Secret Service (D27)                    | none: Gnoblin holds no store of its own                                          |
+| Secret                                  | confirm "let this app read its secret?" on first retrieval per app. The secret comes from the keyring store (D27)                     | none: the keyring store is Gnoblin's own (D27)                                   |
 
 Settings, Clipboard, GlobalShortcuts and Inhibit have no UI step. OpenURI and Trash need no dialog.
 
@@ -2480,17 +2481,17 @@ A process provider (`command = {...}`) is started by `gnoblin-compositor::portal
 - **deadline:** `timeout` seconds (default 120). At the deadline the process gets SIGTERM, then SIGKILL after 2 s. The timeout is handled by the negotiation rule for the interface's `idempotent` flag.
 - **requester gone:** the process is sent SIGTERM and then killed, and a late stdout is dropped. No fallback runs.
 
-#### Secret: store decision (superseded by D27)
+#### Secret: store decision (decided, D27)
 
-Secret cannot be served without a store. Gnoblin has no keyring dependency and stores no secrets today. The built-in Secret provider needs one of these options:
+Secret needs a store. Gnoblin has no keyring dependency and stores no secrets today. The options were weighed as follows:
 
-| Option                                   | What it is                                                                                                                                                               | Trade-off                                                                                                                                                  |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A. Delegate to `org.freedesktop.secrets` | Gnoblin asks a running Secret Service (gnome-keyring, or KWallet's bridge) for the master secret. Gnoblin adds only the consent dialog.                                  | No new crypto in Gnoblin. Needs a provider on the bus; with none, Secret returns `error { not-supported }`. Adds a dependency Gnoblin does not have today. |
-| B. File store in the user data dir       | `$XDG_DATA_HOME/gnoblin/secrets`, each entry encrypted with an AEAD (XChaCha20-Poly1305) under a key held in the session keyring, or derived from the unlock passphrase. | Self-contained. Adds crypto code that needs review, and a key-loss story: a session without the key loses the secrets.                                     |
-| C. Stay on the next backend              | Gnoblin serves no Secret. `gtk`, then `kde`, answer.                                                                                                                     | Nothing new to build. Gnoblin does not serve this portal.                                                                                                  |
+| Option                                   | What it is                                                                                                                              | Trade-off                                                                                             |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| A. Delegate to `org.freedesktop.secrets` | Gnoblin asks a running Secret Service (gnome-keyring, or KWallet's bridge) for the master secret. Gnoblin adds only the consent dialog. | Not chosen. No new crypto in Gnoblin, but Gnoblin then owns no store and needs a provider on the bus. |
+| B. Own encrypted store (chosen, D27)     | A SQLCipher database under `$XDG_DATA_HOME/gnoblin/`, served by the keyring service.                                                    | Chosen by Kieran 2026-11-06. The key source is an open problem (`design/keyring.md`).                 |
+| C. Stay on the next backend              | Gnoblin serves no Secret. `gtk`, then `kde`, answer.                                                                                    | Not chosen. Nothing new to build, but Gnoblin does not serve this portal.                             |
 
-Superseded by D27 (`design/keyring.md`), pending Kieran's sign-off: option A, with option C as the fallback when no provider runs. Option B is dropped. Until sign-off, Secret falls through to the next backend (option C).
+Decided 2026-11-06 by Kieran (D27): option B, a SQLCipher store owned by Gnoblin's keyring service. Option A is not chosen, so Gnoblin takes no secret from another provider. Coexistence with a provider that already owns `org.freedesktop.secrets` is in `design/keyring.md`.
 
 #### Schema additions (`gnoblin-schema`)
 
@@ -2524,7 +2525,9 @@ All messages are Protocol Buffers (D16), versioned with the IPC schema (D3).
 | Headless or no GPU renderer                                                                   | Built-in unavailable: `error { no-ui }`, unless a provider handles the request. Consent is refused, with the missing renderer named                                                                                         |
 | Named shell provider not connected                                                            | Absent provider: fall back to built-in                                                                                                                                                                                      |
 | Services role down                                                                            | Requests for services-hosted providers fail with `error { not-supported }` until services returns (services is restartable, D4); compositor-hosted requests are unaffected                                                  |
-| Secret Service not on the bus                                                                 | `error { not-supported }`; the next backend answers (D27)                                                                                                                                                                   |
+| Keyring service not running                                                                   | `error { unavailable }`. No fallback to another provider, because its store holds other secrets (D27)                                                                                                                       |
+| Keyring store locked (no key source unlocked yet)                                             | `error { locked }`; `Unlock` returns a prompt (D27)                                                                                                                                                                         |
+| Another provider owns `org.freedesktop.secrets`                                               | Gnoblin's service does not take the name. The Secret portal still serves from Gnoblin's own store (D27)                                                                                                                     |
 | Unknown `app_id` (no compositor attribution)                                                  | `error { unknown-app }`; no dialog                                                                                                                                                                                          |
 | Relay binary removed                                                                          | `xdg-desktop-portal` uses the next backend in `portals.conf` (`gtk`, then `kde`). Verified as in "Removability"                                                                                                             |
 
@@ -2561,13 +2564,13 @@ Routing is `gnoblin.configure.portal_routing`, a separate table (see Conflicts).
 
 #### Parity and ledger
 
-Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger, with two open items: the Secret sign-off (D27), and the removability verification.
+Mutter's portal setup delegates the toolkit-bound interfaces to `xdg-desktop-portal-gtk`. Gnoblin serving them is a deliberate extension. Each interface Gnoblin serves that the reference delegates gets an entry in `tests/parity/divergences.toml`, reason "D19: deliberate extension", with an issue link. The GTK dialogs are not reproduced. New 0.2.0 scope is recorded in the ledger, with two open items: the key source for the keyring store (D27), and the removability verification.
 
 #### Conflicts with the plan
 
 - **Phase 1 gate** (the line "FileChooser and Email route to `gtk`"): superseded by D19; those routes become `gnoblin;gtk;kde;*`. Not edited here.
 - **Config keys:** `gnoblin.configure.portals.<Interface>` is the provider. Routing is `gnoblin.configure.portal_routing`. Kieran needs to confirm.
-- **Secret:** a client of the Secret Service, pending sign-off (D27). Until then Secret falls through to the next backend.
+- **Secret:** served by Gnoblin's own keyring service, with a SQLCipher store (D27). The key source is open.
 - **Relay optionality:** the plan's `xdg-desktop-portal-gnoblin` is a required package; D19 makes it optional. Packaging changes follow.
 - **`portals.conf`:** not edited by this decision. The implementation lane changes the routes and adds Background.
 
@@ -2947,16 +2950,17 @@ Needs Kieran:
 
 ### D27: keyring service
 
-**Proposed 2026-11-06, pending Kieran's sign-off: Gnoblin stores no secrets. The Secret portal is a client of the running Secret Service (gnome-keyring, KWallet's bridge, KeePassXC or oo7) and holds one per-user master secret there.** The full design is in `design/keyring.md`.
+**Decided 2026-11-06 by Kieran: Gnoblin runs its own keyring service, and its secrets sit in a SQLCipher-encrypted store. The service speaks the Secret Service API, and the Secret portal serves per-app secrets from the same store.** The full design is in `design/keyring.md`.
 
-Options A (client of `org.freedesktop.secrets`), B (own file store) and C (no Secret) are weighed in `design/keyring.md`. B is rejected: any store needs a key that survives reboot, and the compositor has none. A is recommended, with C as the fallback when no provider runs. Once signed off, this decision supersedes the store decision in "Secret: store decision" above.
+Options weighed in `design/keyring.md`: A, a client of another provider on `org.freedesktop.secrets` (not chosen); B, an own encrypted store (chosen); C, no Secret (not chosen). The key source is an open problem: until one is chosen, the store cannot unlock. The coexistence default is in that file too.
 
 Consequences:
 
-- A new services-role crate, `gnoblin-service-secret`, speaks the Secret Service with the `dh-ietf1024-sha256-aes128-cbc-pkcs7` session algorithm, using crates already in the workspace.
-- No new dependency is added. Plain transfer is never used.
-- Per-app consent is unchanged: confirm the first retrieval per app, with no remember.
-- Switching provider gives every app a new secret. No migration is offered.
+- A new services-role crate, `gnoblin-service-keyring`, serves the Secret Service API (version 0.2 draft) with `dh-ietf1024` only.
+- The store uses SQLCipher. Enabling `bundled-sqlcipher` in the workspace is phase 1; `rusqlite` 0.41.1 has the feature.
+- The Secret portal derives per-app secrets from one master secret. Per-app consent is unchanged: confirm the first retrieval per app, with no remember.
+- Acceptance is compatibility: a libsecret `secret-tool` round trip, the portal `Retrieve` call, and an existing Secret Service client needing no change.
+- Migration from gnome-keyring or KWallet is not offered, unless Kieran says yes (`design/keyring.md`, "Needs Kieran").
 
 ## Phase 0 checklist
 
