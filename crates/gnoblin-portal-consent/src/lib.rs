@@ -1,76 +1,60 @@
-//! The consent card of the portal dialogs: the prompt, the requester, and the Deny and
-//! Allow buttons.
+//! The consent dialog: the prompt, the requester, and the Deny and Allow buttons.
+//!
+//! The model ([`Consent`]) decides. Allow stays disabled until the arm delay has
+//! passed, and Deny takes initial focus, so Enter denies unless the user moves.
 
-use egui::{CornerRadius, FontId, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
-use gnoblin_portal_core::canvas::{
-    ANIMATION_SECONDS, BUTTON_GAP, BUTTON_RADIUS, BUTTON_SIZE, CARD_RADIUS, Drawn, FOCUS_WIDTH, MARGIN, Setup,
-    draw_centred, draw_text,
-};
-use gnoblin_portal_core::model::{Consent, ConsentFocus, ConsentTarget};
+use egui::{Button, Key, Ui};
+use gnoblin_portal_core::model::{Consent, ConsentDecision, ConsentInput, ConsentTarget, Settled};
+use gnoblin_portal_core::ui::DialogUi;
 use gnoblin_types::Tick;
 
-/// Draws a consent card: prompt, requester, and the Deny and Allow buttons.
-pub fn draw_consent(ui: &Ui, consent: &Consent, setup: &Setup, now: Tick, drawn: &mut Drawn) {
-    let theme = &setup.theme;
-    let painter = ui.painter();
-    let frame_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(setup.width as f32, setup.height as f32));
-    let card = frame_rect.shrink(MARGIN);
-    painter.rect_filled(card, CornerRadius::same(CARD_RADIUS), theme.card);
+/// A consent request on screen. Owns the model, which owns the decision.
+pub struct ConsentUi {
+    consent: Consent,
+    focused: bool,
+}
 
-    let wrap = card.width() - 2.0 * MARGIN;
-    let left = card.left() + MARGIN;
-    let title_font = FontId::proportional(theme.font_size + 4.0);
-    let body_font = FontId::proportional(theme.font_size);
-    let title = draw_text(
-        painter,
-        drawn,
-        consent.prompt(),
-        title_font,
-        theme.text,
-        wrap,
-        Pos2::new(left, card.top() + MARGIN),
-    );
-    draw_text(
-        painter,
-        drawn,
-        &format!("Requested by {}", consent.app_id()),
-        body_font.clone(),
-        theme.muted,
-        wrap,
-        Pos2::new(left, title.bottom() + 8.0),
-    );
+impl ConsentUi {
+    /// A view of `consent` for one frame sequence.
+    #[must_use]
+    pub const fn new(consent: Consent) -> Self {
+        Self {
+            consent,
+            focused: false,
+        }
+    }
 
-    let row_top = card.bottom() - MARGIN - BUTTON_SIZE.y;
-    let allow_left = card.right() - MARGIN - BUTTON_SIZE.x;
-    let deny_rect = Rect::from_min_size(Pos2::new(allow_left - BUTTON_GAP - BUTTON_SIZE.x, row_top), BUTTON_SIZE);
-    let allow_rect = Rect::from_min_size(Pos2::new(allow_left, row_top), BUTTON_SIZE);
+    /// Feeds a click on `target` to the model as a press and a release.
+    fn click(&mut self, target: ConsentTarget, now: Tick) -> Option<ConsentDecision> {
+        self.consent.input(ConsentInput::PointerPress { target }, now);
+        self.consent.input(ConsentInput::PointerRelease { target }, now)
+    }
+}
 
-    // The arm animation is keyed on the app id, so two dialogs never share it.
-    let arm_time = if setup.reduced_motion { 0.0 } else { ANIMATION_SECONDS };
-    let arm_progress = ui.ctx().animate_bool_with_time(
-        ui.scope_id().with(("consent-arm", consent.app_id())),
-        consent.armed(now),
-        arm_time,
-    );
-    let allow_fill = theme.button_disarmed.lerp_to_gamma(theme.accent, arm_progress);
+impl DialogUi for ConsentUi {
+    fn show(&mut self, ui: &mut Ui, now: Tick) -> Option<Settled> {
+        let armed = self.consent.armed(now);
+        let mut decision = None;
+        if ui.input(|input| input.key_pressed(Key::Escape)) {
+            decision = self.consent.input(ConsentInput::Escape, now);
+        }
 
-    let radius = CornerRadius::same(BUTTON_RADIUS);
-    painter.rect_filled(deny_rect, radius, theme.button);
-    painter.rect_filled(allow_rect, radius, allow_fill);
-    draw_centred(painter, drawn, "Deny", deny_rect, body_font.clone(), theme.text);
-    draw_centred(painter, drawn, "Allow", allow_rect, body_font, theme.text);
-
-    let focused = match consent.focus() {
-        ConsentFocus::Deny => deny_rect,
-        ConsentFocus::Allow => allow_rect,
-    };
-    painter.rect_stroke(
-        focused.expand(FOCUS_WIDTH),
-        radius,
-        Stroke::new(FOCUS_WIDTH, theme.accent),
-        StrokeKind::Outside,
-    );
-
-    drawn.hits.push((ConsentTarget::Deny, deny_rect));
-    drawn.hits.push((ConsentTarget::Allow, allow_rect));
+        ui.heading(self.consent.prompt());
+        ui.label(format!("Requested by {}", self.consent.app_id()));
+        ui.horizontal(|ui| {
+            let deny = ui.button("Deny");
+            if !self.focused {
+                deny.request_focus();
+                self.focused = true;
+            }
+            let allow = ui.add_enabled(armed, Button::new("Allow"));
+            if decision.is_none() && deny.clicked() {
+                decision = self.click(ConsentTarget::Deny, now);
+            }
+            if decision.is_none() && allow.clicked() {
+                decision = self.click(ConsentTarget::Allow, now);
+            }
+        });
+        decision.map(|decision| Consent::grant(decision).map_or(Settled::Denied, Settled::Granted))
+    }
 }

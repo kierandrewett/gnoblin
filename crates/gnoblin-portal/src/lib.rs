@@ -1,7 +1,7 @@
-//! The built-in portal dialog screens: egui drawing of the dialog models.
+//! The portal dialogs drawn by egui: one screen per dialog, each a thin wrapper
+//! over the dialog kind's UI crate.
 
 mod screen;
 
-pub use gnoblin_portal_core::canvas::{Setup, Theme};
-pub use gnoblin_portal_core::widgets::Label;
-pub use screen::PortalScreen;
+pub use gnoblin_portal_core::ui::Setup;
+pub use screen::{PortalScreen, ui_for};

@@ -90,8 +90,8 @@ fn tab_then_enter_on_allow_is_accepted() {
     let mut input = take(&mut ends, "input");
 
     admit(&mut portal, 1);
-    key(&mut input, 1, "tab");
     thread::sleep(ARM_DELAY);
+    key(&mut input, 1, "tab");
     key(&mut input, 1, "enter");
 
     let reply = receive_for(&mut portal, 1);

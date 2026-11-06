@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
-use gnoblin_portal::{PortalScreen, Setup, Theme};
+use gnoblin_portal::{PortalScreen, Setup};
 use gnoblin_portal_core::model::{
     ARM_DELAY_MS, AppChoice, AppChooser, Consent, Dialog, DirectoryListing, FileChooser, FileChooserMode, FileEntry,
     FileFilter, ScreenKey,
@@ -33,7 +33,6 @@ fn open_screen(dialog: Dialog, now: u64) -> PortalScreen {
     let setup = Setup {
         width: WIDTH,
         height: HEIGHT,
-        theme: Theme::default(),
         reduced_motion: false,
     };
     PortalScreen::new(dialog, setup, Tick::new(now))
@@ -140,10 +139,8 @@ fn app_chooser(last: Option<&str>, filter_text: &str) -> PortalScreen {
 }
 
 fn shots() -> Vec<Shot> {
-    let mut shots: Vec<Shot> = Vec::new();
-
     // Consent: Allow ignores input until ARM_DELAY_MS has passed.
-    shots.push(("consent-default", consent("Share the contents of your screen?", 0)));
+    let mut shots: Vec<Shot> = vec![("consent-default", consent("Share the contents of your screen?", 0))];
     shots.push(("consent-disarmed", consent_allow_focused(ARM_DELAY_MS - 1)));
     shots.push(("consent-armed", consent_allow_focused(ARM_DELAY_MS)));
     shots.push((

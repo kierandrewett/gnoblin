@@ -1,6 +1,8 @@
 //! Failure-mode tests for the built-in dialog models (D19 "UI step").
 
-use gnoblin_portal_core::model::{AppChoice, AppChooser, Consent, ConsentDecision, ConsentInput, Key};
+use gnoblin_portal_core::model::{
+    ARM_DELAY_MS, AppChoice, AppChooser, Consent, ConsentDecision, ConsentInput, ConsentTarget,
+};
 use gnoblin_types::Tick;
 
 fn tick(raw: u64) -> Tick {
@@ -10,51 +12,68 @@ fn tick(raw: u64) -> Tick {
 #[test]
 fn consent_escape_denies_and_input_after_decision_is_ignored() {
     let mut consent = Consent::open("app.x", "Share the screen?", tick(0));
-    let decision = consent.input(
-        ConsentInput::Key {
-            key: Key::Escape,
-            repeat: false,
-        },
-        tick(0),
-    );
+    let decision = consent.input(ConsentInput::Escape, tick(0));
     assert_eq!(decision, Some(ConsentDecision::Denied));
     assert_eq!(consent.decision(), Some(ConsentDecision::Denied));
     assert_eq!(
         consent.input(
-            ConsentInput::Key {
-                key: Key::Enter,
-                repeat: false,
+            ConsentInput::PointerPress {
+                target: ConsentTarget::Allow
             },
-            tick(10_000),
+            tick(10_000)
         ),
         None
     );
 }
 
 #[test]
-fn consent_enter_before_arm_delay_does_not_allow() {
+fn consent_allow_press_before_arm_delay_does_not_allow() {
     let mut consent = Consent::open("app.x", "Share the screen?", tick(1_000));
     assert!(!consent.armed(tick(1_000)));
-    // Tab moves focus from the default Deny onto Allow.
     assert_eq!(
         consent.input(
-            ConsentInput::Key {
-                key: Key::Tab,
-                repeat: false,
+            ConsentInput::PointerPress {
+                target: ConsentTarget::Allow
             },
-            tick(1_000),
+            tick(1_000)
         ),
         None
     );
-    let decision = consent.input(
-        ConsentInput::Key {
-            key: Key::Enter,
-            repeat: true,
-        },
-        tick(1_000),
+    assert_eq!(
+        consent.input(
+            ConsentInput::PointerRelease {
+                target: ConsentTarget::Allow
+            },
+            tick(1_000)
+        ),
+        None
     );
-    assert_eq!(decision, None);
     assert_eq!(consent.decision(), None);
+}
+
+#[test]
+fn consent_allow_press_and_release_after_arm_delay_allows() {
+    let mut consent = Consent::open("app.x", "Share the screen?", tick(0));
+    let now = tick(ARM_DELAY_MS);
+    assert!(consent.armed(now));
+    assert_eq!(
+        consent.input(
+            ConsentInput::PointerPress {
+                target: ConsentTarget::Allow
+            },
+            now
+        ),
+        None
+    );
+    assert_eq!(
+        consent.input(
+            ConsentInput::PointerRelease {
+                target: ConsentTarget::Allow
+            },
+            now
+        ),
+        Some(ConsentDecision::Allowed)
+    );
 }
 
 #[test]

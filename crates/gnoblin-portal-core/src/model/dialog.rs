@@ -12,14 +12,6 @@ use super::interface::Grant;
 /// Consent dialogs arm this many milliseconds after they appear (D19, proposed).
 pub const ARM_DELAY_MS: u64 = 500;
 
-/// A key the dialogs understand.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Key {
-    Escape,
-    Enter,
-    Tab,
-}
-
 /// Where a pointer event landed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConsentTarget {
@@ -28,17 +20,11 @@ pub enum ConsentTarget {
     Elsewhere,
 }
 
-/// Which button has focus. Deny is the default.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConsentFocus {
-    Deny,
-    Allow,
-}
-
-/// Input to a consent dialog.
+/// Input to a consent dialog. The UI turns a click on a button into a press and a
+/// release on that button. Keyboard focus and activation belong to the UI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConsentInput {
-    Key { key: Key, repeat: bool },
+    Escape,
     PointerPress { target: ConsentTarget },
     PointerRelease { target: ConsentTarget },
 }
@@ -51,13 +37,11 @@ pub enum ConsentDecision {
 }
 
 /// A consent dialog for one request. Allow needs one deliberate press and
-/// release on Allow (or Enter on a focused Allow), after the arm delay. Deny
-/// has focus, and Escape denies at any time.
+/// release on Allow, after the arm delay. Escape denies at any time.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Consent {
     app_id: String,
     prompt: String,
-    focus: ConsentFocus,
     armed_at: Tick,
     pressed_allow: bool,
     pressed_deny: bool,
@@ -72,7 +56,6 @@ impl Consent {
         Self {
             app_id: app_id.into(),
             prompt: prompt.into(),
-            focus: ConsentFocus::Deny,
             armed_at: now.saturating_add(ARM_DELAY_MS),
             pressed_allow: false,
             pressed_deny: false,
@@ -90,12 +73,6 @@ impl Consent {
     #[must_use]
     pub fn prompt(&self) -> &str {
         &self.prompt
-    }
-
-    /// The focused button.
-    #[must_use]
-    pub const fn focus(&self) -> ConsentFocus {
-        self.focus
     }
 
     /// `true` once Allow accepts input.
@@ -118,26 +95,7 @@ impl Consent {
         }
         let armed = self.armed(now);
         let decided = match input {
-            ConsentInput::Key { key: Key::Escape, .. } => Some(ConsentDecision::Denied),
-            ConsentInput::Key {
-                key: Key::Tab,
-                repeat: _,
-            } => {
-                self.focus = match self.focus {
-                    ConsentFocus::Deny => ConsentFocus::Allow,
-                    ConsentFocus::Allow => ConsentFocus::Deny,
-                };
-                None
-            }
-            ConsentInput::Key {
-                key: Key::Enter,
-                repeat,
-            } => match self.focus {
-                ConsentFocus::Deny => Some(ConsentDecision::Denied),
-                // Key repeat never counts as the gesture to allow.
-                ConsentFocus::Allow if armed && !repeat => Some(ConsentDecision::Allowed),
-                ConsentFocus::Allow => None,
-            },
+            ConsentInput::Escape => Some(ConsentDecision::Denied),
             ConsentInput::PointerPress { target } => {
                 self.pressed_allow = target == ConsentTarget::Allow && armed;
                 self.pressed_deny = target == ConsentTarget::Deny;

@@ -475,11 +475,38 @@ fn portal_layering(package: &Package, dep: &Dep) -> Option<String> {
     None
 }
 
-/// The portal's UI crates, each with the only dependencies it may name (the crates of
-/// the `gnoblin-portal-*` family). The core holds the dialog models, the theme, the CPU
-/// painter and the widgets: it names egui and the primitive crates only, never an
-/// engine crate. An allowlist, not a denylist, so a new edge is a decision rather than a leak.
-const PORTAL_ALLOWED: &[(&str, &[&str])] = &[("gnoblin-portal-core", &["egui", "gnoblin-schema", "gnoblin-types"])];
+/// The portal's own crates, each with the only dependencies it may name. The core holds the
+/// dialog models, the shell that runs a [`DialogUi`] and the CPU painter: it names egui and
+/// the primitive crates only, never an engine crate. Each dialog UI crate names egui and the
+/// core, never another UI crate or `gnoblin-portal`. `gnoblin-portal` wires the UI crates
+/// into one constructor map. An allowlist, not a denylist, so a new edge is a decision.
+const PORTAL_ALLOWED: &[(&str, &[&str])] = &[
+    ("gnoblin-portal-core", &["egui", "gnoblin-schema", "gnoblin-types"]),
+    (
+        "gnoblin-portal-consent",
+        &["egui", "gnoblin-portal-core", "gnoblin-types"],
+    ),
+    (
+        "gnoblin-portal-filechooser",
+        &["egui", "gnoblin-portal-core", "gnoblin-types"],
+    ),
+    (
+        "gnoblin-portal-appchooser",
+        &["egui", "gnoblin-portal-core", "gnoblin-types"],
+    ),
+    (
+        "gnoblin-portal",
+        &[
+            "egui",
+            "gnoblin-portal-core",
+            "gnoblin-portal-consent",
+            "gnoblin-portal-filechooser",
+            "gnoblin-portal-appchooser",
+            "gnoblin-types",
+            "png",
+        ],
+    ),
+];
 
 /// Each portal UI crate names only the dependencies in [`PORTAL_ALLOWED`].
 fn portal_crates(package: &Package, dep: &Dep) -> Option<String> {
@@ -635,6 +662,20 @@ mod tests {
             Vec::<String>::new()
         );
         let found = violations(&[("gnoblin-portal-core", &["egui", "gnoblin-wayland"])]);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("[portal-crates]"), "{found:?}");
+    }
+
+    #[test]
+    fn a_portal_ui_crate_names_only_the_core_and_egui() {
+        assert_eq!(
+            violations(&[(
+                "gnoblin-portal-consent",
+                &["egui", "gnoblin-portal-core", "gnoblin-types"]
+            )]),
+            Vec::<String>::new()
+        );
+        let found = violations(&[("gnoblin-portal-consent", &["egui", "png"])]);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].contains("[portal-crates]"), "{found:?}");
     }

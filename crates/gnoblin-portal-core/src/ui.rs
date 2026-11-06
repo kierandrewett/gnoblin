@@ -28,7 +28,8 @@ pub struct Setup {
 }
 
 /// One dialog kind. A UI crate implements this around its model; the shell calls it.
-pub trait DialogUi {
+/// `Send` because the compositor moves a live screen onto its IPC dispatch thread.
+pub trait DialogUi: Send {
     /// Draws the dialog for this frame and returns the result once it settles.
     fn show(&mut self, ui: &mut Ui, now: Tick) -> Option<Settled>;
 

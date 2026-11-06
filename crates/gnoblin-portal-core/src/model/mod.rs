@@ -13,8 +13,8 @@ mod interface;
 mod screen;
 
 pub use dialog::{
-    ARM_DELAY_MS, AppChoice, AppChooser, Confirmation, Consent, ConsentDecision, ConsentFocus, ConsentInput,
-    ConsentTarget, DialogError, FileChooser, FileChooserMode, FileEntry, FileFilter, Key,
+    ARM_DELAY_MS, AppChoice, AppChooser, Confirmation, Consent, ConsentDecision, ConsentInput, ConsentTarget,
+    DialogError, FileChooser, FileChooserMode, FileEntry, FileFilter,
 };
 pub use interface::{Grant, Interface, UnknownInterface};
 pub use screen::{Dialog, DirectoryListing, ScreenKey, Settled};

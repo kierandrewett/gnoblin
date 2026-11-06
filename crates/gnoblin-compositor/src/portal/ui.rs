@@ -66,7 +66,7 @@
 
 use std::collections::VecDeque;
 
-use gnoblin_portal::{PortalScreen, Setup, Theme};
+use gnoblin_portal::{PortalScreen, Setup};
 use gnoblin_portal_core::model::{Dialog, Interface, ScreenKey, Settled};
 use gnoblin_portal_core::paint::Frame;
 use gnoblin_types::{RequestId, Tick};
@@ -137,7 +137,6 @@ impl PortalUi {
             setup: Setup {
                 width,
                 height,
-                theme: Theme::default(),
                 reduced_motion: false,
             },
             now: Tick::default(),
@@ -335,7 +334,7 @@ impl PortalUi {
             0,
             pending.timeout_ms,
         );
-        let screen = PortalScreen::new(pending.dialog, self.setup.clone(), self.now);
+        let screen = PortalScreen::new(pending.dialog, self.setup, self.now);
         self.active = Some(Active {
             request: pending.request,
             negotiation,
@@ -475,8 +474,7 @@ mod tests {
         let mut ui = PortalUi::new(640, 480);
         start_consent(&mut ui, 1, "org.example.App", at(0));
         allow(&mut ui, at(100));
-        assert!(ui.take_outcomes().is_empty());
-        assert_eq!(ui.active_request(), Some(id(1)));
+        assert_eq!(outcome_of(&mut ui, 1), Verdict::Cancelled(CancelReason::User));
     }
 
     #[test]
@@ -621,6 +619,8 @@ mod tests {
         assert_eq!((first.width(), first.height()), (640, 480));
         assert!(ui.take_frame().is_none(), "no input, no new frame");
 
+        ui.tick(at(600));
+        ui.take_frame();
         ui.key(ScreenKey::Tab, false);
         assert!(ui.take_frame().is_some(), "moving focus changes pixels");
     }
