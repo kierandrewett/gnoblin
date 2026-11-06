@@ -10,12 +10,20 @@
 //! This crate is a development dependency only; `cargo xtask deps` fails if a
 //! shipped crate declares it outside `[dev-dependencies]`.
 
+/// A clock that moves only when a test moves it.
 pub mod clock;
+/// Records observations as JSON with secrets removed before they are stored.
 pub mod recorder;
+/// Private runtime directories for a test, removed when the test ends.
 pub mod runtime;
+/// Builds schema-checked property sets for the `gnoblin` window and other objects.
 pub mod window;
 
+/// The test clock, re-exported at the crate root.
 pub use clock::Clock;
+/// The trace recorder, re-exported at the crate root.
 pub use recorder::Recorder;
+/// The private runtime directory, re-exported at the crate root.
 pub use runtime::RuntimeDir;
+/// Fixture builders for object and window property sets, re-exported at the crate root.
 pub use window::{object_fields, window_fields};
