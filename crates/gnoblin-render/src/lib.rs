@@ -170,22 +170,35 @@ mod tween;
 #[cfg(test)]
 mod model_test;
 
+/// Projection types: the camera, its projection and its error.
 pub use camera::{Camera, CameraError, Projection};
+/// The RGBA colour type used for backgrounds and tints.
 pub use color::Color;
+/// Cursor theme selection types and the size limits they share.
 pub use cursor::{
     CursorBackend, CursorBuild, CursorSelection, DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, InstalledTheme,
     MAX_CURSOR_SIZE, MIN_CURSOR_SIZE, select_cursor,
 };
+/// Damage rectangles per output and the merge helper.
 pub use damage::{Damage, OutputDamage, merge_rects};
+/// Timing curves for tracks and their validation error.
 pub use easing::{Easing, EasingError};
+/// Per-node visual effects (blur, shadow, custom shader) and their limits.
 pub use effect::{
     Blur, EffectError, EffectExtent, Effects, MAX_BLUR_RADIUS, MAX_PASSES, MAX_UNIFORMS, Pass, ResolvedUniform, Shader,
     Shadow, UniformSchema, UniformType, UniformValue,
 };
+/// Geometry and identity types re-exported from `gnoblin-types`.
 pub use gnoblin_types::{OutputId, PointF, Rect, RectF, Scale, Transform, Unsupported3d, Unsupported3dField, Vec3};
+/// Opaque node and track identities.
 pub use id::{NodeId, TrackId};
+/// The 4x4 matrix every node placement is expressed in.
 pub use matrix::Mat4;
+/// Typed visual property names, values and their kinds.
 pub use property::{PropertyError, PropertyValue, ValueKind, VisualProperty};
+/// The node tree, its node kinds, hit results and the scene error type.
 pub use scene::{DEFAULT_DAMAGE_RECT_LIMIT, Hit, Node, NodeKind, NodeSpec, Scene, SceneError};
+/// The per-node visual transform (offset, rotation, scale, depth, opacity).
 pub use transform::VisualTransform;
+/// Animation tracks: the player, its specs and its terminal reports.
 pub use tween::{TrackEnd, TrackEndReason, TrackError, TrackSpec, TrackStart, TweenPlayer};

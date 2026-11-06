@@ -48,13 +48,20 @@ mod svg;
 mod svg_scalable;
 mod xcursor;
 
+/// The built-in arrow, used when no provider has a shape.
 pub use builtin::arrow;
+/// The ordered provider chain and the physical size helper.
 pub use chain::{CursorChain, physical_size};
+/// File access for theme trees: the trait, the filesystem and memory sources, and path checks.
 pub use files::{CursorFiles, FileError, FsFiles, MAX_FILE_BYTES, MemoryFiles, SearchPath, is_contained};
+/// Decoded cursor frames, the image providers and pixel packing helpers.
 pub use image::{CursorFrame, CursorImages, ImageError, MAX_IMAGE_EDGE, MAX_PHYSICAL_SIZE, pack_argb, premultiplied};
+/// Shape name candidates for a requested cursor shape.
 pub use shapes::candidates;
+/// Error raised while decoding an SVG cursor.
 pub use svg::SvgError;
 
+/// Theme selection: the backend trait, the selection result and the size limits.
 pub use selection::{
     CursorBackend, CursorBuild, CursorSelection, DEFAULT_CURSOR_SIZE, DEFAULT_CURSOR_THEME, InstalledTheme,
     MAX_CURSOR_SIZE, MIN_CURSOR_SIZE, select_cursor,
