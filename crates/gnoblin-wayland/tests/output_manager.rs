@@ -8,7 +8,7 @@ mod owned;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use gnoblin_wayland::ClientRole;
+use gnoblin_wayland::{ClientRole, MonitorSettings};
 use owned::{Connected, Session};
 use wayland_client::backend::{ObjectData, ObjectId};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool};
@@ -239,5 +239,52 @@ fn a_configuration_that_disables_every_output_is_failed() {
         configuration.apply();
         client.wait_until("the verdict", |state| state.outcome.is_some());
         assert_eq!(client.state.outcome, Some("failed"));
+    });
+}
+
+#[test]
+fn a_global_scale_is_the_scale_a_new_output_starts_at() {
+    let monitors = MonitorSettings {
+        privacy_screen: None,
+        global_scale: Some(2),
+    };
+    Session::start_with_monitors(Some(ClientRole::Privileged), monitors).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let _manager = bind_manager(&mut client);
+        let heads = client.state.current();
+        assert!(!heads.is_empty(), "the headless outputs are published at start");
+        assert!(
+            heads.iter().all(|head| (head.scale - 2.0).abs() < f64::EPSILON),
+            "every output starts at the global scale, got {:?}",
+            heads.iter().map(|head| head.scale).collect::<Vec<_>>()
+        );
+    });
+}
+
+#[test]
+fn an_explicit_scale_from_the_output_manager_wins_over_the_global_scale() {
+    let monitors = MonitorSettings {
+        privacy_screen: None,
+        global_scale: Some(2),
+    };
+    Session::start_with_monitors(Some(ClientRole::Privileged), monitors).run(|handle| {
+        let mut client = Connected::connect(handle.socket(), App::default());
+        let manager = bind_manager(&mut client);
+        let serial = client.state.done_serial.expect("bound");
+        let configuration = manager.create_configuration(serial, &client.qh, ());
+        let head = client.state.handles[0].clone();
+        configuration.enable_head(&head, &client.qh, ()).set_scale(3.0);
+        configuration.apply();
+        client.wait_until("the verdict", |state| state.outcome.is_some());
+        assert_eq!(client.state.outcome, Some("succeeded"));
+
+        let mut second = Connected::connect(handle.socket(), App::default());
+        let _manager = bind_manager(&mut second);
+        let heads = second.state.current();
+        assert!(
+            heads.iter().any(|head| (head.scale - 3.0).abs() < f64::EPSILON),
+            "the explicit scale is kept, got {:?}",
+            heads.iter().map(|head| head.scale).collect::<Vec<_>>()
+        );
     });
 }

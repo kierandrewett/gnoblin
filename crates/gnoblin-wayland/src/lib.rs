@@ -199,8 +199,8 @@ pub use observation::{
 pub use output_config::{HeadInfo, HeadRequest, ModeInfo, ModeRequest, OutputConfigHost};
 pub use output_control::{NoOutputControl, OutputControl};
 pub use server::{
-    Config, ControlHandle, CursorSettings, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, Server,
-    StartupError,
+    Config, ControlHandle, CursorSettings, DEFAULT_SOCKET_NAME, FOCUS_TIMEOUT, InputSink, LoopError, MonitorSettings,
+    Server, StartupError,
 };
 /// The dispatch glue a redirect implements.
 ///

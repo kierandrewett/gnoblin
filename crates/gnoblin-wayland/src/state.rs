@@ -1071,6 +1071,17 @@ impl State {
         }
     }
 
+    /// The Smithay scale for a backend scale: a whole value as an integer, any other
+    /// value as a fractional scale.
+    fn smithay_scale(scale: gnoblin_types::Scale) -> OutputScale {
+        if scale.denominator() == 1
+            && let Ok(value) = i32::try_from(scale.numerator())
+        {
+            return OutputScale::Integer(value);
+        }
+        OutputScale::Fractional(scale.as_f64())
+    }
+
     /// Creates one output's Smithay object, global and window-manager entry.
     fn add_output(&mut self, output: &gnoblin_backend::Output, rect: Rect) {
         let smithay_output = Output::new(
@@ -1088,7 +1099,7 @@ impl State {
         smithay_output.change_current_state(
             Some(mode),
             Some(Transform::Normal),
-            Some(OutputScale::Integer(1)),
+            Some(Self::smithay_scale(output.scale)),
             Some(SmithayPoint::from((rect.x, rect.y))),
         );
         let global = smithay_output.create_global::<Self>(&self.display_handle);

@@ -127,21 +127,27 @@ impl Session {
     /// the test connects is recorded with the role. That is the same seam the
     /// composition root uses: promise, then start the renderer or the session.
     pub fn start(role: Option<ClientRole>) -> Self {
-        Self::boot(role, true)
+        Self::boot(role, true, gnoblin_wayland::MonitorSettings::default())
+    }
+
+    /// A session whose `monitors` table sets `monitors`, as the composition root reads it.
+    pub fn start_with_monitors(role: Option<ClientRole>, monitors: gnoblin_wayland::MonitorSettings) -> Self {
+        Self::boot(role, true, monitors)
     }
 
     /// A session whose backend reports no gamma or power control, so neither protocol
     /// is advertised.
     pub fn start_without_output_controls() -> Self {
-        Self::boot(None, false)
+        Self::boot(None, false, gnoblin_wayland::MonitorSettings::default())
     }
 
     /// Starts the session; `controls` says whether the headless backend keeps its controls.
-    fn boot(role: Option<ClientRole>, controls: bool) -> Self {
+    fn boot(role: Option<ClientRole>, controls: bool, monitors: gnoblin_wayland::MonitorSettings) -> Self {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let socket = directory.path().join("wayland-0.sock");
         let config = Config {
             socket_path: Some(socket.clone()),
+            monitors,
             ..Config::default()
         };
         let headless = Headless::new();

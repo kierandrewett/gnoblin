@@ -103,6 +103,16 @@ impl Default for CursorSettings {
     }
 }
 
+/// The `monitors` table the Wayland host applies: the privacy-screen request and the
+/// global integer scale.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MonitorSettings {
+    /// The privacy-screen request, or `None` to leave the outputs as they are.
+    pub privacy_screen: Option<bool>,
+    /// The integer scale new outputs start at, or `None` to follow the backend.
+    pub global_scale: Option<u32>,
+}
+
 /// How a session is configured.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -156,6 +166,8 @@ pub struct Config {
     /// The pointer cursor the document declares: the theme, its logical size and the
     /// providers searched in order.
     pub cursor: CursorSettings,
+    /// The `monitors` table: the privacy-screen request and the global integer scale.
+    pub monitors: MonitorSettings,
     /// The redirect adapters this session serves.
     ///
     /// Each one registers its globals before the loop runs. An empty list is a session
@@ -179,10 +191,35 @@ impl Default for Config {
             keyboard: None,
             titlebar_actions: TitlebarActions::default(),
             cursor: CursorSettings::default(),
+            monitors: MonitorSettings::default(),
             extensions: Vec::new(),
             window_process_override: None,
         }
     }
+}
+
+/// Applies `global_scale` to the backend's outputs still at the identity scale and returns
+/// the outputs as the backend now reports them.
+///
+/// The backend is the one source of output scale, so the zwlr heads and the `wl_output`
+/// globals agree. An output the backend already scales keeps its scale, so a scale a client
+/// set through `zwlr_output_management_v1` or the IPC setter is not overwritten by the global
+/// value. A backend that refuses the change keeps the identity scale and says so in the log.
+fn apply_global_scale(backend: &mut dyn Backend<State>, global_scale: Option<u32>) -> Vec<gnoblin_backend::Output> {
+    if let Some(scale) = global_scale {
+        let targets: Vec<_> = backend
+            .outputs()
+            .iter()
+            .filter(|output| output.scale.is_identity())
+            .map(|output| (output.id, output.mode))
+            .collect();
+        for (id, mode) in targets {
+            if let Err(error) = backend.configure_output(id, mode, gnoblin_types::Scale::integral(scale)) {
+                warn!(%error, "[monitors] global-scale {scale} refused; the output keeps its scale");
+            }
+        }
+    }
+    backend.outputs().to_vec()
 }
 
 /// A session that is ready to run.
@@ -246,9 +283,10 @@ impl Server {
         let poll_fd = display.as_fd().try_clone_to_owned().map_err(StartupError::Io)?;
 
         let window_process_override = config.window_process_override;
+        let outputs = apply_global_scale(backend.as_mut(), config.monitors.global_scale);
         let mut state = State::new(
             display,
-            backend.outputs(),
+            &outputs,
             &config.seat_name,
             config.wm,
             config.workspaces,
