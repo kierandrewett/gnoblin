@@ -42,7 +42,7 @@ use gnoblin_log::error_in;
 use gnoblin_model::{Fields, Filter, Graph, ModelError, ObjectId, Observation, Subscription, TypeKey, Value};
 use gnoblin_schema::Catalog;
 use gnoblin_types::{OutputId, Rect, Version, WindowId, WorkspaceId};
-use gnoblin_wayland::{ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot};
+use gnoblin_wayland::{EffectSpec, ObservedOutput, ObservedWindow, ObservedWorkspace, SessionSnapshot};
 
 /// The property and member names this module writes, as the schema spells them.
 ///
@@ -81,6 +81,8 @@ mod member {
     pub const MODAL: &str = "modal";
     /// The `window` object's unresponsive property.
     pub const UNRESPONSIVE: &str = "unresponsive";
+    /// The `window` object's effects property: its `effect` objects, first to last.
+    pub const EFFECTS: &str = "effects";
     /// The layout name of an `output` or `workspace` object.
     pub const LAYOUT: &str = "layout";
     /// The name of an `output` object, as the compositor reports it.
@@ -127,6 +129,16 @@ struct PublishedWindow {
     modal: bool,
     unresponsive: bool,
     geometry: Rect,
+    effects: Vec<PublishedEffect>,
+}
+
+/// What the graph last published for one effect of a window.
+#[derive(Clone, Debug, PartialEq)]
+struct PublishedEffect {
+    /// The `effect` object.
+    object: ObjectId,
+    /// The parameters the object was last brought to.
+    spec: EffectSpec,
 }
 
 /// The live object graph of one compositor process.
@@ -330,6 +342,11 @@ impl SessionSync {
             .collect();
         for window in lost {
             if let Some(published) = self.windows.remove(&window) {
+                for effect in &published.effects {
+                    if let Err(error) = self.graph.close(effect.object) {
+                        failures.push(PublishFailure::new("effect", window.get(), error));
+                    }
+                }
                 // The object's own end is the one event. The schema also declares a
                 // `closed` signal, and it is deliberately not raised as well: a
                 // subscriber would learn the same thing twice.
@@ -348,6 +365,7 @@ impl SessionSync {
         let Some(previous) = self.windows.get(&window.id).cloned() else {
             let properties = window_properties(window.id, window);
             let object = self.graph.create(TypeKey::gnoblin("window"), properties)?;
+            let effects = self.publish_effects(object, Vec::new(), &window.effects)?;
             self.windows.insert(
                 window.id,
                 PublishedWindow {
@@ -360,6 +378,7 @@ impl SessionSync {
                     modal: window.modal,
                     unresponsive: window.unresponsive,
                     geometry: window.geometry,
+                    effects,
                 },
             );
             return Ok(());
@@ -392,6 +411,7 @@ impl SessionSync {
         if previous.geometry != window.geometry {
             self.set_geometry(object, window.geometry)?;
         }
+        let effects = self.publish_effects(object, previous.effects, &window.effects)?;
         self.windows.insert(
             window.id,
             PublishedWindow {
@@ -404,9 +424,63 @@ impl SessionSync {
                 modal: window.modal,
                 unresponsive: window.unresponsive,
                 geometry: window.geometry,
+                effects,
             },
         );
         Ok(())
+    }
+
+    /// Brings one window's `effect` objects in line with its effect stack.
+    ///
+    /// An effect keeps its object while its kind stays the same, so a subscriber sees
+    /// changed properties rather than a close and a create. A kind change, an added
+    /// effect or a removed one is a new or ended object. The window's `effects` list is
+    /// written only when its sequence of objects changed.
+    fn publish_effects(
+        &mut self,
+        window: ObjectId,
+        previous: Vec<PublishedEffect>,
+        next: &[EffectSpec],
+    ) -> Result<Vec<PublishedEffect>, ModelError> {
+        let before: Vec<ObjectId> = previous.iter().map(|effect| effect.object).collect();
+        let mut kept = previous.into_iter();
+        let mut published = Vec::with_capacity(next.len());
+        for spec in next {
+            match kept.next() {
+                Some(old) if old.spec.kind == spec.kind => {
+                    // Only the parameters that moved are written; an unchanged one needs no revision.
+                    let old_fields = effect_fields(&old.spec);
+                    for (name, value) in effect_fields(spec) {
+                        if old_fields.get(&name) != Some(&value) {
+                            self.graph.set(old.object, &name, value)?;
+                        }
+                    }
+                    published.push(PublishedEffect {
+                        object: old.object,
+                        spec: spec.clone(),
+                    });
+                }
+                replaced => {
+                    if let Some(old) = replaced {
+                        self.graph.close(old.object)?;
+                    }
+                    let object = self.graph.create(TypeKey::gnoblin("effect"), effect_fields(spec))?;
+                    published.push(PublishedEffect {
+                        object,
+                        spec: spec.clone(),
+                    });
+                }
+            }
+        }
+        for old in kept {
+            self.graph.close(old.object)?;
+        }
+        let after: Vec<ObjectId> = published.iter().map(|effect| effect.object).collect();
+        if after != before {
+            let list = after.into_iter().map(Value::Object).collect();
+            self.graph.set(window, member::EFFECTS, Value::List(list))?;
+        }
+        Ok(published)
     }
 
     /// Creates, changes and closes `output` objects to match the snapshot.
@@ -635,6 +709,34 @@ impl SessionSync {
     }
 }
 
+/// The schema properties of one `effect` object, keyed by their schema names.
+///
+/// Every parameter is written, not only the ones the kind uses: the schema defaults
+/// apply to the rest, and a parameter that is ignored for this kind is harmless.
+fn effect_fields(spec: &EffectSpec) -> Fields {
+    Fields::from([
+        ("kind".to_owned(), Value::Text(spec.kind.clone())),
+        ("enabled".to_owned(), Value::Bool(spec.enabled)),
+        ("active".to_owned(), Value::Bool(spec.active)),
+        ("reason".to_owned(), Value::Text(spec.reason.clone())),
+        ("downscale".to_owned(), Value::Uint(u64::from(spec.downscale))),
+        ("passes".to_owned(), Value::Uint(u64::from(spec.passes))),
+        ("algorithm".to_owned(), Value::Text(spec.algorithm.clone())),
+        ("noise".to_owned(), Value::Double(spec.noise)),
+        ("brightness".to_owned(), Value::Double(spec.brightness)),
+        ("contrast".to_owned(), Value::Double(spec.contrast)),
+        ("saturation".to_owned(), Value::Double(spec.saturation)),
+        ("tint".to_owned(), Value::Text(spec.tint.clone())),
+        ("offset_x".to_owned(), Value::Double(spec.offset_x)),
+        ("offset_y".to_owned(), Value::Double(spec.offset_y)),
+        ("blur_radius".to_owned(), Value::Double(spec.blur_radius)),
+        ("spread".to_owned(), Value::Double(spec.spread)),
+        ("colour".to_owned(), Value::Text(spec.colour.clone())),
+        ("source".to_owned(), Value::Text(spec.source.clone())),
+        ("entry".to_owned(), Value::Text(spec.entry.clone())),
+    ])
+}
+
 /// Every property a new `window` object is created with.
 fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindow) -> Fields {
     // `mapped` and `visible` are the session's own vocabulary and the schema declares
@@ -700,6 +802,7 @@ mod tests {
             modal: false,
             unresponsive: false,
             transient_for: None,
+            effects: Vec::new(),
         }
     }
 

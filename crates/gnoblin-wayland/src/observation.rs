@@ -12,7 +12,7 @@ use gnoblin_lock::State as LockState;
 use gnoblin_types::{OutputId, Rect, WindowId, WorkspaceId};
 
 /// One window, as the server last saw it.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct ObservedWindow {
     /// The policy identity of the window.
     pub id: WindowId,
@@ -41,6 +41,82 @@ pub struct ObservedWindow {
     pub unresponsive: bool,
     /// The window this one is a transient of, set by `xdg-foreign` or the client's parent.
     pub transient_for: Option<WindowId>,
+    /// The window's effect stack in paint order, first to last. Each entry is what a client
+    /// asked for through `window.add_effect`; `active` and `reason` are what the renderer
+    /// reports back, so a refused effect stays visible.
+    pub effects: Vec<EffectSpec>,
+}
+
+/// One window effect as the session carries it: the flat parameter set of the schema's
+/// `effect` object. A kind uses only its own parameters; the rest are ignored, as
+/// `effect.toml` documents. Defaults match the schema's documented defaults.
+#[derive(Clone, PartialEq, Debug)]
+pub struct EffectSpec {
+    /// `blur`, `shadow` or `shader`. Fixed when the effect is added.
+    pub kind: String,
+    /// Whether the effect is applied. A disabled effect stays in the stack and draws nothing.
+    pub enabled: bool,
+    /// Whether the renderer draws it. Set by the compositor, never by the client.
+    pub active: bool,
+    /// Why the effect is inactive, as a short sentence; empty when `active` is true.
+    pub reason: String,
+    /// Blur: the backdrop is sampled at `1 / downscale` of full resolution. Default 2.
+    pub downscale: u32,
+    /// Blur: the number of blur passes. Default 3.
+    pub passes: u32,
+    /// Blur: `gaussian`, `kawase` or `box`. Default `kawase`.
+    pub algorithm: String,
+    /// Blur: grain from 0.0 to 1.0. Default 0.0.
+    pub noise: f64,
+    /// Blur: brightness multiplier. Default 1.0.
+    pub brightness: f64,
+    /// Blur: contrast multiplier. Default 1.0.
+    pub contrast: f64,
+    /// Blur: saturation multiplier. Default 1.0.
+    pub saturation: f64,
+    /// Blur: tint as `#rrggbb` or `#rrggbbaa`; empty is no tint.
+    pub tint: String,
+    /// Shadow: horizontal offset in logical pixels. Default 0.0.
+    pub offset_x: f64,
+    /// Shadow: vertical offset in logical pixels. Default 0.0.
+    pub offset_y: f64,
+    /// Shadow: blur radius of the edge in logical pixels. Default 12.0.
+    pub blur_radius: f64,
+    /// Shadow: growth before blurring in logical pixels. Default 0.0.
+    pub spread: f64,
+    /// Shadow: colour as `#rrggbb` or `#rrggbbaa`. Default `#00000080`.
+    pub colour: String,
+    /// Shader: the shader module name. Empty is inactive. Default empty.
+    pub source: String,
+    /// Shader: the entry point in `source`. Default `main`.
+    pub entry: String,
+}
+
+impl Default for EffectSpec {
+    /// The schema's defaults for every parameter; `kind` is empty until the client sets it.
+    fn default() -> Self {
+        Self {
+            kind: String::new(),
+            enabled: true,
+            active: false,
+            reason: String::new(),
+            downscale: 2,
+            passes: 3,
+            algorithm: "kawase".to_owned(),
+            noise: 0.0,
+            brightness: 1.0,
+            contrast: 1.0,
+            saturation: 1.0,
+            tint: String::new(),
+            offset_x: 0.0,
+            offset_y: 0.0,
+            blur_radius: 12.0,
+            spread: 0.0,
+            colour: "#00000080".to_owned(),
+            source: String::new(),
+            entry: "main".to_owned(),
+        }
+    }
 }
 
 /// One layer surface, as the server last saw it.
@@ -126,7 +202,7 @@ pub struct ObservedOutput {
 }
 
 /// The window state at one instant.
-#[derive(Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Debug)]
 pub struct SessionSnapshot {
     /// Every managed window, keyed by identity. Read through [`SessionSnapshot::window`] or [`SessionSnapshot::windows`].
     pub(crate) windows: BTreeMap<WindowId, ObservedWindow>,

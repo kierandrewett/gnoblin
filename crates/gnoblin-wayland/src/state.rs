@@ -155,6 +155,9 @@ pub(crate) struct WindowEntry {
     pub(crate) icon_buffer_count: usize,
     /// The toplevel tag the client set (`xdg-toplevel-tag-v1`), if any.
     pub(crate) tag: Option<String>,
+    /// The effect stack the client set through `window.add_effect`, in paint order. The
+    /// server owns it: the observed window and the renderer both read it from here.
+    pub(crate) effects: Vec<crate::observation::EffectSpec>,
 }
 
 impl WindowEntry {
@@ -171,6 +174,7 @@ impl WindowEntry {
             icon_name: None,
             icon_buffer_count: 0,
             tag: None,
+            effects: Vec::new(),
         }
     }
 }
@@ -1477,6 +1481,7 @@ impl State {
                 icon_name: None,
                 icon_buffer_count: 0,
                 tag: None,
+                effects: Vec::new(),
             },
         );
         // The window is placed now and takes focus when it first maps; the
@@ -2235,6 +2240,7 @@ impl State {
                     icon_name: entry.and_then(|entry| entry.icon_name.clone()),
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),
+                    effects: entry.map_or_else(Vec::new, |entry| entry.effects.clone()),
                     modal: window.kind == WindowKind::Modal,
                     unresponsive: matches!(
                         entry.map(|entry| &entry.surface),
