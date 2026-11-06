@@ -854,6 +854,21 @@ mod tests {
     }
 
     #[test]
+    fn config_collectgarbage_is_bounded_by_the_budget() {
+        let limits = Limits {
+            instructions: 50_000,
+            ..Limits::default()
+        };
+        let (lua, guard) = armed(Profile::Config, &limits);
+        let count: f64 = lua.load("return collectgarbage('count')").eval().expect("count reads");
+        assert!(count > 0.0);
+        assert!(lua.load("collectgarbage('step') return true").exec().is_ok());
+        let result = lua.load("while true do collectgarbage('step') end").exec();
+        assert!(result.is_err(), "a step loop must hit the budget");
+        assert!(guard.aborted());
+    }
+
+    #[test]
     fn config_profile_refuses_bytecode_through_load() {
         let limits = Limits::default();
         let (lua, _guard) = armed(Profile::Config, &limits);
