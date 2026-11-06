@@ -9,9 +9,11 @@
 use std::path::Path;
 use std::time::Duration;
 
-use gnoblin_config::{FocusNewWindows, NewWindowPlacement, SearchPaths, Store, WindowManagement};
+use gnoblin_config::{
+    FocusMode as ConfiguredFocusMode, FocusNewWindows, NewWindowPlacement, SearchPaths, Store, WindowManagement,
+};
 use gnoblin_wayland::TitlebarActions;
-use gnoblin_wm::{DragConstraint, NewWindowFocus, PlacementMode, WmOptions};
+use gnoblin_wm::{DragConstraint, FocusMode, NewWindowFocus, PlacementMode, WmOptions};
 use tracing::{debug, warn};
 
 use crate::SessionConfig;
@@ -67,10 +69,10 @@ fn apply(config: &mut SessionConfig, section: &WindowManagement) {
                 FocusNewWindows::Allow => NewWindowFocus::Allow,
                 FocusNewWindows::Prevent => NewWindowFocus::Prevent,
             }),
-        // The pointer focus options are not read from the document yet: the focus_mode mapper is
-        // the next slice, so they keep the compositor defaults.
-        focus_mode: wm_defaults.focus_mode,
-        focus_change_on_pointer_rest: wm_defaults.focus_change_on_pointer_rest,
+        focus_mode: section.focus_mode.map_or(wm_defaults.focus_mode, focus_mode),
+        focus_change_on_pointer_rest: section
+            .focus_change_on_pointer_rest
+            .unwrap_or(wm_defaults.focus_change_on_pointer_rest),
     };
     config.wayland.titlebar_actions = TitlebarActions::of(section);
     let default_timeout = gnoblin_wayland::Config::default().check_alive_timeout;
@@ -89,9 +91,19 @@ fn placement_mode(placement: NewWindowPlacement) -> PlacementMode {
     }
 }
 
+/// The pointer focus mode for a configured `focus-mode`.
+fn focus_mode(mode: ConfiguredFocusMode) -> FocusMode {
+    match mode {
+        ConfiguredFocusMode::Click => FocusMode::Click,
+        ConfiguredFocusMode::Hover => FocusMode::Hover,
+        ConfiguredFocusMode::HoverStrict => FocusMode::HoverStrict,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gnoblin_config::{Config, Value};
 
     #[test]
     fn an_absent_section_keeps_the_defaults() {
@@ -135,5 +147,66 @@ mod tests {
         apply(&mut config, &section);
 
         assert_eq!(config.wayland.check_alive_timeout, Duration::ZERO);
+    }
+
+    #[test]
+    fn every_focus_mode_maps_into_the_compositor_configuration() {
+        for (configured, expected) in [
+            (ConfiguredFocusMode::Click, FocusMode::Click),
+            (ConfiguredFocusMode::Hover, FocusMode::Hover),
+            (ConfiguredFocusMode::HoverStrict, FocusMode::HoverStrict),
+        ] {
+            let section = WindowManagement {
+                focus_mode: Some(configured),
+                ..WindowManagement::default()
+            };
+
+            let mut config = SessionConfig::default();
+            apply(&mut config, &section);
+
+            assert_eq!(config.wayland.wm.focus_mode, expected);
+        }
+    }
+
+    #[test]
+    fn an_omitted_focus_leaf_keeps_the_wm_default() {
+        let mut config = SessionConfig::default();
+        apply(&mut config, &WindowManagement::default());
+
+        assert_eq!(config.wayland.wm.focus_mode, WmOptions::default().focus_mode);
+        assert!(!config.wayland.wm.focus_change_on_pointer_rest);
+    }
+
+    #[test]
+    fn focus_change_on_pointer_rest_maps_into_the_compositor_configuration() {
+        let section = WindowManagement {
+            focus_change_on_pointer_rest: Some(true),
+            ..WindowManagement::default()
+        };
+
+        let mut config = SessionConfig::default();
+        apply(&mut config, &section);
+
+        assert!(config.wayland.wm.focus_change_on_pointer_rest);
+    }
+
+    #[test]
+    fn a_bad_focus_mode_is_refused_naming_the_leaf() {
+        let document = Value::table([(
+            "window-management",
+            Value::table([("focus-mode", Value::String("sideways".to_owned()))]),
+        )]);
+
+        let report = Config::from_value(document).expect_err("an unknown focus-mode must be refused");
+        let paths: Vec<String> = report
+            .problems()
+            .iter()
+            .map(|problem| problem.path.to_string())
+            .collect();
+
+        assert!(
+            paths.iter().any(|path| path == "window-management.focus-mode"),
+            "the refusal names the leaf, got {paths:?}"
+        );
     }
 }
