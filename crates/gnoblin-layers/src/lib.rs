@@ -51,6 +51,7 @@
 
 pub mod band;
 pub mod name;
+pub mod order;
 pub mod provider;
 pub mod registry;
 pub mod scope;
@@ -59,6 +60,7 @@ pub mod state;
 
 pub use band::Band;
 pub use name::{LayerName, LocalName, NameError, ProviderId};
+pub use order::paint_order;
 pub use provider::Provider;
 pub use registry::{LayerHandle, LayerRecord, LayerRegistry, RegisterError};
 pub use scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LockBehaviour, Order, Scope};

@@ -208,10 +208,8 @@ impl LayerRegistry {
     pub fn register(&mut self, provider: &Provider, spec: LayerSpec) -> Result<LayerHandle, RegisterError> {
         // Rule 1: the reserved id. The namespace check below would accept it,
         // because `gnoblin` is a legal grammar word, so it is refused first.
-        if let Provider::Extension(id) = provider {
-            if id == crate::name::GNOBLIN_NAMESPACE {
-                return Err(RegisterError::ProviderIdReserved);
-            }
+        if matches!(provider, Provider::Extension(id) if id == crate::name::GNOBLIN_NAMESPACE) {
+            return Err(RegisterError::ProviderIdReserved);
         }
         let namespace = provider.namespace().map_err(RegisterError::BadProviderId)?;
 
