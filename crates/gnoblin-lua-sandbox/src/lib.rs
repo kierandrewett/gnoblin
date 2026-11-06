@@ -18,14 +18,15 @@
 //!   are not opened, and the base functions that read files (`dofile`,
 //!   `loadfile`) and the loader (`require`) are cleared.
 //! - [`Profile::Layout`] is the pure subset a layout runs under (D17). The base
-//!   library is cut to an allowlist, `string` to `len`, `sub`, `byte`, `char` and a
-//!   `format` that refuses a width or precision above 99, `table` without `sort`,
-//!   and `math` without `random`. In the configuration profile `string.find`, `match`,
-//!   `gmatch` and `gsub` are replaced by a Rust matcher in [`pattern`] that spends the
-//!   same step budget, with output identical to stock Lua 5.5 (`tests/pattern_parity.rs`).
-//!   `rep` is absent because the stock C version cannot be stopped by the count hook.
-//!   `pcall`, `coroutine`, `load` and `collectgarbage` are absent so the limits cannot
-//!   be caught or bypassed.
+//!   library is cut to an allowlist. `string` keeps `len`, `sub`, `byte`, `char` and a
+//!   `format` that refuses a width or precision above 99. `table` keeps `sort`, whose
+//!   comparator is Lua code and so runs under the instruction hook. `math` loses
+//!   `random`. `string.rep` is absent because the stock C version cannot be stopped by
+//!   the count hook.
+//! - In the configuration profile `string.find`, `match`, `gmatch` and `gsub` are
+//!   replaced by a Rust matcher in [`pattern`] that spends the same step budget, with
+//!   output identical to stock Lua 5.5 (`tests/pattern_parity.rs`). `pcall`, `xpcall`
+//!   and `coroutine` are wrapped or opened so the limits cannot be caught or bypassed.
 //!
 //! Binary Lua bytecode is never loaded. In the configuration profile `load` is
 //! wrapped so its mode is always text, because crafted bytecode can crash the
@@ -319,7 +320,6 @@ fn restrict_layout(lua: &Lua) -> Result<(), Error> {
     string.set("format", format)?;
 
     let table: Table = globals.get("table")?;
-    table.set("sort", Value::Nil)?;
     let math: Table = globals.get("math")?;
     math.set("random", Value::Nil)?;
     math.set("randomseed", Value::Nil)?;
@@ -443,19 +443,38 @@ mod tests {
     }
 
     #[test]
-    fn layout_profile_refuses_pattern_functions_and_sort() {
+    fn layout_profile_refuses_pattern_functions_and_random() {
         let lua = lua(Profile::Layout);
         for call in [
             "string.find('abc', 'b')",
             "string.match('abc', 'b')",
             "string.gsub('abc', 'b', 'c')",
             "string.rep('a', 10)",
-            "table.sort({2, 1})",
             "math.random()",
             "string.dump(print)",
         ] {
             assert!(lua.load(call).exec().is_err(), "{call} must be refused");
         }
+    }
+
+    #[test]
+    fn layout_sort_comparator_is_bounded_by_the_budget() {
+        let limits = Limits {
+            instructions: 50_000,
+            ..Limits::default()
+        };
+        let (lua, guard) = armed(Profile::Layout, &limits);
+        let result = lua
+            .load("local t = {3, 1, 2}; table.sort(t, function(a, b) while true do end end)")
+            .exec();
+        assert!(result.is_err(), "a looping comparator must hit the budget");
+        assert!(guard.aborted());
+        guard.begin(&limits);
+        let sorted: String = lua
+            .load("local t = {3, 1, 2}; table.sort(t, function(a, b) return a > b end); return table.concat(t, ',')")
+            .eval()
+            .expect("a fresh entry sorts");
+        assert_eq!(sorted, "3,2,1");
     }
 
     #[test]
