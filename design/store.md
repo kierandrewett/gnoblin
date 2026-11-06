@@ -360,7 +360,7 @@ column says whether it moves to a store.
 
 | What                    | Where                                                                                    | Decision                                        |
 | ----------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Log records             | `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, `gnoblin-log/src/store.rs:103-113`               | Stays until adopted as `log` (Needs Kieran 5).  |
+| Log records             | `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, `gnoblin-log/src/store.rs:103-113`               | Moves to kind `log`; migrated once.             |
 | Session recovery        | `$XDG_STATE_HOME/gnoblin/recovery`, `gnoblin-session/src/supervisor.rs:136`              | Stays. Read before any runtime starts.          |
 | Last accepted config    | `$XDG_STATE_HOME/gnoblin/last-good-config.json`, `gnoblin-config/src/last_good.rs:45-57` | Stays. Fallback must not depend on a store.     |
 | Spent activation tokens | `gnoblin-authority/src/authority.rs:288-292`, in memory                                  | Stays in memory. Never persisted.               |
@@ -448,9 +448,9 @@ Each phase is one reviewable commit. Its tests are named here but not run.
    missing grant is refused, and a missing capability leaves the method nil.
 6. **`Search`, `Transact` and `Watch` for `kv`.** Verify: commit-order delivery,
    batch coalescing per key, and no raw SQL path.
-7. **`log` adopter.** `Append` and `Search`, once Needs Kieran 5 and 4 are
-   decided. Verify: retention by age and size, and writes only through the
-   facade.
+7. **`log` adopter.** `Append` and `Search`. Logs move to the store as kind `log`,
+   and `logs.sqlite3` is migrated once. Verify: retention by age and size, and
+   writes only through the facade.
 8. **`secret` kind and the keyring provider.** `Lock`, after the D27 key source
    is chosen. Verify: the Secret Service and portal adapters, `gnoblinctl store
 list` shows the keyring store, and every generic frontend refuses a `secret`
@@ -463,10 +463,16 @@ list` shows the keyring store, and every generic frontend refuses a `secret`
     refused, and a `secret` value read through each generic frontend (IPC, Lua,
     `gnoblinctl`, WASM) returns `secret-value-refused`.
 
+## Decided
+
+- **Logs are kind `log`.** Logs move into the store. `logs.sqlite3` is migrated
+  once. The log writer keeps its facade, and no second reader holds the WAL open.
+- **Query operators.** Key prefix, attribute equality, time range, contains-text
+  (FTS), ordering, limit, count and group-by-count. No raw SQL, by invariant.
+
 ## Needs Kieran
 
-Each item is tagged. Each lists the real choice, with pros and cons. None is
-decided here.
+Each item is open. Each lists the real choice, with pros and cons.
 
 1. **Which capabilities ship first.** Option.
     - Proposed: `kv` gets `Items`, `Search`, `Transact` and `Watch` in phases 2
@@ -488,25 +494,15 @@ decided here.
 4. **A `writable` flag, or a seventh lifecycle state.** Option.
     - Pros of the flag: the state enum stays at six.
     - Cons of the flag: consumers must read two fields to know if a write works.
-5. **Logs through the store API (`log` kind), or keep `logs.sqlite3`.** Option.
-    - Pros of adopting: one query surface for tools.
-    - Cons of adopting: a second reader on a high-write file (D23). A read view
-      must not hold the WAL open for long.
-6. **Default quota, TTL and retention.** Option.
+5. **Default quota, TTL and retention.** Option.
     - Example: 16 MiB per `kv` store, 64 KiB per value, and 30 days of log.
     - Pros of small numbers: bounded disk use.
     - Cons of small numbers: a real cache fails sooner, and quietly in the field.
-7. **Query operators.** Option.
-    - Proposed: key prefix, attribute equality and time range only. Raw SQL is
-      refused by invariant.
-    - Pros: indexes stay simple and the surface stays small.
-    - Cons: owners will ask for ordering and ranges. Each addition moves the
-      query language towards SQL.
-8. **Backend layout: one file per store, or one file per kind.** Option. This
+6. **Backend layout: one file per store, or one file per kind.** Option. This
    is a backend detail, not a contract.
     - Pros of one file per store: a failure stays local to one store.
     - Cons of one file per store: more files to list and back up.
-9. **The `secret` unlock credential.** Option. Depends on the key source that
+7. **The `secret` unlock credential.** Option. Depends on the key source that
    `design/keyring.md` leaves open.
     - Pros of a D28 prompt layer: the user unlocks where they already are.
     - Cons of a prompt layer: a prompt is a second path for a credential.
