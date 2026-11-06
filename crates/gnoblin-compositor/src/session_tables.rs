@@ -1,6 +1,6 @@
 //! The session-wide tables the Wayland host reads at startup: the advertised protocols,
-//! from the `protocols` configuration section, and the keyboard repeat and XKB options,
-//! from `input.keyboard`.
+//! from the `protocols` configuration section, the keyboard repeat and XKB options, from
+//! `input.keyboard`, and the switchable layouts, from `input-sources`.
 //!
 //! A document with no such section keeps the built-in defaults. The values are checked by
 //! the schema before they reach this module, so an unknown protocol name or a non-boolean
@@ -20,6 +20,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             config.wayland.protocols = stored.config.protocols.unwrap_or_default();
             config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
+            config.wayland.input_sources = stored.config.input_sources;
             debug!("[session tables] loaded from the last accepted configuration");
         }
         Err(error) => {
@@ -47,7 +48,7 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gnoblin_config::{Config, Inherit, Protocol, Value};
+    use gnoblin_config::{Config, Inherit, InputSourceType, Protocol, Value};
 
     /// A document with one `protocols` table holding `entries`.
     fn document(entries: Vec<(&str, Value)>) -> Value {
@@ -67,12 +68,27 @@ mod tests {
         Value::table([("input", Value::table([("keyboard", Value::Map(keyboard))]))])
     }
 
+    /// A document with one `input-sources` table holding `entries`.
+    fn sources_document(entries: Vec<(&str, Value)>) -> Value {
+        let sources = entries
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect();
+        Value::table([("input-sources", Value::Map(sources))])
+    }
+
+    /// One `input-sources` entry with a type and an id.
+    fn source(kind: &str, id: &str) -> Value {
+        Value::table([("type", Value::string(kind)), ("id", Value::string(id))])
+    }
+
     /// Maps an accepted document into a session configuration, as the store path does.
     fn session_from(document: Value) -> SessionConfig {
         let config = Config::from_value(document).expect("the document is valid");
         let mut session = SessionConfig::default();
         session.wayland.protocols = config.protocols.unwrap_or_default();
         session.wayland.keyboard = config.input.and_then(|input| input.keyboard);
+        session.wayland.input_sources = config.input_sources;
         session
     }
 
@@ -92,6 +108,7 @@ mod tests {
         assert_eq!(session.wayland.protocols, gnoblin_wayland::Config::default().protocols);
         assert!(session.wayland.protocols.toggles.is_empty());
         assert_eq!(session.wayland.keyboard, None);
+        assert_eq!(session.wayland.input_sources, None);
     }
 
     #[test]
@@ -176,5 +193,43 @@ mod tests {
     fn a_non_integer_repeat_interval_is_refused_naming_the_leaf() {
         let paths = refused_paths(keyboard_document(vec![("repeat-interval", Value::string("fast"))]));
         assert!(paths.iter().any(|path| path.contains("repeat-interval")), "{paths:?}");
+    }
+
+    #[test]
+    fn every_input_sources_leaf_maps_into_the_compositor_configuration() {
+        let session = session_from(sources_document(vec![
+            (
+                "sources",
+                Value::List(vec![source("xkb", "us"), source("ibus", "anthy")]),
+            ),
+            ("per-window", Value::Bool(true)),
+        ]));
+        let sources = session
+            .wayland
+            .input_sources
+            .expect("the input-sources table is present");
+
+        assert_eq!(sources.per_window, Some(true));
+        let entries = sources.sources.expect("the sources list is present");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].r#type, Some(InputSourceType::Xkb));
+        assert_eq!(entries[0].id.as_deref(), Some("us"));
+        assert_eq!(entries[1].r#type, Some(InputSourceType::Ibus));
+        assert_eq!(entries[1].id.as_deref(), Some("anthy"));
+    }
+
+    #[test]
+    fn a_non_boolean_per_window_is_refused_naming_the_leaf() {
+        let paths = refused_paths(sources_document(vec![("per-window", Value::string("yes"))]));
+        assert!(paths.iter().any(|path| path.contains("per-window")), "{paths:?}");
+    }
+
+    #[test]
+    fn an_unknown_input_source_type_is_refused_naming_the_leaf() {
+        let paths = refused_paths(sources_document(vec![(
+            "sources",
+            Value::List(vec![source("x11", "us")]),
+        )]));
+        assert!(paths.iter().any(|path| path.contains("type")), "{paths:?}");
     }
 }
