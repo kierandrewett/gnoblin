@@ -87,9 +87,15 @@ mod mode;
 mod refusal;
 mod settings;
 
+/// The adapter type, its upstream handle and the gate a call passes through.
 pub use adapter::{Adapter, Call, Gate, Upstream};
+/// Watches the caller's identity so the gate can tell who is asking.
 pub use caller::CallerWatcher;
+/// Builds and reads the support matrix: which upstream members an adapter serves, and how faithfully.
 pub use matrix::{Builder, Interface, InterfaceBuilder, Kind, MatrixError, Member, Support, SupportMatrix};
+/// The mode gate: the operating mode, who is calling, and the allow or refuse decision.
 pub use mode::{CallerContext, Decision, LockState, Mode, OperationClass, Sandbox, allow};
+/// Why a call was refused, and the rule that refused it.
 pub use refusal::{Refusal, Rule};
+/// Desktop settings an adapter publishes, read from configuration or the environment.
 pub use settings::{ColourScheme, DesktopSettings, Switch, settings_from_config, settings_from_environment};
