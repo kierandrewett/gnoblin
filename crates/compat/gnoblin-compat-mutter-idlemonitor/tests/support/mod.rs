@@ -32,6 +32,7 @@ pub fn graph() -> Graph {
 pub fn idle_properties(idle_ms: u64) -> Fields {
     let mut properties = Fields::new();
     properties.insert("idle_ms".to_owned(), Value::Uint(idle_ms));
+    properties.insert("inhibitors".to_owned(), Value::Uint(0));
     properties
 }
 
