@@ -20,7 +20,7 @@ CONFIG_FILES = {
     "gnoblin-geoclue-integration": ("/etc/geoclue/conf.d/",),
     "gnoblin-ananicy-rules": ("/etc/ananicy.d/",),
 }
-GNOME_MAJOR = json.loads((Path(__file__).resolve().parents[1] / "src/gnome-versions.json").read_text())["major"]
+GNOME_MAJOR = json.loads((Path(__file__).resolve().parents[1] / "data/gnome-versions.json").read_text())["major"]
 ALLOWED_OBSOLETES = {
     f"gnoblin-session < {GNOME_MAJOR}",
     f"gnoblin-shell < {GNOME_MAJOR}",

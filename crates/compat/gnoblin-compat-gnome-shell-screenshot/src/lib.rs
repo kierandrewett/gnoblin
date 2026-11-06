@@ -12,7 +12,7 @@
 //! compositor's object graph for the `lock` object, which is what the gate's embargo is built
 //! from; [`service`] serves the upstream interface and refuses every member. The interface is
 //! vendored beside this crate (`interfaces/org.gnome.Shell.Screenshot.xml`, from gnome-shell
-//! 51.0, the release `src/gnome-versions.json` pins).
+//! 51.0, the release `data/gnome-versions.json` pins).
 //!
 //! # What it is not
 //!

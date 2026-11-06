@@ -14,7 +14,7 @@
 //! the per-caller watch registry, which holds no clock; [`service`] serves the upstream
 //! interface and fires `WatchFired` when the counter crosses a threshold. The interface is
 //! vendored beside this crate (`interfaces/org.gnome.Mutter.IdleMonitor.xml`, from Mutter
-//! 51.0, the release `src/gnome-versions.json` pins).
+//! 51.0, the release `data/gnome-versions.json` pins).
 //!
 //! # What it is not
 //!

@@ -480,7 +480,7 @@ class GnoblinNightlyVersion(unittest.TestCase):
         semver = "0.1.13-nightly.20261031.142.gabc1234"
         result = self.run_script("apply-nightly-version.py", semver)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads((self.copy / "src/gnoblin-version.json").read_text())["version"], semver)
+        self.assertEqual(json.loads((self.copy / "data/gnoblin-version.json").read_text())["version"], semver)
         self.assertEqual(self.run_script("gnoblin-version.py", "get", "version").stdout.strip(), semver)
 
     def test_only_nightly_versions_are_accepted(self):

@@ -194,7 +194,7 @@ function(gnoblin_component_sources name build_root)
     # Check the pinned fork before the patch run resets it.
     gnoblin_ensure_release_subprojects(mutter)
   endif()
-  set(inputs "${GNOBLIN_ROOT}/src/gnome-versions.json")
+  set(inputs "${GNOBLIN_ROOT}/data/gnome-versions.json")
   gnoblin_patch_series(patches "${name}")
   list(APPEND inputs "${GNOBLIN_ROOT}/patches/${name}/series" ${patches})
   if(name STREQUAL "xdg-desktop-portal-gnome")

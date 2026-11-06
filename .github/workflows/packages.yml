@@ -180,7 +180,7 @@ jobs:
         # A nightly gives the bundle its own version, and the packages must carry the same one.
         run: |
           bundle="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
-          version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/src/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/data/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
           echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
       - name: Plan and write the packages
         run: |

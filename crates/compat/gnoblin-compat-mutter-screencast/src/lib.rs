@@ -12,7 +12,7 @@
 //! [`CaptureBridge`], which the services role implements over its privileged IPC
 //! connection. The upstream interface is vendored beside this crate
 //! (`interfaces/org.gnome.Mutter.ScreenCast.xml`, from Mutter 51.0, the release
-//! `src/gnome-versions.json` pins), so the signature a caller sees is the one this
+//! `data/gnome-versions.json` pins), so the signature a caller sees is the one this
 //! adapter was written against rather than a paraphrase of it.
 //!
 //! # What it is not

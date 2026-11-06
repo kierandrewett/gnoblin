@@ -3,7 +3,7 @@
 
   inputs = {
     # Track the release train that carries the current GNOME major. Upstream
-    # component versions and source commits are pinned by src/gnome-versions.json.
+    # component versions and source commits are pinned by data/gnome-versions.json.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # Keep each release input independent.  The compatibility evaluations below
@@ -57,8 +57,8 @@
     let
       systems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-      versions = builtins.fromJSON (builtins.readFile ./src/gnome-versions.json);
-      gnoblinRelease = builtins.fromJSON (builtins.readFile ./src/gnoblin-version.json);
+      versions = builtins.fromJSON (builtins.readFile ./data/gnome-versions.json);
+      gnoblinRelease = builtins.fromJSON (builtins.readFile ./data/gnoblin-version.json);
       nixpkgsChannels = {
         nixos_25_05 = {
           release = "25.05";

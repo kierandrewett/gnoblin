@@ -305,7 +305,7 @@ version is exactly the Gnoblin version, with all three parts, and so is every
 surface generated from the schema. Nothing shortens it: Gnoblin 0.2.0 serves IPC
 0.2.0, and Gnoblin 0.2.3 serves IPC 0.2.3. The rewrite ships as 0.2.0.
 
-- **Source:** `src/gnoblin-version.json`, which `prepare-release.sh` writes and
+- **Source:** `data/gnoblin-version.json`, which `prepare-release.sh` writes and
   the source bundle and `gnoblin --version` read.
     - `xtask` copies it into the Cargo workspace version, the schema,
       `gnoblin.d.lua`, the WIT package (`gnoblin:ipc@0.2.0`) and the API
@@ -3307,7 +3307,7 @@ evidence sits. None is a decision, and none blocks a crate that has landed.
   members but not what a camera's member is called.
 
 - **The version source path.** The plan named `versions/gnoblin-version.json`
-  and the tree holds `src/gnoblin-version.json`, which `prepare-release.sh`
+  and the tree holds `data/gnoblin-version.json`, which `prepare-release.sh`
   writes. No `xtask` step copies it into the workspace yet.
 - **Layout VM and blocking calls.** D17 runs layouts on a worker thread and
   discards late results. A Lua instruction hook cannot pre-empt a C call that

@@ -11,7 +11,7 @@ from typing import Tuple
 
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = ROOT / "src/gnome-versions.json"
+MANIFEST = ROOT / "data/gnome-versions.json"
 PATCH_PROJECTS = (
     "mutter",
     "xdg-desktop-portal-gnome",

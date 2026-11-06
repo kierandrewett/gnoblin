@@ -20,7 +20,7 @@ Install these with your package manager:
   [Glycin](https://gitlab.gnome.org/GNOME/glycin) and `gsettings-desktop-schemas`
 
 `python3 scripts/check-build-deps.py` checks the library versions. The versions Gnoblin builds against are listed in the
-[pinned versions file](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json).
+[pinned versions file](https://github.com/kierandrewett/gnoblin/blob/main/data/gnome-versions.json).
 
 To build without Gnoblin's portal backend, run `./build.sh --without-portal` instead of `make`. You then need no
 GTK4, libadwaita or Glycin.

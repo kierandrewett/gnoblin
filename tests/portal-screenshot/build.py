@@ -39,7 +39,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     source = output / "source"
     upstream = ROOT / "subprojects/xdg-desktop-portal-gnome"
-    revision = json.loads((ROOT / "src/gnome-versions.json").read_text())["components"]["xdg-desktop-portal-gnome"][
+    revision = json.loads((ROOT / "data/gnome-versions.json").read_text())["components"]["xdg-desktop-portal-gnome"][
         "commit"
     ]
     archive(upstream, revision, source)

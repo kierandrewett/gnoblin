@@ -35,9 +35,9 @@
   runCommand,
 }:
 let
-  versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/src/gnome-versions.json");
+  versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/data/gnome-versions.json");
   gnoblinVersion =
-    (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/src/gnoblin-version.json")).version;
+    (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/data/gnoblin-version.json")).version;
   mutterVersion = versions.components.mutter.version;
   mutterApi = versions.components.mutter.api;
   # patches/<project>/series is the only source of patch order. Nothing here globs or sorts the patch directories.

@@ -4,7 +4,7 @@
 # usage: prepare-release.sh [--dry-run] [--no-tag] [--sign] VERSION
 #
 # VERSION is a plain SemVer number such as 0.1.11, without the gnoblin-v prefix. The script edits
-# src/gnoblin-version.json, which is the one place that holds the version (pkgsmith/ and the source bundle read it),
+# data/gnoblin-version.json, which is the one place that holds the version (pkgsmith/ and the source bundle read it),
 # commits that file and creates the gnoblin-vVERSION tag on the new commit. It never pushes. It prints the push
 # commands, so you push the commit first, wait for the dry run of the release workflow on main, and push the tag last.
 set -euo pipefail
@@ -73,7 +73,7 @@ import json
 import sys
 from pathlib import Path
 
-path = Path("src/gnoblin-version.json")
+path = Path("data/gnoblin-version.json")
 data = json.loads(path.read_text())
 data["version"] = sys.argv[1]
 path.write_text(json.dumps(data, indent=2) + "\n")
@@ -87,7 +87,7 @@ fi
 printf '[release] changed: %s\n' "${changed[@]}"
 git add -- "${changed[@]}"
 git commit -m "chore(release): prepare Gnoblin $version" \
-    -m "Sets the version in src/gnoblin-version.json. The packages, the source bundle and gnoblin --version read it from there."
+    -m "Sets the version in data/gnoblin-version.json. The packages, the source bundle and gnoblin --version read it from there."
 
 if [ "$make_tag" = true ]; then
     if [ "$sign" = true ]; then

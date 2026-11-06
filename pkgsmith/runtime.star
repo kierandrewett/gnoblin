@@ -18,7 +18,7 @@ SCHEMAS = PRIVATE + "/share/glib-2.0/schemas"
 
 PORTAL_VERSION = arg("PORTAL_VERSION")
 if not PORTAL_VERSION:
-    fail("PORTAL_VERSION is missing. scripts/build-packages.sh reads it from src/gnome-versions.json.")
+    fail("PORTAL_VERSION is missing. scripts/build-packages.sh reads it from data/gnome-versions.json.")
 GLIBC = arg("GLIBC", "")
 NEEDED_GNOBLIN = split_list(arg("NEEDED_GNOBLIN"))
 NEEDED_PORTAL = split_list(arg("NEEDED_PORTAL"))

@@ -13,7 +13,7 @@
 //! comes from); [`state`] turns them into the interface's dictionary; [`service`] serves the
 //! upstream interface and raises the two change signals. The interface is vendored beside this
 //! crate (`interfaces/org.gnome.Shell.Introspect.xml`, from gnome-shell 51.0, the release
-//! `src/gnome-versions.json` pins).
+//! `data/gnome-versions.json` pins).
 //!
 //! # What it is not
 //!

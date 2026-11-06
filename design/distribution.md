@@ -25,7 +25,7 @@ Gnoblin installs as its own session and can coexist with GNOME. Four packages co
   `gnoblin-mutter-devel`, so systems with the old packages upgrade.
 - Private libraries must not satisfy stock GNOME dependencies. `gnoblinctl` needs GLib and
   JSON-GLib at runtime. Python is a build tool.
-- The four packages have the same version, the Gnoblin version in `src/gnoblin-version.json`,
+- The four packages have the same version, the Gnoblin version in `data/gnoblin-version.json`,
   and epoch 1. The portal backend keeps the version of its GNOME source (`51.0.0`). Its release
   number follows the Gnoblin release, so each release has a distinct portal package.
 
@@ -138,8 +138,8 @@ run without a tag do stages 1 and 2 and publish nothing.
 
 ## GitHub releases
 
-Gnoblin and GNOME version independently. `src/gnoblin-version.json` is the
-canonical Gnoblin [SemVer](https://semver.org/) identity; `src/gnome-versions.json`
+Gnoblin and GNOME version independently. `data/gnoblin-version.json` is the
+canonical Gnoblin [SemVer](https://semver.org/) identity; `data/gnome-versions.json`
 continues to pin the compatible GNOME train. For example, Gnoblin `0.1.0` can
 target GNOME `51.0` without claiming that it is GNOME version `0.1.0`.
 
@@ -154,7 +154,7 @@ the preparation script from a clean `main`:
 
 The script does these steps:
 
-- Sets the version in `src/gnoblin-version.json`, the one place that holds it, and commits it.
+- Sets the version in `data/gnoblin-version.json`, the one place that holds it, and commits it.
 - Creates the annotated tag `gnoblin-v0.1.11`.
 
 Add `--sign` for a signed tag, `--no-tag` to skip the tag, and `--dry-run` to check the version
@@ -237,7 +237,7 @@ gate passes.
 
 ## Upgrade the GNOME base
 
-`src/gnome-versions.json` pins the release train.
+`data/gnome-versions.json` pins the release train.
 
 ```sh
 ./scripts/gnome-versions.py update 52

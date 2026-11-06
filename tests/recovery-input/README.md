@@ -29,7 +29,7 @@ panels, replay, embargoes, and callback removal.
 ## Boundary under test
 
 The runner reconstructs four files from Mutter's revision in
-`src/gnome-versions.json`, then applies the repository's patch series to a temporary
+`data/gnome-versions.json`, then applies the repository's patch series to a temporary
 directory. It extracts complete production functions without changing their
 branches:
 

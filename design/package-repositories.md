@@ -180,7 +180,7 @@ The version is applied to a throw-away CI checkout, never to the repository.
 1. `scripts/pkgrepo version --git .` computes the SemVer pre-release
    (`0.1.13-nightly.20261031.142.gabc1234`).
 2. `scripts/apply-nightly-version.py` writes it into
-   `src/gnoblin-version.json` and the Gnoblin entries of
+   `data/gnoblin-version.json` and the Gnoblin entries of
    `packaging/native-packages.json`.
 3. It runs `sync-package-manifest.py write`, which spells the version for each
    recipe.

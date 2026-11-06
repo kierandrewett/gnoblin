@@ -9,7 +9,7 @@
 #   pkgsmith/runtime.star       gnoblin and xdg-desktop-portal-gnoblin, which hold compiled code
 #   pkgsmith/integrations.star  gnoblin-geoclue-integration and gnoblin-ananicy-rules, which hold configuration only
 #
-# --version is a SemVer number. The default is the version of the tree (src/gnoblin-version.json), which is also the
+# --version is a SemVer number. The default is the version of the tree (data/gnoblin-version.json), which is also the
 # version of a nightly build once scripts/apply-nightly-version.py has written it. --formats limits the formats, for
 # example rpm,deb. The architecture and the C library are read from the compositor in the prefix, so a prefix built
 # on arm64 gets arm64 packages on any machine that runs this script, and a prefix built on Alpine (musl) gets apk packages.
