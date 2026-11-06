@@ -2902,6 +2902,7 @@ New feature. Mutter has no equivalent, so there is no divergence ledger entry. R
 7. Run-time enable and disable: session-only, or persisted to the host configuration.
 8. Cursor providers (D20) are deferred, so the extension cursor power waits for that decision.
 9. Whether `gnoblin.configure.extension_dirs` may name user directories or only system ones.
+10. Lua pattern functions (open, lean, item 36): stay on mlua and replace Lua's four pattern functions with our own Rust matcher that counts steps, so a pattern cannot run unbounded. Alternatives: piccolo (pure Rust, fuel-bounded, Lua 5.3/5.4, stdlib mostly missing) and Luau.
 
 ### D23: logging
 
@@ -2983,7 +2984,7 @@ Decisions:
 - **Config.** A window rule gets `effects`, an array of one-key tables in stack order, such as `{ blur = 24 }` and `{ shader = "...", uniforms = { ... } }`. The flat rule keys `blur` and `shader` are removed in the same cutover, with their docs. `corners.shadow` becomes a `shadow` pass in the stack, because a shadow is an effect (decided).
 - **Limits.** A node holds at most 32 passes (`MAX_PASSES`). An add over the limit, or a value out of range, is refused and the stack is unchanged. A config entry that fails is a named problem; the entry is dropped and the rest of the rule loads, as other invalid rule fields do.
 - **Ending.** Passes added from Lua end when they are revoked, when the window closes and when a configuration reload commits. Passes from a rule end at reload, as rules do now.
-- **Renderer support.** GLES draws all three kinds. A blur or shadow on a transformed layer is skipped with the existing `unsupported-effect-on-3d` warning. Software and Vulkan draw no effect passes yet. A pass the active renderer skips stays in the stack and is reported as not drawn.
+- **Renderer support.** GLES draws all three kinds. A blur or shadow on a transformed layer is skipped with the existing `unsupported-effect-on-3d` warning. Software and Vulkan draw no effect passes yet. A pass the active renderer cannot draw is skipped: the window looks normal, as blur does on software rendering. The skip is logged and shown in the effect's own state. It is never an error (decided 20).
 - **Names.** `compositor.blur` (`auto`, `on`, `off`) is a global policy and keeps its name. Per-window `blur` is a radius. The docs must say which one they mean.
 
 Consequences:
@@ -2995,11 +2996,13 @@ Consequences:
 
 Decided 2026-11-06: `corners.shadow` becomes a `shadow` pass in the stack, because a shadow is an effect. No `gnoblinctl window effects` command is added.
 
-Needs Kieran:
+Decided 2026-11-06 (Kieran, items 17 to 21):
 
-1. Confirm the names `window.effects:add` and `effect:set`, and whether `set_effect` is removed or kept as a shorthand.
-2. Whether the flat `blur` and `shader` rule keys are removed, as proposed, or kept as one-entry shorthand after `effects`.
-3. Whether a pass the active renderer cannot draw is refused at add time, as proposed, or kept and reported.
+- `window:set_effect` is removed in one clean cutover (17). Every caller moves to `window.effects:add` and `effect:set`. The live files that name it are: `src/config/lua/gnoblin-lua.c`, `gnoblin-lua-internal.h`, `gnoblin-lua-signatures.inc`, `gnoblin-lua-state-queries.c`, `gnoblin-lua-variant.c`, `api/windows.h`, `src/control/gnoblin-api-operations.h`, `gnoblin-control-overrides.c`, `gnoblin-overrides.h`, `src/cli/gnoblinctl-lua-api.c`, `scripts/audit-lua-annotations.py`, `tests/lua-api-test.c`, `tests/api-operations-test.c`, `tests/gnoblinctl-cli.test.py`, `tests/parity/contracts/operations.json`, `docs/cli/lua.md`, `docs/gnoblinctl.md`, `docs/public/gnoblin.d.lua`, `docs/shell-api/overrides.md`, `docs/shell-api/windows.md`, `docs/config/window_rule.md`, and `crates/gnoblin-backend/src/render/compose.rs` and `crates/gnoblin-render/src/scene.rs` (`set_effects`, the Rust side, which keeps its name). `CHANGELOG.md` gets a new entry and keeps its history. `design/shell-api-redesign.md` is a historical record and is left alone.
+- The flat rule keys `blur` and `shader` (with `shader_uniforms`) are removed (19). Their live references are `src/config/gnoblin-config-windows.c:374`, `src/config/lua/gnoblin-lua-signatures.inc:525-528` and `:578`, `src/config/lua/gnoblin-lua-state-queries.c:669-678`, and `src/control/gnoblin-control-overrides.c:401`. The rule table in `docs/config/window_rule.md` is checked when built.
+- `corners.shadow` joins the effect stack as a `shadow` pass (18).
+- An effect the renderer cannot draw is skipped, not refused (20). See Renderer support above.
+- The window object carries its `effects` list. `gnoblinctl` prints what the object model returns, so there is no separate effects command (21).
 
 #### Shaped windows (amendment)
 
@@ -3019,7 +3022,7 @@ Sources of "shape", with trade-offs:
 | Corner radius (today) | No new work                                  | One rounded box; cannot express ovals, rings or slivers                           |
 | X11 Shape (Xwayland)  | Would give the bounding shape                | Inference: unknown whether it reaches Wayland; test before relying on it          |
 
-Decision (proposed): the silhouette is the committed buffer's alpha. The window's own pixels use it as coverage, as now. Border uses it thresholded at 0.5, and shadow and blur use it soft. Opaque and input regions are never trusted for looks. A buffer without alpha (XRGB) is a full rectangle.
+Decided 2026-11-06 (item 22): the silhouette is the committed buffer's alpha, with stray specks removed and the input region as a hint when it is real. The window's own pixels use it as coverage, as now. Border uses it thresholded at 0.5, and shadow and blur use it soft. A window rule picks `alpha`, `input` or `both`. Opaque regions are never trusted for looks. A buffer without alpha (XRGB) is a full rectangle.
 
 Per-effect rule, applied to one silhouette mask so that effects stack over the same shape:
 
@@ -3044,10 +3047,12 @@ Ordering: shaped windows land before stacking. The stack then samples one mask p
 
 Decided 2026-11-06: the mask cap is 4096 pixels on the long side.
 
-Needs Kieran:
+Decided 2026-11-06 (Kieran, items 22, 23, 24):
 
-1. Confirm the buffer alpha as the silhouette, against the input-region alternative.
-2. Whether `corner_radius` still clips a shaped window (proposed: intersect with the alpha).
+- The silhouette is the committed buffer's alpha. Stray specks are removed: small isolated islands are ignored, so a particle does not grow its own shape (22).
+- When the client sets a real input region (non-empty and not the full window), it is an extra hint that cuts off pixels outside it. A window rule picks the source: `alpha`, `input` or `both` (22).
+- `corner_radius` still clips a shaped window. The rounding and the alpha both apply, so the overlap is visible (23).
+- The mask cap is 4096 pixels on the long side (24, already recorded above).
 
 ### D27: keyring service
 
@@ -3062,6 +3067,7 @@ Consequences:
 - The Secret portal derives per-app secrets from one master secret. Per-app consent is unchanged: confirm the first retrieval per app, with no remember.
 - Acceptance is compatibility: a libsecret `secret-tool` round trip, the portal `Retrieve` call, and an existing Secret Service client needing no change.
 - Migration from gnome-keyring or KWallet is not offered, unless Kieran says yes (`design/keyring.md`, "Needs Kieran").
+- Decided 2026-11-06 (item 35): the coexistence default is a config leaf, `keyring.provider`, which defaults to `gnoblin`. See `design/keyring.md`, "Coexistence".
 
 **Store provider.** The keyring is a provider of kind `secret` in the store abstraction (D30). It speaks the provider interface, so `gnoblinctl store list` shows it. Its decisions here are unchanged.
 
@@ -3092,7 +3098,7 @@ Consequences:
 
 Decided 2026-11-06: a window-targeted `portals` dialog blocks its parent window only. With no usable parent, it is centred on the output and blocks that output. The toplevel kind is `surface_toplevel`. The secure-capture default is `mask`.
 
-Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are in its "Decided" list.
+Open items are listed in `design/layers.md`, "Needs Kieran". Decided items are in its "Decided" list. xdg-foreign (layers item 6, batch item 8) is not decided: the lean is now (b), our own handle table wrapping Smithay, with zero Smithay patches.
 
 ### D29: window menu
 
