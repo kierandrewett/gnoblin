@@ -82,14 +82,24 @@
 
 #![forbid(unsafe_code)]
 
+/// The admission gate: the support matrix and the mode check for each call.
 pub mod compat;
+/// The `DisplayConfig` error type, returned when a call cannot be answered.
 pub mod error;
+/// The IPC client that subscribes to the compositor and folds its state.
 pub mod link;
+/// The D-Bus service object and the export that serves it.
 pub mod service;
+/// The display state the adapter reports, and the plan an apply produces.
 pub mod state;
 
+/// Admission types and the support matrix, re-exported from `compat`.
 pub use compat::{DisplayConfigAdmission, DisplayConfigCall, MATRIX, NAME, NAMES};
+/// The error returned when a `DisplayConfig` call cannot be answered.
 pub use error::DisplayError;
+/// The IPC subscription that keeps the reported display state current.
 pub use link::DisplayLink;
+/// Service constants, the service object, the apply seam and the export function.
 pub use service::{BUS_NAME, DisplayConfigService, INTERFACE, OutputApplier, PATH, VERSION, export};
+/// The state types the adapter reports and the apply plan it builds.
 pub use state::{ApplyMethod, ApplyPlan, DisplayOutput, DisplayState, LogicalMonitor, MonitorAssignment, MonitorMode};
