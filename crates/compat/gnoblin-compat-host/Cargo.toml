@@ -1,0 +1,39 @@
+[package]
+name = "gnoblin-compat-host"
+description = "The one place that knows which compat adapters exist and how the session and services roles wire them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# The host is the only crate that links the compat adapters. The `gnoblin` binary names this
+# crate and no adapter, so the binary stays dispatch and nothing else. See `xtask/src/deps.rs`.
+[dependencies]
+gnoblin-compat-core = { path = "../gnoblin-compat-core" }
+gnoblin-compat-gnome-keyring-prompter = { path = "../gnoblin-compat-gnome-keyring-prompter" }
+gnoblin-compat-gnome-shell-introspect = { path = "../gnoblin-compat-gnome-shell-introspect" }
+gnoblin-compat-gtk-dconf-settings = { path = "../gnoblin-compat-gtk-dconf-settings" }
+gnoblin-compat-gtk-shell1 = { path = "../gnoblin-compat-gtk-shell1" }
+gnoblin-compat-mutter-displayconfig = { path = "../gnoblin-compat-mutter-displayconfig" }
+gnoblin-compat-mutter-idlemonitor = { path = "../gnoblin-compat-mutter-idlemonitor" }
+gnoblin-compat-mutter-x11-interop = { path = "../gnoblin-compat-mutter-x11-interop" }
+gnoblin-compat-qt-portal-settings = { path = "../gnoblin-compat-qt-portal-settings" }
+gnoblin-compat-x11-xsettings = { path = "../gnoblin-compat-x11-xsettings" }
+# The composition root the session role hands its `SessionConfig` to, and the guardian's
+# environment the settings are exported into.
+gnoblin-compositor = { path = "../../gnoblin-compositor" }
+gnoblin-session = { path = "../../gnoblin-session" }
+# The services role's linked-agent contract and the GeoClue agent the role always links.
+gnoblin-services = { path = "../../gnoblin-services" }
+gnoblin-log = { path = "../../gnoblin-log" }
+zbus.workspace = true
+futures-lite.workspace = true
+
+[dev-dependencies]
+# The XSETTINGS and interop tests run a real client against the session, as a toolkit would.
+gnoblin-xwayland = { path = "../../gnoblin-xwayland" }
+wayland-client = "0.31.14"
+x11rb = "0.14.0"

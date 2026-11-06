@@ -1384,6 +1384,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-compat-host"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "futures-lite",
+ "gnoblin-compat-core",
+ "gnoblin-compat-gnome-keyring-prompter",
+ "gnoblin-compat-gnome-shell-introspect",
+ "gnoblin-compat-gtk-dconf-settings",
+ "gnoblin-compat-gtk-shell1",
+ "gnoblin-compat-mutter-displayconfig",
+ "gnoblin-compat-mutter-idlemonitor",
+ "gnoblin-compat-mutter-x11-interop",
+ "gnoblin-compat-qt-portal-settings",
+ "gnoblin-compat-x11-xsettings",
+ "gnoblin-compositor",
+ "gnoblin-log",
+ "gnoblin-services",
+ "gnoblin-session",
+ "gnoblin-xwayland",
+ "wayland-client",
+ "x11rb",
+ "zbus",
+]
+
+[[package]]
 name = "gnoblin-compat-mutter-clipboard"
 version = "0.2.0-alpha.0"
 dependencies = [
