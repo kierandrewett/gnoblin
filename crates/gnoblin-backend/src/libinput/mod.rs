@@ -34,7 +34,9 @@
 //! 5. **A gesture reaches the seat as a pointer click.** Gestures are [`RawEvent`]s and never
 //!    [`InputEvent`]s, so the router sees them and no client does.
 
+/// The translation rules: libinput device events become seat events, as pure logic over plain values.
 pub mod map;
+/// The configuration rules: what each device is asked to be, and what a refusal costs.
 pub mod settings;
 
 use std::cell::RefCell;

@@ -101,7 +101,9 @@ pub enum Transition {
 /// decided here and tested on a machine with no seat.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SeatState {
+    /// Whether libseat last reported the seat as active or paused.
     activity: SeatActivity,
+    /// The redraw epoch, bumped on every resume so the backend repaints after a VT switch.
     generation: u64,
 }
 
@@ -219,9 +221,13 @@ impl std::error::Error for SessionError {}
 /// fills. The backend drains [`Seat::take_events`] during its own dispatch, so no event
 /// reaches the devices from inside the loop callback that received it.
 pub struct Seat {
+    /// The `libseat` handle that opened the seat; [`Seat::open_device`] opens devices through it.
     session: LibSeatSession,
+    /// The seat's name as libseat reports it; shown in the `Debug` output.
     name: String,
+    /// Events the loop callback has queued, drained by [`Seat::take_events`].
     events: Arc<Mutex<VecDeque<SeatEvent>>>,
+    /// The event source for the seat, taken out once it is registered with the loop.
     notifier: Option<LibSeatSessionNotifier>,
 }
 

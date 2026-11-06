@@ -155,8 +155,11 @@ pub enum Setting {
 /// What a device is given, and how many of those settings it refused.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct DeviceSettings {
+    /// The kind the settings were built for; `None` only for the `Default` value, which matches no kind.
     kind: Option<DeviceKind>,
+    /// The settings to apply, in the order the configuration lists them.
     settings: Vec<Setting>,
+    /// How many of [`Self::settings`] libinput refused on the last apply.
     refused: usize,
 }
 

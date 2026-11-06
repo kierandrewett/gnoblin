@@ -228,7 +228,9 @@ pub enum DeviceChange {
 /// decides what that means, so the rules are tested without a device.
 #[derive(Clone, Debug)]
 pub struct Devices {
+    /// The path of the GPU the compositor drives, chosen once by [`primary`].
     primary: PathBuf,
+    /// Every GPU node the machine has, sorted by path, so the primary is not necessarily first.
     known: Vec<DrmNode>,
 }
 
@@ -330,7 +332,9 @@ struct MonitorShared {
 /// It owns no decision. It reports paths, and [`Devices`] decides what they mean, which is
 /// what keeps the hotplug rules testable.
 pub struct Discovery {
+    /// The monitor that reports hotplug; `None` once [`Discovery::register`] has moved it into the loop.
     udev: Option<UdevBackend>,
+    /// The path table and pending events, shared with the loop callback that fills them.
     shared: std::sync::Arc<std::sync::Mutex<MonitorShared>>,
 }
 
