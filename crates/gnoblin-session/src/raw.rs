@@ -39,7 +39,9 @@ const REPORT_INTERVAL: Duration = Duration::from_secs(1);
 /// The stream a raw line came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputStream {
+    /// The child's standard output. Logged at info level.
     Stdout,
+    /// The child's standard error. Logged at warn level.
     Stderr,
 }
 
@@ -76,8 +78,11 @@ pub fn policy(role: &str, raw_services: bool) -> RawPolicy {
 /// One raw line, already bounded in length.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawLine {
+    /// The role of the child that wrote the line, as named in the plan.
     pub role: String,
+    /// Which of the child's two output streams the line came from.
     pub stream: OutputStream,
+    /// The line text after redaction, without its terminator, cut to [`MAX_LINE`] bytes.
     pub text: String,
 }
 

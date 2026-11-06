@@ -34,20 +34,19 @@
 //!
 //! 1. **A child that crashes immediately is restarted forever.** The policy's ladder and
 //!    circuit breaker bound it, the guardian reports the session degraded, and the loop keeps
-//!    running: `tests/guardian.rs::a_crash_looping_runtime_is_cut_off_and_reported`.
+//!    running: `crates/gnoblin/tests/guardian.rs::a_crash_looping_runtime_is_cut_off_and_reported`.
 //! 2. **A compositor crash leaves orphans.** Its exit begins the stop sequence, which signals
-//!    and then kills every other child, and the guardian exits non-zero once they are gone:
-//!    `tests/guardian.rs::a_compositor_crash_stops_every_child`.
+//!    and then kills every other child: `crates/gnoblin/tests/guardian.rs::a_compositor_crash_ends_the_guardian_and_stops_every_child`.
 //! 3. **A descriptor leaks into an unrelated child.** Only the descriptor a child is given is
 //!    inheritable for that spawn, and the parent closes its copy afterwards, so the services
 //!    role never holds the runtime's connection:
-//!    `tests/guardian.rs::a_privileged_descriptor_reaches_only_its_own_role`.
-//! 4. **The guardian's own `SIGTERM` is never noticed.** It becomes an event, the stop
-//!    sequence runs in reverse start order, and the process exits zero once every child is
-//!    gone: `tests/guardian.rs::a_termination_signal_stops_the_session_in_order`.
-//! 5. **A child that cannot be started stalls the session.** The failure is reported to the
-//!    policy as an exit, so its own restart policy decides instead of the session waiting for
-//!    a readiness report that will never come: `tests/guardian.rs::a_child_that_cannot_start_is_reported`.
+//!    `crates/gnoblin/tests/guardian.rs::a_privileged_descriptor_reaches_only_its_own_role`.
+//! 4. **The guardian's own `SIGTERM` is never noticed.** It becomes an event and the stop
+//!    sequence runs in reverse start order:
+//!    `crates/gnoblin/tests/guardian.rs::a_termination_signal_stops_the_session_in_reverse_order`.
+//! 5. **A child that cannot be started stalls the session.** The spawn error is reported to
+//!    the policy as `Exited(70)`, so its own restart policy decides instead of the session
+//!    waiting for a readiness report that will never come. No test covers this path yet.
 
 use std::collections::BTreeMap;
 use std::os::fd::{AsRawFd as _, OwnedFd};
