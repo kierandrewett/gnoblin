@@ -46,6 +46,7 @@
 
 #![forbid(unsafe_code)]
 
+/// The subject polkitd registers the agent under: pid plus process start time.
 pub mod subject;
 
 use std::collections::{BTreeMap, HashMap};

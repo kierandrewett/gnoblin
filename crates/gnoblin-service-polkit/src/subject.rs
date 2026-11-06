@@ -1,4 +1,4 @@
-//! The process identity polkitd regs the agent under.
+//! The process identity polkitd registers the agent under.
 //!
 //! `RegisterAuthenticationAgent` names the caller as a `(sa{sv})` subject of kind
 //! `unix-process`, whose details are the pid and the process start time. The start
