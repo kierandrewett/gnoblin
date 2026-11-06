@@ -12,13 +12,14 @@
 //!   and `define_size = <size>, <file>, <delay ms>` lines. The nominal size is
 //!   chosen with [`nominal_for`]; only that size's frames are kept, in the
 //!   order the file lists them.
-//! - SVG frames, rasterised with [`svg::rasterise`]. Each archive member is
-//!   read through [`MAX_FILE_BYTES`], so a member that inflates past the cap is
-//!   a named `Failed`.
+//! - SVG and PNG frames. SVG is rasterised with [`svg::rasterise`]; PNG is
+//!   decoded with [`png::rasterise`] (8-bit only, see that module). Each archive
+//!   member is read through [`MAX_FILE_BYTES`], so a member that inflates past
+//!   the cap is a named `Failed`.
 //!
 //! Not implemented, each a named `Failed` or a miss rather than a guess:
-//! - PNG frames. No raster decoder is a dependency, so a PNG frame is `Failed`
-//!   and the chain moves on.
+//! - Palette and 16-bit PNG frames. They are `Failed` by name and the chain
+//!   moves on.
 //! - `define_override` aliases. The shape candidates cover the common aliases;
 //!   the override table itself is ignored.
 //! - Archive version, hash and per-size interpolation beyond the nominal size.
@@ -29,7 +30,7 @@ use zip::ZipArchive;
 
 use super::files::{CursorFiles, FileError, MAX_FILE_BYTES, SearchPath, is_contained};
 use super::image::{CursorFrame, CursorImages};
-use super::{CursorProvider, Lookup, MAX_FRAMES, ProviderKind, Request, nominal_for, shapes, svg};
+use super::{CursorProvider, Lookup, MAX_FRAMES, ProviderKind, Request, nominal_for, png, shapes, svg};
 
 /// The directory of shape archives when `manifest.hl` does not name one.
 const DEFAULT_DIRECTORY: &str = "hyprcursors";
@@ -96,8 +97,8 @@ fn load(bytes: &[u8], request: &Request<'_>, label: &str) -> Result<CursorImages
         .ok_or_else(|| format!("{label}: meta.hl defines no sizes"))?;
     let mut images = Vec::new();
     for define in meta.defines.iter().filter(|define| define.size == size) {
-        let svg_bytes = member(&mut archive, &define.file, label)?;
-        let frame: CursorFrame = svg::rasterise(&svg_bytes, size, request.physical)
+        let bytes = member(&mut archive, &define.file, label)?;
+        let frame = frame_for(&define.file, &bytes, size, request.physical)
             .map_err(|error| format!("{label}/{}: {error}", define.file))?;
         images.push(frame.with_delay(define.delay));
     }
@@ -156,7 +157,7 @@ fn parse_meta(text: &str) -> Result<Meta, String> {
     Ok(Meta { hotspot, defines })
 }
 
-/// One `define_size` value: `size, file, delay`. Only SVG frames are accepted.
+/// One `define_size` value: `size, file, delay`. The frame must be an SVG or a PNG.
 fn parse_define(value: &str) -> Result<Define, String> {
     let mut parts = value.split(',').map(str::trim);
     let (Some(size), Some(file), Some(delay), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
@@ -170,8 +171,8 @@ fn parse_define(value: &str) -> Result<Define, String> {
     let delay = delay
         .parse::<u32>()
         .map_err(|_| format!("define_size {value:?}: the delay is not a whole number of milliseconds"))?;
-    if !file.ends_with(".svg") {
-        return Err(format!("frame {file} is not an SVG (PNG frames are not supported)"));
+    if !file.ends_with(".svg") && !file.ends_with(".png") {
+        return Err(format!("frame {file} is neither an SVG nor a PNG"));
     }
     if !is_contained(file) {
         return Err(format!("frame {file} is outside the archive"));
@@ -181,6 +182,15 @@ fn parse_define(value: &str) -> Result<Define, String> {
         file: file.to_owned(),
         delay,
     })
+}
+
+/// Rasterises one frame by its file extension, onto the physical canvas.
+fn frame_for(file: &str, bytes: &[u8], nominal: u32, physical: u32) -> Result<CursorFrame, String> {
+    if file.ends_with(".png") {
+        png::rasterise(bytes, physical).map_err(|error| error.to_string())
+    } else {
+        svg::rasterise(bytes, nominal, physical).map_err(|error| error.to_string())
+    }
 }
 
 /// A hotspot fraction, which must lie between zero and one.
@@ -217,6 +227,7 @@ fn file_failure(label: &str, error: &FileError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cursor::MemoryFiles;
 
     #[test]
     fn the_manifest_names_the_cursor_directory() {
@@ -244,9 +255,60 @@ mod tests {
         assert_eq!(meta.defines[0].delay, 50);
     }
 
+    /// A theme holding one shape archive whose single frame is `frame` named `0001.png`.
+    fn png_theme(frame: &[u8]) -> MemoryFiles {
+        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        let meta = "hotspot_x = 0.5\nhotspot_y = 0.25\ndefine_size = 2, 0001.png, 50\n";
+        archive.start_file("meta.hl", options).expect("meta member");
+        std::io::Write::write_all(&mut archive, meta.as_bytes()).expect("meta bytes");
+        archive.start_file("0001.png", options).expect("frame member");
+        std::io::Write::write_all(&mut archive, frame).expect("frame bytes");
+        let shape = archive.finish().expect("archive").into_inner();
+        MemoryFiles::new()
+            .with_file(
+                SearchPath::Hyprcursor,
+                "Test/manifest.hl",
+                b"cursors_directory = hyprcursors\n".to_vec(),
+            )
+            .with_file(SearchPath::Hyprcursor, "Test/hyprcursors/default.hlc", shape)
+    }
+
     #[test]
-    fn png_frames_and_out_of_range_hotspots_fail() {
-        assert!(parse_meta("define_size = 24, 0001.png, 50\n").is_err());
+    fn a_png_frame_decodes_with_its_hotspot() {
+        let frame = super::super::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
+        let files = png_theme(&frame);
+        let request = Request {
+            theme: "Test",
+            shape: "default",
+            physical: 2,
+        };
+        let Lookup::Found(images) = Hyprcursor.lookup(&request, &files) else {
+            panic!("the PNG theme is found");
+        };
+        assert_eq!(images.hotspot(), (1, 1));
+        assert_eq!(images.frames().len(), 1);
+        assert_eq!(images.frames()[0].pixels(), &[0xFFFF_FFFF; 4]);
+    }
+
+    #[test]
+    fn a_truncated_png_frame_fails_naming_the_file() {
+        let frame = super::super::png::tests::encode(2, ::png::ColorType::Rgba, ::png::BitDepth::Eight, &[255; 16]);
+        let files = png_theme(&frame[..frame.len() / 2]);
+        let request = Request {
+            theme: "Test",
+            shape: "default",
+            physical: 2,
+        };
+        let Lookup::Failed(reason) = Hyprcursor.lookup(&request, &files) else {
+            panic!("a truncated frame is a named failure");
+        };
+        assert!(reason.contains("0001.png"), "{reason}");
+    }
+
+    #[test]
+    fn unknown_frames_and_out_of_range_hotspots_fail() {
+        assert!(parse_meta("define_size = 24, 0001.gif, 50\n").is_err());
         assert!(parse_meta("hotspot_x = 2\n").is_err());
     }
 }

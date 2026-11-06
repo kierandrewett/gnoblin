@@ -41,6 +41,7 @@ mod chain;
 mod files;
 mod hyprcursor;
 mod image;
+mod png;
 mod selection;
 mod shapes;
 mod svg;
