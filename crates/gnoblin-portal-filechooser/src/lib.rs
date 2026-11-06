@@ -21,12 +21,13 @@ pub struct FileChooserUi {
 }
 
 impl FileChooserUi {
-    /// A view of `chooser`.
+    /// A view of `chooser`, which asks for its starting folder to be listed.
     #[must_use]
-    pub const fn new(chooser: FileChooser) -> Self {
+    pub fn new(chooser: FileChooser) -> Self {
+        let request = Some(chooser.folder().to_owned());
         Self {
             chooser,
-            request: None,
+            request,
             error: None,
             focused: false,
         }
