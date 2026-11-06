@@ -444,10 +444,7 @@ gnoblin/
     gnoblin-backend/          backends: drm (udev, libseat, gbm), nested (Wayland client), headless
     gnoblin-output/           output layout, transactional configuration, gamma, power, EDID and vendor names
     gnoblin-capture/          frame export: screencopy, image copy capture, PipeWire streams, thumbnails
-    gnoblin-log/              logging facade: the macros every crate logs through, the component mapping and `Role`; depends on `tracing` alone (D23)
-    gnoblin-log-console/      console formatter, redaction and colour (D23)
-    gnoblin-log-store/        SQLite sink: writer thread, retention (D23)
-    gnoblin-log-init/         installs the sinks for one process: `init`, options, panic hook (D23)
+    gnoblin-log/              the one logging crate (D23): macros, components and `Role`; `tracing` alone, plus the `console`, `store`, `journal` and `init` features, which only a binary enables
     gnoblin-xwayland/         Xwayland startup and window management
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
@@ -1624,7 +1621,7 @@ Each section below records the choice, its consequences, and the options conside
 | D20 | Cursor providers             | **Decided 2026-11-05:** ordered provider chain in `gnoblin-render` (Hyprcursor, kde-gnome-svg, Xcursor), built-in arrow last; Mutter pluggability per NEWS !5104                                                                |
 | D21 | bsm greeter is out-of-tree   | **Decided 2026-11-05:** stock tree has no bsm or greeter code; the extension mechanism is generic and host-loaded; D4 amended                                                                                                   |
 | D22 | General extension system     | **Decided 2026-11-05:** packages with `extension.toml`; powers granted per extension by host configuration (least privilege); out-of-process, WASM and Lua tiers; native in-process plugins rejected for 0.2.0; D21 generalised |
-| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; `gnoblin-log-init` installs a console and a SQLite sink, and only a binary may name it                                                               |
+| D23 | Logging                      | **Decided 2026-11-06:** every crate logs through the `gnoblin-log` macros; only a binary enables its sinks (`console`, `store`, `journal`, `init`)                                                                              |
 | D24 | Blur and opacity             | **Decided 2026-11-06:** blur fades with its window's opacity; no blur-fade protocol. A node's effects stack in order inside its opacity group.                                                                                  |
 | D25 | Layout kinds                 | **Decided 2026-11-06:** a layout declares `kind` and `extent`; the kind decides window placement, and window floating is removed.                                                                                               |
 | D26 | Stackable surface effects    | **Proposed 2026-11-06:** effects form an ordered stack of blur, shadow and shader passes, added and removed one at a time.                                                                                                      |
@@ -2892,11 +2889,15 @@ New feature. Mutter has no equivalent, so there is no divergence ledger entry. R
 
 ### D23: logging
 
-**Decided 2026-11-06: every crate logs through the `gnoblin-log` macros, and only a binary installs the subscriber.** `gnoblin-log` is the facade: the `error!`, `warn!`, `info!`, `debug!` and `trace!` macros, the component mapping and `Role`, and it depends on `tracing` alone. `gnoblin-log-console` prints each event with ANSI colour and a per-component prefix, and redacts secrets. `gnoblin-log-store` writes the same fields to a SQLite database (`rusqlite` with `bundled`) on a writer thread. `gnoblin-log-init` composes the two for one process: `init(role, options)` returns a guard and installs the panic hook. `GNOBLIN_LOG` takes an `EnvFilter` expression and defaults to `info`. `GNOBLIN_LOG_DB` names the database, and `off` keeps none. The default is `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, falling back to `$HOME/.local/state`. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
+**Decided 2026-11-06: every crate logs through the `gnoblin-log` macros, and only a binary installs a sink.** `gnoblin-log` is the one logging crate. It holds the `error!`, `warn!`, `info!`, `debug!` and `trace!` macros and the component mapping and `Role`, and it depends on `tracing` alone.
+
+The features add the sinks, each in a module of the same name. `console` prints each event with ANSI colour and a per-component prefix, and redacts secrets. `store` writes the same fields to a SQLite database (`rusqlite` with `bundled`) on a writer thread. `journal` sends each event as a native systemd journal entry.
+
+`init` enables all three and composes them for one process: `init(role, options)` returns a guard and installs the panic hook. `GNOBLIN_LOG` takes an `EnvFilter` expression and defaults to `info`. `GNOBLIN_LOG_DB` names the database, and `off` keeps none. `GNOBLIN_LOG_FORMAT` chooses the console output. The default database is `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, falling back to `$HOME/.local/state`. The stdout and stderr of a process is not a log: `eprintln!` in a binary is reserved for CLI usage text and for errors that occur before the subscriber exists.
 
 Consequences:
 
-- `gnoblin-log` depends on `tracing` alone and names no workspace crate, so every crate may depend on it. `gnoblin-log-init` may be depended on by a binary only. `xtask deps` enforces both edges.
+- `gnoblin-log` depends on `tracing` alone and names no workspace crate, so every crate may depend on it. A library takes it with no feature. Only a binary may enable `console`, `store`, `journal` or `init`, and `xtask deps` refuses any feature on a library.
 - A test that runs a binary sets `GNOBLIN_LOG_DB=off`, or points `XDG_STATE_HOME` at a temporary directory, so it never writes to the user's database.
 - Each binary names its component once, at start, and every event carries that name.
 

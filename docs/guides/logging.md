@@ -24,3 +24,39 @@ The real protection is the allowlist above:
 
 - Do not capture the output of a process that may print secrets.
 - Setting `GNOBLIN_LOG_RAW_SERVICES=1` opts the services role in. Do that only when its output is known to be safe.
+
+## Console format
+
+`GNOBLIN_LOG_FORMAT` chooses what a process prints. The database records every event whatever the format. An unknown value is ignored, the configured format applies, and a warning names the valid values.
+
+| Value            | What it prints                                                              |
+| ---------------- | --------------------------------------------------------------------------- |
+| `auto` (default) | Journal, `<N>` lines, pretty or plain, chosen as described below            |
+| `journal`        | Native journal entries; `<N>` lines on stderr if the journal is unreachable |
+| `journal-stream` | `<N>component: message` lines, with the priority read by systemd            |
+| `pretty`         | Coloured `LEVEL [role] component: message` lines                            |
+| `plain`          | `LEVEL [role] component: message` lines, without colour                     |
+| `json`           | One JSON object per line                                                    |
+| `off`            | Nothing; only the database records                                          |
+
+`auto` looks at the environment. It uses the native journal when systemd connects stderr to the journal and the journal socket exists. It uses `journal-stream` when only stderr reaches the journal. Otherwise it uses `pretty` on a terminal and `plain` elsewhere.
+
+## Reading the journal
+
+Under systemd each record goes to the journal with `SYSLOG_IDENTIFIER=gnoblin-<role>`, a `PRIORITY` from its level, and the fields `GNOBLIN_ROLE`, `GNOBLIN_COMPONENT` and `GNOBLIN_TARGET`. For a user session service, read it with `--user`:
+
+```sh
+journalctl --user -t gnoblin-compositor GNOBLIN_COMPONENT=wayland -p warning -f
+```
+
+This follows warnings and errors from the compositor's `wayland` component. The journal keeps only what the console sends. The database keeps every event that passes `GNOBLIN_LOG`, so it is the place to look after a crash or when the journal has rotated.
+
+## Reading the database
+
+The database defaults to `$XDG_STATE_HOME/gnoblin/logs.sqlite3`, and `GNOBLIN_LOG_DB` names another file or `off`. `gnoblinctl log` prints its records, oldest first, without the compositor running:
+
+```sh
+gnoblinctl log --role compositor --level warn --limit 50
+```
+
+`--database PATH` reads another file, and `--json` prints one JSON object per line. The command opens the database read-only, so it works while the session is down.
