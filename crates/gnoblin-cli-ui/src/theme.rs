@@ -132,9 +132,9 @@ impl Glyph {
     /// The Unicode form and the ASCII fallback.
     fn pair(self) -> (&'static str, &'static str) {
         match self {
-            Self::Ok => ("\u{2713}", "ok"),
+            Self::Ok => ("\u{2714}", "ok"),
             Self::Warn => ("\u{26a0}", "warn"),
-            Self::Fail => ("\u{2717}", "fail"),
+            Self::Fail => ("\u{2718}", "fail"),
             Self::Info => ("\u{2139}", "info"),
             Self::Bullet => ("\u{2022}", "*"),
             Self::Arrow => ("\u{2192}", "->"),

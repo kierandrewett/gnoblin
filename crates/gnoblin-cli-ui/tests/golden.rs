@@ -68,7 +68,7 @@ fn kv_list_aligns_keys_and_wraps_values() {
 fn status_line_uses_glyph_in_unicode_and_word_in_ascii() {
     assert_eq!(
         status_line(&unicode(80), Status::Ok, "window 12  focused"),
-        "\u{2713} ok  window 12  focused"
+        "\u{2714} ok  window 12  focused"
     );
     assert_eq!(
         status_line(&plain(80), Status::Ok, "window 12  focused"),
@@ -137,7 +137,7 @@ fn waiting_is_plain_text_off_a_terminal() {
 fn colour_wraps_only_the_styled_text() {
     assert_eq!(
         status_line(&coloured(80), Status::Ok, "window 12"),
-        "\x1b[32m\u{2713} ok\x1b[0m  window 12"
+        "\x1b[32m\u{2714} ok\x1b[0m  window 12"
     );
     assert_eq!(identifier(&coloured(80), "12"), "\x1b[36m12\x1b[0m");
     assert_eq!(badge(&coloured(80), Token::Warning, "stale"), "\x1b[33m[stale]\x1b[0m");

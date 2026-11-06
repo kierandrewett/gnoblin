@@ -43,7 +43,10 @@ pub fn truncate(text: &str, max: usize, ellipsis: &str) -> String {
         return text.to_string();
     }
     let tail = width(ellipsis);
-    let (budget, suffix) = if max >= tail { (max - tail, ellipsis) } else { (max, "") };
+    if max < tail {
+        return String::new();
+    }
+    let (budget, suffix) = (max - tail, ellipsis);
     let mut out = String::new();
     let mut used = 0;
     for c in text.chars() {
@@ -67,11 +70,16 @@ pub fn pad(text: &str, columns: usize) -> String {
 
 /// Breaks plain `text` into lines of at most `max` columns, at spaces. A word
 /// wider than a line is split across lines. Existing line breaks are kept, so a
-/// blank line stays blank.
+/// blank line stays blank. A paragraph that fits is kept as written, including
+/// runs of spaces that separate fields.
 pub fn wrap(text: &str, max: usize) -> Vec<String> {
     let max = max.max(1);
     let mut lines = Vec::new();
     for paragraph in text.lines() {
+        if width(paragraph) <= max {
+            lines.push(paragraph.to_string());
+            continue;
+        }
         let mut line = String::new();
         let mut used = 0;
         for word in paragraph.split_whitespace() {
@@ -139,7 +147,7 @@ mod tests {
         assert_eq!(truncate("abcdef", 6, "..."), "abcdef");
         assert_eq!(truncate("abcdef", 5, "..."), "ab...");
         assert_eq!(truncate("abcdef", 2, "..."), "");
-        assert_eq!(truncate("東京都", 4, "..."), "東...");
+        assert_eq!(truncate("東京都", 4, "..."), "...");
     }
 
     #[test]
