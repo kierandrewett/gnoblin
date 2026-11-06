@@ -3066,6 +3066,8 @@ Bingux draws the menu in `WindowMenu.qml`. Lua API 1.30 `MenuContext` lets a scr
 
 Items are disabled, not hidden, when the window cannot do them. Restore shows only when maximised, and Move to workspace only with more than one workspace [INFERENCE].
 
+**Move and resize.** Choosing Move or Resize makes the compositor start the keyboard grab on the target window once the menu closes. The provider returns the item id only. No provider receives a grab or a token, so the authority that `MenuContext` carries today stays inside the compositor and needs no public surface.
+
 **Model.** The menu is data, built from window state and contributions:
 
 - Each item has `id`, `label`, `icon` (a name), `enabled`, `checked`, `kind` (`action`, `separator` or `submenu`), `children` and an `accelerator` hint.
