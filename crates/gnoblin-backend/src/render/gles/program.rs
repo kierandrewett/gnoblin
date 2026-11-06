@@ -51,7 +51,7 @@ use gnoblin_types::Rect;
 
 use crate::render::RenderError;
 use crate::render::gles::gl::{Device, Program};
-use crate::render::gles::shaders;
+use crate::render::shader::sources as shaders;
 
 /// The entry point name every generated module uses, in both stages.
 pub(crate) const ENTRY: &str = "gnoblin_entry";

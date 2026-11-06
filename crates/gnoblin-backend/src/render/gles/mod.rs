@@ -100,11 +100,9 @@
 
 pub mod egl;
 pub(crate) mod gl;
-// The uniform block and the WGSL sources the GLES passes are made of are shared with the
-// Vulkan renderer, which compiles the same modules to SPIR-V.
 pub(crate) mod program;
-pub(crate) mod shaders;
 
+use crate::render::shader::sources as shaders;
 use gnoblin_log::warn;
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::backend::renderer::glow::GlowRenderer;

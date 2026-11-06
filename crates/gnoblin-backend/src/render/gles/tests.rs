@@ -966,7 +966,7 @@ fn an_effect_on_a_projected_layer_draws_nothing_extra() {
     }
 }
 
-/// The blur of the glass tests' backdrop, as `shaders/blur.wgsl` computes it: nine taps
+/// The blur of the glass tests' backdrop, as `shader/wgsl/blur.wgsl` computes it: nine taps
 /// `step` pixels apart with a Gaussian of sigma 1.5 taps, normalised. The backdrop is constant
 /// down a column, so the vertical pass leaves it as it is.
 fn reference_blur(backdrop: fn(i32) -> f32, x: i32, step: i32) -> f32 {

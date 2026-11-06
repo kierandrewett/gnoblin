@@ -43,7 +43,7 @@ pub(super) struct ShaderSources<'a> {
 impl ShaderSources<'static> {
     /// The sources the GLES renderer draws with.
     pub(super) fn shared() -> Self {
-        use crate::render::gles::shaders::{SOLID, SURFACE, VERTEX};
+        use crate::render::shader::sources::{SOLID, SURFACE, VERTEX};
         Self {
             vertex: VERTEX,
             solid: SOLID,

@@ -42,6 +42,7 @@ pub mod compose;
 pub mod frame;
 pub mod gles;
 pub mod image;
+pub mod shader;
 // The one module in this crate that needs `unsafe`: writing a frame into a client's
 // `wl_shm` pool. Its own documentation says why.
 pub mod shm;
