@@ -7,7 +7,7 @@
 
 use crate::band::Band;
 use crate::name::LocalName;
-use crate::scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LockBehaviour, Order, Scope};
+use crate::scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LayerScope, LockBehaviour, Order};
 
 /// A request to register one layer, before the registry checks it.
 ///
@@ -19,7 +19,7 @@ pub struct LayerSpec {
     /// The local part. The registry prefixes it with the provider's namespace.
     pub local: LocalName,
     /// The output or window the layer is attached to.
-    pub scope: Scope,
+    pub scope: LayerScope,
     /// The band the layer sits in.
     pub band: Band,
     /// Where the layer sits inside its band.
@@ -46,7 +46,7 @@ impl LayerSpec {
     /// Each default is the safe choice: a new layer takes no input, no focus and
     /// no capture, and is removed on lock.
     #[must_use]
-    pub fn new(local: LocalName, scope: Scope, band: Band) -> Self {
+    pub fn new(local: LocalName, scope: LayerScope, band: Band) -> Self {
         Self {
             local,
             scope,

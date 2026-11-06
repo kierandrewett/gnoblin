@@ -45,7 +45,7 @@
 //!
 //! # Errors
 //!
-//! Every refusal is a typed error (see [`name::NameError`] for grammar failures).
+//! Every refusal is a typed error (see [`name::LayerNameError`] for grammar failures).
 //! Callers match on the variant rather than on text, so a protocol layer can map
 //! each one to a stable error code.
 
@@ -59,10 +59,10 @@ pub mod spec;
 pub mod state;
 
 pub use band::Band;
-pub use name::{LayerName, LocalName, NameError, ProviderId};
+pub use name::{LayerName, LayerNameError, LocalName, ProviderId};
 pub use order::paint_order;
-pub use provider::Provider;
+pub use provider::LayerProvider;
 pub use registry::{LayerHandle, LayerRecord, LayerRegistry, RegisterError};
-pub use scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LockBehaviour, Order, Scope};
+pub use scope::{ContentKind, EffectsPolicy, Focus, InputPolicy, LayerScope, LockBehaviour, Order};
 pub use spec::LayerSpec;
 pub use state::{EndReason, LayerState};

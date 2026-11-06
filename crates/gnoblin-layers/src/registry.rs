@@ -3,7 +3,7 @@
 //! The registry owns every live layer and every rule about who may register
 //! what. A provider never builds a full name itself. It hands over a
 //! [`LayerSpec`] with a local part, and the registry prefixes the namespace from
-//! the [`Provider`]. That is why two providers cannot collide: the prefix is not
+//! the [`LayerProvider`]. That is why two providers cannot collide: the prefix is not
 //! a choice the caller makes.
 //!
 //! # What the registry checks, in order
@@ -34,9 +34,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::band::Band;
-use crate::name::{LayerName, NameError};
-use crate::provider::Provider;
-use crate::scope::{Order, Scope};
+use crate::name::{LayerName, LayerNameError};
+use crate::provider::LayerProvider;
+use crate::scope::{LayerScope, Order};
 use crate::spec::LayerSpec;
 use crate::state::{EndReason, LayerState};
 use gnoblin_types::{OutputId, WindowId};
@@ -68,7 +68,7 @@ pub enum RegisterError {
     /// the only reserved identifier.
     ProviderIdReserved,
     /// The extension id is outside the name grammar.
-    BadProviderId(NameError),
+    BadProviderId(LayerNameError),
     /// The band is not allowed for this provider's class. The `Band` says which.
     BandNotAllowed(Band),
     /// A window scope has no target window.
@@ -158,7 +158,7 @@ pub struct LayerRecord {
     /// The full name, `<namespace>.<local>`.
     pub name: LayerName,
     /// Who registered the layer.
-    pub provider: Provider,
+    pub provider: LayerProvider,
     /// The spec the provider asked for.
     pub spec: LayerSpec,
     /// The lifecycle state.
@@ -236,10 +236,10 @@ impl LayerRegistry {
     /// # Errors
     ///
     /// Returns the [`RegisterError`] for the first rule the registration breaks.
-    pub fn register(&mut self, provider: &Provider, spec: LayerSpec) -> Result<LayerHandle, RegisterError> {
+    pub fn register(&mut self, provider: &LayerProvider, spec: LayerSpec) -> Result<LayerHandle, RegisterError> {
         // Rule 1: the reserved id. The namespace check below would accept it,
         // because `gnoblin` is a legal grammar word, so it is refused first.
-        if matches!(provider, Provider::Extension(id) if id == crate::name::GNOBLIN_NAMESPACE) {
+        if matches!(provider, LayerProvider::Extension(id) if id == crate::name::GNOBLIN_NAMESPACE) {
             return Err(RegisterError::ProviderIdReserved);
         }
         let namespace = provider.namespace().map_err(RegisterError::BadProviderId)?;
@@ -250,10 +250,10 @@ impl LayerRegistry {
         }
 
         // Rules 3 and 4: the scope and the order must agree.
-        if let Scope::Window(None) = spec.scope {
+        if let LayerScope::Window(None) = spec.scope {
             return Err(RegisterError::WindowScopeNeedsWindow);
         }
-        if spec.order == Order::AboveTarget && !matches!(spec.scope, Scope::Window(_)) {
+        if spec.order == Order::AboveTarget && !matches!(spec.scope, LayerScope::Window(_)) {
             return Err(RegisterError::AboveTargetNeedsWindow);
         }
 
@@ -317,7 +317,7 @@ impl LayerRegistry {
     /// Ends every live layer that `provider` owns, with `reason`, and returns them
     /// in registration order. Used when a provider disconnects or an extension is
     /// unloaded.
-    pub fn end_provider(&mut self, provider: &Provider, reason: EndReason) -> Vec<LayerRecord> {
+    pub fn end_provider(&mut self, provider: &LayerProvider, reason: EndReason) -> Vec<LayerRecord> {
         let handles: Vec<LayerHandle> = self
             .by_handle
             .values()
@@ -333,14 +333,17 @@ impl LayerRegistry {
     /// Ends every live layer whose scope is the window `window`, with
     /// [`EndReason::TargetGone`], and returns them. Called when a window closes.
     pub fn end_target(&mut self, window: WindowId) -> Vec<LayerRecord> {
-        self.end_matching(|scope| *scope == Scope::Window(Some(window)), EndReason::TargetGone)
+        self.end_matching(
+            |scope| *scope == LayerScope::Window(Some(window)),
+            EndReason::TargetGone,
+        )
     }
 
     /// Ends every live layer attached to `output`, with [`EndReason::OutputGone`],
     /// and returns them. Called when an output is removed. Window-scoped layers
     /// on that output are not touched here; they follow their window.
     pub fn end_output(&mut self, output: OutputId) -> Vec<LayerRecord> {
-        self.end_matching(|scope| *scope == Scope::Output(output), EndReason::OutputGone)
+        self.end_matching(|scope| *scope == LayerScope::Output(output), EndReason::OutputGone)
     }
 
     /// Moves every live layer on `window` between `Mapped` and `Hidden`, so a
@@ -355,7 +358,7 @@ impl LayerRegistry {
         };
         let mut changed = 0;
         for record in self.by_handle.values_mut() {
-            if record.spec.scope != Scope::Window(Some(window)) {
+            if record.spec.scope != LayerScope::Window(Some(window)) {
                 continue;
             }
             if let Ok(next) = record.state.transition(wanted) {
@@ -368,7 +371,7 @@ impl LayerRegistry {
 
     /// Ends every live layer whose scope satisfies `matches`, in registration
     /// order. Shared by the follow functions so each one is a single rule.
-    fn end_matching(&mut self, matches: impl Fn(&Scope) -> bool, reason: EndReason) -> Vec<LayerRecord> {
+    fn end_matching(&mut self, matches: impl Fn(&LayerScope) -> bool, reason: EndReason) -> Vec<LayerRecord> {
         let handles: Vec<LayerHandle> = self
             .by_handle
             .values()
@@ -421,7 +424,12 @@ impl LayerRegistry {
     /// [`SecureError::NotFound`] when the handle is not live,
     /// [`SecureError::NotOwner`] when `provider` did not register it, and
     /// [`SecureError::LockIsFixed`] for a lock-band layer.
-    pub fn set_secure(&mut self, provider: &Provider, handle: LayerHandle, secure: bool) -> Result<bool, SecureError> {
+    pub fn set_secure(
+        &mut self,
+        provider: &LayerProvider,
+        handle: LayerHandle,
+        secure: bool,
+    ) -> Result<bool, SecureError> {
         let record = self.by_handle.get_mut(&handle).ok_or(SecureError::NotFound)?;
         if &record.provider != provider {
             return Err(SecureError::NotOwner);
@@ -469,13 +477,13 @@ impl LayerRegistry {
 /// - the compositor may use every band;
 /// - another built-in may use every band except the compositor-only ones;
 /// - an extension may use up to `Overlay`, so it cannot sit above system UI.
-fn band_allowed(provider: &Provider, band: Band) -> bool {
+fn band_allowed(provider: &LayerProvider, band: Band) -> bool {
     if band.compositor_only() {
         return provider.is_compositor();
     }
     match provider {
-        Provider::Gnoblin(_) => true,
-        Provider::Extension(_) => band <= Band::Overlay,
+        LayerProvider::Gnoblin(_) => true,
+        LayerProvider::Extension(_) => band <= Band::Overlay,
     }
 }
 
@@ -484,19 +492,23 @@ mod tests {
     use super::*;
     use crate::band::Band;
     use crate::name::LocalName;
-    use crate::scope::Scope;
+    use crate::scope::LayerScope;
     use gnoblin_types::{OutputId, WindowId};
 
-    fn gnoblin() -> Provider {
-        Provider::Gnoblin("gnoblin-wayland")
+    fn gnoblin() -> LayerProvider {
+        LayerProvider::Gnoblin("gnoblin-wayland")
     }
 
-    fn ext(id: &str) -> Provider {
-        Provider::Extension(id.to_owned())
+    fn ext(id: &str) -> LayerProvider {
+        LayerProvider::Extension(id.to_owned())
     }
 
     fn spec(local: &str, band: Band) -> LayerSpec {
-        LayerSpec::new(LocalName::new(local).unwrap(), Scope::Output(OutputId::new(1)), band)
+        LayerSpec::new(
+            LocalName::new(local).unwrap(),
+            LayerScope::Output(OutputId::new(1)),
+            band,
+        )
     }
 
     #[test]
@@ -550,7 +562,7 @@ mod tests {
         assert_eq!(err, RegisterError::BandNotAllowed(Band::Lock));
         let err = reg.register(&ext("bar"), spec("x", Band::Cursor)).unwrap_err();
         assert_eq!(err, RegisterError::BandNotAllowed(Band::Cursor));
-        let compositor = Provider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
+        let compositor = LayerProvider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
         reg.register(&compositor, spec("lock", Band::Lock)).unwrap();
     }
 
@@ -558,10 +570,10 @@ mod tests {
     fn window_scope_without_a_target_is_refused() {
         let mut reg = LayerRegistry::new();
         let mut s = spec("x", Band::Top);
-        s.scope = Scope::Window(None);
+        s.scope = LayerScope::Window(None);
         assert_eq!(reg.register(&ext("bar"), s), Err(RegisterError::WindowScopeNeedsWindow));
         let mut s = spec("y", Band::Top);
-        s.scope = Scope::Window(Some(WindowId::new(7)));
+        s.scope = LayerScope::Window(Some(WindowId::new(7)));
         reg.register(&ext("bar"), s).unwrap();
     }
 
@@ -658,14 +670,14 @@ mod follow_tests {
     use super::*;
     use crate::name::LocalName;
 
-    fn gnoblin() -> Provider {
-        Provider::Gnoblin("gnoblin-wayland")
+    fn gnoblin() -> LayerProvider {
+        LayerProvider::Gnoblin("gnoblin-wayland")
     }
 
     fn on_window(local: &str, window: WindowId) -> LayerSpec {
         let mut spec = LayerSpec::new(
             LocalName::new(local).unwrap(),
-            Scope::Window(Some(window)),
+            LayerScope::Window(Some(window)),
             Band::Windows,
         );
         spec.order = Order::Default;
@@ -673,7 +685,7 @@ mod follow_tests {
     }
 
     fn on_output(local: &str, output: OutputId) -> LayerSpec {
-        LayerSpec::new(LocalName::new(local).unwrap(), Scope::Output(output), Band::Top)
+        LayerSpec::new(LocalName::new(local).unwrap(), LayerScope::Output(output), Band::Top)
     }
 
     #[test]
@@ -744,14 +756,18 @@ mod secure_tests {
     use crate::name::LocalName;
 
     fn spec(local: &str, band: Band, secure: bool) -> LayerSpec {
-        let mut s = LayerSpec::new(LocalName::new(local).unwrap(), Scope::Output(OutputId::new(1)), band);
+        let mut s = LayerSpec::new(
+            LocalName::new(local).unwrap(),
+            LayerScope::Output(OutputId::new(1)),
+            band,
+        );
         s.secure = secure;
         s
     }
 
     #[test]
     fn override_beats_the_spec_and_clears_back() {
-        let provider = Provider::Gnoblin("gnoblin-wayland");
+        let provider = LayerProvider::Gnoblin("gnoblin-wayland");
         let mut reg = LayerRegistry::new();
         let h = reg.register(&provider, spec("a", Band::Top, false)).unwrap();
         let name = reg.get(h).unwrap().name.clone();
@@ -764,7 +780,7 @@ mod secure_tests {
 
     #[test]
     fn lock_band_is_always_secure() {
-        let provider = Provider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
+        let provider = LayerProvider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
         let mut reg = LayerRegistry::new();
         let h = reg.register(&provider, spec("lock", Band::Lock, false)).unwrap();
         let name = reg.get(h).unwrap().name.clone();
@@ -774,8 +790,8 @@ mod secure_tests {
 
     #[test]
     fn only_the_owner_may_set_secure() {
-        let owner = Provider::Extension("alice".into());
-        let other = Provider::Extension("bob".into());
+        let owner = LayerProvider::Extension("alice".into());
+        let other = LayerProvider::Extension("bob".into());
         let mut reg = LayerRegistry::new();
         let h = reg.register(&owner, spec("a", Band::Top, false)).unwrap();
         assert_eq!(reg.set_secure(&other, h, true), Err(SecureError::NotOwner));
@@ -785,7 +801,7 @@ mod secure_tests {
 
     #[test]
     fn set_secure_refuses_lock_and_missing_handles() {
-        let owner = Provider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
+        let owner = LayerProvider::Gnoblin(crate::provider::COMPOSITOR_CRATE);
         let mut reg = LayerRegistry::new();
         let lock = reg.register(&owner, spec("lock", Band::Lock, true)).unwrap();
         assert_eq!(reg.set_secure(&owner, lock, false), Err(SecureError::LockIsFixed));

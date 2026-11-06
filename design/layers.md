@@ -263,7 +263,7 @@ Three entry points share one registry and one set of rules. Built-in Rust provid
 ### Rust registry
 
 A new foundation crate, `gnoblin-layers`, holds `LayerRegistry`, `LayerSpec`,
-`Band`, `Scope`, `InputPolicy`, and the ordering and follow rules. It depends only on
+`Band`, `LayerScope`, `InputPolicy`, and the ordering and follow rules. It depends only on
 `gnoblin-types` [INFERENCE: add it to `FOUNDATION` at `xtask/src/deps.rs:34`].
 `gnoblin-wm` depends on it for stack entries. `gnoblin-compositor` registers the
 Gnoblin claims. The portal crates do not depend on it. The compositor's portal
@@ -275,13 +275,13 @@ service registers `portals`, so the portal-layering rule holds (`xtask/src/deps.
 // gnoblin-compositor only. The spec gives the local name; the registry adds the namespace.
 let spec = LayerSpec {
     name: "portals".into(),
-    scope: Scope::Window(parent),          // or Scope::Output(output) when no parent resolves
+    scope: LayerScope::Window(parent),          // or LayerScope::Output(output) when no parent resolves
     band: Band::Windows,
     order: Order::AboveTarget,
     input: InputPolicy::ModalToOutput,
     ..LayerSpec::default()
 };
-let handle = registry.register(Provider::Gnoblin, spec)?; // handle.name is "gnoblin.portals"
+let handle = registry.register(LayerProvider::Gnoblin, spec)?; // handle.name is "gnoblin.portals"
 ```
 
 ### Lua

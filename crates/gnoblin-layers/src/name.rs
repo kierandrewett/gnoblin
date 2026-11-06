@@ -33,7 +33,7 @@ pub const MAX_EXTENSION_ID_LEN: usize = 32;
 
 /// Why a name or identifier was refused. Each variant is one grammar rule.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NameError {
+pub enum LayerNameError {
     /// The text is empty. Every name and identifier needs at least one character.
     Empty,
     /// The text is longer than its limit.
@@ -44,18 +44,18 @@ pub enum NameError {
     BadKey,
 }
 
-impl fmt::Display for NameError {
+impl fmt::Display for LayerNameError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NameError::Empty => write!(f, "name is empty"),
-            NameError::TooLong => write!(f, "name is too long"),
-            NameError::BadChar(c) => write!(f, "name has an invalid character {c:?}"),
-            NameError::BadKey => write!(f, "name has a malformed `:<key>` suffix"),
+            LayerNameError::Empty => write!(f, "name is empty"),
+            LayerNameError::TooLong => write!(f, "name is too long"),
+            LayerNameError::BadChar(c) => write!(f, "name has an invalid character {c:?}"),
+            LayerNameError::BadKey => write!(f, "name has a malformed `:<key>` suffix"),
         }
     }
 }
 
-impl std::error::Error for NameError {}
+impl std::error::Error for LayerNameError {}
 
 /// Whether `c` may appear in a local part's base segment.
 ///
@@ -86,34 +86,34 @@ impl LocalName {
     ///
     /// # Errors
     ///
-    /// Returns [`NameError::Empty`] or [`NameError::TooLong`] for a length
-    /// violation, [`NameError::BadChar`] for a character outside the alphabet, and
-    /// [`NameError::BadKey`] when the `:<key>` suffix is empty or malformed.
-    pub fn new(raw: &str) -> Result<Self, NameError> {
+    /// Returns [`LayerNameError::Empty`] or [`LayerNameError::TooLong`] for a length
+    /// violation, [`LayerNameError::BadChar`] for a character outside the alphabet, and
+    /// [`LayerNameError::BadKey`] when the `:<key>` suffix is empty or malformed.
+    pub fn new(raw: &str) -> Result<Self, LayerNameError> {
         if raw.is_empty() {
-            return Err(NameError::Empty);
+            return Err(LayerNameError::Empty);
         }
         if raw.len() > MAX_LOCAL_LEN {
-            return Err(NameError::TooLong);
+            return Err(LayerNameError::TooLong);
         }
         let (base, key) = match raw.split_once(':') {
             Some((base, key)) => (base, Some(key)),
             None => (raw, None),
         };
         if base.is_empty() {
-            return Err(NameError::Empty);
+            return Err(LayerNameError::Empty);
         }
         if let Some(c) = base.chars().find(|&c| !is_base_char(c)) {
-            return Err(NameError::BadChar(c));
+            return Err(LayerNameError::BadChar(c));
         }
         if let Some(key) = key {
             // A key is the per-object id; an empty key or a second colon is
             // refused so `name:` and `a:b:c` have one meaning each.
             if key.is_empty() || key.contains(':') {
-                return Err(NameError::BadKey);
+                return Err(LayerNameError::BadKey);
             }
             if let Some(c) = key.chars().find(|&c| !is_key_char(c)) {
-                return Err(NameError::BadChar(c));
+                return Err(LayerNameError::BadChar(c));
             }
         }
         Ok(Self(raw.to_owned()))
@@ -127,9 +127,9 @@ impl LocalName {
     ///
     /// Refuses everything [`LocalName::new`] refuses, and a base that already
     /// carries a key.
-    pub fn keyed(base: &str, key: &str) -> Result<Self, NameError> {
+    pub fn keyed(base: &str, key: &str) -> Result<Self, LayerNameError> {
         if base.contains(':') {
-            return Err(NameError::BadKey);
+            return Err(LayerNameError::BadKey);
         }
         Self::new(&format!("{base}:{key}"))
     }
@@ -150,7 +150,7 @@ impl fmt::Display for LocalName {
 /// The namespace a provider registers under: `gnoblin` for every built-in, or
 /// `ext.<id>` for an extension.
 ///
-/// The registry derives it from the [`crate::Provider`], so a provider cannot
+/// The registry derives it from the [`crate::LayerProvider`], so a provider cannot
 /// register under another namespace.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProviderId(String);
@@ -172,17 +172,17 @@ impl ProviderId {
     ///
     /// # Errors
     ///
-    /// Returns [`NameError::Empty`], [`NameError::TooLong`] or
-    /// [`NameError::BadChar`] for an id outside the grammar.
-    pub fn extension(id: &str) -> Result<Self, NameError> {
+    /// Returns [`LayerNameError::Empty`], [`LayerNameError::TooLong`] or
+    /// [`LayerNameError::BadChar`] for an id outside the grammar.
+    pub fn extension(id: &str) -> Result<Self, LayerNameError> {
         if id.is_empty() {
-            return Err(NameError::Empty);
+            return Err(LayerNameError::Empty);
         }
         if id.len() > MAX_EXTENSION_ID_LEN {
-            return Err(NameError::TooLong);
+            return Err(LayerNameError::TooLong);
         }
         if let Some(c) = id.chars().find(|&c| !is_base_char(c)) {
-            return Err(NameError::BadChar(c));
+            return Err(LayerNameError::BadChar(c));
         }
         Ok(Self(format!("ext.{id}")))
     }
@@ -238,18 +238,18 @@ impl LayerName {
     ///
     /// # Errors
     ///
-    /// Returns the [`NameError`] for the first part that breaks the grammar. A
-    /// missing namespace or local part is [`NameError::Empty`].
-    pub fn parse(text: &str) -> Result<Self, NameError> {
+    /// Returns the [`LayerNameError`] for the first part that breaks the grammar. A
+    /// missing namespace or local part is [`LayerNameError::Empty`].
+    pub fn parse(text: &str) -> Result<Self, LayerNameError> {
         if let Some(local) = text.strip_prefix("gnoblin.") {
             return Ok(Self::new(ProviderId::gnoblin(), LocalName::new(local)?));
         }
         if let Some(rest) = text.strip_prefix("ext.") {
-            let (id, local) = rest.split_once('.').ok_or(NameError::Empty)?;
+            let (id, local) = rest.split_once('.').ok_or(LayerNameError::Empty)?;
             return Ok(Self::new(ProviderId::extension(id)?, LocalName::new(local)?));
         }
-        let first = text.chars().next().ok_or(NameError::Empty)?;
-        Err(NameError::BadChar(first))
+        let first = text.chars().next().ok_or(LayerNameError::Empty)?;
+        Err(LayerNameError::BadChar(first))
     }
 }
 
@@ -273,25 +273,25 @@ mod tests {
 
     #[test]
     fn local_refuses_empty_and_too_long() {
-        assert_eq!(LocalName::new(""), Err(NameError::Empty));
-        assert_eq!(LocalName::new(":key"), Err(NameError::Empty));
+        assert_eq!(LocalName::new(""), Err(LayerNameError::Empty));
+        assert_eq!(LocalName::new(":key"), Err(LayerNameError::Empty));
         let long = "a".repeat(MAX_LOCAL_LEN + 1);
-        assert_eq!(LocalName::new(&long), Err(NameError::TooLong));
+        assert_eq!(LocalName::new(&long), Err(LayerNameError::TooLong));
         assert!(LocalName::new(&"a".repeat(MAX_LOCAL_LEN)).is_ok());
     }
 
     #[test]
     fn local_refuses_uppercase_and_dots_in_the_base() {
         // Dots separate the namespace; an uppercase base would differ by platform.
-        assert_eq!(LocalName::new("Portals"), Err(NameError::BadChar('P')));
-        assert_eq!(LocalName::new("a.b"), Err(NameError::BadChar('.')));
+        assert_eq!(LocalName::new("Portals"), Err(LayerNameError::BadChar('P')));
+        assert_eq!(LocalName::new("a.b"), Err(LayerNameError::BadChar('.')));
     }
 
     #[test]
     fn local_refuses_malformed_key() {
-        assert_eq!(LocalName::new("surface:"), Err(NameError::BadKey));
-        assert_eq!(LocalName::new("surface:a:b"), Err(NameError::BadKey));
-        assert_eq!(LocalName::new("surface:a/b"), Err(NameError::BadChar('/')));
+        assert_eq!(LocalName::new("surface:"), Err(LayerNameError::BadKey));
+        assert_eq!(LocalName::new("surface:a:b"), Err(LayerNameError::BadKey));
+        assert_eq!(LocalName::new("surface:a/b"), Err(LayerNameError::BadChar('/')));
     }
 
     #[test]
@@ -300,14 +300,14 @@ mod tests {
             LocalName::keyed("surface_toplevel", "42").unwrap().as_str(),
             "surface_toplevel:42"
         );
-        assert_eq!(LocalName::keyed("surface:x", "42"), Err(NameError::BadKey));
+        assert_eq!(LocalName::keyed("surface:x", "42"), Err(LayerNameError::BadKey));
     }
 
     #[test]
     fn extension_id_is_one_segment() {
         assert_eq!(ProviderId::extension("example").unwrap().as_str(), "ext.example");
-        assert_eq!(ProviderId::extension("a.b"), Err(NameError::BadChar('.')));
-        assert_eq!(ProviderId::extension(""), Err(NameError::Empty));
+        assert_eq!(ProviderId::extension("a.b"), Err(LayerNameError::BadChar('.')));
+        assert_eq!(ProviderId::extension(""), Err(LayerNameError::Empty));
     }
 
     #[test]
@@ -332,9 +332,9 @@ mod tests {
 
     #[test]
     fn parse_refuses_unknown_namespaces_and_missing_parts() {
-        assert_eq!(LayerName::parse("portals"), Err(NameError::BadChar('p')));
-        assert_eq!(LayerName::parse("ext.ex"), Err(NameError::Empty));
-        assert_eq!(LayerName::parse("gnoblin."), Err(NameError::Empty));
-        assert_eq!(LayerName::parse(""), Err(NameError::Empty));
+        assert_eq!(LayerName::parse("portals"), Err(LayerNameError::BadChar('p')));
+        assert_eq!(LayerName::parse("ext.ex"), Err(LayerNameError::Empty));
+        assert_eq!(LayerName::parse("gnoblin."), Err(LayerNameError::Empty));
+        assert_eq!(LayerName::parse(""), Err(LayerNameError::Empty));
     }
 }

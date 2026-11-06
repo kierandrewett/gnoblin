@@ -14,7 +14,7 @@ use crate::name::LayerName;
 /// follows its target window through move, minimise and workspace change, and
 /// ends when the window closes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Scope {
+pub enum LayerScope {
     /// Attached to an output.
     Output(OutputId),
     /// Attached to a window. `None` names no target yet, and the registry refuses

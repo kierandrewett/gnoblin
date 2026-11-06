@@ -33,9 +33,9 @@ use gnoblin_types::WindowId;
 
 use crate::band::Band;
 use crate::name::LayerName;
-use crate::provider::Provider;
+use crate::provider::LayerProvider;
 use crate::registry::{LayerHandle, LayerRecord, LayerRegistry};
-use crate::scope::{Order, Scope};
+use crate::scope::{LayerScope, Order};
 
 /// Returns every live layer, bottom to top, as handles.
 ///
@@ -62,7 +62,7 @@ fn place(stack: &mut Vec<LayerHandle>, registry: &LayerRegistry, record: &LayerR
     match &record.spec.order {
         Order::Default => {
             let below = match (&record.provider, &record.spec.scope) {
-                (Provider::Extension(_), Scope::Window(Some(target))) => {
+                (LayerProvider::Extension(_), LayerScope::Window(Some(target))) => {
                     lowest_builtin_on(stack, registry, *target, band)
                 }
                 _ => None,
@@ -74,7 +74,7 @@ fn place(stack: &mut Vec<LayerHandle>, registry: &LayerRegistry, record: &LayerR
         }
         Order::AboveTarget => {
             let target = match record.spec.scope {
-                Scope::Window(Some(target)) => target,
+                LayerScope::Window(Some(target)) => target,
                 // The registry refuses this combination, so this only keeps the
                 // placement total.
                 _ => return stack.push(record.handle),
@@ -109,7 +109,9 @@ fn insert_beside(
 fn lowest_builtin_on(stack: &[LayerHandle], registry: &LayerRegistry, target: WindowId, band: Band) -> Option<usize> {
     stack.iter().position(|&handle| {
         registry.get(handle).is_some_and(|record| {
-            record.spec.band == band && record.provider.is_builtin() && record.spec.scope == Scope::Window(Some(target))
+            record.spec.band == band
+                && record.provider.is_builtin()
+                && record.spec.scope == LayerScope::Window(Some(target))
         })
     })
 }
@@ -119,7 +121,7 @@ fn topmost_on(stack: &[LayerHandle], registry: &LayerRegistry, target: WindowId,
     stack.iter().rposition(|&handle| {
         registry
             .get(handle)
-            .is_some_and(|record| record.spec.band == band && record.spec.scope == Scope::Window(Some(target)))
+            .is_some_and(|record| record.spec.band == band && record.spec.scope == LayerScope::Window(Some(target)))
     })
 }
 
@@ -130,16 +132,20 @@ mod tests {
     use crate::spec::LayerSpec;
     use gnoblin_types::OutputId;
 
-    fn gnoblin() -> Provider {
-        Provider::Gnoblin("gnoblin-wayland")
+    fn gnoblin() -> LayerProvider {
+        LayerProvider::Gnoblin("gnoblin-wayland")
     }
 
-    fn ext(id: &str) -> Provider {
-        Provider::Extension(id.to_owned())
+    fn ext(id: &str) -> LayerProvider {
+        LayerProvider::Extension(id.to_owned())
     }
 
     fn spec(local: &str, band: Band) -> LayerSpec {
-        LayerSpec::new(LocalName::new(local).unwrap(), Scope::Output(OutputId::new(1)), band)
+        LayerSpec::new(
+            LocalName::new(local).unwrap(),
+            LayerScope::Output(OutputId::new(1)),
+            band,
+        )
     }
 
     /// The local names in the stack, bottom to top, for readable assertions.
@@ -186,11 +192,11 @@ mod tests {
         let window = WindowId::new(7);
         let mut reg = LayerRegistry::new();
         let mut first = spec("w1", Band::Windows);
-        first.scope = Scope::Window(Some(window));
+        first.scope = LayerScope::Window(Some(window));
         reg.register(&gnoblin(), first).unwrap();
         reg.register(&gnoblin(), spec("other", Band::Windows)).unwrap();
         let mut chrome = spec("w2", Band::Windows);
-        chrome.scope = Scope::Window(Some(window));
+        chrome.scope = LayerScope::Window(Some(window));
         chrome.order = Order::AboveTarget;
         reg.register(&gnoblin(), chrome).unwrap();
         assert_eq!(names(&reg), ["gnoblin.w1", "gnoblin.w2", "gnoblin.other"]);
@@ -201,10 +207,10 @@ mod tests {
         let window = WindowId::new(7);
         let mut reg = LayerRegistry::new();
         let mut chrome = spec("chrome", Band::Windows);
-        chrome.scope = Scope::Window(Some(window));
+        chrome.scope = LayerScope::Window(Some(window));
         reg.register(&gnoblin(), chrome).unwrap();
         let mut bar = spec("bar", Band::Windows);
-        bar.scope = Scope::Window(Some(window));
+        bar.scope = LayerScope::Window(Some(window));
         reg.register(&ext("bar-ext"), bar).unwrap();
         assert_eq!(names(&reg), ["ext.bar-ext.bar", "gnoblin.chrome"]);
     }
