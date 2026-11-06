@@ -6,6 +6,29 @@
 //! that state as data and reports each change with
 //! [`crate::Effect::SetRecovery`]; the caller writes it under
 //! `$XDG_STATE_HOME/gnoblin/`.
+//!
+//! # On-disk format
+//!
+//! The file is `$XDG_STATE_HOME/gnoblin/recovery`, or `$HOME/.local/state/gnoblin/recovery`
+//! when `XDG_STATE_HOME` is unset, and `/tmp` stands in for the home directory when
+//! `HOME` is unset too. It is four `key=value` lines, written in this order:
+//!
+//! ```text
+//! failed_starts=<decimal count>
+//! safe_mode=<0 or 1>
+//! last_good=<revision, or empty when none>
+//! status=<idle, accepted, rejected or defaults>
+//! ```
+//!
+//! The writer creates the directory, writes `recovery.new` and renames it over
+//! `recovery`. The rename makes the replacement atomic for a reader, but nothing is
+//! flushed to disk first, so a power cut can leave an empty or stale file. The reader
+//! treats that as a hint, not an error: a missing or unreadable file yields the default
+//! state, and an unknown key or an unparsable value is skipped.
+//!
+//! The reader restores `status=accepted` only. `rejected` and `defaults` are written
+//! but read back as `idle`, so the diagnostic and the reason are not kept across a
+//! login. `last_good` survives, which is what the next session needs to decide what to run.
 
 /// The configuration transaction outcomes the guardian tracks.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
