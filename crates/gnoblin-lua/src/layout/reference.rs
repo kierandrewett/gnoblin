@@ -11,11 +11,11 @@
 //! changed module on disk is read again by the next evaluation and never served from
 //! a stale cache. Within one evaluation a module is read once and then reused.
 
-use mlua::{UserData, UserDataFields};
+use mlua::{UserData, UserDataFields, UserDataMethods, Value as LuaValue};
 
-use super::data::Data;
+use super::data::{Data, LayoutKey};
 use super::lua::Vm;
-use super::require::{LayoutRoots, is_module_name, resolve};
+use super::require::{LayoutRoots, is_module_name, resolve, runtime};
 use gnoblin_lua_sandbox::Limits;
 
 /// A layout module named by a configuration file.
@@ -32,6 +32,42 @@ pub(crate) struct LayoutRef {
     pub(crate) options: Data,
 }
 
+impl LayoutRef {
+    /// A copy of this reference with some option values replaced. Only options the
+    /// module declares may be set: a name it does not declare is an error, so a typo
+    /// fails in the configuration that makes it. The merge is shallow: a value given
+    /// for a declared option replaces the whole declared value.
+    pub(crate) fn with(&self, overrides: &LuaValue) -> Result<Self, String> {
+        let Data::Table(overrides) = Data::from_lua(overrides).map_err(|error| error.0)? else {
+            return Err(format!("options for layout `{}` must be a table", self.module));
+        };
+        let Data::Table(declared) = &self.options else {
+            return Err(format!("layout `{}` declares no options", self.module));
+        };
+        let mut merged = declared.clone();
+        for (key, value) in overrides {
+            if !declared.contains_key(&key) {
+                return Err(format!("layout `{}` has no option `{}`", self.module, key_name(&key)));
+            }
+            merged.insert(key, value);
+        }
+        Ok(Self {
+            root: self.root,
+            module: self.module.clone(),
+            hash: self.hash,
+            options: Data::Table(merged),
+        })
+    }
+}
+
+/// A table key as the name a configuration writes it with.
+fn key_name(key: &LayoutKey) -> String {
+    match key {
+        LayoutKey::String(name) => name.clone(),
+        other => format!("{other:?}"),
+    }
+}
+
 impl UserData for LayoutRef {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("root", |_, this| Ok(this.root));
@@ -39,6 +75,13 @@ impl UserData for LayoutRef {
         // A string, because a 64-bit hash does not survive a round trip through a Lua number.
         fields.add_field_method_get("hash", |_, this| Ok(this.hash.to_string()));
         fields.add_field_method_get("options", |lua, this| this.options.to_lua(lua));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+        // `ref:with(options)` returns a new reference; the original is unchanged.
+        methods.add_method("with", |_, this, options: LuaValue| {
+            this.with(&options).map_err(runtime)
+        });
     }
 }
 
