@@ -1230,12 +1230,6 @@ kind = "same-name"
 reason = "input's Key is the key part of a chord; the portal's Key is one published settings key, the schema property and the name toolkits look up"
 
 [[allow]]
-left = "gnoblin-input::Stream"
-right = "xdg-desktop-portal-gnoblin::Stream"
-kind = "same-name"
-reason = "input's Stream is a recognised gesture in progress; the portal's Stream is one stream the compositor opened"
-
-[[allow]]
 left = "gnoblin-input::Waiting"
 right = "xdg-desktop-portal-gnoblin::Waiting"
 kind = "same-name"
