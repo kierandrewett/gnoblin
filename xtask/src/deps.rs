@@ -34,6 +34,7 @@ use crate::metadata::{Dep, DepKind, Graph, Package};
 const FOUNDATION: &[&str] = &[
     "gnoblin-authority",
     "gnoblin-capture",
+    "gnoblin-cli-ui",
     "gnoblin-client",
     "gnoblin-config",
     "gnoblin-lock",

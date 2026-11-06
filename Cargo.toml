@@ -32,6 +32,7 @@ members = [
     "crates/gnoblin-authority",
     "crates/gnoblin-backend",
     "crates/gnoblin-capture",
+    "crates/gnoblin-cli-ui",
     "crates/gnoblin-client",
     "crates/gnoblin-compositor",
     "crates/gnoblin-config",
@@ -223,6 +224,8 @@ clap = { version = "4.6.7", default-features = false, features = [
 # Shell completion scripts, rendered from the same clap tree so a completion can
 # never offer a member the schema does not declare.
 clap_complete = "4.6.9"
+# Column widths of terminal text (CJK and emoji are two columns wide).
+unicode-width = "0.2.3"
 
 # The effective user, for the IPC socket's ownership check: the socket is only as
 # private as the directory holding it, and a directory owned by another account is a
