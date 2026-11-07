@@ -41,6 +41,19 @@ pub fn export_qt_settings(environment: &mut gnoblin_session::Environment, mode: 
     }
 }
 
+/// Exports every settings target into the guardian's session environment, which each child
+/// inherits: the mode is read once from the environment, then the Qt platform theme and the
+/// dconf profile follow from it.
+///
+/// The dconf profile is exported only when the session's profile directory is known.
+pub fn export_guardian_environment(environment: &mut gnoblin_session::Environment) {
+    let mode = gnoblin_compat_dbus_gnome_shell_introspect::mode_from_environment();
+    export_qt_settings(environment, mode);
+    if let Some(directory) = dconf::profile_directory() {
+        export_dconf_profile(environment, mode, &directory);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{export_dconf_profile, export_qt_settings};
@@ -98,18 +111,5 @@ mod tests {
         let mut environment = Environment::default();
         export_qt_settings(&mut environment, Mode::Off);
         assert_eq!(platform_theme(&environment), None);
-    }
-}
-
-/// Exports every settings target into the guardian's session environment, which each child
-/// inherits: the mode is read once from the environment, then the Qt platform theme and the
-/// dconf profile follow from it.
-///
-/// The dconf profile is exported only when the session's profile directory is known.
-pub fn export_guardian_environment(environment: &mut gnoblin_session::Environment) {
-    let mode = gnoblin_compat_dbus_gnome_shell_introspect::mode_from_environment();
-    export_qt_settings(environment, mode);
-    if let Some(directory) = dconf::profile_directory() {
-        export_dconf_profile(environment, mode, &directory);
     }
 }
