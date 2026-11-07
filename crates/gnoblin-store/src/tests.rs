@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use gnoblin_model::Value;
 
-use crate::{Change, Op, Options, Order, Outcome, Query, State, Store};
+use crate::{BatchOutcome, Change, Op, Options, Order, Query, State, Store};
 
 /// A fresh directory under the system temp dir, unique to this process and call.
 pub(crate) fn scratch(label: &str) -> PathBuf {
@@ -228,8 +228,8 @@ fn a_batch_applies_every_op_or_none() {
     );
 
     let ok = ns.batch(&[Op::put("a", Value::Int(1)), Op::delete("keep")]).unwrap();
-    assert!(matches!(ok[0], Outcome::Put { .. }));
-    assert!(matches!(ok[1], Outcome::Delete { removed: true }));
+    assert!(matches!(ok[0], BatchOutcome::Put { .. }));
+    assert!(matches!(ok[1], BatchOutcome::Delete { removed: true }));
 }
 
 #[test]

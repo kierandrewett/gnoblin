@@ -138,7 +138,7 @@ impl Op {
 
 /// What one op of a committed batch did. Outcomes come back in op order.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Outcome {
+pub enum BatchOutcome {
     /// The put stored a value at `revision`.
     Put {
         /// The revision the write took.
@@ -244,7 +244,7 @@ impl Kv {
     }
 
     /// Runs `ops` in one `BEGIN IMMEDIATE` transaction and returns their outcomes.
-    pub(crate) fn apply(&self, ops: &[Op]) -> Result<Vec<Outcome>, StoreError> {
+    pub(crate) fn apply(&self, ops: &[Op]) -> Result<Vec<BatchOutcome>, StoreError> {
         if !self.writable {
             return Err(StoreError::ReadOnly);
         }
@@ -271,7 +271,7 @@ impl Kv {
 
     /// The body of [`Kv::apply`], run with the writer held. The transaction commits only if
     /// every op succeeds; on the first error it is dropped and rolls back.
-    fn apply_in(&self, conn: &mut Connection, ops: &[Op]) -> Result<(Vec<Outcome>, Vec<Change>), StoreError> {
+    fn apply_in(&self, conn: &mut Connection, ops: &[Op]) -> Result<(Vec<BatchOutcome>, Vec<Change>), StoreError> {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(map_sqlite)?;
@@ -308,7 +308,7 @@ impl Kv {
         value: &Value,
         if_revision: Option<u64>,
         now: i64,
-    ) -> Result<(Outcome, Change), StoreError> {
+    ) -> Result<(BatchOutcome, Change), StoreError> {
         validate_key(key)?;
         let bytes = encode(value, self.options.value_limit)?;
         let (current_revision, current_size) = current(tx, key)?;
@@ -356,7 +356,7 @@ impl Kv {
             revision,
             updated_ms: now,
         };
-        Ok((Outcome::Put { revision }, Change::Put(entry)))
+        Ok((BatchOutcome::Put { revision }, Change::Put(entry)))
     }
 
     /// Removes one value inside `tx`. A missing key is not an error: it returns `removed: false`
@@ -366,12 +366,12 @@ impl Kv {
         tx: &Transaction<'_>,
         key: &str,
         if_revision: Option<u64>,
-    ) -> Result<(Outcome, Option<Change>), StoreError> {
+    ) -> Result<(BatchOutcome, Option<Change>), StoreError> {
         validate_key(key)?;
         let (current_revision, current_size) = current(tx, key)?;
         check_revision(key, if_revision, current_revision)?;
         let Some(size) = current_size else {
-            return Ok((Outcome::Delete { removed: false }, None));
+            return Ok((BatchOutcome::Delete { removed: false }, None));
         };
 
         let rowid: i64 = tx
@@ -385,7 +385,7 @@ impl Kv {
         set_bytes(tx, total - size)?;
         let revision = next_revision(tx)?;
         Ok((
-            Outcome::Delete { removed: true },
+            BatchOutcome::Delete { removed: true },
             Some(Change::Delete {
                 key: key.to_owned(),
                 revision,

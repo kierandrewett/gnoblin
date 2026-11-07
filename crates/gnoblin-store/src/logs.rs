@@ -133,17 +133,17 @@ pub enum GroupBy {
 /// batches and writes nothing.
 #[derive(Clone)]
 pub struct Logs {
-    inner: Arc<Inner>,
+    inner: Arc<LogsInner>,
 }
 
 /// The shared state behind every clone of a [`Logs`].
-struct Inner {
+struct LogsInner {
     /// The file, for the failure report.
     path: PathBuf,
     /// The limits applied at open and while records arrive.
     retention: Retention,
     /// The writer, or `None` when the store is read-only.
-    writer: Option<Mutex<Writer>>,
+    writer: Option<Mutex<LogsWriter>>,
     /// A read-only connection, so a search never waits on a batch being written.
     reader: Mutex<Connection>,
     /// Set while the last write failed, so a run of failures is reported once, not per batch.
@@ -151,7 +151,7 @@ struct Inner {
 }
 
 /// The writer connection and when retention last ran on it.
-struct Writer {
+struct LogsWriter {
     connection: Connection,
     trimmed_at: Instant,
 }
@@ -194,7 +194,7 @@ impl Logs {
             if let Err(error) = retention::apply(&connection, retention, kv::now_ms()) {
                 log::warn!("cannot apply log retention to {}: {error}", path.display());
             }
-            Some(Mutex::new(Writer {
+            Some(Mutex::new(LogsWriter {
                 connection,
                 trimmed_at: Instant::now(),
             }))
@@ -205,7 +205,7 @@ impl Logs {
         };
         let reader = kv::open_reader(path)?;
         Ok(Logs {
-            inner: Arc::new(Inner {
+            inner: Arc::new(LogsInner {
                 path: path.to_path_buf(),
                 retention,
                 writer,

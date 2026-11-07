@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use gnoblin_model::Value;
 
-pub use kv::{Change, Entry, Op, Outcome};
+pub use kv::{BatchOutcome, Change, Entry, Op};
 pub use logs::{GroupBy, LogQuery, Logs, Retention, StoredRecord};
 pub use query::{Order, Query};
 
@@ -342,7 +342,7 @@ impl Namespace {
     /// Any error of [`Namespace::batch`] for one put.
     pub fn put(&self, key: &str, value: Value) -> Result<u64, StoreError> {
         match self.batch(&[Op::put(key, value)])?.as_slice() {
-            [Outcome::Put { revision }] => Ok(*revision),
+            [BatchOutcome::Put { revision }] => Ok(*revision),
             other => Err(StoreError::Internal(format!("a put returned {other:?}"))),
         }
     }
@@ -354,7 +354,7 @@ impl Namespace {
     /// Any error of [`Namespace::batch`] for one delete.
     pub fn delete(&self, key: &str) -> Result<bool, StoreError> {
         match self.batch(&[Op::delete(key)])?.as_slice() {
-            [Outcome::Delete { removed }] => Ok(*removed),
+            [BatchOutcome::Delete { removed }] => Ok(*removed),
             other => Err(StoreError::Internal(format!("a delete returned {other:?}"))),
         }
     }
@@ -366,7 +366,7 @@ impl Namespace {
     ///
     /// The first refusal, with its code: `invalid-key`, `value-not-storable`, `value-too-large`,
     /// `revision-conflict`, `quota-exceeded`, `read-only`, `disk-full` or `store-unavailable`.
-    pub fn batch(&self, ops: &[Op]) -> Result<Vec<Outcome>, StoreError> {
+    pub fn batch(&self, ops: &[Op]) -> Result<Vec<BatchOutcome>, StoreError> {
         self.kv.apply(ops)
     }
 

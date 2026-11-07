@@ -1668,18 +1668,6 @@ kind = "same-name"
 reason = "a backend layer's 3D model matrix is a draw transform; the accessibility model is the tree of exposed objects"
 
 [[allow]]
-left = "gnoblin-backend::Placement"
-right = "gnoblin-wm::Placement"
-kind = "same-name"
-reason = "a backend quad placement is a clip-space draw transform; a window placement is a layout decision"
-
-[[allow]]
-left = "gnoblin-backend::Placement"
-right = "gnoblin-output::Placement"
-kind = "same-name"
-reason = "a backend quad placement is a clip-space draw transform; an output placement is a monitor arrangement"
-
-[[allow]]
 left = "gnoblin-lua::LayoutCall"
 right = "gnoblin-wm::Job"
 kind = "same-shape"
@@ -1759,18 +1747,6 @@ left = "gnoblin-lock::State"
 right = "gnoblin-store::State"
 kind = "same-name"
 reason = "the lock state machine versus the store lifecycle state; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-log::Outcome"
-right = "gnoblin-store::Outcome"
-kind = "same-name"
-reason = "a journal write outcome versus a store write outcome; the name is shared, the meaning is not"
-
-[[allow]]
-left = "gnoblin-log::Query"
-right = "gnoblin-store::Query"
-kind = "same-name"
-reason = "a log journal query versus a store query; the name is shared, the meaning is not"
 
 [[allow]]
 left = "gnoblin-schema::Namespace"
