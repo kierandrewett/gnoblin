@@ -19,7 +19,7 @@
 //!
 //! [`HeadlessConfig`] holds the [`RendererKind`] every output draws with: software
 //! (the default and the reference), [`Gles`] (the same frame drawn on a surfaceless GLES
-//! context, D12's GPU half) or Vulkan (`render::vulkan::Vulkan`, behind the `vulkan` feature). The
+//! context, D12's GPU half) or Vulkan (`gnoblin_render_vulkan::Vulkan`, behind the `vulkan` feature). The
 //! `compositor.renderer` setting reaches this through [`HeadlessConfig::from_setting`], and
 //! `auto` means [`RendererKind::AUTO`]. This file only holds the choice: building and
 //! driving the renderer is [`AnyRenderer`]'s job.

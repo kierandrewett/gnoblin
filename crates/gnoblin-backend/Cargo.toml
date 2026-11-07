@@ -18,9 +18,9 @@ publish.workspace = true
 #
 # So the crate restates the workspace's levels with `deny` and confines the exemption to
 # named FFI shim modules, each opening with `#[allow(unsafe_code)]` and a `SAFETY:` comment
-# per block: `render/gles/egl.rs`, `render/gles/gl.rs` and the three files of
-# `render/vulkan/` that call `ash` (`context.rs`, `pipeline.rs` and `frame.rs`). Nothing else
-# in the crate may contain `unsafe`, and a session on the software path reaches none of them.
+# per block: `render/gles/egl.rs` and `render/gles/gl.rs`. Nothing else in the crate may
+# contain `unsafe`, and a session on the software path reaches none of them. The Vulkan
+# renderer's `unsafe` lives in `gnoblin-render-vulkan`, which carries its own exemption.
 [lints.rust]
 unsafe_code = "deny"
 
@@ -28,12 +28,11 @@ unsafe_code = "deny"
 all = { level = "deny", priority = -1 }
 
 [features]
-# The Vulkan renderer (`render::vulkan`). On by default because the Vulkan loader is
-# opened with `dlopen` when a renderer is created, not linked: a machine without one
-# builds, starts and runs the Vulkan tests as skips. `naga/spv-out` is the SPIR-V
-# writer the renderer compiles the shared WGSL passes with.
+# The Vulkan renderer lives in `gnoblin-render-vulkan`. On by default because the Vulkan
+# loader is opened with `dlopen` when a renderer is created, not linked: a machine without
+# one builds, starts and runs the Vulkan tests as skips.
 default = ["vulkan"]
-vulkan = ["dep:ash", "naga/spv-out"]
+vulkan = ["dep:gnoblin-render-vulkan"]
 
 [dependencies]
 # The event-loop handle the backend contract registers its sources with, and the
@@ -95,10 +94,9 @@ naga.workspace = true
 # no `gl::` call is written here by hand and the only `unsafe` in the crate is the
 # EGL bootstrap in `render/gles/egl.rs`.
 glow.workspace = true
-# The Vulkan bindings (feature `vulkan`). Every call is `unsafe`, so the renderer's
-# modules in `render/vulkan/` are the third exemption listed under `[lints.rust]`.
-ash = { workspace = true, optional = true }
+# The Vulkan renderer (feature `vulkan`), whose calls into the driver are `unsafe` and
+# confined to that crate.
+gnoblin-render-vulkan = { path = "../gnoblin-render-vulkan", optional = true }
 
 [dev-dependencies]
-# The shared-memory files of the Vulkan tests' in-process client (`render/vulkan/harness.rs`).
-tempfile = "3.23.0"
+# The Vulkan tests' in-process client lives in `gnoblin-render-vulkan`; nothing here needs more.

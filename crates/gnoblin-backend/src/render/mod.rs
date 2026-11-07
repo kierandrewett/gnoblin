@@ -78,6 +78,3 @@ pub mod gles;
 pub mod renderer;
 /// The CPU renderer, built on Pixman. Moves to its own crate in phase 4.
 pub mod software;
-/// The Vulkan renderer, enabled by the `vulkan` feature. Moves to its own crate in phase 2.
-#[cfg(feature = "vulkan")]
-pub mod vulkan;

@@ -27,7 +27,7 @@ use smithay::utils::Transform;
 use super::harness::{BufferSpec, ShmClient};
 use super::pipeline::ShaderSources;
 use super::*;
-use crate::render::software::Software;
+use gnoblin_backend::render::software::Software;
 use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface};
 use gnoblin_render_frame::image::Image;
 

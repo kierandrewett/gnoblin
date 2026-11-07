@@ -59,6 +59,7 @@ const ENGINE: &[&str] = &[
     "gnoblin-backend",
     "gnoblin-input",
     "gnoblin-input-eis",
+    "gnoblin-render-vulkan",
     "gnoblin-render",
     "gnoblin-render-frame",
     "gnoblin-wayland",
@@ -435,6 +436,12 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
             "the input policy crate depends on no engine crate but gnoblin-backend; `{}` is an engine crate",
             dep.name
         ));
+    }
+    if package.name == "gnoblin-backend" && dep.name == "gnoblin-render-vulkan" {
+        // The backend selects its Vulkan renderer under the `vulkan` feature, the one renderer
+        // the backend names by crate rather than through a trait. It is a leaf of the renderer
+        // half, so the edge cannot pull a policy or protocol crate in behind the backend.
+        return None;
     }
     if is_engine(&dep.name) && dep.name != "gnoblin-backend" {
         if dep.name == HUB_SCENE || dep.name == HUB_INPUT || dep.name == HUB_FRAME {

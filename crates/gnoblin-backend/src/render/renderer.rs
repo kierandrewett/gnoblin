@@ -10,9 +10,9 @@ use gnoblin_types::{Scale, Size};
 
 use super::gles::Gles;
 use super::software::Software;
-#[cfg(feature = "vulkan")]
-use super::vulkan::Vulkan;
 use gnoblin_render_frame::{error::RenderError, frame::OutputFrame, image::Image};
+#[cfg(feature = "vulkan")]
+use gnoblin_render_vulkan::Vulkan;
 
 #[cfg(not(feature = "vulkan"))]
 use crate::log;
@@ -124,7 +124,7 @@ impl AnyRenderer {
     fn vulkan(physical: Size) -> Result<Self, RenderError> {
         Vulkan::new(physical)
             .map(|vulkan| Self::Vulkan(Box::new(vulkan)))
-            .map_err(super::vulkan::VulkanError::into_render_error)
+            .map_err(gnoblin_render_vulkan::VulkanError::into_render_error)
     }
 
     #[cfg(not(feature = "vulkan"))]

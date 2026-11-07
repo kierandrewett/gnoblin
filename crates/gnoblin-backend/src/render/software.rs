@@ -256,9 +256,9 @@ impl Software {
         self.readback(true, with_cursor)
     }
 
-    /// The buffer as drawn, overlay and cursor included, for tests of the composed frame.
-    #[cfg(test)]
-    pub(crate) fn composed(&mut self) -> Result<Image, RenderError> {
+    /// The buffer as drawn, overlay and cursor included, for the parity tests of the composed
+    /// frame in `gnoblin-render-vulkan`. The software renderer moves out in phase 4.
+    pub fn composed(&mut self) -> Result<Image, RenderError> {
         self.readback(false, true)
     }
 
