@@ -1561,6 +1561,8 @@ name = "gnoblin-config"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-config-codegen",
+ "gnoblin-layers",
+ "gnoblin-lua-pattern",
  "gnoblin-schema",
  "gnoblin-testkit",
  "serde_json",
@@ -1672,9 +1674,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-lua-pattern"
+version = "0.2.0-alpha.0"
+
+[[package]]
 name = "gnoblin-lua-sandbox"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-lua-pattern",
  "mlua",
 ]
 
@@ -2058,6 +2065,7 @@ name = "gnoblin-wm"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-layers",
+ "gnoblin-lua-pattern",
  "gnoblin-types",
 ]
 
