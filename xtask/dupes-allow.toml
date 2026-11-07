@@ -1760,3 +1760,96 @@ left = "gnoblin-capture::Target"
 right = "gnoblin-layers::LayerScope"
 kind = "same-shape"
 reason = "a capture target names what a screen-cast exports; a layer scope names what a layer is attached to; both are an output or a window, but the lifetimes and rules differ"
+
+# gnoblin-store (phase 1) names its public API as the design fixes it (`Store`,
+# `Namespace`, `Query`, `Options`, `Entry`, `Change`); the same spellings in other
+# crates name different things, so each reviewed pair is waived here.
+[[allow]]
+left = "gnoblin-backend::Change"
+right = "gnoblin-store::Change"
+kind = "same-name"
+reason = "a DRM plan step versus a store write notification; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-backend::Op"
+right = "gnoblin-store::Op"
+kind = "same-name"
+reason = "a DRM plan operation versus a store batch operation; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-client::Reader"
+right = "gnoblin-store::Reader"
+kind = "same-name"
+reason = "a Wayland wire reader versus the store's value decoding cursor; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-config::Store"
+right = "gnoblin-store::Store"
+kind = "same-name"
+reason = "the last-good config file versus the store's key-value handle; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-config::StoreError"
+right = "gnoblin-store::StoreError"
+kind = "same-name"
+reason = "the last-good config error versus the store error; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-input::Options"
+right = "gnoblin-store::Options"
+kind = "same-name"
+reason = "EIS server options versus store open options; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-layers::Order"
+right = "gnoblin-store::Order"
+kind = "same-name"
+reason = "layer stacking order versus query result order; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-lock::State"
+right = "gnoblin-store::State"
+kind = "same-name"
+reason = "the lock state machine versus the store lifecycle state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-log::Outcome"
+right = "gnoblin-store::Outcome"
+kind = "same-name"
+reason = "a journal write outcome versus a store write outcome; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-log::Query"
+right = "gnoblin-store::Query"
+kind = "same-name"
+reason = "a log journal query versus a store query; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-schema::Namespace"
+right = "gnoblin-store::Namespace"
+kind = "same-name"
+reason = "a schema namespace declaration versus a store namespace handle; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-store::Change"
+right = "xdg-desktop-portal-gnoblin::Change"
+kind = "same-name"
+reason = "a store write notification versus a portal settings change; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblinctl::Entry"
+right = "gnoblin-store::Entry"
+kind = "same-name"
+reason = "a gnoblinctl generated entry versus a stored key-value entry; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-store::State"
+right = "gnoblin-wayland::State"
+kind = "same-name"
+reason = "the store lifecycle state versus the Wayland server state; the name is shared, the meaning is not"
+
+[[allow]]
+left = "gnoblin-store::State"
+right = "xdg-desktop-portal-gnoblin::State"
+kind = "same-name"
+reason = "the store lifecycle state versus a portal consent state; the name is shared, the meaning is not"

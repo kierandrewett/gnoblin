@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-store"
+description = "The typed store: one SQLite file per namespace behind a query API that takes no SQL, with the in-process kv provider."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gnoblin-log = { path = "../gnoblin-log" }
+gnoblin-model = { path = "../gnoblin-model" }
+rusqlite.workspace = true
+
+[lints]
+workspace = true

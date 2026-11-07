@@ -605,3 +605,6 @@ Decisions from Kieran. Each one stands unless he reopens it.
 - 2026-11-06: API-first rewrite. Consumers see one set of verbs and one set of
   errors. Capabilities and kinds move to "Provider side". Logs move to kind `log`
   now. Decisions from Kieran are under "Decided".
+- 2026-11-07: Phase 1 done. `gnoblin-store` ships the consumer API for the
+  in-process `kv` provider: typed query layer, WAL, quotas, quarantine, watch
+  and batch. Tests cover the failure modes listed under "Failure modes".

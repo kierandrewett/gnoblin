@@ -222,6 +222,10 @@ const RULES: &[Rule] = &[
         id: "log-features",
         check: log_features,
     },
+    Rule {
+        id: "store-consumers",
+        check: store_consumers,
+    },
 ];
 
 /// One broken edge.
@@ -592,6 +596,32 @@ fn log_features(package: &Package, dep: &Dep) -> Option<String> {
         "`{}` enables the features {} of `{LOG_CRATE}`, but a library takes the facade alone: only a binary may enable a sink or `init`",
         package.name,
         dep.features.join(", ")
+    ))
+}
+
+/// The typed store. It sits beside the logging facade: a library reaches it through its owner, so
+/// only the composition root or a binary may name it. Dev edges are exempt, as tests drive it.
+const STORE_CRATE: &str = "gnoblin-store";
+
+/// The store names only the logging facade and the object model, so it cannot pull a role's
+/// graph into a process that opens a namespace.
+fn store_consumers(package: &Package, dep: &Dep) -> Option<String> {
+    if package.name == STORE_CRATE {
+        if is_workspace_crate(&dep.name) && dep.name != LOG_CRATE && dep.name != "gnoblin-model" {
+            return Some(format!(
+                "`{STORE_CRATE}` may depend only on `{LOG_CRATE}` and `gnoblin-model` among workspace crates, not `{}`",
+                dep.name
+            ));
+        }
+        return None;
+    }
+    if dep.name != STORE_CRATE || dep.kind == DepKind::Dev || package.is_binary || package.name == "gnoblin-compositor"
+    {
+        return None;
+    }
+    Some(format!(
+        "`{}` is a library and may not depend on `{STORE_CRATE}`: only the composition root or a binary opens a store",
+        package.name
     ))
 }
 
