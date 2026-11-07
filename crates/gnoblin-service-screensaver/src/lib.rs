@@ -396,6 +396,9 @@ impl Compositor for Host {
             Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
                 Err(format!("the compositor did not lock the session: {}", code.as_str()))
             }
+            Ok(gnoblin_model::OperationOutcome::Value(_)) => {
+                Err("the compositor answered lock_session with a value".to_owned())
+            }
             Err(error) => Err(error.to_string()),
         }
     }
@@ -424,6 +427,7 @@ fn call_idle(host: &Host, method: &str, holder: &str) -> Result<(), String> {
         Ok(gnoblin_model::OperationOutcome::Failed(code)) => {
             Err(format!("the compositor refused {method}: {}", code.as_str()))
         }
+        Ok(gnoblin_model::OperationOutcome::Value(_)) => Err(format!("the compositor answered {method} with a value")),
         Err(error) => Err(error.to_string()),
     }
 }
