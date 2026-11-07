@@ -430,6 +430,13 @@ mod gnoblin_objects {
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
         }
+
+        fn layers_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "layers") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
     }
 
     impl gnoblin::ipc::gnoblin::HostOperation for StoreData {
@@ -1016,6 +1023,37 @@ mod gnoblin_objects {
             let mut arguments = gnoblin_model::Fields::new();
             arguments.insert("holder".to_owned(), Value::Text(holder));
             self.method(object, "idle", "uninhibit", arguments)
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostLayers for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn register(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            local: String,
+            target: u64,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("local".to_owned(), Value::Text(local));
+            arguments.insert("target".to_owned(), Value::Uint(target));
+            self.method(object, "layers", "register", arguments)
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {

@@ -118,11 +118,13 @@ fn module(start: &str, on_event: &str) -> String {
         r#"
 (component
   (import "gnoblin:ipc/gnoblin@{PACKAGE}" (instance $api
-    (type $ec (enum "corrupt" "database" "denied" "disk-full" "idle-unavailable" "internal" "invalid-key" "invalid-name" "migration-failed" "no-store-owner" "not-locked" "quota-exceeded" "read-only" "refused" "store-unavailable" "too-many-inhibitors" "too-many-passes" "undecodable" "unknown-effect-kind" "unknown-layout" "unknown-member" "unknown-object" "value-not-storable" "value-too-large"))
+    (type $ec (enum "corrupt" "database" "denied" "disk-full" "idle-unavailable" "internal" "invalid-key" "invalid-name" "layer-refused" "migration-failed" "no-store-owner" "not-locked" "power-missing" "quota-exceeded" "read-only" "refused" "store-unavailable" "too-many-inhibitors" "too-many-passes" "undecodable" "unknown-effect-kind" "unknown-layout" "unknown-member" "unknown-object" "value-not-storable" "value-too-large"))
     (export "error-code" (type $ecx (eq $ec)))
     (export "operation" (type $op (sub resource)))
     (export "window" (type $w (sub resource)))
     (export "window-by-id" (func (param "id" u64) (result (result (own $w) (error $ecx)))))
+    (export "layers" (type $l (sub resource)))
+    (export "layers-by-id" (func (param "id" u64) (result (result (own $l) (error $ecx)))))
     (export "[method]window.focus" (func (param "self" (borrow $w)) (result (result (own $op) (error $ecx)))))
     (export "[method]window.kill" (func (param "self" (borrow $w)) (result (result (own $op) (error $ecx)))))
     (export "[method]window.watch" (func (param "self" (borrow $w)) (result (result bool (error $ecx)))))
@@ -134,16 +136,19 @@ fn module(start: &str, on_event: &str) -> String {
   (alias export $api "[method]window.focus" (func $focus))
   (alias export $api "[method]window.kill" (func $kill))
   (alias export $api "[method]window.watch" (func $watch))
+  (alias export $api "layers-by-id" (func $lbyid))
   (core func $byid_core (canon lower (func $byid) (memory $mem)))
   (core func $focus_core (canon lower (func $focus) (memory $mem)))
   (core func $kill_core (canon lower (func $kill) (memory $mem)))
   (core func $watch_core (canon lower (func $watch) (memory $mem)))
+  (core func $lbyid_core (canon lower (func $lbyid) (memory $mem)))
   (core module $app
     (import "env" "mem" (memory 1))
     (import "" "window-by-id" (func $byid (param i64 i32)))
     (import "" "focus" (func $focus (param i32 i32)))
     (import "" "kill" (func $kill (param i32 i32)))
     (import "" "watch" (func $watch (param i32 i32)))
+    (import "" "layers-by-id" (func $lbyid (param i64 i32)))
     (global $window (mut i32) (i32.const 0))
     (func (export "start")
 {start}
@@ -160,6 +165,7 @@ fn module(start: &str, on_event: &str) -> String {
       (export "focus" (func $focus_core))
       (export "kill" (func $kill_core))
       (export "watch" (func $watch_core))
+      (export "layers-by-id" (func $lbyid_core))
     ))
   ))
   (func $start (canon lift (core func $appi "start")))
@@ -366,6 +372,29 @@ fn a_module_that_calls_kill_without_the_grant_is_denied_once() {
     );
     assert_eq!(host.state("denied"), Some(&ModuleState::Running));
     let _ = window;
+}
+
+// 3c. A module that asks for a layers object that does not exist is refused `unknown-object`.
+#[test]
+fn a_module_that_asks_for_a_missing_layers_object_is_refused_unknown_object() {
+    // Window 1 is a window, not a layers object, so the mirror refuses the lookup.
+    // `unknown-object` is index 23 in the sorted `error-code` enum; the module traps
+    // unless the result is the error arm carrying exactly that code.
+    let looking = compile(&module(
+        r#"      (call $lbyid (i64.const 1) (i32.const 64))
+      (if (i32.ne (i32.load8_u (i32.const 64)) (i32.const 1)) (then (unreachable)))
+      (if (i32.ne (i32.load (i32.const 68)) (i32.const 23)) (then (unreachable)))"#,
+        "      (nop)",
+    ));
+
+    let (mut server, _window) = server();
+    let (mut host, _capture) = host();
+    let manifest = Manifest::new("looking").capabilities(Grants::none().read("layers"));
+    host.load(manifest, &looking, budget()).expect("loads");
+    host.connect(&mut server, VERSION).expect("connects");
+    host.start("looking", budget())
+        .expect("the module saw `unknown-object` for the lookup");
+    assert_eq!(host.state("looking"), Some(&ModuleState::Running));
 }
 
 // 4. A module traps.
