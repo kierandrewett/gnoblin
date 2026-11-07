@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-animation"
+description = "Easing curves, the animatable visual properties and transform, and the tween player that drives them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The shared value types (`Color`, `Transform`) live in `gnoblin-types`, so this
+# crate stays a foundation below `gnoblin-render` and never names the scene.
+gnoblin-types.workspace = true
+
+[lints]
+workspace = true
