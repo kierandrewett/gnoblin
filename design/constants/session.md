@@ -1,5 +1,7 @@
 # Constants audit: session group
 
+> **Correction (2026-11-07):** References to `config.toml` (e.g. `config.toml:2063`, `config.toml:2090-2103`) are stale. The schema lives in individual TOML files under `crates/gnoblin-schema/schema/*.toml`. No single `config.toml` exists. The config leaves cited (e.g. `logging.store-max-age-days`) may exist in a Lua default-config file rather than a schema TOML file. See the master README for verified findings.
+
 Upstream claims in the tables (protocol, GeoClue, polkit, ScreenSaver, systemd) are NOT fetched in this audit unless a row says so; treat them as [INFERENCE] until checked against the cited source.
 
 Scope: `gnoblin-log`, `gnoblin-store`, `gnoblin-session`, `gnoblin-authority`, `gnoblin-service-core`, `gnoblin-service-location`, `gnoblin-service-polkit`, `gnoblin-service-screensaver`, `gnoblin-services`, `gnoblin` (binary), `gnoblin-layers`.
@@ -228,7 +230,7 @@ Ranked by user value over effort. Each is a proposal, not a change made here.
 
 Defaults equal current values unless stated.
 
-### 4.1 Core config (`crates/gnoblin-config/schema/config.toml`)
+### 4.1 Core config (`crates/gnoblin-schema/schema/*.toml` — no single config.toml exists)
 
 | Leaf path                 | Type      | Unit | Default | Range      | Source constant                   |
 | ------------------------- | --------- | ---- | ------- | ---------- | --------------------------------- |
