@@ -47,6 +47,7 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.request": ObjectRep,
         "gnoblin:ipc/gnoblin.session": ObjectRep,
         "gnoblin:ipc/gnoblin.window": ObjectRep,
+        "gnoblin:ipc/gnoblin.effect": ObjectRep,
         "gnoblin:ipc/gnoblin.capture": ObjectRep,
         "gnoblin:ipc/gnoblin.eis": ObjectRep,
         "gnoblin:ipc/gnoblin.idle": ObjectRep,
@@ -248,6 +249,21 @@ impl StoreData {
             .collect()
     }
 
+    /// A property as a list of object identities. Entries of another shape are
+    /// skipped, and a property the mirror does not have reads empty, like `texts`.
+    fn objects(&self, object: ObjectId, property: &str) -> Vec<u64> {
+        let Some(Value::List(items)) = self.property(object, property) else {
+            return Vec::new();
+        };
+        items
+            .iter()
+            .filter_map(|item| match item {
+                Value::Object(identity) => Some(identity.get()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Call a method, returning the operation the completion is matched on.
     fn invoke(
         &mut self,
@@ -324,6 +340,13 @@ mod gnoblin_objects {
     impl gnoblin::ipc::gnoblin::Host for StoreData {
         fn window_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
             Ok(match self.open(id, "window") {
+                Ok(handle) => Ok(handle),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn effect_by_id(&mut self, id: u64) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            Ok(match self.open(id, "effect") {
                 Ok(handle) => Ok(handle),
                 Err(refusal) => Err(gnoblin_error(refusal)),
             })
@@ -515,6 +538,59 @@ mod gnoblin_objects {
             arguments.insert("height".to_owned(), Value::Uint(height));
             self.method(object, "window", "request_menu", arguments)
         }
+
+        /// The window's effects in paint order, as `effect` object identities.
+        fn effects(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Vec<u64>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.objects(object, "effects"))
+        }
+
+        /// Add an effect to the top of the window's effects. The parameters are the
+        /// effect object's properties for `kind`; the compositor ignores those a kind
+        /// does not use. The reply is an operation; a rejected kind fails it with
+        /// `unknown-effect-kind`.
+        #[allow(clippy::too_many_arguments)]
+        fn add_effect(
+            &mut self,
+            handle: Resource<ObjectRep>,
+            kind: String,
+            downscale: u64,
+            passes: u64,
+            algorithm: String,
+            noise: f64,
+            brightness: f64,
+            contrast: f64,
+            saturation: f64,
+            tint: String,
+            offset_x: f64,
+            offset_y: f64,
+            blur_radius: f64,
+            spread: f64,
+            colour: String,
+            source: String,
+            entry: String,
+        ) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            let mut arguments = gnoblin_model::Fields::new();
+            arguments.insert("kind".to_owned(), Value::Text(kind));
+            arguments.insert("downscale".to_owned(), Value::Uint(downscale));
+            arguments.insert("passes".to_owned(), Value::Uint(passes));
+            arguments.insert("algorithm".to_owned(), Value::Text(algorithm));
+            arguments.insert("noise".to_owned(), Value::Double(noise));
+            arguments.insert("brightness".to_owned(), Value::Double(brightness));
+            arguments.insert("contrast".to_owned(), Value::Double(contrast));
+            arguments.insert("saturation".to_owned(), Value::Double(saturation));
+            arguments.insert("tint".to_owned(), Value::Text(tint));
+            arguments.insert("offset_x".to_owned(), Value::Double(offset_x));
+            arguments.insert("offset_y".to_owned(), Value::Double(offset_y));
+            arguments.insert("blur_radius".to_owned(), Value::Double(blur_radius));
+            arguments.insert("spread".to_owned(), Value::Double(spread));
+            arguments.insert("colour".to_owned(), Value::Text(colour));
+            arguments.insert("source".to_owned(), Value::Text(source));
+            arguments.insert("entry".to_owned(), Value::Text(entry));
+            self.method(object, "window", "add_effect", arguments)
+        }
+
         fn icon(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.text(object, "icon"))
@@ -561,6 +637,125 @@ mod gnoblin_objects {
                     Err(refusal) => Err(gnoblin_error(refusal)),
                 },
             )
+        }
+
+        fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {
+            Ok(match self.watch(&handle) {
+                Ok(()) => Ok(true),
+                Err(refusal) => Err(gnoblin_error(refusal)),
+            })
+        }
+
+        fn drop(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<()> {
+            let _ = self.table.delete(handle);
+            Ok(())
+        }
+    }
+
+    impl gnoblin::ipc::gnoblin::HostEffect for StoreData {
+        fn object_id(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            Ok(self.object(&handle).map(|object| object.get()).unwrap_or(0))
+        }
+
+        fn kind(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "kind"))
+        }
+
+        fn enabled(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "enabled"))
+        }
+
+        fn active(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.boolean(object, "active"))
+        }
+
+        fn reason(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "reason"))
+        }
+
+        fn downscale(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "downscale"))
+        }
+
+        fn passes(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "passes"))
+        }
+
+        fn algorithm(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "algorithm"))
+        }
+
+        fn noise(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "noise"))
+        }
+
+        fn brightness(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "brightness"))
+        }
+
+        fn contrast(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "contrast"))
+        }
+
+        fn saturation(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "saturation"))
+        }
+
+        fn tint(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "tint"))
+        }
+
+        fn offset_x(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "offset_x"))
+        }
+
+        fn offset_y(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "offset_y"))
+        }
+
+        fn blur_radius(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "blur_radius"))
+        }
+
+        fn spread(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<f64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.float(object, "spread"))
+        }
+
+        fn colour(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "colour"))
+        }
+
+        fn source(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "source"))
+        }
+
+        fn entry(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<String> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.text(object, "entry"))
+        }
+
+        /// Remove this effect from its window. The reply is an operation.
+        fn remove(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<Resource<ObjectRep>, ErrorCode>> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            self.method(object, "effect", "remove", gnoblin_model::Fields::new())
         }
 
         fn watch(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<Result<bool, ErrorCode>> {

@@ -729,6 +729,42 @@ fn the_unresponsive_member_round_trips_through_the_graph() {
     );
 }
 
+// 11b. A window's effect list is read back through the graph as object identities, in
+// paint order. The `add_effect` and `effect_by_id` paths go through the compositor's
+// IPC tests; this pins the graph side the host's `effects` getter reads.
+#[test]
+fn the_effects_member_round_trips_through_the_graph() {
+    let (mut server, window) = server();
+    let blur = server
+        .create(
+            TypeKey::gnoblin("effect"),
+            gnoblin_testkit::object_fields("effect", &[("kind", Value::Text("blur".to_owned()))]),
+        )
+        .expect("the graph takes an effect object");
+    let shadow = server
+        .create(
+            TypeKey::gnoblin("effect"),
+            gnoblin_testkit::object_fields("effect", &[("kind", Value::Text("shadow".to_owned()))]),
+        )
+        .expect("the graph takes an effect object");
+
+    server
+        .set(
+            window,
+            "effects",
+            Value::List(vec![Value::Object(blur), Value::Object(shadow)]),
+        )
+        .expect("the graph takes an effects change");
+    assert_eq!(
+        server
+            .graph()
+            .object(window)
+            .and_then(|object| object.property("effects").cloned()),
+        Some(Value::List(vec![Value::Object(blur), Value::Object(shadow)])),
+        "the effects come back in paint order"
+    );
+}
+
 // 12. The idle object's inhibitor count, which the host's `inhibitors` getter reads, is
 // published by the compositor and read back through the graph. The `inhibit` and
 // `uninhibit` methods have no fixture here; the compositor's IPC tests cover them.
