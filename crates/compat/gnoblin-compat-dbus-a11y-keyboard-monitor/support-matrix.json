@@ -1,0 +1,40 @@
+{
+  "interfaces": [
+    {
+      "name": "org.freedesktop.a11y.KeyboardMonitor",
+      "version": 1,
+      "members": [
+        {
+          "kind": "method",
+          "name": "WatchKeyboard",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "UnwatchKeyboard",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "GrabKeyboard",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "UngrabKeyboard",
+          "support": "supported"
+        },
+        {
+          "kind": "method",
+          "name": "SetKeyGrabs",
+          "support": "supported"
+        },
+        {
+          "kind": "signal",
+          "name": "KeyEvent",
+          "support": "supported"
+        }
+      ]
+    }
+  ]
+}

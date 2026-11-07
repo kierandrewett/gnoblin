@@ -9,6 +9,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/compat/gnoblin-compat-dbus-a11y-keyboard-monitor",
     "crates/compat/gnoblin-compat-core",
     "crates/compat/gnoblin-compat-host",
     "crates/compat/gnoblin-compat-dbus-gnome-keyring-prompter",

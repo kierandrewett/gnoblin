@@ -1,0 +1,21 @@
+[package]
+name = "gnoblin-compat-dbus-a11y-keyboard-monitor"
+description = "org.freedesktop.a11y.KeyboardMonitor adapter: the D-Bus face of the compositor's accessibility key path."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Every decision about a key lives in the accessibility machines. This crate only
+# marshals the D-Bus calls into their events and their reports back out to the bus.
+gnoblin-a11y = { path = "../../gnoblin-a11y" }
+# The `[tag]` log lines, the same facade the rest of the compat crates log through.
+gnoblin-log = { path = "../../gnoblin-log" }
+# The bus object, its method calls and its unicast `KeyEvent` signal.
+zbus.workspace = true
+# The stream the owner watch reads `NameOwnerChanged` through.
+futures-lite.workspace = true
