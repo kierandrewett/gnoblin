@@ -68,6 +68,9 @@ pub const INTERFACE: &str = "org/gnome/desktop/interface";
 /// The window manager schema's dconf group.
 pub const WINDOW_PREFERENCES: &str = "org/gnome/desktop/wm/preferences";
 
+/// The accessibility schema's dconf group, which holds the high-contrast preference.
+pub const A11Y_INTERFACE: &str = "org/gnome/desktop/a11y/interface";
+
 /// One key the layer writes.
 ///
 /// `KeyWrite` rather than `Action`: the name says what it is (one key and the value it
@@ -166,6 +169,11 @@ pub fn publish(settings: &DesktopSettings) -> Vec<KeyWrite> {
             value: DconfValue::Text(settings.colour_scheme.as_str().to_owned()),
         },
         KeyWrite {
+            group: INTERFACE,
+            key: "enable-animations",
+            value: DconfValue::Boolean(!settings.reduced_motion),
+        },
+        KeyWrite {
             group: WINDOW_PREFERENCES,
             key: "titlebar-font",
             value: DconfValue::Text(settings.titlebar_font.clone()),
@@ -174,6 +182,11 @@ pub fn publish(settings: &DesktopSettings) -> Vec<KeyWrite> {
             group: WINDOW_PREFERENCES,
             key: "button-layout",
             value: DconfValue::Text(settings.button_layout.clone()),
+        },
+        KeyWrite {
+            group: A11Y_INTERFACE,
+            key: "high-contrast",
+            value: DconfValue::Boolean(settings.high_contrast),
         },
     ];
     if let Some(accent) = settings.accent {
@@ -311,6 +324,8 @@ mod tests {
             Some(DconfValue::Text("appmenu:minimize,maximize,close".to_owned()))
         );
         assert_eq!(find("color-scheme"), Some(DconfValue::Text("default".to_owned())));
+        assert_eq!(find("enable-animations"), Some(DconfValue::Boolean(true)));
+        assert_eq!(find("high-contrast"), Some(DconfValue::Boolean(false)));
     }
 
     /// The keyfile is the format `dconf compile` reads, and the same value renders the

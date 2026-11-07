@@ -163,6 +163,12 @@ pub struct DesktopSettings {
     pub dpi: u32,
     /// The accent colour, when the configuration names one. `None` leaves the toolkit's own accent.
     pub accent: Option<Accent>,
+    /// Whether applications should stop animating. GNOME's `enable-animations` is the inverse, and the
+    /// portal's `reduced-motion` is this value as 0 or 1.
+    pub reduced_motion: bool,
+    /// Whether applications should use high contrast. GNOME's `high-contrast` key and the portal's
+    /// `contrast` value 1 both mean this.
+    pub high_contrast: bool,
 }
 
 impl DesktopSettings {
@@ -197,6 +203,8 @@ impl Default for DesktopSettings {
             colour_scheme: ColourScheme::NoPreference,
             dpi: 96,
             accent: None,
+            reduced_motion: false,
+            high_contrast: false,
         }
     }
 }
@@ -228,6 +236,8 @@ pub fn settings_from_config(config: &gnoblin_config::Config) -> DesktopSettings 
             .accent
             .as_deref()
             .and_then(|accent| Accent::parse(accent).ok());
+        settings.reduced_motion = appearance.reduced_motion.unwrap_or(false);
+        settings.high_contrast = appearance.high_contrast.unwrap_or(false);
     }
     settings
 }

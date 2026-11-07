@@ -33,6 +33,22 @@
           "kind": "property",
           "name": "color-scheme",
           "support": "supported"
+        },
+        {
+          "kind": "property",
+          "name": "enable-animations",
+          "support": "supported"
+        }
+      ]
+    },
+    {
+      "name": "org/gnome/desktop/a11y/interface",
+      "version": 1,
+      "members": [
+        {
+          "kind": "property",
+          "name": "high-contrast",
+          "support": "supported"
         }
       ]
     },
