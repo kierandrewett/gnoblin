@@ -599,6 +599,40 @@ Decisions from Kieran. Each one stands unless he reopens it.
 - **`secret` locked behaviour: decided in principle.** Kieran: follow what GNOME
   and KDE do. The exact behaviour is being verified by the KeyringResearch lane,
   and this file does not state it.
+- **Log key (decided by the implementing lane, 2026-11-07, reopen if wrong).**
+  A `log` record carries an indexed `key` column. The `gnoblin-log` facade sets
+  `key` to the record's area. `put(key, value)` appends, and `get(key)` returns
+  the newest record for that key. A forward-only migration adds the column, with
+  existing rows set to `key = area`, and the migration is idempotent.
+- **Scope split (Main, 2026-11-07).** Phase 4 lands the `kv` verbs first as one
+  commit. The `log` verbs follow as a second commit. Phases 5 and 6 build on both.
+- **Grant finding (2026-11-07, blocks phase 4 powers, no schema added).** The
+  extension grants frame cannot yet carry `store`, `store.read:<name>` or
+  `store.write:<name>`. Today `gnoblin-config` `extensions` entries name a
+  schema-backed namespace and the restricted socket roles that receive it
+  (`grants = [roles]`), and `plan()` pushes grants only onto privileged
+  connections. Accepted client sockets get an empty frame. Store grants are not
+  schema-backed namespaces, so they need a host-config decision first: either a
+  separate store-grant table, or per-role `store` entries. The `[powers.store]`
+  manifest table does not exist in the parser yet (D22).
+- **Phase 4 scope (Main, 2026-11-07).** Grants stay as they are: no schema is
+  added. A connection reaches only its own store, where the owner is the role or
+  extension id the compositor attributes to it. Cross-store `store.read:<name>`
+  and `store.write:<name>` grants, and the `[powers.store]` manifest table, are
+  deferred to "Needs Kieran". A test refuses namespace escape.
+
+## Needs Kieran
+
+- **Cross-store grants: where they are declared.** Two options. (1) A separate
+  store-grant table in host configuration, naming the store, the connection and
+  read or write. It is explicit and easy to audit, but it is a new config table
+  with its own schema. (2) Per-role `store` entries on the existing extension
+  `grants` shape. It reuses the plumbing, but a store name is not a schema-backed
+  namespace, so the parser must accept a second kind of entry. Trade-off: option
+  1 adds schema, option 2 bends an existing one.
+- **`[powers.store]` manifest table (D22).** The manifest parser has no powers
+  table yet. Decide whether manifests may request `store` at all, or whether only
+  host configuration grants it.
 
 ## Change log
 
