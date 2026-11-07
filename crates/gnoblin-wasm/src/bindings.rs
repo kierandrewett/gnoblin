@@ -57,6 +57,7 @@ wasmtime::component::bindgen!({
         "gnoblin:ipc/gnoblin.workspace": ObjectRep,
         "gnoblin:ipc/gnoblin.store": ObjectRep,
         "gnoblin:ipc/gnoblin.log": ObjectRep,
+        "gnoblin:ipc/gnoblin.layers": ObjectRep,
     },
     imports: { default: trappable },
 });
