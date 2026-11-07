@@ -30,6 +30,9 @@ pub const DEFAULT_ALIAS: &str = "default";
 /// The fixed path of the default collection. A client holds it across a lock and an unlock, and
 /// the collection behind it follows the `default` alias.
 pub const DEFAULT_COLLECTION_PATH: &str = "/org/freedesktop/secrets/collection/default";
+/// The path `aliases/default` answers at. libsecret names the default collection here in
+/// `CreateItem`, so it is served beside [`DEFAULT_COLLECTION_PATH`] and names the same collection.
+pub const DEFAULT_ALIAS_PATH: &str = "/org/freedesktop/secrets/aliases/default";
 /// The label of the collection created on first run.
 const DEFAULT_LABEL: &str = "Login";
 /// The property names `CreateItem` reads its label and attributes from.
@@ -219,7 +222,7 @@ fn alias_target(keyring: &Keyring, path: &str) -> Result<Option<CollectionId>, S
     if path == NO_OBJECT {
         return Ok(None);
     }
-    if path == DEFAULT_COLLECTION_PATH {
+    if path == DEFAULT_COLLECTION_PATH || path == DEFAULT_ALIAS_PATH {
         return default_collection(keyring).map(Some);
     }
     collection_id(path)
@@ -350,18 +353,16 @@ pub async fn export_tree(server: &ObjectServer, state: &State) -> Result<(), Sec
     Ok(())
 }
 
-/// Register the default collection's object at [`DEFAULT_COLLECTION_PATH`]. It is registered once
-/// at startup, locked or not, because a client holds that path across a lock and an unlock.
+/// Register the default collection's object at [`DEFAULT_COLLECTION_PATH`] and at
+/// [`DEFAULT_ALIAS_PATH`]. Both are registered once at startup, locked or not, because a client
+/// holds that path across a lock and an unlock.
 pub async fn export_default_collection(server: &ObjectServer, state: &State) -> zbus::Result<()> {
-    server
-        .at(
-            DEFAULT_COLLECTION_PATH,
-            CollectionObject {
-                state: state.clone(),
-                target: CollectionTarget::Default,
-            },
-        )
-        .await?;
+    let object = || CollectionObject {
+        state: state.clone(),
+        target: CollectionTarget::Default,
+    };
+    server.at(DEFAULT_COLLECTION_PATH, object()).await?;
+    server.at(DEFAULT_ALIAS_PATH, object()).await?;
     Ok(())
 }
 
@@ -1672,6 +1673,7 @@ mod tests {
             alias_target(&keyring, DEFAULT_COLLECTION_PATH).expect("target"),
             Some(login)
         );
+        assert_eq!(alias_target(&keyring, DEFAULT_ALIAS_PATH).expect("target"), Some(login));
         assert_eq!(alias_target(&keyring, NO_OBJECT).expect("clear"), None);
         assert!(matches!(
             alias_target(&keyring, "/org/freedesktop/secrets/prompt/3"),
