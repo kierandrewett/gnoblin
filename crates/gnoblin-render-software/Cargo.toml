@@ -1,0 +1,22 @@
+[package]
+name = "gnoblin-render-software"
+description = "The software renderer: an OutputFrame drawn through Smithay's Pixman renderer into an offscreen buffer, damage-only."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Pixman's renderer, the offscreen buffer and the client's shared-memory import.
+smithay.workspace = true
+# Colours, scales and sizes are stated in the shared primitives.
+gnoblin-types.workspace = true
+# The frame description this renderer draws, and the error vocabulary it reports with.
+gnoblin-render-frame = { path = "../gnoblin-render-frame" }
+# `[tag]` log lines for a refused operation or a skipped layer.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[features]
+# Exposes `Software::composed`, the readback the Vulkan parity tests compare with. Off in
+# every normal build, so the compositor cannot depend on a test-only entry point.
+test-support = []

@@ -23,7 +23,7 @@
 //! # Why the software path, and what the dmabuf path waits for
 //!
 //! The frame this backend commits is a `wl_shm` buffer because the render path of this
-//! slice is Pixman drawing into CPU memory (`render::software::Software`). A dmabuf would be a
+//! slice is Pixman drawing into CPU memory (`gnoblin_render_software::Software`). A dmabuf would be a
 //! second, faster path and it is blocked on three things, in order:
 //!
 //! 1. **A GPU renderer.** D12's GLES target does not exist yet, so there is no

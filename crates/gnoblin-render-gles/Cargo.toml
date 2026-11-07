@@ -34,5 +34,5 @@ gnoblin-render = { path = "../gnoblin-render" }
 gnoblin-log = { path = "../gnoblin-log" }
 
 [dev-dependencies]
-# The pixman software renderer whose readbacks the parity tests compare with.
-gnoblin-backend = { path = "../gnoblin-backend" }
+# The software renderer whose readbacks the parity tests compare with.
+gnoblin-render-software = { path = "../gnoblin-render-software" }

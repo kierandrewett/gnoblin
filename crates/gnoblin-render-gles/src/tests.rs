@@ -9,9 +9,9 @@
 //! [`gnoblin_render_frame::error::RenderError::Unavailable`] rather than failing the run.
 
 use super::*;
-use gnoblin_backend::render::software::Software;
 use gnoblin_render::{BlurParams, Effects, Mat4, Shadow, UniformType, UniformValue, Vec3};
 use gnoblin_render_frame::frame::{Model, Solid};
+use gnoblin_render_software::Software;
 
 /// A blur with the given radius and one pass, which is one horizontal and one vertical sweep.
 /// The reference formulas in these tests describe that single sweep, so the schema's default

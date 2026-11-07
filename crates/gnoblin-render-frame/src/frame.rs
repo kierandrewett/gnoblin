@@ -20,15 +20,15 @@
 //!
 //! 1. **A frame is drawn although nothing changed.** [`OutputFrame::is_empty`] answers
 //!    whether there is damage, and a backend that respects it draws nothing for an
-//!    idle iteration: `render::software::tests::an_empty_frame_draws_nothing` and
+//!    idle iteration: `gnoblin_render_software::tests::an_empty_frame_draws_nothing` and
 //!    the loop's `frame::tests::an_idle_iteration_draws_no_frame`.
 //! 2. **A layer is drawn outside the damage.** Every layer is clipped to the
 //!    frame's damage, so a rectangle that did not change is never repainted:
-//!    `render::software::tests::damage_limits_what_is_repainted`.
+//!    `gnoblin_render_software::tests::damage_limits_what_is_repainted`.
 //! 3. **An empty or inverted rectangle reaches the renderer.** A zero-width layer,
 //!    a zero-area damage rectangle and a non-finite opacity are dropped by
 //!    [`OutputFrame::push_layer`] and [`OutputFrame::push_damage`] instead of dividing by zero
-//!    inside pixman: `render::software::tests::a_degenerate_layer_draws_nothing`.
+//!    inside pixman: `gnoblin_render_software::tests::a_degenerate_layer_draws_nothing`.
 //! 4. **A corner radius a shader cannot use reaches it.** A radius that is negative or
 //!    not finite is dropped with the layer, the same way a non-finite opacity is, so a
 //!    signed distance field never sees one: `tests::an_unusable_corner_radius_is_dropped`.
@@ -38,7 +38,7 @@
 //! A layer names the visual properties the scene's [`VisualTransform`] and effect chain
 //! hold: opacity, tint, corner radius and the passes of [`Effects`]. A renderer that
 //! cannot draw a pass ignores it (the software path does: see
-//! [`render::software`](crate::render::software)), and the GPU path draws it. Keeping
+//! `gnoblin-render-software`), and the GPU path draws it. Keeping
 //! them in one description is what lets the two paths be compared pixel for pixel on
 //! the properties they both implement.
 //!

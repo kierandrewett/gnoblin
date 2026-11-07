@@ -60,6 +60,7 @@ const ENGINE: &[&str] = &[
     "gnoblin-input",
     "gnoblin-input-eis",
     "gnoblin-render-gles",
+    "gnoblin-render-software",
     "gnoblin-render-vulkan",
     "gnoblin-render",
     "gnoblin-render-frame",
@@ -438,10 +439,15 @@ fn engine_isolation(package: &Package, dep: &Dep) -> Option<String> {
             dep.name
         ));
     }
-    if package.name == "gnoblin-backend" && (dep.name == "gnoblin-render-vulkan" || dep.name == "gnoblin-render-gles") {
-        // The backend selects its Vulkan renderer under the `vulkan` feature, the one renderer
-        // the backend names by crate rather than through a trait. It is a leaf of the renderer
-        // half, so the edge cannot pull a policy or protocol crate in behind the backend.
+    if package.name == "gnoblin-backend"
+        && (dep.name == "gnoblin-render-vulkan"
+            || dep.name == "gnoblin-render-gles"
+            || dep.name == "gnoblin-render-software")
+    {
+        // The backend names its renderers by crate, not through a trait: the Vulkan renderer under
+        // the `vulkan` feature, the GLES renderer for the DRM path, and the software renderer for
+        // the nested and headless paths. Each is a leaf of the renderer half, so the edge cannot
+        // pull a policy or protocol crate in behind the backend.
         return None;
     }
     if is_engine(&dep.name) && dep.name != "gnoblin-backend" {

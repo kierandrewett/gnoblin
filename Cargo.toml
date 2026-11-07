@@ -63,6 +63,7 @@ members = [
     "crates/gnoblin-render",
     "crates/gnoblin-render-frame",
     "crates/gnoblin-render-gles",
+    "crates/gnoblin-render-software",
     "crates/gnoblin-render-vulkan",
     "crates/gnoblin-schema",
     "crates/gnoblin-service-core",

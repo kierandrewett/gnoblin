@@ -59,11 +59,11 @@ use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use super::NestedError;
 use super::handler::{Handler, OutputKey, SlotKey};
 use crate::Present;
-use crate::render::software::Software;
+use crate::{Output, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
 use gnoblin_render_frame::image::Image;
-use crate::{Output, Target};
+use gnoblin_render_software::Software;
 
 use crate::log;
 

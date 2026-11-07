@@ -1,10 +1,10 @@
 //! The software renderer: Smithay's Pixman renderer drawing into an offscreen
 //! buffer.
 //!
-//! D12 ships on GLES with Pixman for software rendering, and this slice is the
-//! Pixman half: it needs no GPU, no EGL and no session, so it runs in CI and it is
-//! what the integration tests and the parity harness read pixels from. GLES slots in
-//! behind [`Target`](crate::Target) without changing an [`OutputFrame`].
+//! D12 ships on GLES with Pixman for software rendering, and this crate is the Pixman
+//! half: it needs no GPU, no EGL and no session, so it runs in CI and it is what the
+//! integration tests and the parity harness read pixels from. The GLES and Vulkan
+//! renderers draw the same [`OutputFrame`] without changing it.
 //!
 //! # Why Pixman and not our own rasteriser
 //!
@@ -71,7 +71,7 @@ use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::image::READBACK_FORMAT;
 
-use crate::log;
+gnoblin_log::logger!(log = "render");
 
 /// The colour format of the offscreen buffer.
 ///
@@ -245,8 +245,10 @@ impl Software {
         self.readback(true, with_cursor)
     }
 
-    /// The buffer as drawn, overlay and cursor included, for the parity tests of the composed
-    /// frame in `gnoblin-render-vulkan`. The software renderer moves out in phase 4.
+    /// The buffer as drawn, overlay and cursor included. Exposed only to this crate's own
+    /// tests and, with the `test-support` feature, to the Vulkan parity tests that compare a
+    /// composed frame. Normal builds cannot reach it.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn composed(&mut self) -> Result<Image, RenderError> {
         self.readback(false, true)
     }

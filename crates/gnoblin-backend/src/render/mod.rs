@@ -74,5 +74,3 @@
 pub mod compose;
 /// Which renderer draws an output, and the one type that holds it.
 pub mod renderer;
-/// The CPU renderer, built on Pixman. Moves to its own crate in phase 4.
-pub mod software;

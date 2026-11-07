@@ -27,9 +27,9 @@ use smithay::utils::Transform;
 use super::harness::{BufferSpec, ShmClient};
 use super::pipeline::ShaderSources;
 use super::*;
-use gnoblin_backend::render::software::Software;
 use gnoblin_render_frame::frame::{Layer, Model, Overlay, Solid, Surface};
 use gnoblin_render_frame::image::Image;
+use gnoblin_render_software::Software;
 
 /// The largest per-channel difference accepted where a blend rounds.
 const BLEND: u8 = 1;
