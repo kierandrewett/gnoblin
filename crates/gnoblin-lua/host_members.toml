@@ -71,6 +71,19 @@ doc = "Start the program named by the first string of `argv`, found on PATH, wit
 params = [{ name = "argv", type = "string[]" }, { name = "options", type = "table|nil" }]
 returns = ["gnoblin.Process"]
 
+[[member.members]]
+name = "list"
+kind = "function"
+doc = "Every process the runtime has started and not yet seen end, in id order."
+returns = ["gnoblin.Process[]"]
+
+[[member.members]]
+name = "by_id"
+kind = "function"
+doc = "The process with this id, or nil when the id is unknown or the process was forgotten."
+params = [{ name = "id", type = "integer" }]
+returns = ["gnoblin.Process|nil"]
+
 [[member]]
 name = "windows"
 kind = "table"

@@ -42,6 +42,7 @@ use mlua::{Error, Lua, Table};
 use crate::error::{HostError, ScriptError};
 use crate::extensions::ExtensionRegistry;
 use crate::loader::{self, Resolution};
+use crate::process::{Listen, Notice};
 use gnoblin_lua_sandbox::{Guard, Limits, Profile};
 
 /// How many configuration files one load may nest, the limit the C core applies.
@@ -84,6 +85,8 @@ pub(super) enum Watching {
     },
     /// A deadline fails its target unless the target has already finished.
     Timeout { target: OperationId },
+    /// A listener on one process, announced by the pump when the process moves or ends.
+    Process { id: u64, listen: Listen },
 }
 
 /// One tracked operation, remote or locally derived.
@@ -726,8 +729,11 @@ impl<T: Transport + 'static> Host<T> {
             shared.processes.events.try_iter().collect()
         };
         for event in finished {
-            let ready = crate::process::apply(&self.lua, &self.shared, event).map_err(HostError::Sandbox)?;
+            let (ready, notice) = crate::process::apply(&self.lua, &self.shared, event).map_err(HostError::Sandbox)?;
             self.shared.borrow_mut().deferred.extend(ready);
+            if let Some(notice) = notice {
+                self.announce_process(notice, &mut handlers);
+            }
         }
         let mut due: Vec<(Tick, u64)> = self
             .shared
@@ -1027,6 +1033,98 @@ impl<T: Transport + 'static> Host<T> {
             // it would move all the later callbacks onto other identities;
             // assigning nil removes one entry and leaves the rest where they are.
             let _ = callbacks.raw_set(id, mlua::Value::Nil);
+        }
+    }
+
+    /// The Lua callback registered under one handler id, or `None` if there is none.
+    fn callback_of(&mut self, id: u64) -> Option<mlua::Function> {
+        let callbacks = match self.lua.named_registry_value::<mlua::Table>(crate::bindings::CALLBACKS) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.report(ScriptError::from_lua(&error));
+                return None;
+            }
+        };
+        match callbacks.raw_get::<Option<mlua::Function>>(id) {
+            Ok(callback) => callback,
+            Err(error) => {
+                self.report(ScriptError::from_lua(&error));
+                None
+            }
+        }
+    }
+
+    /// Run the listeners on one process whose state moved, in registration order.
+    ///
+    /// The end is the last notice a process sends, so its listeners are removed once
+    /// they have run and nothing can reach them later. A listener that an earlier one
+    /// cancelled does not run.
+    fn announce_process(&mut self, notice: Notice, handlers: &mut usize) {
+        let id = notice.state.borrow().id;
+        let waiting: Vec<(u64, Listen)> = self
+            .shared
+            .borrow()
+            .handlers
+            .iter()
+            .filter_map(|(handler, watching)| match watching {
+                Watching::Process { id: owner, listen } if *owner == id => Some((*handler, listen.clone())),
+                _ => None,
+            })
+            .collect();
+        if waiting.is_empty() {
+            return;
+        }
+        let process = match crate::bindings::process_value(&self.lua, &self.shared, Rc::clone(&notice.state)) {
+            Ok(process) => process,
+            Err(error) => {
+                self.report(ScriptError::from_lua(&error));
+                return;
+            }
+        };
+        for (handler, listen) in &waiting {
+            if !self.shared.borrow().handlers.contains_key(handler) {
+                continue;
+            }
+            let Some(callback) = self.callback_of(*handler) else {
+                continue;
+            };
+            self.guard.begin(&self.limits);
+            let result = match listen {
+                Listen::Closed if notice.ended => {
+                    *handlers += 1;
+                    callback.call::<()>(process.clone())
+                }
+                Listen::Changed if !notice.changes.is_empty() => {
+                    *handlers += 1;
+                    let names = self.lua.create_table().and_then(|names| -> mlua::Result<mlua::Table> {
+                        for (index, change) in notice.changes.iter().enumerate() {
+                            names.raw_set(index + 1, change.field)?;
+                        }
+                        Ok(names)
+                    });
+                    names.and_then(|names| callback.call::<()>((process.clone(), names)))
+                }
+                Listen::Field(field) => notice
+                    .changes
+                    .iter()
+                    .filter(|change| change.field == *field)
+                    .try_for_each(|change| -> mlua::Result<()> {
+                        *handlers += 1;
+                        let new = change.new.to_lua(&self.lua)?;
+                        let old = change.old.to_lua(&self.lua)?;
+                        callback.call::<()>((process.clone(), new, old))
+                    }),
+                _ => Ok(()),
+            };
+            if let Err(error) = result {
+                self.report(ScriptError::from_lua(&error));
+            }
+        }
+        if notice.ended {
+            for (handler, _) in &waiting {
+                self.shared.borrow_mut().cancel_handler(*handler);
+                self.forget_callback(*handler);
+            }
         }
     }
 

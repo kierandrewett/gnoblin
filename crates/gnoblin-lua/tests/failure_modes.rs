@@ -2009,3 +2009,129 @@ assert(not pcall(gnoblin.process.spawn, {"true"}, {cwd = "relative"}), "a relati
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert!(report.errors.is_empty(), "{:#?}", report.errors);
 }
+
+#[test]
+fn a_process_reports_its_fields_and_how_it_ended() {
+    let config = Config::new("process-fields");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"sh", "-c", "exit 3"})
+assert(job.alive == true, "a started process is alive")
+assert(job.status == "running", "status was " .. tostring(job.status))
+assert(job.exit_code == nil and job.signal == nil, "nothing has ended yet")
+assert(job.argv[1] == "sh" and job.argv[3] == "exit 3", "argv is the command line")
+assert(job.revision == 1, "revision starts at 1")
+job:watch("status", function(p, value, old)
+    assert(value == "exited" and old == "running", "status moved " .. tostring(old) .. " -> " .. tostring(value))
+end)
+job:on("closed", function(p)
+    assert(p.alive == false, "an ended process is not alive")
+    assert(p.status == "exited", "status was " .. tostring(p.status))
+    assert(p.exit_code == 3, "exit_code was " .. tostring(p.exit_code))
+    assert(p.signal == nil, "a normal exit has no signal")
+    assert(p.revision == 2, "one batch of changes counts once, was " .. tostring(p.revision))
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn changed_names_the_fields_that_moved_and_a_killed_process_names_its_signal() {
+    let config = Config::new("process-changed");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"sleep", "30"})
+job:on("changed", function(p, changed)
+    local names = {}
+    for _, name in ipairs(changed) do names[name] = true end
+    assert(names.status and names.alive, "status and alive moved")
+    assert(not names.argv and not names.id, "argv and id never move")
+    assert(p.signal == "kill", "signal was " .. tostring(p.signal))
+end)
+job:kill("kill")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn a_failed_start_is_not_alive_and_takes_no_listeners() {
+    let config = Config::new("process-failed-start");
+    config.write(
+        "init.lua",
+        r#"
+local missing = gnoblin.process.spawn({"/nonexistent/gnoblin-test-program"})
+assert(missing.alive == false, "a program that did not start is not alive")
+assert(missing.status == "failed", "status was " .. tostring(missing.status))
+assert(not pcall(missing.on, missing, "closed", function() end), "a failed start took a listener")
+assert(not pcall(missing.watch, missing, "pid", function() end), "a failed start took a watcher")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn watch_refuses_fixed_fields_and_listening_refuses_an_ended_process() {
+    let config = Config::new("process-refuse-listen");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"true"})
+assert(not pcall(job.watch, job, "id", function() end), "id is fixed and was watchable")
+assert(not pcall(job.watch, job, "argv", function() end), "argv is fixed and was watchable")
+assert(not pcall(job.watch, job, "alive", function() end), "alive is fixed and was watchable")
+assert(not pcall(job.watch, job, "unknown", function() end), "an unknown field was watchable")
+assert(not pcall(job.on, job, "exit", function() end), "an unknown signal was accepted")
+job:on("closed", function(p)
+    assert(not pcall(p.on, p, "changed", function() end), "an ended process took a listener")
+    assert(not pcall(p.watch, p, "status", function() end), "an ended process took a watcher")
+end)
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn the_list_holds_running_processes_and_by_id_finds_them_again() {
+    let config = Config::new("process-list");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"sleep", "30"})
+local running = gnoblin.process.list()
+assert(#running == 1 and running[1] == job, "the running process is listed")
+assert(gnoblin.process.by_id(job.id) == job, "by_id returns the same object")
+assert(gnoblin.process.by_id(job.id + 1000) == nil, "an unknown id has no process")
+job:on("closed", function(p)
+    assert(#gnoblin.process.list() == 0, "an ended process leaves the list")
+end)
+job:kill("kill")
+"#,
+    );
+    let (_server, mut host) = pair();
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}

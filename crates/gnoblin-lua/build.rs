@@ -508,6 +508,12 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text.push_str("---@class gnoblin.Process\n");
     text.push_str("---@field id integer\n");
     text.push_str("---@field pid integer|nil\n");
+    text.push_str("---@field argv string[]\n");
+    text.push_str("---@field alive boolean\n");
+    text.push_str("---@field status string\n");
+    text.push_str("---@field exit_code integer|nil\n");
+    text.push_str("---@field signal string|nil\n");
+    text.push_str("---@field revision integer\n");
     text.push_str("local Process = {}\n");
     text.push_str("--- The exit of the child, answered as an operation.\n");
     text.push_str("---@return gnoblin.Operation\n");
@@ -516,6 +522,16 @@ fn lua_stub(catalog: &Catalog, host: &[HostMember]) -> String {
     text.push_str("---@param signal? string\n");
     text.push_str("---@return gnoblin.Operation\n");
     text.push_str("function Process:kill(signal) end\n\n");
+    text.push_str("--- Stop the process when it has ended, or hear the change of one field.\n");
+    text.push_str("---@param event string\n");
+    text.push_str("---@param callback fun(process: gnoblin.Process)\n");
+    text.push_str("---@return gnoblin.Subscription\n");
+    text.push_str("function Process:on(event, callback) end\n");
+    text.push_str("--- Hear each change of one field (pid, status, exit_code or signal).\n");
+    text.push_str("---@param field string\n");
+    text.push_str("---@param callback fun(process: gnoblin.Process)\n");
+    text.push_str("---@return gnoblin.Subscription\n");
+    text.push_str("function Process:watch(field, callback) end\n");
     stub_host_members(&mut text, host, "gnoblin");
 
     for namespace in catalog.namespaces() {

@@ -112,13 +112,141 @@ pub(crate) struct ProcessRequest {
     signal: Signal,
 }
 
-/// One process that is still running.
-pub(crate) struct ProcessRecord {
+/// Whether a process is running, has ended, or never started.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProcessStatus {
+    Running,
+    /// It ended, whether it exited normally or was killed.
+    Exited,
+    /// The program could not start, so it never ran.
+    Failed,
+}
+
+impl ProcessStatus {
+    /// The name the surface reports.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Exited => "exited",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// What the surface reports about one process.
+///
+/// The host's record and the Lua object share it, so an ended process keeps answering its
+/// fields for as long as a script holds the object.
+pub(crate) struct ProcessState {
+    pub(crate) id: u64,
     /// The `wait` operation; it finishes once the process ends.
     pub(crate) wait: OperationId,
+    pub(crate) argv: Vec<String>,
+    /// Nil when the program could not start.
+    pub(crate) pid: Option<u32>,
+    pub(crate) status: ProcessStatus,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) signal: Option<&'static str>,
+    /// Counts the batches of changes to the changing fields, starting at 1.
+    pub(crate) revision: u64,
+}
+
+impl ProcessState {
+    /// True from spawn until the process has ended or failed to start.
+    pub(crate) fn alive(&self) -> bool {
+        self.status == ProcessStatus::Running
+    }
+}
+
+/// One process that is still running.
+pub(crate) struct ProcessRecord {
+    pub(crate) state: Rc<RefCell<ProcessState>>,
     /// Kill operations waiting for the waiter to answer. An end answers the rest.
     pub(crate) kills: Vec<OperationId>,
     requests: Sender<ProcessRequest>,
+}
+
+/// The fields a process can change, in the order a `changed` listener sees them.
+const CHANGING_FIELDS: [&str; 5] = ["alive", "pid", "status", "exit_code", "signal"];
+/// The fields `watch` accepts. `id`, `argv` and `alive` never change, so watching them is refused.
+const WATCHABLE_FIELDS: [&str; 4] = ["pid", "status", "exit_code", "signal"];
+
+/// The field a `watch` call names, or `None` for one that is not watchable.
+pub(crate) fn watchable_field(name: &str) -> Option<&'static str> {
+    WATCHABLE_FIELDS.iter().copied().find(|field| *field == name)
+}
+
+/// A changing field's value, as the surface compares it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum FieldValue {
+    Nil,
+    Bool(bool),
+    Int(i64),
+    Text(&'static str),
+}
+
+impl FieldValue {
+    /// The Lua value a listener receives.
+    pub(crate) fn to_lua(&self, lua: &Lua) -> mlua::Result<Value> {
+        Ok(match self {
+            Self::Nil => Value::Nil,
+            Self::Bool(value) => Value::Boolean(*value),
+            Self::Int(value) => Value::Integer(*value),
+            Self::Text(value) => Value::String(lua.create_string(value)?),
+        })
+    }
+}
+
+/// One changing field that moved in a batch.
+pub(crate) struct FieldChange {
+    pub(crate) field: &'static str,
+    pub(crate) old: FieldValue,
+    pub(crate) new: FieldValue,
+}
+
+/// What a listener on one process waits for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Listen {
+    /// The process has ended, however it ended.
+    Closed,
+    /// One or more changing fields moved; the listener is given their names.
+    Changed,
+    /// This field moved.
+    Field(&'static str),
+}
+
+/// What the pump announces about one process after its end is applied.
+pub(crate) struct Notice {
+    pub(crate) state: Rc<RefCell<ProcessState>>,
+    pub(crate) changes: Vec<FieldChange>,
+    pub(crate) ended: bool,
+}
+
+/// The changing fields as they stand now, in `CHANGING_FIELDS` order.
+fn field_values(state: &ProcessState) -> [FieldValue; 5] {
+    [
+        FieldValue::Bool(state.alive()),
+        state.pid.map_or(FieldValue::Nil, |pid| FieldValue::Int(i64::from(pid))),
+        FieldValue::Text(state.status.as_str()),
+        state
+            .exit_code
+            .map_or(FieldValue::Nil, |code| FieldValue::Int(i64::from(code))),
+        state.signal.map_or(FieldValue::Nil, FieldValue::Text),
+    ]
+}
+
+/// The fields that differ between two readings.
+fn changes_between(before: &[FieldValue; 5], after: &[FieldValue; 5]) -> Vec<FieldChange> {
+    CHANGING_FIELDS
+        .iter()
+        .zip(before.iter().zip(after.iter()))
+        .filter(|(_, (old, new))| old != new)
+        .map(|(field, (old, new))| FieldChange {
+            field,
+            old: old.clone(),
+            new: new.clone(),
+        })
+        .collect()
 }
 
 /// The processes the host has started and not yet seen end.
@@ -499,11 +627,12 @@ fn send_to_group(group: Option<Pid>, signal: Signal) -> io::Result<()> {
 /// Start the process and record it, so its `wait` and `kill` can find it.
 ///
 /// A process that could not start is answered on its `wait` operation at once, with the
-/// code the start error maps to, and is not recorded.
+/// code the start error maps to, and is not recorded. Either way the returned state says
+/// whether it is running, so the caller can build the Lua object for it.
 pub(crate) fn spawn<T: Transport + 'static>(
     shared: &Rc<RefCell<Shared<T>>>,
     spec: SpawnSpec,
-) -> mlua::Result<(u64, OperationId, Option<u32>)> {
+) -> mlua::Result<Rc<RefCell<ProcessState>>> {
     let (id, wait, events) = {
         let mut shared = shared.borrow_mut();
         if shared.processes.records.len() >= MAX_RUNNING {
@@ -523,29 +652,40 @@ pub(crate) fn spawn<T: Transport + 'static>(
         );
         (id, wait, shared.processes.events_tx.clone())
     };
+    let argv = spec.argv.clone();
     let started = start(id, spec, events);
     let mut shared = shared.borrow_mut();
-    let pid = match started {
-        Ok((pid, requests)) => {
-            shared.processes.records.insert(
-                id,
-                ProcessRecord {
-                    wait,
-                    kills: Vec::new(),
-                    requests,
-                },
-            );
-            Some(pid)
-        }
+    let (status, pid, requests) = match started {
+        Ok((pid, requests)) => (ProcessStatus::Running, Some(pid), Some(requests)),
         Err(error) => {
             if let Some(pending) = shared.operations.get_mut(&wait) {
                 pending.outcome = Some(OperationOutcome::Done);
                 pending.local_error = Some((start_error_code(error.kind()).to_owned(), error.to_string()));
             }
-            None
+            (ProcessStatus::Failed, None, None)
         }
     };
-    Ok((id, wait, pid))
+    let state = Rc::new(RefCell::new(ProcessState {
+        id,
+        wait,
+        argv,
+        pid,
+        status,
+        exit_code: None,
+        signal: None,
+        revision: 1,
+    }));
+    if let Some(requests) = requests {
+        shared.processes.records.insert(
+            id,
+            ProcessRecord {
+                state: Rc::clone(&state),
+                kills: Vec::new(),
+                requests,
+            },
+        );
+    }
+    Ok(state)
 }
 
 /// Ask a running process for a signal. The answer is the returned operation.
@@ -575,22 +715,36 @@ pub(crate) fn kill<T: Transport + 'static>(shared: &Rc<RefCell<Shared<T>>>, id: 
     operation
 }
 
-/// Apply one drained message: finish the waiting operations and return the handlers they wake.
+/// Apply one drained message: finish the waiting operations, and say what changed.
+///
+/// The notice is announced by the pump, which runs the listeners on this process.
 pub(crate) fn apply<T: Transport + 'static>(
     lua: &Lua,
     shared: &Rc<RefCell<Shared<T>>>,
     event: ProcessEvent,
-) -> mlua::Result<Vec<u64>> {
+) -> mlua::Result<(Vec<u64>, Option<Notice>)> {
     match event {
         ProcessEvent::Ended { id, ended } => {
             let record = shared.borrow_mut().processes.records.remove(&id);
             let Some(record) = record else {
-                return Ok(Vec::new());
+                return Ok((Vec::new(), None));
             };
+            let wait = record.state.borrow().wait;
             let value = result_table(lua, &ended)?;
-            crate::bindings::callbacks(lua)?.raw_set(format!("operation-value:{}", record.wait.get()), value)?;
+            crate::bindings::callbacks(lua)?.raw_set(format!("operation-value:{}", wait.get()), value)?;
+            let before = field_values(&record.state.borrow());
+            {
+                let mut state = record.state.borrow_mut();
+                state.status = ProcessStatus::Exited;
+                state.exit_code = ended.exit_code;
+                state.signal = ended.signal;
+            }
+            let changes = changes_between(&before, &field_values(&record.state.borrow()));
+            if !changes.is_empty() {
+                record.state.borrow_mut().revision += 1;
+            }
             let mut shared = shared.borrow_mut();
-            let mut ready = shared.finish_local(record.wait, OperationOutcome::Done, None);
+            let mut ready = shared.finish_local(wait, OperationOutcome::Done, None);
             for kill in record.kills {
                 ready.extend(shared.finish_local(
                     kill,
@@ -598,15 +752,23 @@ pub(crate) fn apply<T: Transport + 'static>(
                     Some(("not_found".to_owned(), "the process has ended".to_owned())),
                 ));
             }
-            Ok(ready)
+            Ok((
+                ready,
+                Some(Notice {
+                    state: record.state,
+                    changes,
+                    ended: true,
+                }),
+            ))
         }
         ProcessEvent::Signalled { operation, failure } => {
             let mut shared = shared.borrow_mut();
-            Ok(shared.finish_local(
+            let ready = shared.finish_local(
                 operation,
                 OperationOutcome::Done,
                 failure.map(|(code, message)| (code.to_owned(), message)),
-            ))
+            );
+            Ok((ready, None))
         }
     }
 }
