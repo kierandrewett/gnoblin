@@ -49,6 +49,9 @@ pub(crate) struct ExtensionRouter {
     roles: BTreeMap<ClientId, String>,
     /// The namespaces each connected privileged connection is granted.
     grants: BTreeMap<ClientId, BTreeSet<String>>,
+    /// The privileged connections whose stream is up. A role keeps its grants between children,
+    /// but only a connection that is live can serve a namespace.
+    live: BTreeSet<ClientId>,
     /// Forwarded requests, keyed by the request id the provider sees.
     pending: BTreeMap<u64, ForwardedCall>,
     /// The next request id handed to a provider.
@@ -74,6 +77,14 @@ impl ExtensionRouter {
         self.grants.insert(client, namespaces.into_iter().collect());
     }
 
+    /// Records that a privileged connection's stream is up, so it can serve its namespaces.
+    /// A connection that holds no role is not tracked, so this does nothing for it.
+    pub fn began(&mut self, client: ClientId) {
+        if self.roles.contains_key(&client) {
+            self.live.insert(client);
+        }
+    }
+
     /// Whether `namespace` is a loaded extension.
     pub fn is_loaded(&self, namespace: &str) -> bool {
         self.routes.contains_key(namespace)
@@ -84,7 +95,7 @@ impl ExtensionRouter {
         let role = self.routes.get(namespace)?;
         self.roles
             .iter()
-            .find_map(|(client, connected)| (connected == role).then_some(*client))
+            .find_map(|(client, connected)| (connected == role && self.live.contains(client)).then_some(*client))
     }
 
     /// Routes one envelope in a namespace other than `gnoblin`, from `client`.
@@ -219,14 +230,15 @@ impl ExtensionRouter {
             .collect()
     }
 
-    /// Forgets a connection that ended: its role, its grants and what it was waiting for.
+    /// Forgets what a connection held when it ended: the live state that let it serve, and what it
+    /// was waiting for. Its role and grants stay, because they belong to the role and not to the
+    /// child that held the stream, so the next child handed the role is served with them.
     ///
     /// Returns the frames owed to callers whose provider this was.
-    pub fn departed(&mut self, client: ClientId) -> Vec<FrameDelivery> {
+    pub fn ended(&mut self, client: ClientId) -> Vec<FrameDelivery> {
         let deliveries = self.provider_gone(client);
         self.pending.retain(|_, pending| pending.caller != client);
-        self.roles.remove(&client);
-        self.grants.remove(&client);
+        self.live.remove(&client);
         deliveries
     }
 }

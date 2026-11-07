@@ -97,6 +97,7 @@ mod session_tables;
 mod window_management;
 mod xwayland;
 
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -115,7 +116,7 @@ pub use gnoblin_config::{LogConsole, Logging, logging_from_environment};
 pub use gnoblin_types::Version;
 pub use gnoblin_wayland::{Extension, Observer, SessionSnapshot};
 pub use gnoblin_xwayland::xsettings::XSettings;
-pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync};
+pub use ipc::{ExtensionRoute, IpcError, Privileged, SessionSync, guardian_from_environment};
 pub use layout::{
     LayoutSettings, configure_from_environment as configure_layouts_from_environment,
     configure_from_store as configure_layouts_from_store,
@@ -184,13 +185,17 @@ pub struct SessionConfig {
     pub eis: EisGate,
     /// A handle a supervisor or a test stops the session with.
     pub stop: Option<StopHandle>,
-    /// The privileged connections this process was handed.
-    ///
-    /// The guardian creates one socketpair per privileged child and passes this
-    /// process the other end; [`ipc::Privileged::from_environment`] reads them, and the
-    /// binary role calls it. A test builds them itself, so a privileged connection can
-    /// be driven without a supervisor.
+    /// The privileged roles this process serves: which roles exist and what each role's
+    /// socket advertises. [`ipc::Privileged::declared`] builds it. The connections arrive
+    /// over [`SessionConfig::guardian`], one handover per privileged child.
     pub privileged: Vec<ipc::Privileged>,
+    /// The guardian's control socket, from which privileged connections arrive as handovers.
+    ///
+    /// The guardian keeps this open for the whole session and sends one handover for each
+    /// privileged child it starts, naming the role the child was made for. The binary role
+    /// reads it with [`guardian_from_environment`]. `None` means there is no guardian, so no
+    /// privileged connection is ever accepted; a test passes one end of a socket pair it made.
+    pub guardian: Option<UnixStream>,
     /// The extensions this session serves, each with the role that provides it.
     ///
     /// A namespace is routed to its provider connection and granted to the privileged
@@ -359,6 +364,7 @@ impl Compositor {
             observation,
             control.clone(),
             config.privileged,
+            config.guardian,
             &config.extensions,
         )
         .map_err(Error::Ipc)?;

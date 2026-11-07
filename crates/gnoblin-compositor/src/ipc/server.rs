@@ -117,16 +117,12 @@ pub(crate) enum IpcEvent {
     },
     /// One frame a client sent.
     Request { client: ClientId, envelope: Envelope },
-    /// A privileged connection's child restarted and presented a new handshake on the same
-    /// descriptor. Everything the previous session held ends, and the connection is served
-    /// again with the same identity.
-    Restarted {
+    /// A privileged connection's stream ended. The connection keeps its identity and its
+    /// grants, because they belong to the role and not to the child that held the stream;
+    /// only what that stream carried ends.
+    Lost {
         /// Which connection it is.
         client: ClientId,
-        /// The writing half of the new session.
-        writer: UnixStream,
-        /// What the role grants, which is the same as the previous session's.
-        capabilities: Capabilities,
     },
     /// A client's connection ended, cleanly or otherwise.
     Closed { client: ClientId },
@@ -179,6 +175,11 @@ pub(crate) struct IpcServer {
     stopping: Arc<AtomicBool>,
     acceptor: Option<JoinHandle<()>>,
     dispatcher: Option<JoinHandle<()>>,
+    /// A duplicate of the guardian's control socket, so shutdown can end the control thread's
+    /// blocking read. `None` when the session was started without a guardian.
+    guardian: Option<UnixStream>,
+    /// The thread that adopts the streams the guardian hands over.
+    control: Option<JoinHandle<()>>,
 }
 
 impl IpcServer {
@@ -201,6 +202,7 @@ impl IpcServer {
         observation: Arc<Mutex<SessionSnapshot>>,
         control: ControlHandle,
         privileged: Vec<Privileged>,
+        guardian: Option<UnixStream>,
         routes: &[ExtensionRoute],
     ) -> Result<IpcServer, IpcError> {
         // Each connection's frame is encoded before anything is spawned, so a bad grant
@@ -252,28 +254,50 @@ impl IpcServer {
             extensions,
         };
         let dispatcher = spawn("gnoblin-ipc-dispatch", move || dispatcher.run(received), &path)?;
-        // The privileged connections are already connected — the guardian made the pair
-        // — so they are served like a client that has arrived, with the capabilities
-        // their role grants. A failure to serve one is reported and the session runs:
-        // losing the runtime's connection must not take the desktop down.
+        // The guardian hands each privileged child's stream over the control socket, one
+        // handover per spawn. Each role's identity, capabilities and grants frame are fixed
+        // here, before the dispatcher serves anything, so every handover of a role is served
+        // as the same connection. A role the guardian never hands over is simply idle.
+        let mut roles = BTreeMap::new();
         for ((connection, frame), client) in privileged.into_iter().zip(frames).zip(ids) {
-            let grants = super::privileged::grants(&connection.role);
-            let served = events.clone();
-            let mut handles = lock(&readers);
-            match std::thread::Builder::new()
-                .name(format!("gnoblin-ipc-{}", client.get()))
-                .spawn(move || {
-                    serve_privileged(connection.stream, client, version, served.clone(), grants, frame);
-                    let _ = served.send(IpcEvent::Closed { client });
-                }) {
-                Ok(handle) => {
-                    handles.insert(client, handle);
-                }
-                Err(error) => {
-                    log::warn!(area = "ipc", role = %connection.role, %error, "a privileged connection could not be served")
-                }
-            }
+            let capabilities = super::privileged::grants(&connection.role);
+            roles.insert(
+                connection.role,
+                PrivilegedRole {
+                    client,
+                    capabilities,
+                    frame,
+                },
+            );
         }
+        let (guardian_clone, control_thread) = match guardian {
+            Some(guardian) => {
+                // The clone is what shutdown uses to end the control thread's blocking read.
+                let clone = guardian.try_clone().map_err(|source| IpcError::Io {
+                    path: path.clone(),
+                    source,
+                })?;
+                let served = events.clone();
+                let thread = spawn(
+                    "gnoblin-ipc-control",
+                    move || serve_control(guardian, roles, served, version),
+                    &path,
+                )?;
+                (Some(clone), Some(thread))
+            }
+            None => {
+                // Without the guardian's socket no privileged child can be handed over, so the
+                // roles stay unserved. Saying so keeps a missing handover from looking like a
+                // crash of the child it was meant for.
+                if !roles.is_empty() {
+                    log::warn!(
+                        area = "ipc",
+                        "no guardian control socket, so privileged roles are not served"
+                    );
+                }
+                (None, None)
+            }
+        };
         let acceptor = spawn(
             "gnoblin-ipc-accept",
             {
@@ -291,6 +315,8 @@ impl IpcServer {
             stopping,
             acceptor: Some(acceptor),
             dispatcher: Some(dispatcher),
+            guardian: guardian_clone,
+            control: control_thread,
         })
     }
 
@@ -303,9 +329,18 @@ impl IpcServer {
         // own; it then sees the flag and returns without serving it.
         self.stopping.store(true, Ordering::SeqCst);
         let _ = UnixStream::connect(&self.path);
+        // Shutting the guardian's socket down is what ends the control thread's wait for
+        // handovers, and with it the privileged streams it is serving. It must happen before
+        // the join below, or the join would wait on a socket nothing closes.
+        if let Some(guardian) = self.guardian.take() {
+            let _ = guardian.shutdown(std::net::Shutdown::Both);
+        }
         let _ = self.events.send(IpcEvent::Shutdown);
         if let Some(acceptor) = self.acceptor.take() {
             let _ = acceptor.join();
+        }
+        if let Some(control) = self.control.take() {
+            let _ = control.join();
         }
         if let Some(dispatcher) = self.dispatcher.take() {
             let _ = dispatcher.join();
@@ -348,8 +383,17 @@ fn accept_loop(
         let mut handles = lock(&readers);
         match std::thread::Builder::new()
             .name(format!("gnoblin-ipc-{}", client.get()))
-            .spawn(move || serve(stream, client, version, served, Capabilities::NONE, grants))
-        {
+            .spawn(move || {
+                serve(
+                    stream,
+                    client,
+                    version,
+                    served,
+                    Capabilities::NONE,
+                    grants,
+                    Ending::Closed,
+                )
+            }) {
             Ok(handle) => {
                 handles.insert(client, handle);
             }
@@ -366,6 +410,8 @@ fn accept_loop(
 ///
 /// Every accept is followed by `extension_grants`, the grants frame that tells the client
 /// which extension namespaces it may use.
+/// `ending` says what the stream's end means to the dispatcher: a client is closed, and a
+/// privileged stream is lost.
 fn serve(
     stream: UnixStream,
     client: ClientId,
@@ -373,6 +419,7 @@ fn serve(
     events: Sender<IpcEvent>,
     capabilities: Capabilities,
     extension_grants: Arc<[u8]>,
+    ending: Ending,
 ) {
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
@@ -438,100 +485,111 @@ fn serve(
             }
         }
     }
-    let _ = events.send(IpcEvent::Closed { client });
+    let _ = events.send(ending.event(client));
 }
 
-/// Serves one privileged connection: a sequence of sessions on one stream.
+/// How a served connection ends, which decides the event the dispatcher hears last.
 ///
-/// The runtime and the services role are restartable, and the descriptor their role owns is
-/// one stream for the session's life — the guardian holds the child's end, so the pair
-/// outlives any one child. A restarted child therefore starts again with a handshake, and
-/// this loop accepts one whenever it arrives: the previous session's requests end, and the
-/// same identity serves the new one. A stream that ends is the guardian's exit.
-fn serve_privileged(
-    stream: UnixStream,
-    client: ClientId,
-    version: Version,
-    events: Sender<IpcEvent>,
-    capabilities: Capabilities,
-    extension_grants: Arc<[u8]>,
-) {
-    let Ok(writer) = stream.try_clone() else {
-        log::debug!(area = "ipc", "a privileged connection could not be duplicated");
-        return;
-    };
-    let mut reader = std::io::BufReader::new(stream);
-    let mut live = false;
-    loop {
-        // A new session begins with a handshake, so the deadline covers exactly the wait for
-        // one. Inside a session a read may wait as long as its child is idle: a deadline there
-        // would drop a healthy connection the first time the child paused.
-        let deadline = if live { None } else { Some(HANDSHAKE_TIMEOUT) };
-        if reader.get_ref().set_read_timeout(deadline).is_err() {
-            return;
+/// A client that goes away is closed. A privileged stream that goes away is lost: its role and
+/// grants belong to the guardian, so the connection keeps its identity and only what the stream
+/// carried ends.
+#[derive(Clone, Copy)]
+enum Ending {
+    Closed,
+    Lost,
+}
+
+impl Ending {
+    /// The event that tells the dispatcher how the connection ended.
+    fn event(self, client: ClientId) -> IpcEvent {
+        match self {
+            Ending::Closed => IpcEvent::Closed { client },
+            Ending::Lost => IpcEvent::Lost { client },
         }
-        let hello = match gnoblin_proto::read_any(&mut reader) {
-            Ok(Some(gnoblin_proto::StreamFrame::Handshake(hello))) => hello,
-            // One frame into a session it is an ordinary request; before a handshake it is a
-            // peer that skipped the protocol.
-            Ok(Some(gnoblin_proto::StreamFrame::Envelope(envelope))) if live => {
-                if events.send(IpcEvent::Request { client, envelope }).is_err() {
-                    return;
-                }
-                continue;
-            }
-            Ok(Some(gnoblin_proto::StreamFrame::Envelope(_))) => {
-                log::debug!(
+    }
+}
+
+/// What the control thread knows about one privileged role, fixed before serving starts.
+struct PrivilegedRole {
+    /// The identity every handover of the role is served as.
+    client: ClientId,
+    /// The capabilities the role's connection is granted on every accept.
+    capabilities: Capabilities,
+    /// The grants frame the role's connection carries on every accept.
+    frame: Arc<[u8]>,
+}
+
+/// One privileged stream the control thread is serving, kept so a later handover of the same
+/// role can replace it, and so shutdown can end it.
+struct Serving {
+    /// A duplicate of the stream, used to end it from the control thread.
+    stream: UnixStream,
+    /// The thread that reads it.
+    handle: JoinHandle<()>,
+}
+
+/// Adopts every stream the guardian hands over until the control socket closes.
+///
+/// Each handover is a fresh pair for one spawn of a privileged child. The previous stream for the
+/// role is ended and joined before the new one is served. Its `Lost` is then queued ahead of the
+/// new connection's `Accepted`, so the dispatcher never mixes the two sessions, and the new peer
+/// never reads a byte the old one had buffered, because it is a different socket.
+fn serve_control(
+    guardian: UnixStream,
+    roles: BTreeMap<String, PrivilegedRole>,
+    events: Sender<IpcEvent>,
+    version: Version,
+) {
+    let mut serving: BTreeMap<ClientId, Serving> = BTreeMap::new();
+    super::privileged::receive_handovers(&guardian, |role, stream| {
+        let Some(declared) = roles.get(&role) else {
+            // A role this session does not configure has nothing to serve, so the stream is
+            // dropped and whatever holds the other end sees its peer go.
+            log::warn!(area = "ipc", %role, "a handover named a role this session does not serve");
+            return;
+        };
+        let client = declared.client;
+        if let Some(old) = serving.remove(&client) {
+            let _ = old.stream.shutdown(std::net::Shutdown::Both);
+            let _ = old.handle.join();
+        }
+        let shared = match stream.try_clone() {
+            Ok(shared) => shared,
+            Err(error) => {
+                log::warn!(
                     area = "ipc",
-                    "a privileged connection sent a frame before its handshake"
+                    role = %role,
+                    %error,
+                    "a privileged connection could not be duplicated"
                 );
                 return;
             }
-            // A stream that ends, between sessions or inside one, is the guardian's exit.
-            Ok(None) => return,
+        };
+        let capabilities = declared.capabilities;
+        let frame = Arc::clone(&declared.frame);
+        let served = events.clone();
+        match std::thread::Builder::new()
+            .name(format!("gnoblin-ipc-{}", client.get()))
+            .spawn(move || serve(stream, client, version, served, capabilities, frame, Ending::Lost))
+        {
+            Ok(handle) => {
+                serving.insert(client, Serving { stream: shared, handle });
+            }
             Err(error) => {
-                log::debug!(area = "ipc", %error, "a privileged connection sent something that did not decode");
-                return;
+                log::warn!(
+                    area = "ipc",
+                    role = %role,
+                    %error,
+                    "a privileged connection could not be served"
+                )
             }
-        };
-        if hello.kind != HandshakeKind::Hello {
-            log::debug!(area = "ipc", kind = ?hello.kind, "a privileged connection did not start with a hello");
-            return;
         }
-        let answer = match gnoblin_proto::check(version, hello.version) {
-            Ok(()) => Handshake::grant(version, capabilities),
-            Err(mismatch) => {
-                log::info!(area = "ipc", %mismatch, "refused a privileged client version");
-                let _ = write_handshake(&writer, &Handshake::refuse(version));
-                return;
-            }
-        };
-        if write_accept(&writer, &answer, &extension_grants).is_err() {
-            return;
-        }
-        if reader.get_ref().set_read_timeout(None).is_err() || writer.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
-            return;
-        }
-        let Ok(session) = writer.try_clone() else {
-            return;
-        };
-        let announced = if live {
-            events.send(IpcEvent::Restarted {
-                client,
-                writer: session,
-                capabilities,
-            })
-        } else {
-            events.send(IpcEvent::Accepted {
-                client,
-                writer: session,
-                capabilities,
-            })
-        };
-        live = true;
-        if announced.is_err() {
-            return;
-        }
+    });
+    // The guardian closed its socket, so the session's privileged children are gone. Their streams
+    // are ended here, because nothing else will close them.
+    for (_, old) in serving {
+        let _ = old.stream.shutdown(std::net::Shutdown::Both);
+        let _ = old.handle.join();
     }
 }
 
@@ -663,6 +721,7 @@ impl Dispatcher {
                     writer,
                     capabilities,
                 } => {
+                    self.extensions.began(client);
                     self.connections.insert(
                         client,
                         Connection {
@@ -674,11 +733,7 @@ impl Dispatcher {
                     );
                 }
                 IpcEvent::Request { client, envelope } => self.request(client, &envelope),
-                IpcEvent::Restarted {
-                    client,
-                    writer,
-                    capabilities,
-                } => self.restart(client, writer, capabilities),
+                IpcEvent::Lost { client } => self.lost(client),
                 IpcEvent::Closed { client } => self.close(client, false),
                 IpcEvent::Changed => {
                     self.pending.store(false, Ordering::Release);
@@ -1718,42 +1773,32 @@ impl Dispatcher {
         }
     }
 
-    /// Serve a privileged connection again: the child behind it restarted.
+    /// Ends the live state of a privileged connection whose stream ended.
     ///
-    /// What the previous session held and offered ends, because the process that offered it
-    /// is gone; the subscriptions end with it, for the same reason. The identity and the
-    /// capability set stay: they belong to the role, not to the child.
-    fn restart(&mut self, client: ClientId, writer: UnixStream, capabilities: Capabilities) {
+    /// What the stream carried ends: its subscriptions, what it was waiting on, and what it offered,
+    /// because the process that offered it is gone. The identity and the grants stay, since they
+    /// belong to the role, and the next child handed the role is served with them. The writer is
+    /// dropped rather than shut down, because the stream has already ended.
+    fn lost(&mut self, client: ClientId) {
         if let Some(connection) = self.connections.remove(&client) {
             for subscription in connection.subscriptions {
                 self.store.unsubscribe(subscription.id());
             }
-            // Dropped, not shut down: the stream carries the next session, and shutting it
-            // down would take the restarted child's connection with the dead one's.
             drop(connection.writer);
         }
+        let ended = self.extensions.ended(client);
+        self.deliver(ended);
         let departed = self.requests.departed(client);
         self.deliver(departed);
         let replies = self.portal.departed(client);
         self.deliver_replies(replies);
-        let lost = self.extensions.provider_gone(client);
-        self.deliver(lost);
-        self.connections.insert(
-            client,
-            Connection {
-                writer,
-                capabilities,
-                subscriptions: Vec::new(),
-                broken: false,
-            },
-        );
-        log::info!(area = "ipc", client = client.get(), "a privileged connection restarted");
+
     }
 
     /// Ends one connection: its subscriptions, its writer and its reader.
     fn close(&mut self, client: ClientId, shutdown: bool) {
-        let departed = self.extensions.departed(client);
-        self.deliver(departed);
+        let ended = self.extensions.ended(client);
+        self.deliver(ended);
         let Some(connection) = self.connections.remove(&client) else {
             return;
         };

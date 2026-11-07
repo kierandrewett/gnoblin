@@ -149,18 +149,20 @@ fn log_settings(logging: &gnoblin_compositor::Logging) -> gnoblin_log::init::Log
 
 /// Runs the compositor in the foreground.
 fn compositor() -> Result<(), Exit> {
-    // The guardian hands this process one end of a pair per privileged child. A pair that
-    // cannot be adopted is a refusal rather than a session without it: the child at the
-    // other end would talk into a socket nobody reads.
-    let privileged = match gnoblin_compositor::Privileged::from_environment() {
-        Ok(privileged) => privileged,
+    // The guardian keeps one control socket open to this process and sends each privileged
+    // child's connection down it, tagged with the role it was made for. A control socket that
+    // cannot be adopted is a refusal rather than a session without privileged children: every
+    // child the guardian starts after it would talk into a socket nobody reads.
+    let guardian = match gnoblin_compositor::guardian_from_environment() {
+        Ok(guardian) => guardian,
         Err(error) => {
             log::error!("{error}");
             return Err(Exit(1));
         }
     };
     let mut config = gnoblin_compositor::SessionConfig {
-        privileged,
+        privileged: gnoblin_compositor::Privileged::declared(),
+        guardian,
         ..gnoblin_compositor::SessionConfig::default()
     };
     // A refused extension is logged and left out; the session starts either way.

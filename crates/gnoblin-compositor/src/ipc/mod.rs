@@ -37,7 +37,7 @@ use std::path::PathBuf;
 
 pub use extension::ExtensionRoute;
 pub use path::SocketPath;
-pub use privileged::Privileged;
+pub use privileged::{Privileged, guardian_from_environment};
 pub(crate) use server::IpcServer;
 pub use session::SessionSync;
 

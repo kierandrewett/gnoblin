@@ -39,7 +39,7 @@ use gnoblin_model::{Filter, Provider, Value};
 use gnoblin_proto::Capability;
 use gnoblin_types::Version;
 
-use support::{Session, TIMEOUT};
+use support::{Session, TIMEOUT, wait_for};
 
 /// The version this build serves.
 fn version() -> Version {
@@ -234,19 +234,14 @@ fn a_shell_claims_answers_and_the_answer_reaches_the_host() {
 }
 
 #[test]
-fn a_restarted_runtime_rejoins_the_same_descriptor() {
+fn a_restarted_runtime_is_served_on_a_fresh_pair() {
     // The failure this prevents: the runtime dies, the guardian starts a new one, and the
-    // compositor sees a second handshake on a stream it has already served — so the restarted
-    // runtime is refused for the rest of the session. The two ends here are the same
-    // descriptor: the first client commits and goes away, and the second one presents a fresh
-    // handshake on it, exactly as a restarted child does through the descriptor the guardian
-    // kept.
+    // compositor refuses it because the role already connected. The guardian gives every spawn
+    // its own socket pair, so the restarted runtime's handshake arrives on a stream the compositor
+    // has never served. The role keeps its grant and the document it committed.
     let (session, mut ends) = Session::start_privileged(&["runtime"]);
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
     let (_role, stream) = ends.pop().expect("the runtime's end");
-    // The guardian's copy of the child's end: it outlives every child, which is what keeps the
-    // pair open between two generations.
-    let guardian_side = stream.try_clone().expect("a duplicated end");
 
     let mut first =
         Client::connect(UnixTransport::from_stream(stream).expect("a transport"), version()).expect("the handshake");
@@ -255,14 +250,11 @@ fn a_restarted_runtime_rejoins_the_same_descriptor() {
         first.configuration().expect("the configuration"),
         Some((1, document.clone()))
     );
-    // The child dies: the end it held closes, while the guardian's copy keeps the pair open, so
-    // the compositor never sees the stream end and the next generation rejoins it.
+    // The child dies: its end closes, and the compositor observes the stream ending.
     drop(first);
-    let mut again = Client::connect(
-        UnixTransport::from_stream(guardian_side).expect("a transport"),
-        version(),
-    )
-    .expect("the restarted runtime handshakes on the same descriptor");
+    let restarted = session.spawn_child("runtime");
+    let mut again = Client::connect(UnixTransport::from_stream(restarted).expect("a transport"), version())
+        .expect("the restarted runtime handshakes on its own pair");
     assert!(
         again.capabilities().contains(Capability::CommitConfig),
         "the role keeps its grant across a restart"
@@ -332,4 +324,74 @@ fn a_handshake_cannot_ask_for_a_grant() {
         "the compositor grants nothing on the socket, whatever the hello asked for: {answer:?}"
     );
     let _ = Path::new("");
+}
+
+#[test]
+fn a_dropped_privileged_stream_does_not_wedge_the_control_thread() {
+    // The compositor must not wait on a privileged stream that has ended: after the child's end
+    // closes, ordinary clients are still answered and the successor child is served, both within
+    // the deadline.
+    let (session, mut ends) = Session::start_privileged(&["services"]);
+    drop(role_client(&mut ends, "services"));
+    wait_for("the session still answers after the stream ends", || {
+        let mut client = socket_client(&session);
+        client.subscribe(Filter::All).ok().map(|_| ())
+    });
+    let successor = session.spawn_child("services");
+    let mut services = Client::connect(UnixTransport::from_stream(successor).expect("a transport"), version())
+        .expect("the successor handshakes");
+    services.subscribe(Filter::All).expect("the successor is served");
+}
+
+#[test]
+fn each_spawn_is_served_on_its_own_pair() {
+    // The guardian gives every spawn a fresh pair, so a second child is served while the first
+    // child's end is still open. Nothing about the first child's stream is reused for the second.
+    let (session, _ends) = Session::start_privileged(&["runtime"]);
+    let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
+    let first_stream = session.spawn_child("runtime");
+    let mut first = Client::connect(
+        UnixTransport::from_stream(first_stream).expect("a transport"),
+        version(),
+    )
+    .expect("the first child handshakes");
+    assert_eq!(first.commit_config(&document).expect("the commit"), 1);
+    // The first child stays connected: the second spawn must not depend on it going away.
+    let second_stream = session.spawn_child("runtime");
+    let mut second = Client::connect(
+        UnixTransport::from_stream(second_stream).expect("a transport"),
+        version(),
+    )
+    .expect("the second child handshakes while the first is still open");
+    assert_eq!(
+        second.configuration().expect("the configuration"),
+        Some((1, document.clone())),
+        "the second child sees what the first committed"
+    );
+    assert_eq!(second.commit_config(&document).expect("the commit"), 2);
+}
+
+#[test]
+fn stale_partial_bytes_never_reach_the_new_peer() {
+    // A child that dies mid-frame leaves half a handshake on its own pair. The guardian never
+    // hands that pair to the next child, so the next child starts from an empty stream: its
+    // handshake succeeds and the session shows exactly what a fresh start shows.
+    let (session, _ends) = Session::start_privileged(&["runtime"]);
+    let mut dying = session.spawn_child("runtime");
+    let frame = gnoblin_proto::Handshake::hello(version()).encode();
+    {
+        use std::io::Write as _;
+        dying.write_all(&frame[..frame.len() / 2]).expect("half a handshake");
+    }
+    drop(dying);
+    let fresh = session.spawn_child("runtime");
+    let mut client = Client::connect(UnixTransport::from_stream(fresh).expect("a transport"), version())
+        .expect("the new child handshakes with no stale bytes in front of it");
+    assert_eq!(
+        client.configuration().expect("the configuration"),
+        None,
+        "nothing was committed in this session"
+    );
+    let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
+    assert_eq!(client.commit_config(&document).expect("the commit"), 1);
 }

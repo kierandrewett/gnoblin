@@ -60,6 +60,10 @@ pub struct Session {
     stop: StopHandle,
     eis: EisGate,
     thread: Option<JoinHandle<Result<(), gnoblin_compositor::Error>>>,
+    /// The guardian's end of the control socket. The session holds it open so the compositor
+    /// reads handovers rather than an early EOF; it is closed before the session is joined, so
+    /// a stopping session never waits on a guardian still holding its end open.
+    guardian: Option<std::os::fd::OwnedFd>,
 }
 
 impl Session {
@@ -107,15 +111,19 @@ impl Session {
         let directory = private_directory();
         let ipc = directory.path().join("ipc.sock");
         let wayland = directory.path().join("wayland.sock");
-        let mut privileged = Vec::new();
+        // The guardian's control socket is SOCK_SEQPACKET, so each handover is one whole
+        // message. The test plays the guardian: it sends every role's socket before the
+        // compositor starts, as the real guardian does.
+        let (guardian, compositor_control) = Session::control_pair();
+        let mut privileged = gnoblin_compositor::Privileged::declared();
+        privileged.retain(|entry| roles.iter().any(|(role, _)| *role == entry.role));
         let mut ends = Vec::new();
         for (role, grants) in roles {
             let (compositor_end, role_end) = UnixStream::pair().expect("a socket pair");
-            privileged.push(gnoblin_compositor::Privileged {
-                role: (*role).to_owned(),
-                stream: compositor_end,
-                extension_grants: grants.clone(),
-            });
+            gnoblin_proto::privilege::send_handover(&guardian, role, &compositor_end).expect("the handover");
+            if let Some(entry) = privileged.iter_mut().find(|entry| entry.role == *role) {
+                entry.extension_grants = grants.clone();
+            }
             ends.push(((*role).to_owned(), role_end));
         }
         let stop = StopHandle::new();
@@ -129,6 +137,7 @@ impl Session {
                 ..gnoblin_wayland::Config::default()
             },
             privileged,
+            guardian: Some(UnixStream::from(compositor_control)),
             ..SessionConfig::default()
         };
         configure(&mut config);
@@ -143,6 +152,7 @@ impl Session {
             stop,
             eis,
             thread: Some(thread),
+            guardian: Some(guardian),
         };
         session.wait_until_listening();
         (session, ends)
@@ -185,6 +195,7 @@ impl Session {
             stop,
             eis,
             thread: Some(thread),
+            guardian: None,
         };
         session.wait_until_listening();
         session
@@ -239,7 +250,32 @@ impl Session {
         self.join()
     }
 
+    /// Spawns `role`'s next child the way the guardian does: a fresh socket pair, with the
+    /// compositor's end handed over on the control socket and the child's end returned. Every
+    /// spawn gets its own pair, so nothing a previous child wrote can reach the next one.
+    pub fn spawn_child(&self, role: &str) -> UnixStream {
+        let guardian = self.guardian.as_ref().expect("a session started with privileged roles");
+        let (compositor_end, child_end) = UnixStream::pair().expect("a socket pair");
+        gnoblin_proto::privilege::send_handover(guardian, role, &compositor_end).expect("the handover");
+        child_end
+    }
+
+    /// A `SOCK_SEQPACKET` pair standing in for the guardian's control socket, so that one
+    /// `sendmsg` is exactly one handover.
+    fn control_pair() -> (std::os::fd::OwnedFd, std::os::fd::OwnedFd) {
+        rustix::net::socketpair(
+            rustix::net::AddressFamily::UNIX,
+            rustix::net::SocketType::SEQPACKET,
+            rustix::net::SocketFlags::CLOEXEC,
+            None,
+        )
+        .expect("a control socket pair")
+    }
+
     fn join(&mut self) -> Result<(), gnoblin_compositor::Error> {
+        // The guardian's end goes first: the compositor's control thread reads until EOF, so a
+        // session still holding it open would never finish stopping.
+        drop(self.guardian.take());
         let Some(thread) = self.thread.take() else {
             return Ok(());
         };

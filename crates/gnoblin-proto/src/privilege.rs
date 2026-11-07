@@ -47,29 +47,6 @@ pub const FD_VARIABLE: &str = "GNOBLIN_IPC_FD";
 /// role: the role is part of the message.
 pub const CONTROL_VARIABLE: &str = "GNOBLIN_IPC_CONTROL_FD";
 
-/// The prefix of the variables that carried a role's end of a pair into the compositor.
-///
-/// Superseded by the control socket: the compositor learns a role from the handover
-/// message now. It stays only until the last caller has moved off it.
-pub const OWNER_PREFIX: &str = "GNOBLIN_IPC_FD_";
-
-/// The variable that carried `role`'s end of a pair into the compositor.
-///
-/// The role name is upper-cased because the environment's vocabulary is upper case;
-/// [`owner_role`] is the exact inverse, so a compositor reads back the role the
-/// guardian wrote.
-pub fn owner_variable(role: &str) -> String {
-    format!("{OWNER_PREFIX}{}", role.to_uppercase())
-}
-
-/// The role a variable name belonged to, if it is one of the owner variables.
-pub fn owner_role(variable: &str) -> Option<String> {
-    variable
-        .strip_prefix(OWNER_PREFIX)
-        .filter(|role| !role.is_empty())
-        .map(str::to_lowercase)
-}
-
 /// The payload of one handover message: the role the stream is for.
 ///
 /// The stream itself travels as `SCM_RIGHTS` ancillary data; the payload says which
@@ -221,21 +198,8 @@ mod tests {
     use std::os::unix::net::UnixStream;
 
     use super::{
-        CONTROL_VARIABLE, FD_VARIABLE, OWNER_PREFIX, descriptor, handover_payload, handover_role, owner_role,
-        owner_variable, receive_handover, send_handover,
+        CONTROL_VARIABLE, FD_VARIABLE, descriptor, handover_payload, handover_role, receive_handover, send_handover,
     };
-
-    #[test]
-    fn a_role_round_trips_through_its_variable_name() {
-        assert_eq!(owner_variable("runtime"), "GNOBLIN_IPC_FD_RUNTIME");
-        assert_eq!(owner_role("GNOBLIN_IPC_FD_RUNTIME"), Some("runtime".to_owned()));
-        assert_eq!(owner_role("GNOBLIN_IPC_FD_SERVICES"), Some("services".to_owned()));
-        // The child's own variable is not an owner variable: the two are different
-        // ends of the pair and a scanner must not confuse them.
-        assert_eq!(owner_role(FD_VARIABLE), None);
-        assert_eq!(owner_role(OWNER_PREFIX), None);
-        assert_eq!(owner_role("GNOBLIN_IPC_SOCKET"), None);
-    }
 
     #[test]
     fn a_role_round_trips_through_its_handover_payload() {
