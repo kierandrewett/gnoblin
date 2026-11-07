@@ -14,7 +14,7 @@ use std::os::unix::net::UnixStream;
 use std::thread;
 use std::time::Duration;
 
-use gnoblin_client::wire::{PortalRequest, portal_cancel, portal_key, portal_ui, read_portal_outcome};
+use gnoblin_client::wire::{PortalRequest, VerifiedCaller, portal_cancel, portal_key, portal_ui, read_portal_outcome};
 use gnoblin_model::Fields;
 use gnoblin_proto::Envelope;
 use support::{Session, Wire};
@@ -31,12 +31,11 @@ const REPLY_WAIT: Duration = Duration::from_secs(5);
 fn consent(interface: &str) -> PortalRequest {
     PortalRequest {
         interface: interface.to_owned(),
-        app: "org.example.Requester".to_owned(),
+        caller: VerifiedCaller::new(0, "org.example.Requester"),
         prompt: "Share the screen?".to_owned(),
         timeout_ms: 30_000,
         options: Fields::default(),
         parent_window: String::new(),
-        caller_pid: 0,
     }
 }
 

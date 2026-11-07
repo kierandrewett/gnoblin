@@ -392,6 +392,26 @@ pub fn locked(shared: &Arc<Mutex<Shared>>) -> MutexGuard<'_, Shared> {
     shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// The caller as the bus reports it. The pid is `GetConnectionUnixProcessID` on the sender's
+/// unique name, read from the bus and never from the request, so the compositor's owner
+/// check compares a window against a value the request cannot forge. A bus that cannot name
+/// the sender gives pid `0`, which no process has, so no window matches it.
+pub async fn verified_caller(
+    connection: &Connection,
+    header: &zbus::message::Header<'_>,
+    app_id: &str,
+) -> Result<gnoblin_client::wire::VerifiedCaller, fdo::Error> {
+    let sender = sender(header)?;
+    let pid = match (
+        fdo::DBusProxy::new(connection).await,
+        zbus::names::BusName::try_from(sender.as_str()),
+    ) {
+        (Ok(bus), Ok(name)) => bus.get_connection_unix_process_id(name).await.unwrap_or(0),
+        _ => 0,
+    };
+    Ok(gnoblin_client::wire::VerifiedCaller::new(pid, app_id))
+}
+
 /// The caller's unique bus name.
 pub fn sender(header: &zbus::message::Header<'_>) -> Result<String, fdo::Error> {
     header

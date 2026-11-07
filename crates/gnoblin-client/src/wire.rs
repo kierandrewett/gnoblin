@@ -115,6 +115,10 @@ pub mod code {
     /// The window's process is no longer the one that connected: it exited, or its pid
     /// names another process, so nothing is signalled.
     pub const PROCESS_CHANGED: &str = "process-changed";
+    /// The request's `parent_window` cannot be shown to belong to its caller: it names no
+    /// window, an X11 window (not resolvable yet), or a window owned by another process.
+    /// The request is refused, not sent to the dialog with the parent dropped.
+    pub const PARENT_REFUSED: &str = "parent-refused";
     /// The member is not one this layer serves.
     pub const UNKNOWN_MEMBER: &str = gnoblin_proto::UNKNOWN_MEMBER;
     /// This connection does not hold the capability the member needs.
@@ -304,12 +308,12 @@ pub fn config_commit(request_id: u64, document: &[u8]) -> Envelope {
 pub fn portal_ui(request_id: u64, request: &PortalRequest) -> Envelope {
     let mut writer = Writer::new();
     writer.text(&request.interface);
-    writer.text(&request.app);
+    writer.text(request.caller.app_id());
     writer.text(&request.prompt);
     writer.u64(request.timeout_ms);
     writer.fields(&request.options);
     writer.text(&request.parent_window);
-    writer.u32(request.caller_pid);
+    writer.u32(request.caller.pid());
     Envelope::request(NAMESPACE, member::PORTAL_UI, request_id, writer.finish())
 }
 
@@ -495,15 +499,58 @@ pub fn read_offer(payload: &[u8]) -> Result<(String, String, String, u64), WireE
     Ok((slot, title, message, timeout))
 }
 
-/// A `portal.ui` request: the interface the caller asked for, the app it asked on
-/// behalf of, the prompt, how long the caller will wait, and the interface's own
-/// options (a consent has none; a file or app chooser carries its fields here).
+/// The caller a portal request is made on behalf of, as the portal relay verified it on
+/// the bus. The relay builds it from the D-Bus sender only: the pid from
+/// `org.freedesktop.DBus.GetConnectionUnixProcessID` and the app id from the sandbox the
+/// relay itself reads. No value inside a request payload supplies either one.
+///
+/// The compositor trusts the frame only because the peer that sends `portal.ui` is the
+/// portal role, the one privileged peer the member is granted to. A peer without that
+/// role never reaches the member, so the decoder does not re-verify the values.
+///
+/// Ownership checks read `pid` and nothing else from the request. `pid` `0` means the
+/// relay could not learn the caller's pid; no process has that id, so no parent matches it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedCaller {
+    /// The caller's Unix process id as the bus reported it, or `0` when unknown.
+    pid: u32,
+    /// The caller's application id, empty when the caller is unsandboxed.
+    app_id: String,
+}
+
+impl VerifiedCaller {
+    /// A verified caller. The portal relay calls this with values from the bus; the
+    /// compositor calls it only when decoding a `portal.ui` frame from the portal role.
+    #[must_use]
+    pub fn new(pid: u32, app_id: impl Into<String>) -> Self {
+        Self {
+            pid,
+            app_id: app_id.into(),
+        }
+    }
+
+    /// The caller's pid as the bus reported it, `0` when unknown.
+    #[must_use]
+    pub const fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    /// The caller's application id; empty when the caller is unsandboxed.
+    #[must_use]
+    pub fn app_id(&self) -> &str {
+        &self.app_id
+    }
+}
+
+/// A `portal.ui` request: the interface the caller asked for, the caller it asked on
+/// behalf of, the prompt, how long the caller will wait, and the interface's own options
+/// (a consent has none; a file or app chooser carries its fields here).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PortalRequest {
     /// The portal interface name, such as `org.freedesktop.impl.portal.Access`.
     pub interface: String,
-    /// The requesting application's id; empty when the caller is unsandboxed.
-    pub app: String,
+    /// Who the request is for, verified by the relay from the bus.
+    pub caller: VerifiedCaller,
     /// The prompt shown to the user.
     pub prompt: String,
     /// How long the caller will wait for the answer, in milliseconds.
@@ -512,33 +559,29 @@ pub struct PortalRequest {
     pub options: Fields,
     /// The `parent_window` the caller named, exactly as it arrived: the empty string for
     /// none, or an `x11:` or `wayland:` identifier. The portal validates its form before it
-    /// is sent; the compositor parses it again and resolves it.
+    /// is sent; the compositor parses it again and resolves it. This is a claim, not a
+    /// verified fact: the compositor resolves it and checks the owner against `caller`.
     pub parent_window: String,
-    /// The Unix process id of the caller, as the bus reports it. `0` when the portal could
-    /// not learn it. The compositor compares it with the client that owns the parent window,
-    /// so a caller cannot make a dialog modal to someone else's window.
-    pub caller_pid: u32,
 }
 
 /// Decode a `portal.ui` request.
 pub fn read_portal_ui(payload: &[u8]) -> Result<PortalRequest, WireError> {
     let mut reader = Reader::new(payload);
     let interface = reader.text()?;
-    let app = reader.text()?;
+    let app_id = reader.text()?;
     let prompt = reader.text()?;
     let timeout_ms = reader.u64()?;
     let options = reader.fields()?;
     let parent_window = reader.text()?;
-    let caller_pid = reader.u32()?;
+    let pid = reader.u32()?;
     reader.done()?;
     Ok(PortalRequest {
         interface,
-        app,
+        caller: VerifiedCaller::new(pid, app_id),
         prompt,
         timeout_ms,
         options,
         parent_window,
-        caller_pid,
     })
 }
 
@@ -1054,7 +1097,7 @@ mod tests {
     fn a_portal_request_round_trips_with_its_options() {
         let request = PortalRequest {
             interface: "org.freedesktop.impl.portal.FileChooser".to_owned(),
-            app: "org.example.App".to_owned(),
+            caller: VerifiedCaller::new(4242, "org.example.App"),
             prompt: "Open a file".to_owned(),
             timeout_ms: 30_000,
             options: fields(&[
@@ -1062,7 +1105,6 @@ mod tests {
                 ("filters", Value::List(vec![Value::Text("*.txt".to_owned())])),
             ]),
             parent_window: "wayland:0123abcd".to_owned(),
-            caller_pid: 4242,
         };
         let envelope = portal_ui(7, &request);
         assert_eq!(read_portal_ui(envelope.payload().unwrap_or(&[])), Ok(request));
@@ -1072,12 +1114,11 @@ mod tests {
     fn a_portal_request_with_no_options_round_trips() {
         let request = PortalRequest {
             interface: "org.freedesktop.impl.portal.Access".to_owned(),
-            app: String::new(),
+            caller: VerifiedCaller::new(0, ""),
             prompt: "Allow the camera".to_owned(),
             timeout_ms: 0,
             options: Fields::new(),
             parent_window: String::new(),
-            caller_pid: 0,
         };
         let envelope = portal_ui(8, &request);
         assert_eq!(read_portal_ui(envelope.payload().unwrap_or(&[])), Ok(request));
@@ -1087,12 +1128,11 @@ mod tests {
     fn a_truncated_portal_request_is_refused() {
         let request = PortalRequest {
             interface: "org.freedesktop.impl.portal.Access".to_owned(),
-            app: "app".to_owned(),
+            caller: VerifiedCaller::new(7, "app"),
             prompt: "p".to_owned(),
             timeout_ms: 1,
             options: fields(&[("k", Value::Uint(1))]),
             parent_window: "x11:1a".to_owned(),
-            caller_pid: 7,
         };
         let envelope = portal_ui(9, &request);
         let payload = envelope.payload().unwrap_or(&[]);

@@ -31,26 +31,29 @@ marks a claim not checked against code or a primary source.
   ([window identifiers](https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html)).
 - Every interface stores the string and drops it: `iface/capture.rs:88`, `:111`,
   `:177`, `:317`; `iface/remote.rs:165`, `:490`, `:527`; `iface/shortcuts.rs:103`, `:171`.
-  Still true on this lane: the relay has not yet read the string.
-- **Done (typed, not yet routed):** `gnoblin_types::ParentWindow` parses the string
-  into `None`, `X11(u32)` or `Wayland(String)`, and refuses the rest with a reason
-  (`crates/gnoblin-types/src/parent_window.rs`). `PortalRequest` in
-  `crates/gnoblin-client/src/wire.rs` carries the raw `parent_window` and the caller's
-  `caller_pid` through `portal.ui`. Nothing reads them yet.
+  The relay still drops the string on every interface; nothing in the relay reads it yet.
+- **Done:** `gnoblin_types::ParentWindow` parses the string into `None`, `X11(u32)` or
+  `Wayland(String)`, and refuses the rest with a reason
+  (`crates/gnoblin-types/src/parent_window.rs`).
+- **Done:** `wire::VerifiedCaller` carries the caller's pid and app id.
+  `xdg-desktop-portal-gnoblin/src/iface/mod.rs` `verified_caller` builds it from the bus
+  (`GetConnectionUnixProcessID` on the sender), never from the request. `PortalRequest.caller`
+  carries it through `portal.ui`. The compositor trusts that frame only because the privileged
+  IPC peer is the portal role; that boundary is what the frame's pid rests on.
+- **Done:** the compositor refuses a parent it cannot prove the caller owns.
+  `ipc/server.rs` `check_portal_parent` resolves `wayland:` through `exported_window` and
+  `window_process`, then `parent_owner_check` (`ipc/portal.rs`) compares that pid with the bus
+  pid. A refusal is `parent-refused`, sent before the dialog opens. The test
+  `a_payload_claiming_another_pid_is_checked_against_the_bus_pid` covers a forged pid.
 - **Gaps, in order:**
-    1. The consent prompt does not carry the parent. The relay offers prompts to the
-       `portal.ui` slot with `Client::offer` (`wire.rs` `REQUEST_OFFERED`), which has no
-       parent field. Changing that frame changes what external slot providers receive.
-    2. The compositor's `PortalService::submit` (`ipc/portal.rs`) does not read
-       `parent_window`, and no resolver exists.
-    3. `wayland:` has a lookup now (`ControlHandle::exported_window`, from f44c61b72),
-       but no caller. The portal path must reach it from the IPC thread.
-    4. `x11:` has no XID-to-window lookup in `gnoblin-xwayland`.
-    5. The caller's identity is not read. The relay would need the sender's pid from
-       `org.freedesktop.DBus.GetConnectionUnixProcessID`, and the compositor would need
-       the owning client's pid, to refuse a parent owned by another client.
-    6. Placement over a parent rectangle and modal-to-parent input need the layer
-       registry wired into the compositor (`gnoblin-layers`, not yet wired).
+    1. Nothing sends `portal.ui` in production. The relay has no path from its portal calls to
+       the compositor, so `verified_caller` has no caller yet and only tests send the frame.
+    2. The consent prompt does not carry the parent. The relay offers prompts to the `portal.ui`
+       slot with `Client::offer` (`wire.rs` `REQUEST_OFFERED`), which has no parent field.
+       Changing that frame changes what external slot providers receive.
+    3. `x11:` is refused with a reason. `gnoblin-xwayland` has no XID-to-window lookup yet.
+    4. Placement over the parent and modal-to-parent input need the layer registry wired into
+       the compositor (`gnoblin-layers`, not yet wired).
 - The `portal_ui` schema (`crates/gnoblin-schema/schema/portal_ui.toml`) does not
   drive the wire. `wire.rs` is hand-written, so the schema was not edited.
 
@@ -58,7 +61,10 @@ marks a claim not checked against code or a primary source.
 
 - xdg-foreign is served: `zxdg_exporter_v2` and `zxdg_importer_v2`, from `crates/gnoblin-wayland/src/protocols/xdg_foreign.rs`. The handle table is `State::xdg_foreign`. `xdg_dialog_v1` is served too.
 - A parent relation reaches the WM as `WindowRoleChanged`. The WM floats an imported dialog above its parent (`crates/gnoblin-wm/src/wm.rs:994-998`).
-- **`wayland:<handle>` has a lookup, but no caller yet.** Each handle is 128 random bits mapped to its exported surface. `XdgForeign::exported_surface` gives the surface; `ControlHandle::exported_window` gives its window, or `None` when revoked or unknown. The portal `parent_window` mapping will call `exported_window`; that wiring is the next lane, so `wayland:` stays unresolved until then.
+- **`wayland:<handle>` resolves in the compositor.** Each handle is 128 random bits mapped to its
+  exported surface. `XdgForeign::exported_surface` gives the surface; `ControlHandle::exported_window`
+  gives its window, or `None` when revoked or unknown. The owner check in `check_portal_parent`
+  uses it; no relay path reaches that check yet (gap 1 above).
 - `x11:<XID>`: Gnoblin has `gnoblin-xwayland` (`xtask/src/deps.rs:61`). XID lookup
   against its window map is possible [INFERENCE: not checked].
 

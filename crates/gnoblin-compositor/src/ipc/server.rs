@@ -73,11 +73,11 @@ use gnoblin_client::wire;
 use gnoblin_log::{debug_in, info_in, warn_in};
 use gnoblin_model::{ModelError, OBJECT_GONE, OperationOutcome, Subscription, Tick};
 use gnoblin_proto::{Capabilities, Capability, Envelope, Handshake, HandshakeKind, read_frame, write_frame};
-use gnoblin_types::{ClientId, ErrorCode, Version, WorkspaceId};
+use gnoblin_types::{ClientId, ErrorCode, ParentWindow, Version, WorkspaceId};
 use gnoblin_wayland::{ControlHandle, EffectSpec, Observer, ProcessIdentity, SessionSnapshot, WindowProcess};
 
 use super::extension::{ExtensionRoute, ExtensionRouter};
-use super::portal::{MALFORMED, PortalService};
+use super::portal::{MALFORMED, PortalService, parent_owner_check};
 use super::requests::{FrameDelivery, Requests};
 use super::{IpcError, Privileged, SessionSync, SocketPath};
 
@@ -754,10 +754,44 @@ impl Dispatcher {
             }
         };
         let now = self.now();
+        // The parent is checked before the dialog opens, so a refused parent never shows a
+        // dialog the user could answer for a window that is not the caller's.
+        if let Err(message) = self.check_portal_parent(&request) {
+            warn_in!("compositor", %message, "[ipc] a portal request's parent window was refused");
+            self.refuse(client, envelope, wire::code::PARENT_REFUSED, &message);
+            return;
+        }
         match self.portal.submit(client, envelope.request_id, &request, now) {
             Ok(replies) => self.deliver_replies(replies),
             Err(refused) => self.refuse(client, envelope, refused.code, &refused.message),
         }
+    }
+
+    /// Resolves a portal request's `parent_window` and checks that the caller owns it.
+    ///
+    /// No parent has nothing to check. An X11 parent is refused, because the compositor
+    /// cannot yet map an XID to a process. A Wayland parent resolves through its exported
+    /// handle to a window, and that window's client process must be the caller's bus pid.
+    /// The caller is the relay's verified value, so the payload cannot name the pid that is
+    /// checked. Every failure is returned as a message for `parent-refused`.
+    fn check_portal_parent(&self, request: &wire::PortalRequest) -> Result<(), String> {
+        let parent = ParentWindow::parse(&request.parent_window).map_err(|error| error.to_string())?;
+        let handle = match parent {
+            ParentWindow::None => return Ok(()),
+            ParentWindow::X11(_) => return Err("an X11 parent window cannot be checked yet".to_owned()),
+            ParentWindow::Wayland(handle) => handle,
+        };
+        let window = match self.control.exported_window(&handle) {
+            None => return Err("the compositor did not resolve the parent window in time".to_owned()),
+            Some(None) => return Err("the parent window handle is unknown or revoked".to_owned()),
+            Some(Some(window)) => window,
+        };
+        let process = match self.control.window_process(window) {
+            None => return Err("the compositor did not report the parent window's process in time".to_owned()),
+            Some(None) => return Err("the parent window no longer exists".to_owned()),
+            Some(Some(process)) => process,
+        };
+        parent_owner_check(&request.caller, &process).map_err(str::to_owned)
     }
 
     /// `portal.cancel`: the connection withdraws the portal requests it holds. Each

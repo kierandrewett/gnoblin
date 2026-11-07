@@ -15,6 +15,9 @@
 //! - Interfaces without a built-in dialog, and the file and app choosers (the
 //!   wire's `Fields` options are not yet mapped to their typed dialogs), settle
 //!   `error(unsupported-ui)`. A session lock settles `error(locked)`.
+//! - A `parent_window` is honoured only when the window it names belongs to the
+//!   caller's bus pid. The pid is the relay's verified value, never one from the payload,
+//!   and an X11 parent is refused until the compositor can map XIDs to windows.
 //!
 //! # Failure modes
 //!
@@ -26,12 +29,12 @@
 //!   submitter, not a refusal, so the requester learns the verdict it waits for.
 
 use gnoblin_backend::render::{Image, Overlay};
-use gnoblin_client::wire::{self, PortalRequest};
+use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
 use gnoblin_portal::DialogScheme;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_proto::Envelope;
 use gnoblin_types::{ClientId, KeyState, OutputId, Rect, RequestId, Size, Tick};
-use gnoblin_wayland::{Modal, ModalEvent};
+use gnoblin_wayland::{Modal, ModalEvent, WindowProcess};
 
 use crate::portal::{CancelReason, PortalError, PortalUi, Verdict};
 
@@ -140,10 +143,14 @@ impl PortalService {
         };
         // A consent dialog is the only kind offered here: the UI refuses any other
         // interface, including the choosers, as `unsupported-ui`.
-        let dialog = Dialog::Consent(Consent::open(request.app.clone(), request.prompt.clone(), now));
+        let dialog = Dialog::Consent(Consent::open(
+            request.caller.app_id().to_owned(),
+            request.prompt.clone(),
+            now,
+        ));
         match self
             .ui
-            .submit(id, &request.app, interface, dialog, request.timeout_ms, now)
+            .submit(id, request.caller.app_id(), interface, dialog, request.timeout_ms, now)
         {
             Ok(_) => {
                 self.owners.push(HeldRequest {
@@ -281,6 +288,23 @@ const fn grant_name(grant: &Grant) -> &'static str {
         Grant::Print { .. } => "print",
         Grant::Capture { .. } => "capture",
         Grant::Devices { .. } => "devices",
+    }
+}
+
+/// Whether the window a request names as its `parent_window` belongs to the caller.
+///
+/// The caller is the relay's verified value: its pid came from the bus, never from the
+/// request payload, so a payload that claims another pid is still checked against the bus
+/// pid. `owner` is the process the compositor found for the named window. A pid of `0`
+/// means the bus could not name the caller, and no process has that id, so nothing
+/// matches it. A window with no process the compositor can name, or whose client has gone,
+/// is never proof of ownership, so it is refused.
+pub(super) fn parent_owner_check(caller: &VerifiedCaller, owner: &WindowProcess) -> Result<(), &'static str> {
+    match owner {
+        WindowProcess::Connected(identity) if caller.pid() != 0 && identity.pid == caller.pid() => Ok(()),
+        WindowProcess::Connected(_) => Err("the parent window belongs to another process"),
+        WindowProcess::Unknown => Err("the parent window's process is unknown"),
+        WindowProcess::Disconnected => Err("the parent window's client has disconnected"),
     }
 }
 
@@ -465,17 +489,18 @@ impl PortalService {
 mod tests {
     use gnoblin_model::Fields;
 
+    use gnoblin_wayland::ProcessIdentity;
+
     use super::*;
 
     fn screenshot() -> PortalRequest {
         PortalRequest {
             interface: "Screenshot".to_owned(),
-            app: "org.example.Requester".to_owned(),
+            caller: VerifiedCaller::new(0, "org.example.Requester"),
             prompt: "Share the screen?".to_owned(),
             timeout_ms: 30_000,
             options: Fields::default(),
             parent_window: String::new(),
-            caller_pid: 0,
         }
     }
 
@@ -558,5 +583,62 @@ mod tests {
         assert!(matches!(locked.modal, Some(None)), "the lock clears the modal");
         assert_eq!(locked.replies.len(), 1);
         assert_eq!(locked.replies[0].1.error_code(), Some("locked"));
+    }
+
+    /// A process identity for a connected client, with a fixed start time.
+    fn process(pid: u32) -> WindowProcess {
+        WindowProcess::Connected(ProcessIdentity { pid, start_time: 7 })
+    }
+
+    #[test]
+    fn the_owner_check_accepts_a_window_owned_by_the_bus_pid() {
+        let caller = VerifiedCaller::new(1000, "org.example.Requester");
+        assert_eq!(parent_owner_check(&caller, &process(1000)), Ok(()));
+    }
+
+    #[test]
+    fn a_payload_claiming_another_pid_is_checked_against_the_bus_pid() {
+        // The relay took pid 1000 from the bus. A payload that names a window owned by
+        // pid 4242 claims that pid as its own, but the check reads only the bus pid, so
+        // the window is refused: it belongs to another process than the caller.
+        let caller = VerifiedCaller::new(1000, "org.example.Requester");
+        assert_eq!(
+            parent_owner_check(&caller, &process(4242)),
+            Err("the parent window belongs to another process"),
+        );
+    }
+
+    #[test]
+    fn an_unknown_bus_pid_never_matches_a_window() {
+        // Pid 0 means the bus could not name the caller, so no window is proven theirs.
+        let caller = VerifiedCaller::new(0, "");
+        assert!(parent_owner_check(&caller, &process(0)).is_err());
+        assert!(parent_owner_check(&caller, &process(1000)).is_err());
+    }
+
+    #[test]
+    fn a_window_with_no_nameable_or_live_process_is_refused() {
+        let caller = VerifiedCaller::new(1000, "org.example.Requester");
+        assert!(parent_owner_check(&caller, &WindowProcess::Unknown).is_err());
+        assert!(parent_owner_check(&caller, &WindowProcess::Disconnected).is_err());
+    }
+
+    #[test]
+    fn the_relay_frame_carries_the_bus_pid_the_check_reads() {
+        // The relay writes the bus pid into the frame; decoding returns that same value as
+        // the caller, so the check and the relay agree on one number.
+        let request = PortalRequest {
+            interface: "Screenshot".to_owned(),
+            caller: VerifiedCaller::new(1000, "org.example.Requester"),
+            prompt: "Share the screen?".to_owned(),
+            timeout_ms: 30_000,
+            options: Fields::default(),
+            parent_window: "wayland:abc".to_owned(),
+        };
+        let frame = gnoblin_client::wire::portal_ui(1, &request);
+        let payload = frame.payload().expect("the request carries a payload");
+        let decoded = gnoblin_client::wire::read_portal_ui(payload).expect("decodes");
+        assert_eq!(decoded.caller, request.caller);
+        assert_eq!(decoded.caller.pid(), 1000);
     }
 }
