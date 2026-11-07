@@ -322,10 +322,10 @@ fn capabilities_lists_every_capability_and_grants_none_on_the_ordinary_socket() 
     let (code, out, err) = run(&["capabilities"], ModelConnection::new(graph, Vec::new()));
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.starts_with("capability"), "{out}");
-    assert!(out.contains("offer-request  no\n"), "{out}");
-    assert!(out.contains("commit-config  no\n"), "{out}");
+    assert!(out.contains("offer-request   no\n"), "{out}");
+    assert!(out.contains("commit-config   no\n"), "{out}");
     assert!(
-        out.contains("portal-input   no\n"),
+        out.contains("register-layer  no\n"),
         "the name column is padded to the longest name:\n{out}"
     );
     assert!(!out.contains("yes"), "the loopback grants nothing:\n{out}");
@@ -337,10 +337,11 @@ fn capabilities_as_json_is_one_row_per_capability() {
     let (code, out, err) = run(&["--json", "capabilities"], ModelConnection::new(graph, Vec::new()));
     assert_eq!(code, 0, "stderr: {err}");
     let rows: Vec<serde_json::Value> = serde_json::from_str(&out).expect("one JSON array");
-    assert_eq!(rows.len(), 5);
+    assert_eq!(rows.len(), 6);
     assert_eq!(rows[0]["name"], "offer-request");
     assert_eq!(rows[0]["granted"], false);
     assert_eq!(rows[4]["name"], "portal-input");
+    assert_eq!(rows[5]["name"], "register-layer");
 }
 
 #[test]

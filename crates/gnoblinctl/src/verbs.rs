@@ -292,7 +292,7 @@ mod tests {
         assert!(rows.iter().all(|(_, held)| !held), "nothing is granted by NONE");
         let table = capability_table(&rows);
         assert!(table.starts_with("capability"), "{table}");
-        let width = "offer-request".len();
+        let width = "register-layer".len();
         assert!(table.contains(&format!("{:<width$}  no\n", "offer-request")), "{table}");
         assert!(table.contains(&format!("{:<width$}  no\n", "portal-input")), "{table}");
     }
@@ -301,7 +301,7 @@ mod tests {
     fn a_granted_capability_is_marked_yes() {
         let granted = Capabilities::of(&[Capability::CommitConfig]);
         let table = capability_table(&capability_rows(granted));
-        let width = "commit-config".len();
+        let width = "register-layer".len();
         assert!(
             table.contains(&format!("{:<width$}  yes\n", "commit-config")),
             "{table}"
