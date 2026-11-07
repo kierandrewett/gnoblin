@@ -35,7 +35,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::wayland::shm::{BufferAccessError, BufferData, with_buffer_contents, with_buffer_contents_mut};
 
-use gnoblin_types::{Point, Rect};
+use gnoblin_types::{Point, Rect, Size};
 
 use crate::image::Image;
 
@@ -129,6 +129,45 @@ pub fn read_packed(buffer: &WlBuffer, out: &mut [u8]) -> Result<ShmShape, ShmErr
         Ok(shape)
     })
     .map_err(access_error)?
+}
+
+/// Copies a client's whole buffer into an [`Image`], so a window that is closing keeps the
+/// last picture it showed after the client destroys the buffer.
+///
+/// A `wl_shm` pixel is `B, G, R, A` in memory, which is what `ARGB8888` names, and an
+/// [`Image`] holds `R, G, B, A`, so the red and blue bytes are swapped. Alpha stays
+/// premultiplied as the client wrote it, because [`SurfaceSource::Snapshot`] is drawn
+/// from premultiplied bytes.
+///
+/// # Errors
+///
+/// The same as [`read_packed`].
+pub fn readback(buffer: &WlBuffer) -> Result<Image, ShmError> {
+    let shape = shape(buffer)?;
+    let mut bytes = vec![0; shape.packed_bytes()];
+    read_packed(buffer, &mut bytes)?;
+    let width = shape.width as usize;
+    Image::new(
+        Size::new(shape.width, shape.height),
+        width * 4,
+        to_image_order(shape, bytes),
+    )
+    .ok_or(ShmError::Outside)
+}
+
+/// Puts packed `ARGB8888` or `XRGB8888` pixels into [`Image`] order: red first, alpha last.
+///
+/// An `XRGB8888` buffer's last byte is padding, so it is made opaque here rather than left
+/// as the client wrote it. This is separate from [`readback`] so the byte order can be
+/// tested without a Wayland pool.
+fn to_image_order(shape: ShmShape, mut bytes: Vec<u8>) -> Vec<u8> {
+    for pixel in bytes.as_chunks_mut::<4>().0 {
+        pixel.swap(0, 2);
+        if shape.opaque {
+            pixel[3] = u8::MAX;
+        }
+    }
+    bytes
 }
 
 /// The one error a refused mapping becomes.
@@ -331,7 +370,7 @@ impl Pixel {
 
 #[cfg(test)]
 mod tests {
-    use super::Pixel;
+    use super::{Pixel, ShmShape, to_image_order};
 
     /// The packed layouts put alpha in the high byte and red next to it, which is the
     /// order a client reads with.
@@ -345,6 +384,35 @@ mod tests {
             Pixel::Xrgb.encode([0x11, 0x22, 0x33, 0x44]),
             0xFF11_2233u32.to_ne_bytes(),
             "a buffer that promises nothing about alpha gets an opaque one"
+        );
+    }
+
+    /// A client's `ARGB8888` pixel is blue first in memory and an image holds red first, so
+    /// the bytes must swap and the alpha must survive.
+    #[test]
+    fn an_argb_pixel_is_read_back_in_image_order() {
+        let shape = ShmShape {
+            width: 1,
+            height: 1,
+            opaque: false,
+        };
+        assert_eq!(
+            to_image_order(shape, vec![0x33, 0x22, 0x11, 0x44]),
+            vec![0x11, 0x22, 0x33, 0x44]
+        );
+    }
+
+    /// An `XRGB8888` pixel's last byte is padding, which must not become the image's alpha.
+    #[test]
+    fn an_xrgb_pixel_is_read_back_opaque() {
+        let shape = ShmShape {
+            width: 1,
+            height: 1,
+            opaque: true,
+        };
+        assert_eq!(
+            to_image_order(shape, vec![0x33, 0x22, 0x11, 0x00]),
+            vec![0x11, 0x22, 0x33, 0xFF]
         );
     }
 }
