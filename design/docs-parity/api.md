@@ -10,14 +10,14 @@ Method: grep of `crates/gnoblin-schema/schema/*.toml`, `crates/gnoblin-lua/host_
 
 ## Summary
 
-Counts are per item row below, not per page.
+Counts are the item rows in the tables below (78 rows), counted by status column.
 
 | Status  | Rows |
 | ------- | ---- |
-| BUILT   | 14   |
-| PARTIAL | 12   |
-| MISSING | 60+  |
-| CHANGED | 7    |
+| BUILT   | 3    |
+| PARTIAL | 19   |
+| MISSING | 48   |
+| CHANGED | 8    |
 
 The Rust tree has a schema-generated object model (window, output, workspace, session, settings, idle, lock, request, capture, eis, effect, portal_ui). It has no Lua `gnoblin.*` runtime surface beyond `configure`, `load` and `timers`. Most documented API is absent.
 
