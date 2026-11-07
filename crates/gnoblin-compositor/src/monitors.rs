@@ -26,9 +26,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.monitors.clone().unwrap_or_default();
             config.wayland.monitors = settings(&section);
-            log::debug!("[monitors] loaded from the last accepted configuration");
+            log::debug!(area = "monitors", "loaded from the last accepted configuration");
         }
-        Err(error) => log::warn!(%error, "[monitors] configuration not readable; the defaults are used"),
+        Err(error) => log::warn!(area = "monitors", %error, "configuration not readable; the defaults are used"),
     }
 }
 
@@ -37,12 +37,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[monitors] no state directory is set; the defaults are used");
+        log::debug!(area = "monitors", "no state directory is set; the defaults are used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => log::debug!(%error, "[monitors] no configuration file; the defaults are used"),
+        Err(error) => log::debug!(area = "monitors", %error, "no configuration file; the defaults are used"),
     }
 }
 

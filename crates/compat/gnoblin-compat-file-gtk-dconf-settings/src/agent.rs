@@ -71,22 +71,25 @@ impl DconfLayer {
 impl LinkedAgent for DconfLayer {
     fn start(&mut self, _host: &Host, _deadline: Tick) -> bool {
         let Some(directory) = profile_directory() else {
-            crate::log::warn!("[services] XDG_RUNTIME_DIR is not set, so no dconf layer is written");
+            crate::log::warn!(
+                area = "services",
+                "XDG_RUNTIME_DIR is not set, so no dconf layer is written"
+            );
             return false;
         };
         let settings = settings_from_environment();
         match write_layer(&settings, self.mode, &directory) {
             Ok(Written::Skipped) => true,
             Ok(written @ Written::Keyfile { compiled: true, .. }) => {
-                crate::log::info!(written = ?written, "[services] the dconf layer is compiled");
+                crate::log::info!(area = "services", written = ?written, "the dconf layer is compiled");
                 true
             }
             Ok(written) => {
-                crate::log::warn!(written = ?written, "[services] the dconf layer is written but not compiled");
+                crate::log::warn!(area = "services", written = ?written, "the dconf layer is written but not compiled");
                 true
             }
             Err(error) => {
-                crate::log::warn!(%error, "[services] the dconf layer cannot be written");
+                crate::log::warn!(area = "services", %error, "the dconf layer cannot be written");
                 false
             }
         }

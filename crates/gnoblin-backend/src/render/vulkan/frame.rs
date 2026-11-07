@@ -407,9 +407,10 @@ impl Vulkan {
                 Ok(image) => image,
                 Err(result) => {
                     log::warn!(
+                        area = "render",
                         ?result,
                         ?slot,
-                        "[render] a texture could not be made; the layer is skipped"
+                        "a texture could not be made; the layer is skipped"
                     );
                     continue;
                 }
@@ -856,7 +857,7 @@ impl Vulkan {
         if error == RenderError::Lost {
             self.lost = true;
         }
-        log::warn!(?result, ?error, "[render] the Vulkan renderer failed a frame");
+        log::warn!(area = "render", ?result, ?error, "the Vulkan renderer failed a frame");
         error
     }
 }
@@ -880,7 +881,7 @@ fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
                 },
             )),
             Err(error) => {
-                log::warn!(%error, "[render] a client buffer could not be read; the layer is skipped")
+                log::warn!(area = "render", %error, "a client buffer could not be read; the layer is skipped")
             }
         }
     }
@@ -899,7 +900,7 @@ fn fill(source: &PixelSource<'_>, destination: &mut [u8]) -> bool {
         PixelSource::Shm { buffer, .. } => match shm::read_packed(buffer, destination) {
             Ok(_) => true,
             Err(error) => {
-                log::warn!(%error, "[render] a client buffer could not be read; the layer is skipped");
+                log::warn!(area = "render", %error, "a client buffer could not be read; the layer is skipped");
                 false
             }
         },

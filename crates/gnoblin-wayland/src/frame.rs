@@ -205,7 +205,7 @@ pub fn render(
             // A frame that cannot be drawn leaves the output's previous pixels in
             // place, which is the only safe state: showing a half-composed frame
             // or ending the session would both be worse.
-            log::warn!(?error, %output, "[frame] a frame could not be drawn");
+            log::warn!(area = "frame", ?error, %output, "a frame could not be drawn");
         }
         if changed {
             if let Some(rects) = state.frame_damage(output) {

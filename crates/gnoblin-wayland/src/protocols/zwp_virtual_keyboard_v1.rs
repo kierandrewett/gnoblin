@@ -37,9 +37,12 @@ impl VirtualKeyboardHandler for State {
                 self.dispatch_key(u32::from(event.key_code()), state, serial, event.time());
             }
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {
-                log::debug!("[virtual-keyboard] the device set changed");
+                log::debug!(area = "virtual-keyboard", "the device set changed");
             }
-            _ => log::warn!("[virtual-keyboard] a virtual keyboard sent an event it cannot send"),
+            _ => log::warn!(
+                area = "virtual-keyboard",
+                "a virtual keyboard sent an event it cannot send"
+            ),
         }
     }
 }

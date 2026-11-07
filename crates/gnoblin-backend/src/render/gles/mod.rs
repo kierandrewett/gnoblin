@@ -361,8 +361,9 @@ impl Gles {
             }
             Err(error) => {
                 log::warn!(
+                    area = "render",
                     line = error.line(),
-                    "[render] a user shader was refused; its pass is disabled"
+                    "a user shader was refused; its pass is disabled"
                 );
                 self.error = Some(error);
                 self.user = Some(Registered { shader, program: None });
@@ -433,7 +434,7 @@ impl Gles {
     ) -> Result<ScanBuffer, RenderError> {
         use smithay::backend::renderer::ImportDma as _;
         let texture = self.device.renderer().import_dmabuf(dmabuf, None).map_err(|error| {
-            log::warn!(%error, "[render] a scan-out buffer cannot be imported");
+            log::warn!(area = "render", %error, "a scan-out buffer cannot be imported");
             RenderError::Failed
         })?;
         let framebuffer = self.device.framebuffer_over(&texture)?;
@@ -490,9 +491,10 @@ impl Gles {
         let expected = stride.saturating_mul(size.height as usize);
         if bytes.len() < expected {
             log::warn!(
+                area = "render",
                 got = bytes.len(),
                 expected,
-                "[render] the GLES readback is short of the target"
+                "the GLES readback is short of the target"
             );
             return Err(RenderError::Failed);
         }
@@ -677,8 +679,9 @@ impl Gles {
             .import_shm_buffer(&surface.buffer, None, &[])
             .map_err(|error| {
                 log::warn!(
+                    area = "render",
                     ?error,
-                    "[render] a client buffer could not be imported; the layer is skipped"
+                    "a client buffer could not be imported; the layer is skipped"
                 );
             })
             .ok()?;
@@ -701,7 +704,11 @@ impl Gles {
                 false,
             )
             .map_err(|error| {
-                log::warn!(?error, "[render] the overlay could not be imported; it is not drawn");
+                log::warn!(
+                    area = "render",
+                    ?error,
+                    "the overlay could not be imported; it is not drawn"
+                );
             })
             .ok()?;
         Some(texture)
@@ -1133,7 +1140,7 @@ impl Painter<'_> {
     /// log a line per frame for the life of the session.
     fn report(&mut self, error: ShaderError) {
         if self.error.is_none() {
-            log::warn!(%error, "[render] a user shader was refused; its pass is disabled");
+            log::warn!(area = "render", %error, "a user shader was refused; its pass is disabled");
             *self.error = Some(error);
         }
     }

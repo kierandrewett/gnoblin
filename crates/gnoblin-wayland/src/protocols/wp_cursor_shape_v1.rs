@@ -39,11 +39,11 @@ pub(crate) fn global(display: &DisplayHandle) -> CursorShapeManagerState {
 impl State {
     /// Records the cursor a client asked for.
     pub(crate) fn set_cursor_image(&mut self, image: smithay::input::pointer::CursorImageStatus) {
-        log::debug!(shape = ?match &image {
+        log::debug!(area = "cursor", shape = ?match &image {
                 smithay::input::pointer::CursorImageStatus::Named(icon) => Some(*icon),
                 _ => None,
             },
-            "[cursor] a client set the pointer image"
+            "a client set the pointer image"
         );
         self.cursor_image = image;
         // Called from inside smithay's seat callback, where the pointer is locked, so the

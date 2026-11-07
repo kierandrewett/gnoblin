@@ -23,6 +23,9 @@
 
 ### Changed
 
+- Log messages no longer start with a `[tag]` prefix. A crate's logger names its component, so a tag equal to
+  that component is dropped, and any other tag becomes an `area = "tag"` field on the event. `xtask logging` fails a
+  level macro whose message still starts with `[tag] `.
 - Layouts with `extent = "unbounded"` must declare `kind = "tiling"`; a floating or kiosk layout that asks for it is
   refused when it loads. The wm now enforces `extent` when it settles a reply: a placement whose rectangle (before its
   transform) lies outside the output, or past the coordinate bound when unbounded, refuses the whole reply. The

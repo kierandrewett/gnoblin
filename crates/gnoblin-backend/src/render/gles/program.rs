@@ -160,7 +160,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
     )
     .and_then(|mut writer| writer.write())
     .map_err(|error| {
-        log::debug!(%error, "[render] naga could not write GLSL");
+        log::debug!(area = "render", %error, "naga could not write GLSL");
         ShaderError::new(
             ShaderOrigin::Effect(context),
             stage,
@@ -203,17 +203,17 @@ fn from_failure(shift: Shift, failure: CompileFailure) -> ShaderError {
 /// bug in the tree rather than a caller's mistake: there is no frame to draw without it.
 pub(crate) fn link(device: &mut Device, vertex: &str, fragment: &str) -> Result<Program, RenderError> {
     let vertex_glsl = translate(vertex, "vertex stage", Stage::Vertex, Shift::NONE).map_err(|error| {
-        log::debug!(%error, "[render] an effect pass does not compile");
+        log::debug!(area = "render", %error, "an effect pass does not compile");
         RenderError::Unavailable
     })?;
     let fragment_glsl = translate(fragment, "effect pass", Stage::Fragment, Shift::NONE).map_err(|error| {
-        log::debug!(%error, "[render] an effect pass does not compile");
+        log::debug!(area = "render", %error, "an effect pass does not compile");
         RenderError::Unavailable
     })?;
     device
         .program(&vertex_glsl, &fragment_glsl, UniformLayout::fixed())
         .map_err(|failure| {
-            log::debug!(?failure, "[render] an effect pass does not link");
+            log::debug!(area = "render", ?failure, "an effect pass does not link");
             RenderError::Unavailable
         })
 }

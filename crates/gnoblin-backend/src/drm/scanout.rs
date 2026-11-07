@@ -43,7 +43,7 @@ impl Device {
     /// [`RenderError::Unavailable`] when GBM or EGL cannot be brought up on the node.
     pub(crate) fn open(drm: DrmDeviceFd) -> Result<Self, RenderError> {
         let gbm = GbmDevice::new(drm.clone()).map_err(|error| {
-            log::warn!(%error, "[render] no GBM device on the DRM node");
+            log::warn!(area = "render", %error, "no GBM device on the DRM node");
             RenderError::Unavailable
         })?;
         let display = egl::gbm_display(&gbm)?;
@@ -137,7 +137,7 @@ impl Buffers {
             .map(|format| format.modifier)
             .collect();
         if modifiers.is_empty() {
-            log::warn!("[drm] the plane scans out no XRGB8888 format");
+            log::warn!(area = "drm", "the plane scans out no XRGB8888 format");
             return Err(RenderError::Unavailable);
         }
         Ok(Self {

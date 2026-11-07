@@ -54,26 +54,26 @@ impl LinkedAgent for GcrPrompter {
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                log::info!(%error, "[services] no session bus, so no prompt adapter");
+                log::info!(area = "services", %error, "no session bus, so no prompt adapter");
                 return false;
             }
         };
         let service = match PromptService::new(PromptHost(host.clone()), Gate::default(), deadline) {
             Ok(service) => service,
             Err(error) => {
-                log::warn!(%error, "[services] the prompt adapter refused its support matrix");
+                log::warn!(area = "services", %error, "the prompt adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service, Names::Both)) {
-            log::warn!(%error, "[services] the prompt names are unavailable");
+            log::warn!(area = "services", %error, "the prompt names are unavailable");
             return false;
         }
         let serving = service.clone();
         let handle = std::thread::Builder::new()
             .name("gnoblin-prompter".to_owned())
             .spawn(move || block_on(run(connection, serving)))
-            .map_err(|error| log::warn!(%error, "[services] the prompt loop could not be started"));
+            .map_err(|error| log::warn!(area = "services", %error, "the prompt loop could not be started"));
         match handle {
             Ok(handle) => {
                 self.served = Some((service, handle));
@@ -87,7 +87,7 @@ impl LinkedAgent for GcrPrompter {
         if let Some((prompter, _)) = &self.served
             && let Err(error) = prompter.answer(request, outcome)
         {
-            log::debug!(%error, request = request.get(), "[services] the prompter did not own the answer");
+            log::debug!(area = "services", %error, request = request.get(), "the prompter did not own the answer");
         }
     }
 }

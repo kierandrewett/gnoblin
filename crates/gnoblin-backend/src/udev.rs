@@ -281,7 +281,7 @@ impl Devices {
         if self.known.iter().any(|known| known.path == node.path) {
             return DeviceChange::Ignored;
         }
-        log::debug!(path = %node.path.display(), "[udev] a GPU arrived");
+        log::debug!(area = "udev", path = %node.path.display(), "a GPU arrived");
         self.known.push(node);
         self.known.sort_by(|left, right| left.path.cmp(&right.path));
         DeviceChange::Recorded
@@ -292,11 +292,11 @@ impl Devices {
         let was_known = self.known.iter().any(|node| node.path == path);
         self.known.retain(|node| node.path != path);
         if path == self.primary {
-            log::warn!(path = %path.display(), "[udev] the GPU this session draws with is gone");
+            log::warn!(area = "udev", path = %path.display(), "the GPU this session draws with is gone");
             return DeviceChange::PrimaryLost;
         }
         if was_known {
-            log::info!(path = %path.display(), "[udev] a GPU this session does not drive went away");
+            log::info!(area = "udev", path = %path.display(), "a GPU this session does not drive went away");
             return DeviceChange::Recorded;
         }
         DeviceChange::Ignored

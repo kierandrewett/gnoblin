@@ -7,7 +7,9 @@
 //!   crate. Everything else reaches `tracing` through `gnoblin-log`, and nothing names `log` or
 //!   `env_logger`.
 //! - **Sources.** Library and daemon sources under `crates/*/src` must not call `tracing::` macros or the
-//!   stock print macros, or a retired `*_in!` macro. Tests are exempt: `#[test]` functions,
+//!   stock print macros, a retired `*_in!` macro, or a level macro whose message starts with a
+//!   `[tag] ` prefix: the tag goes in an `area = "tag"` field or is dropped. Tests are exempt:
+//!   `#[test]` functions,
 //!   `#[cfg(test)]` items, files named `tests.rs` or `*_test(s).rs`, `build.rs` and `examples/`.
 //!   Comments and string literals never count, because the scanner reads tokens rather than text.
 //!
@@ -19,7 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 
 use crate::allow;
 use crate::metadata::{self, Graph};
@@ -42,6 +44,9 @@ const PRINT_MACROS: &[&str] = &["println", "print", "eprintln", "eprint", "dbg"]
 /// The `*_in!` macros that took the component as a string. `logger!` replaced them, so a call to
 /// one is a violation.
 const RETIRED_MACROS: &[&str] = &["error_in", "warn_in", "info_in", "debug_in", "trace_in"];
+
+/// The level macros a `logger!` module defines. A message they log must not carry a `[tag] ` prefix.
+const LEVEL_MACROS: &[&str] = &["error", "warn", "info", "debug", "trace"];
 
 /// One source-level violation: the line and what was found there.
 #[derive(Debug, PartialEq, Eq)]
@@ -220,6 +225,18 @@ fn scan_tokens(tokens: &[TokenTree], hits: &mut Vec<Hit>) {
                         line: ident.span().start().line,
                         what: format!("`{name}!`, retired: declare a `logger!` and call its level macro"),
                     });
+                } else if LEVEL_MACROS.contains(&name.as_str())
+                    && is_punct(tokens.get(index + 1), '!')
+                    && let Some(TokenTree::Group(group)) = tokens.get(index + 2)
+                    && group.delimiter() == Delimiter::Parenthesis
+                    && let Some(tag) = bracket_tag(group)
+                {
+                    hits.push(Hit {
+                        line: ident.span().start().line,
+                        what: format!(
+                            "`{name}!` message starts with `[{tag}] `: put the tag in `area = \"{tag}\"` or drop it"
+                        ),
+                    });
                 }
             }
             TokenTree::Punct(_) | TokenTree::Literal(_) => {}
@@ -245,6 +262,27 @@ fn tracing_macro_path(tokens: &[TokenTree], start: usize) -> Option<String> {
 
 fn is_punct(token: Option<&TokenTree>, character: char) -> bool {
     matches!(token, Some(TokenTree::Punct(punct)) if punct.as_char() == character)
+}
+
+/// The tag of a `"[tag] ..."` message among the top-level literals of a level macro's arguments.
+///
+/// The tag is 1 or more of `a-z`, `0-9` and `-`, closed by `]` and then a space. A literal nested
+/// in another call, such as a `format!` argument, is not the message and is not read here.
+fn bracket_tag(group: &Group) -> Option<String> {
+    group.stream().into_iter().find_map(|token| {
+        let TokenTree::Literal(literal) = token else {
+            return None;
+        };
+        let text = literal.to_string();
+        let rest = text.strip_prefix("\"[")?;
+        let end = rest.find(']')?;
+        let tag = &rest[..end];
+        let valid = !tag.is_empty()
+            && tag
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+        (valid && rest[end + 1..].starts_with(' ')).then(|| tag.to_owned())
+    })
 }
 
 /// Whether an attribute's tokens gate the item after it to test builds: `#[test]`, or a `cfg` that
@@ -349,6 +387,50 @@ mod tests {
     fn a_retired_in_macro_is_a_violation() {
         assert_eq!(scan_source("fn f() { warn_in!(\"x\", \"y\"); }").unwrap().len(), 1);
         assert_eq!(scan_source("fn f() { log::warn!(\"x\"); }").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn a_level_message_with_a_bracket_tag_is_a_violation() {
+        assert_eq!(
+            scan_source("fn f() { log::warn!(\"[eis] a poll failed\"); }")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            scan_source("fn f() { info!(%error, \"[wayland-wire] sent\"); }")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(scan_source("fn f() { debug!(\"[a] x\"); }").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_bracket_tag_is_fine_when_it_is_a_field_or_not_a_tag() {
+        assert_eq!(
+            scan_source("fn f() { log::warn!(area = \"eis\", \"a poll failed\"); }")
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            scan_source("fn f() { log::info!(\"[console line] not a tag\"); }")
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            scan_source("fn f() { log::info!(\"[Upper] not a tag\"); }")
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            scan_source("fn f() { log::info!(\"[tag]no space\"); }").unwrap().len(),
+            0
+        );
+        assert_eq!(scan_source("fn f() { println!(\"[eis] printed\"); }").unwrap().len(), 1);
     }
 
     #[test]

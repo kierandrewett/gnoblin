@@ -18,6 +18,6 @@ use crate::log;
 
 impl OutputHandler for State {
     fn output_bound(&mut self, output: Output, wl_output: WlOutput) {
-        log::debug!(output = %output.name(), instance = ?wl_output.id(), "[output] bound by a client");
+        log::debug!(area = "output", output = %output.name(), instance = ?wl_output.id(), "bound by a client");
     }
 }

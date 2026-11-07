@@ -200,7 +200,7 @@ impl Running {
                 // Disabled is not a temporary condition: the configuration or the
                 // machine will not change under a running session.
                 self.stopped = true;
-                log::warn!("[xwayland] {reason}");
+                log::warn!(area = "xwayland", "{reason}");
             }
             Start::Spawn(launch) => self.spawn(state, launch, now),
         }
@@ -234,13 +234,13 @@ impl Running {
                     data.compositor_state.set_client_scale(scale);
                 }
                 let number = process.display_number();
-                log::info!(display_number = number, "[xwayland] starting");
+                log::info!(area = "xwayland", display_number = number, "starting");
                 self.process = Some(process);
                 self.client = Some(client);
                 self.deadline = Some(now + self.session.startup_deadline());
             }
             Err(error) => {
-                log::warn!("[xwayland] the server could not be started: {error}");
+                log::warn!(area = "xwayland", "the server could not be started: {error}");
                 self.fail(state, now, "the server could not be started");
             }
         }
@@ -263,7 +263,7 @@ impl Running {
         self.session.ready(number, now);
         match X11Wm::start_wm(handle.clone(), &state.display_handle, socket, client) {
             Ok(wm) => {
-                log::info!(display_number = number, "[xwayland] ready");
+                log::info!(area = "xwayland", display_number = number, "ready");
                 self.wm = Some(wm);
                 self.publish_settings();
             }
@@ -298,7 +298,7 @@ impl Running {
         });
         let result = wm.set_xsettings(values).map_err(|error| error.to_string());
         if let Err(reason) = &result {
-            log::debug!(%reason, "[xwayland] XSETTINGS were not published");
+            log::debug!(area = "xwayland", %reason, "XSETTINGS were not published");
         }
         self.session.settings_published(result);
     }
@@ -320,15 +320,15 @@ impl Running {
         self.surfaces.clear();
         match self.session.failed(now) {
             Restart::RetryAfter(after) => {
-                log::warn!(%why,
+                log::warn!(area = "xwayland", %why,
                     display_number = number,
                     retry_ms = after.as_millis(),
-                    "[xwayland] the X11 clients of the old display are gone"
+                    "the X11 clients of the old display are gone"
                 );
                 self.next_start = Some(now + after);
             }
             Restart::Stop(reason) => {
-                log::error!(%why, "[xwayland] {reason}");
+                log::error!(area = "xwayland", %why, "{reason}");
                 self.stopped = true;
                 self.next_start = None;
             }
@@ -406,14 +406,14 @@ impl State {
                     if let Some(surface) = running.surfaces.get(&window).cloned()
                         && let Err(error) = surface.set_mapped(mapped)
                     {
-                        log::debug!(%error, %window, "[xwayland] a mapping request failed");
+                        log::debug!(area = "xwayland", %error, %window, "a mapping request failed");
                     }
                 }
                 Command::Close { window } => {
                     if let Some(surface) = running.surfaces.get(&window).cloned()
                         && let Err(error) = surface.close()
                     {
-                        log::debug!(%error, %window, "[xwayland] a close request failed");
+                        log::debug!(area = "xwayland", %error, %window, "a close request failed");
                     }
                 }
             }
@@ -614,15 +614,17 @@ impl XwmHandler for State {
 
     fn resize_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32, _resize_edge: ResizeEdge) {
         log::debug!(
+            area = "xwayland",
             window = window.window_id(),
-            "[xwayland] a resize request is not interactive yet"
+            "a resize request is not interactive yet"
         );
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
         log::debug!(
+            area = "xwayland",
             window = window.window_id(),
-            "[xwayland] a move request is not interactive yet"
+            "a move request is not interactive yet"
         );
     }
 
@@ -659,7 +661,7 @@ impl XWaylandKeyboardGrabHandler for State {
         if !allowed {
             // A grab the configuration refused is not installed: the key that opened a
             // menu reaches the focused window instead.
-            log::debug!("[xwayland] a keyboard grab was refused");
+            log::debug!(area = "xwayland", "a keyboard grab was refused");
             return;
         }
         if let Some(keyboard) = seat.get_keyboard() {

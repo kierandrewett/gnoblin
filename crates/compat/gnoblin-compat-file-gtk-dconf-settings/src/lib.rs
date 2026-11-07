@@ -250,7 +250,7 @@ impl Written {
 /// run.
 pub fn apply(actions: &[KeyWrite], switch: Switch, directory: &Path) -> std::io::Result<Written> {
     if !switch.is_on() {
-        log::debug!("[dconf] the target is off, so nothing is written");
+        log::debug!("the target is off, so nothing is written");
         return Ok(Written::Skipped);
     }
     // `dconf compile` reads a directory of keyfiles, not one file, so the keyfile goes in its
@@ -283,7 +283,7 @@ pub fn apply(actions: &[KeyWrite], switch: Switch, directory: &Path) -> std::io:
         },
     };
     if !written.compiled() {
-        log::debug!("[dconf] the layer is written but not compiled");
+        log::debug!("the layer is written but not compiled");
     }
     Ok(written)
 }

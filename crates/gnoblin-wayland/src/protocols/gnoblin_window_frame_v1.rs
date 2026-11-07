@@ -326,7 +326,7 @@ impl GlobalDispatch2<GnoblinWindowFrameManagerV1, State> for GnoblinWindowFrameV
         data_init: &mut DataInit<'_, State>,
     ) {
         let manager = data_init.init(resource, GnoblinWindowFrameV1ManagerObject);
-        log::debug!(client = ?client.id(), "[frame] a renderer bound its manager");
+        log::debug!(area = "frame", client = ?client.id(), "a renderer bound its manager");
         if let Err(duplicate) = state.frame_tables.check_manager_in(&client.id(), &manager) {
             // The manager interface has no error enum of its own, so the code is
             // the protocol's first one: the connection is ended either way.
@@ -435,7 +435,7 @@ impl Dispatch2<GnoblinWindowFrameV1, State> for GnoblinWindowFrameV1FrameObject 
                     return;
                 }
                 entry.surface = Some(surface);
-                log::debug!(window = %self.window, "[frame] a renderer attached its surface");
+                log::debug!(area = "frame", window = %self.window, "a renderer attached its surface");
             }
             frame::Request::AckConfigure { serial } => {
                 if entry.surface.is_none() {
@@ -608,7 +608,7 @@ impl State {
                     .and_then(|entry| entry.surface.toplevel().cloned());
                 if let Some(toplevel) = toplevel {
                     toplevel.send_close();
-                    log::debug!(%window, "[frame] the window was asked to close");
+                    log::debug!(area = "frame", %window, "the window was asked to close");
                 }
             }
             GnoblinWindowFrameV1Action::Maximize => {
@@ -628,9 +628,9 @@ impl State {
             | GnoblinWindowFrameV1Action::SouthWest
             | GnoblinWindowFrameV1Action::West
             | GnoblinWindowFrameV1Action::NorthWest => {
-                log::debug!(%window,
+                log::debug!(area = "frame", %window,
                     action = action.to_wire(),
-                    "[frame] a move or resize was asked for; the interactive grab owns it"
+                    "a move or resize was asked for; the interactive grab owns it"
                 );
             }
         }
@@ -748,12 +748,12 @@ impl State {
         ) {
             Ok(object) => object,
             Err(error) => {
-                log::warn!(%window, ?error, "[frame] a frame object could not be created");
+                log::warn!(area = "frame", %window, ?error, "a frame object could not be created");
                 return;
             }
         };
         manager.frame(&object);
-        log::debug!(%window, serial, ?size, "[frame] a frame was offered");
+        log::debug!(area = "frame", %window, serial, ?size, "a frame was offered");
         let entry = GnoblinWindowFrameV1FrameRecord {
             object,
             surface: None,
@@ -838,7 +838,7 @@ impl State {
         entry.committed.clear();
         entry.committed.append(&mut entry.pending);
         entry.presented = true;
-        log::debug!(%window, serial = entry.serial, "[frame] a frame was presented");
+        log::debug!(area = "frame", %window, serial = entry.serial, "a frame was presented");
     }
 
     /// Forgets frames whose object or surface is gone.

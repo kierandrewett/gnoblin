@@ -58,7 +58,7 @@ impl XdgShellHandler for State {
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         self.unconstrain_popup(&surface);
         if let Err(error) = self.popups.track_popup(PopupKind::Xdg(surface)) {
-            log::warn!(?error, "[xdg] a popup could not be tracked");
+            log::warn!(area = "xdg", ?error, "a popup could not be tracked");
         }
     }
 
@@ -76,9 +76,9 @@ impl XdgShellHandler for State {
             // parent to be dismissed with, so it is dismissed here. Without this the
             // popup stays on screen for the life of the session.
             surface.send_popup_done();
-            log::debug!("[xdg] a parentless popup grab was dismissed");
+            log::debug!(area = "xdg", "a parentless popup grab was dismissed");
         } else {
-            log::trace!("[xdg] popup grabs arrive with the input slice");
+            log::trace!(area = "xdg", "popup grabs arrive with the input slice");
         }
     }
 
@@ -118,7 +118,7 @@ impl XdgShellHandler for State {
             Configure::Toplevel(toplevel) => toplevel.serial,
             Configure::Popup(popup) => popup.serial,
         };
-        log::debug!(serial = ?serial, surface = ?surface.id(), "[xdg] configure acknowledged");
+        log::debug!(area = "xdg", serial = ?serial, surface = ?surface.id(), "configure acknowledged");
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -132,7 +132,7 @@ impl XdgShellHandler for State {
     }
 
     fn popup_destroyed(&mut self, surface: PopupSurface) {
-        log::trace!(surface = ?surface.wl_surface().id(), "[xdg] popup destroyed");
+        log::trace!(area = "xdg", surface = ?surface.wl_surface().id(), "popup destroyed");
     }
 }
 
@@ -146,7 +146,7 @@ impl State {
             return;
         }
         if let Err(error) = popup.send_configure() {
-            log::warn!(?error, "[xdg] a popup configure could not be sent");
+            log::warn!(area = "xdg", ?error, "a popup configure could not be sent");
         }
     }
 
@@ -185,7 +185,7 @@ impl State {
     /// bar's menu belongs over the bar, not over the whole monitor.
     fn unconstrain_popup(&mut self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
-            log::trace!("[xdg] a popup has no root surface yet");
+            log::trace!(area = "xdg", "a popup has no root surface yet");
             return;
         };
         let (rectangle, origin) = match (self.window_of(&root), self.layer_rect(&root)) {

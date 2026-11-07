@@ -916,7 +916,7 @@ impl State {
             )),
             ClientRole::Sandboxed,
         )?;
-        log::debug!(client = ?client.id(), "[access] a sandboxed connection joined");
+        log::debug!(area = "access", client = ?client.id(), "a sandboxed connection joined");
         Ok(client)
     }
 
@@ -1055,7 +1055,11 @@ impl State {
         let layout = match compute(&descriptors, &LayoutConfig::row_over(&connectors)) {
             Ok(layout) => layout,
             Err(error) => {
-                log::warn!(?error, "[output] the layout was refused; keeping the previous one");
+                log::warn!(
+                    area = "output",
+                    ?error,
+                    "the layout was refused; keeping the previous one"
+                );
                 return;
             }
         };
@@ -1063,7 +1067,7 @@ impl State {
         self.remove_outputs_unless(&connected.iter().map(|output| output.id).collect::<Vec<_>>());
         for output in &connected {
             let Some(monitor) = layout.monitor_of(output.id) else {
-                log::warn!(connector = %output.connector, "[output] the layout does not place this output");
+                log::warn!(area = "output", connector = %output.connector, "the layout does not place this output");
                 continue;
             };
             match self.outputs.iter().position(|entry| entry.backend == output.id) {
@@ -1091,7 +1095,7 @@ impl State {
             self.display_handle.remove_global::<Self>(entry.global);
             self.composer.remove_output(entry.backend);
             self.output_controls_removed(entry.backend);
-            log::debug!(connector = %entry.output.name(), "[output] disconnected");
+            log::debug!(area = "output", connector = %entry.output.name(), "disconnected");
             let effects = self.wm.apply(Event::OutputDisconnected { output: entry.policy });
             self.apply(effects);
         }
@@ -1144,7 +1148,7 @@ impl State {
         });
         self.apply(identified);
         self.composer.set_output(output.id, rect);
-        log::debug!(connector = %output.connector, ?rect, "[output] connected");
+        log::debug!(area = "output", connector = %output.connector, ?rect, "connected");
         self.outputs.push(OutputEntry {
             backend: output.id,
             policy,
@@ -1203,13 +1207,13 @@ impl State {
                 }
                 Effect::Focus { focused, .. } => self.move_focus(focused),
                 Effect::ActivationDenied { window } => {
-                    log::debug!(%window, "[focus] activation refused by the caller");
+                    log::debug!(area = "focus", %window, "activation refused by the caller");
                 }
-                Effect::WorkspaceShown { workspace } => log::debug!(%workspace, "[workspace] shown"),
+                Effect::WorkspaceShown { workspace } => log::debug!(area = "workspace", %workspace, "shown"),
                 Effect::RuleRejected { window, rule, reason } => {
-                    log::warn!(%window, rule, ?reason, "[rules] rule did not apply")
+                    log::warn!(area = "rules", %window, rule, ?reason, "rule did not apply")
                 }
-                Effect::Rejected { reason } => log::debug!(?reason, "[wm] the event changed nothing"),
+                Effect::Rejected { reason } => log::debug!(area = "wm", ?reason, "the event changed nothing"),
                 // A settled layout places its window: its transform reaches the scene whole.
                 Effect::PlacementTarget { workspace, placement } => self.place_tiled(workspace, placement),
                 Effect::LayoutFailed { workspace, reason } => self.layout_failed(workspace, reason),
@@ -1246,11 +1250,11 @@ impl State {
                 // surface's `last_configure` in step, which is what popup positioning
                 // reads.
                 if let Err(error) = surface.configure(Some(x11_geometry(geometry))) {
-                    log::debug!(%error, %window, "[wm] the X11 configure failed");
+                    log::debug!(area = "wm", %error, %window, "the X11 configure failed");
                 }
             }
         }
-        log::debug!(%window, width = geometry.width, height = geometry.height, "[wm] configured");
+        log::debug!(area = "wm", %window, width = geometry.width, height = geometry.height, "configured");
     }
 
     /// Shows or hides a window's surface.
@@ -1277,7 +1281,7 @@ impl State {
     /// applied again when the reveal completes.
     fn move_focus(&mut self, focused: Option<WindowId>) {
         if self.lock.state() != LockState::Unlocked {
-            log::debug!(?focused, "[focus] withheld while the session is covered");
+            log::debug!(area = "focus", ?focused, "withheld while the session is covered");
             return;
         }
         // A keyboard-exclusive layer surface above the shell layer keeps the keyboard:
@@ -1297,7 +1301,7 @@ impl State {
             if let Managed::X11(surface) = &entry.surface
                 && let Err(error) = surface.set_activated(Some(*window) == focused)
             {
-                log::debug!(%error, %window, "[focus] the X11 activation state was not sent");
+                log::debug!(area = "focus", %error, %window, "the X11 activation state was not sent");
             }
         }
         self.set_keyboard_focus(target);
@@ -1494,7 +1498,7 @@ impl State {
             self.composer.insert_window(window, managed.geometry);
         }
         self.apply(effects);
-        log::debug!(%window, surface = ?wl_surface.id(), "[window] opened");
+        log::debug!(area = "window", %window, surface = ?wl_surface.id(), "opened");
         self.publish();
     }
 
@@ -1511,7 +1515,7 @@ impl State {
                 // A constraint the window's client held cannot outlive the surface it
                 // was created for.
                 self.constraint_tables.held.retain(|held| held.surface != wl_surface);
-                log::debug!(%window, surface = ?wl_surface.id(), "[window] closed");
+                log::debug!(area = "window", %window, surface = ?wl_surface.id(), "closed");
             }
             self.composer.remove_window(window);
             // The layout a window remembered goes with it: a recycled identity must not
@@ -1880,7 +1884,7 @@ impl State {
             scale,
         } = placement.transform
         else {
-            log::warn!(%window, %workspace, "[layout] a matrix placement is refused: unsupported-transform");
+            log::warn!(area = "layout", %window, %workspace, "a matrix placement is refused: unsupported-transform");
             return;
         };
         // A window closed since the run was submitted has nothing left to place.
@@ -1905,7 +1909,7 @@ impl State {
     /// Records that a workspace's layout run failed. The window manager already runs that
     /// workspace floating; the reason is kept for the compositor to report.
     fn layout_failed(&mut self, workspace: WorkspaceId, reason: &'static str) {
-        log::warn!(%workspace, reason, "[layout] failed; the workspace runs floating");
+        log::warn!(area = "layout", %workspace, reason, "failed; the workspace runs floating");
         self.layout_failures.insert(workspace, reason);
     }
 
@@ -2046,7 +2050,7 @@ impl State {
         let result = display.flush_clients();
         self.restore_display(display);
         if let Err(error) = result {
-            log::warn!(%error, "[wayland] flushing a client failed");
+            log::warn!(%error, "flushing a client failed");
         }
     }
 
@@ -2205,7 +2209,7 @@ impl State {
     /// bell itself is the count.
     pub(crate) fn ring_bell(&mut self, window: Option<WindowId>) {
         self.bells = self.bells.saturating_add(1);
-        log::debug!(?window, bells = self.bells, "[bell] rung");
+        log::debug!(area = "bell", ?window, bells = self.bells, "rung");
         self.publish();
     }
 
@@ -2479,7 +2483,7 @@ fn remove_disabled_globals(display_handle: &DisplayHandle, protocols: &Protocols
             continue;
         }
         display_handle.remove_global::<State>(id.clone());
-        log::debug!(global = global.as_str(), "[access] not advertised");
+        log::debug!(area = "access", global = global.as_str(), "not advertised");
     }
 }
 

@@ -95,18 +95,21 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     let stored = match store.load(source) {
         Ok(stored) => stored,
         Err(StoreError::Io { error, .. }) if error.kind() == io::ErrorKind::NotFound => {
-            log::debug!("[extensions] no accepted configuration yet; starting without extensions");
+            log::debug!(
+                area = "extensions",
+                "no accepted configuration yet; starting without extensions"
+            );
             return;
         }
         Err(error) => {
-            log::warn!(%error, "[extensions] the last accepted configuration cannot be read; starting without extensions");
+            log::warn!(area = "extensions", %error, "the last accepted configuration cannot be read; starting without extensions");
             return;
         }
     };
     let catalog = match catalog() {
         Ok(catalog) => catalog,
         Err(error) => {
-            log::warn!(%error, "[extensions] the stock schema cannot be read; starting without extensions");
+            log::warn!(area = "extensions", %error, "the stock schema cannot be read; starting without extensions");
             return;
         }
     };
@@ -120,20 +123,21 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     let plan = plan(loaded, &privileged);
 
     for refusal in &plan.refused {
-        log::warn!(namespace = %refusal.namespace, reason = %refusal.reason, "[extensions] {refusal}");
+        log::warn!(area = "extensions", namespace = %refusal.namespace, reason = %refusal.reason, "{refusal}");
     }
     for (role, grant) in plan.grants {
         match config.privileged.iter_mut().find(|connection| connection.role == role) {
             Some(connection) => connection.extension_grants.push(grant),
             None => {
-                log::warn!(role = %role, "[extensions] a grant names a role with no privileged connection")
+                log::warn!(area = "extensions", role = %role, "a grant names a role with no privileged connection")
             }
         }
     }
     log::info!(
+        area = "extensions",
         loaded = plan.routes.len(),
         refused = plan.refused.len(),
-        "[extensions] loaded from the last accepted configuration"
+        "loaded from the last accepted configuration"
     );
     config.extensions.extend(plan.routes);
 }
@@ -144,13 +148,16 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// file is found, there is no accepted document either, so nothing is loaded.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::warn!("[extensions] no state directory is set; starting without extensions");
+        log::warn!(
+            area = "extensions",
+            "no state directory is set; starting without extensions"
+        );
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
-            log::debug!(%error, "[extensions] no configuration file; starting without extensions")
+            log::debug!(area = "extensions", %error, "no configuration file; starting without extensions")
         }
     }
 }

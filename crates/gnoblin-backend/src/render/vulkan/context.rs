@@ -261,7 +261,7 @@ impl VkContext {
             Ok(created) => created,
             Err(error @ VulkanError::Driver { .. }) if wants_validation => {
                 // A layer that is listed but cannot load must not take the renderer down.
-                log::warn!(%error, "[render] the Vulkan validation layer could not be enabled");
+                log::warn!(area = "render", %error, "the Vulkan validation layer could not be enabled");
                 create_instance(&entry, false, &messages)?
             }
             Err(error) => return Err(error),
@@ -440,7 +440,7 @@ fn build(
         Ok(candidate) => candidate,
         Err(error) => return Err(Box::new((error, entry, instance, messenger))),
     };
-    log::debug!(device = %candidate.info.name, kind = ?candidate.info.kind, "[render] Vulkan device chosen");
+    log::debug!(area = "render", device = %candidate.info.name, kind = ?candidate.info.kind, "Vulkan device chosen");
     let priorities = [1.0_f32];
     let queues = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(candidate.family)

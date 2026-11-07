@@ -26,7 +26,7 @@ impl XdgDecorationHandler for State {
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: Mode) {
-        log::debug!(?mode, "[decoration] the client asked for a mode");
+        log::debug!(area = "decoration", ?mode, "the client asked for a mode");
         self.answer(toplevel);
     }
 

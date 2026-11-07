@@ -38,31 +38,31 @@ impl LinkedAgent for Introspection {
         let mut link = match link_from_environment() {
             Ok(link) => link,
             Err(error) => {
-                log::info!(%error, "[services] no compositor graph, so no introspection adapter");
+                log::info!(area = "services", %error, "no compositor graph, so no introspection adapter");
                 return false;
             }
         };
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                log::info!(%error, "[services] no session bus, so no introspection adapter");
+                log::info!(area = "services", %error, "no session bus, so no introspection adapter");
                 return false;
             }
         };
         let service = match IntrospectService::with_gate(Gate::new(self.mode, Default::default(), Default::default())) {
             Ok(service) => service,
             Err(error) => {
-                log::warn!(%error, "[services] the introspection adapter refused its support matrix");
+                log::warn!(area = "services", %error, "the introspection adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service)) {
-            log::warn!(%error, "[services] the introspection name is unavailable");
+            log::warn!(area = "services", %error, "the introspection name is unavailable");
             return false;
         }
         service.attach(&connection);
         if let Err(error) = block_on(service.publish(link.state().clone())) {
-            log::warn!(%error, "[services] the introspection state could not be published");
+            log::warn!(area = "services", %error, "the introspection state could not be published");
             return false;
         }
         let serving = service.clone();
@@ -73,21 +73,21 @@ impl LinkedAgent for Introspection {
                     match link.advance() {
                         Ok(true) => {
                             if let Err(error) = block_on(serving.publish(link.state().clone())) {
-                                log::warn!(%error, "[services] the introspection state could not be published");
+                                log::warn!(area = "services", %error, "the introspection state could not be published");
                             }
                         }
                         Ok(false) => {
-                            log::debug!("[services] the compositor closed the introspection link");
+                            log::debug!(area = "services", "the compositor closed the introspection link");
                             break;
                         }
                         Err(error) => {
-                            log::warn!(%error, "[services] the introspection link failed");
+                            log::warn!(area = "services", %error, "the introspection link failed");
                             break;
                         }
                     }
                 }
             })
-            .map_err(|error| log::warn!(%error, "[services] the introspection loop could not be started"));
+            .map_err(|error| log::warn!(area = "services", %error, "the introspection loop could not be started"));
         match handle {
             Ok(handle) => {
                 self.served = Some((service, connection, handle));

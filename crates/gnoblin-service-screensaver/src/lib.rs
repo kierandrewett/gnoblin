@@ -260,12 +260,12 @@ async fn watch_owners(connection: Connection, service: ScreenSaver) {
     let proxy = match fdo::DBusProxy::new(&connection).await {
         Ok(proxy) => proxy,
         Err(error) => {
-            log::warn!(%error, "[services] cannot watch bus names, so inhibits outlive their senders");
+            log::warn!(area = "services", %error, "cannot watch bus names, so inhibits outlive their senders");
             return;
         }
     };
     let Ok(mut owners) = proxy.receive_name_owner_changed().await else {
-        log::warn!("[services] cannot subscribe to NameOwnerChanged");
+        log::warn!(area = "services", "cannot subscribe to NameOwnerChanged");
         return;
     };
     while let Some(signal) = owners.next().await {
@@ -292,7 +292,7 @@ impl ScreenSaver {
     ) -> fdo::Result<u32> {
         let sender = sender_of(&header)?;
         let cookie = self.add_inhibit(&sender, application_name, reason)?;
-        log::info!(%sender, cookie, application = application_name, "[services] screensaver inhibited");
+        log::info!(area = "services", %sender, cookie, application = application_name, "screensaver inhibited");
         Ok(cookie)
     }
 
@@ -433,7 +433,7 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
     let connection = match block_on(Connection::session()) {
         Ok(connection) => connection,
         Err(error) => {
-            log::info!(%error, "[services] no session bus, so no screensaver service");
+            log::info!(area = "services", %error, "no session bus, so no screensaver service");
             return None;
         }
     };
@@ -441,7 +441,7 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
     match service.register(&connection) {
         Ok(()) => Some((service, connection)),
         Err(error) => {
-            log::warn!(%error, "[services] the screensaver service could not be served");
+            log::warn!(area = "services", %error, "the screensaver service could not be served");
             None
         }
     }

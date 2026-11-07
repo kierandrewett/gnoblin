@@ -112,8 +112,8 @@ impl SelectionHandler for State {
         // would be asking a resource that may be gone.
         let mime_types = source.as_ref().map(SelectionSource::mime_types);
         match &mime_types {
-            Some(mime_types) => log::debug!(?target, ?mime_types, "[selection] set"),
-            None => log::debug!(?target, "[selection] cleared"),
+            Some(mime_types) => log::debug!(area = "selection", ?target, ?mime_types, "set"),
+            None => log::debug!(area = "selection", ?target, "cleared"),
         }
         self.selections.set(target, mime_types);
         self.publish();
@@ -137,7 +137,12 @@ impl SelectionHandler for State {
         // the source's own client, which is what keeps the bytes out of the compositor.
         // This path is a compositor-set selection, and this slice sets none, so the
         // honest answer is end of file — dropping the write end is exactly that.
-        log::trace!(?target, mime_type, "[selection] no compositor selection to send");
+        log::trace!(
+            area = "selection",
+            ?target,
+            mime_type,
+            "no compositor selection to send"
+        );
         drop(fd);
     }
 }

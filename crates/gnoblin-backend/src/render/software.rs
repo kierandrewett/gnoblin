@@ -136,7 +136,7 @@ impl Software {
             });
         }
         let mut renderer = PixmanRenderer::new().map_err(|error| {
-            log::warn!(?error, "[render] the pixman renderer could not be created");
+            log::warn!(area = "render", ?error, "the pixman renderer could not be created");
             RenderError::Unavailable
         })?;
         let buffer = create_buffer(&mut renderer, physical)?;
@@ -639,10 +639,11 @@ fn create_buffer(renderer: &mut PixmanRenderer, physical: Size) -> Result<Pixman
         )
         .map_err(|error| {
             log::warn!(
+                area = "render",
                 ?error,
                 width = physical.width,
                 height = physical.height,
-                "[render] no offscreen buffer"
+                "no offscreen buffer"
             );
             RenderError::Unavailable
         })
@@ -658,8 +659,9 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
         .import_shm_buffer(&surface.buffer, None, &[])
         .map_err(|error| {
             log::warn!(
+                area = "render",
                 ?error,
-                "[render] a client buffer could not be imported; the layer is skipped"
+                "a client buffer could not be imported; the layer is skipped"
             );
         })
         .ok()?;
@@ -681,8 +683,9 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
         )
         .map_err(|error| {
             log::warn!(
+                area = "render",
                 ?error,
-                "[render] a tinted layer could not be made; the layer is skipped"
+                "a tinted layer could not be made; the layer is skipped"
             );
         })
         .ok()
@@ -702,7 +705,11 @@ fn import_overlay(renderer: &mut PixmanRenderer, image: &Image) -> Option<Pixman
             false,
         )
         .map_err(|error| {
-            log::warn!(?error, "[render] the overlay could not be imported; it is not drawn");
+            log::warn!(
+                area = "render",
+                ?error,
+                "the overlay could not be imported; it is not drawn"
+            );
         })
         .ok()
 }
@@ -767,7 +774,7 @@ fn tinted(colour: Color, tint: Color) -> Color {
 
 /// The one render failure for a pixman error, logged where it happens.
 fn failed(error: impl std::fmt::Debug) -> RenderError {
-    log::warn!(?error, "[render] the software renderer refused an operation");
+    log::warn!(area = "render", ?error, "the software renderer refused an operation");
     RenderError::Failed
 }
 

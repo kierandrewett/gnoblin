@@ -188,7 +188,7 @@ impl ZwlrScreencopyV1ScreencopyFrame {
         // Checked again at the copy boundary: a frame object created before the cover
         // went up must never expose the desktop after it did.
         if !state.capture_allowed() {
-            log::debug!(output = %self.output, "[capture] a screencopy frame is refused during the lock");
+            log::debug!(area = "capture", output = %self.output, "a screencopy frame is refused during the lock");
             resource.failed();
             state.flush();
             return;

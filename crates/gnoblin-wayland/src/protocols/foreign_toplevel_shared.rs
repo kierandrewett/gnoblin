@@ -187,7 +187,7 @@ impl State {
                 let entry = self.foreign_toplevels.entries.remove(index);
                 wlr::send_closed(&entry);
                 self.foreign_toplevel_list_state.remove_toplevel(&entry.ext);
-                log::debug!(%window, "[toplevel] closed");
+                log::debug!(area = "toplevel", %window, "closed");
             }
         }
 

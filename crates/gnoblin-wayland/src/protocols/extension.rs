@@ -321,7 +321,7 @@ impl Shell1Host for State {
         // There is no startup-notification sequence table yet, so the id is
         // recorded for the log and attributes nothing. The focus rule is present's.
         if let Some(startup_id) = startup_id {
-            log::debug!(startup_id, %window, "[gtk-shell] a focus request named a startup id");
+            log::debug!(area = "gtk-shell", startup_id, %window, "a focus request named a startup id");
         }
         <Self as Shell1Host>::present(self, window, 0)
     }
@@ -333,7 +333,7 @@ impl Shell1Host for State {
     fn launch(&mut self, startup_id: &str) {
         // Mutter adds a startup sequence here; this session has no sequence table,
         // so the launch is recorded and logged and nothing is completed by it.
-        log::debug!(startup_id, "[gtk-shell] a client announced a launch");
+        log::debug!(area = "gtk-shell", startup_id, "a client announced a launch");
     }
 }
 

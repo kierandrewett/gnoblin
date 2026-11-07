@@ -243,13 +243,13 @@ impl State {
         };
         let handle = self.keyboard.clone();
         match handle.set_xkb_config(self, config) {
-            Ok(()) => log::debug!(layout = %source.layout,
+            Ok(()) => log::debug!(area = "keyboard", layout = %source.layout,
                 variant = %source.variant,
-                "[keyboard] the keymap changed"
+                "the keymap changed"
             ),
             // The previous keymap stays installed: a session with a stale layout is usable
             // and one with no keymap is not.
-            Err(error) => log::warn!(?error, layout = %source.layout, "[keyboard] the keymap was refused"),
+            Err(error) => log::warn!(area = "keyboard", ?error, layout = %source.layout, "the keymap was refused"),
         }
     }
 
@@ -391,7 +391,7 @@ impl State {
         );
         let consumed = routed.target != Target::Client;
         if consumed {
-            log::debug!(keycode, target = %routed.target, fired = ?routed.fired, "[key] consumed");
+            log::debug!(area = "key", keycode, target = %routed.target, fired = ?routed.fired, "consumed");
         }
         consumed
     }

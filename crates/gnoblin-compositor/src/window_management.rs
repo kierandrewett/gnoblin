@@ -27,10 +27,13 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.window_management.clone().unwrap_or_default();
             apply(config, &section);
-            log::debug!("[window-management] loaded from the last accepted configuration");
+            log::debug!(
+                area = "window-management",
+                "loaded from the last accepted configuration"
+            );
         }
         Err(error) => {
-            log::warn!(%error, "[window-management] configuration not readable; the defaults are used")
+            log::warn!(area = "window-management", %error, "configuration not readable; the defaults are used")
         }
     }
 }
@@ -40,13 +43,16 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[window-management] no state directory is set; the defaults are used");
+        log::debug!(
+            area = "window-management",
+            "no state directory is set; the defaults are used"
+        );
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
-            log::debug!(%error, "[window-management] no configuration file; the defaults are used")
+            log::debug!(area = "window-management", %error, "no configuration file; the defaults are used")
         }
     }
 }

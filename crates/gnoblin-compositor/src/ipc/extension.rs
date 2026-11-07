@@ -154,15 +154,17 @@ impl ExtensionRouter {
             Some(Kind::Reply(_)) | Some(Kind::Error(_)) => {
                 let Some(pending) = self.pending.remove(&envelope.request_id) else {
                     log::debug!(
+                        area = "ipc",
                         id = envelope.request_id,
-                        "[ipc] a provider answered a request nobody is waiting for"
+                        "a provider answered a request nobody is waiting for"
                     );
                     return Vec::new();
                 };
                 if pending.provider != provider || pending.namespace != envelope.namespace {
                     log::debug!(
+                        area = "ipc",
                         id = envelope.request_id,
-                        "[ipc] a provider answered a request addressed to another"
+                        "a provider answered a request addressed to another"
                     );
                     return Vec::new();
                 }
@@ -234,7 +236,7 @@ impl ExtensionRouter {
 /// Anything that is not a request has no one waiting for it, so it is dropped.
 fn refuse(client: ClientId, envelope: &Envelope, code: &str, message: &str) -> Vec<FrameDelivery> {
     if !matches!(&envelope.kind, Some(Kind::Request(_))) {
-        log::debug!(code, message, "[ipc] an extension frame was refused");
+        log::debug!(area = "ipc", code, message, "an extension frame was refused");
         return Vec::new();
     }
     vec![FrameDelivery {

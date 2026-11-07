@@ -30,6 +30,8 @@
 
 #![forbid(unsafe_code)]
 
+gnoblin_log::logger!(log = "a11y");
+
 /// The D-Bus object, the owner table and the threads that serve them.
 pub mod service;
 

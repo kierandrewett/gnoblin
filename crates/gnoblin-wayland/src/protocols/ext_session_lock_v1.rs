@@ -200,7 +200,7 @@ impl SessionLockHandler for State {
         // object and that the lock is `Locked`; the state machine answers with the
         // reveal or with nothing.
         let Some(locker) = self.lock.locker() else {
-            log::warn!("[lock] an unlock arrived with no owner; the cover stays");
+            log::warn!(area = "lock", "an unlock arrived with no owner; the cover stays");
             return;
         };
         let effects = self.lock.apply(LockEvent::UnlockRequested { locker });
@@ -215,7 +215,7 @@ impl SessionLockHandler for State {
             // A lock surface for an output this session does not drive cannot be
             // configured, so it is not tracked and never receives input. The cover
             // stays up regardless, so nothing is exposed by ignoring it.
-            log::warn!("[lock] a lock surface names an output that is not connected");
+            log::warn!(area = "lock", "a lock surface names an output that is not connected");
             return;
         };
         let Some(size) = self.output_size(target) else {
@@ -225,7 +225,7 @@ impl SessionLockHandler for State {
         // it carries the output's whole logical size.
         surface.with_pending_state(|state| state.size = Some(size));
         surface.send_configure();
-        log::debug!(?locker, %target, "[lock] lock surface created");
+        log::debug!(area = "lock", ?locker, %target, "lock surface created");
         self.lock_tables.surfaces.push(ExtSessionLockV1LockSurfaceEntry {
             locker,
             output: target,
@@ -237,9 +237,9 @@ impl SessionLockHandler for State {
     fn ack_configure(&mut self, surface: WlSurface, configure: LockSurfaceConfigure) {
         // Nothing waits on the acknowledgement: the client's commit is what says the
         // surface has content, and that is what moves input onto it.
-        log::debug!(serial = ?configure.serial,
+        log::debug!(area = "lock", serial = ?configure.serial,
             surface = ?surface.id(),
-            "[lock] configure acknowledged"
+            "configure acknowledged"
         );
     }
 }
@@ -289,7 +289,7 @@ impl State {
         while let Some(effect) = queue.pop_front() {
             match effect {
                 LockEffect::Cover { generation, subjects } => {
-                    log::debug!(generation, ?subjects, "[lock] the cover is up");
+                    log::debug!(area = "lock", generation, ?subjects, "the cover is up");
                     self.lock_tables.cover_generation = generation;
                     // Nothing a client captured survives the cover: a pointer lock and a
                     // shortcut inhibitor are both claims on the session's input, and the
@@ -297,7 +297,7 @@ impl State {
                     self.cover_raised();
                 }
                 LockEffect::AwaitPresentation { generation, outputs } => {
-                    log::debug!(generation, ?outputs, "[lock] waiting for a covering frame");
+                    log::debug!(area = "lock", generation, ?outputs, "waiting for a covering frame");
                     self.lock_tables.barrier = Some(ExtSessionLockV1Barrier {
                         generation,
                         pending: outputs,
@@ -318,16 +318,17 @@ impl State {
                 }
                 LockEffect::KeepCovered { reason } => {
                     log::info!(
+                        area = "lock",
                         reason = reason.as_str(),
-                        "[lock] the cover stays and nothing is revealed"
+                        "the cover stays and nothing is revealed"
                     );
                 }
                 LockEffect::Embargo(embargo) => {
-                    log::debug!(?embargo, "[lock] embargo changed");
+                    log::debug!(area = "lock", ?embargo, "embargo changed");
                     self.lock_embargo = embargo;
                 }
                 LockEffect::Publish(published) => {
-                    log::debug!(?published, "[lock] published");
+                    log::debug!(area = "lock", ?published, "published");
                 }
             }
         }
@@ -487,7 +488,7 @@ impl State {
         } else {
             LockEvent::LockerSurfaceUnmapped { locker, output }
         };
-        log::debug!(?locker, %output, mapped, "[lock] lock surface commit");
+        log::debug!(area = "lock", ?locker, %output, mapped, "lock surface commit");
         let effects = self.lock.apply(event);
         self.apply_lock(effects);
     }
@@ -552,13 +553,13 @@ impl State {
             .iter()
             .position(|pending| pending.locker == locker)
         else {
-            log::warn!(?locker, "[lock] a lock was granted with no request to confirm");
+            log::warn!(area = "lock", ?locker, "a lock was granted with no request to confirm");
             return;
         };
         let pending = self.lock_tables.pending.remove(index);
         self.lock_tables.owner = Some(pending.object);
         pending.confirmation.lock();
-        log::info!(?locker, "[lock] the cover is presented; the session is locked");
+        log::info!(area = "lock", ?locker, "the cover is presented; the session is locked");
     }
 
     /// Refuses a request: a dropped confirmation is what the client sees as
@@ -579,12 +580,17 @@ impl State {
                 // lock that was not granted.
                 drop(refused);
             }
-            log::info!(?locker, reason = reason.as_str(), "[lock] the request was refused");
+            log::info!(
+                area = "lock",
+                ?locker,
+                reason = reason.as_str(),
+                "the request was refused"
+            );
             return;
         }
         // The remaining reasons are protocol errors the client caused, and Smithay
         // has already posted the error that ends its connection.
-        log::debug!(?locker, reason = reason.as_str(), "[lock] refused");
+        log::debug!(area = "lock", ?locker, reason = reason.as_str(), "refused");
     }
 
     /// Sends a fresh configure for the current layout to the owner's surfaces.
@@ -614,7 +620,7 @@ impl State {
         // The composer drew nothing while the session was covered, so the desktop has
         // to be painted again rather than waiting for a window to move.
         self.damage_outputs();
-        log::debug!("[lock] the reveal is complete");
+        log::debug!(area = "lock", "the reveal is complete");
     }
 
     /// Forgets lock surfaces whose surface or connection is gone.

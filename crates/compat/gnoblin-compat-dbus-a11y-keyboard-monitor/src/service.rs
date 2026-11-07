@@ -32,10 +32,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use crate::log;
 use futures_lite::StreamExt;
 use gnoblin_a11y::ids::{Keysym, OwnerId};
 use gnoblin_a11y::{Event, Keystroke, Modifiers};
-use gnoblin_log::warn_in;
 use zbus::connection::Builder;
 use zbus::fdo;
 use zbus::message::Header;
@@ -104,7 +104,7 @@ impl KeyReporter {
             Ok(()) => true,
             Err(TrySendError::Full(_)) => {
                 let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
-                warn_in!("a11y", %dropped, "[a11y] KeyEvent queue is full, so a monitor missed a key");
+                log::warn!(area = "a11y", %dropped, "KeyEvent queue is full, so a monitor missed a key");
                 false
             }
             // The report thread is gone: the bus connection closed. There is no
@@ -314,12 +314,12 @@ async fn watch_owners(connection: Connection, events: SyncSender<Event>, owners:
     let proxy = match fdo::DBusProxy::new(&connection).await {
         Ok(proxy) => proxy,
         Err(error) => {
-            warn_in!("a11y", %error, "[a11y] cannot watch bus names, so a departed monitor keeps its grabs");
+            log::warn!(area = "a11y", %error, "cannot watch bus names, so a departed monitor keeps its grabs");
             return;
         }
     };
     let Ok(mut changes) = proxy.receive_name_owner_changed().await else {
-        warn_in!("a11y", "[a11y] cannot subscribe to NameOwnerChanged");
+        log::warn!(area = "a11y", "cannot subscribe to NameOwnerChanged");
         return;
     };
     while let Some(signal) = changes.next().await {
@@ -360,7 +360,7 @@ fn emit_reports(connection: Connection, reports: Receiver<KeyReport>, owners: Ar
         for name in names {
             let sent = block_on(connection.emit_signal(Some(name.as_str()), PATH, INTERFACE, "KeyEvent", &body));
             if let Err(error) = sent {
-                warn_in!("a11y", %error, "[a11y] cannot send a KeyEvent to a monitor");
+                log::warn!(area = "a11y", %error, "cannot send a KeyEvent to a monitor");
             }
         }
     }

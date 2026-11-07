@@ -130,7 +130,7 @@ impl Dispatch2<WpTearingControlV1, State> for WpTearingControlV1TearingControlUs
                     // asks: ignore it rather than guess what it means.
                     _ => return,
                 };
-                log::debug!(surface = ?self.surface.id(), ?hint, "[tearing] a client set a hint");
+                log::debug!(area = "tearing", surface = ?self.surface.id(), ?hint, "a client set a hint");
                 state.set_tearing_hint(&self.surface, hint);
             }
             wp_tearing_control_v1::Request::Destroy => {

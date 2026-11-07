@@ -58,7 +58,7 @@ fn main() -> ExitCode {
     let options = gnoblin_log::init::LogOptions::from_environment(&log_settings(&logging));
     let _log = gnoblin_log::init::init(gnoblin_log::ProcessRole::Portal, &options);
     if let Some(problem) = problem {
-        log::warn!("[logging] {problem}; the default logging is used");
+        log::warn!(area = "logging", "{problem}; the default logging is used");
     }
     match run() {
         Ok(()) => ExitCode::SUCCESS,

@@ -71,8 +71,8 @@ pub(crate) fn announce_new_text_inputs(state: &mut State) {
 
 impl TextInputActivation for State {
     fn activated(&mut self, content_type: Option<(ContentHint, ContentPurpose)>) {
-        log::debug!(hint = ?content_type.map(|(hint, _)| hint),
-            "[text-input] a client enabled its text input"
+        log::debug!(area = "text-input", hint = ?content_type.map(|(hint, _)| hint),
+            "a client enabled its text input"
         );
         // A client enables a text input only after it was told it has focus, and the sweep
         // after the dispatch that created it is what told it.
@@ -80,6 +80,6 @@ impl TextInputActivation for State {
     }
 
     fn deactivated(&mut self) {
-        log::debug!("[text-input] the active text input was disabled");
+        log::debug!(area = "text-input", "the active text input was disabled");
     }
 }

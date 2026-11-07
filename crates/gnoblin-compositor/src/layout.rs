@@ -111,10 +111,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             // The user root is the directory the accepted document was read from, so a
             // `require` in that document and the layouts it names resolve from one place.
             settings.config_dir = source.parent().map(Path::to_path_buf);
-            log::debug!(default = %selector_key(&settings.default), "[layout] loaded from the last accepted configuration");
+            log::debug!(area = "layout", default = %selector_key(&settings.default), "loaded from the last accepted configuration");
             config.layouts = settings;
         }
-        Err(error) => log::warn!(%error, "[layout] configuration not readable; every workspace floats"),
+        Err(error) => log::warn!(area = "layout", %error, "configuration not readable; every workspace floats"),
     }
 }
 
@@ -124,12 +124,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// file there is no accepted document, so every workspace floats.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[layout] no state directory is set; every workspace floats");
+        log::debug!(area = "layout", "no state directory is set; every workspace floats");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => log::debug!(%error, "[layout] no configuration file; every workspace floats"),
+        Err(error) => log::debug!(area = "layout", %error, "no configuration file; every workspace floats"),
     }
 }
 
@@ -229,7 +229,7 @@ impl WorkspaceLayouts {
         }
         for (key, selector) in selectors {
             if let Err(failure) = load_selector(&mut host, selector) {
-                log::warn!(layout = %key, reason = ?failure.reason, message = %failure.message, "[layout] layout cannot be loaded; workspaces that use it float");
+                log::warn!(area = "layout", layout = %key, reason = ?failure.reason, message = %failure.message, "layout cannot be loaded; workspaces that use it float");
                 failed.insert(key);
             }
         }
@@ -300,7 +300,7 @@ impl WorkspaceLayouts {
         match host.register(name, name, Data::Table(BTreeMap::new())) {
             Ok(()) => Ok(()),
             Err(failure) => {
-                log::warn!(layout = name, reason = ?failure.reason, message = %failure.message, "[layout] runtime layout cannot be loaded");
+                log::warn!(area = "layout", layout = name, reason = ?failure.reason, message = %failure.message, "runtime layout cannot be loaded");
                 if failure.message.contains("not found") {
                     return Err(format!("unknown layout: `{name}` has no layout module"));
                 }

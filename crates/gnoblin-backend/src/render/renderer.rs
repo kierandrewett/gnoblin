@@ -127,7 +127,10 @@ impl AnyRenderer {
 
     #[cfg(not(feature = "vulkan"))]
     fn vulkan(_physical: Size) -> Result<Self, RenderError> {
-        log::warn!("[render] this build has no Vulkan renderer (the `vulkan` feature is off)");
+        log::warn!(
+            area = "render",
+            "this build has no Vulkan renderer (the `vulkan` feature is off)"
+        );
         Err(RenderError::Unavailable)
     }
 

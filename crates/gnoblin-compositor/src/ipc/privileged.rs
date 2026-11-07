@@ -88,7 +88,7 @@ impl Privileged {
                 continue;
             };
             if grants(&role).is_empty() {
-                log::warn!(variable = %name, "[ipc] ignoring a privileged descriptor this build grants nothing to");
+                log::warn!(area = "ipc", variable = %name, "ignoring a privileged descriptor this build grants nothing to");
                 continue;
             }
             let stream =

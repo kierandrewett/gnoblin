@@ -40,9 +40,9 @@ pub(crate) fn global(display: &DisplayHandle) -> XdgToplevelIconManager {
 
 impl XdgToplevelIconHandler for State {
     fn set_icon(&mut self, toplevel: XdgToplevel, wl_surface: WlSurface) {
-        log::debug!(toplevel = %toplevel.id(),
+        log::debug!(area = "xdg-toplevel-icon", toplevel = %toplevel.id(),
             surface = %wl_surface.id(),
-            "[xdg-toplevel-icon] icon assigned; read on the next toplevel commit"
+            "icon assigned; read on the next toplevel commit"
         );
     }
 }

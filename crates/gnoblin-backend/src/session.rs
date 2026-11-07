@@ -253,7 +253,7 @@ impl Seat {
     pub fn open() -> Result<Self, SessionError> {
         let (session, notifier) = LibSeatSession::new().map_err(|error| SessionError::Libseat(format!("{error:?}")))?;
         let name = session.seat();
-        log::debug!(seat = %name, "[session] opened the seat session");
+        log::debug!(area = "session", seat = %name, "opened the seat session");
         Ok(Self {
             session,
             name,
@@ -294,7 +294,7 @@ impl Seat {
     pub fn open_device(&mut self, path: &Path) -> Result<OwnedFd, SessionError> {
         let flags = OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY;
         self.session.open(path, flags).map_err(|error| {
-            log::warn!(path = %path.display(), ?error, "[session] the seat refused a device");
+            log::warn!(area = "session", path = %path.display(), ?error, "the seat refused a device");
             SessionError::Open {
                 path: path.display().to_string(),
                 reason: format!("{error:?}"),
@@ -309,7 +309,7 @@ impl Seat {
     /// [`SessionError::Switch`] when the seat refuses, which a session with one VT reports.
     pub fn change_vt(&mut self, vt: i32) -> Result<(), SessionError> {
         self.session.change_vt(vt).map_err(|error| {
-            log::warn!(vt, ?error, "[session] the seat refused a VT switch");
+            log::warn!(area = "session", vt, ?error, "the seat refused a VT switch");
             SessionError::Switch {
                 vt,
                 reason: format!("{error:?}"),

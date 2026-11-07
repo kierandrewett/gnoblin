@@ -377,7 +377,7 @@ impl Nested {
             readable: Arc::new(AtomicBool::new(false)),
         };
         backend.await_first_configures()?;
-        log::info!(socket = %config.socket.display(), outputs = backend.outputs.len(), "[nested] connected to the parent");
+        log::info!(area = "nested", socket = %config.socket.display(), outputs = backend.outputs.len(), "connected to the parent");
         Ok(backend)
     }
 
@@ -490,7 +490,7 @@ impl Nested {
     /// thing to a session: there is nothing left to draw on.
     fn fail(&mut self, error: impl std::fmt::Debug) {
         if self.handler.table().is_connected() {
-            log::warn!(?error, "[nested] the connection to the parent ended");
+            log::warn!(area = "nested", ?error, "the connection to the parent ended");
         }
         self.handler.table_mut().disconnected();
     }
@@ -546,7 +546,7 @@ impl Nested {
                 return;
             }
             Some(Err(error)) => {
-                log::warn!(?error, "[nested] a configure was refused");
+                log::warn!(area = "nested", ?error, "a configure was refused");
                 return;
             }
             None => {}
@@ -559,19 +559,22 @@ impl Nested {
             return;
         };
         let Some(format) = self.handler.format() else {
-            log::warn!("[nested] the parent and this session agree on no shared-memory format");
+            log::warn!(
+                area = "nested",
+                "the parent and this session agree on no shared-memory format"
+            );
             return;
         };
         let qh = self.queue.handle();
         match NestedTarget::new(&qh, &self.handler.shm, format, surface, viewport, index, output.clone()) {
             Ok(target) => {
-                log::debug!(connector = %output.connector, "[nested] an output connected");
+                log::debug!(area = "nested", connector = %output.connector, "an output connected");
                 if let Some(slot) = self.targets.get_mut(index) {
                     *slot = Some(target);
                 }
                 self.pending.push(BackendEvent::OutputConnected(output));
             }
-            Err(error) => log::warn!(?error, "[nested] the output could not be created"),
+            Err(error) => log::warn!(area = "nested", ?error, "the output could not be created"),
         }
     }
 

@@ -375,7 +375,7 @@ impl Compositor {
             display = %display_name,
             version = %version,
             backend = backend_name,
-            "[compositor] serving"
+            "serving"
         );
         // The watcher is joined below, and it only returns once a stop is requested. The stop
         // is therefore requested after the loop ends, even when the loop stopped on its own.

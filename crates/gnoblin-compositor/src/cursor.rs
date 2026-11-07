@@ -22,10 +22,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.cursor.clone().unwrap_or_default();
             let settings = cursor_settings(section);
-            log::debug!(theme = %settings.theme, size = settings.size, "[cursor] loaded from the last accepted configuration");
+            log::debug!(area = "cursor", theme = %settings.theme, size = settings.size, "loaded from the last accepted configuration");
             config.wayland.cursor = settings;
         }
-        Err(error) => log::warn!(%error, "[cursor] configuration not readable; the default cursor is used"),
+        Err(error) => log::warn!(area = "cursor", %error, "configuration not readable; the default cursor is used"),
     }
 }
 
@@ -34,12 +34,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the default cursor is used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[cursor] no state directory is set; the default cursor is used");
+        log::debug!(area = "cursor", "no state directory is set; the default cursor is used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => log::debug!(%error, "[cursor] no configuration file; the default cursor is used"),
+        Err(error) => log::debug!(area = "cursor", %error, "no configuration file; the default cursor is used"),
     }
 }
 

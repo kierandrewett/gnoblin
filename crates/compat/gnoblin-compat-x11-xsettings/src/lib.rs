@@ -161,7 +161,7 @@ impl Owner {
 impl XSettings for Owner {
     fn settings(&mut self) -> Vec<(String, Setting)> {
         if !self.switch.is_on() {
-            log::debug!("[xsettings] the target is off, so the property is emptied");
+            log::debug!("the target is off, so the property is emptied");
             return Vec::new();
         }
         publish(&self.settings)
@@ -169,8 +169,8 @@ impl XSettings for Owner {
 
     fn published(&mut self, result: Result<(), String>) {
         match result {
-            Ok(()) => log::debug!("[xsettings] the property was written"),
-            Err(reason) => log::debug!(reason, "[xsettings] the property could not be written"),
+            Ok(()) => log::debug!("the property was written"),
+            Err(reason) => log::debug!(reason, "the property could not be written"),
         }
     }
 }

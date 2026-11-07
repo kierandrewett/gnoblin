@@ -586,20 +586,24 @@ impl Target for NestedTarget {
         }
         let Some(slot) = self.ring.take() else {
             // Every buffer is still attached; the parent is behind.
-            log::debug!("[nested] every buffer is in flight, so this frame waits");
+            log::debug!(area = "nested", "every buffer is in flight, so this frame waits");
             return Present::Nothing;
         };
         let released = u8::try_from(slot).unwrap_or(0);
         let image = match self.software.capture(true) {
             Ok(image) => image,
             Err(error) => {
-                log::warn!(?error, "[nested] the frame could not be read back");
+                log::warn!(area = "nested", ?error, "the frame could not be read back");
                 self.ring.release(released);
                 return Present::Nothing;
             }
         };
         if let Err(error) = self.write_slot(slot, &image) {
-            log::warn!(?error, "[nested] the frame could not be written into its buffer");
+            log::warn!(
+                area = "nested",
+                ?error,
+                "the frame could not be written into its buffer"
+            );
             self.ring.release(released);
             return Present::Nothing;
         }
@@ -735,7 +739,7 @@ fn anonymous_file(length: usize) -> io::Result<File> {
     // unlink is not fatal: the session still has its buffer, and the worst case is a
     // stale path in the runtime directory that the next counter avoids.
     if let Err(error) = std::fs::remove_file(&path) {
-        log::debug!(?error, path = %path.display(), "[nested] the buffer file was not unlinked");
+        log::debug!(area = "nested", ?error, path = %path.display(), "the buffer file was not unlinked");
     }
     file.set_len(u64::try_from(length).unwrap_or(u64::MAX))?;
     Ok(file)

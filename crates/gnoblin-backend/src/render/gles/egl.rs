@@ -48,7 +48,7 @@ pub(super) fn context() -> Result<GlowRenderer, RenderError> {
     // `eglGetPlatformDisplay`/`eglTerminate` on the same display — this process reaches
     // EGL through Smithay alone, so the display's lifetime is Smithay's to track.
     let display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay) }.map_err(|error| {
-        log::debug!(?error, "[render] no surfaceless EGL display");
+        log::debug!(area = "render", ?error, "no surfaceless EGL display");
         RenderError::Unavailable
     })?;
     context_on(&display)
@@ -68,7 +68,7 @@ pub(crate) fn gbm_display(device: &GbmDevice<DrmDeviceFd>) -> Result<EGLDisplay,
     // the device and the display together and drops the contexts first. Nothing else in the
     // process terminates this display: it is reached through Smithay alone.
     unsafe { EGLDisplay::new(device.clone()) }.map_err(|error| {
-        log::debug!(?error, "[render] no EGL display on the GBM device");
+        log::debug!(area = "render", ?error, "no EGL display on the GBM device");
         RenderError::Unavailable
     })
 }
@@ -86,19 +86,23 @@ pub(super) fn context_on(display: &EGLDisplay) -> Result<GlowRenderer, RenderErr
             // A driver without a renderable RGBA8 config may still offer a configless
             // context, which is enough here: every draw goes into a framebuffer object,
             // so no surface and no config are needed beyond colour depth on the texture.
-            log::debug!(?error, "[render] no configured GLES 3 context; trying a configless one");
+            log::debug!(
+                area = "render",
+                ?error,
+                "no configured GLES 3 context; trying a configless one"
+            );
             EGLContext::new(display).map_err(|error| {
-                log::debug!(?error, "[render] no GLES 3 context");
+                log::debug!(area = "render", ?error, "no GLES 3 context");
                 RenderError::Unavailable
             })?
         }
     };
-    log::info!("[render] the GLES context is ready");
+    log::info!(area = "render", "the GLES context is ready");
     // SAFETY: `GlowRenderer::new` is unsafe because a context active on another thread
     // would be undefined behaviour. This context was created by this call on this thread,
     // is shared with nothing, and nothing else in the process makes a context current.
     unsafe { GlowRenderer::new(context) }.map_err(|error| {
-        log::debug!(?error, "[render] the GLES renderer could not be created");
+        log::debug!(area = "render", ?error, "the GLES renderer could not be created");
         RenderError::Unavailable
     })
 }

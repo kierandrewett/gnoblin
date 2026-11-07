@@ -83,7 +83,7 @@ impl GlobalDispatch2<ZwlrOutputPowerManagerV1, State> for ZwlrOutputPowerManagem
         data_init: &mut DataInit<'_, State>,
     ) {
         data_init.init(resource, ZwlrOutputPowerManagementV1ManagerUserData);
-        log::debug!(client = ?client.id(), "[power] a client bound the output power manager");
+        log::debug!(area = "power", client = ?client.id(), "a client bound the output power manager");
     }
 
     fn can_view(&self, client: &Client) -> bool {
@@ -117,17 +117,20 @@ impl Dispatch2<ZwlrOutputPowerManagerV1, State> for ZwlrOutputPowerManagementV1M
                             Mode::Off
                         };
                         object.mode(mode);
-                        log::debug!(%output, "[power] a client took output power control");
+                        log::debug!(area = "power", %output, "a client took output power control");
                     }
                     _ => {
                         let object = data_init.init(id, ZwlrOutputPowerManagementV1PowerUserData { output: None });
                         object.failed();
-                        log::debug!("[power] power control was refused: no such output, no support, or already held");
+                        log::debug!(
+                            area = "power",
+                            "power control was refused: no such output, no support, or already held"
+                        );
                     }
                 }
             }
             manager::Request::Destroy => {}
-            _ => log::trace!("[power] an unknown manager request"),
+            _ => log::trace!(area = "power", "an unknown manager request"),
         }
     }
 }
@@ -157,7 +160,7 @@ impl Dispatch2<ZwlrOutputPowerV1, State> for ZwlrOutputPowerManagementV1PowerUse
                 }
             }
             power::Request::Destroy => {}
-            _ => log::trace!("[power] an unknown power request"),
+            _ => log::trace!(area = "power", "an unknown power request"),
         }
     }
 

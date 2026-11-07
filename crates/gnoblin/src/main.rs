@@ -91,7 +91,7 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()
     let options = gnoblin_log::init::LogOptions::from_environment(&log_settings(&logging));
     let _log = gnoblin_log::init::init(log_role(&role), &options);
     if let Some(problem) = problem {
-        log::warn!("[logging] {problem}; the default logging is used");
+        log::warn!(area = "logging", "{problem}; the default logging is used");
     }
     dispatch(role)
 }

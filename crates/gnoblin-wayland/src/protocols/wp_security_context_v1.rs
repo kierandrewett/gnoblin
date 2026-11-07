@@ -38,10 +38,10 @@ use crate::log;
 
 impl SecurityContextHandler for State {
     fn context_created(&mut self, source: SecurityContextListenerSource, context: SecurityContext) {
-        log::debug!(engine = ?context.sandbox_engine,
+        log::debug!(area = "access", engine = ?context.sandbox_engine,
             app_id = ?context.app_id,
             instance = ?context.instance_id,
-            "[access] a security context was created"
+            "a security context was created"
         );
         self.pending_contexts.push(source);
     }

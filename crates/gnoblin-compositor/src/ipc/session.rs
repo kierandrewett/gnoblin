@@ -234,7 +234,7 @@ impl SessionSync {
     /// is an event, and the state it leaves behind is the version.
     pub fn ready(&mut self) {
         if let Err(error) = self.graph.signal(self.session, member::READY, Fields::new()) {
-            log::error!(%error, "[ipc] the session object declares no ready signal");
+            log::error!(area = "ipc", %error, "the session object declares no ready signal");
         }
     }
     /// Writes the `settings` object from the configuration's `appearance` and `cursor`
@@ -278,7 +278,7 @@ impl SessionSync {
             let mut fields = Fields::new();
             fields.insert(member::COUNT.to_owned(), Value::Uint(self.bells));
             if let Err(error) = self.graph.signal(self.session, member::BELL, fields) {
-                log::error!(%error, "[ipc] the session object declares no bell signal");
+                log::error!(area = "ipc", %error, "the session object declares no bell signal");
                 return;
             }
         }
@@ -329,7 +329,7 @@ impl SessionSync {
             return;
         }
         if let Err(error) = self.graph.set(object, property, value) {
-            log::error!(%error, property, "[ipc] an object declares no such property");
+            log::error!(area = "ipc", %error, property, "an object declares no such property");
         }
     }
 

@@ -559,7 +559,7 @@ impl Gpu {
         let resources = match device.resource_handles() {
             Ok(resources) => resources,
             Err(error) => {
-                log::warn!(%error, "[drm] the GPU's resources could not be re-read; the change is skipped");
+                log::warn!(area = "drm", %error, "the GPU's resources could not be re-read; the change is skipped");
                 return;
             }
         };
@@ -568,7 +568,7 @@ impl Gpu {
             match device.get_connector(port.handle, true) {
                 Ok(info) => infos.push(info),
                 Err(error) => {
-                    log::warn!(connector = %port.connector.name, %error, "[drm] the connector could not be re-read; the change is skipped");
+                    log::warn!(area = "drm", connector = %port.connector.name, %error, "the connector could not be re-read; the change is skipped");
                     return;
                 }
             }
@@ -650,7 +650,7 @@ impl Gpu {
                     queue.push_back(crtc);
                 }
                 DrmEvent::Error(error) => {
-                    log::warn!(%error, "[drm] the device reported an error on its event queue");
+                    log::warn!(area = "drm", %error, "the device reported an error on its event queue");
                 }
             })
             .map_err(|error| io::Error::other(error.to_string()))?;
@@ -903,7 +903,7 @@ fn enumerate(device: &mut DrmDevice) -> Result<Vec<Port>, String> {
             match bring_up_port(&mut port, device, &resources, &info, &taken) {
                 Ok(()) => taken.extend(port.crtc()),
                 Err(reason) => {
-                    log::warn!(connector = %port.connector.name, %reason, "[drm] the connector stays disconnected");
+                    log::warn!(area = "drm", connector = %port.connector.name, %reason, "the connector stays disconnected");
                 }
             }
         }

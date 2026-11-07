@@ -656,7 +656,7 @@ impl Composer {
                 // scene's damage already covers the rotated bounds, so skipping the
                 // layer repaints those pixels with the background rather than leaving
                 // stale ones.
-                log::debug!(%window, "[render] a rotated window is not drawn by the software renderer");
+                log::debug!(area = "render", %window, "a rotated window is not drawn by the software renderer");
                 continue;
             }
             frame.push_layer(Layer::Surface(Surface {

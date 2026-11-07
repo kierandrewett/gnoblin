@@ -48,7 +48,7 @@ impl ImageCopyCaptureHandler for State {
 
     fn new_session(&mut self, session: CaptureSession) {
         let Some(target) = self.capture.target_of(&session.source()) else {
-            log::warn!("[capture] a session names a source this session does not know");
+            log::warn!(area = "capture", "a session names a source this session does not know");
             return;
         };
         let Some(bounds) = self.capture_bounds(target) else {
@@ -63,7 +63,7 @@ impl ImageCopyCaptureHandler for State {
         let id = self.capture.table.open(owner, target, CaptureStream::Requested, format);
         session.user_data().insert_if_missing(|| SessionKey(id));
         self.capture.sessions.push(session);
-        log::debug!(%target, session = %id, "[capture] session opened");
+        log::debug!(area = "capture", %target, session = %id, "session opened");
         self.publish();
     }
 
@@ -86,7 +86,11 @@ impl ImageCopyCaptureHandler for State {
         let claim = match self.capture.table.request(id, buffer_id, tick) {
             Ok(claim) => claim,
             Err(refusal) => {
-                log::debug!(reason = refusal.as_str(), "[capture] the frame could not be claimed");
+                log::debug!(
+                    area = "capture",
+                    reason = refusal.as_str(),
+                    "the frame could not be claimed"
+                );
                 frame.fail(failure_reason(refusal));
                 return;
             }
@@ -142,7 +146,7 @@ impl ImageCopyCaptureHandler for State {
     fn session_destroyed(&mut self, session: SessionRef) {
         if let Some(id) = key_of(session.user_data()) {
             self.capture.table.close(id);
-            log::debug!(session = %id, "[capture] session closed");
+            log::debug!(area = "capture", session = %id, "session closed");
         }
         self.capture.sessions.retain(|held| held.as_ref() != session);
         self.publish();

@@ -297,7 +297,7 @@ impl IdleMonitorService {
 /// connection does.
 pub async fn watch_callers(connection: Connection, service: IdleMonitorService) {
     let Ok(mut watcher) = CallerWatcher::new(&connection).await else {
-        log::error!("[compat] the idle adapter could not watch caller lifetimes");
+        log::error!(area = "compat", "the idle adapter could not watch caller lifetimes");
         return;
     };
     while let Some(owner) = watcher.next().await {

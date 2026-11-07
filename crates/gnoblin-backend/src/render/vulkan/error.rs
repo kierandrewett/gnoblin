@@ -111,7 +111,7 @@ impl VulkanError {
         match self {
             Self::Degenerate { width, height } => RenderError::Degenerate { width, height },
             other => {
-                log::warn!(error = %other, "[render] the Vulkan renderer could not be created");
+                log::warn!(area = "render", error = %other, "the Vulkan renderer could not be created");
                 RenderError::Unavailable
             }
         }

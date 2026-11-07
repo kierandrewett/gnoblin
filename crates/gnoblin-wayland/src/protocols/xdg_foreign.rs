@@ -250,7 +250,7 @@ fn revoke_export(state: &mut State, handle: &str) {
         return;
     }
     let parent = export.surface.clone();
-    log::debug!(handle = %handle, "[xdg-foreign] an export was revoked");
+    log::debug!(area = "xdg-foreign", handle = %handle, "an export was revoked");
 
     let importers: Vec<ObjectId> = state
         .xdg_foreign
@@ -382,7 +382,7 @@ impl Dispatch2<ZxdgExporterV2, State> for XdgForeignExporterData {
                         state: ForeignExportState::Exported,
                     },
                 );
-                log::debug!(handle = %handle, "[xdg-foreign] a toplevel was exported");
+                log::debug!(area = "xdg-foreign", handle = %handle, "a toplevel was exported");
             }
             zxdg_exporter_v2::Request::Destroy => {}
             // The request enums are non-exhaustive: a request from a newer revision is ignored.
@@ -477,7 +477,7 @@ impl Dispatch2<ZxdgImportedV2, State> for XdgForeignImportedData {
                 }
                 // An import whose export is gone is orphaned: it accepts the request but sets nothing.
                 let Some(parent) = state.xdg_foreign.exported_surface(&self.handle).cloned() else {
-                    log::debug!(handle = %self.handle, "[xdg-foreign] set_parent_of on an orphaned import");
+                    log::debug!(area = "xdg-foreign", handle = %self.handle, "set_parent_of on an orphaned import");
                     return;
                 };
                 if !is_valid_parent(&child, &parent) {

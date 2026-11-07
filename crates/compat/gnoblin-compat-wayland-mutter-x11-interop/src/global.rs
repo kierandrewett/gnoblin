@@ -134,7 +134,7 @@ impl GlobalDispatch2<mutter_x11_interop::MutterX11Interop, State> for InteropDat
         data_init: &mut DataInit<'_, State>,
     ) {
         data_init.init(resource, self.clone_data());
-        log::debug!(client = ?client.id(), "[x11-interop] a client bound the redirect");
+        log::debug!(area = "x11-interop", client = ?client.id(), "a client bound the redirect");
     }
 }
 
@@ -197,11 +197,18 @@ pub fn handle_request<H: X11InteropHost>(host: &mut H, data: &InteropData, reque
                 return;
             }
             let Surface::Window(child) = host.surface(&surface) else {
-                log::debug!("[x11-interop] the child surface is not a window of this session");
+                log::debug!(
+                    area = "x11-interop",
+                    "the child surface is not a window of this session"
+                );
                 return;
             };
             let Some(parent) = host.window_for_x11(xwindow) else {
-                log::debug!(xwindow, "[x11-interop] the X11 window is not managed by this session");
+                log::debug!(
+                    area = "x11-interop",
+                    xwindow,
+                    "the X11 window is not managed by this session"
+                );
                 return;
             };
             data.lock().record(child, parent);
@@ -210,7 +217,7 @@ pub fn handle_request<H: X11InteropHost>(host: &mut H, data: &InteropData, reque
             {
                 own.push(child);
             }
-            log::debug!(%child, %parent, xwindow, "[x11-interop] a parent relation was recorded");
+            log::debug!(area = "x11-interop", %child, %parent, xwindow, "a parent relation was recorded");
         }
     }
 }

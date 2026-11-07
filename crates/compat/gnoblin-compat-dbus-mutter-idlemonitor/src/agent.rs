@@ -48,14 +48,14 @@ impl LinkedAgent for MutterIdleMonitor {
         let connection = match block_on(Connection::session()) {
             Ok(connection) => connection,
             Err(error) => {
-                log::info!(%error, "[services] no session bus, so no idle monitor adapter");
+                log::info!(area = "services", %error, "no session bus, so no idle monitor adapter");
                 return false;
             }
         };
         let mut link = match connect_link() {
             Ok(link) => link,
             Err(error) => {
-                log::warn!(%error, "[services] the idle monitor adapter has no compositor link");
+                log::warn!(area = "services", %error, "the idle monitor adapter has no compositor link");
                 return false;
             }
         };
@@ -63,16 +63,16 @@ impl LinkedAgent for MutterIdleMonitor {
         let service = match IdleMonitorService::with_gate(gate) {
             Ok(service) => service,
             Err(error) => {
-                log::warn!(%error, "[services] the idle monitor adapter refused its support matrix");
+                log::warn!(area = "services", %error, "the idle monitor adapter refused its support matrix");
                 return false;
             }
         };
         if let Err(error) = block_on(export(&connection, &service)) {
-            log::warn!(%error, "[services] the idle monitor name is unavailable");
+            log::warn!(area = "services", %error, "the idle monitor name is unavailable");
             return false;
         }
         if let Err(error) = block_on(service.publish(link.state())) {
-            log::warn!(%error, "[services] the idle monitor could not publish its counter");
+            log::warn!(area = "services", %error, "the idle monitor could not publish its counter");
         }
         block_on(watch_callers(connection.clone(), service.clone()));
         let handle = std::thread::Builder::new()
@@ -84,15 +84,15 @@ impl LinkedAgent for MutterIdleMonitor {
                     match link.advance() {
                         Ok(true) => {
                             if let Err(error) = block_on(service.publish(link.state())) {
-                                log::debug!(%error, "[services] the idle monitor did not publish");
+                                log::debug!(area = "services", %error, "the idle monitor did not publish");
                             }
                         }
                         Ok(false) => {
-                            log::info!("[services] the compositor link ended; idle monitor stops");
+                            log::info!(area = "services", "the compositor link ended; idle monitor stops");
                             break;
                         }
                         Err(error) => {
-                            log::warn!(%error, "[services] the idle monitor link failed");
+                            log::warn!(area = "services", %error, "the idle monitor link failed");
                             break;
                         }
                     }
@@ -101,7 +101,7 @@ impl LinkedAgent for MutterIdleMonitor {
         match handle {
             Ok(_) => true,
             Err(error) => {
-                log::warn!(%error, "[services] the idle monitor loop could not be started");
+                log::warn!(area = "services", %error, "the idle monitor loop could not be started");
                 false
             }
         }

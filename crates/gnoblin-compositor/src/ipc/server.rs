@@ -270,7 +270,7 @@ impl IpcServer {
                     handles.insert(client, handle);
                 }
                 Err(error) => {
-                    log::warn!(role = %connection.role, %error, "[ipc] a privileged connection could not be served")
+                    log::warn!(area = "ipc", role = %connection.role, %error, "a privileged connection could not be served")
                 }
             }
         }
@@ -284,7 +284,7 @@ impl IpcServer {
             },
             &path,
         )?;
-        log::info!(socket = %path.display(), "[ipc] listening");
+        log::info!(area = "ipc", socket = %path.display(), "listening");
         Ok(IpcServer {
             events,
             path,
@@ -332,7 +332,7 @@ fn accept_loop(
                 // A listener that cannot accept is a socket this process cannot serve
                 // anyone on. Saying so and returning leaves the session running, which
                 // is the only choice that does not end the desktop for an IPC fault.
-                log::warn!(%error, "[ipc] accept failed, the IPC socket is no longer served");
+                log::warn!(area = "ipc", %error, "accept failed, the IPC socket is no longer served");
                 return;
             }
         };
@@ -353,7 +353,7 @@ fn accept_loop(
             Ok(handle) => {
                 handles.insert(client, handle);
             }
-            Err(error) => log::warn!(%error, "[ipc] a client connection could not be served"),
+            Err(error) => log::warn!(area = "ipc", %error, "a client connection could not be served"),
         }
     }
 }
@@ -377,12 +377,12 @@ fn serve(
     let writer = match stream.try_clone() {
         Ok(writer) => writer,
         Err(error) => {
-            log::debug!(%error, "[ipc] a connection could not be duplicated");
+            log::debug!(area = "ipc", %error, "a connection could not be duplicated");
             return;
         }
     };
     if let Err(error) = stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT)) {
-        log::debug!(%error, "[ipc] a connection could not be given a handshake deadline");
+        log::debug!(area = "ipc", %error, "a connection could not be given a handshake deadline");
         return;
     }
     let mut reader = std::io::BufReader::new(stream);
@@ -395,7 +395,7 @@ fn serve(
         Err(mismatch) => {
             // The refusal names this compositor's version, so the client can name both
             // and say which side to upgrade.
-            log::info!(%mismatch, "[ipc] refused a client version");
+            log::info!(area = "ipc", %mismatch, "refused a client version");
             let _ = write_handshake(&writer, &Handshake::refuse(version));
             return;
         }
@@ -406,11 +406,11 @@ fn serve(
     // An idle subscriber waits as long as its compositor lives, so the handshake's
     // deadline is the only one this socket has.
     if let Err(error) = reader.get_ref().set_read_timeout(None) {
-        log::debug!(%error, "[ipc] a connection could not drop its handshake deadline");
+        log::debug!(area = "ipc", %error, "a connection could not drop its handshake deadline");
         return;
     }
     if let Err(error) = writer.set_write_timeout(Some(WRITE_TIMEOUT)) {
-        log::debug!(%error, "[ipc] a connection could not be given a write deadline");
+        log::debug!(area = "ipc", %error, "a connection could not be given a write deadline");
         return;
     }
     if events
@@ -433,7 +433,7 @@ fn serve(
             Ok(None) => break,
             Err(error) => {
                 // A peer's protocol error ends that connection, never the compositor.
-                log::debug!(%error, client = client.get(), "[ipc] a client sent a frame that did not decode");
+                log::debug!(area = "ipc", %error, client = client.get(), "a client sent a frame that did not decode");
                 break;
             }
         }
@@ -457,7 +457,7 @@ fn serve_privileged(
     extension_grants: Arc<[u8]>,
 ) {
     let Ok(writer) = stream.try_clone() else {
-        log::debug!("[ipc] a privileged connection could not be duplicated");
+        log::debug!(area = "ipc", "a privileged connection could not be duplicated");
         return;
     };
     let mut reader = std::io::BufReader::new(stream);
@@ -481,24 +481,27 @@ fn serve_privileged(
                 continue;
             }
             Ok(Some(gnoblin_proto::StreamFrame::Envelope(_))) => {
-                log::debug!("[ipc] a privileged connection sent a frame before its handshake");
+                log::debug!(
+                    area = "ipc",
+                    "a privileged connection sent a frame before its handshake"
+                );
                 return;
             }
             // A stream that ends, between sessions or inside one, is the guardian's exit.
             Ok(None) => return,
             Err(error) => {
-                log::debug!(%error, "[ipc] a privileged connection sent something that did not decode");
+                log::debug!(area = "ipc", %error, "a privileged connection sent something that did not decode");
                 return;
             }
         };
         if hello.kind != HandshakeKind::Hello {
-            log::debug!(kind = ?hello.kind, "[ipc] a privileged connection did not start with a hello");
+            log::debug!(area = "ipc", kind = ?hello.kind, "a privileged connection did not start with a hello");
             return;
         }
         let answer = match gnoblin_proto::check(version, hello.version) {
             Ok(()) => Handshake::grant(version, capabilities),
             Err(mismatch) => {
-                log::info!(%mismatch, "[ipc] refused a privileged client version");
+                log::info!(area = "ipc", %mismatch, "refused a privileged client version");
                 let _ = write_handshake(&writer, &Handshake::refuse(version));
                 return;
             }
@@ -542,7 +545,7 @@ fn read_handshake(reader: &mut std::io::BufReader<UnixStream>) -> Option<Handsha
             Ok(read) => filled += read,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Err(error) => {
-                log::debug!(%error, "[ipc] a client did not send its handshake");
+                log::debug!(area = "ipc", %error, "a client did not send its handshake");
                 return None;
             }
         }
@@ -550,11 +553,11 @@ fn read_handshake(reader: &mut std::io::BufReader<UnixStream>) -> Option<Handsha
     match Handshake::decode(&frame) {
         Ok(hello) if hello.kind == HandshakeKind::Hello => Some(hello),
         Ok(handshake) => {
-            log::debug!(kind = ?handshake.kind, "[ipc] a connection did not start with a hello");
+            log::debug!(area = "ipc", kind = ?handshake.kind, "a connection did not start with a hello");
             None
         }
         Err(error) => {
-            log::debug!(%error, "[ipc] a handshake did not decode");
+            log::debug!(area = "ipc", %error, "a handshake did not decode");
             None
         }
     }
@@ -596,7 +599,7 @@ impl Connection {
             return;
         }
         if let Err(error) = write_frame(&mut self.writer, envelope) {
-            log::debug!(%error, "[ipc] a connection could not be written, dropping it");
+            log::debug!(area = "ipc", %error, "a connection could not be written, dropping it");
             self.broken = true;
         }
     }
@@ -757,7 +760,7 @@ impl Dispatcher {
         // does not refuse the request: the dialog opens on the output scope instead, and
         // one log line names why, so the app still gets its consent answer.
         if let Err(message) = self.check_portal_parent(&request) {
-            log::warn!(%message, "[ipc] a portal request's parent window is not usable; the dialog opens on its output");
+            log::warn!(area = "ipc", %message, "a portal request's parent window is not usable; the dialog opens on its output");
         }
         match self.portal.submit(client, envelope.request_id, &request, now) {
             Ok(replies) => self.deliver_replies(replies),
@@ -868,7 +871,7 @@ impl Dispatcher {
             return;
         };
         if let Err(error) = self.store.publish_session(&fields) {
-            log::warn!(%error, "[ipc] the object graph refused a slot publication");
+            log::warn!(area = "ipc", %error, "the object graph refused a slot publication");
         }
     }
 
@@ -1060,12 +1063,13 @@ impl Dispatcher {
                 self.portal.configure(&config);
             }
             Err(reason) => {
-                log::warn!(revision, %reason, "[ipc] the committed configuration did not decode; the settings object keeps its last values")
+                log::warn!(area = "ipc", revision, %reason, "the committed configuration did not decode; the settings object keeps its last values")
             }
         }
         log::info!(
+            area = "ipc",
             revision,
-            "[ipc] the runtime committed a configuration document; it stays in force until the next one"
+            "the runtime committed a configuration document; it stays in force until the next one"
         );
         if let Some(connection) = self.connections.get_mut(&client) {
             connection.send(&Envelope::reply(
@@ -1675,10 +1679,10 @@ impl Dispatcher {
         };
         if let Err(error) = self.store.apply(&snapshot) {
             for failure in error.failures() {
-                log::warn!(kind = failure.kind(),
+                log::warn!(area = "ipc", kind = failure.kind(),
                     id = failure.id(),
                     error = %failure.error(),
-                    "[ipc] the object graph refused an object in a session snapshot"
+                    "the object graph refused an object in a session snapshot"
                 );
             }
         }
@@ -1735,7 +1739,7 @@ impl Dispatcher {
                 broken: false,
             },
         );
-        log::info!(client = client.get(), "[ipc] a privileged connection restarted");
+        log::info!(area = "ipc", client = client.get(), "a privileged connection restarted");
     }
 
     /// Ends one connection: its subscriptions, its writer and its reader.

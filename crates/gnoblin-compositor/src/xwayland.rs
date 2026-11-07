@@ -23,7 +23,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
     match store.load(source) {
         Ok(stored) => apply(config, stored.config.xwayland.as_ref(), path.as_deref()),
         Err(error) => {
-            log::warn!(%error, "[xwayland] configuration not readable; the defaults are used");
+            log::warn!(area = "xwayland", %error, "configuration not readable; the defaults are used");
             apply(config, None, path.as_deref());
         }
     }
@@ -34,14 +34,14 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the defaults are used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[xwayland] no state directory is set; the defaults are used");
+        log::debug!(area = "xwayland", "no state directory is set; the defaults are used");
         apply(config, None, std::env::var_os("PATH").as_deref());
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
         Err(error) => {
-            log::debug!(%error, "[xwayland] no configuration file; the defaults are used");
+            log::debug!(area = "xwayland", %error, "no configuration file; the defaults are used");
             apply(config, None, std::env::var_os("PATH").as_deref());
         }
     }
@@ -52,11 +52,14 @@ fn apply(config: &mut SessionConfig, section: Option<&Xwayland>, path: Option<&O
     match settings_for(section, path) {
         Ok(Some(settings)) => config.xwayland = Some(settings),
         Ok(None) => {
-            log::info!("[xwayland] no Xwayland binary on PATH; the session runs without X11");
+            log::info!(
+                area = "xwayland",
+                "no Xwayland binary on PATH; the session runs without X11"
+            );
             config.xwayland = None;
         }
         Err(reason) => {
-            log::warn!("[xwayland] {reason}; the session runs without X11");
+            log::warn!(area = "xwayland", "{reason}; the session runs without X11");
             config.xwayland = None;
         }
     }

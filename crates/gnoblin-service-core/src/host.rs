@@ -78,14 +78,14 @@ impl Host {
     /// Claim a request this role was offered, so it can end it.
     pub fn claim(&self, request: RequestId) {
         if let Err(error) = self.lock().claim(request) {
-            log::warn!(%error, request = request.get(), "[services] cannot claim an offer");
+            log::warn!(area = "services", %error, request = request.get(), "cannot claim an offer");
         }
     }
 
     /// Decline a request this role claimed: it draws nothing, so it cannot answer.
     pub fn decline(&self, request: RequestId) {
         if let Err(error) = self.lock().decline(request) {
-            log::warn!(%error, request = request.get(), "[services] cannot decline an offer");
+            log::warn!(area = "services", %error, request = request.get(), "cannot decline an offer");
         }
     }
 

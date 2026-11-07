@@ -187,8 +187,8 @@ impl State {
         for entry in held {
             with_pointer_constraint(&entry.surface, &entry.pointer, |constraint| {
                 if let Some(constraint) = constraint {
-                    log::debug!(surface = ?entry.surface.id(),
-                        "[pointer-constraints] released while the session is covered"
+                    log::debug!(area = "pointer-constraints", surface = ?entry.surface.id(),
+                        "released while the session is covered"
                     );
                     constraint.deactivate();
                 }
@@ -218,7 +218,7 @@ impl PointerConstraintsHandler for State {
             surface: surface.clone(),
             pointer: pointer.clone(),
         });
-        log::debug!(surface = ?surface.id(), "[pointer-constraints] activated");
+        log::debug!(area = "pointer-constraints", surface = ?surface.id(), "activated");
     }
 
     fn remove_constraint(&mut self, surface: &WlSurface, _pointer: &PointerHandle<Self>, _reason: ConstraintRemove) {

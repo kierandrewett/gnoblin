@@ -319,9 +319,9 @@ impl Access {
             .is_some_and(|record| record.role == ClientRole::Sandboxed)
             && role != ClientRole::Sandboxed
         {
-            log::debug!(client = ?client,
+            log::debug!(area = "access", client = ?client,
                 refused = role.as_str(),
-                "[access] a sandboxed connection keeps its sandbox"
+                "a sandboxed connection keeps its sandbox"
             );
             return;
         }
@@ -335,7 +335,7 @@ impl Access {
             },
             |record| record.number,
         );
-        log::debug!(client = ?client, role = role.as_str(), number, "[access] recorded");
+        log::debug!(area = "access", client = ?client, role = role.as_str(), number, "recorded");
         connections.insert(client.clone(), Membership { role, number });
     }
 
@@ -346,7 +346,7 @@ impl Access {
     /// connection. It never upgrades a sandbox: [`Access::record`] keeps a sandboxed
     /// connection sandboxed whatever a promise says.
     pub fn promise(&self, pid: u32, role: ClientRole) {
-        log::debug!(pid, role = role.as_str(), "[access] promised");
+        log::debug!(area = "access", pid, role = role.as_str(), "promised");
         self.promised
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -366,7 +366,7 @@ impl Access {
     /// Forgets a connection that disconnected.
     pub fn forget(&self, client: &ClientKey) {
         if self.connections().remove(client).is_some() {
-            log::debug!(client = ?client, "[access] forgotten");
+            log::debug!(area = "access", client = ?client, "forgotten");
         }
     }
 

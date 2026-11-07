@@ -172,7 +172,7 @@ impl Role {
             polkit = agents.polkit.describe(),
             screensaver = agents.screensaver.is_some(),
             linked = agents.linked.len(),
-            "[services] serving"
+            "serving"
         );
 
         while !stop() {
@@ -181,7 +181,7 @@ impl Role {
                 Err(ClientError::Idle) => continue,
                 Err(ClientError::Disconnected) => break,
                 Err(error) => {
-                    log::warn!(%error, "[services] the privileged connection failed");
+                    log::warn!(%error, "the privileged connection failed");
                     break;
                 }
             }
@@ -223,7 +223,7 @@ impl Agents {
             gnoblin_client::Event::RequestOffered { request, slot, .. } => {
                 // This role provides the slot and draws nothing, so the offer ends here
                 // rather than waiting for a deadline nobody will meet.
-                log::info!(request = request.get(), %slot, "[services] declining an offer this role cannot draw");
+                log::info!(request = request.get(), %slot, "declining an offer this role cannot draw");
                 host.claim(request);
                 host.decline(request);
             }
@@ -254,7 +254,7 @@ impl Agents {
         if let PolkitSlot::Running(polkit, _) = &self.polkit
             && let Err(error) = polkit.answer(request, outcome)
         {
-            log::debug!(%error, request = request.get(), "[services] polkit did not own the answer");
+            log::debug!(%error, request = request.get(), "polkit did not own the answer");
         }
         for agent in &self.linked {
             agent.answer(request, outcome);
@@ -301,18 +301,18 @@ fn start_polkit(host: &Host, deadline: Tick) -> PolkitSlot {
     let connection = match block_on(Connection::system()) {
         Ok(connection) => connection,
         Err(error) => {
-            log::info!(%error, "[services] no system bus, so no polkit agent");
+            log::info!(%error, "no system bus, so no polkit agent");
             return PolkitSlot::Absent;
         }
     };
     let polkit = Polkit::new(host.clone(), deadline);
     let exported = block_on(async { connection.object_server().at(AGENT_PATH, polkit.clone()).await });
     if let Err(error) = exported {
-        log::warn!(%error, "[services] the polkit agent could not be exported");
+        log::warn!(%error, "the polkit agent could not be exported");
         return PolkitSlot::Failed(error.to_string());
     }
     if let Err(error) = block_on(polkit.register(&connection)) {
-        log::warn!(%error, "[services] polkitd refused the agent");
+        log::warn!(%error, "polkitd refused the agent");
         return PolkitSlot::Failed(error.to_string());
     }
     PolkitSlot::Running(polkit, connection)

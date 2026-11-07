@@ -325,10 +325,11 @@ impl GnoblinSessionHostV1Tables {
         let request = self.requests.offer(deadline);
         self.kinds.insert(request, (session, kind, deadline));
         log::info!(
+            area = "host",
             ?session,
             kind = kind.as_str(),
             ?request,
-            "[host] a session asked the manager"
+            "a session asked the manager"
         );
         request
     }
@@ -370,7 +371,7 @@ impl GlobalDispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1Global
         let pid = client
             .get_credentials(&state.display_handle)
             .map_or(0, |credentials| u32::try_from(credentials.pid).unwrap_or(0));
-        log::debug!(?identity, pid, "[host] a session connection bound its channel");
+        log::debug!(area = "host", ?identity, pid, "a session connection bound its channel");
         if state.session_host.hosts.contains_key(&key) {
             // A second object on one connection would give the session two ways to
             // answer one protection, so it is refused and the first stays.
@@ -432,7 +433,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
                     return;
                 }
                 host.ready = true;
-                log::info!(?identity, "[host] the session can be shown");
+                log::info!(area = "host", ?identity, "the session can be shown");
                 state.publish();
             }
             host::Request::Protected { serial } => {
@@ -508,7 +509,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
                 // acts on a half-updated layout.
                 session.hints = std::mem::take(&mut session.staged);
                 let count = session.hints.len();
-                log::debug!(?identity, count, "[host] the session published its outputs");
+                log::debug!(area = "host", ?identity, count, "the session published its outputs");
             }
         }
     }
@@ -522,7 +523,7 @@ impl Dispatch2<GnoblinSessionHostV1, State> for GnoblinSessionHostV1HostObject {
             .protection
             .apply(ProtectionEvent::SessionGone { client: host.client });
         state.apply_protection(effects);
-        log::debug!(client = ?host.client, "[host] the session channel is gone");
+        log::debug!(area = "host", client = ?host.client, "the session channel is gone");
     }
 }
 
@@ -676,7 +677,7 @@ impl State {
             match effect {
                 ProtectionEffect::Hide { client, generation } => {
                     self.hide_hosted_windows(client);
-                    log::debug!(?client, generation, "[host] the session's surfaces are hidden");
+                    log::debug!(area = "host", ?client, generation, "the session's surfaces are hidden");
                 }
                 ProtectionEffect::Ask { client, serial } => {
                     let serial = u32::try_from(serial).unwrap_or(u32::MAX);
@@ -692,23 +693,24 @@ impl State {
                     }
                 }
                 ProtectionEffect::AwaitPresentation { generation, outputs } => {
-                    log::debug!(generation, ?outputs, "[host] waiting for a covered frame");
+                    log::debug!(area = "host", generation, ?outputs, "waiting for a covered frame");
                 }
                 ProtectionEffect::Protected { client, serial } => {
-                    log::info!(?client, serial, "[host] the session is protected");
+                    log::info!(area = "host", ?client, serial, "the session is protected");
                 }
                 ProtectionEffect::Show { client } => {
                     self.show_hosted_windows(client);
-                    log::debug!(?client, "[host] the session may be shown again");
+                    log::debug!(area = "host", ?client, "the session may be shown again");
                 }
                 ProtectionEffect::KeepCovered { client, reason } => {
-                    log::info!(?client, reason = reason.as_str(), "[host] the cover stays");
+                    log::info!(area = "host", ?client, reason = reason.as_str(), "the cover stays");
                 }
                 ProtectionEffect::UnknownAck { client, serial } => {
                     log::warn!(
+                        area = "host",
                         ?client,
                         serial,
-                        "[host] the session acknowledged a protection it never got"
+                        "the session acknowledged a protection it never got"
                     );
                     let object = self
                         .session_host
@@ -809,7 +811,7 @@ impl State {
             // A request nobody claimed fails closed: the session hears nothing and
             // the manager sees it expire, exactly as a lock request with no
             // subscriber does today.
-            log::debug!(expired, "[host] unanswered session requests expired");
+            log::debug!(area = "host", expired, "unanswered session requests expired");
             self.session_host.kinds.retain(|request, _| {
                 !matches!(
                     self.session_host.requests.state(*request),

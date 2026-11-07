@@ -245,12 +245,12 @@ pub fn settings_from_environment() -> DesktopSettings {
         Ok(path) => match store.load(path.path()) {
             Ok(stored) => settings_from_config(&stored.config),
             Err(error) => {
-                log::warn!(%error, "[settings] configuration not readable; publishing the defaults");
+                log::warn!(area = "settings", %error, "configuration not readable; publishing the defaults");
                 DesktopSettings::default()
             }
         },
         Err(error) => {
-            log::debug!(%error, "[settings] no configuration file; publishing the defaults");
+            log::debug!(area = "settings", %error, "no configuration file; publishing the defaults");
             DesktopSettings::default()
         }
     }

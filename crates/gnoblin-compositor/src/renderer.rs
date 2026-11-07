@@ -22,9 +22,9 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
                 config,
                 stored.config.compositor.as_ref().and_then(|section| section.renderer),
             );
-            log::debug!("[renderer] loaded from the last accepted configuration");
+            log::debug!(area = "renderer", "loaded from the last accepted configuration");
         }
-        Err(error) => log::warn!(%error, "[renderer] configuration not readable; the default is used"),
+        Err(error) => log::warn!(area = "renderer", %error, "configuration not readable; the default is used"),
     }
 }
 
@@ -33,12 +33,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the default is used.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[renderer] no state directory is set; the default is used");
+        log::debug!(area = "renderer", "no state directory is set; the default is used");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => log::debug!(%error, "[renderer] no configuration file; the default is used"),
+        Err(error) => log::debug!(area = "renderer", %error, "no configuration file; the default is used"),
     }
 }
 

@@ -94,10 +94,10 @@ impl State {
                 cached.current().callbacks.split_off(0)
             });
             for callback in callbacks {
-                log::debug!(surface = ?surface.id(),
+                log::debug!(area = "presentation", surface = ?surface.id(),
                     milliseconds = time.as_millis(),
                     sequence,
-                    "[presentation] a frame was presented"
+                    "a frame was presented"
                 );
                 callback.presented(output, time, refresh, sequence, wp_presentation_feedback::Kind::Vsync);
             }

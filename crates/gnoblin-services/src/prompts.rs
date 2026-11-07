@@ -14,13 +14,13 @@ use crate::log;
 /// With no state directory, no file or an unreadable file the prompter stays off.
 pub fn enabled_from_environment() -> bool {
     let Some(store) = Store::from_env() else {
-        log::debug!("[services] no state directory is set; prompts are off");
+        log::debug!("no state directory is set; prompts are off");
         return false;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => enabled_from_store(&store, path.path()),
         Err(error) => {
-            log::debug!(%error, "[services] no configuration file; prompts are off");
+            log::debug!(%error, "no configuration file; prompts are off");
             false
         }
     }
@@ -36,7 +36,7 @@ pub fn enabled_from_store(store: &Store, source: &Path) -> bool {
             .and_then(|section| section.enabled)
             .unwrap_or(false),
         Err(error) => {
-            log::warn!(%error, "[services] configuration not readable; prompts are off");
+            log::warn!(%error, "configuration not readable; prompts are off");
             false
         }
     }

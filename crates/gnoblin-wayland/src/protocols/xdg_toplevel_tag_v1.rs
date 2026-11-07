@@ -36,10 +36,10 @@ pub(crate) fn global(display: &DisplayHandle) -> XdgToplevelTagManager {
 
 impl XdgToplevelTagHandler for State {
     fn set_tag(&mut self, toplevel: XdgToplevel, tag: String) {
-        log::debug!(toplevel = %toplevel.id(), %tag, "[xdg-toplevel-tag] tag set; read on the next toplevel commit");
+        log::debug!(area = "xdg-toplevel-tag", toplevel = %toplevel.id(), %tag, "tag set; read on the next toplevel commit");
     }
 
     fn set_description(&mut self, toplevel: XdgToplevel, description: String) {
-        log::debug!(toplevel = %toplevel.id(), %description, "[xdg-toplevel-tag] description set");
+        log::debug!(area = "xdg-toplevel-tag", toplevel = %toplevel.id(), %description, "description set");
     }
 }

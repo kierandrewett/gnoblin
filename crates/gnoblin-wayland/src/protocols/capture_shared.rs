@@ -289,7 +289,7 @@ impl CaptureTables {
             self.stop(session, Stop::TargetGone);
         }
         if ended > 0 {
-            log::debug!(%window, ended, "[capture] the window's sessions ended");
+            log::debug!(area = "capture", %window, ended, "the window's sessions ended");
         }
     }
 
@@ -326,7 +326,7 @@ impl CaptureTables {
                 frame.failed();
             }
         }
-        log::debug!("[capture] every session stopped for the lock");
+        log::debug!(area = "capture", "every session stopped for the lock");
         true
     }
 }
@@ -404,7 +404,7 @@ impl PixelSource for Pixels<'_> {
         match copy_into_shm(image, region, from, &self.buffer) {
             Ok(_) => Copied::Copied,
             Err(error) => {
-                log::warn!(%error, %target, "[capture] the frame could not be written into the client's buffer");
+                log::warn!(area = "capture", %error, %target, "the frame could not be written into the client's buffer");
                 Copied::Nothing
             }
         }
@@ -576,7 +576,11 @@ impl State {
             Ok(frame) => frame,
             Err(refusal) => {
                 self.capture.table.close(session);
-                log::debug!(reason = refusal.as_str(), "[capture] the frame could not be claimed");
+                log::debug!(
+                    area = "capture",
+                    reason = refusal.as_str(),
+                    "the frame could not be claimed"
+                );
                 return None;
             }
         };
@@ -595,7 +599,7 @@ impl State {
         match outcome {
             CaptureOutcome::Copied(report) => Some((report.region, presented)),
             CaptureOutcome::Refused(refusal) => {
-                log::debug!(reason = refusal.as_str(), "[capture] the frame was refused");
+                log::debug!(area = "capture", reason = refusal.as_str(), "the frame was refused");
                 None
             }
         }
