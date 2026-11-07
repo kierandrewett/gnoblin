@@ -97,20 +97,20 @@ pub fn derive(master: &[u8], app_id: &str) -> AppSecret {
 
 /// Why a request got no secret.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Refusal {
+pub enum SecretRefusal {
     /// The request named no app, so there is no secret to give.
     NoApp,
     /// The app is not granted this session, so its secret is withheld.
     Denied,
 }
 
-impl Refusal {
+impl SecretRefusal {
     /// The portal response code: 1 is "cancelled by the user", 2 is "other".
     #[must_use]
     pub const fn response(self) -> u32 {
         match self {
-            Refusal::Denied => 1,
-            Refusal::NoApp => 2,
+            SecretRefusal::Denied => 1,
+            SecretRefusal::NoApp => 2,
         }
     }
 }
@@ -120,12 +120,12 @@ impl Refusal {
 /// Consent is decided by the compositor before a request reaches this module. The check here is
 /// only what the store can verify: an app id is named and the app is granted. Either failing gets
 /// no secret.
-pub fn retrieve(master: &[u8], app_id: &str, granted: bool) -> Result<AppSecret, Refusal> {
+pub fn retrieve(master: &[u8], app_id: &str, granted: bool) -> Result<AppSecret, SecretRefusal> {
     if app_id.is_empty() {
-        return Err(Refusal::NoApp);
+        return Err(SecretRefusal::NoApp);
     }
     if !granted {
-        return Err(Refusal::Denied);
+        return Err(SecretRefusal::Denied);
     }
     Ok(derive(master, app_id))
 }
@@ -171,13 +171,13 @@ mod tests {
     #[test]
     fn an_ungranted_app_gets_no_secret() {
         let refusal = retrieve(MASTER, "org.example.App", false).expect_err("ungranted");
-        assert_eq!(refusal, Refusal::Denied);
+        assert_eq!(refusal, SecretRefusal::Denied);
         assert_eq!(refusal.response(), 1);
     }
 
     #[test]
     fn retrieve_refuses_an_empty_app_id_even_when_granted() {
-        assert_eq!(retrieve(MASTER, "", true), Err(Refusal::NoApp));
+        assert_eq!(retrieve(MASTER, "", true), Err(SecretRefusal::NoApp));
     }
 
     #[test]
