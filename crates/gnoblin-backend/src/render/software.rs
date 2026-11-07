@@ -227,9 +227,13 @@ impl Software {
         self.damage = damage;
         result?;
         // The magnifier and the colour matrix act on the whole buffer, so they run
-        // after the layers are painted, and only when the frame asks for them.
-        if frame.view().is_some() || frame.colour_matrix().is_some() {
-            self.final_pass(frame.view(), frame.colour_matrix())?;
+        // after the layers are painted. An identity view or matrix changes nothing, so
+        // it is dropped here: running it would still round-trip every pixel through a
+        // straight colour and could move its values by one.
+        let view = frame.view().filter(|view| view.zoom != 1.0);
+        let matrix = frame.colour_matrix().filter(|matrix| *matrix != ColourMatrix::IDENTITY);
+        if view.is_some() || matrix.is_some() {
+            self.final_pass(view, matrix)?;
         }
         Ok(())
     }
@@ -605,6 +609,10 @@ fn sample_index(position: usize, centre: f32, zoom: f32, length: usize) -> usize
 ///
 /// Each output channel is the matrix row dotted with the straight `(r, g, b, a)`
 /// input, plus its offset, clamped to `0..=1`.
+///
+/// Rule: a pixel with zero alpha is returned unchanged, whatever the matrix's offsets. It
+/// has no straight colour to transform, and an offset would otherwise make empty space
+/// visible.
 fn tint_pixel(pixel: [u8; 4], matrix: &ColourMatrix) -> [u8; 4] {
     if pixel[3] == 0 {
         return pixel;
@@ -1046,5 +1054,121 @@ mod tests {
             Some([0, 0, 255, 255]),
             "and the layer outside the overlay is unchanged"
         );
+    }
+
+    /// A frame of solid one-pixel layers, one per pixel of a `width` by `height` output,
+    /// each coloured by `colour(x, y)`, damaged over the whole output.
+    fn pattern_frame(width: i32, height: i32, colour: impl Fn(i32, i32) -> Color) -> OutputFrame {
+        let mut frame = OutputFrame::new();
+        frame.set_background(Color::TRANSPARENT);
+        frame.push_damage(Rect::new(0, 0, width as u32, height as u32));
+        for y in 0..height {
+            for x in 0..width {
+                frame.push_layer(Layer::Solid(Solid::new(Rect::new(x, y, 1, 1), colour(x, y))));
+            }
+        }
+        frame
+    }
+
+    #[test]
+    fn an_identity_view_and_matrix_leave_the_buffer_bit_identical() {
+        // A translucent pattern, so a round trip through straight colour would show.
+        let colour = |x: i32, y: i32| Color::from_rgba8((x * 60) as u8, (y * 60) as u8, 90, 128);
+        let plain = pattern_frame(4, 4, colour);
+        let mut identity = pattern_frame(4, 4, colour);
+        identity.set_view(View::new(1.0, 2.0, 3.0));
+        identity.set_colour_matrix(Some(ColourMatrix::IDENTITY));
+        let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
+        software.draw(&plain, Scale::IDENTITY).expect("drawn");
+        let expected = software.screenshot().expect("a readback");
+        software.draw(&identity, Scale::IDENTITY).expect("drawn");
+        let actual = software.screenshot().expect("a readback");
+        assert_eq!(actual.data(), expected.data(), "the identity path changes no byte");
+    }
+
+    #[test]
+    fn a_two_times_magnifier_about_the_centre_is_nearest_neighbour() {
+        // Output pixel x samples source floor(2 + (x + 0.5 - 2) / 2): 1, 1, 2, 2.
+        let colour = |x: i32, y: i32| Color::from_rgba8((x * 60) as u8, (y * 60) as u8, 200, 255);
+        let mut frame = pattern_frame(4, 4, colour);
+        frame.set_view(View::new(2.0, 2.0, 2.0));
+        let mut software = Software::new(Size::new(4, 4)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        let source = [1, 1, 2, 2];
+        for y in 0..4 {
+            for x in 0..4 {
+                let want = [
+                    (source[x as usize] * 60) as u8,
+                    (source[y as usize] * 60) as u8,
+                    200,
+                    255,
+                ];
+                assert_eq!(image.colour_at(x, y), Some(want), "output pixel ({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn an_invert_matrix_keeps_alpha_and_inverts_straight_colour() {
+        // Straight grey 64 at alpha 128. The expected result is computed from the buffer's
+        // own premultiplied value, so pixman's rounding is not guessed at.
+        let mut frame = pattern_frame(1, 1, |_, _| Color::from_rgba8(64, 64, 64, 128));
+        let plain = {
+            let mut software = Software::new(Size::new(1, 1)).expect("a software renderer");
+            software.draw(&frame, Scale::IDENTITY).expect("drawn");
+            software
+                .screenshot()
+                .expect("a readback")
+                .colour_at(0, 0)
+                .expect("a pixel")
+        };
+        let invert = ColourMatrix::new([
+            [-1.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, -1.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, -1.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ])
+        .expect("a finite matrix");
+        frame.set_colour_matrix(Some(invert));
+        let mut software = Software::new(Size::new(1, 1)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let got = software
+            .screenshot()
+            .expect("a readback")
+            .colour_at(0, 0)
+            .expect("a pixel");
+        assert_eq!(got[3], plain[3], "alpha is kept");
+        let alpha = f32::from(plain[3]) / 255.0;
+        let straight = f32::from(plain[0]) / 255.0 / alpha;
+        let want = ((1.0 - straight) * alpha * 255.0).round() as i32;
+        for channel in 0..3 {
+            assert!(
+                (i32::from(got[channel]) - want).abs() <= 1,
+                "channel {channel}: got {} want about {want}",
+                got[channel]
+            );
+        }
+    }
+
+    #[test]
+    fn a_transparent_pixel_stays_transparent_under_an_offset() {
+        // Rule: a pixel with zero alpha is left alone by the colour matrix, so an offset
+        // row cannot make empty space visible.
+        let mut frame = pattern_frame(2, 2, |_, _| Color::TRANSPARENT);
+        frame.set_colour_matrix(ColourMatrix::new([
+            [1.0, 0.0, 0.0, 0.0, 0.5],
+            [0.0, 1.0, 0.0, 0.0, 0.5],
+            [0.0, 0.0, 1.0, 0.0, 0.5],
+            [0.0, 0.0, 0.0, 1.0, 0.5],
+        ]));
+        let mut software = Software::new(Size::new(2, 2)).expect("a software renderer");
+        software.draw(&frame, Scale::IDENTITY).expect("drawn");
+        let image = software.screenshot().expect("a readback");
+        for y in 0..2 {
+            for x in 0..2 {
+                assert_eq!(image.colour_at(x, y), Some([0, 0, 0, 0]), "pixel ({x}, {y})");
+            }
+        }
     }
 }
