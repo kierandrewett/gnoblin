@@ -10,7 +10,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use gnoblin_input::eis::{Caps, Endpoint, Grant, Options, Quota};
+use gnoblin_input_eis::{Caps, Endpoint, Grant, Options, Quota};
 use gnoblin_wayland::InputSink;
 
 /// The file name of the EIS socket, beside the IPC socket.

@@ -39,6 +39,7 @@ gnoblin-client = { path = "../gnoblin-client" }
 gnoblin-portal = { path = "../gnoblin-portal" }
 gnoblin-portal-core = { path = "../gnoblin-portal-core" }
 gnoblin-input = { path = "../gnoblin-input" }
+gnoblin-input-eis = { path = "../gnoblin-input-eis" }
 # Who this process is, for the IPC socket directory's ownership check.
 rustix.workspace = true
 # The accepted configuration document and its last-good store: the compositor reads the

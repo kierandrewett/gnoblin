@@ -12,7 +12,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use gnoblin_input::eis::Caps;
+use gnoblin_input_eis::Caps;
 use reis::{Interface as _, PendingRequestResult, ei};
 use support::{Client, Session};
 
