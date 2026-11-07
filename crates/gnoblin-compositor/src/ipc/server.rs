@@ -50,8 +50,9 @@
 //!    not queued forever, and the connection that dies is the one case failure mode 1
 //!    covers.
 //! 7. **A client that is not privileged calls a privileged member.** The capability
-//!    gate answers `denied` before the member is looked at, so a plain socket
-//!    connection can neither offer a request nor commit a configuration:
+//!    gate answers `denied` before the member is looked at, so a plain socket connection
+//!    can neither offer a request nor commit a configuration. The session owner's connection
+//!    may read the configuration and ask for a reload, which the runtime still performs:
 //!    `tests/privilege.rs::a_socket_client_cannot_use_a_privileged_member`.
 //! 8. **An offer is routed to a connection that never answers.** The slot decides, a
 //!    slot with no provider is refused with `no-provider`, and both sides of a request
@@ -387,6 +388,10 @@ fn accept_loop(
         let client = ClientId::new(clients.fetch_add(1, Ordering::Relaxed));
         let served = events.clone();
         let grants = Arc::clone(&extension_grants);
+        // What this connection may do follows from its kernel peer uid, read before the stream
+        // leaves this thread: the handshake answers with it, and nothing the client sends can
+        // change it.
+        let capabilities = super::privileged::socket_grants(&stream);
         // Holding the lock across the spawn and the insert is what lets the dispatcher
         // join a reader it has just been told about: the handle is in the map before
         // the reader can report anything.
@@ -400,7 +405,7 @@ fn accept_loop(
                     version,
                     served,
                     ConnectionPolicy {
-                        capabilities: Capabilities::NONE,
+                        capabilities,
                         extension_grants: grants,
                         ending: ConnectionEnd::Closed,
                         owner: None,
@@ -2139,10 +2144,9 @@ fn refusal(envelope: &Envelope, code: &str, message: &str) -> Envelope {
 fn required_capability(member: &str) -> Option<Capability> {
     match member {
         // `OFFER` is gated per slot inside `offer`: `secret.derive` needs `RetrieveSecret`.
-        wire::member::CONFIG_COMMIT
-        | wire::member::CONFIG_CURRENT
-        | wire::member::CONFIG_RELOAD
-        | wire::member::CONFIG_REJECT => Some(Capability::CommitConfig),
+        wire::member::CONFIG_COMMIT | wire::member::CONFIG_REJECT => Some(Capability::CommitConfig),
+        wire::member::CONFIG_CURRENT => Some(Capability::ReadConfig),
+        wire::member::CONFIG_RELOAD => Some(Capability::ReloadConfig),
         wire::member::PORTAL_UI | wire::member::PORTAL_CANCEL => Some(Capability::PortalUi),
         wire::member::PORTAL_KEY => Some(Capability::PortalInput),
         _ => None,
@@ -2424,7 +2428,10 @@ fn spawn(name: &str, body: impl FnOnce() + Send + 'static, path: &Path) -> Resul
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use super::{IpcEvent, events, wake};
+    use gnoblin_client::wire;
+    use gnoblin_proto::Capability;
+
+    use super::{IpcEvent, events, required_capability, wake};
 
     #[test]
     fn two_publishes_before_one_look_queue_one_wake_up() {
@@ -2453,5 +2460,27 @@ mod tests {
         let (sender, received) = events();
         drop(sender);
         assert!(received.recv().is_err());
+    }
+
+    #[test]
+    fn config_members_map_to_their_own_capabilities() {
+        // Reading and reloading are split from committing so a same-uid CLI can
+        // use `config get`/`config reload` without being able to write the document.
+        assert_eq!(
+            required_capability(wire::member::CONFIG_CURRENT),
+            Some(Capability::ReadConfig)
+        );
+        assert_eq!(
+            required_capability(wire::member::CONFIG_RELOAD),
+            Some(Capability::ReloadConfig)
+        );
+        assert_eq!(
+            required_capability(wire::member::CONFIG_COMMIT),
+            Some(Capability::CommitConfig)
+        );
+        assert_eq!(
+            required_capability(wire::member::CONFIG_REJECT),
+            Some(Capability::CommitConfig)
+        );
     }
 }

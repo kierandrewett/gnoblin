@@ -22,9 +22,10 @@
 //!
 //! A handover whose role grants nothing is dropped with a warning rather than served
 //! unprivileged, because the guardian meant to hand over a power and the connection would
-//! silently be an ordinary one. A connection that reaches the ordinary socket is never
-//! privileged, however it was started: the grant is read from the handshake this side
-//! writes, not from anything the client says.
+//! silently be an ordinary one. A connection that reaches the ordinary socket is granted
+//! from its kernel peer uid, never from anything the client says (`socket_grants`). The
+//! session owner's connections get the configuration reads and the reload request; no
+//! other uid gets anything.
 
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -75,12 +76,42 @@ impl Privileged {
 /// name this table does not have grants nothing.
 pub fn grants(role: &str) -> Capabilities {
     match role {
-        "runtime" => Capabilities::of(&[Capability::CommitConfig, Capability::InputPolicy]),
+        "runtime" => Capabilities::of(&[
+            Capability::CommitConfig,
+            Capability::ReadConfig,
+            Capability::InputPolicy,
+        ]),
         "services" => Capabilities::of(&[Capability::OfferRequest, Capability::RegisterLayer]),
         "portal" => Capabilities::of(&[Capability::PortalUi, Capability::RetrieveSecret]),
         "input" => Capabilities::of(&[Capability::PortalInput]),
         _ => Capabilities::NONE,
     }
+}
+
+/// What a connection accepted from the ordinary socket is granted, from its peer's uid.
+///
+/// The session owner's own connections may read the configuration and ask for a reload:
+/// the CLI does both, and a reload still goes through the runtime, which is the one that
+/// commits. Commit itself stays with the runtime role, so a same-uid shell cannot write
+/// the document the runtime evaluates. Any other uid, or a peer whose credentials cannot
+/// be read, is granted nothing.
+pub fn owner_grants(peer_uid: Option<u32>, owner_uid: u32) -> Capabilities {
+    match peer_uid {
+        Some(uid) if uid == owner_uid => Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]),
+        _ => Capabilities::NONE,
+    }
+}
+
+/// The grant for a connection accepted from the ordinary socket, read from the kernel.
+///
+/// `SO_PEERCRED` is the peer's uid as the kernel recorded it at `connect`, not anything the
+/// client sent, so the grant cannot be claimed by a handshake. The compositor's own uid is
+/// the session owner's: the socket lives in the owner's 0700 runtime directory.
+pub fn socket_grants(stream: &UnixStream) -> Capabilities {
+    let peer = rustix::net::sockopt::socket_peercred(stream)
+        .ok()
+        .map(|cred| cred.uid.as_raw());
+    owner_grants(peer, rustix::process::getuid().as_raw())
 }
 
 /// Read handovers from `control` until the guardian closes it, passing each accepted
@@ -142,7 +173,7 @@ pub fn guardian_from_environment() -> Result<Option<UnixStream>, Inherited> {
 mod tests {
     use gnoblin_proto::Capability;
 
-    use super::{ROLES, grants};
+    use super::{ROLES, grants, owner_grants, socket_grants};
 
     #[test]
     fn the_capabilities_are_the_plan_s_two_privileged_roles() {
@@ -152,6 +183,10 @@ mod tests {
             "the runtime commits the configuration"
         );
         assert!(runtime.contains(Capability::InputPolicy), "and decides input policy");
+        assert!(
+            runtime.contains(Capability::ReadConfig),
+            "and reads back what it committed, as it did before read-config was split out"
+        );
         assert!(
             !runtime.contains(Capability::OfferRequest),
             "the runtime offers no requests: prompts belong to a shell or the services role"
@@ -191,5 +226,46 @@ mod tests {
         for role in ["runtime", "services", "portal", "input"] {
             assert!(ROLES.contains(&role), "`{role}` is granted but never declared");
         }
+    }
+
+    #[test]
+    fn the_session_owner_reads_and_reloads_the_configuration_and_cannot_commit_it() {
+        let granted = owner_grants(Some(1000), 1000);
+        assert_eq!(
+            granted,
+            gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig])
+        );
+        // The owner's CLI asks the runtime to reload; the runtime is the one that commits.
+        assert!(!granted.contains(Capability::CommitConfig));
+    }
+
+    #[test]
+    fn another_user_root_and_an_unknown_peer_are_granted_nothing() {
+        assert_eq!(
+            owner_grants(Some(1001), 1000),
+            gnoblin_proto::Capabilities::NONE,
+            "another uid"
+        );
+        assert_eq!(
+            owner_grants(Some(0), 1000),
+            gnoblin_proto::Capabilities::NONE,
+            "root is not the owner"
+        );
+        assert_eq!(
+            owner_grants(None, 1000),
+            gnoblin_proto::Capabilities::NONE,
+            "no peer credentials"
+        );
+    }
+
+    #[test]
+    fn a_socket_pair_made_by_this_process_gets_the_owner_grant() {
+        // The peer of a socket pair is this process, so its uid is the owner's: the kernel
+        // answer `socket_grants` reads, end to end rather than through the pure function.
+        let (ours, _theirs) = std::os::unix::net::UnixStream::pair().expect("a socket pair");
+        assert_eq!(
+            socket_grants(&ours),
+            gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig])
+        );
     }
 }

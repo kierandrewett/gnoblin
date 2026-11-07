@@ -63,11 +63,23 @@ pub enum Capability {
     /// the relay needs no general `OfferRequest` and cannot ask a polkit or prompt
     /// question. The compositor still refuses the offer unless it granted the app.
     RetrieveSecret,
+    /// Read the configuration (`config get`, CONFIG_CURRENT).
+    ///
+    /// Granted to the session owner's ordinary socket connection: reading the
+    /// document the runtime already evaluates changes nothing, so the user's CLI may
+    /// do it without the runtime's commit power.
+    ReadConfig,
+    /// Ask the runtime to reload the configuration (`config reload`, CONFIG_RELOAD).
+    ///
+    /// Granted to the session owner's ordinary socket connection. The runtime still
+    /// does the reload: a connection with this capability commits nothing itself, and
+    /// the reload is refused unless the runtime is connected.
+    ReloadConfig,
 }
 
 impl Capability {
     /// Every capability, in the order the plan lists them.
-    pub const ALL: [Capability; 7] = [
+    pub const ALL: [Capability; 9] = [
         Capability::OfferRequest,
         Capability::CommitConfig,
         Capability::InputPolicy,
@@ -75,6 +87,8 @@ impl Capability {
         Capability::PortalInput,
         Capability::RegisterLayer,
         Capability::RetrieveSecret,
+        Capability::ReadConfig,
+        Capability::ReloadConfig,
     ];
 
     /// The name a log line, the handshake and a refusal use.
@@ -87,11 +101,13 @@ impl Capability {
             Capability::PortalInput => "portal-input",
             Capability::RegisterLayer => "register-layer",
             Capability::RetrieveSecret => "retrieve-secret",
+            Capability::ReadConfig => "read-config",
+            Capability::ReloadConfig => "reload-config",
         }
     }
 
     /// The bit this capability occupies in a grant.
-    pub const fn bit(self) -> u8 {
+    pub const fn bit(self) -> u16 {
         match self {
             Capability::OfferRequest => 1 << 0,
             Capability::CommitConfig => 1 << 1,
@@ -100,6 +116,8 @@ impl Capability {
             Capability::PortalInput => 1 << 4,
             Capability::RegisterLayer => 1 << 5,
             Capability::RetrieveSecret => 1 << 6,
+            Capability::ReadConfig => 1 << 7,
+            Capability::ReloadConfig => 1 << 8,
         }
     }
 
@@ -117,7 +135,7 @@ impl fmt::Display for Capability {
 
 /// The set of capabilities one connection holds.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct Capabilities(u8);
+pub struct Capabilities(u16);
 
 impl Capabilities {
     /// No capability: what a connection on the ordinary socket has, always.
@@ -125,7 +143,7 @@ impl Capabilities {
 
     /// The set of the capabilities named.
     pub const fn of(capabilities: &[Capability]) -> Capabilities {
-        let mut bits = 0u8;
+        let mut bits = 0u16;
         let mut index = 0;
         while index < capabilities.len() {
             bits |= capabilities[index].bit();
@@ -144,8 +162,8 @@ impl Capabilities {
         self.0 == 0
     }
 
-    /// The set as the one byte the handshake carries.
-    pub const fn bits(self) -> u8 {
+    /// The set as the two bytes the handshake carries, low byte first.
+    pub const fn bits(self) -> u16 {
         self.0
     }
 
@@ -155,7 +173,7 @@ impl Capabilities {
     /// Dropping rather than rejecting is the deny-by-default rule: a compositor that
     /// grants a capability a later Gnoblin added still serves this build, and this
     /// build simply does not hold the capability it cannot name.
-    pub const fn from_bits(bits: u8) -> Capabilities {
+    pub const fn from_bits(bits: u16) -> Capabilities {
         Capabilities(bits & Capabilities::of(&Capability::ALL).bits())
     }
 
@@ -198,13 +216,28 @@ mod tests {
         // The failure this prevents: a newer compositor grants something this build
         // has no name for, and the connection ends up holding a bit that a later
         // `contains` could match by accident.
-        let granted = Capabilities::from_bits(0xff);
+        let granted = Capabilities::from_bits(0xffff);
         assert_eq!(granted, Capabilities::of(&Capability::ALL));
         for capability in Capability::ALL {
             assert!(granted.contains(capability), "the known ones survive");
         }
         assert_eq!(granted.names().count(), Capability::ALL.len());
-        assert_eq!(Capabilities::from_bits(0x80), Capabilities::NONE);
+    }
+
+    #[test]
+    fn reading_and_reloading_the_configuration_are_not_committing_it() {
+        // The failure this prevents: the user's CLI is granted the runtime's commit
+        // power because it needs to read or reload, so a grant meant for reading lets a
+        // same-owner shell rewrite the document the runtime evaluates.
+        assert_eq!(Capability::ReadConfig.name(), "read-config");
+        assert_eq!(Capability::ReloadConfig.name(), "reload-config");
+        let owner = Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]);
+        assert!(owner.contains(Capability::ReadConfig));
+        assert!(owner.contains(Capability::ReloadConfig));
+        assert!(!owner.contains(Capability::CommitConfig), "{owner}");
+        assert_eq!(owner.to_string(), "read-config, reload-config");
+        assert_eq!(Capability::from_name("read-config"), Some(Capability::ReadConfig));
+        assert_eq!(Capability::from_name("reload-config"), Some(Capability::ReloadConfig));
     }
 
     #[test]

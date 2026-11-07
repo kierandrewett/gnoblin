@@ -56,11 +56,13 @@ run.
 
 ## Findings (not fixed here)
 
-- **F1** `config get` and `config reload` need the `commit-config` capability,
-  which the CLI connection does not hold. The denial is at
-  `crates/gnoblin-compositor/src/ipc/server.rs:803`. The `runtime` role is
-  granted that capability at `crates/gnoblin-compositor/src/ipc/privileged.rs:78`.
-  Expected by design. Owner: IPC.
+- **F1 (fixed)** `config get` and `config reload` used to need `commit-config`,
+  which the CLI connection does not hold, so the documented edit-then-reload flow
+  was denied. Fixed by splitting the authority: `read-config` and `reload-config`
+  are granted to the session owner's socket connection (peer uid from
+  `SO_PEERCRED`), and neither implies `commit-config`, which stays with the
+  `runtime` role. See `design/rust-compositor.md`, "Capabilities and who holds
+  them". The row 8 denial above is from before this change.
 - **F2** `gnoblinctl config validate FILE` expects JSON. A Lua config fails with
   `invalid number at line 1 column 2`. Entry point `crates/gnoblinctl/src/verbs.rs:255`.
   Owner: CLI. Fix: route `.lua` files to the Lua parser, or document JSON only.

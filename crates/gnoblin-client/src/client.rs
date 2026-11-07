@@ -503,11 +503,12 @@ impl<T: Transport> Client<T> {
 
     /// Ask the runtime to re-read the configuration, returning the revision it committed.
     ///
-    /// Privileged. The compositor answers when the runtime has answered: with the
-    /// revision when the reload was accepted, or [`crate::code::CONFIG_REJECTED`] with
-    /// the runtime's diagnostic when the document is wrong, which leaves the last
-    /// accepted document in force. Requests made while one is outstanding share its
-    /// answer.
+    /// Needs `reload-config`, which the session owner's socket connection holds. The
+    /// compositor does not commit anything itself: it hands the reload to the runtime,
+    /// which answers with the revision when the document is accepted, or
+    /// [`crate::code::CONFIG_REJECTED`] with the runtime's diagnostic when it is wrong,
+    /// which leaves the last accepted document in force. Requests made while one is
+    /// outstanding share its answer.
     pub fn reload_config(&mut self) -> Result<u64, ClientError> {
         let correlation = self.next_id();
         let frame = wire::config_reload(correlation);
@@ -533,8 +534,8 @@ impl<T: Transport> Client<T> {
     /// The last configuration the compositor accepted, or `None` when it has accepted
     /// none.
     ///
-    /// Privileged like [`Client::commit_config`], because the document is the user's
-    /// configuration rather than public session state.
+    /// Needs `read-config`, which the session owner's socket connection holds. This is
+    /// read-only, so a connection that can only read cannot change what is in force.
     pub fn configuration(&mut self) -> Result<Option<(u64, Vec<u8>)>, ClientError> {
         let correlation = self.next_id();
         let frame = wire::config_current(correlation);

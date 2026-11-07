@@ -14,9 +14,9 @@
 //!
 //! An accept frame also carries the [`Capabilities`] the compositor granted the
 //! connection (design/rust-compositor.md, "One IPC"). The frame's layout is fixed, so
-//! the grant is one of the three reserved bytes and an older client ignores it: a
-//! handshake that grows a field must not change its length, and a client that cannot
-//! read the grant is a client whose connection is not privileged anyway.
+//! the grant takes two of the bytes the layout reserved, and an older client ignores
+//! them: a handshake that grows a field must not change its length, and a client that
+//! cannot read the grant is a client whose connection is not privileged anyway.
 
 use crate::capability::Capabilities;
 use crate::error::CodecError;
@@ -26,8 +26,8 @@ use gnoblin_types::Version;
 /// Magic that starts every handshake frame, so one can be told from an envelope.
 pub const MAGIC: [u8; 4] = *b"GNBL";
 
-/// Fixed handshake frame length: 4 magic, 1 kind, 1 capability byte, 2 reserved,
-/// 3 x 4 version.
+/// Fixed handshake frame length: 4 magic, 1 kind, 2 capability bytes (low byte first),
+/// 1 reserved, 3 x 4 version.
 pub const HANDSHAKE_LEN: usize = 20;
 
 /// Which handshake frame this is.
@@ -112,7 +112,9 @@ impl Handshake {
         let mut frame = [0u8; HANDSHAKE_LEN];
         frame[0..4].copy_from_slice(&MAGIC);
         frame[4] = self.kind as u8;
-        frame[5] = self.capabilities.bits();
+        let grant = self.capabilities.bits().to_le_bytes();
+        frame[5] = grant[0];
+        frame[6] = grant[1];
         frame[8..12].copy_from_slice(&self.version.major.to_be_bytes());
         frame[12..16].copy_from_slice(&self.version.minor.to_be_bytes());
         frame[16..20].copy_from_slice(&self.version.patch.to_be_bytes());
@@ -133,7 +135,7 @@ impl Handshake {
         Ok(Handshake {
             kind,
             version: Version::new(read_u32(frame, 8), read_u32(frame, 12), read_u32(frame, 16)),
-            capabilities: Capabilities::from_bits(frame[5]),
+            capabilities: Capabilities::from_bits(u16::from_le_bytes([frame[5], frame[6]])),
         })
     }
 
@@ -186,8 +188,8 @@ mod tests {
             assert_eq!(frame.len(), HANDSHAKE_LEN);
             assert_eq!(&frame[0..4], &MAGIC);
             assert_eq!(frame[4], kind as u8);
-            assert_eq!(frame[5], 0, "a plain handshake grants nothing");
-            assert_eq!(&frame[6..8], &[0, 0], "reserved bytes stay zero");
+            assert_eq!(frame[7], 0, "the reserved byte stays zero");
+            assert_eq!(&frame[5..7], &[0, 0], "a plain handshake grants nothing");
             assert_eq!(Handshake::decode(&frame).expect("decode"), handshake);
         }
     }
@@ -230,13 +232,13 @@ mod tests {
     #[test]
     fn a_grant_survives_the_fixed_frame_and_a_plain_handshake_carries_none() {
         // The failure this prevents: the compositor grants capabilities and the
-        // client reads a frame where the grant byte is the first reserved byte, so a
-        // privileged client silently believes it holds nothing.
+        // client reads a frame whose grant bytes it does not parse, so a privileged
+        // client silently believes it holds nothing.
         use crate::capability::{Capabilities, Capability};
 
         let grant = Capabilities::of(&[Capability::OfferRequest, Capability::CommitConfig]);
         let frame = Handshake::grant(version("0.2.0"), grant).encode();
-        assert_eq!(frame[5], grant.bits());
+        assert_eq!(&frame[5..7], &grant.bits().to_le_bytes());
         let decoded = Handshake::decode(&frame).expect("decode");
         assert_eq!(decoded.kind, HandshakeKind::Accept);
         assert_eq!(decoded.capabilities, grant);
@@ -244,7 +246,7 @@ mod tests {
         // A hello asks for nothing, so a client cannot widen its own connection by
         // sending a grant, and a refusal never grants anything.
         let mut forged = Handshake::hello(version("0.2.0")).encode();
-        forged[5] = Capabilities::of(&Capability::ALL).bits();
+        forged[5..7].copy_from_slice(&Capabilities::of(&Capability::ALL).bits().to_le_bytes());
         assert_eq!(
             Handshake::decode(&forged).expect("decode").capabilities,
             Capabilities::of(&Capability::ALL),

@@ -185,6 +185,34 @@ agents out of the compositor process. `gnoblin-idle` folds into the services
 role. The roles stay in one executable, as `design/monolithic-compositor.md`
 requires; `gnoblinctl` and the portal stay separate binaries.
 
+### Capabilities and who holds them
+
+A connection holds only the capabilities its source grants, and the compositor
+decides the source. Three sources exist:
+
+- **Privileged roles** hold their role's grant from `privileged.rs`: `runtime`
+  holds `commit-config`, `read-config` (it reads back what it committed) and
+  `input-policy`; `services` holds `offer-request` and `register-layer`; `portal`
+  holds `portal-ui`; and `input` holds `portal-input`.
+- **The session owner's socket connection** holds `read-config` and
+  `reload-config`. The compositor reads the peer's uid from `SO_PEERCRED` when it
+  accepts the connection, never from the handshake. The socket sits in the
+  owner's 0700 runtime directory, so only the owner reaches it normally, and the
+  uid check holds even if that changes.
+- **Anything else** holds nothing. That includes another uid, and a peer whose
+  credentials cannot be read.
+
+`read-config` and `reload-config` are separate from `commit-config` on purpose.
+Reading the configuration is not a write. A reload is a request: the compositor
+hands it to the runtime, which parses the document and then either commits it
+(`config.commit`) or rejects it (`config.reject`). With no runtime connected, a
+reload is refused `no-runtime` and nothing is committed. So the owner's CLI can
+read the document and ask for a reload, but cannot write the document the runtime
+evaluates. `commit-config` stays with the runtime role alone.
+
+A refusal names the missing capability, for example: `config.current` needs the
+`read-config` capability, which this connection does not hold.
+
 ### One IPC
 
 Today there are two wires with overlapping meaning: the private runtime protocol

@@ -35,7 +35,7 @@ use std::time::Duration;
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError, Event, code};
-use gnoblin_model::{Filter, Provider, Value};
+use gnoblin_model::{Filter, Observation, Provider, Value};
 use gnoblin_proto::Capability;
 use gnoblin_types::Version;
 
@@ -78,13 +78,15 @@ fn refusal(error: ClientError) -> (String, String) {
 fn a_socket_client_cannot_use_a_privileged_member() {
     // The failure this prevents: a shell, a portal or anything else that can reach the
     // socket commits a configuration or offers a prompt, because privilege was a property of
-    // the request rather than of the connection.
+    // the request rather than of the connection. The session owner's own socket connection
+    // is the one ordinary connection that reads the configuration and asks for a reload, and
+    // it still cannot commit: the reload is performed by the runtime.
     let (session, _ends) = Session::start_privileged(&["runtime", "services"]);
     let mut client = socket_client(&session);
-    assert!(
-        client.capabilities().is_empty(),
-        "an ordinary connection is granted nothing: {:?}",
-        client.capabilities()
+    assert_eq!(
+        client.capabilities(),
+        gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]),
+        "the owner's socket connection reads and reloads, and holds nothing else"
     );
 
     let (code, message) = refusal(
@@ -103,12 +105,10 @@ fn a_socket_client_cannot_use_a_privileged_member() {
     assert_eq!(code, code::DENIED);
     assert!(message.contains("commit-config"), "{message}");
 
-    let (code, _) = refusal(
-        client
-            .configuration()
-            .expect_err("an ordinary connection cannot read the configuration"),
-    );
-    assert_eq!(code, code::DENIED);
+    // Reading the configuration is the owner's, so it is not refused for want of a capability.
+    client
+        .configuration()
+        .expect("the owner's connection reads the configuration");
 
     // And the session is unharmed: the refusal is this connection's, not the compositor's.
     let listed = session.ctl(&["session", "list"]).ok();
@@ -296,8 +296,10 @@ fn the_session_publishes_who_provides_each_slot() {
     );
 }
 
-/// A test that a plain socket never grants a capability, however it is started: the grant is
-/// the compositor's decision about the descriptor, not something a client can ask for.
+/// A test that a plain socket never grants a privileged capability, however it asks: the grant is
+/// the compositor's decision from the peer's kernel uid, not something the hello can claim. The
+/// session owner's connection is granted the configuration reads and reload request, and nothing
+/// that commits.
 #[test]
 fn a_handshake_cannot_ask_for_a_grant() {
     let (session, _ends) = Session::start_privileged(&["services"]);
@@ -321,9 +323,14 @@ fn a_handshake_cannot_ask_for_a_grant() {
         let mut reader = &stream;
         gnoblin_proto::read_grants(&mut reader).expect("the grants frame after the accept");
     }
+    assert_eq!(
+        answer.capabilities,
+        gnoblin_proto::Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]),
+        "the compositor grants the owner's socket reads and reloads, whatever the hello asked for"
+    );
     assert!(
-        answer.capabilities.is_empty(),
-        "the compositor grants nothing on the socket, whatever the hello asked for: {answer:?}"
+        !answer.capabilities.contains(Capability::CommitConfig),
+        "a hello asking for commit is not granted it: {answer:?}"
     );
     let _ = Path::new("");
 }
@@ -396,4 +403,114 @@ fn stale_partial_bytes_never_reach_the_new_peer() {
     );
     let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
     assert_eq!(client.commit_config(&document).expect("the commit"), 1);
+}
+
+#[test]
+fn the_owner_reload_with_no_runtime_is_refused_by_name_and_commits_nothing() {
+    // The failure this prevents: `config reload` hangs waiting for a runtime that is not
+    // there, or writes the document itself. Reload asks the runtime, so with none connected
+    // it is refused and says so, and the configuration stays unset.
+    let session = Session::start();
+    let reload = session.ctl(&["config", "reload"]);
+    assert_ne!(reload.code, 0, "a reload with no runtime must not succeed");
+    assert!(
+        reload.err.contains("no runtime role is connected"),
+        "the refusal says why: {}",
+        reload.err
+    );
+    let mut client = socket_client(&session);
+    assert_eq!(
+        client.configuration().expect("the configuration"),
+        None,
+        "the refused reload committed nothing"
+    );
+}
+
+#[test]
+fn the_owner_reload_reaches_the_runtime_which_commits_the_answer() {
+    // The failure this prevents: the reload is granted but never reaches the runtime, or the
+    // compositor commits on the runtime's behalf. The CLI's reload blocks until the runtime
+    // answers, so it runs on its own thread while the runtime watches the session for the
+    // request and commits.
+    let (session, mut ends) = Session::start_privileged(&["runtime"]);
+    let mut runtime = role_client(&mut ends, "runtime");
+    runtime.subscribe(Filter::All).expect("the snapshot");
+
+    let socket = session.socket().to_path_buf();
+    let reload = std::thread::spawn(move || {
+        let mut client =
+            Client::connect(UnixTransport::connect(&socket).expect("listens"), version()).expect("the handshake");
+        client.reload_config()
+    });
+
+    let generation = wait_for("a reload request reaches the runtime", || {
+        loop {
+            match runtime.next_event() {
+                Ok(Event::Model(Observation::Signalled { signal, fields, .. })) if signal == "reload_requested" => {
+                    return Some(fields);
+                }
+                Ok(_) => {}
+                Err(_) => return None,
+            }
+        }
+    });
+    assert!(
+        generation.contains_key("generation"),
+        "the request names its generation"
+    );
+
+    let document = br#"{"input":{"repeat-delay":250}}"#.to_vec();
+    assert_eq!(runtime.commit_config(&document).expect("the runtime's commit"), 1);
+    assert_eq!(
+        reload.join().expect("the reload thread").expect("the reload answered"),
+        1,
+        "the CLI's reload is answered with the revision the runtime committed"
+    );
+}
+
+#[test]
+fn a_runtime_rejection_answers_the_owner_reload_and_leaves_the_document_in_force() {
+    // The failure this prevents: a document the runtime refuses is still committed, or the
+    // owner's reload reports success. The reject carries the runtime's diagnostic back to
+    // the CLI, and the last accepted document is still the one in force.
+    let (session, mut ends) = Session::start_privileged(&["runtime"]);
+    let mut runtime = role_client(&mut ends, "runtime");
+    runtime.subscribe(Filter::All).expect("the snapshot");
+
+    let socket = session.socket().to_path_buf();
+    let reload = std::thread::spawn(move || {
+        let mut client =
+            Client::connect(UnixTransport::connect(&socket).expect("listens"), version()).expect("the handshake");
+        client.reload_config()
+    });
+
+    wait_for("a reload request reaches the runtime", || {
+        loop {
+            match runtime.next_event() {
+                Ok(Event::Model(Observation::Signalled { signal, .. })) if signal == "reload_requested" => {
+                    return Some(());
+                }
+                Ok(_) => {}
+                Err(_) => return None,
+            }
+        }
+    });
+    runtime
+        .reject_config("input.repeat-delay: expected a number")
+        .expect("the rejection is recorded");
+
+    let (code, message) = refusal(
+        reload
+            .join()
+            .expect("the reload thread")
+            .expect_err("a rejected reload is refused"),
+    );
+    assert_eq!(code, code::CONFIG_REJECTED);
+    assert!(message.contains("expected a number"), "{message}");
+    let mut client = socket_client(&session);
+    assert_eq!(
+        client.configuration().expect("the configuration"),
+        None,
+        "the rejected document was never committed"
+    );
 }

@@ -50,7 +50,7 @@ gnoblin-portal-ui = { path = "../gnoblin-portal-ui" }
 gnoblin-input = { path = "../gnoblin-input" }
 gnoblin-input-eis = { path = "../gnoblin-input-eis" }
 # Who this process is, for the IPC socket directory's ownership check.
-rustix.workspace = true
+rustix = { workspace = true, features = ["net"] }
 # Wipes a secret answer the request layer forwards or refuses, so it does not outlive the frame.
 zeroize.workspace = true
 # The accepted configuration document and its last-good store: the compositor reads the

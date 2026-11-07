@@ -24,6 +24,17 @@ Add `--json` to any command for machine-readable output.
 | `gnoblinctl config reload`        | Re-read the configuration in place; a refused document is not applied       |
 | `gnoblinctl config validate FILE` | Check a configuration document with the runtime's parser, without a session |
 
+The session owner's connection holds the two configuration capabilities:
+
+- `read-config` lets `config get` work from a terminal as the same user.
+- `reload-config` lets `config reload` work from a terminal as the same user.
+
+A connection from another user holds neither, and the refusal names the missing
+capability. `config reload` only asks the runtime to re-read the document. It
+never commits by itself, and it is refused with `no-runtime` when no runtime is
+connected. Writing a configuration needs `commit-config`, which only the runtime
+holds, so the CLI cannot write one.
+
 `config validate` does not connect to a session, so it works before Gnoblin is
 running.
 

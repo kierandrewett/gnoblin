@@ -325,7 +325,7 @@ mod tests {
         assert!(rows.iter().all(|(_, held)| !held), "nothing is granted by NONE");
         let table = capability_table(&rows);
         assert!(table.starts_with("capability"), "{table}");
-        let width = "register-layer".len();
+        let width = "retrieve-secret".len();
         assert!(table.contains(&format!("{:<width$}  no\n", "offer-request")), "{table}");
         assert!(table.contains(&format!("{:<width$}  no\n", "portal-input")), "{table}");
     }
@@ -334,12 +334,27 @@ mod tests {
     fn a_granted_capability_is_marked_yes() {
         let granted = Capabilities::of(&[Capability::CommitConfig]);
         let table = capability_table(&capability_rows(granted));
-        let width = "register-layer".len();
+        let width = "retrieve-secret".len();
         assert!(
             table.contains(&format!("{:<width$}  yes\n", "commit-config")),
             "{table}"
         );
         assert!(table.contains(&format!("{:<width$}  no\n", "offer-request")), "{table}");
+    }
+
+    #[test]
+    fn the_session_owner_sees_read_and_reload_granted_and_commit_refused() {
+        // The CLI is the session owner's ordinary connection: it reads and reloads, and the
+        // table must say it cannot commit, so `gnoblinctl capabilities` matches what is refused.
+        let granted = Capabilities::of(&[Capability::ReadConfig, Capability::ReloadConfig]);
+        let table = capability_table(&capability_rows(granted));
+        let width = "retrieve-secret".len();
+        assert!(table.contains(&format!("{:<width$}  yes\n", "read-config")), "{table}");
+        assert!(
+            table.contains(&format!("{:<width$}  yes\n", "reload-config")),
+            "{table}"
+        );
+        assert!(table.contains(&format!("{:<width$}  no\n", "commit-config")), "{table}");
     }
 
     #[test]
