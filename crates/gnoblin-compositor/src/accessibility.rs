@@ -1,10 +1,9 @@
-//! The visual accessibility, from the `magnifier`, `magnifier-zoom`, `magnifier-mode` and
-//! `colour-filter` keys of the `accessibility` configuration section.
+//! The visual accessibility, from the `magnifier`, `magnifier-zoom` and `colour-filter` keys of
+//! the `accessibility` configuration section.
 //!
 //! A document with no `accessibility` section, or one without these keys, keeps the built-in
 //! default: no magnifier and no colour filter. The schema checks the values before they reach
-//! this module. `magnifier-mode` is read but not yet applied: the frame magnifies the whole
-//! output only, so a lens is drawn as full-screen.
+//! this module.
 
 use std::path::Path;
 

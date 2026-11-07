@@ -139,7 +139,7 @@ pub use a11y::A11y;
 /// Named colour filters and the colour matrix rows each one applies.
 pub use colour::{ColourFilter, Rows};
 pub use config::{
-    BounceKeysConfig, Config, Follow, MagnifierConfig, Mode, MouseKeysConfig, SlowKeysConfig, StickyKeysConfig,
+    BounceKeysConfig, Config, Follow, MagnifierConfig, MouseKeysConfig, SlowKeysConfig, StickyKeysConfig,
 };
 /// What the machines emit: the decisions, views and published flags the compositor acts on.
 pub use effect::{Appearance, BeepReason, Effect, KeyDecision, KeyRouting, MagnifierArea, PointerButton, Published};

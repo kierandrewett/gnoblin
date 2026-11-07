@@ -1411,6 +1411,11 @@ impl State {
     /// request, which is the same rule a button follows.
     fn move_pointer(&mut self, position: SmithayPoint<f64, Logical>, time: InputTime) {
         self.pointer_position = position;
+        // The magnifier centres on the pointer, so a moved pointer changes every magnified
+        // output. Each output is repainted rather than waiting for other damage to reach it.
+        if self.visual_accessibility.magnifier_zoom.is_some() {
+            self.damage_outputs();
+        }
         // A frame renderer hears the hover before the pointer focus changes: the region
         // under the pointer is the renderer's, the surface is the window's, and the two
         // are decided independently.
@@ -2681,38 +2686,61 @@ pub(crate) fn x11_geometry(rect: Rect) -> Rectangle<i32, Logical> {
     )
 }
 
-/// Whether a rectangle holds a layout point.
-///
-/// The upper edges are exclusive, because a point on the right or bottom edge of a
-/// monitor is a point on the next one, and a point on the last one is outside it.
 /// Sets `frame`'s magnified view and colour transform from `settings`, for the output
-/// whose rectangle is `rect`.
+/// whose rectangle is `rect`. `pointer` is the layout position of the pointer, which
+/// centres the view when it is on this output.
 ///
 /// A missing rectangle or a settings value the frame rejects leaves that part off, so an
 /// output the session no longer knows is drawn unmagnified rather than wrongly.
 fn apply_visual_accessibility(
     settings: crate::server::VisualAccessibilitySettings,
     rect: Option<Rect>,
+    pointer: SmithayPoint<f64, Logical>,
     frame: &mut OutputFrame,
 ) {
     let view = match (settings.magnifier_zoom, rect) {
-        (Some(zoom), Some(rect)) => magnifier_view(zoom, rect),
+        (Some(zoom), Some(rect)) => magnifier_view(zoom, rect, pointer),
         _ => None,
     };
     frame.set_view(view);
     frame.set_colour_matrix(settings.colour_matrix.and_then(ColourMatrix::new));
 }
 
-/// The magnified view of an output of size `rect`: centred on the middle of the output, so
-/// each output is magnified about its own middle. `None` when the zoom is the identity or
-/// the frame rejects it.
-pub(crate) fn magnifier_view(zoom: f32, rect: Rect) -> Option<View> {
-    if zoom <= gnoblin_render_frame::frame::MIN_ZOOM {
+/// The magnified view of an output of size `rect`. The view is centred on the pointer
+/// when the pointer is on this output, and on the middle of the output otherwise, so each
+/// output shows its own area.
+///
+/// The centre is clamped so the magnified view stays inside the output. The visible area
+/// is `width / zoom` by `height / zoom`, so its centre may come no closer than half of
+/// that to an edge. `None` when the zoom is the identity, not a number, or rejected by the
+/// frame.
+pub(crate) fn magnifier_view(zoom: f32, rect: Rect, pointer: SmithayPoint<f64, Logical>) -> Option<View> {
+    if zoom.is_nan() || zoom <= gnoblin_render_frame::frame::MIN_ZOOM {
         return None;
     }
-    View::new(zoom, rect.width as f32 / 2.0, rect.height as f32 / 2.0)
+    let width = rect.width as f32;
+    let height = rect.height as f32;
+    let (centre_x, centre_y) = if contains(&rect, pointer) {
+        (
+            (pointer.x - f64::from(rect.x)) as f32,
+            (pointer.y - f64::from(rect.y)) as f32,
+        )
+    } else {
+        (width / 2.0, height / 2.0)
+    };
+    let half_w = width / (2.0 * zoom);
+    let half_h = height / (2.0 * zoom);
+    View::new(
+        zoom,
+        centre_x.clamp(half_w, width - half_w),
+        centre_y.clamp(half_h, height - half_h),
+    )
 }
 
+/// Whether a rectangle holds a layout point.
+///
+/// The upper edges are exclusive, because a point on the right or bottom edge of a
+/// monitor is a point on the next one, and a point on the last one is outside it.
 fn contains(rect: &Rect, point: SmithayPoint<f64, Logical>) -> bool {
     let right = f64::from(rect.x + i32::try_from(rect.width).unwrap_or(i32::MAX));
     let bottom = f64::from(rect.y + i32::try_from(rect.height).unwrap_or(i32::MAX));
@@ -2752,7 +2780,7 @@ impl Host for State {
         } else {
             crate::server::VisualAccessibilitySettings::default()
         };
-        apply_visual_accessibility(settings, self.output_rect(output), frame);
+        apply_visual_accessibility(settings, self.output_rect(output), self.pointer_position, frame);
         let changed = if self.lock.state() == LockState::Unlocked {
             self.composer.compose(output, frame)
         } else {
@@ -2925,56 +2953,106 @@ mod visual_accessibility_tests {
         Rect::new(1920, 0, 1280, 720)
     }
 
+    /// A layout point, for a pointer somewhere on the desktop.
+    fn point(x: f64, y: f64) -> SmithayPoint<f64, Logical> {
+        SmithayPoint::from((x, y))
+    }
+
+    /// A point on no output, so a view is centred on the middle of its output.
+    fn nowhere() -> SmithayPoint<f64, Logical> {
+        point(-100.0, -100.0)
+    }
+
+    /// Settings that magnify by `zoom` and apply no colour transform.
+    fn zoomed(zoom: f32) -> VisualAccessibilitySettings {
+        VisualAccessibilitySettings {
+            magnifier_zoom: Some(zoom),
+            colour_matrix: None,
+        }
+    }
+
     #[test]
     fn the_default_settings_leave_the_frame_unchanged() {
         let mut frame = OutputFrame::new();
-        apply_visual_accessibility(VisualAccessibilitySettings::default(), Some(left_output()), &mut frame);
+        apply_visual_accessibility(
+            VisualAccessibilitySettings::default(),
+            Some(left_output()),
+            nowhere(),
+            &mut frame,
+        );
         assert!(frame.view().is_none(), "no magnifier by default");
         assert!(frame.colour_matrix().is_none(), "no colour transform by default");
     }
 
     #[test]
     fn a_zoom_of_one_is_the_identity() {
-        assert!(magnifier_view(MIN_ZOOM, left_output()).is_none());
+        assert!(magnifier_view(MIN_ZOOM, left_output(), point(100.0, 100.0)).is_none());
         let mut frame = OutputFrame::new();
-        let settings = VisualAccessibilitySettings {
-            magnifier_zoom: Some(1.0),
-            colour_matrix: None,
-        };
-        apply_visual_accessibility(settings, Some(left_output()), &mut frame);
+        apply_visual_accessibility(zoomed(1.0), Some(left_output()), point(100.0, 100.0), &mut frame);
         assert!(frame.view().is_none());
     }
 
     #[test]
-    fn the_magnifier_is_centred_on_each_output_separately() {
-        let left = magnifier_view(2.0, left_output()).expect("a view for 2x");
+    fn a_zoom_that_is_not_a_number_is_not_applied() {
+        assert!(magnifier_view(f32::NAN, left_output(), nowhere()).is_none());
+    }
+
+    #[test]
+    fn with_no_pointer_on_the_output_the_view_is_centred() {
+        let left = magnifier_view(2.0, left_output(), nowhere()).expect("a view for 2x");
         assert_eq!((left.zoom, left.centre_x, left.centre_y), (2.0, 960.0, 540.0));
-        let right = magnifier_view(2.0, right_output()).expect("a view for 2x");
+        let right = magnifier_view(2.0, right_output(), nowhere()).expect("a view for 2x");
         assert_eq!((right.zoom, right.centre_x, right.centre_y), (2.0, 640.0, 360.0));
     }
 
     #[test]
+    fn the_centre_follows_the_pointer_on_its_output() {
+        // Left output: the pointer at (500, 300) is inside the clamp range for 2x.
+        let left = magnifier_view(2.0, left_output(), point(500.0, 300.0)).expect("a view");
+        assert_eq!((left.centre_x, left.centre_y), (500.0, 300.0));
+        // Right output: the origin is (1920, 0), so the pointer is at local (400, 300).
+        let right = magnifier_view(2.0, right_output(), point(2320.0, 300.0)).expect("a view");
+        assert_eq!((right.centre_x, right.centre_y), (400.0, 300.0));
+    }
+
+    #[test]
+    fn the_centre_is_clamped_at_each_edge() {
+        // At 2x the visible area is half the output, so the centre stays 480 by 270 from the
+        // top left and 480 by 270 from the bottom right of a 1920 by 1080 output.
+        let top_left = magnifier_view(2.0, left_output(), point(5.0, 5.0)).expect("a view");
+        assert_eq!((top_left.centre_x, top_left.centre_y), (480.0, 270.0));
+        let bottom_right = magnifier_view(2.0, left_output(), point(1915.0, 1075.0)).expect("a view");
+        assert_eq!((bottom_right.centre_x, bottom_right.centre_y), (1440.0, 810.0));
+    }
+
+    #[test]
+    fn a_pointer_on_a_neighbour_does_not_move_this_output_view() {
+        // The pointer is on the left output, so the right output stays on its own middle.
+        let right = magnifier_view(2.0, right_output(), point(100.0, 100.0)).expect("a view");
+        assert_eq!((right.centre_x, right.centre_y), (640.0, 360.0));
+    }
+
+    #[test]
     fn the_zoom_reaches_the_frame_of_its_own_output_only() {
-        let settings = VisualAccessibilitySettings {
-            magnifier_zoom: Some(2.0),
-            colour_matrix: None,
-        };
+        // The pointer is on the left output, so only the left frame's view follows it.
         let mut left = OutputFrame::new();
-        apply_visual_accessibility(settings, Some(left_output()), &mut left);
+        apply_visual_accessibility(zoomed(2.0), Some(left_output()), point(500.0, 300.0), &mut left);
         let mut right = OutputFrame::new();
-        apply_visual_accessibility(settings, Some(right_output()), &mut right);
-        assert_eq!(left.view().map(|view| view.centre_x), Some(960.0));
-        assert_eq!(right.view().map(|view| view.centre_x), Some(640.0));
+        apply_visual_accessibility(zoomed(2.0), Some(right_output()), point(500.0, 300.0), &mut right);
+        assert_eq!(
+            left.view().map(|view| (view.centre_x, view.centre_y)),
+            Some((500.0, 300.0))
+        );
+        assert_eq!(
+            right.view().map(|view| (view.centre_x, view.centre_y)),
+            Some((640.0, 360.0))
+        );
     }
 
     #[test]
     fn an_unknown_output_is_drawn_unmagnified() {
-        let settings = VisualAccessibilitySettings {
-            magnifier_zoom: Some(2.0),
-            colour_matrix: None,
-        };
         let mut frame = OutputFrame::new();
-        apply_visual_accessibility(settings, None, &mut frame);
+        apply_visual_accessibility(zoomed(2.0), None, nowhere(), &mut frame);
         assert!(frame.view().is_none());
     }
 
@@ -2991,7 +3069,7 @@ mod visual_accessibility_tests {
             colour_matrix: Some(invert),
         };
         let mut frame = OutputFrame::new();
-        apply_visual_accessibility(settings, Some(left_output()), &mut frame);
+        apply_visual_accessibility(settings, Some(left_output()), nowhere(), &mut frame);
         assert_eq!(frame.colour_matrix().map(|matrix| matrix.rows), Some(invert));
     }
 
@@ -3004,7 +3082,7 @@ mod visual_accessibility_tests {
             colour_matrix: Some(bad),
         };
         let mut frame = OutputFrame::new();
-        apply_visual_accessibility(settings, Some(left_output()), &mut frame);
+        apply_visual_accessibility(settings, Some(left_output()), nowhere(), &mut frame);
         assert!(frame.colour_matrix().is_none());
     }
 }

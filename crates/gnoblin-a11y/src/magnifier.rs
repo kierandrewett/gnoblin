@@ -100,7 +100,6 @@ impl Magnifier {
             output: output.id,
             source: magnified(output.bounds, self.anchor_point(output), self.config.zoom),
             zoom: self.config.zoom,
-            mode: self.config.mode,
         })
     }
 

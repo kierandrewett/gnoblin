@@ -1243,7 +1243,7 @@ Accessibility is its own lane, not a side effect of input and rendering.
 | ------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
 | Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: key watches and grabs                     | compositor, logic in `gnoblin-a11y`               |
 | Keyboard accessibility   | Sticky, slow, bounce and mouse keys; repeat settings                                       | `gnoblin-a11y` logic, `gnoblin-input`             |
-| Magnifier                | Full-screen and lens zoom that follows focus, caret and pointer                            | `gnoblin-a11y` state, `gnoblin-render`            |
+| Magnifier                | Full-output zoom centred on the pointer, per output                                        | `gnoblin-a11y` state, `gnoblin-render`            |
 | Colour filters           | Invert, greyscale, colour-blindness filters, high-contrast cursor                          | `gnoblin-render` passes                           |
 | Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15)      | `gnoblin-render`, settings publish                |
 | Visual bell              | Screen or window flash for `xdg_system_bell`                                               | `gnoblin-render`                                  |

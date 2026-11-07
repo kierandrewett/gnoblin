@@ -21,9 +21,8 @@ pub use gnoblin_types::{Point, Rect, Scale, Size};
 /// The area of `bounds` a magnifier at `scale` shows.
 ///
 /// The window is `scale`'s logical size of the output, centred on `point` and
-/// moved the smallest distance that keeps it inside. Both magnifier modes use
-/// this source rectangle; the mode only decides whether the renderer paints it
-/// over the whole output or in a lens at its own position.
+/// moved the smallest distance that keeps it inside. The renderer paints this
+/// source rectangle over the whole output.
 #[must_use]
 pub fn magnified(bounds: Rect, point: Point, scale: Scale) -> Rect {
     centred(bounds, point, scale.logical_size(bounds.size()))

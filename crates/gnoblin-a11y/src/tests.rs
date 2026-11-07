@@ -9,8 +9,8 @@ use crate::geometry::{Point, Rect, Scale};
 use crate::ids::{KeyCode, Keysym, OutputId, OwnerId};
 use crate::{
     A11y, Appearance, BounceKeysConfig, ButtonState, Config, Effect, Event, Follow, Key, KeyDecision, KeyRouting,
-    KeyState, Keystroke, MagnifierArea, MagnifierConfig, Mode, Modifiers, MouseKeysConfig, Output, PointerButton,
-    Published, SlowKeysConfig, StickyKeysConfig,
+    KeyState, Keystroke, MagnifierArea, MagnifierConfig, Modifiers, MouseKeysConfig, Output, PointerButton, Published,
+    SlowKeysConfig, StickyKeysConfig,
 };
 
 const SHIFT_L: u32 = 0xffe1;
@@ -96,7 +96,6 @@ fn magnifier_config(follow: Follow) -> Config {
     Config {
         magnifier: MagnifierConfig {
             enabled: true,
-            mode: Mode::FullScreen,
             zoom: Scale::integral(2),
             follow,
         },

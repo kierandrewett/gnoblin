@@ -49,15 +49,6 @@ variants = [
 ]
 
 [[enum]]
-name = "MagnifierMode"
-setting = "magnifier-mode"
-doc = "How the magnifier paints the area it magnifies."
-variants = [
-    { spelling = "lens", doc = "Draw the magnified area as a lens at its own position on the output." },
-    { spelling = "full-screen", doc = "Draw the magnified area over the whole output." },
-]
-
-[[enum]]
 name = "ColourFilter"
 setting = "colour-filter"
 doc = "A colour transform applied to every output. The vision-deficiency filters simulate how a viewer with that deficiency sees the screen; they do not correct it."
@@ -1858,7 +1849,7 @@ key = "magnifier"
 kind = "bool"
 accepted = "a boolean"
 default = { bool = false }
-doc = "Show a magnified view of the area around the pointer or focus."
+doc = "Show a magnified view of each output, centred on the pointer while it is on that output."
 since = "0.2.0"
 
 [[section.field]]
@@ -1869,15 +1860,6 @@ max = 32.0
 accepted = "a number from 1 to 32"
 default = { float = 2.0 }
 doc = "The magnification factor, from 1 (no zoom) to 32."
-since = "0.2.0"
-
-[[section.field]]
-key = "magnifier-mode"
-kind = "enum"
-enum = "MagnifierMode"
-accepted = "one of lens, full-screen"
-default = { enum = "lens" }
-doc = "How the magnified area is painted."
 since = "0.2.0"
 
 [[section.field]]

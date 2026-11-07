@@ -10,7 +10,6 @@ gnoblin.configure {
     accessibility = {
         magnifier = true,
         ["magnifier-zoom"] = 2,
-        ["magnifier-mode"] = "lens",
         ["colour-filter"] = "none",
     },
 }
@@ -20,15 +19,11 @@ gnoblin.configure {
 | ---------------- | -------------------------------------------------------------------------------- | ------- |
 | `magnifier`      | A boolean                                                                        | `false` |
 | `magnifier-zoom` | A number from 1 to 32                                                            | `2`     |
-| `magnifier-mode` | One of `lens`, `full-screen`                                                     | `lens`  |
 | `colour-filter`  | One of `none`, `invert`, `greyscale`, `protanopia`, `deuteranopia`, `tritanopia` | `none`  |
 
-`magnifier = true` shows each output magnified by `magnifier-zoom`. A zoom of
-`1` leaves the output unchanged.
-
-`magnifier-mode` is read and validated, but both values show the whole output
-at the chosen zoom, centred on that output. The `lens` value does not draw a
-lens at the pointer or focus.
+`magnifier = true` shows each output magnified by `magnifier-zoom`, centred on the pointer
+while it is on that output. The view is kept inside the output, so it stops at the edges. A zoom
+of `1` leaves the output unchanged.
 
 `colour-filter` changes every colour on every output:
 

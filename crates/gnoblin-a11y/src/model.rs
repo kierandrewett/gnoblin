@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 use crate::geometry::{Point, Rect, Scale};
 use crate::ids::{KeyCode, Keysym, OutputId, OwnerId};
 use crate::{
-    A11y, BounceKeysConfig, Config, Effect, Event, Follow, Key, KeyDecision, Keystroke, MagnifierConfig, Mode,
-    Modifiers, MouseKeysConfig, Output, SlowKeysConfig, StickyKeysConfig,
+    A11y, BounceKeysConfig, Config, Effect, Event, Follow, Key, KeyDecision, Keystroke, MagnifierConfig, Modifiers,
+    MouseKeysConfig, Output, SlowKeysConfig, StickyKeysConfig,
 };
 
 /// A 64-bit linear congruential generator: small, hand-written and identical on
@@ -96,11 +96,6 @@ impl Model {
             },
             magnifier: MagnifierConfig {
                 enabled: self.rng.below(2) == 0,
-                mode: if self.rng.below(2) == 0 {
-                    Mode::Lens
-                } else {
-                    Mode::FullScreen
-                },
                 zoom: match self.rng.below(3) {
                     0 => Scale::integral(1),
                     1 => Scale::integral(2),

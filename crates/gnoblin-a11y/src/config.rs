@@ -118,9 +118,6 @@ impl Default for MouseKeysConfig {
 pub struct MagnifierConfig {
     /// Whether the magnifier draws at all.
     pub enabled: bool,
-    /// Whether the renderer paints the source rectangle over the whole output
-    /// or in a lens at its own position.
-    pub mode: Mode,
     /// The zoom factor, clamped to 1x..=32x when the magnifier applies it.
     pub zoom: Scale,
     /// What the view follows. Only this source moves it, so a magnifier set to
@@ -133,20 +130,10 @@ impl Default for MagnifierConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            mode: Mode::FullScreen,
             zoom: Scale::integral(2),
             follow: Follow::Pointer,
         }
     }
-}
-
-/// How the magnifier paints its source rectangle.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Mode {
-    /// A lens drawn at the source rectangle's own position.
-    Lens,
-    /// The source rectangle drawn over the whole output.
-    FullScreen,
 }
 
 /// What moves the magnifier's view.

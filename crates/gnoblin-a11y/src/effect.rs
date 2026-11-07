@@ -6,7 +6,7 @@
 
 use crate::geometry::{Rect, Scale};
 use crate::ids::{OutputId, OwnerId};
-use crate::{ButtonState, Key, KeyState, Mode, Modifiers, Sticky};
+use crate::{ButtonState, Key, KeyState, Modifiers, Sticky};
 
 /// Who sees a key event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -114,8 +114,6 @@ pub struct MagnifierArea {
     pub source: Rect,
     /// The factor applied to it.
     pub zoom: Scale,
-    /// How the renderer paints it.
-    pub mode: Mode,
 }
 
 /// The state observers see: `gnoblin.accessibility` on the IPC and every
