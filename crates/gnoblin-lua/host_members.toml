@@ -59,3 +59,75 @@ kind = "function"
 doc = "The caller's monotonic clock in seconds."
 returns = ["number"]
 
+[[member]]
+name = "windows"
+kind = "table"
+doc = "The live windows, as interned objects. Each answer is as of the last pump; a window that closes leaves every answer at the same time."
+
+[[member.members]]
+name = "list"
+kind = "function"
+doc = "Every live window, in identity order."
+returns = ["gnoblin.window[]"]
+
+[[member.members]]
+name = "focused"
+kind = "function"
+doc = "The focused window, or nil when none has focus."
+returns = ["gnoblin.window|nil"]
+
+[[member.members]]
+name = "by_id"
+kind = "function"
+doc = "The live window with this identity, or nil. A closed window has no answer here; a held object keeps `alive == false`."
+params = [{ name = "id", type = "integer" }]
+returns = ["gnoblin.window|nil"]
+
+[[member]]
+name = "outputs"
+kind = "table"
+doc = "The live outputs, as interned objects. Each answer is as of the last pump."
+
+[[member.members]]
+name = "list"
+kind = "function"
+doc = "Every live output, in identity order."
+returns = ["gnoblin.output[]"]
+
+[[member.members]]
+name = "primary"
+kind = "function"
+doc = "The primary output, or nil when none is marked primary."
+returns = ["gnoblin.output|nil"]
+
+[[member.members]]
+name = "by_id"
+kind = "function"
+doc = "The live output with this connector name, or nil. An output's identity is its connector name, not a number."
+params = [{ name = "name", type = "string" }]
+returns = ["gnoblin.output|nil"]
+
+[[member]]
+name = "workspaces"
+kind = "table"
+doc = "The live workspaces, as interned objects. Each answer is as of the last pump."
+
+[[member.members]]
+name = "list"
+kind = "function"
+doc = "Every live workspace, in identity order."
+returns = ["gnoblin.workspace[]"]
+
+[[member.members]]
+name = "by_id"
+kind = "function"
+doc = "The live workspace with this identity, or nil."
+params = [{ name = "id", type = "integer" }]
+returns = ["gnoblin.workspace|nil"]
+
+[[member]]
+name = "find"
+kind = "function"
+doc = "The live objects of one kind that match a filter, as a Lua array in identity order. The kinds are `Window`, `Workspace` and `Output`. A table filter keeps the objects whose scalar fields equal every value given; a function filter keeps those it returns a truthy value for. An unknown kind or filter field is raised by name."
+params = [{ name = "kind", type = "string" }, { name = "filter", type = "table|fun(object: table): boolean|nil" }]
+returns = ["table"]

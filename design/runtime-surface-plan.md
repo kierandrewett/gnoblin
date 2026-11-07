@@ -122,6 +122,7 @@ Foundations first, then the window and process surface, then animation, input, C
 - **Tests first:** `find` returns only live objects; an unknown filter field is refused; an object whose window closed
   reports `alive == false`.
 - **Docs:** `docs/shell-api/find.md`, window and output pages.
+- **Status:** done: `gnoblin.windows.list/focused/by_id`, `outputs.list/primary/by_id`, `workspaces.list/by_id` and `gnoblin.find` over the `Window`, `Workspace` and `Output` kinds, all returning interned live objects with `alive`. Not done: the window method set (S4). The schema has no `pid`, `revision`, `workspace_id` or `monitor_id` fields, so the shell-api pages name them only as unavailable; the output `privacy_screen`, `renderer` and `work_area`, and the workspace `active`, `number`, `name` and `window_count` fields, are listed there as not available too.
 
 ### S4. Window method set and `present`
 

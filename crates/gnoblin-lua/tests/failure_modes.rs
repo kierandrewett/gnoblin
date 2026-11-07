@@ -343,7 +343,12 @@ for _ = 1, 1025 do
 end
 "#,
     );
-    let (_server, mut host) = pair();
+    // The loop of 1025 registrations is the test; the wall-clock budget is not, so it
+    // is set well above what a loaded debug build needs.
+    let (_server, mut host) = pair_with(Limits {
+        handler_ticks: 600_000,
+        ..Limits::default()
+    });
     let report = host.run_config(&config.paths()).expect("the run starts");
     assert_eq!(report.errors.len(), 1, "{:#?}", report.errors);
     assert!(
@@ -1591,4 +1596,95 @@ assert(string.find(tostring(message), "at most 256 window rules", 1, true), tost
     let ids = window_rule_app_ids(&report.document);
     assert_eq!(ids.len(), 256);
     assert_eq!(ids.last().map(String::as_str), Some("^rule256$"));
+}
+
+#[test]
+fn find_returns_only_live_windows_and_alive_turns_false_on_close() {
+    let (mut server, mut host) = pair();
+    let kept = open_window(&mut server, "Kept");
+    let gone = open_window(&mut server, "Gone");
+    let config = Config::new("find-live");
+    config.write(
+        "init.lua",
+        &format!(
+            r#"
+local held = gnoblin.windows.by_id({gone})
+assert(held ~= nil and held.alive == true, "the window is alive before close")
+local titles = {{}}
+for _, window in ipairs(gnoblin.find("Window")) do titles[#titles + 1] = window.title end
+table.sort(titles)
+assert(#titles == 2 and titles[1] == "Gone" and titles[2] == "Kept", "live windows: " .. table.concat(titles, ","))
+gnoblin.timers.after(2, function()
+    assert(held.alive == false, "a closed window reports alive == false")
+    local left = gnoblin.find("Window")
+    assert(#left == 1, "only the kept window is live, found " .. #left)
+    assert(left[1] == gnoblin.windows.by_id({kept}), "the live window is the kept one")
+end)
+"#,
+            gone = gone.get(),
+            kept = kept.get()
+        ),
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+
+    server.close(gone).expect("the window can be closed");
+    let pumped = host.pump(Tick::new(5000)).expect("the close is applied");
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+}
+
+#[test]
+fn find_refuses_a_table_field_the_kind_does_not_declare_by_name() {
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    let config = Config::new("find-unknown-field");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(gnoblin.find, "Window", {no_such_field = true})
+assert(not ok, "an undeclared field was accepted")
+assert(string.find(tostring(message), "no_such_field", 1, true) ~= nil, "the refusal names the field: " .. tostring(message))
+assert(string.find(tostring(message), "app_id", 1, true) ~= nil, "the refusal lists the fields that work: " .. tostring(message))
+
+local ok_table, message_table = pcall(gnoblin.find, "Window", {title = {}})
+assert(not ok_table, "a table value was accepted as a filter value")
+assert(string.find(tostring(message_table), "title", 1, true) ~= nil, "the refusal names the field: " .. tostring(message_table))
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn find_refuses_an_unknown_kind_and_names_the_kinds_that_work() {
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    let config = Config::new("find-unknown-kind");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(gnoblin.find, "Frame")
+assert(not ok, "an unknown kind was accepted")
+assert(string.find(tostring(message), "Window", 1, true) ~= nil, "the refusal lists the kinds: " .. tostring(message))
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_predicate_error_is_an_error_of_the_find_call() {
+    let (mut server, mut host) = pair();
+    open_window(&mut server, "First");
+    let config = Config::new("find-predicate-error");
+    config.write(
+        "init.lua",
+        r#"
+local ok, message = pcall(gnoblin.find, "Window", function() error("predicate boom") end)
+assert(not ok, "the predicate error was swallowed")
+assert(string.find(tostring(message), "predicate boom", 1, true) ~= nil, "the message: " .. tostring(message))
+"#,
+    );
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
 }

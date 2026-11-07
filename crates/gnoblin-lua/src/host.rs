@@ -842,7 +842,6 @@ impl<T: Transport + 'static> Host<T> {
                         handlers,
                     );
                 }
-                crate::bindings::forget_instance(&self.lua, object);
                 let stale: Vec<u64> = {
                     let mut shared = self.shared.borrow_mut();
                     shared.mirror.remove(&object);

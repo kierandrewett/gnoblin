@@ -15,16 +15,11 @@ local primary = gnoblin.find("Output", {primary = true})[1]
 
 ## Kinds
 
-| Kind           | List that `find` filters    |
-| -------------- | --------------------------- |
-| `Window`       | `gnoblin.windows.list()`    |
-| `Workspace`    | `gnoblin.workspaces.list()` |
-| `LayerSurface` | `gnoblin.layers.list()`     |
-| `Output`       | `gnoblin.outputs.list()`    |
-| `Shortcut`     | `gnoblin.shortcuts.list()`  |
-| `Launch`       | `gnoblin.launches.list()`   |
-| `InputSource`  | `gnoblin.input.sources()`   |
-| `Process`      | `gnoblin.process.list()`    |
+| Kind        | List that `find` filters    |
+| ----------- | --------------------------- |
+| `Window`    | `gnoblin.windows.list()`    |
+| `Workspace` | `gnoblin.workspaces.list()` |
+| `Output`    | `gnoblin.outputs.list()`    |
 
 The result is an array of the same live handles that the list and the events give, in the order of the list. Compare
 two handles with `==`.
@@ -38,7 +33,7 @@ keeps the focused windows with the application ID `notes`.
 A table filter raises a Lua error, and the error names the fields that work, when:
 
 - the kind does not declare a field of that name;
-- a field is not a scalar, such as `Window.frame`;
+- a field is not a scalar, such as `Window.effects`;
 - a value is not a string, a number or a boolean.
 
 The fields of each kind are in the [type reference](/shell-api/types) and in `gnoblin.d.lua`.

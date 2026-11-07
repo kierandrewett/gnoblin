@@ -113,6 +113,7 @@
 
 mod bindings;
 pub mod check;
+mod collections;
 mod configure;
 mod error;
 mod extension_bindings;

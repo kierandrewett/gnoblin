@@ -11,7 +11,7 @@
 //! # The surface
 //!
 //! ```lua
-//! local window = gnoblin.window.by_id(3)
+//! local window = gnoblin.windows.by_id(3)
 //! print(window.title)               -- a read from the host's mirror
 //! local operation = window:focus()  -- one handle, one completion
 //! operation:on_complete(function() print(operation.status) end)
@@ -193,8 +193,11 @@ pub(super) fn install<T: Transport + 'static>(
 ) -> mlua::Result<()> {
     lua.set_named_registry_value(CALLBACKS, lua.create_table()?)?;
     lua.set_named_registry_value(MODULES, lua.create_table()?)?;
-    lua.set_named_registry_value(INSTANCES, lua.create_table()?)?;
-    lua.set_named_registry_value(IDENTITIES, lua.create_table()?)?;
+    // Instances and identities are weak, so a table a script no longer holds is collected
+    // and the next read of that object makes a fresh one. A script that holds an instance
+    // keeps its identity, so `alive` still answers after the object has closed.
+    lua.set_named_registry_value(INSTANCES, weak_table(lua, "v")?)?;
+    lua.set_named_registry_value(IDENTITIES, weak_table(lua, "k")?)?;
 
     let gnoblin = lua.create_table()?;
 
@@ -292,6 +295,7 @@ pub(super) fn install<T: Transport + 'static>(
             core.push(spec.name);
         }
     }
+    crate::collections::install(lua, &shared, &gnoblin)?;
     check_installed(&gnoblin, "gnoblin", HOST_MEMBERS, &core)?;
     let mut accepted: Vec<&'static str> = HOST_NAMES.to_vec();
     accepted.extend(core.iter().copied());
@@ -388,6 +392,7 @@ fn members(spec: &ObjectSpec) -> Vec<&'static str> {
     let mut names: Vec<&'static str> = spec.properties.iter().map(|property| property.name).collect();
     names.extend(spec.methods.iter().map(|method| method.name));
     names.push("on");
+    names.push("alive");
     names
 }
 
@@ -448,7 +453,12 @@ fn install_class<T: Transport + 'static>(
 }
 
 /// Whether the mirror holds this object with this type.
-fn holds<T: Transport>(shared: &Rc<RefCell<Shared<T>>>, namespace: &str, spec: &ObjectSpec, object: ObjectId) -> bool {
+pub(super) fn holds<T: Transport>(
+    shared: &Rc<RefCell<Shared<T>>>,
+    namespace: &str,
+    spec: &ObjectSpec,
+    object: ObjectId,
+) -> bool {
     let shared = shared.borrow();
     shared
         .mirror
@@ -504,7 +514,12 @@ fn install_instance_meta<T: Transport + 'static>(
 }
 
 /// The instance for one identity, created once and reused.
-fn instance(lua: &Lua, namespace: &'static str, spec: &'static ObjectSpec, id: ObjectId) -> mlua::Result<Table> {
+pub(super) fn instance(
+    lua: &Lua,
+    namespace: &'static str,
+    spec: &'static ObjectSpec,
+    id: ObjectId,
+) -> mlua::Result<Table> {
     let instances: Table = lua.named_registry_value(INSTANCES)?;
     if let Some(existing) = instances.raw_get::<Option<Table>>(id.get())? {
         return Ok(existing);
@@ -526,22 +541,14 @@ fn identity(lua: &Lua, table: &Table) -> mlua::Result<ObjectId> {
         .ok_or_else(|| Error::runtime("this table is not a Gnoblin object"))
 }
 
-/// Forget the instance of an object that has closed.
-///
-/// A closed object's identity is never reused, so the table can never be asked
-/// for again; removing both registry entries keeps a session that closes many
-/// windows from growing without bound.
-pub(super) fn forget_instance(lua: &Lua, id: ObjectId) {
-    let Ok(instances) = lua.named_registry_value::<Table>(INSTANCES) else {
-        return;
-    };
-    let Ok(Some(table)) = instances.raw_get::<Option<Table>>(id.get()) else {
-        return;
-    };
-    if let Ok(identities) = lua.named_registry_value::<Table>(IDENTITIES) {
-        let _ = identities.raw_set(&table, Value::Nil);
-    }
-    let _ = instances.raw_set(id.get(), Value::Nil);
+/// A table with a weak mode (`"k"` or `"v"`), so the registry does not keep the
+/// instances a script has dropped.
+fn weak_table(lua: &Lua, mode: &str) -> mlua::Result<Table> {
+    let table = lua.create_table()?;
+    let meta = lua.create_table()?;
+    meta.set("__mode", mode)?;
+    table.set_metatable(Some(meta))?;
+    Ok(table)
 }
 
 /// One member read: a property from the mirror, a method, or `on`.
@@ -571,6 +578,9 @@ fn index<T: Transport + 'static>(
             call_method(lua, &shared, spec, id, method, arguments)
         })?;
         return Ok(Value::Function(function));
+    }
+    if key == "alive" {
+        return Ok(Value::Boolean(holds(shared, namespace, spec, id)));
     }
     if key == "on" {
         let shared = Rc::clone(shared);
@@ -1008,12 +1018,12 @@ pub(super) fn completion_args<T: Transport + 'static>(
 }
 
 /// One namespace of the generated bindings.
-fn find_namespace(name: &str) -> Option<&'static NamespaceSpec> {
+pub(super) fn find_namespace(name: &str) -> Option<&'static NamespaceSpec> {
     NAMESPACES.iter().find(|namespace| namespace.name == name)
 }
 
 /// One object type of a namespace.
-fn find_object(namespace: &'static NamespaceSpec, name: &str) -> Option<&'static ObjectSpec> {
+pub(super) fn find_object(namespace: &'static NamespaceSpec, name: &str) -> Option<&'static ObjectSpec> {
     namespace.objects.iter().find(|object| object.name == name)
 }
 
