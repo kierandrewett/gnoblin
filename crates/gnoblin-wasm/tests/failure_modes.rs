@@ -118,7 +118,7 @@ fn module(start: &str, on_event: &str) -> String {
         r#"
 (component
   (import "gnoblin:ipc/gnoblin@{PACKAGE}" (instance $api
-    (type $ec (enum "denied" "idle-unavailable" "not-locked" "refused" "too-many-inhibitors" "unknown-layout" "unknown-member" "unknown-object"))
+    (type $ec (enum "denied" "idle-unavailable" "not-locked" "refused" "too-many-inhibitors" "too-many-passes" "unknown-effect-kind" "unknown-layout" "unknown-member" "unknown-object"))
     (export "error-code" (type $ecx (eq $ec)))
     (export "operation" (type $op (sub resource)))
     (export "window" (type $w (sub resource)))
