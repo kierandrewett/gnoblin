@@ -821,9 +821,9 @@ impl Dispatcher {
             |window| self.control.window_process(window),
         );
         match &scope {
-            PortalScope::Parent => log::info!("[ipc] a portal dialog opens on its verified parent window"),
+            PortalScope::Parent => log::info!(area = "ipc", "a portal dialog opens on its verified parent window"),
             PortalScope::Output { reason } => {
-                log::warn!(%reason, "[ipc] a portal dialog opens on its output scope; the parent window is not usable");
+                log::warn!(area = "ipc", %reason, "a portal dialog opens on its output scope; the parent window is not usable");
             }
         }
         match self.portal.submit(client, envelope.request_id, &request, now) {
@@ -1773,7 +1773,6 @@ impl Dispatcher {
         self.deliver(departed);
         let replies = self.portal.departed(client);
         self.deliver_replies(replies);
-
     }
 
     /// Ends one connection: its subscriptions, its writer and its reader.
