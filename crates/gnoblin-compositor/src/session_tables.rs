@@ -22,6 +22,7 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
             config.wayland.protocols = stored.config.protocols.unwrap_or_default();
             config.wayland.keyboard = stored.config.input.and_then(|input| input.keyboard);
             config.wayland.input_sources = stored.config.input_sources;
+            config.wayland.shortcuts = stored.config.shortcuts;
             log::debug!("[session tables] loaded from the last accepted configuration");
         }
         Err(error) => {
@@ -90,6 +91,7 @@ mod tests {
         session.wayland.protocols = config.protocols.unwrap_or_default();
         session.wayland.keyboard = config.input.and_then(|input| input.keyboard);
         session.wayland.input_sources = config.input_sources;
+        session.wayland.shortcuts = config.shortcuts;
         session
     }
 

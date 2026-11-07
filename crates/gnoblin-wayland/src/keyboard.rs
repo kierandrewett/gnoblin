@@ -131,6 +131,9 @@ pub(crate) struct KeyboardTables {
     pub(crate) options: Option<String>,
     /// The delivery order: grabs, bindings and the clients' edges.
     pub(crate) router: Router,
+    /// The command each configured shortcut runs, by name. A fired binding with no entry
+    /// here is the window menu, or nothing.
+    pub(crate) shortcut_commands: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for KeyboardTables {
@@ -155,6 +158,7 @@ impl Default for KeyboardTables {
             remembered: BTreeMap::new(),
             options: None,
             router,
+            shortcut_commands: BTreeMap::new(),
         }
     }
 }
@@ -205,6 +209,51 @@ fn modifiers_of(state: &ModifiersState) -> Modifiers {
     modifiers
 }
 
+/// Runs a configured shortcut's command directly, with no shell, as the document says.
+///
+/// The child is waited on from a helper thread so that it is reaped when it exits, rather
+/// than staying a zombie for the rest of the session.
+fn spawn_shortcut_command(name: &str, argv: &[String]) {
+    let Some((program, arguments)) = argv.split_first() else {
+        return;
+    };
+    match std::process::Command::new(program).args(arguments).spawn() {
+        Ok(mut child) => {
+            let waiter = std::thread::Builder::new()
+                .name(format!("shortcut-{name}"))
+                .spawn(move || {
+                    let _ = child.wait();
+                });
+            if waiter.is_err() {
+                log::warn!(
+                    area = "keyboard",
+                    shortcut = name,
+                    "the shortcut's waiter thread did not start"
+                );
+            }
+        }
+        Err(error) => log::warn!(
+            area = "keyboard",
+            shortcut = name,
+            ?error,
+            "the shortcut's command did not start"
+        ),
+    }
+}
+
+/// Builds one declaration from a configured name, chord and edge. The chord is parsed here so
+/// a bad one is refused with the shortcut named, rather than left to fail later.
+fn declare(name: &str, binding: &str, trigger: Trigger) -> Result<gnoblin_input::Declaration, String> {
+    let name_value = Name::new(name).map_err(|error| format!("the name {name:?} is not valid: {error}"))?;
+    let chord = Chord::parse(binding, ChordKind::Key, &SeatKeysyms).map_err(|error| error.message())?;
+    Ok(gnoblin_input::Declaration {
+        name: name_value,
+        chord,
+        trigger,
+        allow_when_inhibited: false,
+    })
+}
+
 impl State {
     /// Applies the configuration document's `input-sources` section.
     ///
@@ -230,6 +279,63 @@ impl State {
         self.keyboard_tables.active = 0;
         self.keyboard_tables.remembered.clear();
         self.rebuild_keymap();
+    }
+
+    /// Applies the configuration document's `shortcuts` section as one set.
+    ///
+    /// The set is built in full before the table changes, so one bad shortcut, or a chord
+    /// that another shortcut already owns, refuses the lot and the bindings that worked stay
+    /// in force. A configured `window-menu` entry replaces the default window-menu binding,
+    /// and a disabled one leaves that binding unbound.
+    pub(crate) fn apply_shortcuts(&mut self, shortcuts: &gnoblin_config::Shortcuts) {
+        let mut declared = Vec::new();
+        let mut commands = BTreeMap::new();
+        if !shortcuts.shortcuts.contains_key(WINDOW_MENU_BINDING) {
+            declared.push(
+                declare(WINDOW_MENU_BINDING, WINDOW_MENU_CHORD, Trigger::Press)
+                    .expect("the default window-menu binding parses against the seat's keysyms"),
+            );
+        }
+        for (name, shortcut) in &shortcuts.shortcuts {
+            if shortcut.enable == Some(false) {
+                continue;
+            }
+            let trigger = match shortcut.trigger {
+                Some(gnoblin_config::ShortcutTrigger::Release) => Trigger::Release,
+                _ => Trigger::Press,
+            };
+            let binding = shortcut.binding.as_deref().unwrap_or_default();
+            match declare(name, binding, trigger) {
+                Ok(declaration) => declared.push(declaration),
+                Err(reason) => {
+                    log::warn!(
+                        area = "keyboard",
+                        shortcut = name.as_str(),
+                        reason = %reason,
+                        "the shortcuts were refused; the previous bindings stay in force"
+                    );
+                    return;
+                }
+            }
+            if let Some(argv) = &shortcut.command {
+                commands.insert(name.clone(), argv.clone());
+            }
+        }
+        let next = match self.keyboard_tables.router.bindings().reconcile(&declared) {
+            Ok(next) => next,
+            Err(conflict) => {
+                log::warn!(
+                    area = "keyboard",
+                    code = conflict.code().as_str(),
+                    conflict = %conflict,
+                    "the shortcuts were refused; the previous bindings stay in force"
+                );
+                return;
+            }
+        };
+        *self.keyboard_tables.router.bindings_mut() = next;
+        self.keyboard_tables.shortcut_commands = commands;
+        log::debug!(area = "keyboard", shortcuts = declared.len(), "the shortcuts changed");
     }
 
     /// Applies the document's keyboard repeat settings and XKB options.
@@ -417,17 +523,19 @@ impl State {
         if consumed {
             log::debug!(area = "key", keycode, target = %routed.target, fired = ?routed.fired, "consumed");
         }
-        // A press that fired the window-menu binding opens the menu for the focused
-        // window, anchored at that window's top-left. The router reports a fired binding
-        // only on the edge that runs it, so the release of the same chord does nothing.
-        if let Some(fired) = routed.fired {
-            let is_window_menu = self
+        // A press that fires a configured shortcut runs its command. A fired binding is
+        // reported only on the edge that runs it, so the release of the same chord does nothing.
+        if let Some(fired) = routed.fired
+            && let Some(name) = self
                 .keyboard_tables
                 .router
                 .bindings()
                 .get(fired)
-                .is_some_and(|binding| binding.name().as_str() == WINDOW_MENU_BINDING);
-            if is_window_menu {
+                .map(|binding| binding.name().as_str().to_owned())
+        {
+            if let Some(argv) = self.keyboard_tables.shortcut_commands.get(&name) {
+                spawn_shortcut_command(&name, argv);
+            } else if name == WINDOW_MENU_BINDING {
                 self.open_focused_window_menu();
             }
         }

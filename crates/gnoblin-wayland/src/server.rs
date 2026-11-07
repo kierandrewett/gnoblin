@@ -196,6 +196,8 @@ pub struct Config {
     pub input_sources: Option<gnoblin_config::InputSources>,
     /// The document's `input.keyboard`: repeat delay, repeat interval and XKB options.
     pub keyboard: Option<gnoblin_config::Keyboard>,
+    /// The document's `shortcuts`: each named binding and the command it runs.
+    pub shortcuts: Option<gnoblin_config::Shortcuts>,
     /// A test seam: the process every window reports in place of its client's, so a test
     /// can name a process it chose. `None` reads each window's connection.
     pub window_process_override: Option<crate::WindowProcess>,
@@ -238,6 +240,7 @@ impl Default for Config {
             protocols: Protocols::default(),
             input_sources: None,
             keyboard: None,
+            shortcuts: None,
             titlebar_actions: TitlebarActions::default(),
             cursor: CursorSettings::default(),
             monitors: MonitorSettings::default(),
@@ -365,6 +368,9 @@ impl Server {
         }
         if let Some(sources) = &config.input_sources {
             state.apply_input_sources(sources);
+        }
+        if let Some(shortcuts) = &config.shortcuts {
+            state.apply_shortcuts(shortcuts);
         }
 
         backend.register(&event_loop.handle()).map_err(StartupError::Io)?;
