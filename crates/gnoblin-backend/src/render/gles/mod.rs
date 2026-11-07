@@ -840,7 +840,7 @@ impl Painter<'_> {
                     self.shadow(quad, radius, shadow)?;
                 }
                 Pass::Blur(blur) if blur.radius > 0.0 => {
-                    let blurred = self.blur(quad, blur.radius * self.scale.as_f64() as f32, grouped)?;
+                    let blurred = self.blur(quad, *blur, grouped)?;
                     grouped |= blurred;
                 }
                 Pass::Shadow(_) | Pass::Blur(_) | Pass::Shader(_) => {}
@@ -987,20 +987,28 @@ impl Painter<'_> {
     /// Blurs the pixels behind a layer into the layer's group, and reports whether it did.
     ///
     /// The first blur of a layer copies the frame's backdrop into the group. A later blur reads
-    /// what the group already holds, so stacked blurs compound in order. Two passes of the
-    /// separable Gaussian in [`shaders::BLUR`]: horizontal into the second scratch target,
-    /// vertical back into the group. The backdrop is what was drawn before the layer, not what
-    /// it covers.
+    /// what the group already holds, so stacked blurs compound in order. The backdrop is what
+    /// was drawn before the layer, not what it covers.
+    ///
+    /// One pass is a horizontal sweep of the separable Gaussian in [`shaders::BLUR`] into the
+    /// second scratch target, then a vertical sweep back into the group. `blur.passes` such
+    /// passes run in turn, so each sweep reads what the one before wrote. The grade (brightness,
+    /// contrast, then the tint mixed over the result) belongs to the last vertical sweep only;
+    /// every other sweep carries the identity grade, so repeated passes do not compound it.
+    ///
+    /// `blur.downscale` is not honoured yet: the blur runs at full resolution.
     ///
     /// The copied region is the layer's rectangle grown by the kernel's reach, so the taps near
-    /// the layer's edge read blurred pixels rather than the scratch target's clearing colour;
-    /// the group keeps that whole region, so that ring is the only price of it.
-    fn blur(&mut self, dst: Rect, radius: f32, grouped: bool) -> Result<bool, RenderError> {
-        let radius = radius.clamp(1.0, MAX_RADIUS);
+    /// the layer's edge read blurred pixels rather than the scratch target's clearing colour.
+    /// Each pass spreads the taps by one reach, so the margin grows with the pass count; the
+    /// group keeps that whole region, so that ring is the only price of it.
+    fn blur(&mut self, dst: Rect, blur: gnoblin_render::BlurParams, grouped: bool) -> Result<bool, RenderError> {
+        let radius = (blur.radius * self.scale.as_f64() as f32).clamp(1.0, MAX_RADIUS);
         let Some(rect) = dst.intersection(Rect::new(0, 0, self.physical.width, self.physical.height)) else {
             return Ok(false);
         };
-        let reach = (radius / 3.0 * 4.0).ceil() as u32 + 1;
+        let sweeps = blur.passes.clamp(1, gnoblin_render::MAX_BLUR_PASSES);
+        let reach = sweeps * ((radius / 3.0 * 4.0).ceil() as u32 + 1);
         let region = Rect::new(
             rect.x.saturating_sub(reach as i32),
             rect.y.saturating_sub(reach as i32),
@@ -1031,23 +1039,37 @@ impl Painter<'_> {
             device.copy(target, first, region)?;
         }
         let step = (radius / 3.0).max(0.5);
-        let mut uniforms = Uniforms::surface(region, flipped_mapping(region, *physical), Color::WHITE, 1.0, 0.0);
-        uniforms.params = [step / physical.width as f32, 0.0, 0.0, 0.0];
-        device.begin(second)?;
-        device.scissor(Some(region));
-        passes.blur.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.blur, bytes, region, Some(first.texture()), Placement::FLAT)?;
-        device.end()?;
-        // The vertical pass writes back into the group over the same region, so a stacked blur
-        // reads all of it. The write is scissored to the damage, which the frame expects.
-        device.begin(first)?;
-        device.scissor(Some(region.intersection(*clip).unwrap_or(region)));
-        let uniforms = Uniforms {
-            params: [0.0, step / physical.height as f32, 0.0, 0.0],
-            ..uniforms
-        };
-        passes.blur.pack_fixed(&uniforms, bytes);
-        device.draw(&passes.blur, bytes, region, Some(second.texture()), Placement::FLAT)?;
+        for sweep in 0..sweeps {
+            let last = sweep + 1 == sweeps;
+            // The horizontal sweep always carries the identity grade.
+            let mut uniforms =
+                Uniforms::surface(region, flipped_mapping(region, *physical), Color::TRANSPARENT, 1.0, 0.0);
+            uniforms.params = [step / physical.width as f32, 0.0, 1.0, 1.0];
+            device.begin(second)?;
+            device.scissor(Some(region));
+            passes.blur.pack_fixed(&uniforms, bytes);
+            device.draw(&passes.blur, bytes, region, Some(first.texture()), Placement::FLAT)?;
+            device.end()?;
+            // The vertical sweep writes back into the group over the same region, so the next
+            // pass reads a complete blur. Only the last sweep is scissored to the damage, which
+            // the frame expects, and only it carries the layer's grade.
+            let (tint, brightness, contrast) = if last {
+                (blur.tint, blur.brightness, blur.contrast)
+            } else {
+                (Color::TRANSPARENT, 1.0, 1.0)
+            };
+            let mut uniforms = Uniforms::surface(region, flipped_mapping(region, *physical), tint, 1.0, 0.0);
+            uniforms.params = [0.0, step / physical.height as f32, brightness, contrast];
+            let write = if last {
+                region.intersection(*clip).unwrap_or(region)
+            } else {
+                region
+            };
+            device.begin(first)?;
+            device.scissor(Some(write));
+            passes.blur.pack_fixed(&uniforms, bytes);
+            device.draw(&passes.blur, bytes, region, Some(second.texture()), Placement::FLAT)?;
+        }
         // Back to the damage scissor, which the rest of this rectangle's passes expect.
         device.scissor(Some(*clip));
         Ok(true)

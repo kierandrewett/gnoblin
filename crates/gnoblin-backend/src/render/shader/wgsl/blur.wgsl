@@ -24,5 +24,14 @@ fn shade(local: vec2<f32>) -> vec4<f32> {
         let weight = gnoblin_weight(f32(index));
         total = total + textureSample(gnoblin_tex, gnoblin_sampler, uv + step * f32(index)) * weight;
     }
-    return total;
+    // The grade is identity on every pass but the last: params.z is the brightness gain,
+    // params.w the contrast gain about mid grey, and the tint is mixed over the graded
+    // colour by its own alpha. Brightness 1, contrast 1 and tint alpha 0 change nothing,
+    // which is what every sweep but the last carries.
+    let gain = gnoblin.params.z;
+    let contrast = gnoblin.params.w;
+    let lit = total.rgb * gain;
+    let graded = clamp((lit - vec3<f32>(0.5)) * contrast + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+    let tinted = mix(graded, gnoblin.tint.rgb, gnoblin.tint.a);
+    return vec4<f32>(tinted, total.a);
 }
