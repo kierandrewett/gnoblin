@@ -462,6 +462,11 @@ impl Composer {
             return;
         };
         entry.geometry = geometry;
+        let mut base = base;
+        if !is_drawable_scale(base.scale) {
+            log::warn!(area = "render", %window, "a window's scale is refused: invalid-scale; keeping its previous scale");
+            base.scale = entry.transform.base.scale;
+        }
         entry.transform.base = base;
         self.sync_animated(window);
     }
@@ -647,11 +652,15 @@ impl Composer {
                 // pixels to draw.
                 continue;
             };
+            // The window's placed rectangle is the scene's, mid-tween, not its target.
+            let Some(pose) = self.pose(*window) else {
+                continue;
+            };
             let dst = Rect::new(
-                entry.geometry.x.saturating_sub(rect.x),
-                entry.geometry.y.saturating_sub(rect.y),
-                content.size.width,
-                content.size.height,
+                pose.bounds.x.saturating_sub(rect.x),
+                pose.bounds.y.saturating_sub(rect.y),
+                pose.bounds.width,
+                pose.bounds.height,
             );
             let model = entry.node.and_then(|node| self.model(node, rect));
             let on_output = match model {
@@ -672,7 +681,7 @@ impl Composer {
                 frame.push_damage(Rect::new(0, 0, rect.width, rect.height));
                 spatial = true;
             }
-            if entry.transform.base.rotation_degrees.z != 0.0 {
+            if pose.transform.base.rotation_degrees.z != 0.0 {
                 // Pixman's frame API rotates the whole destination rather than one
                 // layer, so a rotated window would appear as its bounding box. The
                 // scene's damage already covers the rotated bounds, so skipping the
@@ -686,9 +695,9 @@ impl Composer {
                 src: content.src,
                 dst,
                 transform: content.transform,
-                opacity: entry.transform.opacity * entry.surface_alpha,
-                tint: entry.transform.tint,
-                corner_radius: entry.transform.corner_radius,
+                opacity: pose.transform.opacity * entry.surface_alpha,
+                tint: pose.transform.tint,
+                corner_radius: pose.transform.corner_radius,
                 effects: entry.effects.clone(),
                 model,
                 secure: entry.secure,
@@ -747,9 +756,6 @@ impl Composer {
         let mut landing = Vec::new();
         let target = Self::target(entry);
         for property in VisualProperty::ALL {
-            if property == VisualProperty::Scale {
-                continue;
-            }
             let value = property.get(&target);
             self.cancel_track(window, property);
             if self.scene.property(node, property).ok() == Some(value) {
@@ -891,11 +897,36 @@ impl Composer {
             None => i32::try_from(self.order.len()).unwrap_or(i32::MAX),
         }
     }
+
+    /// A window's node as the scene holds it now: its placed rectangle and its transform,
+    /// both mid-tween while a property animates. `None` when the window has no node.
+    fn pose(&self, window: WindowId) -> Option<Pose> {
+        let node = self.windows.get(&window)?.node?;
+        let bounds = self.scene.content_bounds(node)?.to_pixel();
+        let transform = *self.scene.transform(node)?;
+        Some(Pose { bounds, transform })
+    }
 }
 
 /// A global rectangle in an output's own coordinates.
 fn local(rect: Rect, output: Rect) -> Rect {
     rect.translate(-output.x, -output.y)
+}
+
+/// A window's node as the scene holds it this frame: the rectangle it is placed at on the
+/// output plane and its transform, both of which a running tween moves.
+struct Pose {
+    bounds: Rect,
+    transform: VisualTransform,
+}
+
+/// Whether a scale can be drawn at all. The renderer draws a window at its scaled bounds, so
+/// a zero component collapses it, a non-finite one has no bounds, and a negative one would
+/// mirror content that the software renderer does not flip. Each is refused as `invalid-scale`.
+fn is_drawable_scale(scale: Vec3) -> bool {
+    [scale.x, scale.y, scale.z]
+        .iter()
+        .all(|component| component.is_finite() && *component > 0.0)
 }
 
 #[cfg(test)]
@@ -1145,6 +1176,188 @@ mod tests {
         assert_eq!(composer.windows[&window].transform.opacity, 1.0);
         composer.set_window_opacity(window, -1.0);
         assert_eq!(composer.windows[&window].transform.opacity, 0.0);
+    }
+
+    /// The rectangle and opacity `window` is drawn at. Compose builds each surface's destination
+    /// from `pose`, so this is what the frame draws. A unit test cannot attach a `WlBuffer`, so
+    /// no frame layer exists to inspect; asserting the pose asserts the drawn pose.
+    fn drawn_pose(composer: &Composer, window: WindowId) -> (Rect, f32) {
+        let pose = composer.pose(window).expect("a window with content has a node");
+        (pose.bounds, pose.transform.opacity)
+    }
+
+    /// Starts a linear track of `property` on `window`'s node, lasting `duration_ms`.
+    fn track_window(
+        composer: &mut Composer,
+        window: WindowId,
+        property: VisualProperty,
+        to: PropertyValue,
+        duration_ms: u32,
+    ) {
+        let node = composer.windows[&window].node.expect("a drawn window has a node");
+        let spec = TrackSpec {
+            from: TrackStart::Current,
+            duration_ms,
+            easing: Easing::Linear,
+            ..TrackSpec::new(node, property, to)
+        };
+        composer
+            .motion
+            .start(&mut composer.scene, spec)
+            .expect("the track starts");
+    }
+
+    #[test]
+    fn a_tweened_opacity_is_the_opacity_the_frame_draws() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        track_window(
+            &mut composer,
+            window,
+            VisualProperty::Opacity,
+            PropertyValue::Number(0.5),
+            200,
+        );
+        composer.advance_motion(100);
+        assert_eq!(
+            drawn_pose(&composer, window),
+            (Rect::new(20, 30, 40, 50), 0.75),
+            "the frame draws the tween's pose, halfway from 1.0 to 0.5, not its target"
+        );
+    }
+
+    #[test]
+    fn a_tweened_offset_moves_the_drawn_rectangle() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        track_window(
+            &mut composer,
+            window,
+            VisualProperty::OffsetX,
+            PropertyValue::Number(220.0),
+            200,
+        );
+        assert_eq!(
+            drawn_pose(&composer, window).0.x,
+            20,
+            "before the tween the window is at its placement"
+        );
+        composer.advance_motion(100);
+        assert_eq!(
+            drawn_pose(&composer, window).0,
+            Rect::new(120, 30, 40, 50),
+            "halfway along the tween the window is drawn halfway from its placement to its target"
+        );
+        composer.advance_motion(100);
+        assert_eq!(
+            drawn_pose(&composer, window).0,
+            Rect::new(220, 30, 40, 50),
+            "the tween lands on its target"
+        );
+    }
+
+    #[test]
+    fn a_scaled_window_is_drawn_at_its_scaled_bounds() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 100, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.set_reduced_motion(true);
+        let mut base = gnoblin_types::Transform::IDENTITY;
+        base.scale = Vec3::new(2.0, 2.0, 1.0);
+        composer.place_window_animated(window, Rect::new(100, 100, 40, 50), base);
+        assert_eq!(
+            drawn_pose(&composer, window),
+            (Rect::new(80, 75, 80, 100), 1.0),
+            "a scale of two is about the window's centre, so the rectangle grows by a quarter each side"
+        );
+    }
+
+    #[test]
+    fn a_scale_tween_passes_through_intermediate_sizes() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(100, 100, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        let mut base = gnoblin_types::Transform::IDENTITY;
+        base.scale = Vec3::new(2.0, 2.0, 1.0);
+        composer.place_window_animated(window, Rect::new(100, 100, 40, 50), base);
+        composer.advance_motion(100);
+        let (dst, _) = drawn_pose(&composer, window);
+        assert!(
+            dst.width > 40 && dst.width < 80,
+            "mid-tween the window is between its two sizes, not at either: {dst:?}"
+        );
+        let centre_x = dst.x + i32::try_from(dst.width / 2).expect("a width fits in i32");
+        assert!(
+            (centre_x - 120).abs() <= 1,
+            "the tween scales about the centre, which stays at x 120: {dst:?}"
+        );
+        composer.advance_motion(10_000);
+        assert_eq!(
+            drawn_pose(&composer, window).0,
+            Rect::new(80, 75, 80, 100),
+            "the tween lands on the scaled rectangle"
+        );
+    }
+
+    #[test]
+    fn a_zero_or_negative_or_non_finite_scale_is_refused_and_the_window_keeps_its_size() {
+        for bad in [
+            Vec3::new(0.0, 2.0, 1.0),
+            Vec3::new(f64::NAN, 1.0, 1.0),
+            Vec3::new(-1.0, 1.0, 1.0),
+        ] {
+            let (mut composer, _output) = screen();
+            let window = WindowId::new(1);
+            composer.insert_window(window, Rect::new(100, 100, 40, 50));
+            composer.set_window_content(window, Some(content()));
+            composer.set_reduced_motion(true);
+            let mut base = gnoblin_types::Transform::IDENTITY;
+            base.scale = bad;
+            composer.place_window_animated(window, Rect::new(100, 100, 40, 50), base);
+            assert_eq!(
+                drawn_pose(&composer, window),
+                (Rect::new(100, 100, 40, 50), 1.0),
+                "a scale the scene cannot draw is refused, so the window keeps its size"
+            );
+            let kept = composer.windows[&window].transform.base.scale;
+            assert_eq!((kept.x, kept.y), (1.0, 1.0), "the previous scale is kept");
+        }
+    }
+
+    #[test]
+    fn an_open_tween_draws_monotone_frames_from_transparent_to_opaque() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.set_window_opacity(window, 0.0);
+        track_window(
+            &mut composer,
+            window,
+            VisualProperty::Opacity,
+            PropertyValue::Number(1.0),
+            200,
+        );
+        let mut opacities = Vec::new();
+        for _ in 0..5 {
+            opacities.push(drawn_pose(&composer, window).1);
+            composer.advance_motion(50);
+        }
+        assert_eq!(
+            opacities,
+            vec![0.0, 0.25, 0.5, 0.75, 1.0],
+            "a linear open tween steps evenly"
+        );
+        assert!(
+            opacities.windows(2).all(|pair| pair[0] <= pair[1]),
+            "every frame is at least as opaque as the one before"
+        );
     }
 
     #[test]

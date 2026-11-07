@@ -629,6 +629,16 @@ impl Scene {
         project_bounds(&world, node.visual_local()).map(|bounds| bounds.to_pixel())
     }
 
+    /// A node's own rectangle on the output plane, before its effect padding, as its current
+    /// transform places it. A renderer draws a window's content here, so a moved or scaled node
+    /// shows where its animated pose puts it rather than where its target is.
+    #[must_use]
+    pub fn content_bounds(&self, id: NodeId) -> Option<RectF> {
+        let node = self.nodes.get(&id)?;
+        let world = self.world_matrix(id)?;
+        project_bounds(&world, node.bounds.to_f64())
+    }
+
     /// The nearest node containing a point on the output plane; equal depths go to
     /// the topmost node in paint order.
     #[must_use]
