@@ -866,10 +866,16 @@ impl Composer {
             existing => {
                 // The content changed size, or there was no node yet: the node is
                 // replaced so its bounds are the content's, and both the old and the
-                // new rectangle are damaged. A new node takes its target at once.
+                // new rectangle are damaged. A new node takes its target at once,
+                // except that a window which maps fades in from transparent.
                 if let Some(node) = existing {
                     self.cancel_tracks(window);
                     let _ = self.scene.remove(node);
+                }
+                let fades_in = existing.is_none() && !self.reduced_motion;
+                let mut spec_transform = transform;
+                if fades_in {
+                    spec_transform.opacity = 0.0;
                 }
                 let id = NodeId::new(self.next_node);
                 self.next_node = self.next_node.saturating_add(1);
@@ -877,14 +883,17 @@ impl Composer {
                     parent: None,
                     z_order,
                     bounds,
-                    transform,
+                    transform: spec_transform,
                     effects,
                     kind: NodeKind::Visual,
                 };
-                if self.scene.insert(id, spec).is_ok()
-                    && let Some(entry) = self.windows.get_mut(&window)
-                {
-                    entry.node = Some(id);
+                if self.scene.insert(id, spec).is_ok() {
+                    if let Some(entry) = self.windows.get_mut(&window) {
+                        entry.node = Some(id);
+                    }
+                    if fades_in {
+                        self.retarget(window, true);
+                    }
                 }
             }
         }
@@ -1213,6 +1222,9 @@ mod tests {
         let window = WindowId::new(1);
         composer.insert_window(window, Rect::new(20, 30, 40, 50));
         composer.set_window_content(window, Some(content()));
+        // A mapped window fades in from transparent; let that fade land so the tween
+        // under test starts from an opaque window.
+        composer.advance_motion(200);
         track_window(
             &mut composer,
             window,
@@ -1225,6 +1237,45 @@ mod tests {
             drawn_pose(&composer, window),
             (Rect::new(20, 30, 40, 50), 0.75),
             "the frame draws the tween's pose, halfway from 1.0 to 0.5, not its target"
+        );
+    }
+
+    #[test]
+    fn a_window_that_maps_fades_in_from_transparent() {
+        let (mut composer, _output) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        assert_eq!(
+            drawn_pose(&composer, window),
+            (Rect::new(20, 30, 40, 50), 0.0),
+            "a newly mapped window starts transparent"
+        );
+        composer.advance_motion(100);
+        let (_, halfway) = drawn_pose(&composer, window);
+        assert!(
+            halfway > 0.0 && halfway < 1.0,
+            "the fade is part way through at half its duration, got {halfway}"
+        );
+        composer.advance_motion(100);
+        assert_eq!(
+            drawn_pose(&composer, window).1,
+            1.0,
+            "the fade lands on the window's opacity exactly"
+        );
+    }
+
+    #[test]
+    fn a_window_that_maps_with_reduced_motion_is_opaque_at_once() {
+        let (mut composer, _output) = screen();
+        composer.set_reduced_motion(true);
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        assert_eq!(
+            drawn_pose(&composer, window),
+            (Rect::new(20, 30, 40, 50), 1.0),
+            "reduced motion writes the target at once"
         );
     }
 
