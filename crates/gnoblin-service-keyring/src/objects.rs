@@ -103,6 +103,13 @@ pub(crate) fn install_keyring(state: &State, keyring: Option<Keyring>) {
     lock(state).keyring = keyring;
 }
 
+/// Run `f` against the open store, or return `None` while the store is locked. The portal
+/// secret reads and writes its master item through this, under the same lock the bus methods
+/// take, so a locked store is never touched.
+pub(crate) fn with_open_keyring<T>(state: &State, f: impl FnOnce(&mut Keyring) -> T) -> Option<T> {
+    lock(state).keyring.as_mut().map(f)
+}
+
 /// Re-key `keyring` to `new` and install it, all under one lock. No other call sees the file
 /// between the re-key and the install, and a failed re-key leaves the old handle in place.
 pub(crate) fn rekey_and_install(

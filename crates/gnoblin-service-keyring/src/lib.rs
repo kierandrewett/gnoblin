@@ -15,6 +15,7 @@
 pub mod dh;
 mod handoff;
 mod objects;
+pub mod secret;
 mod unlock;
 
 use std::path::Path;
