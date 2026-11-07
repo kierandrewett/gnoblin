@@ -563,11 +563,11 @@ Each path below moves to the registry, with no shim.
     Each slice compiles on Agent37 after rebase, then pushes. Stop at a green pushed slice.
 
 4. Built-in surface kinds in `gnoblin-wayland` and `gnoblin-xwayland`: `surface_toplevel`, `surface_layer_shell` (four bands) and `surface_x11`. Popups follow their root. The parity test changes its lookup key only.
-   Plan (not yet implemented). Slices, each compiled on Agent37 before push:
-   (a) `gnoblin-wm`: `Wm::register_surface(provider, spec)` records a layer without attaching it to the stack. Windows keep their stack entry; a surface record is a registry-only fact. `Wm::end_layer(handle, reason)` ends one. Tests in `wm.rs`.
+   Plan. Slices, each compiled on Agent37 before push. Registration moments: a toplevel at `WindowOpened`; a layer surface at its first commit that resolves a monitor (`layer_surface_committed`), re-registered when its band changes, ended in `layer_destroyed`; an X11 window at map, ended at `WindowClosed`; popups never register.
+   (a) Implemented in `3d87838c3`: `Wm::register_surface` and `Wm::end_surface` record a layer without attaching it to the stack. `WindowProtocol` tags windows by protocol. Toplevel records are registered in `wm` (see g), gated to Wayland windows.
    (b) Toplevels: `gnoblin-wayland/src/state.rs` registers `gnoblin.surface_toplevel:<window id>` in `Band::Windows`, scoped to its window, when `WindowOpened` is applied. Close ends it through the existing `end_target`, so no path ends it twice.
    (c) Layer shell: `gnoblin-wayland/src/protocols/zwlr_layer_shell_v1.rs` registers `gnoblin.surface_layer_shell:<namespace>` in Background, Bottom, Top or Overlay, scoped to its output. Registration waits for the first commit that places it on a monitor, because the output can be chosen late. A layer change re-registers; destroy ends it.
-   (d) Duplicate namespaces: the second surface takes the key `<namespace>.<n>`, since keys allow dots and base names do not.
+   (d) Duplicate namespaces: the second live surface takes the key `<namespace>#2`, then `#3`, and so on, bounded. `is_key_char` gains `#`, as the Names paragraph above states.
    (e) Popups: not registered. A popup has no record of its own, so it hides, ends and stacks with its root.
    (f) X11: `gnoblin-xwayland/src/windows.rs` registers `gnoblin.surface_x11:<window id>` in `Band::Windows` at map; `closed` ends it through `WindowClosed`. Adds `gnoblin-layers` to `crates/gnoblin-xwayland/Cargo.toml`.
    (g) Provider: `Gnoblin("gnoblin-wayland")` for toplevels and layer shell, `Gnoblin("gnoblin-xwayland")` for X11. The table above says `gnoblin-wm` for toplevels; the engine that owns the protocol registers them, because the window manager never sees a surface kind. Divergence recorded here.
