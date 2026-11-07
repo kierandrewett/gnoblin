@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use gnoblin_model::CapabilitySlot;
-use gnoblin_service_keyring::{PasswordOffer, PromptAnswers, Secrets};
+use gnoblin_service_keyring::{PasswordOffer, PromptAnswers, Secrets, ServeError};
 
 use crate::link::{Host, LinkedAgent, RequestId, RequestOutcome, Tick};
 use crate::log;
@@ -121,10 +121,19 @@ impl LinkedAgent for KeyringAgent {
                 self.prompt_answers = Some(prompt_answers);
                 true
             }
+            Err(ServeError::NameTaken { owner }) => {
+                // Apps reach whichever program holds the name, so this is loud on purpose. The
+                // role keeps running with the rest of the services; it does not take the name back.
+                log::warn!(
+                    area = "services",
+                    %owner,
+                    "keyring.enabled is on but org.freedesktop.secrets is held by another program: \
+                     apps will use that program, not the Gnoblin keyring. Stop it, or set keyring.enabled = false"
+                );
+                false
+            }
             Err(error) => {
-                // Another program owning the name lands here too: that is the coexistence case,
-                // and the role serves what is left.
-                log::info!(area = "services", %error, "the Secret Service is not served here");
+                log::warn!(area = "services", %error, "the Gnoblin keyring could not be served");
                 false
             }
         }

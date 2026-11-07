@@ -6,8 +6,8 @@
 //! Inhibit, which `gnoblin.portal` lists. FileChooser, AppChooser, Print, Account, Email,
 //! Notification, Wallpaper, Background, Lockdown and DynamicLauncher are routed to Gnoblin
 //! first in `data/portals.conf` but are not implemented here yet, so `gnoblin.portal` does
-//! not list them and the frontend falls through to `gtk` or `kde` until it does. Secret,
-//! OpenURI and Trash stay with a generic backend.
+//! not list them and the frontend falls through to `gtk` or `kde` until it does. Secret is
+//! routed to Gnoblin alone and refused, and OpenURI and Trash stay with a generic backend.
 //!
 //! # The one rule this crate is built around
 //!
