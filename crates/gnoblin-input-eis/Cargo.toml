@@ -1,0 +1,35 @@
+[package]
+name = "gnoblin-input-eis"
+description = "The EIS server: libei's server side, turning EI requests into seat input events and consent decisions."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The shared primitives: outputs, points and rectangles.
+gnoblin-types.workspace = true
+# The consent vocabulary: how far a grant has got, shared with the portal path.
+gnoblin-authority = { path = "../gnoblin-authority" }
+# The seat's event vocabulary. The server emits the same `InputEvent`s a libinput device
+# does, so injected input takes the seat's own path: the lock gate, grabs and bindings.
+gnoblin-backend = { path = "../gnoblin-backend" }
+# The EI protocol, server side. It types the wire only; the rules about what a client may
+# send live in `service`, which names no protocol type.
+reis = { version = "0.7.1", default-features = false }
+# `poll` for the endpoint thread, without `unsafe`.
+rustix = { workspace = true, features = ["event"] }
+# `[tag]` lines for a refused session, through the `gnoblin-log` facade.
+gnoblin-log = { path = "../gnoblin-log" }
+
+[dev-dependencies]
+# The headless compositor the real-client suite drives.
+gnoblin-wayland = { path = "../gnoblin-wayland" }
+# The client half of the protocols those tests exercise.
+wayland-client = "0.31.14"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# A socket, runtime directory and shared-memory file per test.
+tempfile = "3.23.0"
+
+[lints]
+workspace = true

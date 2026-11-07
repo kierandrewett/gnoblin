@@ -1505,6 +1505,7 @@ dependencies = [
  "gnoblin-client",
  "gnoblin-config",
  "gnoblin-input",
+ "gnoblin-input-eis",
  "gnoblin-log",
  "gnoblin-lua",
  "gnoblin-model",
@@ -1546,6 +1547,13 @@ dependencies = [
 
 [[package]]
 name = "gnoblin-input"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
+
+[[package]]
+name = "gnoblin-input-eis"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-authority",
@@ -1823,6 +1831,15 @@ dependencies = [
  "gnoblin-types",
  "rustix 1.1.6",
  "signal-hook",
+]
+
+[[package]]
+name = "gnoblin-store"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-log",
+ "gnoblin-model",
+ "rusqlite",
 ]
 
 [[package]]

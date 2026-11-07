@@ -8,10 +8,10 @@
 //! through an EI client that this module answers, so a grab, a binding or the session
 //! lock's input gate cannot behave differently for one of them.
 //!
-//! The crate owns the server because the plan files it there: `gnoblin-input` "owns
-//! libinput device settings, xkb keymaps, the IBus bridge, chord grammar, gestures and
-//! the touchpad router, input policy routing to the runtime with deadlines, the EIS
-//! server, idle activity". The split inside this module is the project's usual one:
+//! The server is its own crate because it is a distinct feature with its own dependency
+//! weight. It pulls in `reis`, `rustix`, `gnoblin-authority` and `gnoblin-log`, which the
+//! routing in `gnoblin-input` (chords, gestures, policy) never needs. The split inside
+//! this crate is the project's usual one:
 //!
 //! - [`service`] is the state machine. It has no socket, no thread, no clock and no
 //!   protocol type: a command in, a list of [`Action`]s out. Every rule below is
@@ -20,13 +20,11 @@
 //!   crate, and turns the state machine's actions back into protocol requests and
 //!   [`gnoblin_backend::InputEvent`]s.
 //!
-//! The wiring lives here rather than in `gnoblin-wayland` because the dependency rules
-//! forbid an engine-to-engine edge: `gnoblin-wayland` may reach another engine crate
-//! only through `gnoblin-backend` traits, and engine isolation is enforced by
-//! `cargo xtask deps`. A bare `gnoblin-eis` crate would have the same problem in the
-//! other direction, because the wiring has to name the state machine. What
-//! `gnoblin-wayland` provides instead is the other half of the seam: an
-//! `InputSink` that accepts events exactly as the backend would deliver them.
+//! The wiring cannot live in `gnoblin-wayland`, because the dependency rules forbid an
+//! engine-to-engine edge there: `gnoblin-wayland` may reach another engine crate only
+//! through `gnoblin-backend` traits, and `cargo xtask deps` enforces it. What
+//! `gnoblin-wayland` provides instead is the other half of the seam: an `InputSink`
+//! that accepts events exactly as the backend would deliver them.
 //!
 //! # Consent
 //!

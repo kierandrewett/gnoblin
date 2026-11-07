@@ -21,7 +21,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use gnoblin_backend::headless::{DEFAULT_MODE, Headless};
-use gnoblin_input::eis::{Caps, Endpoint, Grant, Options, Quota, Region};
+use gnoblin_input_eis::{Caps, Endpoint, Grant, Options, Quota, Region};
 use gnoblin_types::{OutputId, Point, Rect};
 use gnoblin_wayland::{Config, ControlHandle, InputSink, LoopError, Server, SessionSnapshot};
 use reis::{PendingRequestResult, ei};

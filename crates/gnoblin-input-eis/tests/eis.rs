@@ -6,7 +6,7 @@
 //! `tests/eis_real.rs`.
 
 use gnoblin_backend::{InputEvent, TouchPhase};
-use gnoblin_input::eis::{
+use gnoblin_input_eis::{
     Action, Caps, Command, Context, ContextId, ContextType, Device, DeviceId, Ending, Grant, Origin, Quota, Region,
     Service, Violation,
 };
