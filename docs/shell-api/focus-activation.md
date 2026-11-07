@@ -87,9 +87,12 @@ gnoblin.on("gnoblin.shortcut.activated", function()
 end)
 ```
 
-Gnoblin sets `process` when the window's client is the started process or runs in its session. The process ID comes
-from the display server, so an application cannot claim another program's windows. A program that starts a new
-session with `setsid`, such as a launcher that hands the window to an already running instance, is not covered.
+Gnoblin sets `process` when the window's client is the started process itself: the client's pid, read from its socket
+credentials, equals the pid of the started process.
+
+The pid comes from the display server, so an application cannot claim another program's windows. A program that starts
+a new session with `setsid`, or a launcher that hands the window to an already running instance, is not covered, because
+its window's client is not the process that was started.
 
 `present()` waits until the window is shown and no key press or click has reached a window for 250 ms, so the window
 does not take keystrokes the user is typing elsewhere. It gives up after five seconds. The Operation succeeds with

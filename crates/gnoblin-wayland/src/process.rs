@@ -39,6 +39,21 @@ pub enum WindowProcess {
     Disconnected,
 }
 
+impl WindowProcess {
+    /// The pid of the window's process, or `None` when the compositor cannot name it.
+    ///
+    /// Only a connected client has a pid the compositor read from the socket. An unknown
+    /// or disconnected client gives `None` rather than the last pid it had, because a
+    /// reused pid would name a different program.
+    #[must_use]
+    pub fn pid(self) -> Option<u32> {
+        match self {
+            Self::Connected(identity) => Some(identity.pid),
+            Self::Unknown | Self::Disconnected => None,
+        }
+    }
+}
+
 /// The start time from one `/proc/<pid>/stat` line.
 ///
 /// The second field is the executable name in parentheses. It may contain spaces and
@@ -66,6 +81,21 @@ mod tests {
     fn parses_a_name_with_spaces_and_parentheses() {
         let stat = "42 (weird (name) x) S 1 42 42 0 -1 4194304 100 0 0 0 0 0 0 0 20 0 1 0 98765 1000 200";
         assert_eq!(parse_start_time(stat), Some(98765));
+    }
+
+    #[test]
+    fn only_a_connected_client_names_a_pid() {
+        let identity = ProcessIdentity {
+            pid: 4242,
+            start_time: 7,
+        };
+        assert_eq!(WindowProcess::Connected(identity).pid(), Some(4242));
+        assert_eq!(WindowProcess::Unknown.pid(), None, "no credentials, no guess");
+        assert_eq!(
+            WindowProcess::Disconnected.pid(),
+            None,
+            "a gone client has no pid to report"
+        );
     }
 
     #[test]

@@ -586,6 +586,11 @@ fn stub_object(text: &mut String, namespace: &Namespace, object: &ObjectType) {
     for property in &object.properties {
         let _ = writeln!(text, "---@field {} {}", property.name, lua_type(&property.ty));
     }
+    if object.name == "window" {
+        // Lua-only: the host answers `window.process` from its own process records, so the
+        // schema does not declare it.
+        let _ = writeln!(text, "---@field process gnoblin.Process|nil");
+    }
     let _ = writeln!(text, "local {} = {{}}", object.name);
     for method in &object.methods {
         for parameter in &method.params {

@@ -572,6 +572,28 @@ fn a_real_client_maps_a_window_and_gets_focus() {
 }
 
 #[test]
+fn a_window_reports_the_pid_of_its_client_and_not_its_app_id() {
+    let session = Session::start(Headless::new());
+    session.run(|session| {
+        let mut client = Client::connect(session.socket());
+        // The app id names another program. The pid must still be this process, the one
+        // on the other end of the socket: attribution comes from the connection.
+        let window = client.map_window("org.gnoblin.NotThisProcess", "Named");
+        let observation = session.wait_for(|observation| observation.only().is_some_and(|window| window.mapped));
+        let managed = observation.only().expect("one managed window");
+        assert_eq!(
+            managed.pid,
+            Some(std::process::id()),
+            "the pid is the client's, read from the socket"
+        );
+        assert_eq!(managed.app_id, "org.gnoblin.NotThisProcess");
+
+        client.destroy(window);
+        session.wait_for(|observation| observation.is_empty());
+    });
+}
+
+#[test]
 fn a_new_window_does_not_take_focus_under_the_default_policy() {
     let session = Session::start(Headless::new());
     session.run(|session| {

@@ -26,6 +26,14 @@ name = "app_id"
 type = "string"
 since = "0.2.0"
 
+# The process that owns the window's Wayland client, read from the client's
+# socket credentials. 0 when the compositor cannot name it (an X11 window, or a
+# client whose credentials are gone). Never derived from the app ID or title.
+[[object.property]]
+name = "pid"
+type = "uint"
+since = "0.2.0"
+
 [[object.property]]
 name = "focused"
 type = "bool"

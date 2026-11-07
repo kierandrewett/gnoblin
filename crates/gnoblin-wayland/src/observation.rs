@@ -28,6 +28,10 @@ pub struct ObservedWindow {
     pub focused: bool,
     /// The window's frame rectangle in global logical coordinates.
     pub geometry: Rect,
+    /// The pid of the process behind the window's client, read from the socket's
+    /// credentials. `None` for an X11 window, a client whose credentials could not be
+    /// read, and a client that has gone. Never derived from the app id or the title.
+    pub pid: Option<u32>,
     /// The icon name the client set with `xdg-toplevel-icon-v1`, if any.
     pub icon_name: Option<String>,
     /// How many icon buffers the client attached with `xdg-toplevel-icon-v1`.

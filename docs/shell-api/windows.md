@@ -67,7 +67,13 @@ end)
   changes. The field must be one that `Window` declares as observable, which
   means it changes while the window is alive. `watch` refuses a field that never
   moves and names the fields that work.
-- The field that never moves is `id`.
+- `window.pid` is the process ID of the window's Wayland client, read from the client's socket credentials. It is `nil`
+  for an X11 window and for a client whose credentials the compositor cannot read. It is never taken from the app ID
+  or the title.
+- `window.process` is the `id` of the live [`Process`](/shell-api/processes) that `gnoblin.process.spawn` started with
+  that pid, or `nil`. Only a process the runtime started itself matches, and only while it is alive. Resolve it with
+  `gnoblin.process.by_id`.
+- The fields that never move while the window is alive are `id` and `pid`.
 
 Both return a subscription, and `subscription:unsubscribe()` stops the callback. Every `on` and `watch` in the API returns this same shape. The global
 events `gnoblin.window.created`, `closed`, `changed`, `attention-changed`,

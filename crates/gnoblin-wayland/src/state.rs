@@ -2528,6 +2528,7 @@ impl State {
                     visible: window.is_visible(active),
                     focused: focused == Some(window.id),
                     geometry: self.shown_geometry(window),
+                    pid: self.window_process(window.id).and_then(crate::WindowProcess::pid),
                     icon_name: entry.and_then(|entry| entry.icon_name.clone()),
                     icon_buffer_count: entry.map_or(0, |entry| entry.icon_buffer_count),
                     tag: entry.and_then(|entry| entry.tag.clone()),

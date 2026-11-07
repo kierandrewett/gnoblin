@@ -79,6 +79,9 @@ fn expected_members(object: &ObjectType) -> Vec<String> {
     let mut members: Vec<String> = object.properties.iter().map(|property| property.name.clone()).collect();
     members.extend(object.methods.iter().map(|method| method.name.clone()));
     members.push("alive".to_owned());
+    if object.name == "window" {
+        members.push("process".to_owned());
+    }
     members.push("on".to_owned());
     members.sort();
     members

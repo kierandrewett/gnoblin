@@ -521,6 +521,12 @@ mod gnoblin_objects {
             Ok(self.text(object, "app_id"))
         }
 
+        /// The client process id; 0 when the compositor cannot name the process.
+        fn pid(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<u64> {
+            let object = self.object(&handle).expect("a handle this store issued");
+            Ok(self.uint(object, "pid"))
+        }
+
         fn focused(&mut self, handle: Resource<ObjectRep>) -> wasmtime::Result<bool> {
             let object = self.object(&handle).expect("a handle this store issued");
             Ok(self.boolean(object, "focused"))

@@ -1893,6 +1893,127 @@ end)
     assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
 }
 
+/// The pid a script's own process printed on the error channel: the only way a test learns the
+/// pid of a child the script spawned, since the host keeps that pid private.
+fn pid_reported_by(report: &gnoblin_lua::RunReport) -> u32 {
+    let text = report
+        .errors
+        .iter()
+        .map(|error| error.message().to_owned())
+        .find(|message| message.contains("PID="))
+        .expect("the script reported its child's pid");
+    text.split("PID=")
+        .nth(1)
+        .expect("the pid follows the marker")
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .expect("the reported pid is a number")
+}
+
+#[test]
+fn a_window_without_a_known_pid_has_no_pid_and_no_process() {
+    // The app id names a real program. A pid must never be guessed from it.
+    let config = Config::new("window-pid-unknown");
+    config.write(
+        "init.lua",
+        r#"
+local window = gnoblin.window.by_id(1)
+assert(window.pid == nil, "an unknown pid reads nil, was " .. tostring(window.pid))
+assert(window.process == nil, "no pid means no process")
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Unknown");
+    server
+        .set(window, "app_id", ModelValue::Text("sleep".to_owned()))
+        .expect("app id is a declared property");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+}
+
+#[test]
+fn a_window_pid_that_no_spawn_started_names_no_process() {
+    // The test binary is alive and has a real pid, but gnoblin did not spawn it.
+    let config = Config::new("window-pid-foreign");
+    config.write("init.lua", "");
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Foreign");
+    let own_pid: u32 = std::process::id();
+    server
+        .set(window, "pid", ModelValue::Uint(own_pid.into()))
+        .expect("pid is a declared property");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    assert!(report.errors.is_empty(), "{:#?}", report.errors);
+    let check = config.write(
+        "check.lua",
+        &format!(
+            "local window = gnoblin.window.by_id(1)\nassert(window.pid == {own_pid}, \"the pid is published\")\nassert(window.process == nil, \"a pid gnoblin did not spawn names no process\")\n"
+        ),
+    );
+    host.pump(Tick::new(10)).expect("a pump applies the diff");
+    host.evaluate(&check).expect("the check passes");
+}
+
+#[test]
+fn a_window_names_the_live_process_spawned_with_its_pid() {
+    let config = Config::new("window-pid-live");
+    config.write(
+        "init.lua",
+        r#"
+JOB = gnoblin.process.spawn({"sleep", "30"})
+error("PID=" .. JOB.pid)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Live");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    let pid = pid_reported_by(&report);
+    server
+        .set(window, "pid", ModelValue::Uint(pid.into()))
+        .expect("pid is a declared property");
+    host.pump(Tick::new(10)).expect("a pump applies the diff");
+    let check = config.write(
+        "check.lua",
+        &format!(
+            "local window = gnoblin.window.by_id(1)\nassert(window.pid == {pid}, \"the pid is published\")\nassert(window.process == JOB.id, \"the window names the spawned process, was \" .. tostring(window.process) .. \" expected \" .. tostring(JOB.id))\nJOB:kill()\n"
+        ),
+    );
+    host.evaluate(&check).expect("the check passes");
+}
+
+#[test]
+fn a_window_names_no_process_once_that_process_has_exited() {
+    let config = Config::new("window-pid-exited");
+    config.write(
+        "init.lua",
+        r#"
+local job = gnoblin.process.spawn({"true"})
+job:wait():on_complete(function() end)
+error("PID=" .. job.pid)
+"#,
+    );
+    let (mut server, mut host) = pair();
+    let window = open_window(&mut server, "Exited");
+    let report = host.run_config(&config.paths()).expect("the run starts");
+    let pid = pid_reported_by(&report);
+    let mut tick = 0;
+    let pumped = pump_until_handled(&mut host, &mut tick);
+    assert!(pumped.errors.is_empty(), "{:#?}", pumped.errors);
+    server
+        .set(window, "pid", ModelValue::Uint(pid.into()))
+        .expect("pid is a declared property");
+    host.pump(Tick::new(tick + 10)).expect("a pump applies the diff");
+    let check = config.write(
+        "check.lua",
+        &format!(
+            "local window = gnoblin.window.by_id(1)\nassert(window.pid == {pid}, \"the pid is published\")\nassert(window.process == nil, \"an exited process is not named\")\n"
+        ),
+    );
+    host.evaluate(&check).expect("the check passes");
+}
+
 #[test]
 fn captured_output_is_cut_at_output_limit_and_says_so() {
     let config = Config::new("process-capture");

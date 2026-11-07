@@ -456,7 +456,15 @@ fn members(spec: &ObjectSpec) -> Vec<&'static str> {
     names.extend(spec.methods.iter().map(|method| method.name));
     names.push("on");
     names.push("alive");
+    if is_window(spec) {
+        names.push("process");
+    }
     names
+}
+
+/// True for the `window` object, the only one with a `pid` and a `process` member.
+fn is_window(spec: &ObjectSpec) -> bool {
+    spec.name == "window"
 }
 
 /// Install the class table a script reaches instances through.
@@ -630,10 +638,19 @@ fn index<T: Transport + 'static>(
             .mirror
             .get(&id)
             .and_then(|view| view.property(property.name).cloned());
+        // The schema has no nullable type, so the compositor publishes a window's pid
+        // as 0 when it cannot name the client. No real client has pid 0, so Lua reads 0
+        // as nil, the same as any other unknown value.
+        if is_window(spec) && property.name == "pid" && value == Some(ModelValue::Uint(0)) {
+            return Ok(Value::Nil);
+        }
         return match value {
             Some(value) => to_lua(lua, shared, &value),
             None => Ok(Value::Nil),
         };
+    }
+    if is_window(spec) && key == "process" {
+        return window_process(shared, id);
     }
     if let Some(method) = spec.methods.iter().find(|method| method.name == key) {
         let shared = Rc::clone(shared);
@@ -654,6 +671,30 @@ fn index<T: Transport + 'static>(
         return Ok(Value::Function(function));
     }
     Err(unknown(&format!("{namespace}.{}", spec.name), key, &members(spec)))
+}
+
+/// The id of the started process whose pid is this window's client pid, or nil.
+///
+/// The match is direct: a client that forks a child, or a program that runs in the
+/// started process's session, is not the started process and reads nil. Only a
+/// process that is still alive can match, since its pid may be reused once it ends.
+fn window_process<T: Transport + 'static>(shared: &Rc<RefCell<Shared<T>>>, window: ObjectId) -> mlua::Result<Value> {
+    let shared = shared.borrow();
+    let pid = match shared.mirror.get(&window).and_then(|view| view.property("pid")) {
+        Some(ModelValue::Uint(pid)) if *pid != 0 => u32::try_from(*pid).ok(),
+        _ => None,
+    };
+    let Some(pid) = pid else {
+        return Ok(Value::Nil);
+    };
+    let owner = shared.processes.records.values().find_map(|record| {
+        let state = record.state.borrow();
+        (state.alive() && state.pid == Some(pid)).then_some(state.id)
+    });
+    match owner.map(i64::try_from) {
+        Some(Ok(id)) => Ok(Value::Integer(id)),
+        _ => Ok(Value::Nil),
+    }
 }
 
 /// Call one method and return its operation handle.

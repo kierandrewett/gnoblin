@@ -74,6 +74,8 @@ mod member {
     pub const TITLE: &str = "title";
     /// The `window` object's app_id property.
     pub const APP_ID: &str = "app_id";
+    /// The `window` object's pid property: the client's process, or 0 when unknown.
+    pub const PID: &str = "pid";
     /// The `window` object's focused property.
     pub const FOCUSED: &str = "focused";
     /// The `window` object's x property.
@@ -143,6 +145,8 @@ struct PublishedWindow {
     title: String,
     /// App id last published for this window.
     app_id: String,
+    /// Pid last published for this window, `None` when the compositor could not name it.
+    pid: Option<u32>,
     /// Whether the window held focus in the last published snapshot.
     focused: bool,
     /// Icon name last published for this window.
@@ -458,6 +462,7 @@ impl SessionSync {
                     object,
                     title: window.title.clone(),
                     app_id: window.app_id.clone(),
+                    pid: window.pid,
                     focused,
                     icon,
                     tag,
@@ -477,6 +482,10 @@ impl SessionSync {
         if previous.app_id != window.app_id {
             self.graph
                 .set(object, member::APP_ID, Value::Text(window.app_id.clone()))?;
+        }
+        if previous.pid != window.pid {
+            self.graph
+                .set(object, member::PID, Value::Uint(pid_value(window.pid)))?;
         }
         if previous.focused != focused {
             self.graph.set(object, member::FOCUSED, Value::Bool(focused))?;
@@ -504,6 +513,7 @@ impl SessionSync {
                 object,
                 title: window.title.clone(),
                 app_id: window.app_id.clone(),
+                pid: window.pid,
                 focused,
                 icon,
                 tag,
@@ -850,6 +860,14 @@ fn effect_fields(spec: &EffectSpec) -> Fields {
     ])
 }
 
+/// The pid as the schema publishes it: 0 when the compositor cannot name the process.
+///
+/// The model has no null, and a pid of 0 is never a real client, so the Lua runtime
+/// reads 0 as `nil`.
+fn pid_value(pid: Option<u32>) -> u64 {
+    pid.map_or(0, u64::from)
+}
+
 /// Every property a new `window` object is created with.
 fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindow) -> Fields {
     // `mapped` and `visible` are the session's own vocabulary and the schema declares
@@ -860,6 +878,7 @@ fn window_properties(window: WindowId, observed: &gnoblin_wayland::ObservedWindo
         (member::ID.to_owned(), Value::Uint(window.get())),
         (member::TITLE.to_owned(), Value::Text(observed.title.clone())),
         (member::APP_ID.to_owned(), Value::Text(observed.app_id.clone())),
+        (member::PID.to_owned(), Value::Uint(pid_value(observed.pid))),
         (member::FOCUSED.to_owned(), Value::Bool(observed.focused)),
         (member::X.to_owned(), Value::Int(i64::from(observed.geometry.x))),
         (member::Y.to_owned(), Value::Int(i64::from(observed.geometry.y))),
@@ -908,6 +927,7 @@ mod tests {
             id: WindowId::new(id),
             title: title.to_owned(),
             app_id: "org.gnoblin.Test".to_owned(),
+            pid: None,
             mapped: true,
             visible: true,
             focused,
@@ -1143,6 +1163,80 @@ mod tests {
         assert_eq!(view.property("y"), Some(&Value::Int(7)));
         assert_eq!(view.property("width"), Some(&Value::Uint(200)));
         assert_eq!(view.property("height"), Some(&Value::Uint(150)));
+    }
+
+    #[test]
+    fn a_window_publishes_the_pid_of_its_client() {
+        let mut store = store();
+        let subscription = store.subscribe(Filter::All);
+        let mut known = window(1, "Editor", true, Rect::new(0, 0, 200, 150));
+        known.pid = Some(4242);
+        store
+            .apply(&snapshot(vec![known], Some(WindowId::new(1))))
+            .expect("applied");
+        let observations = drained(&mut store, &subscription);
+        let view = opened(&observations, "gnoblin.window");
+        assert_eq!(view.property("pid"), Some(&Value::Uint(4242)));
+    }
+
+    #[test]
+    fn a_window_without_a_known_client_publishes_pid_zero_not_a_guess() {
+        let mut store = store();
+        let subscription = store.subscribe(Filter::All);
+        store
+            .apply(&snapshot(
+                vec![window(1, "Editor", true, Rect::new(0, 0, 200, 150))],
+                Some(WindowId::new(1)),
+            ))
+            .expect("applied");
+        let observations = drained(&mut store, &subscription);
+        let view = opened(&observations, "gnoblin.window");
+        assert_eq!(view.property("pid"), Some(&Value::Uint(0)));
+    }
+
+    #[test]
+    fn a_pid_that_appears_or_disappears_publishes_as_a_change() {
+        let mut store = store();
+        store
+            .apply(&snapshot(
+                vec![window(1, "Editor", true, Rect::new(0, 0, 200, 150))],
+                Some(WindowId::new(1)),
+            ))
+            .expect("applied");
+        let subscription = store.subscribe(Filter::All);
+        let mut known = window(1, "Editor", true, Rect::new(0, 0, 200, 150));
+        known.pid = Some(777);
+        store
+            .apply(&snapshot(vec![known], Some(WindowId::new(1))))
+            .expect("applied");
+        let changed: Vec<(String, Value)> = drained(&mut store, &subscription)
+            .into_iter()
+            .filter_map(|observation| match observation {
+                Observation::Changed { property, value, .. } => Some((property, value)),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            changed.contains(&("pid".to_owned(), Value::Uint(777))),
+            "the pid arrives once the client is known, got {changed:?}"
+        );
+        store
+            .apply(&snapshot(
+                vec![window(1, "Editor", true, Rect::new(0, 0, 200, 150))],
+                Some(WindowId::new(1)),
+            ))
+            .expect("applied");
+        let changed: Vec<(String, Value)> = drained(&mut store, &subscription)
+            .into_iter()
+            .filter_map(|observation| match observation {
+                Observation::Changed { property, value, .. } => Some((property, value)),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            changed.contains(&("pid".to_owned(), Value::Uint(0))),
+            "a lost client reads as 0 again, got {changed:?}"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Processes
 
-> **Status:** done: `gnoblin.process.spawn` with every option in the table below, `wait()` with its result fields, `kill(signal?)`, the fields `id`, `pid`, `alive`, `argv`, `status`, `exit_code`, `signal` and `revision`, `on` with `"closed"` and `"changed"`, `watch`, and `gnoblin.process.list` and `by_id`. Not done yet: `Window.process` (the compositor's pid lookup) and the reload behaviour, meaning the `"config_reloaded"` reason and the handle ending on reload. Sections describing those are the target, not current behaviour.
+> **Status:** done: `gnoblin.process.spawn` with every option in the table below, `wait()` with its result fields, `kill(signal?)`, the fields `id`, `pid`, `alive`, `argv`, `status`, `exit_code`, `signal` and `revision`, `on` with `"closed"` and `"changed"`, `watch`, `gnoblin.process.list` and `by_id`, and `Window.process`. Not done yet: the reload behaviour, meaning the `"config_reloaded"` reason and the handle ending on reload. Sections describing that are the target, not current behaviour.
 
 `gnoblin.process.spawn(argv, options?)` starts a program from an event handler or an operation callback and returns a
 `Process`. Use it to start an application, run a helper and read its output, or ask a prompt program for an answer.
@@ -87,8 +87,11 @@ Find a process again with these functions:
 Every call returns the same object for one `id`. A process that has ended is known only while something holds it, so
 `by_id` can return `nil` for an old `id`.
 
-`Window.process` holds the `id` of the `Process` that started a window's program. Resolve it with
-`gnoblin.process.by_id(window.process)`:
+`Window.process` holds the `id` of the live `Process` that started a window's program: the started process whose `pid`
+equals `window.pid`.
+
+It is `nil` when `window.pid` is `nil`, when no started process has that pid, or once that process has exited. Only the
+started process itself matches, not a child it starts. Resolve it with `gnoblin.process.by_id(window.process)`:
 
 ```lua
 gnoblin.on("gnoblin.window.created", function(event)
