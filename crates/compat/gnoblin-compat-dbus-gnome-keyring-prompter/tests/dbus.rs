@@ -176,7 +176,7 @@ fn a_prompt_is_offered_answered_and_encrypted() {
             assert_eq!(prompt.callback, CALLBACK_PATH);
 
             service
-                .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
+                .answer(request, &RequestOutcome::answered(PASSPHRASE.as_bytes().to_vec()))
                 .expect("the request is pending");
 
             until(|| state.ready.lock().is_ok_and(|ready| ready.len() == 2)).await;

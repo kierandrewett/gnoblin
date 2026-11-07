@@ -680,9 +680,9 @@ mod tests {
         let deliveries = requests.departed(SERVICES);
         assert_eq!(
             requests.broker.state(request),
-            Some(gnoblin_model::RequestState::Finished(RequestOutcome::Refused(
-                DeclineReason::Unavailable
-            ))),
+            Some(gnoblin_model::RequestState::Finished(
+                gnoblin_model::RequestCompletion::Refused(DeclineReason::Unavailable)
+            )),
             "the relay learns the retrieve failed with a reason, not a bare end"
         );
         assert!(

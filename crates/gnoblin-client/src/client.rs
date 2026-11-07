@@ -592,16 +592,17 @@ impl<T: Transport> Client<T> {
     }
 
     /// The payload of a reply, or the refusal an error frame carries.
-    fn reply_payload(envelope: Envelope) -> Result<Vec<u8>, ClientError> {
-        match envelope.kind {
-            Some(Kind::Reply(reply)) => Ok(reply.payload),
+    fn reply_payload(mut envelope: Envelope) -> Result<Vec<u8>, ClientError> {
+        let member = std::mem::take(&mut envelope.member);
+        match envelope.kind.take() {
+            Some(Kind::Reply(mut reply)) => Ok(std::mem::take(&mut reply.payload)),
             Some(Kind::Error(error)) => Err(ClientError::Refused {
-                member: envelope.member,
+                member,
                 code: error.code,
                 message: error.message,
             }),
             _ => Err(ClientError::Protocol {
-                member: envelope.member,
+                member,
                 reason: WireError::Kind,
             }),
         }

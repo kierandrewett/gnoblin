@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use gnoblin_client::{Event, Server};
-use gnoblin_model::{Fields, Filter, Graph, Observation, RequestOutcome, Tick, TypeKey, Value};
+use gnoblin_model::{Fields, Filter, Graph, Observation, RequestCompletion, RequestOutcome, Tick, TypeKey, Value};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, Type};
 use gnoblin_service_core::{
@@ -181,8 +181,12 @@ fn a_shell_claims_and_answers_an_offered_request() {
     shell.claim(request).expect("the first claim wins");
     shell.answer(request, b"unix-user:1000").expect("the holder answers");
 
-    let outcome = agent.offerer().server.finished(request).expect("the request finished");
-    assert_eq!(outcome, RequestOutcome::Answered(b"unix-user:1000".to_vec()));
+    assert_eq!(
+        agent.offerer().server.finished(request),
+        Some(RequestCompletion::Answered),
+        "the request finished as an answer"
+    );
+    let outcome = RequestOutcome::answered(b"unix-user:1000".to_vec());
     let decision = agent.answer(request, &outcome).expect("the request is still pending");
     assert_eq!(
         decision,

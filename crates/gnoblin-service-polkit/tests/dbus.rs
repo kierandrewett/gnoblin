@@ -221,7 +221,7 @@ fn the_agent_registers_with_polkitd_and_answers_an_authentication() {
             assert_eq!(proposition.request.identities[0].kind, "unix-user");
             fixture
                 .polkit
-                .answer(request, &RequestOutcome::Answered(b"unix-user:1000".to_vec()))
+                .answer(request, &RequestOutcome::answered(b"unix-user:1000".to_vec()))
                 .expect("the request is pending");
         };
         let (reply, ()) = future::zip(begin(&fixture.caller, "cookie-1"), provider).await;

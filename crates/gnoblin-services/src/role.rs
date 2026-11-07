@@ -250,7 +250,7 @@ impl Agents {
                 host.decline(request);
             }
             gnoblin_client::Event::RequestAnswered { request, answer } => {
-                self.answer(request, &RequestOutcome::Answered(answer));
+                self.answer(request, &RequestOutcome::answered(answer));
             }
             gnoblin_client::Event::RequestFinished { request, completion } => {
                 // An answered request already delivered its value; only the ends without

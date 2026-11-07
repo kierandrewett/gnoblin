@@ -17,7 +17,7 @@ use gnoblin_compat_dbus_gnome_keyring_prompter::state::SLOT;
 use gnoblin_compat_dbus_gnome_keyring_prompter::{
     Callback, Effect, Exchange, Offerer, Prompt, PromptKind, Prompter, Unavailable,
 };
-use gnoblin_model::{Graph, RequestId, RequestOutcome, Tick};
+use gnoblin_model::{Graph, RequestCompletion, RequestId, RequestOutcome, Tick};
 use gnoblin_proto::Version;
 use gnoblin_schema::{Catalog, Type};
 
@@ -122,13 +122,14 @@ fn a_shells_answer_reaches_the_prompter_encrypted() {
         .answer(request, PASSPHRASE.as_bytes())
         .expect("the shell answers with the passphrase");
 
-    let outcome = server.borrow().finished(request).expect("the request finished");
-    assert_eq!(outcome, RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()));
-    let RequestOutcome::Answered(bytes) = outcome else {
-        panic!("expected an answer");
-    };
+    assert_eq!(
+        server.borrow().finished(request),
+        Some(RequestCompletion::Answered),
+        "the request finished as an answer"
+    );
+    let bytes = PASSPHRASE.as_bytes().to_vec();
     prompter
-        .answer(request, &RequestOutcome::Answered(bytes))
+        .answer(request, &RequestOutcome::answered(bytes))
         .expect("the prompter accepts the answer");
 
     let Effect::Ready { response, exchange, .. } = effects.try_recv().expect("the caller is told") else {

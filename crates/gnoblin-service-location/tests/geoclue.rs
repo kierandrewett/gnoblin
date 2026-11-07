@@ -163,7 +163,7 @@ fn an_answered_request_grants_the_level_the_shell_names() {
     let (request, proposition) = one_offer(&host);
     assert_eq!(proposition.slot, CapabilitySlot::LocationAgent);
     assert_eq!(proposition.request.action_id, "org.example.Maps");
-    assert!(location.answer(request, &RequestOutcome::Answered(b"5".to_vec())));
+    assert!(location.answer(request, &RequestOutcome::answered(b"5".to_vec())));
 
     assert_eq!(call.join().expect("the client thread"), (true, 5));
 }
@@ -180,7 +180,7 @@ fn an_empty_or_ended_request_is_denied() {
 
     let empty = authorize(address.clone(), agent.clone(), "org.example.Empty");
     let (request, _) = one_offer(&host);
-    location.answer(request, &RequestOutcome::Answered(Vec::new()));
+    location.answer(request, &RequestOutcome::answered(Vec::new()));
     assert_eq!(empty.join().expect("the client thread"), (false, 0));
 
     let ended = authorize(address.clone(), agent, "org.example.Ended");

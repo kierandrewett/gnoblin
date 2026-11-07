@@ -500,8 +500,8 @@ impl<O: Offerer> Prompter<O> {
         let decision = match outcome {
             RequestOutcome::Ended | RequestOutcome::TimedOut | RequestOutcome::Refused(_) => Decision::Cancelled,
             RequestOutcome::Answered(bytes) => match waiting.kind {
-                PromptKind::Password => Decision::Password(Secret::new(bytes.clone())),
-                PromptKind::Confirm => Decision::Confirmed(bytes == b"yes"),
+                PromptKind::Password => Decision::Password(Secret::new(bytes.to_vec())),
+                PromptKind::Confirm => Decision::Confirmed(bytes.as_slice() == b"yes"),
             },
         };
         self.commit(request, decision);

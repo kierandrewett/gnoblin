@@ -19,6 +19,8 @@
 //! - **One finished outcome.** Finishing removes the live entry and records a
 //!   tombstone, so a late answer is refused rather than reopening the request, and
 //!   [`RequestBroker::events`] yields exactly one `Finished` per request.
+//! - **The value leaves once.** The answer rides on the one `Finished` event, and the
+//!   tombstone keeps only its [`RequestCompletion`], so the broker holds no second copy.
 //! - **Fail closed on timeout.** A request is offered with a deadline and the
 //!   caller supplies the current [`Tick`]; [`RequestBroker::tick`] finishes every
 //!   request at or past its deadline as [`RequestOutcome::TimedOut`]. Nothing here
@@ -26,8 +28,10 @@
 //!   outcome from the same ticks.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt;
 
 use gnoblin_types::{OwnerId, RequestId, Tick};
+use zeroize::Zeroizing;
 
 use crate::error::RequestError;
 
@@ -53,17 +57,36 @@ pub enum DeclineReason {
 }
 
 /// How a request ended. Exactly one of these is produced per request.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum RequestOutcome {
     /// A provider answered, and here is what it said. Only the host that offered
     /// the request sees the value: a prompt answer never reaches a subscriber.
-    Answered(Vec<u8>),
+    Answered(Zeroizing<Vec<u8>>),
     /// The request was ended without an answer.
     Ended,
     /// The provider declined and said why. It carries no value.
     Refused(DeclineReason),
     /// The deadline passed before an answer arrived.
     TimedOut,
+}
+
+impl RequestOutcome {
+    /// An answer, taking ownership of its bytes so they are wiped when the outcome drops.
+    pub fn answered(bytes: Vec<u8>) -> RequestOutcome {
+        RequestOutcome::Answered(Zeroizing::new(bytes))
+    }
+}
+
+impl fmt::Debug for RequestOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            // The answer is a secret, so a log or a panic shows its length, never its bytes.
+            RequestOutcome::Answered(answer) => write!(f, "Answered({} bytes redacted)", answer.len()),
+            RequestOutcome::Ended => f.write_str("Ended"),
+            RequestOutcome::Refused(reason) => f.debug_tuple("Refused").field(reason).finish(),
+            RequestOutcome::TimedOut => f.write_str("TimedOut"),
+        }
+    }
 }
 
 /// The finished outcome as a peer may learn it: which kind, never the value.
@@ -129,7 +152,7 @@ pub enum RequestState {
         deadline: Tick,
     },
     /// Finished. It stays finished; a late answer is refused.
-    Finished(RequestOutcome),
+    Finished(RequestCompletion),
 }
 
 /// The live entry for one request, kept separate from the finished tombstone so a
@@ -153,7 +176,7 @@ impl Live {
 pub struct RequestBroker {
     next: u64,
     live: BTreeMap<RequestId, Live>,
-    finished: BTreeMap<RequestId, RequestOutcome>,
+    finished: BTreeMap<RequestId, RequestCompletion>,
     forgotten: VecDeque<RequestId>,
     events: VecDeque<RequestEvent>,
 }
@@ -212,7 +235,7 @@ impl RequestBroker {
     /// An answer from anyone else, or to a request that already finished, is
     /// refused; a refusal never changes the request's state.
     pub fn answer(&mut self, request: RequestId, owner: OwnerId, bytes: Vec<u8>) -> Result<(), RequestError> {
-        self.finish_owned(request, owner, RequestOutcome::Answered(bytes))
+        self.finish_owned(request, owner, RequestOutcome::Answered(bytes.into()))
     }
 
     /// Decline a request the owner holds: the provider will not answer it.
@@ -338,11 +361,11 @@ impl RequestBroker {
         if self.live.remove(&request).is_none() {
             return;
         }
-        self.events.push_back(RequestEvent::Finished {
-            request,
-            outcome: outcome.clone(),
-        });
-        self.finished.insert(request, outcome);
+        // The value goes to the event and nowhere else: the tombstone keeps only the kind,
+        // so a later `state` read cannot hand the secret back out of the broker.
+        let completion = RequestCompletion::from(&outcome);
+        self.events.push_back(RequestEvent::Finished { request, outcome });
+        self.finished.insert(request, completion);
         self.forgotten.push_back(request);
         while self.forgotten.len() > REMEMBERED_FINISHED {
             if let Some(oldest) = self.forgotten.pop_front() {

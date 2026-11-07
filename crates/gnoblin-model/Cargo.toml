@@ -16,6 +16,8 @@ gnoblin-types = { path = "../gnoblin-types" }
 # generated bindings and the API reference are built from. Nothing here knows a
 # wire format: encoding an observation is the client crate's job.
 gnoblin-schema = { path = "../gnoblin-schema" }
+# An answer is secret material, so the broker wipes it when the request ends.
+zeroize.workspace = true
 
 [dev-dependencies]
 # The window fixture builds a window's full property set from the schema.

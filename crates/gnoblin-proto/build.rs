@@ -98,7 +98,12 @@ fn run() -> Result<(), String> {
     let descriptor_path = out_dir.join("descriptor.bin");
     fs::write(&descriptor_path, descriptors.encode_to_vec())
         .map_err(|error| format!("cannot write {}: {error}", descriptor_path.display()))?;
-    prost_build::compile_fds(descriptors)
+    // The envelope gets a hand-written `Debug` that redacts, so prost's derived one,
+    // which would print the payload bytes, is switched off for it alone.
+    let mut config = prost_build::Config::new();
+    config.skip_debug([".gnoblin.ipc.Envelope"]);
+    config
+        .compile_fds(descriptors)
         .map_err(|error| format!("cannot generate Rust from the descriptor set: {error}"))?;
 
     println!("[proto] compiled {} .proto file(s)", sources.len());

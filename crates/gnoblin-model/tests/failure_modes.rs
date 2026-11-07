@@ -8,8 +8,8 @@ use std::path::Path;
 
 use gnoblin_model::{
     ErrorCode, Fields, Filter, Graph, ModelError, OBJECT_GONE, ObjectId, Observation, OperationOutcome, OwnerId,
-    RequestBroker, RequestError, RequestEvent, RequestOutcome, RequestState, Revision, Subscription, Tick, TypeKey,
-    Value,
+    RequestBroker, RequestCompletion, RequestError, RequestEvent, RequestOutcome, RequestState, Revision, Subscription,
+    Tick, TypeKey, Value,
 };
 use gnoblin_schema::Catalog;
 
@@ -143,13 +143,13 @@ fn an_answer_after_the_finish_is_refused() {
     );
     assert_eq!(
         broker.state(request),
-        Some(RequestState::Finished(RequestOutcome::Answered(vec![0x42])))
+        Some(RequestState::Finished(RequestCompletion::Answered))
     );
     assert_eq!(
         broker.events(),
         vec![RequestEvent::Finished {
             request,
-            outcome: RequestOutcome::Answered(vec![0x42])
+            outcome: RequestOutcome::answered(vec![0x42])
         }],
         "exactly one finished outcome, in order after the offer"
     );
@@ -170,14 +170,17 @@ fn an_empty_answer_is_an_answer_and_decline_is_its_own_outcome() {
         .expect("an empty answer is an answer");
     assert_eq!(
         broker.state(answered),
-        Some(RequestState::Finished(RequestOutcome::Answered(Vec::new()))),
+        Some(RequestState::Finished(RequestCompletion::Answered)),
         "zero bytes is consent with no content, not a refusal"
     );
 
     let ended = broker.offer(Tick::new(100));
     broker.claim(ended, owner).expect("the first claim wins");
     broker.decline(ended, owner).expect("the owner may decline it");
-    assert_eq!(broker.state(ended), Some(RequestState::Finished(RequestOutcome::Ended)));
+    assert_eq!(
+        broker.state(ended),
+        Some(RequestState::Finished(RequestCompletion::Ended))
+    );
 
     let finished: Vec<RequestOutcome> = broker
         .events()
@@ -189,7 +192,7 @@ fn an_empty_answer_is_an_answer_and_decline_is_its_own_outcome() {
         .collect();
     assert_eq!(
         finished,
-        vec![RequestOutcome::Answered(Vec::new()), RequestOutcome::Ended],
+        vec![RequestOutcome::answered(Vec::new()), RequestOutcome::Ended],
         "one outcome per request, and they are different outcomes"
     );
 }
@@ -404,7 +407,7 @@ fn a_request_times_out_fail_closed() {
     assert_eq!(broker.tick(deadline), 1, "the deadline is inclusive");
     assert_eq!(
         broker.state(request),
-        Some(RequestState::Finished(RequestOutcome::TimedOut))
+        Some(RequestState::Finished(RequestCompletion::TimedOut))
     );
     assert_eq!(
         broker.decline(request, owner),
@@ -449,7 +452,7 @@ fn a_request_whose_host_gave_up_is_finished_once() {
     assert!(broker.events().is_empty(), "and emits nothing");
     assert_eq!(
         broker.state(request),
-        Some(RequestState::Finished(RequestOutcome::Ended))
+        Some(RequestState::Finished(RequestCompletion::Ended))
     );
 }
 
@@ -477,7 +480,10 @@ fn a_departed_owner_finishes_its_requests() {
             ..
         }
     )));
-    assert_eq!(broker.state(first), Some(RequestState::Finished(RequestOutcome::Ended)));
+    assert_eq!(
+        broker.state(first),
+        Some(RequestState::Finished(RequestCompletion::Ended))
+    );
     assert_eq!(
         broker.state(untouched),
         Some(RequestState::Claimed {
@@ -532,4 +538,15 @@ fn unsubscribing_stops_the_queue_and_reports_whether_it_existed() {
         .set(window, TITLE, Value::Text("Later".to_owned()))
         .expect("the window is live");
     assert_eq!(graph.next(&subscription), None, "a dropped subscription gets nothing");
+}
+
+#[test]
+fn an_answered_outcome_debug_never_prints_the_answer() {
+    let outcome = RequestOutcome::answered(b"hunter2".to_vec());
+    let shown = format!("{outcome:?}");
+    assert!(
+        !shown.contains("hunter2"),
+        "a log line must not carry the answer: {shown}"
+    );
+    assert!(shown.contains("7 bytes redacted"), "the length is still shown: {shown}");
 }

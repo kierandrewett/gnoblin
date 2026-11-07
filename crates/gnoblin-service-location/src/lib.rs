@@ -527,7 +527,7 @@ mod tests {
     }
 
     fn answered(text: &str) -> RequestOutcome {
-        RequestOutcome::Answered(text.as_bytes().to_vec())
+        RequestOutcome::answered(text.as_bytes().to_vec())
     }
 
     #[test]
@@ -551,7 +551,7 @@ mod tests {
     fn an_empty_or_unreadable_answer_denies() {
         assert_eq!(grant(&answered(""), 8, 8), (false, 0));
         assert_eq!(grant(&answered("exact"), 8, 8), (false, 0));
-        assert_eq!(grant(&RequestOutcome::Answered(vec![0xff]), 8, 8), (false, 0));
+        assert_eq!(grant(&RequestOutcome::answered(vec![0xff]), 8, 8), (false, 0));
     }
 
     #[test]

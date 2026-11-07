@@ -9,6 +9,7 @@
 use std::io::{self, Read, Write};
 
 use prost::Message as _;
+use zeroize::Zeroizing;
 
 use crate::Envelope;
 use crate::error::CodecError;
@@ -25,7 +26,8 @@ pub const LENGTH_PREFIX_LEN: usize = 4;
 
 /// Write one frame: length prefix, then the encoded envelope.
 pub fn write_frame<W: Write>(writer: &mut W, envelope: &Envelope) -> Result<(), CodecError> {
-    let body = envelope.encode_to_vec();
+    // The encoded body carries the secret, so it is wiped once it has been written.
+    let body = Zeroizing::new(envelope.encode_to_vec());
     if body.len() > MAX_FRAME_LEN {
         return Err(CodecError::TooLarge { len: body.len() });
     }
@@ -60,12 +62,14 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<Option<Envelope>, CodecErro
     if len > MAX_FRAME_LEN {
         return Err(CodecError::TooLarge { len });
     }
-    let mut body = vec![0u8; len];
+    let mut body = Zeroizing::new(vec![0u8; len]);
     reader.read_exact(&mut body).map_err(|error| match error.kind() {
         io::ErrorKind::UnexpectedEof => CodecError::Truncated,
         _ => CodecError::Io(error),
     })?;
-    let mut envelope = Envelope::decode(&body[..])?;
+    // The body is wiped when this function returns, so the decoded copy is the only one
+    // that outlives it, and `Envelope::drop` wipes that one for a sensitive frame.
+    let mut envelope = Envelope::decode(body.as_slice())?;
     // A peer cannot make a secret member look plain by sending zero flags.
     envelope.flag_schema_sensitivity();
     Ok(Some(envelope))
@@ -271,7 +275,7 @@ mod any_tests {
         while let Some(frame) = read_any(&mut reader).expect("decodes") {
             kinds.push(match frame {
                 StreamFrame::Handshake(handshake) => format!("{:?}", handshake.kind),
-                StreamFrame::Envelope(envelope) => envelope.member,
+                StreamFrame::Envelope(envelope) => envelope.member.clone(),
             });
         }
         assert_eq!(kinds, vec!["Hello", "object.subscribe", "Hello"]);

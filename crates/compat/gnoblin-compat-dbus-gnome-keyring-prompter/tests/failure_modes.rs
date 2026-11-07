@@ -162,7 +162,7 @@ fn an_answer_after_a_cancel_is_refused() {
     fixture.prompter.cancel(request).expect("the request is pending");
     let refusal = fixture
         .prompter
-        .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
+        .answer(request, &RequestOutcome::answered(PASSPHRASE.as_bytes().to_vec()))
         .expect_err("a finished request stays finished");
     assert_eq!(refusal, Unavailable::Finished { request });
 }
@@ -212,7 +212,7 @@ fn an_answer_arrives_encrypted() {
     let request = fixture.perform().expect("offered").request;
     fixture
         .prompter
-        .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
+        .answer(request, &RequestOutcome::answered(PASSPHRASE.as_bytes().to_vec()))
         .expect("the request is pending");
 
     let effect = fixture.effect().expect("the caller is told");
@@ -246,7 +246,7 @@ fn a_declined_confirmation_answers_no_without_a_secret() {
         .expect("offered");
     fixture
         .prompter
-        .answer(request, &RequestOutcome::Answered(b"no".to_vec()))
+        .answer(request, &RequestOutcome::answered(b"no".to_vec()))
         .expect("the request is pending");
 
     let Effect::Ready { response, exchange, .. } = fixture.effect().expect("the caller is told") else {
@@ -285,7 +285,7 @@ fn a_passphrase_never_reaches_the_log() {
     log::info!("answering the prompt");
     fixture
         .prompter
-        .answer(request, &RequestOutcome::Answered(PASSPHRASE.as_bytes().to_vec()))
+        .answer(request, &RequestOutcome::answered(PASSPHRASE.as_bytes().to_vec()))
         .expect("the request is pending");
     let effect = fixture.effect().expect("the caller is told");
     // Logged at `info`: the default filter drops `debug`, and this line must reach the capture.

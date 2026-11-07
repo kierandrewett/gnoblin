@@ -18,6 +18,8 @@ prost.workspace = true
 # The handover's `SCM_RIGHTS` send and receive (privilege.rs), which is the one socket
 # call this crate makes. The safe wrappers keep the crate free of `unsafe`.
 rustix = { workspace = true, features = ["net"] }
+# Secret payloads are wiped when a frame is dropped or written, so a copy does not linger.
+zeroize.workspace = true
 
 [build-dependencies]
 # build.rs renders the .proto documents and the sensitive table from the schema,

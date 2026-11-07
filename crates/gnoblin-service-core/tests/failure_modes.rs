@@ -181,7 +181,7 @@ fn an_answer_after_a_cancel_is_refused() {
     let request = offered(&mut agent, "c1");
     agent.cancel(request).expect("the request is pending");
     let refusal = agent
-        .answer(request, &RequestOutcome::Answered(b"unix-user:1000".to_vec()))
+        .answer(request, &RequestOutcome::answered(b"unix-user:1000".to_vec()))
         .expect_err("a finished request stays finished");
     assert_eq!(refusal, Refusal::Finished { request });
     assert_eq!(agent.decision(request), Some(&Decision::Cancelled));
@@ -252,7 +252,7 @@ fn an_unreadable_answer_is_a_refusal() {
     let request = offered(&mut agent, "c1");
     assert_eq!(
         agent
-            .answer(request, &RequestOutcome::Answered(vec![0xff, 0xfe]))
+            .answer(request, &RequestOutcome::answered(vec![0xff, 0xfe]))
             .expect("the request is pending"),
         Decision::Denied
     );
@@ -260,7 +260,7 @@ fn an_unreadable_answer_is_a_refusal() {
     let request = offered(&mut agent, "c2");
     assert_eq!(
         agent
-            .answer(request, &RequestOutcome::Answered(Vec::new()))
+            .answer(request, &RequestOutcome::answered(Vec::new()))
             .expect("the request is pending"),
         Decision::Denied,
         "an empty answer is a refusal, not an empty identity"
@@ -269,7 +269,7 @@ fn an_unreadable_answer_is_a_refusal() {
     let request = offered(&mut agent, "c3");
     assert_eq!(
         agent
-            .answer(request, &RequestOutcome::Answered(b"unix-user:1000".to_vec()))
+            .answer(request, &RequestOutcome::answered(b"unix-user:1000".to_vec()))
             .expect("the request is pending"),
         Decision::Allowed {
             identity: "unix-user:1000".to_owned()

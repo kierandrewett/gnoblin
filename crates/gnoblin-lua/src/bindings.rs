@@ -657,7 +657,6 @@ type LayoutReferenceFields = (String, String, String, Vec<u8>);
 /// the value is not one. The hash is spelled the way the reference's own `hash` field
 /// spells it. The options are refused here when they are too large to encode, so an
 /// oversize value fails in the configuration that made it, not on the wire.
-type LayoutReferenceFields = (String, String, String, Vec<u8>);
 fn layout_reference_fields(value: &Value) -> mlua::Result<Option<LayoutReferenceFields>> {
     let Value::UserData(data) = value else {
         return Ok(None);

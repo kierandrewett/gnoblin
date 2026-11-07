@@ -177,6 +177,55 @@ impl Envelope {
     }
 }
 
+impl Envelope {
+    /// Overwrite the payload of a sensitive frame in place.
+    ///
+    /// The payload is the only field the schema can mark secret, so the routing fields
+    /// are left alone. A plain frame is untouched, so this is always safe to call.
+    pub fn wipe_secret(&mut self) {
+        if !self.is_sensitive() {
+            return;
+        }
+        match &mut self.kind {
+            Some(Kind::Request(request)) => zeroize::Zeroize::zeroize(&mut request.payload),
+            Some(Kind::Reply(reply)) => zeroize::Zeroize::zeroize(&mut reply.payload),
+            Some(Kind::Event(event)) => zeroize::Zeroize::zeroize(&mut event.payload),
+            Some(Kind::Error(_)) | None => {}
+        }
+    }
+}
+
+// Debug is written by hand because the derived one prints the payload bytes. A frame
+// that carries a secret therefore shows its routing and its length, never its contents.
+impl std::fmt::Debug for Envelope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The oneof has no `Debug` of its own, and a payload is shown by length only.
+        let (kind, len) = match &self.kind {
+            Some(Kind::Request(request)) => ("request", request.payload.len()),
+            Some(Kind::Reply(reply)) => ("reply", reply.payload.len()),
+            Some(Kind::Event(event)) => ("event", event.payload.len()),
+            Some(Kind::Error(error)) => ("error", error.code.len()),
+            None => ("none", 0),
+        };
+        f.debug_struct("Envelope")
+            .field("namespace", &self.namespace)
+            .field("member", &self.member)
+            .field("request_id", &self.request_id)
+            .field("flags", &self.flags)
+            .field("kind", &kind)
+            .field("payload_len", &len)
+            .finish()
+    }
+}
+
+impl Drop for Envelope {
+    fn drop(&mut self) {
+        // A secret frame is wiped on the way out, so the broker's copy of an answer does
+        // not outlive the request it was for. Plain frames are left as they are.
+        self.wipe_secret();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use prost::Message as _;
@@ -285,5 +334,44 @@ mod tests {
         assert_eq!(redacted.error_code(), Some("redacted"));
         assert!(matches!(redacted.kind, Some(Kind::Error(_))));
         assert_eq!(envelope.error_code(), Some(UNKNOWN_MEMBER));
+    }
+
+    #[test]
+    fn debug_never_prints_the_secret_bytes() {
+        let envelope = Envelope::request_message(
+            "gnoblin",
+            "request.answer",
+            7,
+            &AnswerArgs {
+                request: 1,
+                answer: SECRET.as_bytes().to_vec(),
+            },
+        );
+        let shown = format!("{envelope:?}");
+        assert!(!shown.contains(SECRET), "a log line must not carry the secret: {shown}");
+        assert!(shown.contains("payload_len"), "the length is still shown: {shown}");
+    }
+
+    #[test]
+    fn wipe_secret_empties_a_sensitive_payload_in_place() {
+        let mut envelope = Envelope::request_message(
+            "gnoblin",
+            "request.answer",
+            7,
+            &AnswerArgs {
+                request: 1,
+                answer: SECRET.as_bytes().to_vec(),
+            },
+        );
+        envelope.wipe_secret();
+        assert_eq!(envelope.payload(), Some(&b""[..]));
+        assert!(envelope.is_sensitive(), "the frame stays marked after it is wiped");
+    }
+
+    #[test]
+    fn wipe_secret_leaves_a_plain_payload_alone() {
+        let mut envelope = Envelope::event("gnoblin", "ready", vec![1, 2, 3]);
+        envelope.wipe_secret();
+        assert_eq!(envelope.payload(), Some(&[1, 2, 3][..]));
     }
 }

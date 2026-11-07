@@ -416,7 +416,7 @@ fn reason_tag(reason: DeclineReason) -> u8 {
 }
 
 /// Read a decline reason tag.
-fn read_reason(reader: &mut Reader) -> Result<DeclineReason, WireError> {
+fn read_reason(reader: &mut FrameReader) -> Result<DeclineReason, WireError> {
     match reader.u8()? {
         1 => Ok(DeclineReason::Locked),
         2 => Ok(DeclineReason::Denied),

@@ -434,14 +434,14 @@ impl Server {
         expired
     }
 
-    /// The outcome of a finished request, including the answer value.
+    /// The completion of a finished request.
     ///
-    /// This is the host side of a request: only the party that offered it reads what
-    /// the provider said.
-    pub fn finished(&self, request: RequestId) -> Option<gnoblin_model::RequestOutcome> {
+    /// The answer value is not kept in the broker's tombstone, so it is not returned
+    /// here: the offering host reads it once from the event stream.
+    pub fn finished(&self, request: RequestId) -> Option<gnoblin_model::RequestCompletion> {
         let inner = self.inner.borrow();
         match inner.broker.state(request)? {
-            gnoblin_model::RequestState::Finished(outcome) => Some(outcome),
+            gnoblin_model::RequestState::Finished(completion) => Some(completion),
             _ => None,
         }
     }

@@ -9,8 +9,7 @@ use std::path::Path;
 
 use gnoblin_client::{Client, ClientError, ConnectError, Event, Loopback, Server, code};
 use gnoblin_model::{
-    Fields, Filter, Graph, ObjectId, Observation, OperationOutcome, RequestCompletion, RequestOutcome, Tick, TypeKey,
-    Value,
+    Fields, Filter, Graph, ObjectId, Observation, OperationOutcome, RequestCompletion, Tick, TypeKey, Value,
 };
 use gnoblin_proto::Version;
 use gnoblin_schema::Catalog;
@@ -171,7 +170,7 @@ fn an_answer_after_the_finish_is_refused() {
     }
     assert_eq!(
         server.finished(request),
-        Some(RequestOutcome::Answered(vec![0x42])),
+        Some(RequestCompletion::Answered),
         "the host that offered it reads the one outcome"
     );
 
@@ -205,7 +204,7 @@ fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
     client.answer(answered, &[]).expect("an empty answer is sent");
     assert_eq!(
         server.finished(answered),
-        Some(RequestOutcome::Answered(Vec::new())),
+        Some(RequestCompletion::Answered),
         "zero bytes arrives as an answer, not as an ended request"
     );
     assert!(matches!(
@@ -230,7 +229,7 @@ fn an_empty_answer_reaches_the_host_as_an_answer_and_decline_as_ended() {
     client.decline(ended).expect("declining is its own member");
     assert_eq!(
         server.finished(ended),
-        Some(RequestOutcome::Ended),
+        Some(RequestCompletion::Ended),
         "declining carries no value"
     );
     assert!(matches!(
@@ -407,7 +406,7 @@ fn an_unanswered_request_times_out_and_the_client_learns_it() {
         }
         other => panic!("expected a timeout, got {other:?}"),
     }
-    assert_eq!(server.finished(request), Some(RequestOutcome::TimedOut));
+    assert_eq!(server.finished(request), Some(RequestCompletion::TimedOut));
     match client.claim(request) {
         Err(ClientError::Refused { code: refused, .. }) => assert_eq!(refused, code::REQUEST_FINISHED),
         other => panic!("a timed-out request stays finished, got {other:?}"),
@@ -451,12 +450,12 @@ fn an_empty_answer_is_not_an_ended_request() {
 
     assert_eq!(
         server.finished(answered),
-        Some(RequestOutcome::Answered(Vec::new())),
+        Some(RequestCompletion::Answered),
         "an empty answer arrives as an answer, never as a refusal"
     );
     assert_eq!(
         server.finished(ended),
-        Some(RequestOutcome::Ended),
+        Some(RequestCompletion::Ended),
         "and an ended request never arrives as an empty answer"
     );
 
