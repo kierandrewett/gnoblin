@@ -14,13 +14,18 @@ use crate::SessionConfig;
 
 use crate::log;
 
-/// Sets `config.renderer` from the last accepted configuration in `store`, read from `source`.
+/// Sets the renderer and the capture treatment from the last accepted configuration in `store`, read from `source`.
 pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &Path) {
     match store.load(source) {
         Ok(stored) => {
             apply(
                 config,
                 stored.config.compositor.as_ref().and_then(|section| section.renderer),
+                stored
+                    .config
+                    .capture
+                    .as_ref()
+                    .and_then(|section| section.secure_treatment),
             );
             log::debug!(area = "renderer", "loaded from the last accepted configuration");
         }
@@ -42,10 +47,16 @@ pub fn configure_from_environment(config: &mut SessionConfig) {
     }
 }
 
-/// Sets the renderer to what the section states. A leaf the section leaves out is [`None`],
-/// which a session reads as `auto`.
-fn apply(config: &mut SessionConfig, setting: Option<RendererChoice>) {
-    config.renderer = setting;
+/// Sets the renderer and the capture treatment to what the sections state. A leaf a section
+/// leaves out is [`None`], which a session reads as the default: `auto` for the renderer and
+/// `mask` for secure layers.
+fn apply(
+    config: &mut SessionConfig,
+    renderer: Option<RendererChoice>,
+    secure_treatment: Option<gnoblin_config::CaptureSecureTreatment>,
+) {
+    config.renderer = renderer;
+    config.secure_treatment = secure_treatment;
 }
 
 #[cfg(test)]
@@ -60,7 +71,7 @@ mod tests {
             renderer,
             ..Compositor::default()
         };
-        apply(&mut config, section.renderer);
+        apply(&mut config, section.renderer, None);
         config.renderer
     }
 
@@ -79,6 +90,23 @@ mod tests {
             RendererChoice::Software,
         ] {
             assert_eq!(from_section(Some(choice)), Some(choice));
+        }
+    }
+
+    #[test]
+    fn an_absent_capture_setting_is_the_default_mask() {
+        let mut config = SessionConfig::default();
+        apply(&mut config, None, None);
+        assert_eq!(config.secure_treatment, None);
+    }
+
+    #[test]
+    fn a_stated_capture_setting_is_the_session_treatment() {
+        use gnoblin_config::CaptureSecureTreatment;
+        for treatment in [CaptureSecureTreatment::Mask, CaptureSecureTreatment::Omit] {
+            let mut config = SessionConfig::default();
+            apply(&mut config, None, Some(treatment));
+            assert_eq!(config.secure_treatment, Some(treatment));
         }
     }
 }

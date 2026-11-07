@@ -5,7 +5,7 @@
 //! place in the crate that dispatches on the renderer or tests the `vulkan` feature to do
 //! so; `render/mod.rs` explains why it is an enum and not a trait.
 
-use gnoblin_config::RendererChoice;
+use gnoblin_config::{CaptureSecureTreatment, RendererChoice};
 use gnoblin_types::{Rect, Scale, Size};
 
 use gnoblin_render_frame::{
@@ -73,6 +73,17 @@ impl RendererKind {
 impl Default for RendererKind {
     fn default() -> Self {
         Self::AUTO
+    }
+}
+
+/// The treatment a `capture.secure-treatment` setting names.
+///
+/// This is a free function rather than a `From` impl because both types live in other crates.
+#[must_use]
+pub const fn secure_treatment_from_setting(setting: CaptureSecureTreatment) -> SecureTreatment {
+    match setting {
+        CaptureSecureTreatment::Mask => SecureTreatment::Mask,
+        CaptureSecureTreatment::Omit => SecureTreatment::Omit,
     }
 }
 
@@ -192,10 +203,10 @@ impl AnyRenderer {
     }
 }
 
-/// Reads a renderer back for a capture, with the secure layers of the frame it last drew masked.
+/// Reads a renderer back for a capture, with the secure layers of the frame it last drew replaced by `treatment`.
 ///
 /// `display` is that frame, or `None` when it has no secure layer, in which case the read is
-/// the plain one. Otherwise the masked frame is drawn and read, and the display is drawn
+/// the plain one. Otherwise the replaced frame is drawn and read, and the display is drawn
 /// again with full damage so the next present shows the real layers. The display is restored
 /// even when the read fails.
 pub(crate) fn capture_redacted<R>(
@@ -204,14 +215,15 @@ pub(crate) fn capture_redacted<R>(
     bounds: Rect,
     scale: Scale,
     with_cursor: bool,
+    treatment: SecureTreatment,
     draw: fn(&mut R, &OutputFrame, Scale) -> Result<(), RenderError>,
     read: fn(&mut R, bool) -> Result<Image, RenderError>,
 ) -> Result<Image, RenderError> {
     let Some(display) = display else {
         return read(renderer, with_cursor);
     };
-    let masked = display.redacted(SecureTreatment::Mask, bounds);
-    let image = draw(renderer, &masked, scale).and_then(|()| read(renderer, with_cursor));
+    let replaced = display.redacted(treatment, bounds);
+    let image = draw(renderer, &replaced, scale).and_then(|()| read(renderer, with_cursor));
     let restored = draw(renderer, &display.fully_damaged(bounds), scale);
     let image = image?;
     restored?;

@@ -64,7 +64,7 @@ use crate::{
     Target,
 };
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_gles::Gles;
 
@@ -110,6 +110,8 @@ pub const DEFAULT_CONNECTOR: &str = "HEADLESS-1";
 pub struct HeadlessConfig {
     /// The renderer every output draws with.
     pub renderer: RendererKind,
+    /// What a capture draws in place of a secure layer.
+    pub secure_treatment: SecureTreatment,
 }
 
 impl HeadlessConfig {
@@ -124,6 +126,7 @@ impl HeadlessConfig {
     pub fn gles() -> Self {
         Self {
             renderer: RendererKind::Gles,
+            ..Self::default()
         }
     }
 
@@ -132,6 +135,7 @@ impl HeadlessConfig {
     pub fn vulkan() -> Self {
         Self {
             renderer: RendererKind::Vulkan,
+            ..Self::default()
         }
     }
 
@@ -140,6 +144,7 @@ impl HeadlessConfig {
     pub fn from_setting(setting: RendererChoice) -> Self {
         Self {
             renderer: RendererKind::from_setting(setting),
+            ..Self::default()
         }
     }
 }
@@ -242,12 +247,12 @@ impl HeadlessTarget {
         self.physical
     }
 
-    /// Reads the offscreen buffer back.
+    /// Reads the offscreen buffer back, with each secure layer drawn as `treatment` says.
     ///
     /// # Errors
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
-    pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
+    pub fn capture(&mut self, with_cursor: bool, treatment: SecureTreatment) -> Result<Image, RenderError> {
         let bounds = self.bounds();
         capture_redacted(
             &mut self.renderer,
@@ -255,6 +260,7 @@ impl HeadlessTarget {
             bounds,
             self.scale,
             with_cursor,
+            treatment,
             AnyRenderer::draw,
             AnyRenderer::capture,
         )
@@ -439,6 +445,8 @@ pub struct Headless {
     next_output: u64,
     /// The renderer every output this backend connects draws with.
     renderer: RendererKind,
+    /// What a capture draws in place of a secure layer, from the session's configuration.
+    secure_treatment: SecureTreatment,
     /// The gamma and power state last applied, shared with the handle a test holds.
     control: Arc<Mutex<HeadlessControl>>,
 }
@@ -483,6 +491,7 @@ impl Headless {
     pub fn with_config(config: HeadlessConfig) -> Result<Self, RenderError> {
         let mut backend = Self::empty();
         backend.renderer = config.renderer;
+        backend.secure_treatment = config.secure_treatment;
         backend.try_push_output(DEFAULT_CONNECTOR, DEFAULT_MODE, Scale::integral(1))?;
         Ok(backend)
     }
@@ -504,6 +513,7 @@ impl Headless {
             presenting: true,
             next_output: 0,
             renderer: RendererKind::default(),
+            secure_treatment: SecureTreatment::default(),
             control: Arc::new(Mutex::new(HeadlessControl::default())),
         }
     }
@@ -646,7 +656,7 @@ impl Headless {
     pub fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
         let index = self.index(output)?;
         let target = self.targets.get_mut(index)?;
-        target.capture(with_cursor).ok()
+        target.capture(with_cursor, self.secure_treatment).ok()
     }
 
     /// Applies the requests a [`HeadlessHandle`] queued, as the next dispatch.
@@ -982,6 +992,29 @@ mod tests {
         assert!(
             red == green && green == blue && alpha == 255 && (100..=155).contains(&red),
             "the secure layer reads as the neutral mask, not red"
+        );
+        assert_eq!(
+            image.colour_at(5, 5),
+            Some([0, 0, 255, 255]),
+            "an ordinary overlay is in a capture"
+        );
+    }
+
+    #[test]
+    fn a_capture_omits_a_secure_layer_when_the_session_says_so() {
+        let mut backend = Headless::with_config(HeadlessConfig {
+            secure_treatment: SecureTreatment::Omit,
+            ..HeadlessConfig::new()
+        })
+        .expect("a software headless session");
+        let output = backend.outputs[0].id;
+        let mut host = SecureScene;
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        let image = backend.capture(output, false).expect("a readback");
+        assert_eq!(
+            image.colour_at(1, 1),
+            Some([0, 0, 0, 255]),
+            "the omitted layer leaves the black background showing"
         );
         assert_eq!(
             image.colour_at(5, 5),

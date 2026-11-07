@@ -174,6 +174,11 @@ pub struct SessionConfig {
     /// [`configure_renderer_from_store`] fills it from the accepted document. A renderer the
     /// backend cannot use is refused at startup with [`Error::RendererRefused`].
     pub renderer: Option<gnoblin_config::RendererChoice>,
+    /// The treatment a capture gives a secure layer, from the `capture.secure-treatment` setting,
+    /// or [`None`] for the default, `mask`.
+    ///
+    /// `renderer::configure_from_store` fills it from the accepted document, beside [`Self::renderer`].
+    pub secure_treatment: Option<gnoblin_config::CaptureSecureTreatment>,
     /// The X11 session, or [`None`] for a session that starts no X server.
     ///
     /// [`None`] is the default. [`Some`] starts Xwayland under `gnoblin-xwayland`'s
@@ -333,9 +338,13 @@ impl Compositor {
                 |name| name.to_string_lossy().into_owned(),
             );
         let backend_name = config.backend.name();
-        let backend = config
-            .backend
-            .build(config.renderer.unwrap_or(gnoblin_config::RendererChoice::Auto))?;
+        let backend = config.backend.build(
+            config.renderer.unwrap_or(gnoblin_config::RendererChoice::Auto),
+            config.secure_treatment.map_or_else(
+                Default::default,
+                gnoblin_backend::render::renderer::secure_treatment_from_setting,
+            ),
+        )?;
         let wayland = gnoblin_wayland::Config {
             observer: Some(observer),
             ..config.wayland

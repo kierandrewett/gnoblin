@@ -63,6 +63,7 @@ use crate::render::renderer::capture_redacted;
 use crate::{Output, Target};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_software::Software;
 
@@ -454,12 +455,13 @@ impl NestedTarget {
         &self.damage
     }
 
-    /// The pixels of the last frame drawn, read back from the renderer.
+    /// The pixels of the last frame drawn, read back from the renderer, with each secure
+    /// layer drawn as `treatment` says.
     ///
     /// # Errors
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
-    pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
+    pub fn capture(&mut self, with_cursor: bool, treatment: SecureTreatment) -> Result<Image, RenderError> {
         let bounds = Rect::new(0, 0, self.size().width, self.size().height);
         capture_redacted(
             &mut self.software,
@@ -467,6 +469,7 @@ impl NestedTarget {
             bounds,
             self.output.scale,
             with_cursor,
+            treatment,
             Software::draw,
             Software::capture,
         )

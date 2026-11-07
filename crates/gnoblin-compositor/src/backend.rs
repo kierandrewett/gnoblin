@@ -28,6 +28,7 @@ use gnoblin_backend::Backend as BackendTrait;
 use gnoblin_backend::headless::{Headless, HeadlessConfig};
 use gnoblin_backend::nested::{Nested, NestedConfig};
 use gnoblin_config::RendererChoice;
+use gnoblin_render_frame::frame::SecureTreatment;
 use gnoblin_wayland::State;
 
 use crate::Error;
@@ -68,25 +69,41 @@ impl Backend {
     /// `auto` is the renderer the backend draws with today: software for the headless and nested
     /// backends. A named renderer is never replaced by another.
     ///
+    /// `treatment` is what a capture draws in place of a secure layer, and both backends take it.
+    ///
     /// # Errors
     ///
     /// [`Error::Nested`] when the parent compositor cannot host the session,
     /// [`Error::BackendRefused`] when this build does not carry the selected backend, and
     /// [`Error::RendererRefused`] when the backend cannot draw with the named renderer.
-    pub fn build(self, renderer: RendererChoice) -> Result<Box<dyn BackendTrait<State>>, Error> {
+    pub fn build(
+        self,
+        renderer: RendererChoice,
+        treatment: SecureTreatment,
+    ) -> Result<Box<dyn BackendTrait<State>>, Error> {
         match self {
-            Backend::Headless => match Headless::with_config(HeadlessConfig::from_setting(renderer)) {
-                Ok(headless) => Ok(Box::new(headless)),
-                Err(_) => Err(refused(
-                    renderer,
-                    "headless",
-                    "the renderer could not be created on this machine; the log says why",
-                )),
-            },
+            Backend::Headless => {
+                let config = HeadlessConfig {
+                    secure_treatment: treatment,
+                    ..HeadlessConfig::from_setting(renderer)
+                };
+                match Headless::with_config(config) {
+                    Ok(headless) => Ok(Box::new(headless)),
+                    Err(_) => Err(refused(
+                        renderer,
+                        "headless",
+                        "the renderer could not be created on this machine; the log says why",
+                    )),
+                }
+            }
             Backend::Nested(config) => {
                 if !matches!(renderer, RendererChoice::Auto | RendererChoice::Software) {
                     return Err(refused(renderer, "nested", "the nested backend draws in software only"));
                 }
+                let config = NestedConfig {
+                    secure_treatment: treatment,
+                    ..config
+                };
                 let nested = Nested::connect(&config).map_err(Error::Nested)?;
                 Ok(Box::new(nested))
             }
@@ -114,6 +131,7 @@ mod tests {
     use crate::Error;
     use gnoblin_backend::nested::NestedConfig;
     use gnoblin_config::RendererChoice;
+    use gnoblin_render_frame::frame::SecureTreatment;
 
     #[test]
     fn the_default_backend_is_the_one_that_starts_anywhere() {
@@ -128,13 +146,16 @@ mod tests {
         let name = backend.name();
         assert_eq!(
             name,
-            backend.build(RendererChoice::Auto).expect("headless builds").name()
+            backend
+                .build(RendererChoice::Auto, SecureTreatment::default())
+                .expect("headless builds")
+                .name()
         );
     }
 
     #[test]
     fn drm_is_refused_by_name() {
-        match Backend::Drm.build(RendererChoice::Auto) {
+        match Backend::Drm.build(RendererChoice::Auto, SecureTreatment::default()) {
             Err(Error::BackendRefused { backend, .. }) => assert_eq!(backend, "drm"),
             Err(other) => panic!("drm refused with the wrong error: {other}"),
             Ok(_) => panic!("drm must not start a session in this build"),
@@ -145,7 +166,7 @@ mod tests {
     fn a_nested_session_without_a_parent_is_refused() {
         let socket = std::env::temp_dir().join(format!("gnoblin-no-parent-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
-        match Backend::Nested(NestedConfig::new(&socket)).build(RendererChoice::Auto) {
+        match Backend::Nested(NestedConfig::new(&socket)).build(RendererChoice::Auto, SecureTreatment::default()) {
             Err(Error::Nested(_)) => {}
             Err(other) => panic!("nested refused with the wrong error: {other}"),
             Ok(_) => panic!("a missing parent socket must not start a session"),
@@ -157,7 +178,10 @@ mod tests {
         // `auto` keeps today's behaviour, which for a headless session is software, and
         // `software` asks for the same thing by name.
         for choice in [RendererChoice::Auto, RendererChoice::Software] {
-            assert!(Backend::Headless.build(choice).is_ok(), "{choice} builds headless");
+            assert!(
+                Backend::Headless.build(choice, SecureTreatment::default()).is_ok(),
+                "{choice} builds headless"
+            );
         }
     }
 
@@ -166,7 +190,7 @@ mod tests {
         // The refusal comes before the parent is contacted, so no socket is needed.
         let socket = std::env::temp_dir().join(format!("gnoblin-renderer-{}.sock", std::process::id()));
         for choice in [RendererChoice::Vulkan, RendererChoice::Gles] {
-            match Backend::Nested(NestedConfig::new(&socket)).build(choice) {
+            match Backend::Nested(NestedConfig::new(&socket)).build(choice, SecureTreatment::default()) {
                 Err(error @ Error::RendererRefused { leaf, backend, .. }) => {
                     assert_eq!((leaf, backend), ("compositor.renderer", "nested"));
                     assert!(
@@ -186,7 +210,7 @@ mod tests {
     fn a_headless_session_that_cannot_make_the_renderer_is_refused_naming_the_setting() {
         // Whether this machine has a Vulkan device decides which half runs: either the renderer
         // is made, or the refusal names the setting, and nothing else is built in its place.
-        match Backend::Headless.build(RendererChoice::Vulkan) {
+        match Backend::Headless.build(RendererChoice::Vulkan, SecureTreatment::default()) {
             Ok(backend) => println!("a Vulkan device is present: {} built", backend.name()),
             Err(Error::RendererRefused {
                 leaf,

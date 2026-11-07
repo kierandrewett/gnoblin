@@ -107,7 +107,7 @@ pub use surface::NestedTarget;
 
 use crate::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Present, Target};
 use gnoblin_render_frame::error::RenderError;
-use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::frame::{OutputFrame, SecureTreatment};
 use gnoblin_render_frame::image::Image;
 
 use handler::Handler;
@@ -202,6 +202,8 @@ pub struct NestedConfig {
     /// One per entry; a session with two monitors has two entries and the parent places
     /// two windows.
     pub outputs: Vec<OutputSpec>,
+    /// What a capture draws in place of a secure layer.
+    pub secure_treatment: SecureTreatment,
 }
 
 impl NestedConfig {
@@ -213,6 +215,7 @@ impl NestedConfig {
             app_id: DEFAULT_APP_ID.to_owned(),
             title: "Gnoblin session".to_owned(),
             outputs: vec![OutputSpec::default()],
+            secure_treatment: SecureTreatment::default(),
         }
     }
 }
@@ -284,6 +287,8 @@ pub struct Nested {
     frame: OutputFrame,
     /// Set by the event-loop source when the parent's socket is readable.
     readable: Arc<AtomicBool>,
+    /// What a capture draws in place of a secure layer, from the session's configuration.
+    secure_treatment: SecureTreatment,
 }
 
 impl std::fmt::Debug for Nested {
@@ -377,6 +382,7 @@ impl Nested {
             pending: Vec::new(),
             frame: OutputFrame::new(),
             readable: Arc::new(AtomicBool::new(false)),
+            secure_treatment: config.secure_treatment,
         };
         backend.await_first_configures()?;
         log::info!(area = "nested", socket = %config.socket.display(), outputs = backend.outputs.len(), "connected to the parent");
@@ -709,7 +715,12 @@ impl<S: Host + 'static> Backend<S> for Nested {
 
     fn capture(&mut self, output: OutputId, with_cursor: bool) -> Option<Image> {
         let index = self.index(output)?;
-        self.targets.get_mut(index)?.as_mut()?.capture(with_cursor).ok()
+        let treatment = self.secure_treatment;
+        self.targets
+            .get_mut(index)?
+            .as_mut()?
+            .capture(with_cursor, treatment)
+            .ok()
     }
 
     fn dispatch(&mut self, host: &mut S) -> Vec<BackendEvent> {
