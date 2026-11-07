@@ -865,7 +865,7 @@ reason = "a capture refusal says why no pixels were exposed; a services refusal 
 
 [[allow]]
 left = "gnoblin-authority::Grant"
-right = "gnoblin-input::Grant"
+right = "gnoblin-input-eis::Grant"
 kind = "same-name"
 reason = "the authority's grant is a private record of a consent decision and its expiry; the input grant is that decision plus the capabilities an EI client's seat is built from"
 
@@ -877,7 +877,7 @@ reason = "the backend's command is an X11 request for the window manager; the in
 
 [[allow]]
 left = "gnoblin-config::Origin"
-right = "gnoblin-input::Origin"
+right = "gnoblin-input-eis::Origin"
 kind = "same-name"
 reason = "a configuration origin says where a file was found; an input origin says how an event entered the session"
 
@@ -1553,13 +1553,13 @@ kind = "same-name"
 reason = "a portal Event is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-input::Grant"
+left = "gnoblin-input-eis::Grant"
 right = "gnoblin-portal-core::Grant"
 kind = "same-name"
 reason = "a portal Grant is a negotiation or dialog value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
 
 [[allow]]
-left = "gnoblin-input::Request"
+left = "gnoblin-input-eis::Request"
 right = "gnoblin-compositor::Request"
 kind = "same-name"
 reason = "a portal Request is a negotiation value of this crate; the other crate's type of the same name is its own state-machine value, not the same thing"
@@ -1660,7 +1660,7 @@ kind = "same-name"
 reason = "a config file's origin (which file it came from) is not a layout placement origin"
 
 [[allow]]
-left = "gnoblin-input::Origin"
+left = "gnoblin-input-eis::Origin"
 right = "gnoblin-wm::Origin"
 kind = "same-name"
 reason = "an input device origin is not a layout placement origin"
@@ -1672,7 +1672,7 @@ kind = "same-name"
 reason = "each subsystem answers its own request with its own reply; the name is shared, the messages are not"
 
 [[allow]]
-left = "gnoblin-input::Request"
+left = "gnoblin-input-eis::Request"
 right = "gnoblin-wm::Request"
 kind = "same-name"
 reason = "each subsystem asks its own question; the name is shared, the messages are not"
@@ -1750,7 +1750,7 @@ kind = "same-name"
 reason = "the portal's grant is the outcome a provider returns for a request; the proto grant is an extension namespace and version on the wire"
 
 [[allow]]
-left = "gnoblin-input::Grant"
+left = "gnoblin-input-eis::Grant"
 right = "gnoblin-proto::Grant"
 kind = "same-name"
 reason = "the eis grant is the consent and capabilities a seat holds; the proto grant is an extension namespace and version on the wire"
@@ -1795,7 +1795,7 @@ kind = "same-name"
 reason = "the last-good config error versus the store error; the name is shared, the meaning is not"
 
 [[allow]]
-left = "gnoblin-input::Options"
+left = "gnoblin-input-eis::Options"
 right = "gnoblin-store::Options"
 kind = "same-name"
 reason = "EIS server options versus store open options; the name is shared, the meaning is not"
