@@ -53,6 +53,11 @@ fn the_document_accepts_exactly_the_recorded_top_level_keys() {
 /// C core never had, so it is listed here with the release that added it.
 const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
     (
+        "accessibility",
+        "0.2.0",
+        "the visual accessibility section (magnifier and colour filter), which the C build never had",
+    ),
+    (
         "extensions",
         "0.2.0",
         "the IPC extension section of host configuration, loaded by gnoblin_config::extensions",
