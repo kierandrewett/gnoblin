@@ -195,6 +195,10 @@ struct App {
     /// The size the server last suggested.
     width: i32,
     height: i32,
+    /// The `xdg_toplevel.states` of the last configure, as raw protocol values.
+    states: Vec<xdg_toplevel::State>,
+    /// The bounds from the last `xdg_toplevel.configure_bounds`, if one arrived.
+    bounds: Option<(i32, i32)>,
     /// Whether the server asked the window to close.
     closed: bool,
     /// How many times the keyboard entered this client's surface.
@@ -255,7 +259,7 @@ impl Client {
             .expect("the session advertises wl_compositor");
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_shm");
         let wm_base: xdg_wm_base::XdgWmBase = globals
-            .bind(&qh, 1..=1, ())
+            .bind(&qh, 1..=6, ())
             .expect("the session advertises xdg_wm_base");
         let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=1, ()).expect("the session advertises wl_seat");
         Self {
@@ -1056,10 +1060,21 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            xdg_toplevel::Event::Configure { width, height, .. } => {
+            xdg_toplevel::Event::Configure { width, height, states } => {
                 state.toplevel_configures += 1;
                 state.width = width;
                 state.height = height;
+                // Each state is a native-endian u32 in the byte array.
+                state.states = states
+                    .chunks_exact(4)
+                    .filter_map(|raw| {
+                        let value = u32::from_ne_bytes([raw[0], raw[1], raw[2], raw[3]]);
+                        xdg_toplevel::State::try_from(value).ok()
+                    })
+                    .collect();
+            }
+            xdg_toplevel::Event::ConfigureBounds { width, height } => {
+                state.bounds = Some((width, height));
             }
             xdg_toplevel::Event::Close => state.closed = true,
             _ => {}
@@ -1332,6 +1347,35 @@ fn a_master_stack_places_three_real_clients_at_their_configured_sizes() {
             drawn(session, lower).1,
             Rect::new(half, height / 2, half as u32, (height / 2) as u32)
         );
+    });
+}
+
+#[test]
+fn a_tiled_master_receives_tiled_states_and_work_area_bounds_on_the_wire() {
+    let mut session = Session::start(Headless::new());
+    let shape: SharedShape = Arc::new(Mutex::new(Shape::Master));
+    let _made = install_scripted(&mut session, shape);
+    session.run(|session| {
+        let (screen_w, screen_h) = headless_screen();
+        let (half, height) = (screen_w / 2, screen_h);
+        let mut first = Client::connect(session.socket());
+        let mut second = Client::connect(session.socket());
+        let w1 = first.create_window("org.gnoblin.Master", "Master");
+        let w2 = second.create_window("org.gnoblin.Stack", "Upper");
+        settle_size(&mut first, (half, height));
+        settle_size(&mut second, (half, height));
+        draw_configured(&mut first, &w1);
+        draw_configured(&mut second, &w2);
+
+        // The master fills the left half: its left and top and bottom edges sit on the work
+        // area, and its right edge abuts the stack, so all four edges are tiled.
+        let states = &first.state.states;
+        assert!(states.contains(&xdg_toplevel::State::TiledLeft), "states {states:?}");
+        assert!(states.contains(&xdg_toplevel::State::TiledTop), "states {states:?}");
+        assert!(states.contains(&xdg_toplevel::State::TiledBottom), "states {states:?}");
+        assert!(states.contains(&xdg_toplevel::State::TiledRight), "states {states:?}");
+        // Bounds are the work area, which the client may use to cap its size.
+        assert_eq!(first.state.bounds, Some((screen_w, screen_h)));
     });
 }
 

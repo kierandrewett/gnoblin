@@ -11,6 +11,7 @@ use gnoblin_types::{Rect, WindowId, WorkspaceId};
 
 use crate::layout::Placement;
 use crate::rules::WorkspaceSelector;
+use crate::tiled::TiledEdges;
 use crate::window::WindowState;
 
 /// Why a rule could not be applied.
@@ -91,6 +92,12 @@ pub enum Effect {
         workspace: WorkspaceId,
         /// Where the window goes and how it is drawn.
         placement: Placement,
+        /// Which edges of the window are tiled, for the xdg `tiled_*` states. All false
+        /// unless the workspace's layout tiles.
+        tiled: TiledEdges,
+        /// The work area of the window's output: the largest size the window should take,
+        /// sent as the xdg `configure_bounds` hint. `None` while no output is connected.
+        work_area: Option<Rect>,
     },
     /// A layout run failed or its input was refused. The last good placements of
     /// the workspace stay in force.

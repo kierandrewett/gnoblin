@@ -68,7 +68,7 @@ use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
-use gnoblin_wm::{ActivationDecision, Effect, Event, WindowKind, WindowSpec, Wm, WmOptions};
+use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
 
 use crate::access::{Access, AccessPolicy, ClientRole, Global};
 use crate::keyboard::KeyboardTables;
@@ -1193,7 +1193,7 @@ impl State {
                     state,
                 } => {
                     self.composer.place_window(window, geometry);
-                    self.configure(window, geometry, state);
+                    self.configure(window, geometry, state, TiledEdges::NONE, None);
                 }
                 Effect::SetVisible { window, visible } => {
                     self.composer.set_window_visible(window, visible);
@@ -1215,7 +1215,12 @@ impl State {
                 }
                 Effect::Rejected { reason } => log::debug!(area = "wm", ?reason, "the event changed nothing"),
                 // A settled layout places its window: its transform reaches the scene whole.
-                Effect::PlacementTarget { workspace, placement } => self.place_tiled(workspace, placement),
+                Effect::PlacementTarget {
+                    workspace,
+                    placement,
+                    tiled,
+                    work_area,
+                } => self.place_tiled(workspace, placement, tiled, work_area),
                 Effect::LayoutFailed { workspace, reason } => self.layout_failed(workspace, reason),
             }
         }
@@ -1226,7 +1231,17 @@ impl State {
     /// The state is written to the surface's pending state either way; a toplevel
     /// that has not had its initial configure yet carries this state into that
     /// configure, which the client's first commit triggers.
-    fn configure(&mut self, window: WindowId, geometry: Rect, state: gnoblin_wm::WindowState) {
+    ///
+    /// `tiled` and `work_area` come from the layout that placed the window. A window that no
+    /// layout places passes [`TiledEdges::NONE`] and no work area, so it is sent no bounds.
+    fn configure(
+        &mut self,
+        window: WindowId,
+        geometry: Rect,
+        state: gnoblin_wm::WindowState,
+        tiled: TiledEdges,
+        work_area: Option<Rect>,
+    ) {
         let Some(surface) = self.windows.get(&window).map(|entry| &entry.surface) else {
             // The window closed between the policy call and this action, which is
             // the race the policy's rejections describe.
@@ -1235,10 +1250,18 @@ impl State {
         match surface {
             Managed::Wayland(surface) => {
                 surface.with_pending_state(|pending| {
-                    pending.bounds = None;
+                    // The work area is the size the window should fit; a window with no
+                    // output has no work area, so the client picks its own size.
+                    pending.bounds = work_area.map(|area| SmithaySize::from((area.width as i32, area.height as i32)));
                     pending.size = Some(SmithaySize::from((geometry.width as i32, geometry.height as i32)));
                     set_flag(&mut pending.states, xdg_toplevel::State::Maximized, state.maximised);
                     set_flag(&mut pending.states, xdg_toplevel::State::Fullscreen, state.fullscreen);
+                    // Each tiled edge says the window sits against a neighbour or the work
+                    // area's edge there, so the client drops the border and rounding it draws.
+                    set_flag(&mut pending.states, xdg_toplevel::State::TiledLeft, tiled.left);
+                    set_flag(&mut pending.states, xdg_toplevel::State::TiledRight, tiled.right);
+                    set_flag(&mut pending.states, xdg_toplevel::State::TiledTop, tiled.top);
+                    set_flag(&mut pending.states, xdg_toplevel::State::TiledBottom, tiled.bottom);
                 });
                 if surface.is_initial_configure_sent() {
                     surface.send_configure();
@@ -1257,20 +1280,26 @@ impl State {
         log::debug!(area = "wm", %window, width = geometry.width, height = geometry.height, "configured");
     }
 
-    /// Shows or hides a window's surface.
+    /// Shows or hides a window's surface, and tells a Wayland toplevel whether it is suspended.
+    ///
+    /// A hidden window is minimised or sits on another workspace, so the client is told it is
+    /// `suspended` and may stop drawing it. That is the same signal that drives output enter and
+    /// leave, so the two never disagree.
     fn set_visible(&mut self, window: WindowId, visible: bool) {
         let Some(entry) = self.windows.get(&window) else {
             return;
         };
-        let Some(surface) = entry.surface.wl_surface() else {
-            return;
-        };
-        for output in &self.outputs {
-            if visible {
-                output.output.enter(&surface);
-            } else {
-                output.output.leave(&surface);
+        if let Some(surface) = entry.surface.wl_surface() {
+            for output in &self.outputs {
+                if visible {
+                    output.output.enter(&surface);
+                } else {
+                    output.output.leave(&surface);
+                }
             }
+        }
+        if let Some(toplevel) = entry.surface.toplevel() {
+            set_suspended(toplevel, !visible);
         }
     }
 
@@ -1875,8 +1904,17 @@ impl State {
     /// origin in the composer; the transform's depth offset, rotation and scale ride in the
     /// node's base transform, so a 3D placement reaches the scene whole.
     ///
+    /// The tiled edges and the work area come from the layout run. The work area is sent as
+    /// the window's configure bounds, so a client that sizes itself to the bounds fits it.
+    ///
     /// A matrix transform is refused: the scene takes a decomposed transform only.
-    fn place_tiled(&mut self, workspace: WorkspaceId, placement: Placement) {
+    fn place_tiled(
+        &mut self,
+        workspace: WorkspaceId,
+        placement: Placement,
+        tiled: TiledEdges,
+        work_area: Option<Rect>,
+    ) {
         let window = placement.window;
         let Transform3::Trs {
             position,
@@ -1903,7 +1941,7 @@ impl State {
         self.composer.place_window_animated(window, geometry, base);
         self.composer.set_window_visible(window, placement.visible);
         self.composer.set_window_opacity(window, placement.opacity as f32);
-        self.configure(window, geometry, state);
+        self.configure(window, geometry, state, tiled, work_area);
     }
 
     /// Records that a workspace's layout run failed. The window manager already runs that
@@ -2502,6 +2540,21 @@ fn set_flag(states: &mut ToplevelStateSet, state: xdg_toplevel::State, enabled: 
         states.set(state);
     } else {
         states.unset(state);
+    }
+}
+
+/// Sets `suspended` on a toplevel and sends a configure when that changes it.
+///
+/// The change is judged against the pending state, which is the state the next configure carries. A
+/// configure before the first one carries the state in the initial configure, so nothing is sent then.
+fn set_suspended(toplevel: &ToplevelSurface, suspended: bool) {
+    let changed = toplevel.with_pending_state(|pending| {
+        let was = pending.states.contains(xdg_toplevel::State::Suspended);
+        set_flag(&mut pending.states, xdg_toplevel::State::Suspended, suspended);
+        was != suspended
+    });
+    if changed && toplevel.is_initial_configure_sent() {
+        toplevel.send_configure();
     }
 }
 

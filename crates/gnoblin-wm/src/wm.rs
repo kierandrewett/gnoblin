@@ -67,13 +67,16 @@ use crate::drag::{self, DragConstraint};
 use crate::effect::{Effect, RuleRejection};
 use crate::event::{Event, Rejection, WindowSpec};
 use crate::geometry::clamp_to_i32;
-use crate::layout::{Layout, LayoutCommand, LayoutEffect, LayoutEngine, RequestKind, WindowPlacement};
+use crate::layout::{
+    Layout, LayoutCommand, LayoutEffect, LayoutEngine, LayoutKind, Placement, RequestKind, Transform3, WindowPlacement,
+};
 use crate::output::Output;
 use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
 use crate::rules::{Rule, RuleAction};
 use crate::snapping::SnapZone;
 use crate::stack::{Stack, StackLayer};
+use crate::tiled::{TiledEdges, tiled_edges};
 use crate::window::{Window, WindowKind, WindowState};
 use crate::workspace::Workspaces;
 
@@ -1781,13 +1784,39 @@ impl Wm {
                 effects.extend(self.set_placement(window, WindowPlacement::Free));
             }
         }
-        effects.extend(
-            layout
-                .placements
-                .into_iter()
-                .map(|placement| Effect::PlacementTarget { workspace, placement }),
-        );
+        // The tiled edges come from the placed rectangles: a placement's neighbours are the
+        // other visible placements of the same run. Only a tiling layout tiles its windows.
+        let tiling = self.layouts.kind(workspace) == Some(LayoutKind::Tiling);
+        let rects: Vec<Option<Rect>> = layout.placements.iter().map(placement_rect).collect();
+        for (index, placement) in layout.placements.iter().enumerate() {
+            let work_area = self.placement_work_area(placement.window);
+            let tiled = match (rects[index], work_area) {
+                (Some(rect), Some(area)) => {
+                    let neighbours: Vec<Rect> = layout
+                        .placements
+                        .iter()
+                        .enumerate()
+                        .filter(|(other, sibling)| *other != index && sibling.visible)
+                        .filter_map(|(other, _)| rects[other])
+                        .collect();
+                    tiled_edges(tiling, rect, &neighbours, area)
+                }
+                _ => TiledEdges::NONE,
+            };
+            effects.push(Effect::PlacementTarget {
+                workspace,
+                placement: placement.clone(),
+                tiled,
+                work_area,
+            });
+        }
         effects
+    }
+
+    /// The work area of the output a window is on, or `None` when it has no output.
+    fn placement_work_area(&self, window: WindowId) -> Option<Rect> {
+        let output = self.windows.get(&window)?.output?;
+        self.work_area(output)
     }
 
     /// The tiled windows and the workspace and rectangle each is tiled at.
@@ -1862,6 +1891,20 @@ impl Wm {
                 .unwrap_or_else(|| window.geometry.to_f64()),
         )
     }
+}
+
+/// The rectangle a placement occupies, rounded the way the compositor rounds it when it
+/// configures the window. `None` for a raw matrix transform, which has no rectangle.
+fn placement_rect(placement: &Placement) -> Option<Rect> {
+    let Transform3::Trs { position, .. } = placement.transform else {
+        return None;
+    };
+    Some(Rect::new(
+        position.x.round() as i32,
+        position.y.round() as i32,
+        placement.width.round() as u32,
+        placement.height.round() as u32,
+    ))
 }
 
 /// The tiled windows of a state: each window's workspace and rectangle.

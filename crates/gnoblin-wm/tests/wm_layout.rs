@@ -166,7 +166,9 @@ fn targets(effects: &[Effect]) -> Vec<Target> {
     let mut found: Vec<Target> = effects
         .iter()
         .filter_map(|effect| match effect {
-            Effect::PlacementTarget { workspace, placement } => Some(Target {
+            Effect::PlacementTarget {
+                workspace, placement, ..
+            } => Some(Target {
                 workspace: *workspace,
                 window: placement.window,
                 width: placement.width,
