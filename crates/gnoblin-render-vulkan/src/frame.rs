@@ -35,7 +35,7 @@ use super::Vulkan;
 use super::context::{SHM_FORMAT, TARGET_FORMAT, VkBuffer, VkContext, VkImage, colour_range};
 use super::error::classify;
 use super::pipeline::{BLOCK_RANGE, DescriptorArena};
-use super::plan::{FramePlan, PassKind, TextureSizes, TextureSlot, damage_of, plan};
+use super::plan::{FramePlan, PassKind, TextureSizes, TextureSlot, damage_of, overlay_of, plan};
 use gnoblin_render_frame::error::RenderError;
 use gnoblin_render_frame::frame::{Layer, OutputFrame};
 use gnoblin_render_frame::image::Image;
@@ -885,7 +885,7 @@ fn sources(frame: &OutputFrame) -> Vec<(TextureSlot, PixelSource<'_>)> {
             }
         }
     }
-    if let Some(overlay) = frame.overlay() {
+    if let Some(overlay) = overlay_of(frame) {
         found.push((TextureSlot::Overlay, PixelSource::Bitmap(overlay.image())));
     }
     if let Some(cursor) = frame.cursor() {

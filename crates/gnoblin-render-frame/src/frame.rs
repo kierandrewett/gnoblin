@@ -63,8 +63,8 @@ pub enum Layer {
     /// the built-in pointer.
     Solid(Solid),
     /// The screen overlay, above the layers before it and below the cursor. It is one
-    /// entry in the list, so paint order is a single sequence. [`OutputFrame::set_overlay`]
-    /// keeps at most one.
+    /// entry in the list, so paint order is a single sequence. The caller pushes at most
+    /// one, last, so it stays on top.
     Overlay(Overlay),
 }
 
@@ -171,7 +171,7 @@ pub struct Model {
 /// premultiplied at construction, because both renderers blend premultiplied
 /// colour and a straight-alpha edge would brighten. It is drawn above every
 /// layer and below the cursor, and a screen capture leaves it out unless the
-/// frame says otherwise (see [`OutputFrame::set_overlay`]).
+/// frame says otherwise (see [`Layer::Overlay`]).
 #[derive(Clone, Debug)]
 pub struct Overlay {
     /// Where the image lands, in the output's logical space.
@@ -435,25 +435,7 @@ impl OutputFrame {
         self.layers.push(layer);
     }
 
-    /// The overlay, drawn above every layer and below the cursor.
-    #[must_use]
-    pub fn overlay(&self) -> Option<&Overlay> {
-        self.layers.iter().find_map(|layer| match layer {
-            Layer::Overlay(overlay) => Some(overlay),
-            Layer::Surface(_) | Layer::Solid(_) => None,
-        })
-    }
-
-    /// Sets the overlay, or removes it with [`None`]. The overlay is placed last, above
-    /// every layer already pushed, so call this after the layers.
-    pub fn set_overlay(&mut self, overlay: Option<Overlay>) {
-        self.layers.retain(|layer| !matches!(layer, Layer::Overlay(_)));
-        if let Some(overlay) = overlay.filter(|overlay| !overlay.dst().is_empty()) {
-            self.layers.push(Layer::Overlay(overlay));
-        }
-    }
-
-    /// The cursor image, drawn above every layer and above the overlay.
+    /// The cursor image, drawn above every layer and above any overlay.
     ///
     /// The image's destination already accounts for the hotspot, so the caller places
     /// the rectangle at the pointer minus the hotspot. Unlike the overlay, a capture
@@ -641,45 +623,15 @@ mod tests {
     }
 
     #[test]
-    fn the_overlay_is_placed_last_above_every_layer() {
+    fn an_overlay_pushed_last_is_the_top_entry_of_the_list() {
         let mut frame = OutputFrame::new();
         frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 1, 1), Color::WHITE)));
         frame.push_layer(Layer::Solid(Solid::new(Rect::new(1, 0, 1, 1), Color::WHITE)));
-        frame.set_overlay(Some(overlay_at(5)));
+        frame.push_layer(Layer::Overlay(overlay_at(5)));
         assert!(
-            matches!(frame.layers().last(), Some(Layer::Overlay(_))),
+            matches!(frame.layers().last(), Some(Layer::Overlay(overlay)) if overlay.dst() == Rect::new(5, 0, 1, 1)),
             "the overlay is the top entry of the one list"
         );
-        assert_eq!(frame.overlay().map(Overlay::dst), Some(Rect::new(5, 0, 1, 1)));
-    }
-
-    #[test]
-    fn setting_the_overlay_again_replaces_it_and_none_removes_it() {
-        let mut frame = OutputFrame::new();
-        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 1, 1), Color::WHITE)));
-        frame.set_overlay(Some(overlay_at(5)));
-        frame.set_overlay(Some(overlay_at(7)));
-        let overlays = frame
-            .layers()
-            .iter()
-            .filter(|layer| matches!(layer, Layer::Overlay(_)))
-            .count();
-        assert_eq!(overlays, 1, "one overlay entry, however often it is set");
-        assert_eq!(frame.overlay().map(Overlay::dst), Some(Rect::new(7, 0, 1, 1)));
-        frame.set_overlay(None);
-        assert!(frame.overlay().is_none());
-        assert_eq!(
-            frame.layers().len(),
-            1,
-            "removing the overlay leaves the layers as they were"
-        );
-    }
-
-    #[test]
-    fn the_overlay_accessor_skips_layers_that_are_not_the_overlay() {
-        let mut frame = OutputFrame::new();
-        frame.push_layer(Layer::Solid(Solid::new(Rect::new(0, 0, 1, 1), Color::WHITE)));
-        assert!(frame.overlay().is_none(), "a frame with no overlay entry has none");
-        assert_eq!(solid_order(&frame), vec![0]);
+        assert_eq!(solid_order(&frame), vec![0, 1]);
     }
 }

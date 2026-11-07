@@ -535,17 +535,29 @@ impl Gles {
         // Textures first: importing needs the renderer mutably, and a pass borrows it for the
         // whole of the draw.
         let mut textures: Vec<Option<Texture>> = Vec::with_capacity(frame.layers().len());
+        // The imported textures own their GL names, so they live until the frame is painted.
+        let mut owned: Vec<GlesTexture> = Vec::new();
         for layer in frame.layers() {
             textures.push(match layer {
-                Layer::Solid(_) | Layer::Overlay(_) => None,
+                Layer::Solid(_) => None,
+                Layer::Overlay(overlay) => {
+                    let texture = self.import_overlay(overlay.image());
+                    let handle = texture.as_ref().and_then(Texture::from_smithay);
+                    owned.extend(texture);
+                    handle
+                }
                 Layer::Surface(surface) => self.import(surface),
             });
         }
-        // The imported texture owns the GL name, so it lives until the frame is painted.
-        let overlay_texture = frame.overlay().and_then(|overlay| self.import_overlay(overlay.image()));
+        // The overlay is the frame's last layer, so it is drawn after the model pass and the glass.
         let overlay = frame
-            .overlay()
-            .zip(overlay_texture.as_ref().and_then(Texture::from_smithay));
+            .layers()
+            .iter()
+            .zip(&textures)
+            .find_map(|(layer, texture)| match layer {
+                Layer::Overlay(overlay) => texture.map(|texture| (overlay, texture)),
+                _ => None,
+            });
         let background = frame.background();
         // The cursor is imported like the overlay: the texture owns the GL name until the frame is painted.
         let cursor_texture = frame.cursor().and_then(|cursor| self.import_overlay(cursor.image()));

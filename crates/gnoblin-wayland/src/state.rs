@@ -68,7 +68,7 @@ use gnoblin_input::Activity;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
-use gnoblin_render_frame::frame::OutputFrame;
+use gnoblin_render_frame::frame::{Layer, OutputFrame};
 use gnoblin_types::{OutputId, Rect, RectF, Scale, Size, Tick, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{LayoutEngine, Placement, Transform3};
 use gnoblin_wm::{ActivationDecision, Effect, Event, TiledEdges, WindowKind, WindowSpec, Wm, WmOptions};
@@ -2713,14 +2713,12 @@ impl Host for State {
             self.protection_generation = Some(self.session_host.protection.generation());
         }
         frame.set_cursor_image(self.pointer_cursor(output));
-        // The modal overlay is set on the output it covers and cleared everywhere else, so
-        // a cleared or moved modal leaves no stale overlay behind.
-        frame.set_overlay(
-            self.modal
-                .as_ref()
-                .filter(|modal| modal.output() == output)
-                .map(|modal| modal.overlay().clone()),
-        );
+        // The modal overlay is the last layer on the output it covers. `compose` and
+        // `cover_frame` clear the frame first, so a cleared or moved modal leaves no stale
+        // overlay behind.
+        if let Some(modal) = self.modal.as_ref().filter(|modal| modal.output() == output) {
+            frame.push_layer(Layer::Overlay(modal.overlay().clone()));
+        }
         changed
     }
 

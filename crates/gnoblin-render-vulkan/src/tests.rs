@@ -370,7 +370,9 @@ fn decorated(size: Size, cursor_x: i32) -> OutputFrame {
     let mut frame = frame(colour(30, 60, 90, 255), size);
     solid(&mut frame, Rect::new(4, 4, 40, 30), colour(255, 128, 0, 255));
     let overlay = bitmap(12, 12, |x, y| [200, 40, 40, (x * 20 + y * 5).min(255) as u8]);
-    frame.set_overlay(Overlay::new(Rect::new(10, 10, 12, 12), &overlay));
+    frame.push_layer(Layer::Overlay(
+        Overlay::new(Rect::new(10, 10, 12, 12), &overlay).expect("an overlay"),
+    ));
     let cursor = bitmap(6, 6, |x, y| if x == y { [255, 255, 255, 255] } else { [0, 0, 0, 160] });
     frame.set_cursor_image(Overlay::new(Rect::new(cursor_x, 14, 6, 6), &cursor));
     frame

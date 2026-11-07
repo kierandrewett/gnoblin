@@ -89,8 +89,6 @@ pub struct Software {
     /// The client textures of the frame being drawn, one entry per layer in the
     /// same order, reused across frames so a steady frame allocates nothing.
     textures: Vec<Option<PixmanTexture>>,
-    /// The overlay's texture for the frame being drawn, if it has one.
-    overlay: Option<PixmanTexture>,
     /// The cursor's texture for the frame being drawn, if it has one.
     cursor: Option<PixmanTexture>,
     /// The pixels under the overlay as they were before it was drawn: packed rows of
@@ -134,7 +132,6 @@ impl Software {
             buffer,
             physical,
             textures: Vec::new(),
-            overlay: None,
             cursor: None,
             under: Vec::new(),
             under_rect: None,
@@ -346,7 +343,6 @@ impl Software {
             buffer,
             physical,
             textures,
-            overlay,
             cursor,
             under,
             under_rect,
@@ -355,6 +351,7 @@ impl Software {
             ..
         } = self;
         let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
+        *under_rect = None;
         let mut target = renderer.bind(buffer).map_err(failed)?;
         let mut pixman_frame = renderer
             .render(&mut target, output, Transform::Normal)
@@ -364,7 +361,29 @@ impl Software {
             let dst = match layer {
                 Layer::Surface(surface) => physical_rect(surface.dst, scale),
                 Layer::Solid(solid) => physical_rect(solid.dst, scale),
-                Layer::Overlay(_) => continue,
+                Layer::Overlay(overlay) => {
+                    // The overlay is a bitmap, drawn in a pass of its own with nearest-neighbour
+                    // scaling. Pixman cannot change the filter while a frame is open, so the frame
+                    // closes here and reopens once the overlay is down.
+                    let _sync = pixman_frame.finish().map_err(failed)?;
+                    let texture = textures.get(index).and_then(Option::as_ref);
+                    draw_overlay_layer(
+                        renderer,
+                        &mut target,
+                        output,
+                        overlay,
+                        texture,
+                        scale,
+                        damage,
+                        clipped,
+                        under,
+                        under_rect,
+                    )?;
+                    pixman_frame = renderer
+                        .render(&mut target, output, Transform::Normal)
+                        .map_err(failed)?;
+                    continue;
+                }
             };
             layer_damage(damage, dst, clipped);
             if clipped.is_empty() {
@@ -390,22 +409,6 @@ impl Software {
         // offscreen buffer is read on the same thread. The value is dropped on
         // purpose rather than waited on.
         let _sync = pixman_frame.finish().map_err(failed)?;
-        // Pixman scales a texture with the renderer's upscale filter, which a frame
-        // cannot change while it is open, so the overlay is a pass of its own. The
-        // overlay is a bitmap, so it scales with nearest neighbour; the default is
-        // restored whether or not the draw succeeded.
-        *under_rect = None;
-        if let (Some(overlay), Some(texture)) = (frame.overlay(), overlay.as_ref()) {
-            let bounds = Rectangle::new((0, 0).into(), (physical.width as i32, physical.height as i32).into());
-            if let Some(dst) = physical_rect(overlay.dst(), scale).intersection(bounds) {
-                capture_under(renderer, &target, dst, damage, under)?;
-                *under_rect = Some(dst);
-            }
-            renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
-            let drawn = draw_overlay(renderer, &mut target, output, overlay, texture, scale, damage, clipped);
-            renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
-            drawn?;
-        }
         *cursor_under_rect = None;
         if let (Some(cursor), Some(texture)) = (frame.cursor(), cursor.as_ref()) {
             // The cursor is drawn above the overlay, with the same nearest-neighbour scaling.
@@ -428,7 +431,6 @@ impl Software {
         let Self {
             renderer,
             textures,
-            overlay: overlay_texture,
             cursor: cursor_texture,
             scratch,
             ..
@@ -436,13 +438,11 @@ impl Software {
         textures.clear();
         for layer in frame.layers() {
             match layer {
-                Layer::Solid(_) | Layer::Overlay(_) => textures.push(None),
+                Layer::Solid(_) => textures.push(None),
+                Layer::Overlay(overlay) => textures.push(import_overlay(renderer, overlay.image())),
                 Layer::Surface(surface) => textures.push(import(renderer, surface, scratch)),
             }
         }
-        *overlay_texture = frame
-            .overlay()
-            .and_then(|overlay| import_overlay(renderer, overlay.image()));
         *cursor_texture = frame
             .cursor()
             .and_then(|cursor| import_overlay(renderer, cursor.image()));
@@ -465,6 +465,37 @@ fn layer_damage(
             clipped.push(Rectangle::new(part.loc - dst.loc, part.size));
         }
     }
+}
+
+/// Draws the overlay layer at its place in the list: keeps the pixels under it for a
+/// capture, then draws its image with nearest-neighbour scaling.
+#[allow(clippy::too_many_arguments)]
+fn draw_overlay_layer(
+    renderer: &mut PixmanRenderer,
+    target: &mut PixmanTarget<'_>,
+    output: PhysicalSize<i32, Physical>,
+    overlay: &Overlay,
+    texture: Option<&PixmanTexture>,
+    scale: Scale,
+    damage: &[Rectangle<i32, Physical>],
+    clipped: &mut Vec<Rectangle<i32, Physical>>,
+    under: &mut Vec<u8>,
+    under_rect: &mut Option<Rectangle<i32, Physical>>,
+) -> Result<(), RenderError> {
+    let Some(texture) = texture else {
+        return Ok(());
+    };
+    let bounds = Rectangle::new((0, 0).into(), (output.w, output.h).into());
+    if let Some(dst) = physical_rect(overlay.dst(), scale).intersection(bounds) {
+        capture_under(renderer, target, dst, damage, under)?;
+        *under_rect = Some(dst);
+    }
+    // The overlay is a bitmap, so it scales with nearest neighbour; the default is restored
+    // whether or not the draw succeeded.
+    renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
+    let drawn = draw_overlay(renderer, target, output, overlay, texture, scale, damage, clipped);
+    renderer.upscale_filter(TextureFilter::Linear).map_err(failed)?;
+    drawn
 }
 
 /// Draws the overlay over what the layers painted, scaled to its destination.
@@ -978,7 +1009,7 @@ mod tests {
             Rect::new(0, 0, 6, 6),
             Color::from_rgba8(0, 0, 255, 255),
         )));
-        frame.set_overlay(Some(overlay));
+        frame.push_layer(Layer::Overlay(overlay));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
         let image = software.composed().expect("a readback");
         // Half red over opaque blue: red 128 from the premultiplied overlay, blue 255 * (255 - 128) / 255.
@@ -1029,7 +1060,7 @@ mod tests {
             Rect::new(0, 0, 6, 6),
             Color::from_rgba8(0, 0, 255, 255),
         )));
-        frame.set_overlay(Some(overlay));
+        frame.push_layer(Layer::Overlay(overlay));
         software.draw(&frame, Scale::IDENTITY).expect("drawn");
         let image = software.screenshot().expect("a readback");
         assert_eq!(

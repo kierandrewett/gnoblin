@@ -31,7 +31,7 @@ use gnoblin_types::{Color, Rect, RectF, Scale, Size};
 use smithay::utils::{Physical, Rectangle};
 
 use super::pipeline::{INSTANCE_FLOATS, UNIFORM_BYTES};
-use gnoblin_render_frame::frame::{Layer, OutputFrame, Surface};
+use gnoblin_render_frame::frame::{Layer, OutputFrame, Overlay, Surface};
 use gnoblin_render_frame::geometry::physical_rect;
 use gnoblin_render_frame::shader::uniforms::{UniformLayout, Uniforms};
 
@@ -179,8 +179,7 @@ pub(super) fn plan(frame: &OutputFrame, scale: Scale, physical: Size, sizes: &Te
         }
     }
     built.layers_end = built.draws.len();
-    let overlay = frame
-        .overlay()
+    let overlay = overlay_of(frame)
         .zip(sizes.overlay)
         .map(|(overlay, _)| to_rect(physical_rect(overlay.dst(), scale)));
     built.overlay_visible = overlay.and_then(|quad| quad.intersection(bounds));
@@ -210,6 +209,15 @@ pub(super) fn damage_of(frame: &OutputFrame, scale: Scale, physical: Size) -> Ve
         .filter_map(|rect| to_rect(physical_rect(*rect, scale)).intersection(bounds))
         .collect();
     disjoint(&clipped)
+}
+
+/// The frame's overlay, which is its last layer when it has one. The plan draws it after the
+/// layers and before the cursor.
+pub(super) fn overlay_of(frame: &OutputFrame) -> Option<&Overlay> {
+    frame.layers().iter().find_map(|layer| match layer {
+        Layer::Overlay(overlay) => Some(overlay),
+        _ => None,
+    })
 }
 
 /// Plans a bitmap drawn whole at `quad` over every damage rectangle it touches, and notes
