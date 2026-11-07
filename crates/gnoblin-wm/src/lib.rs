@@ -120,4 +120,4 @@ pub use rules::{Match, Pattern, Rule, RuleAction, WorkspaceSelector};
 pub use snapping::SnapZone;
 pub use tiled::{TiledEdges, tiled_edges};
 pub use window::{Window, WindowKind, WindowState};
-pub use wm::{Broken, CommandError, Wm, WmOptions};
+pub use wm::{Broken, CommandError, LayerRegisterError, Wm, WmOptions};

@@ -68,8 +68,10 @@ fn is_base_char(c: char) -> bool {
 
 /// Whether `c` may appear in a `:<key>` suffix. The key is a per-object id, such as
 /// a window id or a client namespace, so it may use the case and dots of its source.
+/// `#` is the separator a second live surface with the same namespace gets, as in
+/// `surface_layer_shell:bar#2`.
 fn is_key_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.'
+    c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '#'
 }
 
 /// The part of a full name after the namespace: a base name, optionally with a
@@ -299,6 +301,11 @@ mod tests {
         assert_eq!(
             LocalName::keyed("surface_toplevel", "42").unwrap().as_str(),
             "surface_toplevel:42"
+        );
+        // A second live surface with the same client namespace takes a `#n` suffix.
+        assert_eq!(
+            LocalName::keyed("surface_layer_shell", "bar#2").unwrap().as_str(),
+            "surface_layer_shell:bar#2"
         );
         assert_eq!(LocalName::keyed("surface:x", "42"), Err(LayerNameError::BadKey));
     }

@@ -55,6 +55,9 @@
 //!    output drops its reservation and its surfaces' rectangles instead of leaving a
 //!    strip reserved for ever: `a_disconnected_output_reserves_nothing`.
 
+use gnoblin_layers::{Band, EndReason, LayerHandle, LayerProvider, LayerScope, LayerSpec, LocalName, RegisterError};
+use gnoblin_types::{Edge, Insets, OutputId, Rect};
+use gnoblin_wm::LayerRegisterError;
 use smithay::output::Output as SmithayOutput;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
@@ -64,8 +67,6 @@ use smithay::wayland::shell::wlr_layer::{
     Anchor, ExclusiveZone, KeyboardInteractivity, Layer, LayerSurface, LayerSurfaceCachedState, LayerSurfaceConfigure,
     WlrLayerShellHandler, WlrLayerShellState,
 };
-
-use gnoblin_types::{Edge, Insets, OutputId, Rect};
 
 use crate::State;
 use crate::observation::ObservedLayer;
@@ -100,6 +101,48 @@ impl WlrLayerShellHandler for State {
     }
 }
 
+/// The layer record a surface is registered as in the window manager.
+///
+/// The band is the wlr layer's band, and the output is the window manager's identity
+/// for it, so a change to either is a different record and is re-registered.
+#[derive(Clone, Copy)]
+struct RecordedLayer {
+    handle: LayerHandle,
+    band: Band,
+    output: OutputId,
+}
+
+/// The wlr layer as the registry's band, which is one position per layer.
+fn band_of(layer: Layer) -> Band {
+    match layer {
+        Layer::Background => Band::Background,
+        Layer::Bottom => Band::Bottom,
+        Layer::Top => Band::Top,
+        Layer::Overlay => Band::Overlay,
+    }
+}
+
+/// The record key a client namespace becomes.
+///
+/// The grammar allows ASCII letters, digits, `_`, `-` and `.` in a key, so every other
+/// character becomes `_`. The length is capped so `#n` duplicates still fit the
+/// registry's name limit.
+fn record_key(namespace: &str) -> String {
+    const KEY_LEN: usize = 24;
+    let key: String = namespace
+        .chars()
+        .take(KEY_LEN)
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if key.is_empty() { "unnamed".to_owned() } else { key }
+}
+
 /// One layer surface the session is showing.
 struct ZwlrLayerShellV1LayerEntry {
     /// The protocol object, which is also what a configure is sent through.
@@ -120,6 +163,9 @@ struct ZwlrLayerShellV1LayerEntry {
     keyboard: KeyboardInteractivity,
     /// Whether it has committed a buffer, which is what "shown" means here.
     mapped: bool,
+    /// The window manager record this surface is registered as, once it is placed on
+    /// a monitor.
+    record: Option<RecordedLayer>,
 }
 
 impl ZwlrLayerShellV1LayerEntry {
@@ -218,6 +264,7 @@ impl State {
             edge: None,
             keyboard: KeyboardInteractivity::None,
             mapped: false,
+            record: None,
         });
     }
 
@@ -265,6 +312,7 @@ impl State {
             mapped = entry.mapped,
             "configured"
         );
+        self.sync_layer_record(index);
         self.refresh_reserved();
         self.refresh_layer_focus();
         self.publish();
@@ -282,6 +330,9 @@ impl State {
             return;
         };
         let entry = self.layers.entries.remove(index);
+        if let Some(record) = entry.record {
+            self.wm.end_surface(record.handle, EndReason::Removed);
+        }
         log::debug!(area = "layer", namespace = %entry.namespace, "destroyed");
         // The strip goes back with the surface: a bar that exits must not keep the
         // work area short for the rest of the session.
@@ -370,6 +421,72 @@ impl State {
         }
         let target = self.focused_window_surface();
         self.set_keyboard_focus(target);
+    }
+}
+
+impl State {
+    /// Keeps the window manager's `surface_layer_shell` record in line with a layer
+    /// surface's band and output.
+    ///
+    /// The record is made at the first commit that places the surface, because its
+    /// output is only known then. A band change or an output the record no longer
+    /// follows re-registers it, and a record the registry has already ended, such as
+    /// one an output's disconnect removed, is registered again.
+    fn sync_layer_record(&mut self, index: usize) {
+        let entry = &self.layers.entries[index];
+        let Some(backend) = entry.output else {
+            return;
+        };
+        let Some(output) = self.policy_output(backend) else {
+            return;
+        };
+        let band = band_of(entry.layer);
+        let namespace = entry.namespace.clone();
+        if let Some(record) = entry.record {
+            let live = self.wm.layers().get(record.handle).is_some();
+            if live && record.band == band && record.output == output {
+                return;
+            }
+            self.wm.end_surface(record.handle, EndReason::Removed);
+        }
+        let record = self.register_layer_record(&namespace, band, output);
+        self.layers.entries[index].record = record;
+    }
+
+    /// Registers `surface_layer_shell:<key>` in a band, trying `#2`, `#3`, … when the
+    /// namespace is already held by another live surface.
+    ///
+    /// The attempts are bounded so a client that floods one namespace cannot make the
+    /// compositor loop; past the bound the surface is simply not recorded, and it is
+    /// still placed and drawn.
+    fn register_layer_record(&mut self, namespace: &str, band: Band, output: OutputId) -> Option<RecordedLayer> {
+        const MAX_DUPLICATES: u32 = 64;
+        let base = record_key(namespace);
+        for attempt in 1..=MAX_DUPLICATES {
+            let key = if attempt == 1 {
+                base.clone()
+            } else {
+                format!("{base}#{attempt}")
+            };
+            let Ok(local) = LocalName::keyed("surface_layer_shell", &key) else {
+                log::warn!(area = "layer", namespace = %namespace, "a layer surface's record key is not a valid name");
+                return None;
+            };
+            let spec = LayerSpec::new(local, LayerScope::Output(output), band);
+            match self
+                .wm
+                .register_surface(&LayerProvider::Gnoblin("gnoblin-wayland"), spec)
+            {
+                Ok(handle) => return Some(RecordedLayer { handle, band, output }),
+                Err(LayerRegisterError::Registry(RegisterError::NameTaken(_))) => continue,
+                Err(error) => {
+                    log::warn!(area = "layer", namespace = %namespace, ?error, "a layer surface could not be recorded");
+                    return None;
+                }
+            }
+        }
+        log::warn!(area = "layer", namespace = %namespace, "too many live layer surfaces share a namespace");
+        None
     }
 }
 
@@ -493,6 +610,8 @@ fn exclusive_value(zone: ExclusiveZone) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    use super::{band_of, record_key};
+    use gnoblin_layers::Band;
     use smithay::utils::Size;
     use smithay::wayland::shell::wlr_layer::{
         Anchor, ExclusiveZone, KeyboardInteractivity, Layer, LayerSurfaceCachedState, Margins,
@@ -615,5 +734,25 @@ mod tests {
             Margins::default(),
         );
         assert_eq!(place(second, &bar), Rect::new(1024, 0, 800, 20));
+    }
+
+    #[test]
+    fn each_wlr_layer_is_its_own_band_in_stacking_order() {
+        assert_eq!(band_of(Layer::Background), Band::Background);
+        assert_eq!(band_of(Layer::Bottom), Band::Bottom);
+        assert_eq!(band_of(Layer::Top), Band::Top);
+        assert_eq!(band_of(Layer::Overlay), Band::Overlay);
+        assert!(Band::Background < Band::Bottom && Band::Bottom < Band::Top && Band::Top < Band::Overlay);
+    }
+
+    #[test]
+    fn a_namespace_becomes_a_valid_record_key() {
+        assert_eq!(record_key("org.gnoblin.TestBar"), "org.gnoblin.TestBar");
+        assert_eq!(record_key("my bar/1"), "my_bar_1");
+        assert_eq!(record_key(""), "unnamed");
+        let long = "x".repeat(200);
+        let key = record_key(&long);
+        assert_eq!(key.len(), 24);
+        assert!(gnoblin_layers::LocalName::keyed("surface_layer_shell", &format!("{key}#64")).is_ok());
     }
 }
