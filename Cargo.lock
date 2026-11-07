@@ -1225,6 +1225,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-animation"
+version = "0.2.0-alpha.0"
+dependencies = [
+ "gnoblin-types",
+]
+
+[[package]]
 name = "gnoblin-authority"
 version = "0.2.0-alpha.0"
 dependencies = [
@@ -1760,6 +1767,8 @@ dependencies = [
 name = "gnoblin-render"
 version = "0.2.0-alpha.0"
 dependencies = [
+ "gnoblin-animation",
+ "gnoblin-log",
  "gnoblin-types",
 ]
 
