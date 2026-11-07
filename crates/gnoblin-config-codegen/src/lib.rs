@@ -363,6 +363,7 @@ enum IdShape {
     Serial,
     Renderer,
     Name,
+    LayerName,
 }
 
 impl IdShape {
@@ -373,6 +374,7 @@ impl IdShape {
             "serial" => IdShape::Serial,
             "renderer" => IdShape::Renderer,
             "name" => IdShape::Name,
+            "layer-name" => IdShape::LayerName,
             _ => return None,
         })
     }
@@ -384,6 +386,7 @@ impl IdShape {
             IdShape::Serial => "IdShape::Serial",
             IdShape::Renderer => "IdShape::Renderer",
             IdShape::Name => "IdShape::Name",
+            IdShape::LayerName => "IdShape::LayerName",
         }
     }
 }
@@ -512,6 +515,20 @@ fn check_table(
         errors.push(format!(
             "`{name}` names hook `{hook}`, which hooks.rs does not implement"
         ));
+    }
+    if let Some(spread) = &decl.spread
+        && spread.kind() == Kind::RecordMap
+    {
+        match spread.record.as_deref() {
+            None => errors.push(format!("`{name}` spreads a record map without a `record`")),
+            Some(record) if !records.contains(record) => errors.push(format!(
+                "`{name}` spreads record `{record}`, which the schema does not declare"
+            )),
+            Some(_) => {}
+        }
+        if spread.id.as_deref().and_then(IdShape::parse).is_none() {
+            errors.push(format!("`{name}` spreads a record map with no known `id` shape"));
+        }
     }
     let mut keys: BTreeSet<&str> = BTreeSet::new();
     for field in &decl.field {
@@ -1066,6 +1083,7 @@ fn kind_literal_spread(spread: &SpreadDecl) -> String {
             spread.variant_enum.clone().unwrap_or_default()
         ),
         Kind::TextListMap => "Kind::TextListMap".to_owned(),
+        Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", spread.record.clone().unwrap_or_default()),
         Kind::RecordList => format!("Kind::RecordList(\"{}\")", spread.record.clone().unwrap_or_default()),
         Kind::RecordMap => format!("Kind::RecordMap(\"{}\")", spread.record.clone().unwrap_or_default()),
         _ => "Kind::Bool".to_owned(),
@@ -1444,5 +1462,78 @@ fn default_json(field: &FieldDecl) -> serde_json::Value {
         )
     } else {
         serde_json::Value::Null
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate;
+
+    /// A schema whose only section is a record map of `Layer`s, keyed by
+    /// `id`, naming `record` as its value.
+    fn layers_schema(record: &str, id: &str) -> String {
+        format!(
+            r#"format = 1
+
+[[record]]
+name = "Layer"
+doc = "One layer."
+
+[[record.field]]
+key = "secure"
+kind = "bool"
+accepted = "a boolean"
+doc = "Whether the layer is secure."
+since = "0.2.0"
+
+[[section]]
+key = "layers"
+type = "Layers"
+doc = "Per-layer overrides."
+
+[section.spread]
+field = "layers"
+kind = "record-map"
+record = "{record}"
+id = "{id}"
+accepted = "a table keyed by full layer name"
+doc = "Each layer's overrides."
+"#
+        )
+    }
+
+    #[test]
+    fn section_record_map_parses_each_entry_by_its_id_shape() {
+        let Ok(artifacts) = generate(&layers_schema("Layer", "layer-name")) else {
+            panic!("a valid record-map section must generate");
+        };
+        assert!(artifacts.rust.contains("pub layers: BTreeMap<String, Layer>,"));
+        assert!(artifacts.rust.contains(
+            "section_record_map(map, path, out, \"a table keyed by full layer name\", IdShape::LayerName, parse_layer)"
+        ));
+    }
+
+    #[test]
+    fn section_record_map_rejects_a_record_the_schema_does_not_declare() {
+        let Err(errors) = generate(&layers_schema("Missing", "layer-name")) else {
+            panic!("an undeclared record must be refused");
+        };
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("which the schema does not declare")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn section_record_map_rejects_an_unknown_id_shape() {
+        let Err(errors) = generate(&layers_schema("Layer", "no-such-shape")) else {
+            panic!("an unknown id shape must be refused");
+        };
+        assert!(
+            errors.iter().any(|error| error.contains("no known `id` shape")),
+            "{errors:?}"
+        );
     }
 }

@@ -429,3 +429,24 @@ fn a_layout_of_the_wrong_type_is_refused() {
     let found = problems(table([("layout", table([("default", int(3))]))]));
     assert_eq!(found[0].0, "layout.default");
 }
+
+#[test]
+fn a_layer_override_is_keyed_by_its_full_layer_name() {
+    let config = Config::from_value(table([(
+        "layers",
+        table([("gnoblin.portals", table([("secure", flag(true))]))]),
+    )]))
+    .expect("a full layer name is accepted");
+    let layers = config.layers.as_ref().expect("the layers section");
+    assert_eq!(layers.layers["gnoblin.portals"].secure, Some(true));
+}
+
+#[test]
+fn a_layer_name_that_is_not_a_full_layer_name_is_refused_at_its_key() {
+    let found = problems(table([(
+        "layers",
+        table([("bad name", table([("secure", flag(true))]))]),
+    )]));
+    assert_eq!(found[0].0, "layers.bad name");
+    assert!(matches!(found[0].1, Fault::UnsupportedValue { .. }));
+}

@@ -14,6 +14,8 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
+use gnoblin_layers::LayerName;
+
 use crate::generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
 use crate::model::{self, EnumParse, Inherit, SettingEnum};
 use crate::path::Path;
@@ -525,6 +527,9 @@ pub enum IdShape {
     Renderer,
     /// A name of 1 to 64 letters, digits, `_` or `-`, such as a shortcut's name.
     Name,
+    /// A full layer name, `gnoblin.<local>` or `ext.<provider>.<local>`, by the
+    /// layer registry's own grammar.
+    LayerName,
 }
 
 impl IdShape {
@@ -543,6 +548,7 @@ impl IdShape {
                         .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
             }
             IdShape::Name => id.len() <= 64 && !id.is_empty() && id.chars().all(name_character),
+            IdShape::LayerName => LayerName::parse(id).is_ok(),
         }
     }
 
@@ -554,6 +560,7 @@ impl IdShape {
             IdShape::Serial => "a hex serial, or default- followed by four hex digits, a colon, and four hex digits",
             IdShape::Renderer => "a name of at most 64 letters, digits, underscores or dashes, other than native",
             IdShape::Name => "a name of 1 to 64 letters, digits, underscores or dashes",
+            IdShape::LayerName => "a full layer name, such as gnoblin.portals or ext.example.note",
         }
     }
 }

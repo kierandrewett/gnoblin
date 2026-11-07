@@ -87,6 +87,16 @@ const REWRITE_ONLY_KEYS: &[(&str, &str, &str)] = &[
         "0.2.0",
         "the keyring section: which provider owns org.freedesktop.secrets, read by the services role at start",
     ),
+    (
+        "layers",
+        "0.2.0",
+        "the layers section: per-layer overrides keyed by full layer name, read by the layer registry at start",
+    ),
+    (
+        "capture",
+        "0.2.0",
+        "the capture section: whether captures mask or omit secure layers, read by the screencopy and portal paths",
+    ),
 ];
 
 /// Protocols the rewrite added, which the C reference cannot list.

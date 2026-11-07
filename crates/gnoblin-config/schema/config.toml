@@ -354,6 +354,15 @@ variants = [
 ]
 
 [[enum]]
+name = "CaptureSecureTreatment"
+setting = "secure-treatment"
+doc = "What a capture draws in place of a secure layer."
+variants = [
+    { spelling = "mask", doc = "A neutral fill over the layer's silhouette, so the capture shows that something is hidden." },
+    { spelling = "omit", doc = "Nothing is drawn for the layer, so the capture shows whatever lies underneath it." },
+]
+
+[[enum]]
 name = "InputSourceType"
 setting = "input-source-type"
 doc = "The kind of an input source."
@@ -1158,6 +1167,17 @@ doc = "The accelerator the keybinding action runs."
 since = "0.2.0"
 
 [[record]]
+name = "LayerOverride"
+doc = "One layer's overrides."
+
+[[record.field]]
+key = "secure"
+kind = "bool"
+accepted = "a boolean"
+doc = "Whether captures replace the layer. Absent keeps the provider's declared value; set, it overrides it either way."
+since = "0.2.0"
+
+[[record]]
 name = "Tablet"
 doc = "One tablet's overrides."
 hook = "tablet"
@@ -1959,6 +1979,19 @@ doc = "Keep the active application window focused when a layer surface opens."
 since = "0.2.0"
 
 [[section]]
+key = "layers"
+type = "Layers"
+doc = "Per-layer overrides, keyed by full layer name."
+
+[section.spread]
+field = "layers"
+kind = "record-map"
+record = "LayerOverride"
+id = "layer-name"
+accepted = "a table keyed by full layer name, such as gnoblin.portals"
+doc = "Each layer's overrides, keyed by its full name."
+
+[[section]]
 key = "prompts"
 type = "Prompts"
 doc = "Whether Gnoblin serves keyring and GPG passphrase prompts."
@@ -2032,6 +2065,20 @@ enum = "CompatCapture"
 accepted = "one of off, portal, unmediated"
 default = { enum = "portal" }
 doc = "How much of the compatibility surface answers: off serves none of it."
+since = "0.2.0"
+
+[[section]]
+key = "capture"
+type = "CaptureSettings"
+doc = "How captures treat secure layers."
+
+[[section.field]]
+key = "secure-treatment"
+kind = "enum"
+enum = "CaptureSecureTreatment"
+accepted = "one of mask, omit"
+default = { enum = "mask" }
+doc = "What a capture draws in place of a secure layer: mask fills its silhouette, omit draws nothing."
 since = "0.2.0"
 
 [[section]]

@@ -90,15 +90,16 @@ pub mod generated {
 pub use document::{CARRIED_SECTIONS, Config, Salvaged, TOP_LEVEL_KEYS, salvage};
 /// Generated enums, settings and the alias table, all from `schema/config.toml`.
 pub use generated::{
-    ALIASES, AccelProfile, Accessibility, Appearance, Auth, Blur, BounceKeys, ButtonLayout, ClickMethod, ColorScheme,
-    ColourFilter, Compat, CompatCapture, Compositor, Cursor, CursorProvider, DeviceAccelProfile, ENUM_SPECS, FocusMode,
-    FocusNewWindows, FrameRenderers, Gesture, GestureAction, GestureDirection, GestureKind, GesturePoint, GestureWhen,
-    Handedness, Input, InputSource, InputSourceType, InputSources, Keyboard, KeyringConfig, LayerShell, Layout,
-    LayoutOutput, LayoutWorkspace, Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys,
-    NewWindowPlacement, PadButton, PadButtonAction, PointingStick, Prompts, Protocol, Protocols, RendererChoice,
-    ScrollMethod, Shortcut, ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode,
-    Tablet, TabletMapping, TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball,
-    VisualAccessibility, VisualBellType, WindowManagement, Workspace, Xwayland, XwaylandExtension,
+    ALIASES, AccelProfile, Accessibility, Appearance, Auth, Blur, BounceKeys, ButtonLayout, CaptureSecureTreatment,
+    CaptureSettings, ClickMethod, ColorScheme, ColourFilter, Compat, CompatCapture, Compositor, Cursor, CursorProvider,
+    DeviceAccelProfile, ENUM_SPECS, FocusMode, FocusNewWindows, FrameRenderers, Gesture, GestureAction,
+    GestureDirection, GestureKind, GesturePoint, GestureWhen, Handedness, Input, InputSource, InputSourceType,
+    InputSources, Keyboard, KeyringConfig, LayerOverride, LayerShell, Layers, Layout, LayoutOutput, LayoutWorkspace,
+    Location, LocationAccuracy, LogConsole, Logging, Monitors, Mouse, MouseKeys, NewWindowPlacement, PadButton,
+    PadButtonAction, PointingStick, Prompts, Protocol, Protocols, RendererChoice, ScrollMethod, Shortcut,
+    ShortcutTrigger, Shortcuts, SlowKeys, StickyKeys, Stylus, StylusAction, StylusEraserMode, Tablet, TabletMapping,
+    TapButtonMap, TitlebarAction, TitlebarButton, ToggleKeys, Touchpad, Trackball, VisualAccessibility, VisualBellType,
+    WindowManagement, Workspace, Xwayland, XwaylandExtension,
 };
 /// The layout a setting names: a layout name, or a module reference and its options.
 pub use generated::{LayoutOptionValue, LayoutReference, LayoutRoot, LayoutSelector};
