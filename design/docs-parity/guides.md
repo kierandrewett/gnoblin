@@ -1,0 +1,94 @@
+# Docs parity: guides, recipes, events
+
+Scope: `docs/guides/`, `docs/recipes/`, `docs/events/`, and `docs/background-effects.md`, `docs/frame-renderer-api.md`, `docs/gnome-apps.md`, `docs/bring-your-own-shell.md`, `docs/build-a-desktop.md`, `docs/bingux.md`.
+
+Status: partial audit. Verified rows below cover the Lua global table, schema objects, window, workspace and output members, gnoblinctl, log format, config keys, autostart and window rules. Recipes, most event pages and most guide pages were not audited line by line. Those items are not counted and are listed as open work.
+
+Method: grep and read evidence in the Rust tree. Unverified claims are marked [INFERENCE].
+
+## Counts (verified rows only)
+
+| Status                  | Count |
+| ----------------------- | ----- |
+| BUILT                   | 9     |
+| PARTIAL                 | 5     |
+| MISSING                 | 6     |
+| CHANGED                 | 0     |
+| CARRIED (legacy C only) | 4     |
+
+## Lua globals and tables
+
+| Item                                                                           | Doc path:line                                 | Status  | Rust evidence                                                                                                           | Covered by design / effort                                     |
+| ------------------------------------------------------------------------------ | --------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `gnoblin.configure`                                                            | lua-api docs [INFERENCE: line not re-checked] | BUILT   | crates/gnoblin-lua/src/bindings.rs:188-276                                                                              | n/a                                                            |
+| `gnoblin.load`                                                                 | lua-api docs [INFERENCE: line not re-checked] | BUILT   | crates/gnoblin-lua/src/bindings.rs:188-276                                                                              | n/a                                                            |
+| `gnoblin.timers.after`, `gnoblin.timers.now`                                   | lua-api docs [INFERENCE: line not re-checked] | BUILT   | crates/gnoblin-lua/src/host_members.toml                                                                                | n/a                                                            |
+| `gnoblin.on`, `gnoblin.once` (global event bus)                                | events/index and guides                       | MISSING | No global Lua registration; only per-object `:on` at bindings.rs:536                                                    | Not found in rust-compositor.md [INFERENCE]. Unowned. Effort L |
+| `gnoblin.window_rule`                                                          | guides/window_rules                           | PARTIAL | Matcher types and `apply_rules` (crates/gnoblin-wm/src/rules.rs; wm.rs:1157). No producer: `RulesChanged` only in tests | rust-compositor.md:824, :999. Effort M                         |
+| `gnoblin.animation`                                                            | guides/animations                             | MISSING | No Lua global; `animations` config section is CARRIED (config.toml:2122)                                                | Not found in design [INFERENCE]. Unowned. Effort L             |
+| `gnoblin.shortcuts`, `gnoblin.input`                                           | guides/shortcuts, events/input                | MISSING | Config `shortcuts` (config.toml:2206) and `keybindings` (2196) are CARRIED                                              | Unowned [INFERENCE]. Effort M                                  |
+| `gnoblin.process`, `gnoblin.snapshot`, `gnoblin.appearance`, `gnoblin.session` | recipes and guides                            | MISSING | Not present in host_members.toml                                                                                        | Unowned [INFERENCE]. Effort M each                             |
+
+## Schema objects and members
+
+| Item                                                                                                                                                 | Doc path:line                 | Status  | Rust evidence                                                             | Covered by design / effort                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Objects `capture`, `effect`, `eis`, `idle`, `lock`, `output`, `portal_ui`, `portal_outcome`, `request`, `session`, `settings`, `window`, `workspace` | lua-api and events            | BUILT   | Schema namespace `gnoblin`, crates/gnoblin-schema/schema                  | n/a                                                               |
+| `window` props `id`, `title`, `app_id`, `focused`, `x`, `y`, `width`, `height`, `icon`, `tag`, `modal`, `unresponsive`, `effects`                    | guides/window_effects, events | BUILT   | Schema (crates/gnoblin-schema/schema)                                     | n/a                                                               |
+| `window` methods `focus`, `kill`, `add_effect`, `request_menu`                                                                                       | guides/window_effects         | BUILT   | Schema                                                                    | n/a                                                               |
+| `window.activation`, `window.maximise`, `window.fullscreen`, `window.move`                                                                           | guides and recipes            | MISSING | Not in window schema                                                      | Unowned [INFERENCE]. Effort M                                     |
+| `workspace` props `id`, `layout`; methods `set_layout`, `layout_command`; signals `layout_changed`, `layout_failed`                                  | guides/workspaces             | BUILT   | Schema                                                                    | n/a                                                               |
+| `workspace` create, list, activated, renamed                                                                                                         | events/desktop-state          | MISSING | Not in workspace schema                                                   | Unowned [INFERENCE]. Effort M                                     |
+| `output` props and methods `apply`, `set_layout`; signal `closed`                                                                                    | guides/outputs                | BUILT   | Schema                                                                    | n/a                                                               |
+| `settings.enable_animations`                                                                                                                         | guides/animations             | PARTIAL | Schema only; no runtime consumer verified                                 | Unowned [INFERENCE]. Effort S                                     |
+| `effect` props `kind`, `enabled`, `active`, `reason`; blur, shadow, shader props; method `remove`; signal `closed`                                   | guides/background-effects     | PARTIAL | Schema plus render crate effect.rs. Corner, border and opacity are absent | rust-compositor.md:2980-3004 is a proposed effect stack. Effort M |
+
+## Config leaves
+
+| Item                                                                            | Doc path:line                     | Status  | Rust evidence                                                                                                                                                               | Covered by design / effort                                           |
+| ------------------------------------------------------------------------------- | --------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `cursor` (theme, size, providers)                                               | guides/theming                    | BUILT   | config.toml:1674-1700; crates/gnoblin-cursor xcursor.rs, hyprcursor.rs                                                                                                      | n/a                                                                  |
+| `appearance` (colour scheme, accent)                                            | guides/theming                    | PARTIAL | Schema config.toml:1708; runtime publish to GTK/Qt not verified [INFERENCE]                                                                                                 | Unowned [INFERENCE]. Effort S                                        |
+| `frame-renderers` (named argv commands)                                         | frame-renderer-api.md             | PARTIAL | Schema config.toml:1888; parser `parse_frame_renderers` in document.rs; no runtime frame draw verified                                                                      | Unowned [INFERENCE]. Effort M                                        |
+| `layer-shell.preserve-active-window`                                            | guides/layers                     | PARTIAL | Schema config.toml:1901                                                                                                                                                     | layers.md:478. Effort S                                              |
+| `autostart` section                                                             | guides/autostart                  | CARRIED | config.toml:2186 carried=true. gnoblin-session `Plan::standard` accepts an autostart list (plan.rs:254, :269) but callers pass empty lists (supervisor.rs:132, role.rs:159) | Unowned [INFERENCE]. Effort S                                        |
+| `window-rules`, `animations`, `shortcuts`, `keybindings`                        | guides                            | CARRIED | config.toml:2211, 2122, 2206, 2196                                                                                                                                          | window rules: rust-compositor.md:824. Others unowned. Effort M each  |
+| Corners, outline, border, shadow animation, opacity, remove CSD, keep maximised | background-effects, window_frames | MISSING | No schema hits                                                                                                                                                              | Effect stack proposed at rust-compositor.md:2980-3004 only. Effort L |
+
+## gnoblinctl
+
+| Item                                                                  | Doc path:line                                   | Status  | Rust evidence                                         | Covered by design / effort    |
+| --------------------------------------------------------------------- | ----------------------------------------------- | ------- | ----------------------------------------------------- | ----------------------------- |
+| Object subcommands `list`, `get`, `watch`, `call`                     | guides/gnoblinctl [INFERENCE: page not re-read] | BUILT   | Generated from schema (crates/gnoblinctl/src/tree.rs) | n/a                           |
+| `ipc`, `completions`, `log --role`                                    | guides                                          | BUILT   | crates/gnoblinctl/src/cli.rs:135-149                  | n/a                           |
+| `GNOBLIN_LOG_FORMAT`                                                  | guides/logging                                  | BUILT   | crates/gnoblin-log/src/init/options.rs:17             | n/a                           |
+| `init`, `lua`, `config reload/path/restore-default/default`, `reload` | guides                                          | MISSING | Not in cli.rs:135-149                                 | Unowned [INFERENCE]. Effort M |
+| `shortcut`, `animation`, `layer`, `window match`, `window workspace`  | guides                                          | MISSING | Not in cli.rs                                         | Unowned [INFERENCE]. Effort M |
+| `workspace switch/next/previous/move-active`                          | guides/workspaces                               | MISSING | Not in cli.rs                                         | Unowned [INFERENCE]. Effort S |
+
+## Events
+
+| Item                                                                                                                 | Doc path:line | Status  | Rust evidence                                       | Covered by design / effort    |
+| -------------------------------------------------------------------------------------------------------------------- | ------------- | ------- | --------------------------------------------------- | ----------------------------- |
+| Lua event names `gnoblin.*` (lifecycle, desktop-state, input-shortcuts, session, launch-portal, mutter, listen-all)  | events/*      | MISSING | No event bus; schema signals only (bindings.rs:536) | Unowned [INFERENCE]. Effort L |
+| Schema signals `ready`, `bell`, `closed`, `menu_requested`, `layout_changed`, `layout_failed`, `offered`, `finished` | events        | BUILT   | Schema                                              | n/a                           |
+
+## Not audited (open work)
+
+- `docs/recipes/` (17 pages): key APIs not checked against the Rust tree.
+- Events pages `mutter`, `input`, `session`, `launch-portal`, `listen-all`: only headings read.
+- Guides `files_and_load_order`, `window_frames`, `theming`, `wallpapers`, `session_settings`, `window_snapping`, `window_menu`, `shaders`, `editor_support`, `animations`, `shortcuts`: only headings read.
+- Top-level pages `gnome-apps.md`, `bring-your-own-shell.md`, `build-a-desktop.md`, `bingux.md`: not read.
+
+## Ten most important gaps
+
+1. `gnoblin.window_rule` not ported (PARTIAL, no producer). Owner: rust-compositor.md:824, :999.
+2. Global event bus (`gnoblin.on`, `gnoblin.once`) absent. Unowned.
+3. `gnoblin.animation` and `animations` section carried only. Unowned.
+4. `shortcuts` and `keybindings` carried only. Unowned.
+5. `autostart` config not wired into session plan. Unowned.
+6. Corners, border, opacity, shadow animation, keep-maximised absent. Owner: rust-compositor.md:2980-3004 (proposed).
+7. `window.maximise`, `window.fullscreen`, `window.move`, `window.activation` missing. Unowned.
+8. Workspace create, list, activated and renamed events missing. Unowned.
+9. `gnoblinctl` config, reload, shortcut, animation, layer and window match commands missing. Unowned.
+10. `settings.enable_animations` and `frame-renderers` have no verified runtime consumer. Unowned.
