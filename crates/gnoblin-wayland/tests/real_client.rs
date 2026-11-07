@@ -1068,7 +1068,9 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for App {
                 state.height = height;
                 // Each state is a native-endian u32 in the byte array.
                 state.states = states
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter_map(|raw| {
                         let value = u32::from_ne_bytes([raw[0], raw[1], raw[2], raw[3]]);
                         xdg_toplevel::State::try_from(value).ok()
