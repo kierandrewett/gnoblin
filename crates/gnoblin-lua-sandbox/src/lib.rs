@@ -637,22 +637,23 @@ mod tests {
                 .expect("the os table reads");
             assert!(ok, "{profile:?} keeps a host-reaching os function");
         }
-        let lua = lua(Profile::Layout);
-        assert!(lua.load("return os.clock == nil").eval::<bool>().expect("reads"));
+        let layout = lua(Profile::Layout);
+        assert!(layout.load("return os.clock == nil").eval::<bool>().expect("reads"));
         assert!(
-            lua.load("return os.time()").exec().is_err(),
+            layout.load("return os.time()").exec().is_err(),
             "a layout must not read the clock"
         );
         assert!(
-            lua.load("return os.date('%Y')").exec().is_err(),
+            layout.load("return os.date('%Y')").exec().is_err(),
             "a layout must not read the clock"
         );
         assert!(
-            lua.load("return os.time({year = 2000, month = 1, day = 1, hour = 12})")
+            layout
+                .load("return os.time({year = 2000, month = 1, day = 1, hour = 12})")
                 .eval::<i64>()
                 .is_ok()
         );
-        assert!(lua.load("return os.date('!%Y', 0)").eval::<String>().is_ok());
+        assert!(layout.load("return os.date('!%Y', 0)").eval::<String>().is_ok());
         let config = lua(Profile::Config);
         assert!(
             config
