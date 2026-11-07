@@ -23,6 +23,8 @@ const PRIVILEGED: &[&str] = &[
     "ext_foreign_toplevel_list_v1",
     "ext_data_control_manager_v1",
     "zwlr_data_control_manager_v1",
+    "zwlr_gamma_control_manager_v1",
+    "zwlr_output_power_manager_v1",
 ];
 
 /// The globals every application needs, so a test can tell "denied" from "broken".
