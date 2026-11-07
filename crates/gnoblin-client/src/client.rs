@@ -21,7 +21,7 @@
 //! layer sends one yet: the members that carry a frame or an fd arrive with
 //! `gnoblin-capture`.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::os::fd::OwnedFd;
 
 use gnoblin_model::{
@@ -89,6 +89,13 @@ pub struct Client<T: Transport> {
     capabilities: Capabilities,
     grants: Vec<Grant>,
     next_request: u64,
+    /// Requests sent whose reply has not yet been taken. A reply for an id not in
+    /// this set belongs to nobody (the request was forgotten or never existed), so
+    /// it is dropped rather than held.
+    pending: BTreeSet<u64>,
+    /// Replies to pending requests that arrived while another request was awaited.
+    /// Each waits here until its own [`Client::await_reply`] takes it.
+    stashed: BTreeMap<u64, Envelope>,
     inbox: VecDeque<Event>,
     descriptors: Vec<OwnedFd>,
 }
@@ -115,6 +122,8 @@ impl<T: Transport> Client<T> {
                     capabilities: answer.capabilities,
                     grants,
                     next_request: 1,
+                    pending: BTreeSet::new(),
+                    stashed: BTreeMap::new(),
                     inbox: VecDeque::new(),
                     descriptors: Vec::new(),
                 })
@@ -392,9 +401,21 @@ impl<T: Transport> Client<T> {
         self.transport
     }
 
-    /// Send one request frame.
+    /// Send one request frame, and record its id as awaiting a reply.
     fn send(&mut self, envelope: &Envelope) -> Result<(), ClientError> {
-        self.transport.send(envelope, &[]).map_err(ClientError::Codec)
+        self.transport.send(envelope, &[]).map_err(ClientError::Codec)?;
+        self.pending.insert(envelope.request_id);
+        Ok(())
+    }
+
+    /// Stop expecting the reply to `request`, so a late reply to it is dropped.
+    ///
+    /// A reply that already arrived and was stashed is discarded too. Test-only until
+    /// a caller can abandon a call without awaiting it.
+    #[cfg(test)]
+    fn forget(&mut self, request: u64) {
+        self.pending.remove(&request);
+        self.stashed.remove(&request);
     }
 
     /// Take one frame from the transport.
@@ -415,33 +436,51 @@ impl<T: Transport> Client<T> {
         }
     }
 
-    /// Read until the reply to `request` arrives, queueing events on the way.
+    /// Read until the reply to `request` arrives, routing other replies on the way.
+    ///
+    /// A reply to another pending request is stashed under its id for that request's
+    /// own await. A reply whose id is not pending belongs to nobody and is dropped, as
+    /// is any frame that is not a reply; events are queued as before.
     fn await_reply(&mut self, request: u64) -> Result<Vec<u8>, ClientError> {
+        if let Some(envelope) = self.stashed.remove(&request) {
+            self.pending.remove(&request);
+            return Self::reply_payload(envelope);
+        }
         loop {
             // A reply is owed, so an idle read means "not yet" and the wait continues.
             let envelope = match self.receive() {
                 Err(ClientError::Idle) => continue,
                 other => other?,
             };
-            // Only a reply or an error can answer this request. An offer the
-            // compositor sent in the other direction may happen to carry the same
-            // correlation id, and it is delivered as the event it is.
+            // Only a reply or an error can answer a request. An offer the compositor
+            // sent in the other direction may happen to carry the same correlation id,
+            // and it is delivered as the event it is.
             let answers = matches!(&envelope.kind, Some(Kind::Reply(_)) | Some(Kind::Error(_)));
-            if answers && envelope.request_id == request {
-                return match envelope.kind {
-                    Some(Kind::Reply(reply)) => Ok(reply.payload),
-                    Some(Kind::Error(error)) => Err(ClientError::Refused {
-                        member: envelope.member,
-                        code: error.code,
-                        message: error.message,
-                    }),
-                    _ => Err(ClientError::Protocol {
-                        member: envelope.member,
-                        reason: WireError::Kind,
-                    }),
-                };
+            if answers && self.pending.contains(&envelope.request_id) {
+                if envelope.request_id == request {
+                    self.pending.remove(&request);
+                    return Self::reply_payload(envelope);
+                }
+                self.stashed.insert(envelope.request_id, envelope);
+                continue;
             }
             self.deliver(&envelope)?;
+        }
+    }
+
+    /// The payload of a reply, or the refusal an error frame carries.
+    fn reply_payload(envelope: Envelope) -> Result<Vec<u8>, ClientError> {
+        match envelope.kind {
+            Some(Kind::Reply(reply)) => Ok(reply.payload),
+            Some(Kind::Error(error)) => Err(ClientError::Refused {
+                member: envelope.member,
+                code: error.code,
+                message: error.message,
+            }),
+            _ => Err(ClientError::Protocol {
+                member: envelope.member,
+                reason: WireError::Kind,
+            }),
         }
     }
 
@@ -510,5 +549,139 @@ fn idle(error: &gnoblin_proto::CodecError) -> bool {
             matches!(io.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut)
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod routing_tests {
+    //! Reply routing by correlation id, driven through a scripted transport so that
+    //! two requests can be in flight at once, which the public API cannot do.
+
+    use std::collections::VecDeque;
+    use std::os::fd::{BorrowedFd, OwnedFd};
+
+    use gnoblin_proto::{CodecError, Envelope, Transport, Version};
+
+    use super::{Capabilities, Client, wire};
+
+    /// A transport that replays scripted frames and records what the client sent.
+    #[derive(Debug, Default)]
+    struct Script {
+        inbound: VecDeque<Envelope>,
+        sent: Vec<Envelope>,
+    }
+
+    impl Transport for Script {
+        fn send(&mut self, envelope: &Envelope, _fds: &[BorrowedFd<'_>]) -> Result<(), CodecError> {
+            self.sent.push(envelope.clone());
+            Ok(())
+        }
+
+        fn receive(&mut self, _fds: &mut Vec<OwnedFd>) -> Result<Option<Envelope>, CodecError> {
+            Ok(self.inbound.pop_front())
+        }
+    }
+
+    // The routing tests build the client directly and never handshake.
+    impl crate::transport::Transport for Script {
+        fn send_handshake(&mut self, _frame: &gnoblin_proto::Handshake) -> Result<(), crate::error::HandshakeError> {
+            unreachable!("the routing tests never handshake")
+        }
+
+        fn receive_handshake(&mut self) -> Result<gnoblin_proto::Handshake, crate::error::HandshakeError> {
+            unreachable!("the routing tests never handshake")
+        }
+
+        fn receive_grants(&mut self) -> Result<Vec<gnoblin_proto::Grant>, crate::error::HandshakeError> {
+            unreachable!("the routing tests never handshake")
+        }
+    }
+
+    /// A client over a scripted transport, with no handshake state beyond the defaults.
+    fn client(inbound: Vec<Envelope>) -> Client<Script> {
+        let script = Script {
+            inbound: inbound.into(),
+            sent: Vec::new(),
+        };
+        Client {
+            transport: script,
+            version: Version::new(0, 2, 0),
+            capabilities: Capabilities::NONE,
+            grants: Vec::new(),
+            next_request: 1,
+            pending: Default::default(),
+            stashed: Default::default(),
+            inbox: Default::default(),
+            descriptors: Vec::new(),
+        }
+    }
+
+    /// A reply frame answering `id`, in the wire namespace.
+    fn reply(id: u64) -> Envelope {
+        Envelope::reply(wire::NAMESPACE, "test.member", id, vec![id as u8])
+    }
+
+    /// Send a request frame the way the client does, returning its id.
+    fn send_request(client: &mut Client<Script>) -> u64 {
+        let id = client.next_id();
+        let frame = Envelope::request(wire::NAMESPACE, "test.member", id, Vec::new());
+        client.send(&frame).expect("the scripted transport accepts every frame");
+        id
+    }
+
+    #[test]
+    fn a_reply_for_an_unknown_id_is_dropped() {
+        let mut client = client(vec![reply(9), reply(1)]);
+        let first = send_request(&mut client);
+        let payload = client.await_reply(first).expect("the reply to request 1 arrives");
+        assert_eq!(payload, vec![1]);
+        assert!(client.stashed.is_empty(), "a reply nobody awaits is not held");
+    }
+
+    #[test]
+    fn two_requests_in_flight_each_take_their_own_reply() {
+        // The compositor answers the second request first.
+        let mut client = client(vec![reply(2), reply(1)]);
+        let first = send_request(&mut client);
+        let second = send_request(&mut client);
+
+        let first_payload = client.await_reply(first).expect("request 1 is answered");
+        assert_eq!(first_payload, vec![1]);
+        assert!(
+            client.stashed.contains_key(&second),
+            "the early reply to request 2 is held"
+        );
+
+        // Request 2 takes its stashed reply without reading the transport again.
+        let second_payload = client.await_reply(second).expect("request 2 is answered");
+        assert_eq!(second_payload, vec![2]);
+        assert!(client.stashed.is_empty());
+        assert!(client.pending.is_empty());
+    }
+
+    #[test]
+    fn a_reply_after_its_request_was_forgotten_is_dropped() {
+        // Request 1 is abandoned; its late reply must not disturb request 2.
+        let mut client = client(vec![reply(1), reply(2)]);
+        let abandoned = send_request(&mut client);
+        let live = send_request(&mut client);
+        client.forget(abandoned);
+
+        let payload = client.await_reply(live).expect("request 2 is answered");
+        assert_eq!(payload, vec![2]);
+        assert!(client.stashed.is_empty(), "the late reply to request 1 is not held");
+        assert!(client.pending.is_empty());
+    }
+
+    #[test]
+    fn a_stashed_reply_for_a_forgotten_request_is_discarded() {
+        // Request 2's reply arrives while request 1 is awaited, then request 2 is abandoned.
+        let mut client = client(vec![reply(2), reply(1)]);
+        let first = send_request(&mut client);
+        let second = send_request(&mut client);
+        client.await_reply(first).expect("request 1 is answered");
+        assert!(client.stashed.contains_key(&second));
+        client.forget(second);
+        assert!(client.stashed.is_empty());
     }
 }
