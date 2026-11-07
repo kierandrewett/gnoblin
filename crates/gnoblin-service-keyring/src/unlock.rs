@@ -340,6 +340,66 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
     }
 
+    /// The fields of every event, as text. It lives in memory for one test and is never printed.
+    #[derive(Clone, Default)]
+    struct Captured(Arc<std::sync::Mutex<String>>);
+
+    /// Appends each field as `name=value` to the text it is given.
+    struct Fields<'a>(&'a mut String);
+
+    impl tracing::field::Visit for Fields<'_> {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!("{}={value:?} ", field.name()));
+        }
+    }
+
+    impl tracing::Subscriber for Captured {
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+
+        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+
+        fn event(&self, event: &tracing::Event<'_>) {
+            let mut text = self.0.lock().expect("the capture lock");
+            event.record(&mut Fields(&mut *text));
+        }
+
+        fn enter(&self, _: &tracing::span::Id) {}
+
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    /// A password that is typed wrong, through every path that takes a password, must never reach
+    /// a log event. The assertions do not print the captured text, because it would hold the
+    /// password on failure.
+    #[test]
+    fn the_password_never_reaches_the_log() {
+        const SECRET: &str = "pw-never-logged-9f3c";
+        let dir = scratch("no-log");
+        let (mut source, state, _) = prompt_source(&dir, Ok(RequestId::new(7)));
+        source.unlock(SECRET.as_bytes()).expect("create");
+        lock_store(&state);
+        source.offer_password("/prompt/1").expect("the request is offered");
+        let wrong = format!("{SECRET}-wrong");
+        let captured = Captured::default();
+        tracing::subscriber::with_default(captured.clone(), || {
+            source.answer_password(RequestId::new(7), &RequestOutcome::answered(wrong.as_bytes().to_vec()));
+            let _ = source.unlock(wrong.as_bytes());
+            let _ = source.change_password(wrong.as_bytes(), SECRET.as_bytes());
+        });
+        let text = captured.0.lock().expect("the capture lock").clone();
+        assert!(text.contains("did not unlock"), "the refused prompt answer is logged");
+        assert!(!text.contains(SECRET), "the password reached a log event");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
     #[test]
     fn with_no_provider_the_offer_fails_at_once_and_nothing_is_pending() {
         let dir = scratch("prompt-no-provider");

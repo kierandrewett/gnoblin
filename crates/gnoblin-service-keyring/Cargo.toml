@@ -28,5 +28,9 @@ zeroize.workspace = true
 futures-lite.workspace = true
 rustix = { workspace = true, features = ["net"] }
 
+[dev-dependencies]
+# The log-capture test installs its own subscriber to read the events the unlock path emits.
+tracing.workspace = true
+
 [lints]
 workspace = true
