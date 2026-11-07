@@ -18,7 +18,9 @@
 //!
 //! - `shell` — the connection that claimed the slot. A shell draws its own prompt.
 //! - `services` — the connection that offered the request, because the services role is
-//!   the slot's default provider: it owns the prompt and answers with its own means.
+//!   the slot's default provider: it owns the prompt and answers with its own means. The
+//!   exception is `secret.derive`: its offers go to the connection that claimed the slot,
+//!   and are refused while none does, so the relay that asked is never the one that answers.
 //!   For `auth.polkit` that means a refusal, which is the plan's fail-closed answer for
 //!   a session with no shell to draw one.
 //! - `none` — nobody, and the offer is refused with `no-provider` naming the slot. This
@@ -45,11 +47,15 @@
 //! 6. **An answer reaches a connection other than the one that offered the request.**
 //!    Only that connection is sent the answer; the provider and every subscriber learn
 //!    the completion without the value: `tests::only_the_offering_connection_reads_the_answer`.
+//! 7. **A relay asks for a secret and answers it itself.** A `secret.derive` retrieve goes
+//!    to the services connection that claimed the slot, and is refused with `no-provider`
+//!    while none does: `tests::a_secret_retrieve_is_routed_to_the_services_claimant_not_the_relay`.
 
 use std::collections::BTreeMap;
 use std::str::FromStr as _;
 
 use gnoblin_proto::Envelope;
+use zeroize::Zeroize as _;
 
 use gnoblin_client::wire;
 use gnoblin_model::{
@@ -174,6 +180,14 @@ impl Requests {
     /// The connection an offer for `slot` goes to.
     fn provider_of(&self, slot: CapabilitySlot, offered_by: ClientId) -> Result<ClientId, RequestRefusal> {
         match self.slots.provider(slot) {
+            // A secret retrieve is the relay asking for an app's secret, so it goes to the
+            // services connection that claimed the slot and never back to the asker.
+            Provider::Services if slot == CapabilitySlot::SecretDerive => {
+                self.claims.get(&slot).copied().ok_or_else(|| RequestRefusal {
+                    code: wire::code::NO_PROVIDER,
+                    message: "no services connection claims `secret.derive`, so the request was not offered".to_owned(),
+                })
+            }
             Provider::Services => Ok(offered_by),
             Provider::Shell => self.claims.get(&slot).copied().ok_or_else(|| RequestRefusal {
                 code: wire::code::NO_PROVIDER,
@@ -209,7 +223,9 @@ impl Requests {
                 code: wire::code::DENIED,
                 message: error.to_string(),
             })?;
-        if provider == Provider::Shell {
+        // Both providers that answer on a connection are recorded: the shell slot and the
+        // secret slot each route to the connection that claimed them.
+        if matches!(provider, Provider::Shell | Provider::Services) {
             self.claims.insert(slot, owner);
         } else {
             self.claims.remove(&slot);
@@ -255,10 +271,26 @@ impl Requests {
         &mut self,
         owner: ClientId,
         request: RequestId,
-        answer: Vec<u8>,
+        mut answer: Vec<u8>,
     ) -> Result<Vec<FrameDelivery>, RequestRefusal> {
+        // The broker drops an answer it refuses without wiping it, so every refusal is decided
+        // here first and the value is wiped on the way out. The codes match the broker's.
+        let owner = OwnerId::new(owner.get());
+        let refusal = match self.broker.state(request) {
+            Some(gnoblin_model::RequestState::Claimed { owner: holder, .. }) if holder == owner => None,
+            Some(gnoblin_model::RequestState::Finished(_)) => Some(gnoblin_model::RequestError::Finished { request }),
+            Some(_) => Some(gnoblin_model::RequestError::NotOwner { request, owner }),
+            None => Some(gnoblin_model::RequestError::Unknown { request }),
+        };
+        if let Some(error) = refusal {
+            answer.zeroize();
+            return Err(RequestRefusal {
+                code: request_code(&error),
+                message: error.to_string(),
+            });
+        }
         self.broker
-            .answer(request, OwnerId::new(owner.get()), answer)
+            .answer(request, owner, answer)
             .map_err(|error| RequestRefusal {
                 code: request_code(&error),
                 message: error.to_string(),
@@ -293,6 +325,28 @@ impl Requests {
     /// A connection ended: end what it held, abandon what it offered, release its
     /// slots.
     pub(crate) fn departed(&mut self, client: ClientId) -> Vec<FrameDelivery> {
+        // A secret retrieve this connection claimed is declined with a reason, so the relay
+        // that asked learns why. One it was offered but had not claimed is abandoned.
+        let secrets: Vec<RequestId> = self
+            .offers
+            .iter()
+            .filter(|(_, offer)| offer.slot == CapabilitySlot::SecretDerive && offer.provider == client)
+            .map(|(request, _)| *request)
+            .collect();
+        for request in secrets {
+            let owner = OwnerId::new(client.get());
+            if self
+                .broker
+                .decline_with(request, owner, Some(DeclineReason::Unavailable))
+                .is_err()
+                && matches!(
+                    self.broker.state(request),
+                    Some(gnoblin_model::RequestState::Offered { .. })
+                )
+            {
+                let _ = self.broker.abandon(request);
+            }
+        }
         // A claim it held is released, so its requests end as gone rather than staying
         // with a connection that will never answer them.
         let _ = self.broker.release(OwnerId::new(client.get()));
@@ -370,8 +424,10 @@ impl Requests {
                         ),
                     });
                 }
-                RequestEvent::Finished { request, outcome } => {
+                RequestEvent::Finished { request, mut outcome } => {
                     let Some(offer) = self.offers.remove(&request) else {
+                        // Nobody is left to read the answer, so it is wiped rather than dropped.
+                        wipe(&mut outcome);
                         continue;
                     };
                     // Only the host that offered the request reads the answer, and the
@@ -379,9 +435,10 @@ impl Requests {
                     if let RequestOutcome::Answered(answer) = &outcome {
                         deliveries.push(FrameDelivery {
                             client: offer.offered_by,
-                            envelope: wire::answered(request, answer),
+                            envelope: wire::answered(request, answer.as_slice()),
                         });
                     }
+                    wipe(&mut outcome);
                     let completion = RequestCompletion::from(&outcome);
                     // The provider and the host can be one connection — the services role is
                     // the default provider of the slots it owns — and it is told once.
@@ -400,6 +457,13 @@ impl Requests {
             }
         }
         deliveries
+    }
+}
+
+/// Wipes an answer the request layer has finished with, so the value does not outlive its frame.
+fn wipe(outcome: &mut RequestOutcome) {
+    if let RequestOutcome::Answered(answer) = outcome {
+        answer.zeroize();
     }
 }
 
@@ -482,5 +546,148 @@ mod tests {
         let offer = requests.offers.get(&request).expect("the offer is recorded");
         assert_eq!(offer.provider, SHELL);
         assert_eq!(offer.offered_by, HOST);
+    }
+
+    #[test]
+    fn a_secret_retrieve_is_routed_to_the_services_claimant_not_the_relay() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Services, true)
+            .expect("the services role claims the secret slot");
+        let (request, _) = requests
+            .offer(
+                HOST,
+                CapabilitySlot::SecretDerive.name(),
+                "Retrieve",
+                "Retrieve",
+                b"app-a",
+                Tick::new(1_000),
+            )
+            .expect("the slot has a claimant");
+        let offer = requests.offers.get(&request).expect("the offer is recorded");
+        assert_eq!(
+            offer.provider, SERVICES,
+            "the claimant answers, not the relay that asked"
+        );
+        assert_eq!(offer.offered_by, HOST, "the answer goes back to the relay that asked");
+    }
+
+    #[test]
+    fn a_secret_retrieve_with_no_claimant_is_refused() {
+        let mut requests = Requests::new();
+        let refusal = requests
+            .offer(
+                HOST,
+                CapabilitySlot::SecretDerive.name(),
+                "Retrieve",
+                "Retrieve",
+                b"app-a",
+                Tick::new(1_000),
+            )
+            .expect_err("nothing claims the secret slot");
+        assert_eq!(refusal.code, wire::code::NO_PROVIDER);
+    }
+
+    #[test]
+    fn two_retrieves_for_different_apps_stay_apart() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Services, true)
+            .expect("the services role claims the secret slot");
+        let name = CapabilitySlot::SecretDerive.name();
+        let (first, _) = requests
+            .offer(HOST, name, "Retrieve", "Retrieve", b"app-a", Tick::new(1_000))
+            .expect("the slot has a claimant");
+        let (second, _) = requests
+            .offer(HOST, name, "Retrieve", "Retrieve", b"app-b", Tick::new(1_000))
+            .expect("the slot has a claimant");
+        requests
+            .claim_request(SERVICES, first)
+            .expect("the claimant takes the first");
+        requests
+            .claim_request(SERVICES, second)
+            .expect("the claimant takes the second");
+        requests
+            .answer(SERVICES, first, b"secret-a".to_vec())
+            .expect("the claimant answers the first");
+        assert!(
+            matches!(
+                requests.broker.state(second),
+                Some(gnoblin_model::RequestState::Claimed { .. })
+            ),
+            "answering one retrieve leaves the other with its own claim"
+        );
+        let second_offer = requests
+            .offers
+            .get(&second)
+            .expect("the second offer is still recorded");
+        assert_eq!(
+            second_offer.subject,
+            b"app-b".to_vec(),
+            "the second retrieve keeps its own app"
+        );
+    }
+
+    #[test]
+    fn a_retrieve_whose_relay_left_is_not_answered() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Services, true)
+            .expect("the services role claims the secret slot");
+        let (request, _) = requests
+            .offer(
+                HOST,
+                CapabilitySlot::SecretDerive.name(),
+                "Retrieve",
+                "Retrieve",
+                b"app-a",
+                Tick::new(1_000),
+            )
+            .expect("the slot has a claimant");
+        requests
+            .claim_request(SERVICES, request)
+            .expect("the claimant takes it");
+        let _ = requests.departed(HOST);
+        assert!(
+            requests.offers.get(&request).is_none(),
+            "the departed relay's request is no longer offered"
+        );
+        let refusal = requests
+            .answer(SERVICES, request, b"secret".to_vec())
+            .expect_err("an answer for a request whose relay left is refused");
+        assert_eq!(refusal.code, wire::code::REQUEST_FINISHED);
+    }
+
+    #[test]
+    fn a_claimant_that_dies_mid_retrieve_refuses_the_relay_with_a_reason() {
+        let mut requests = Requests::new();
+        requests
+            .claim_slot(SERVICES, CapabilitySlot::SecretDerive, Provider::Services, true)
+            .expect("the services role claims the secret slot");
+        let (request, _) = requests
+            .offer(
+                HOST,
+                CapabilitySlot::SecretDerive.name(),
+                "Retrieve",
+                "Retrieve",
+                b"app-a",
+                Tick::new(1_000),
+            )
+            .expect("the slot has a claimant");
+        requests
+            .claim_request(SERVICES, request)
+            .expect("the claimant takes it");
+        let deliveries = requests.departed(SERVICES);
+        assert_eq!(
+            requests.broker.state(request),
+            Some(gnoblin_model::RequestState::Finished(RequestOutcome::Refused(
+                DeclineReason::Unavailable
+            ))),
+            "the relay learns the retrieve failed with a reason, not a bare end"
+        );
+        assert!(
+            deliveries.iter().any(|delivery| delivery.client == HOST),
+            "the relay is told the request finished"
+        );
     }
 }

@@ -51,6 +51,8 @@ gnoblin-input = { path = "../gnoblin-input" }
 gnoblin-input-eis = { path = "../gnoblin-input-eis" }
 # Who this process is, for the IPC socket directory's ownership check.
 rustix.workspace = true
+# Wipes a secret answer the request layer forwards or refuses, so it does not outlive the frame.
+zeroize.workspace = true
 # The accepted configuration document and its last-good store: the compositor reads the
 # extensions a session serves from it before the session starts.
 gnoblin-config = { path = "../gnoblin-config" }
