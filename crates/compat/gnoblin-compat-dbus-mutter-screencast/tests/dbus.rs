@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use futures_lite::future;
 use gnoblin_compat_core::{CallerWatcher, Mode, Support, SupportMatrix};
-use gnoblin_compat_mutter_screencast::{
+use gnoblin_compat_dbus_mutter_screencast::{
     BUS_NAME, INTERFACE, MATRIX, SESSION_INTERFACE, STREAM_INTERFACE, ScreenCastService, export, watch_callers,
 };
 use support::SharedHost;
@@ -72,7 +72,7 @@ impl Fixture {
         Proxy::new(
             &self.caller,
             BUS_NAME,
-            gnoblin_compat_mutter_screencast::PATH,
+            gnoblin_compat_dbus_mutter_screencast::PATH,
             INTERFACE,
         )
         .await
@@ -324,7 +324,10 @@ fn an_adapter_registers_once() {
         let fixture = Fixture::new(&address, Mode::Unmediated).await;
         let again = export(&fixture.connection, &fixture.service).await;
         assert!(
-            matches!(again, Err(gnoblin_compat_mutter_screencast::ScreenCastError::Exported)),
+            matches!(
+                again,
+                Err(gnoblin_compat_dbus_mutter_screencast::ScreenCastError::Exported)
+            ),
             "the second export is refused, not a second object server entry"
         );
     });
@@ -349,7 +352,7 @@ fn the_matrix_matches_what_the_adapter_serves() {
             &proxy,
             &matrix,
             INTERFACE,
-            gnoblin_compat_mutter_screencast::PATH,
+            gnoblin_compat_dbus_mutter_screencast::PATH,
             &fixture.caller,
         )
         .await;

@@ -60,9 +60,9 @@ Rows are read from the files named below. `gnoblin-lua/src/layout/` has ten file
 
 These add a graph node and no feature. They are flagged in the opposite direction.
 
-- `gnoblin-compat-gnome-session-manager`, `gnoblin-compat-mutter-servicechannel`, `gnoblin-compat-mutter-inputmapping`: `src/lib.rs` is one comment line each.
+- `gnoblin-compat-dbus-gnome-session-manager`, `gnoblin-compat-dbus-mutter-servicechannel`, `gnoblin-compat-dbus-mutter-inputmapping`: `src/lib.rs` is one comment line each.
 - `gnoblin-service-testkit`: 48 lines.
-- `gnoblin-compat-qt-portal-settings`: 91 lines, one dependant (`gnoblin-compat-host`).
+- `gnoblin-compat-file-qt-portal-settings`: 91 lines, one dependant (`gnoblin-compat-host`).
 
 ## Store duplication
 

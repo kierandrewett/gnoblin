@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-gnome-shell-screenshot"
+name = "gnoblin-compat-dbus-gnome-shell-screenshot"
 description = "org.gnome.Shell.Screenshot adapter."
 version.workspace = true
 edition.workspace = true

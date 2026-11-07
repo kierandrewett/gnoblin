@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-mutter-screencast"
+name = "gnoblin-compat-dbus-mutter-screencast"
 description = "org.gnome.Mutter.ScreenCast adapter."
 version.workspace = true
 edition.workspace = true

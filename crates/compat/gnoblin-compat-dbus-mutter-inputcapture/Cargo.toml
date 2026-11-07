@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-mutter-inputcapture"
+name = "gnoblin-compat-dbus-mutter-inputcapture"
 description = "org.gnome.Mutter.InputCapture adapter."
 version.workspace = true
 edition.workspace = true

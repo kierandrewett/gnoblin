@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use gnoblin_compat_gnome_keyring_prompter::{Exchange, ExchangeError, Secret};
+use gnoblin_compat_dbus_gnome_keyring_prompter::{Exchange, ExchangeError, Secret};
 
 const PASSPHRASE: &[u8] = b"correct horse battery staple";
 

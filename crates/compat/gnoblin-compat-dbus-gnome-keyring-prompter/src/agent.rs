@@ -8,9 +8,9 @@
 //! The session bus or a taken name makes the prompter unavailable, which is logged and
 //! skipped: a session that cannot prompt still has a compositor.
 
+use crate::{Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run};
 use futures_lite::future::block_on;
 use gnoblin_compat_core::Gate;
-use crate::{Names, Offerer as PromptOfferer, Prompt, PromptService, Unavailable, export, run};
 
 use gnoblin_service_core::{Host, LinkedAgent, OfferFailure, RequestId, RequestOutcome, Tick};
 use zbus::Connection;

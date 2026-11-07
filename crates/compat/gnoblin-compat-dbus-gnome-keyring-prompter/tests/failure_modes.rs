@@ -10,7 +10,7 @@ mod support;
 use std::cell::RefCell;
 
 use futures_channel::mpsc;
-use gnoblin_compat_gnome_keyring_prompter::{
+use gnoblin_compat_dbus_gnome_keyring_prompter::{
     Callback, Decision, Effect, Exchange, Offerer, Prompt, PromptKind, Prompter, Secret, Unavailable,
 };
 use gnoblin_model::{RequestId, RequestOutcome, Tick};

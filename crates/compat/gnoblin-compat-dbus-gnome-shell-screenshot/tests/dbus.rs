@@ -8,7 +8,7 @@ mod support;
 
 use gnoblin_client::{Loopback, Server};
 use gnoblin_compat_core::{LockState, Mode, SupportMatrix};
-use gnoblin_compat_gnome_shell_screenshot::{
+use gnoblin_compat_dbus_gnome_shell_screenshot::{
     BUS_NAME, INTERFACE, MATRIX, PATH, ScreenshotError, ScreenshotLink, ScreenshotService, export,
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};

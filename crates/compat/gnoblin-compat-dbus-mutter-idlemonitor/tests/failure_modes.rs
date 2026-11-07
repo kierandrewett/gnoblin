@@ -7,7 +7,7 @@
 mod support;
 
 use gnoblin_client::Server;
-use gnoblin_compat_mutter_idlemonitor::{IdleError, IdleLink, IdleState, WatchKind, Watches};
+use gnoblin_compat_dbus_mutter_idlemonitor::{IdleError, IdleLink, IdleState, WatchKind, Watches};
 use gnoblin_model::{Fields, ObjectId, ObjectView, TypeKey, Value};
 use support::{VERSION, graph};
 

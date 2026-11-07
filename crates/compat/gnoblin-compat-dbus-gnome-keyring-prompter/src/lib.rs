@@ -1,6 +1,6 @@
 //! `org.gnome.keyring.SystemPrompter` and `PrivatePrompter` for gcr callers.
 //!
-//! This is `gnoblin-compat-gnome-keyring-prompter` of `design/rust-compositor.md`
+//! This is `gnoblin-compat-dbus-gnome-keyring-prompter` of `design/rust-compositor.md`
 //! ("Providers and slots" and "Compatibility crates"): the adapter that lets
 //! `gnome-keyring`, `pinentry-gnome3` and anything else built on gcr ask Gnoblin for
 //! a passphrase. Each prompt becomes a `prompt.secret` request offered to the
@@ -33,12 +33,12 @@
 //! # Running it
 //!
 //! ```no_run
-//! use gnoblin_compat_gnome_keyring_prompter::{Names, PromptService, export, run};
+//! use gnoblin_compat_dbus_gnome_keyring_prompter::{Names, PromptService, export, run};
 //! use gnoblin_compat_core::Gate;
 //! use gnoblin_model::Tick;
 //! use zbus::Connection;
 //!
-//! # async fn run_it(host: impl gnoblin_compat_gnome_keyring_prompter::Offerer + Send + 'static) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run_it(host: impl gnoblin_compat_dbus_gnome_keyring_prompter::Offerer + Send + 'static) -> Result<(), Box<dyn std::error::Error>> {
 //! let connection = Connection::session().await?;
 //! let service = PromptService::new(host, Gate::default(), Tick::new(120_000))?;
 //! export(&connection, &service, Names::Both).await?;

@@ -22,8 +22,8 @@ use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
-use gnoblin_compat_mutter_x11_interop::global::{InteropData, handle_request};
-use gnoblin_compat_mutter_x11_interop::{Admission, ParentRelations};
+use gnoblin_compat_wayland_mutter_x11_interop::global::{InteropData, handle_request};
+use gnoblin_compat_wayland_mutter_x11_interop::{Admission, ParentRelations};
 use gnoblin_types::WindowId;
 use gnoblin_wayland::{Dispatch2, GlobalDispatch2, Surface, X11InteropHost, delegate_dispatch2};
 use wayland_server::protocol::wl_compositor;
@@ -99,7 +99,7 @@ impl GlobalDispatch2<server::MutterX11Interop, Host> for InteropData {
 }
 
 /// The server-side protocol names, which is what a `Dispatch2` implementation names.
-use gnoblin_compat_mutter_x11_interop::names::mutter_x11_interop as server;
+use gnoblin_compat_wayland_mutter_x11_interop::names::mutter_x11_interop as server;
 
 /// The smallest compositor that can create a surface, so a real client can name a
 /// `wl_surface` in `set_x11_parent`.

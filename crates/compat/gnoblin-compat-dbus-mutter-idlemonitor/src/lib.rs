@@ -1,6 +1,6 @@
 //! `org.gnome.Mutter.IdleMonitor` for screensavers, power management and idle policy.
 //!
-//! This is `gnoblin-compat-mutter-idlemonitor` of `design/rust-compositor.md`
+//! This is `gnoblin-compat-dbus-mutter-idlemonitor` of `design/rust-compositor.md`
 //! ("Compatibility crates" and the redirect map's `IdleMonitor` row): the adapter that
 //! answers "how long has the user been away" and fires when a caller's threshold is
 //! reached. Gnoblin's own `src/idle.c` talks to this interface today, and so do `gsd-power`
@@ -33,7 +33,7 @@
 //!
 //! ```no_run
 //! use gnoblin_client::{UnixTransport, socket_path};
-//! use gnoblin_compat_mutter_idlemonitor::{IdleLink, IdleMonitorService, export, watch_callers};
+//! use gnoblin_compat_dbus_mutter_idlemonitor::{IdleLink, IdleMonitorService, export, watch_callers};
 //! use gnoblin_proto::Version;
 //! use zbus::Connection;
 //!

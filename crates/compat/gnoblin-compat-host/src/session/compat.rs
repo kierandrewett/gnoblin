@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use gnoblin_compat_core::{DesktopSettings, Gate, MatrixError, Mode, Switch, settings_from_environment};
-use gnoblin_compat_gtk_shell1::Redirect;
-use gnoblin_compat_mutter_x11_interop::{Admission as InteropAdmission, Interop};
+use gnoblin_compat_wayland_gtk_shell1::Redirect;
+use gnoblin_compat_wayland_mutter_x11_interop::{Admission as InteropAdmission, Interop};
 use gnoblin_compat_x11_xsettings::Owner as XsettingsOwner;
 use gnoblin_compositor::{Extension, SessionConfig, XSettings};
 

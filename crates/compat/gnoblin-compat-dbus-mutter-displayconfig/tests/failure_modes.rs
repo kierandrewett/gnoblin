@@ -9,7 +9,7 @@
 mod support;
 
 use gnoblin_client::Server;
-use gnoblin_compat_mutter_displayconfig::{
+use gnoblin_compat_dbus_mutter_displayconfig::{
     ApplyMethod, ApplyPlan, DisplayError, DisplayLink, DisplayState, LogicalMonitor, MonitorAssignment,
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};

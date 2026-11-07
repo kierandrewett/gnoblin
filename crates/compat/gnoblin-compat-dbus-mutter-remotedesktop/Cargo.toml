@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-mutter-remotedesktop"
+name = "gnoblin-compat-dbus-mutter-remotedesktop"
 description = "org.gnome.Mutter.RemoteDesktop adapter."
 version.workspace = true
 edition.workspace = true

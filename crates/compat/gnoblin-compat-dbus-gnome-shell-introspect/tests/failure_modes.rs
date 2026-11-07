@@ -7,7 +7,7 @@
 mod support;
 
 use gnoblin_client::Server;
-use gnoblin_compat_gnome_shell_introspect::{IntrospectError, IntrospectLink, IntrospectState};
+use gnoblin_compat_dbus_gnome_shell_introspect::{IntrospectError, IntrospectLink, IntrospectState};
 use gnoblin_model::{Fields, ObjectId, ObjectView, TypeKey, Value};
 use support::{VERSION, graph, output_properties, unlocked, window_properties};
 

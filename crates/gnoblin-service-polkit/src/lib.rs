@@ -19,7 +19,7 @@
 //!   polkitd runs the authentication through its own helper, and the request that
 //!   this agent offers carries the action, message, icon, details and identities.
 //!   A log line therefore has nothing to redact for this slot, which is the reason
-//!   the crate's `prompt.secret` answers live in `gnoblin-compat-gnome-keyring-prompter`
+//!   the crate's `prompt.secret` answers live in `gnoblin-compat-dbus-gnome-keyring-prompter`
 //!   instead.
 //!
 //! The object path and the authority's name are polkit's, not Gnoblin's: an agent

@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-gtk-shell1"
+name = "gnoblin-compat-wayland-gtk-shell1"
 description = "gtk_shell1 Wayland redirect, compositor side."
 version.workspace = true
 edition.workspace = true

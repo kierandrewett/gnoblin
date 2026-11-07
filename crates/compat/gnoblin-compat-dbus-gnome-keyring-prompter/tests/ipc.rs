@@ -13,8 +13,8 @@ use std::path::Path;
 use std::rc::Rc;
 
 use gnoblin_client::{Event, Server};
-use gnoblin_compat_gnome_keyring_prompter::state::SLOT;
-use gnoblin_compat_gnome_keyring_prompter::{
+use gnoblin_compat_dbus_gnome_keyring_prompter::state::SLOT;
+use gnoblin_compat_dbus_gnome_keyring_prompter::{
     Callback, Effect, Exchange, Offerer, Prompt, PromptKind, Prompter, Unavailable,
 };
 use gnoblin_model::{Graph, RequestId, RequestOutcome, Tick};

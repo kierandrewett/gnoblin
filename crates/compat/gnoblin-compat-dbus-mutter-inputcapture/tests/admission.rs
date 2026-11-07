@@ -1,7 +1,7 @@
 //! Admission tests: the mode gate, the lock embargo and the matrix, without a bus.
 
 use gnoblin_compat_core::{Call, CallerContext, Gate, LockState, Mode, Rule, Support};
-use gnoblin_compat_mutter_inputcapture::{
+use gnoblin_compat_dbus_mutter_inputcapture::{
     INTERFACE, InputCaptureCall, SESSION_INTERFACE, compat::InputCaptureAdmission,
 };
 

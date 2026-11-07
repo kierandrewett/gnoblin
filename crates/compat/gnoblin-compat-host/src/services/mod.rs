@@ -5,11 +5,11 @@
 //! a given mode. An `off` mode serves no compat adapter, so the role links only the agents that are
 //! not compat adapters.
 
-use gnoblin_compat_gnome_keyring_prompter::agent as gcr;
-use gnoblin_compat_gtk_dconf_settings::agent as dconf;
-use gnoblin_compat_gnome_shell_introspect::agent as introspect;
-use gnoblin_compat_mutter_displayconfig::agent as displayconfig;
-use gnoblin_compat_mutter_idlemonitor::agent as idlemonitor;
+use gnoblin_compat_dbus_gnome_keyring_prompter::agent as gcr;
+use gnoblin_compat_dbus_gnome_shell_introspect::agent as introspect;
+use gnoblin_compat_dbus_mutter_displayconfig::agent as displayconfig;
+use gnoblin_compat_dbus_mutter_idlemonitor::agent as idlemonitor;
+use gnoblin_compat_file_gtk_dconf_settings::agent as dconf;
 
 use gnoblin_compat_core::Mode;
 use gnoblin_services::link::LinkedAgent;
@@ -40,7 +40,10 @@ pub fn linked_agents(mode: Mode, prompts: bool) -> Vec<Box<dyn LinkedAgent>> {
 #[must_use]
 pub fn linked_agents_from_environment() -> Vec<Box<dyn LinkedAgent>> {
     let prompts = gnoblin_services::prompts::enabled_from_environment();
-    linked_agents(gnoblin_compat_gnome_shell_introspect::mode_from_environment(), prompts)
+    linked_agents(
+        gnoblin_compat_dbus_gnome_shell_introspect::mode_from_environment(),
+        prompts,
+    )
 }
 
 #[cfg(test)]

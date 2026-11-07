@@ -1288,7 +1288,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-gnome-keyring-prompter"
+name = "gnoblin-compat-dbus-gnome-keyring-prompter"
 version = "0.2.0-alpha.0"
 dependencies = [
  "aes",
@@ -1311,11 +1311,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-gnome-session-manager"
+name = "gnoblin-compat-dbus-gnome-session-manager"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-gnome-shell-introspect"
+name = "gnoblin-compat-dbus-gnome-shell-introspect"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
@@ -1331,7 +1331,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-gnome-shell-screenshot"
+name = "gnoblin-compat-dbus-gnome-shell-screenshot"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
@@ -1345,7 +1345,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-gtk-dconf-settings"
+name = "gnoblin-compat-file-gtk-dconf-settings"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
@@ -1354,7 +1354,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-gtk-shell1"
+name = "gnoblin-compat-wayland-gtk-shell1"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
@@ -1375,14 +1375,14 @@ version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
  "gnoblin-compat-core",
- "gnoblin-compat-gnome-keyring-prompter",
- "gnoblin-compat-gnome-shell-introspect",
- "gnoblin-compat-gtk-dconf-settings",
- "gnoblin-compat-gtk-shell1",
- "gnoblin-compat-mutter-displayconfig",
- "gnoblin-compat-mutter-idlemonitor",
- "gnoblin-compat-mutter-x11-interop",
- "gnoblin-compat-qt-portal-settings",
+ "gnoblin-compat-dbus-gnome-keyring-prompter",
+ "gnoblin-compat-dbus-gnome-shell-introspect",
+ "gnoblin-compat-file-gtk-dconf-settings",
+ "gnoblin-compat-wayland-gtk-shell1",
+ "gnoblin-compat-dbus-mutter-displayconfig",
+ "gnoblin-compat-dbus-mutter-idlemonitor",
+ "gnoblin-compat-wayland-mutter-x11-interop",
+ "gnoblin-compat-file-qt-portal-settings",
  "gnoblin-compat-x11-xsettings",
  "gnoblin-compositor",
  "gnoblin-log",
@@ -1396,14 +1396,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-clipboard"
+name = "gnoblin-compat-dbus-mutter-clipboard"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-displayconfig"
+name = "gnoblin-compat-dbus-mutter-displayconfig"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
@@ -1418,7 +1418,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-idlemonitor"
+name = "gnoblin-compat-dbus-mutter-idlemonitor"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
@@ -1432,25 +1432,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-inputcapture"
+name = "gnoblin-compat-dbus-mutter-inputcapture"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-inputmapping"
+name = "gnoblin-compat-dbus-mutter-inputmapping"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-mutter-remotedesktop"
+name = "gnoblin-compat-dbus-mutter-remotedesktop"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-screencast"
+name = "gnoblin-compat-dbus-mutter-screencast"
 version = "0.2.0-alpha.0"
 dependencies = [
  "futures-lite",
@@ -1460,11 +1460,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-mutter-servicechannel"
+name = "gnoblin-compat-dbus-mutter-servicechannel"
 version = "0.2.0-alpha.0"
 
 [[package]]
-name = "gnoblin-compat-mutter-x11-interop"
+name = "gnoblin-compat-wayland-mutter-x11-interop"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",
@@ -1479,7 +1479,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gnoblin-compat-qt-portal-settings"
+name = "gnoblin-compat-file-qt-portal-settings"
 version = "0.2.0-alpha.0"
 dependencies = [
  "gnoblin-compat-core",

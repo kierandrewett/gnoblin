@@ -7,7 +7,7 @@
 mod support;
 
 use gnoblin_client::Server;
-use gnoblin_compat_gnome_shell_screenshot::{ScreenshotError, ScreenshotLink};
+use gnoblin_compat_dbus_gnome_shell_screenshot::{ScreenshotError, ScreenshotLink};
 use support::{VERSION, graph};
 
 #[test]

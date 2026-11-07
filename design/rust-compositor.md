@@ -450,22 +450,22 @@ gnoblin/
     gnoblin-a11y/             accessibility logic: keyboard monitor, sticky/slow/bounce/mouse keys, magnifier and colour-filter state
     compat/                   one crate per compatibility path; none depends on another (see "Compatibility crates")
       gnoblin-compat-core/                shared adapter frame: support matrix, mode gate, sandbox refusal, D-Bus helpers
-      gnoblin-compat-mutter-screencast/   org.gnome.Mutter.ScreenCast
-      gnoblin-compat-mutter-remotedesktop/  org.gnome.Mutter.RemoteDesktop
-      gnoblin-compat-mutter-inputcapture/  org.gnome.Mutter.InputCapture
-      gnoblin-compat-mutter-clipboard/    org.gnome.Mutter.Clipboard
-      gnoblin-compat-mutter-displayconfig/  org.gnome.Mutter.DisplayConfig
-      gnoblin-compat-mutter-idlemonitor/  org.gnome.Mutter.IdleMonitor
-      gnoblin-compat-mutter-inputmapping/  org.gnome.Mutter.InputMapping (later)
-      gnoblin-compat-mutter-servicechannel/  org.gnome.Mutter.ServiceChannel (later)
-      gnoblin-compat-mutter-x11-interop/  mutter_x11_interop Wayland redirect (later)
-      gnoblin-compat-gnome-shell-introspect/  org.gnome.Shell.Introspect
-      gnoblin-compat-gnome-shell-screenshot/  org.gnome.Shell.Screenshot
-      gnoblin-compat-gnome-session-manager/  org.gnome.SessionManager
-      gnoblin-compat-gnome-keyring-prompter/  org.gnome.keyring.SystemPrompter and PrivatePrompter, for gcr callers
-      gnoblin-compat-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
-      gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
-      gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
+      gnoblin-compat-dbus-mutter-screencast/   org.gnome.Mutter.ScreenCast
+      gnoblin-compat-dbus-mutter-remotedesktop/  org.gnome.Mutter.RemoteDesktop
+      gnoblin-compat-dbus-mutter-inputcapture/  org.gnome.Mutter.InputCapture
+      gnoblin-compat-dbus-mutter-clipboard/    org.gnome.Mutter.Clipboard
+      gnoblin-compat-dbus-mutter-displayconfig/  org.gnome.Mutter.DisplayConfig
+      gnoblin-compat-dbus-mutter-idlemonitor/  org.gnome.Mutter.IdleMonitor
+      gnoblin-compat-dbus-mutter-inputmapping/  org.gnome.Mutter.InputMapping (later)
+      gnoblin-compat-dbus-mutter-servicechannel/  org.gnome.Mutter.ServiceChannel (later)
+      gnoblin-compat-wayland-mutter-x11-interop/  mutter_x11_interop Wayland redirect (later)
+      gnoblin-compat-dbus-gnome-shell-introspect/  org.gnome.Shell.Introspect
+      gnoblin-compat-dbus-gnome-shell-screenshot/  org.gnome.Shell.Screenshot
+      gnoblin-compat-dbus-gnome-session-manager/  org.gnome.SessionManager
+      gnoblin-compat-dbus-gnome-keyring-prompter/  org.gnome.keyring.SystemPrompter and PrivatePrompter, for gcr callers
+      gnoblin-compat-wayland-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
+      gnoblin-compat-file-gtk-dconf-settings/  dconf layer for GTK (D15)
+      gnoblin-compat-file-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
       gnoblin-compat-x11-xsettings/       XSETTINGS for X11 apps on the XWM connection (D15)
     gnoblin-compositor/       composition root: event loop, wiring, the only crate that knows every subsystem; `portal` module: provider negotiation, request queue, reply validation, outcomes (D19)
     gnoblin-lua/              Lua host: config, loader, generated bindings, operations, timers, tweens; the `layout` module (Lua layout host, D17, in progress); extension Lua modules (D22); uses gnoblin-lua-sandbox
@@ -558,7 +558,7 @@ edge, so a violation names the edge and the rule:
   own transport:
     - `zbus` for D-Bus names;
     - the `gnoblin-wayland` extension trait for the Wayland redirects
-      (`gnoblin-compat-gtk-shell1`, `gnoblin-compat-mutter-x11-interop`);
+      (`gnoblin-compat-wayland-gtk-shell1`, `gnoblin-compat-wayland-mutter-x11-interop`);
     - the `gnoblin-xwayland` extension trait for `gnoblin-compat-x11-xsettings`.
 - No compat crate depends on another, and nothing outside `compat/` depends on a
   compat crate except the binary that links it.
@@ -1114,8 +1114,8 @@ failure-mode list that must be complete before isolated tests or code.
 - Nothing in the IPC, the schema or the damage model assumes a flat plane.
 - **Session owner:** capture and remote-desktop sessions are compositor objects.
   `gnoblin-capture` owns their PipeWire streams and `gnoblin-input` owns their
-  EIS contexts. The portal and the `gnoblin-compat-mutter-screencast` and
-  `gnoblin-compat-mutter-remotedesktop` crates are clients: they open and close
+  EIS contexts. The portal and the `gnoblin-compat-dbus-mutter-screencast` and
+  `gnoblin-compat-dbus-mutter-remotedesktop` crates are clients: they open and close
   sessions through the IPC. A session ends when the client that opened it
   disconnects, so a crashed adapter cannot leave a stream running.
 - **Replaces:** `src/compositor/effects`, `src/compositor/plugin`,
@@ -1197,7 +1197,7 @@ failure-mode list that must be complete before isolated tests or code.
 
 A crate is named `gnoblin-compat-<vendor>-<interface>`, so the name says whose
 interface it adapts. The vendor is one of mutter, gnome-shell, gnome-session,
-gnome-keyring, gtk, qt or x11. For example, gnoblin-compat-mutter-screencast
+gnome-keyring, gtk, qt or x11. For example, gnoblin-compat-dbus-mutter-screencast
 adapts org.gnome.Mutter.ScreenCast, and gnoblin-compat-x11-xsettings serves
 XSETTINGS. The directory name equals the crate name.
 
@@ -1227,16 +1227,16 @@ XSETTINGS. The directory name equals the crate name.
 
 Accessibility is its own lane, not a side effect of input and rendering.
 
-| Area                     | What Gnoblin provides                                                                      | Where                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------- |
-| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: key watches and grabs                     | compositor, logic in `gnoblin-a11y`       |
-| Keyboard accessibility   | Sticky, slow, bounce and mouse keys; repeat settings                                       | `gnoblin-a11y` logic, `gnoblin-input`     |
-| Magnifier                | Full-screen and lens zoom that follows focus, caret and pointer                            | `gnoblin-a11y` state, `gnoblin-render`    |
-| Colour filters           | Invert, greyscale, colour-blindness filters, high-contrast cursor                          | `gnoblin-render` passes                   |
-| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15)      | `gnoblin-render`, settings publish        |
-| Visual bell              | Screen or window flash for `xdg_system_bell`                                               | `gnoblin-render`                          |
-| Accessible recovery UI   | The egui overlay (D5) exposes an AT-SPI tree through AccessKit [INFERENCE: check on Linux] | `gnoblin-diag`                            |
-| Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                     | object model, `gnoblin-compat-gtk-shell1` |
+| Area                     | What Gnoblin provides                                                                      | Where                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| Screen reader keys       | `org.freedesktop.a11y.KeyboardMonitor` for Orca: key watches and grabs                     | compositor, logic in `gnoblin-a11y`               |
+| Keyboard accessibility   | Sticky, slow, bounce and mouse keys; repeat settings                                       | `gnoblin-a11y` logic, `gnoblin-input`             |
+| Magnifier                | Full-screen and lens zoom that follows focus, caret and pointer                            | `gnoblin-a11y` state, `gnoblin-render`            |
+| Colour filters           | Invert, greyscale, colour-blindness filters, high-contrast cursor                          | `gnoblin-render` passes                           |
+| Motion and contrast      | Animations honour reduced motion; contrast and reduced motion published to apps (D15)      | `gnoblin-render`, settings publish                |
+| Visual bell              | Screen or window flash for `xdg_system_bell`                                               | `gnoblin-render`                                  |
+| Accessible recovery UI   | The egui overlay (D5) exposes an AT-SPI tree through AccessKit [INFERENCE: check on Linux] | `gnoblin-diag`                                    |
+| Window and focus mapping | Focus changes on the IPC; `gtk_shell1` links windows to AT-SPI objects                     | object model, `gnoblin-compat-wayland-gtk-shell1` |
 
 - **Not Gnoblin's job:** the on-screen keyboard and shell UI accessibility
   belong to the shell; app accessibility trees belong to the apps.
@@ -1349,11 +1349,11 @@ Gnoblin runs its own keyring service (D27), which holds the Secret store. The Se
 `prompt.secret` slot only shows a passphrase or confirm prompt and returns the
 answer. Programs reach it through an adapter:
 
-| Caller                                   | How it reaches `prompt.secret`                               | Without the adapter                  |
-| ---------------------------------------- | ------------------------------------------------------------ | ------------------------------------ |
-| gnome-keyring, `pinentry-gnome3` (gcr)   | `gnoblin-compat-gnome-keyring-prompter` serves the gcr names | GNOME's `gcr-prompter`, if installed |
-| KeePassXC, KWallet, oo7 (Secret Service) | none; they draw their own unlock prompt                      | unchanged                            |
-| GPG with `pinentry-qt`, `-gtk`, `-tty`   | none; pinentry draws its own prompt                          | unchanged                            |
+| Caller                                   | How it reaches `prompt.secret`                                    | Without the adapter                  |
+| ---------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
+| gnome-keyring, `pinentry-gnome3` (gcr)   | `gnoblin-compat-dbus-gnome-keyring-prompter` serves the gcr names | GNOME's `gcr-prompter`, if installed |
+| KeePassXC, KWallet, oo7 (Secret Service) | none; they draw their own unlock prompt                           | unchanged                            |
+| GPG with `pinentry-qt`, `-gtk`, `-tty`   | none; pinentry draws its own prompt                               | unchanged                            |
 
 The gcr adapter speaks the prompter's D-Bus interface through `zbus`, so Gnoblin
 no longer links `gcr-4` [INFERENCE: check that the interface is stable enough to

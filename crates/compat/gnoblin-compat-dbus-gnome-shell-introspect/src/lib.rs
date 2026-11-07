@@ -1,6 +1,6 @@
 //! `org.gnome.Shell.Introspect` for the portal's window picker.
 //!
-//! This is `gnoblin-compat-gnome-shell-introspect` of `design/rust-compositor.md`
+//! This is `gnoblin-compat-dbus-gnome-shell-introspect` of `design/rust-compositor.md`
 //! ("Compatibility crates" and the redirect map's `org.gnome.Shell.Introspect` row): the
 //! adapter that answers "which windows are there, what are they called and how big is the
 //! desktop". `xdg-desktop-portal-gnome`'s window picker is its consumer, and so is anything
@@ -29,7 +29,7 @@
 //!
 //! ```no_run
 //! use gnoblin_client::{UnixTransport, socket_path};
-//! use gnoblin_compat_gnome_shell_introspect::{IntrospectLink, IntrospectService, export};
+//! use gnoblin_compat_dbus_gnome_shell_introspect::{IntrospectLink, IntrospectService, export};
 //! use gnoblin_proto::Version;
 //! use zbus::Connection;
 //!

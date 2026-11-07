@@ -1,6 +1,6 @@
 //! `org.gnome.Shell.Screenshot`, served so that capture is refused in one place.
 //!
-//! This is `gnoblin-compat-gnome-shell-screenshot` of `design/rust-compositor.md`
+//! This is `gnoblin-compat-dbus-gnome-shell-screenshot` of `design/rust-compositor.md`
 //! ("Compatibility crates" and the redirect map's `org.gnome.Shell.Screenshot` row). It is the
 //! adapter with the least to do and the most to say: every member is capture, D13's default
 //! `portal` mode refuses capture, and the IPC publishes no image-capture member, so what a
@@ -30,7 +30,7 @@
 //!
 //! ```no_run
 //! use gnoblin_client::{UnixTransport, socket_path};
-//! use gnoblin_compat_gnome_shell_screenshot::{ScreenshotLink, ScreenshotService, export};
+//! use gnoblin_compat_dbus_gnome_shell_screenshot::{ScreenshotLink, ScreenshotService, export};
 //! use gnoblin_proto::Version;
 //! use zbus::Connection;
 //!

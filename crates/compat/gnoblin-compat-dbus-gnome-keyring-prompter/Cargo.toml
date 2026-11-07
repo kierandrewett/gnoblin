@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-gnome-keyring-prompter"
+name = "gnoblin-compat-dbus-gnome-keyring-prompter"
 description = "org.gnome.keyring.SystemPrompter and PrivatePrompter adapter for gcr callers."
 version.workspace = true
 edition.workspace = true

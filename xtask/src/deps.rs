@@ -156,7 +156,10 @@ const LOG_CRATE: &str = "gnoblin-log";
 const COMPAT_CORE: &str = "gnoblin-compat-core";
 
 /// Compat crates that speak the Smithay Wayland transport instead of D-Bus.
-const COMPAT_WAYLAND: &[&str] = &["gnoblin-compat-gtk-shell1", "gnoblin-compat-mutter-x11-interop"];
+const COMPAT_WAYLAND: &[&str] = &[
+    "gnoblin-compat-wayland-gtk-shell1",
+    "gnoblin-compat-wayland-mutter-x11-interop",
+];
 
 /// The one compat crate that speaks the Xwayland transport.
 const COMPAT_XWAYLAND: &str = "gnoblin-compat-x11-xsettings";
@@ -728,8 +731,9 @@ mod tests {
         let reported: Vec<String> = violations.iter().map(Violation::to_string).collect();
         assert_eq!(reported.len(), 1, "expected one violation, got {reported:#?}");
         assert!(
-            reported[0]
-                .starts_with("gnoblin-compat-mutter-screencast -> gnoblin-compat-mutter-clipboard [compat-isolation]"),
+            reported[0].starts_with(
+                "gnoblin-compat-dbus-mutter-screencast -> gnoblin-compat-dbus-mutter-clipboard [compat-isolation]"
+            ),
             "unexpected violation: {}",
             reported[0]
         );
@@ -753,7 +757,7 @@ mod tests {
             !host_only.iter().any(|found| found.contains("[compat-host]")),
             "{host_only:?}"
         );
-        let adapter = violations(&[("gnoblin", &["gnoblin-compat-gtk-shell1"])]);
+        let adapter = violations(&[("gnoblin", &["gnoblin-compat-wayland-gtk-shell1"])]);
         assert_eq!(
             adapter.iter().filter(|found| found.contains("[compat-host]")).count(),
             1,
@@ -763,12 +767,12 @@ mod tests {
 
     #[test]
     fn only_the_compat_host_links_an_adapter_and_only_the_binary_links_the_host() {
-        let through_host = violations(&[("gnoblin-compat-host", &["gnoblin-compat-gtk-shell1"])]);
+        let through_host = violations(&[("gnoblin-compat-host", &["gnoblin-compat-wayland-gtk-shell1"])]);
         assert!(
             !through_host.iter().any(|found| found.contains("[compat-host]")),
             "{through_host:?}"
         );
-        let library = violations(&[("gnoblin-compositor", &["gnoblin-compat-gtk-shell1"])]);
+        let library = violations(&[("gnoblin-compositor", &["gnoblin-compat-wayland-gtk-shell1"])]);
         assert_eq!(
             library.iter().filter(|found| found.contains("[compat-host]")).count(),
             1,
@@ -782,6 +786,25 @@ mod tests {
                 .count(),
             1,
             "{other_host:?}"
+        );
+    }
+    #[test]
+    fn no_adapter_links_the_compat_host() {
+        let adapter = violations(&[("gnoblin-compat-dbus-mutter-clipboard", &["gnoblin-compat-host"])]);
+        assert_eq!(
+            adapter.iter().filter(|found| found.contains("[compat-host]")).count(),
+            1,
+            "{adapter:?}"
+        );
+    }
+
+    #[test]
+    fn the_services_core_links_no_compat_adapter() {
+        let core = violations(&[("gnoblin-service-core", &["gnoblin-compat-dbus-mutter-clipboard"])]);
+        assert_eq!(
+            core.iter().filter(|found| found.contains("[compat-host]")).count(),
+            1,
+            "{core:?}"
         );
     }
 
@@ -951,9 +974,9 @@ mod tests {
         // The `service` module of an adapter implements `LinkedAgent`, which lives in
         // `gnoblin-service-core`. That edge is allowed; the engine is still not, and
         // `gnoblin-service-core` itself stays under the client-side rule, which bans the engine.
-        let allowed = violations(&[("gnoblin-compat-gtk-dconf-settings", &["gnoblin-service-core"])]);
+        let allowed = violations(&[("gnoblin-compat-file-gtk-dconf-settings", &["gnoblin-service-core"])]);
         assert!(allowed.is_empty(), "expected no violation, got {allowed:#?}");
-        let banned = violations(&[("gnoblin-compat-gtk-dconf-settings", &["gnoblin-compositor"])]);
+        let banned = violations(&[("gnoblin-compat-file-gtk-dconf-settings", &["gnoblin-compositor"])]);
         assert_eq!(banned.len(), 1, "expected one violation, got {banned:#?}");
     }
 

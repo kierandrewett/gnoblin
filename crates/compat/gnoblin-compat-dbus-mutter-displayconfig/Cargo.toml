@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-mutter-displayconfig"
+name = "gnoblin-compat-dbus-mutter-displayconfig"
 description = "org.gnome.Mutter.DisplayConfig adapter."
 version.workspace = true
 edition.workspace = true

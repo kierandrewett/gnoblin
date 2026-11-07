@@ -166,7 +166,7 @@ pub struct Config {
     pub window_process_override: Option<crate::WindowProcess>,
     /// The titlebar actions `window_management` declares.
     ///
-    /// The redirect in `gnoblin-compat-gtk-shell1` maps a titlebar gesture to one of
+    /// The redirect in `gnoblin-compat-wayland-gtk-shell1` maps a titlebar gesture to one of
     /// these three, and the session is what it asks, so the values travel with the
     /// session rather than with the adapter: one session, one set of actions.
     pub titlebar_actions: TitlebarActions,

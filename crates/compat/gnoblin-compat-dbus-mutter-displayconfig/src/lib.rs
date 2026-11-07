@@ -1,6 +1,6 @@
 //! `org.gnome.Mutter.DisplayConfig` for GNOME Settings and the stock portal.
 //!
-//! This is `gnoblin-compat-mutter-displayconfig` of `design/rust-compositor.md`
+//! This is `gnoblin-compat-dbus-mutter-displayconfig` of `design/rust-compositor.md`
 //! ("Compatibility crates" and the redirect map's `DisplayConfig` row): the adapter
 //! that answers a caller asking what the desktop's monitors are and, when a user
 //! allows state changes, applies a new arrangement.
@@ -33,7 +33,7 @@
 //!
 //! ```no_run
 //! use gnoblin_client::{UnixTransport, socket_path};
-//! use gnoblin_compat_mutter_displayconfig::{DisplayConfigService, DisplayLink, export};
+//! use gnoblin_compat_dbus_mutter_displayconfig::{DisplayConfigService, DisplayLink, export};
 //! use gnoblin_model::Filter;
 //! use gnoblin_proto::Version;
 //! use zbus::Connection;
@@ -49,7 +49,7 @@
 //! # Ok(())
 //! # }
 //! # struct Recorded;
-//! # impl gnoblin_compat_mutter_displayconfig::OutputApplier for Recorded {
+//! # impl gnoblin_compat_dbus_mutter_displayconfig::OutputApplier for Recorded {
 //! #     fn apply(&self, _output: &str, _fields: &gnoblin_model::Fields) -> Result<(), String> { Ok(()) }
 //! # }
 //! ```

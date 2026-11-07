@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-gnome-session-manager"
+name = "gnoblin-compat-dbus-gnome-session-manager"
 description = "org.gnome.SessionManager adapter."
 version.workspace = true
 edition.workspace = true

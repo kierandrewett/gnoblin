@@ -31,11 +31,11 @@ use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 
 use gnoblin_compat_core::Mode;
-use gnoblin_compat_gtk_shell1::global::{
+use gnoblin_compat_wayland_gtk_shell1::global::{
     ShellData, ShellUserData, SurfaceData, handle_shell_request, handle_surface_request,
 };
-use gnoblin_compat_gtk_shell1::names::{gtk_shell1, gtk_surface1};
-use gnoblin_compat_gtk_shell1::{Admission, Redirect, SHELL_VERSION};
+use gnoblin_compat_wayland_gtk_shell1::names::{gtk_shell1, gtk_surface1};
+use gnoblin_compat_wayland_gtk_shell1::{Admission, Redirect, SHELL_VERSION};
 use gnoblin_types::WindowId;
 use gnoblin_wayland::{
     Activation, Dispatch2, GlobalDispatch2, Shell1Host, Surface, Titlebar, TitlebarActions, delegate_dispatch2,

@@ -32,7 +32,7 @@
 //! is refused before it is made, with [`Refusal::NoProvider`] naming `portal.ui`, and
 //! nothing waits out a deadline: the caller learns what is missing rather than seeing a
 //! share that never appears. That is D14's fail-closed answer, and it is the same shape
-//! `gnoblin-compat-gnome-keyring-prompter` uses for `prompt.secret`.
+//! `gnoblin-compat-dbus-gnome-keyring-prompter` uses for `prompt.secret`.
 //!
 //! # Expiry
 //!

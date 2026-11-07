@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use futures_lite::future;
-use gnoblin_compat_mutter_screencast::{BridgeError, CaptureBridge, CaptureHandle};
+use gnoblin_compat_dbus_mutter_screencast::{BridgeError, CaptureBridge, CaptureHandle};
 
 /// What the fake host saw, shared with the test.
 #[derive(Debug, Default)]

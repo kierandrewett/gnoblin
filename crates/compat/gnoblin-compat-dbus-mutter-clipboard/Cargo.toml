@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-mutter-clipboard"
+name = "gnoblin-compat-dbus-mutter-clipboard"
 description = "org.gnome.Mutter.Clipboard adapter."
 version.workspace = true
 edition.workspace = true

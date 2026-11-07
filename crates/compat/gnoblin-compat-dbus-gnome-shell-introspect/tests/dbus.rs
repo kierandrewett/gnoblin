@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use futures_lite::StreamExt as _;
 use gnoblin_client::{Loopback, Server};
 use gnoblin_compat_core::{Mode, SupportMatrix};
-use gnoblin_compat_gnome_shell_introspect::{
+use gnoblin_compat_dbus_gnome_shell_introspect::{
     BUS_NAME, INTERFACE, IntrospectError, IntrospectLink, IntrospectService, MATRIX, PATH, export,
 };
 use gnoblin_model::{ObjectId, TypeKey, Value};

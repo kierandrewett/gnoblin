@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use futures_lite::StreamExt as _;
 use gnoblin_client::{Loopback, Server};
 use gnoblin_compat_core::{Mode, SupportMatrix};
-use gnoblin_compat_mutter_displayconfig::{
+use gnoblin_compat_dbus_mutter_displayconfig::{
     BUS_NAME, DisplayConfigService, DisplayError, DisplayLink, INTERFACE, MATRIX, OutputApplier, PATH, export,
 };
 use gnoblin_model::{Fields, TypeKey, Value};

@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-mutter-servicechannel"
+name = "gnoblin-compat-dbus-mutter-servicechannel"
 description = "org.gnome.Mutter.ServiceChannel adapter (later)."
 version.workspace = true
 edition.workspace = true

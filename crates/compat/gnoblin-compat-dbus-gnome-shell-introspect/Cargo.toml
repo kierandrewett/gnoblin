@@ -1,5 +1,5 @@
 [package]
-name = "gnoblin-compat-gnome-shell-introspect"
+name = "gnoblin-compat-dbus-gnome-shell-introspect"
 description = "org.gnome.Shell.Introspect adapter."
 version.workspace = true
 edition.workspace = true

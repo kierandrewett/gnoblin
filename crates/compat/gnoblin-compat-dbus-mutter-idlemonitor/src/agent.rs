@@ -8,9 +8,9 @@
 //! The gate is built from the mode the role is given. A session bus, a taken name or a
 //! compositor that is not there is logged and skipped.
 
+use crate::{IdleLink, IdleMonitorService, export, watch_callers};
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
-use crate::{IdleLink, IdleMonitorService, export, watch_callers};
 
 use gnoblin_client::{Client, UnixTransport, socket_path};
 use gnoblin_proto::Version;

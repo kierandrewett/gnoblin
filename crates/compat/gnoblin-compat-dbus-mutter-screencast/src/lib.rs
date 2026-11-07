@@ -1,6 +1,6 @@
 //! `org.gnome.Mutter.ScreenCast` for `xdg-desktop-portal-gnome` and screen recorders.
 //!
-//! This is `gnoblin-compat-mutter-screencast` of `design/rust-compositor.md`
+//! This is `gnoblin-compat-dbus-mutter-screencast` of `design/rust-compositor.md`
 //! ("Compatibility crates", the redirect map's `ScreenCast` row and D13): the
 //! adapter that lets a caller create a capture session, record one monitor, window
 //! or area, and learn why a stream cannot be started.

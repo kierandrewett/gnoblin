@@ -10,9 +10,9 @@
 //! and this module's applier refuses every write regardless. A session bus, a taken name or a
 //! compositor that is not there is logged and skipped.
 
+use crate::{DisplayConfigService, DisplayLink, OutputApplier, export};
 use futures_lite::future::block_on;
 use gnoblin_compat_core::{CallerContext, Gate, LockState, Mode};
-use crate::{DisplayConfigService, DisplayLink, OutputApplier, export};
 
 use gnoblin_client::{Client, UnixTransport, socket_path};
 use gnoblin_model::Fields;

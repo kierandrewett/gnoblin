@@ -1,6 +1,6 @@
 //! Admission: the support matrix and the mode gate, from `gnoblin-compat-core`.
 //!
-//! The same frame `gnoblin-compat-gtk-shell1` uses, with one difference worth stating:
+//! The same frame `gnoblin-compat-wayland-gtk-shell1` uses, with one difference worth stating:
 //! both members here are [`OperationClass::Write`], because a caller that is not the
 //! window's own client is changing how that window relates to another one. The portal is
 //! the caller D15 names ("a portal-built dialog"), so a session in `portal` mode refuses

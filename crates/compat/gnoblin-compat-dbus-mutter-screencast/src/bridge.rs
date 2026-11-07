@@ -3,7 +3,7 @@
 //! The D-Bus object cannot hold the IPC client: a zbus interface must be `Send +
 //! Sync`, and the client a host threads onto the IPC is a blocking `Client<C>` whose
 //! transport need not be. This trait is the one place the two halves meet, following
-//! the same seam `gnoblin-compat-mutter-displayconfig` uses for its write path.
+//! the same seam `gnoblin-compat-dbus-mutter-displayconfig` uses for its write path.
 //!
 //! A host implements it over its privileged connection by calling the schema's
 //! `capture.open` and `capture.close` members with these arguments:

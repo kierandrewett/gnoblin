@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use futures_lite::future;
 use gnoblin_compat_core::{Gate, LockState, Mode};
-use gnoblin_compat_gnome_keyring_prompter::{
+use gnoblin_compat_dbus_gnome_keyring_prompter::{
     Exchange, Names, Offerer, PROMPTER_INTERFACE, PROMPTER_PATH, Prompt, PromptService, SYSTEM_NAME, Unavailable,
     export, run,
 };
