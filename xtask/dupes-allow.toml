@@ -1813,3 +1813,9 @@ left = "gnoblin-compat-dbus-mutter-idlemonitor::MutterIdleMonitor"
 right = "gnoblin-compat-gtk-dconf-settings::DconfLayer"
 kind = "same-shape"
 reason = "each compat adapter is a one-field agent holding its own mode gate; the shape is the frame's, the adapters are separate services"
+
+[[allow]]
+left = "gnoblin-layers::LayerProvider"
+right = "gnoblin-wm::ClaimOrigin"
+kind = "same-shape"
+reason = "a provider names the party that registers a layer and owns a String for extensions; a claim origin only orders claims on one window in the stack, and it must stay Copy, so the stack cannot hold a provider"

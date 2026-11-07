@@ -77,7 +77,7 @@ use crate::placement::{self, PlacementMode};
 use crate::pointer_focus::{self, FocusMode, PointerFocus};
 use crate::rules::{Rule, RuleAction};
 use crate::snapping::SnapZone;
-use crate::stack::{EntryOwner, Stack, StackItem, StackLayer};
+use crate::stack::{ClaimOrigin, Stack, StackItem, StackLayer};
 use crate::tiled::{TiledEdges, tiled_edges};
 use crate::window::{Window, WindowKind, WindowState};
 use crate::workspace::Workspaces;
@@ -575,9 +575,9 @@ impl Wm {
             return Err(LayerRegisterError::UnknownTarget(target));
         }
         let owner = if provider.is_compositor() {
-            EntryOwner::Gnoblin
+            ClaimOrigin::Gnoblin
         } else {
-            EntryOwner::Extension
+            ClaimOrigin::Extension
         };
         let handle = self
             .layers

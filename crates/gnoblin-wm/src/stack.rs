@@ -30,7 +30,7 @@ pub enum StackLayer {
 /// Who placed a window-scope layer. Gnoblin claims stack above extension claims on
 /// the same target, whatever order they arrive in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum EntryOwner {
+pub(crate) enum ClaimOrigin {
     Gnoblin,
     Extension,
 }
@@ -40,7 +40,7 @@ pub(crate) enum EntryOwner {
 pub(crate) struct LayerEntry {
     layer: LayerHandle,
     target: WindowId,
-    owner: EntryOwner,
+    owner: ClaimOrigin,
 }
 
 /// One position in the stack, topmost first: a window, or a layer above one.
@@ -83,17 +83,17 @@ impl Stack {
     ///
     /// Gnoblin entries sit above extension entries on the same target, whatever
     /// order they arrive in. Within one owner the newest entry is topmost.
-    pub(crate) fn attach(&mut self, layer: LayerHandle, target: WindowId, owner: EntryOwner) -> bool {
+    pub(crate) fn attach(&mut self, layer: LayerHandle, target: WindowId, owner: ClaimOrigin) -> bool {
         if !self.layers.contains_key(&target) || self.is_attached(layer) {
             return false;
         }
         let entry = LayerEntry { layer, target, owner };
         let index = match owner {
-            EntryOwner::Gnoblin => 0,
-            EntryOwner::Extension => self
+            ClaimOrigin::Gnoblin => 0,
+            ClaimOrigin::Extension => self
                 .entries
                 .iter()
-                .rposition(|other| other.target == target && other.owner == EntryOwner::Gnoblin)
+                .rposition(|other| other.target == target && other.owner == ClaimOrigin::Gnoblin)
                 .map(|index| index + 1)
                 .or_else(|| self.entries.iter().position(|other| other.target == target))
                 .unwrap_or(self.entries.len()),
@@ -349,7 +349,7 @@ mod tests {
     fn an_entry_sits_directly_above_its_target() {
         let mut stack = stack_with_normal();
         let layers = handles(1);
-        assert!(stack.attach(layers[0], id(2), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(2), ClaimOrigin::Gnoblin));
         assert_eq!(stack.items(), vec![w(3), l(layers[0]), w(2), w(1)]);
     }
 
@@ -357,7 +357,7 @@ mod tests {
     fn an_entry_moves_with_its_target_on_raise_and_lower() {
         let mut stack = stack_with_normal();
         let layers = handles(1);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Gnoblin));
         stack.raise(id(1));
         assert_eq!(stack.items(), vec![l(layers[0]), w(1), w(3), w(2)]);
         stack.lower(id(1));
@@ -368,7 +368,7 @@ mod tests {
     fn an_entry_follows_its_target_into_the_fullscreen_layer() {
         let mut stack = stack_with_normal();
         let layers = handles(1);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Gnoblin));
         stack.set_layer(id(1), StackLayer::Fullscreen);
         assert_eq!(stack.items(), vec![l(layers[0]), w(1), w(3), w(2)]);
     }
@@ -377,8 +377,8 @@ mod tests {
     fn closing_the_target_removes_its_entries_and_no_others() {
         let mut stack = stack_with_normal();
         let layers = handles(2);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Gnoblin));
-        assert!(stack.attach(layers[1], id(2), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Gnoblin));
+        assert!(stack.attach(layers[1], id(2), ClaimOrigin::Gnoblin));
         stack.remove(id(2));
         assert_eq!(stack.items(), vec![w(3), l(layers[0]), w(1)]);
         assert!(!stack.is_attached(layers[1]));
@@ -388,14 +388,14 @@ mod tests {
     fn two_entries_on_one_target_keep_their_own_order() {
         let mut stack = stack_with_normal();
         let layers = handles(3);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Gnoblin));
-        assert!(stack.attach(layers[1], id(1), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Gnoblin));
+        assert!(stack.attach(layers[1], id(1), ClaimOrigin::Gnoblin));
         assert_eq!(stack.items(), vec![w(3), w(2), l(layers[1]), l(layers[0]), w(1)]);
         // Raising another window must not reorder the entries on this one.
         stack.raise(id(2));
         assert_eq!(stack.items(), vec![w(2), w(3), l(layers[1]), l(layers[0]), w(1)]);
         // A newer entry goes on top of the older ones on the same target.
-        assert!(stack.attach(layers[2], id(1), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[2], id(1), ClaimOrigin::Gnoblin));
         assert_eq!(
             stack.items(),
             vec![w(2), w(3), l(layers[2]), l(layers[1]), l(layers[0]), w(1)]
@@ -407,23 +407,23 @@ mod tests {
         let layers = handles(3);
 
         let mut extension_first = stack_with_normal();
-        assert!(extension_first.attach(layers[0], id(1), EntryOwner::Extension));
-        assert!(extension_first.attach(layers[1], id(1), EntryOwner::Gnoblin));
+        assert!(extension_first.attach(layers[0], id(1), ClaimOrigin::Extension));
+        assert!(extension_first.attach(layers[1], id(1), ClaimOrigin::Gnoblin));
         assert_eq!(
             extension_first.items(),
             vec![w(3), w(2), l(layers[1]), l(layers[0]), w(1)]
         );
 
         let mut gnoblin_first = stack_with_normal();
-        assert!(gnoblin_first.attach(layers[1], id(1), EntryOwner::Gnoblin));
-        assert!(gnoblin_first.attach(layers[0], id(1), EntryOwner::Extension));
+        assert!(gnoblin_first.attach(layers[1], id(1), ClaimOrigin::Gnoblin));
+        assert!(gnoblin_first.attach(layers[0], id(1), ClaimOrigin::Extension));
         assert_eq!(
             gnoblin_first.items(),
             vec![w(3), w(2), l(layers[1]), l(layers[0]), w(1)]
         );
 
         // A later Gnoblin entry still goes above an earlier extension entry.
-        assert!(extension_first.attach(layers[2], id(1), EntryOwner::Gnoblin));
+        assert!(extension_first.attach(layers[2], id(1), ClaimOrigin::Gnoblin));
         assert_eq!(
             extension_first.items(),
             vec![w(3), w(2), l(layers[2]), l(layers[1]), l(layers[0]), w(1)]
@@ -434,8 +434,8 @@ mod tests {
     fn newer_extension_entries_sit_above_older_ones() {
         let mut stack = stack_with_normal();
         let layers = handles(2);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Extension));
-        assert!(stack.attach(layers[1], id(1), EntryOwner::Extension));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Extension));
+        assert!(stack.attach(layers[1], id(1), ClaimOrigin::Extension));
         assert_eq!(stack.items(), vec![w(3), w(2), l(layers[1]), l(layers[0]), w(1)]);
     }
 
@@ -443,7 +443,7 @@ mod tests {
     fn an_entry_on_an_unknown_window_is_refused() {
         let mut stack = stack_with_normal();
         let layers = handles(1);
-        assert!(!stack.attach(layers[0], id(9), EntryOwner::Gnoblin));
+        assert!(!stack.attach(layers[0], id(9), ClaimOrigin::Gnoblin));
         assert!(!stack.is_attached(layers[0]));
         assert_eq!(stack.items(), vec![w(3), w(2), w(1)]);
     }
@@ -452,8 +452,8 @@ mod tests {
     fn a_layer_attaches_at_most_once() {
         let mut stack = stack_with_normal();
         let layers = handles(1);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Gnoblin));
-        assert!(!stack.attach(layers[0], id(2), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Gnoblin));
+        assert!(!stack.attach(layers[0], id(2), ClaimOrigin::Gnoblin));
         assert_eq!(stack.items(), vec![w(3), w(2), l(layers[0]), w(1)]);
     }
 
@@ -464,7 +464,7 @@ mod tests {
         stack.insert(id(2), StackLayer::Fullscreen, None);
         stack.insert(id(3), StackLayer::Normal, None);
         let layers = handles(1);
-        assert!(stack.attach(layers[0], id(2), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(2), ClaimOrigin::Gnoblin));
         assert_eq!(stack.items(), vec![l(layers[0]), w(2), w(3), w(1)]);
         // Raising a normal window cannot slide it between the fullscreen window
         // and its entry, and lowering the fullscreen window keeps the entry on it.
@@ -478,8 +478,8 @@ mod tests {
     fn ended_layers_are_pruned_and_their_target_stays() {
         let mut stack = stack_with_normal();
         let layers = handles(2);
-        assert!(stack.attach(layers[0], id(1), EntryOwner::Gnoblin));
-        assert!(stack.attach(layers[1], id(2), EntryOwner::Gnoblin));
+        assert!(stack.attach(layers[0], id(1), ClaimOrigin::Gnoblin));
+        assert!(stack.attach(layers[1], id(2), ClaimOrigin::Gnoblin));
         stack.retain_layers(|layer| layer != layers[0]);
         assert!(!stack.is_attached(layers[0]));
         assert_eq!(stack.items(), vec![w(3), l(layers[1]), w(2), w(1)]);
