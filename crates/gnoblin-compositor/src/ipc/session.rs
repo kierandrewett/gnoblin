@@ -634,7 +634,7 @@ impl SessionSync {
     /// nothing here is invented hardware data.
     fn output_fields(output: &ObservedOutput) -> Fields {
         Fields::from([
-            ("name".to_owned(), Value::Text(output.name.clone())),
+            (member::NAME.to_owned(), Value::Text(output.name.clone())),
             ("make".to_owned(), Value::Text(output.make.clone())),
             ("model".to_owned(), Value::Text(output.model.clone())),
             (
