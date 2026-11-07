@@ -65,6 +65,9 @@ gnoblin-config = { path = "../gnoblin-config" }
 # this crate decides whether a frame may exist at all (design/rust-compositor.md,
 # Renderer card, "session owner").
 gnoblin-capture = { path = "../gnoblin-capture" }
+# The layer model. A modal overlay names the input policy its layer declared, so the
+# engine honours the policy and never invents one.
+gnoblin-layers = { path = "../gnoblin-layers" }
 # Activation authority: a token is minted once, redeemed once, refused when it
 # expired, reused or was never issued, and an app id alone never grants focus.
 gnoblin-authority = { path = "../gnoblin-authority" }

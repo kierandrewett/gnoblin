@@ -28,12 +28,13 @@
 //! - Admission refused by the queue or the lock: settles `error(busy|locked)` to the
 //!   submitter, not a refusal, so the requester learns the verdict it waits for.
 
-use gnoblin_render_frame::frame::Overlay;
-use gnoblin_render_frame::image::Image;
 use gnoblin_client::wire::{self, PortalRequest, VerifiedCaller};
+use gnoblin_layers::InputPolicy;
 use gnoblin_portal_core::model::{Consent, Dialog, Grant, Interface, ScreenKey};
 use gnoblin_portal_ui::ui::DialogScheme;
 use gnoblin_proto::Envelope;
+use gnoblin_render_frame::frame::Overlay;
+use gnoblin_render_frame::image::Image;
 use gnoblin_types::{ClientId, KeyState, OutputId, ParentWindow, Rect, RequestId, Size, Tick};
 use gnoblin_wayland::{Modal, ModalEvent, WindowProcess};
 
@@ -528,7 +529,7 @@ impl PortalService {
         let image = Image::new(Size::new(width, height), frame.width() * 4, frame.bytes().to_vec())?;
         let overlay = Overlay::new(placement, &image)?;
         self.shown = Some(output);
-        Some(Some(Modal::new(output, overlay)))
+        Some(Some(Modal::new(InputPolicy::ModalToOutput, output, overlay)))
     }
 
     /// Clears the modal once it was shown, and only then.

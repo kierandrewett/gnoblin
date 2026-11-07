@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 
 use gnoblin_backend::InputEvent;
 use gnoblin_backend::headless::Headless;
+use gnoblin_layers::InputPolicy;
 use gnoblin_render_frame::frame::Overlay;
 use gnoblin_render_frame::image::Image;
 use gnoblin_types::{Point, Rect, Vec3, WindowId, WorkspaceId};
@@ -1560,7 +1561,9 @@ fn a_modal_takes_the_keys_from_the_client_until_it_is_cleared() {
         let image = Image::new(gnoblin_types::Size { width: 2, height: 2 }, 8, vec![0; 16]).expect("a 2x2 image");
         let overlay = Overlay::new(Rect::from_size(gnoblin_types::Size { width: 2, height: 2 }), &image)
             .expect("a non-empty overlay");
-        session.control.set_modal(Some(Modal::new(output, overlay)));
+        session
+            .control
+            .set_modal(Some(Modal::new(InputPolicy::ModalToOutput, output, overlay)));
 
         session.control.inject_input(InputEvent::Key {
             keycode: 30,

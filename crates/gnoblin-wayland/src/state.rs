@@ -65,6 +65,7 @@ use gnoblin_backend::render::compose::{Composer, Content};
 use gnoblin_backend::{Host, InputEvent};
 use gnoblin_config::Protocols;
 use gnoblin_input::Activity;
+use gnoblin_layers::InputPolicy;
 use gnoblin_lock::{Embargo, Lock, State as LockState};
 use gnoblin_output::{LayoutConfig, compute};
 use gnoblin_render::Mat4;
@@ -2256,7 +2257,18 @@ impl State {
     }
 
     /// Sets or clears the modal and damages the outputs it covers, so the change is drawn.
+    ///
+    /// Only a `ModalToOutput` layer takes input here. `Passive` and `Grab` layers have
+    /// no engine path yet, so a modal that declares either is refused and the current
+    /// modal stands, rather than being honoured under a policy it does not hold.
     pub(crate) fn set_modal(&mut self, modal: Option<Modal>) {
+        if let Some(modal) = modal
+            .as_ref()
+            .filter(|modal| modal.input() != InputPolicy::ModalToOutput)
+        {
+            log::warn!(area = "modal", policy = ?modal.input(), "refused a modal whose input policy the engine does not honour");
+            return;
+        }
         for output in [self.modal.as_ref(), modal.as_ref()]
             .into_iter()
             .flatten()

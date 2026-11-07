@@ -23,6 +23,8 @@ gnoblin-render = { path = "../gnoblin-render" }
 gnoblin-render-frame = { path = "../gnoblin-render-frame" }
 # The cursor providers and theme lookup the compositor reads its cursor settings from.
 gnoblin-cursor = { path = "../gnoblin-cursor" }
+# The layer model. The portal dialogs name the input policy of their modal layer.
+gnoblin-layers = { path = "../gnoblin-layers" }
 # The X11 supervisor and window policy. A session with X11 starts Xwayland under it;
 # a session without X11 never touches it.
 gnoblin-xwayland = { path = "../gnoblin-xwayland" }
