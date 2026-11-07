@@ -40,19 +40,19 @@ Counts cover the rows below, not every setting leaf. Leaf-level coverage of all 
 
 ## Configure: sections
 
-| Item                                 | Doc path:line                                | Status  | Evidence / gap                                                                                                              | Owner                        | Effort |
-| ------------------------------------ | -------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------ |
-| `frame-renderers`                    | docs/config/configure/frame_renderers.md     | PARTIAL | Parsed in gnoblin-config only. No runtime consumer found.                                                                   | Unowned                      | M      |
-| `layer-shell.preserve-active-window` | docs/config/configure/layer_shell.md         | MISSING | No consumer outside gnoblin-config.                                                                                         | design/layers.md [INFERENCE] | S      |
-| `touchpad-gestures`                  | docs/config/configure/touchpad_gestures.md   | BUILT   | Consumed at crates/gnoblin-input gesture.rs [INFERENCE].                                                                    | n/a                          | n/a    |
-| `location`                           | docs/config/configure/location.md            | BUILT   | crates/gnoblin-service-location lib.rs:163.                                                                                 | n/a                          | n/a    |
-| `logging`                            | docs/config/configure (logging)              | BUILT   | crates/gnoblin-compositor log_store.rs uses gnoblin_config::Logging.                                                        | n/a                          | n/a    |
-| `portals`                            | docs/config/configure/portals.md             | MISSING | No config hit in xdg-desktop-portal-gnoblin lib.rs [INFERENCE].                                                             | Unowned                      | M      |
-| `autostart`                          | docs/config/configure/autostart.md           | MISSING | No config to session wiring found [INFERENCE].                                                                              | Unowned                      | M      |
-| `auth.polkit_agent`                  | docs/config/configure/auth.md                | PARTIAL | Key is accepted in the legacy tree. Rust consumer not confirmed [INFERENCE].                                                | Unowned                      | S      |
-| `prompts`, `keyring`                 | docs/config/configure/prompts.md, keyring.md | PARTIAL | Read via environment in gnoblin-services [INFERENCE]. Not traced end to end.                                                | Unowned                      | S      |
-| `window-management`                  | docs/config/configure/window_management.md   | PARTIAL | crates/gnoblin-compositor/src/window_management.rs:62-101 maps 11 leaves plus TitlebarActions::of. The rest are not mapped. | Unowned                      | M      |
-| `keyboard` repeat                    | docs/config/configure/keyboard.md            | BUILT   | session_tables.rs:180-184.                                                                                                  | n/a                          | n/a    |
+| Item                                 | Doc path:line                              | Status  | Evidence / gap                                                                                                              | Owner                        | Effort |
+| ------------------------------------ | ------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------ |
+| `frame-renderers`                    | docs/config/configure/frame_renderers.md   | PARTIAL | Parsed in gnoblin-config only. No runtime consumer found.                                                                   | Unowned                      | M      |
+| `layer-shell.preserve-active-window` | docs/config/configure/layer_shell.md       | MISSING | No consumer outside gnoblin-config.                                                                                         | design/layers.md [INFERENCE] | S      |
+| `touchpad-gestures`                  | docs/config/configure/touchpad_gestures.md | BUILT   | Consumed at crates/gnoblin-input gesture.rs [INFERENCE].                                                                    | n/a                          | n/a    |
+| `location`                           | docs/config/configure/location.md          | BUILT   | crates/gnoblin-service-location lib.rs:163.                                                                                 | n/a                          | n/a    |
+| `logging`                            | docs/config/configure (logging)            | BUILT   | crates/gnoblin-compositor log_store.rs uses gnoblin_config::Logging.                                                        | n/a                          | n/a    |
+| `portals`                            | docs/config/configure/portals.md           | MISSING | No config hit in xdg-desktop-portal-gnoblin lib.rs [INFERENCE].                                                             | Unowned                      | M      |
+| `autostart`                          | docs/config/configure/autostart.md         | MISSING | No config to session wiring found [INFERENCE].                                                                              | Unowned                      | M      |
+| `auth.polkit_agent`                  | docs/config/configure/auth.md              | PARTIAL | Key is accepted in the legacy tree. Rust consumer not confirmed [INFERENCE].                                                | Unowned                      | S      |
+| `keyring`                            | docs/config/configure/keyring.md           | PARTIAL | Read via environment in gnoblin-services [INFERENCE]. Not traced end to end.                                                | Unowned                      | S      |
+| `window-management`                  | docs/config/configure/window_management.md | PARTIAL | crates/gnoblin-compositor/src/window_management.rs:62-101 maps 11 leaves plus TitlebarActions::of. The rest are not mapped. | Unowned                      | M      |
+| `keyboard` repeat                    | docs/config/configure/keyboard.md          | BUILT   | session_tables.rs:180-184.                                                                                                  | n/a                          | n/a    |
 
 ## Configure: input
 
@@ -87,5 +87,5 @@ Counts cover the rows below, not every setting leaf. Leaf-level coverage of all 
 ## Open checks
 
 - Confirm snake_case to kebab conversion in `gnoblin.configure` with a live test (not run; read-only audit).
-- Trace `prompts`, `keyring` and `auth.polkit_agent` consumers.
+- Trace `keyring` and `auth.polkit_agent` consumers.
 - Leaf-level review of all 21 configure pages was not completed. Rows above cover section level only.

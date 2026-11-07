@@ -41,7 +41,6 @@ current value. The default column applies only where the source defines one.
 | `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                    | `press` |
 | `gnoblin.shortcut.session.ended`          | `reason`       | `released`, `cancelled`                               | None    |
 | `gnoblin.input.gesture`                   | `phase`        | `begin`, `update`, `end`                              | None    |
-| `gnoblin.prompt.requested`                | `kind`         | `password`, `confirm`                                 | None    |
 | `gnoblin.window.activation-denied`        | `reason`       | `missing_context`, `invalid_context`, `stale_context` | None    |
 | `gnoblin.input.gesture`                   | `gesture`      | `swipe`, `pinch`, `hold`                              | None    |
 
@@ -139,20 +138,18 @@ families.
 
 #### Shell requests: OSD, pointer, location, and authentication
 
-| Event name                                 | Fields                                                                                                                                                                    | Dispatched when                                                        |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                                                                                                      | Mutter requests an OSD; a shell decides whether and how to display it. |
-| `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                                                                                                              | The user pressed the locate-pointer key; a listener shows the pointer. |
-| `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`                                                                                         | GeoClue asks Gnoblin to authorize an application's location request.   |
-| `gnoblin.location.authorization-finished`  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A location request ends with `allowed`, `denied` or `timeout`.         |
-| `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time`                                                                            | A program asks the session's polkit agent for authentication.          |
-| `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                                                                                                                        | The authentication check needs input from the user.                    |
-| `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                                                                                                                         | The authentication check has a line of text for the user.              |
-| `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                                                                                                                                | An authentication request ends.                                        |
-| `gnoblin.prompt.requested`                 | `request_id`, `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label`, `sequence`, `time` | A keyring or GPG prompt asks for a password or a confirmation.         |
-| `gnoblin.prompt.finished`                  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A keyring or GPG prompt ends.                                          |
+| Event name                                 | Fields                                                                                         | Dispatched when                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                           | Mutter requests an OSD; a shell decides whether and how to display it. |
+| `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                                   | The user pressed the locate-pointer key; a listener shows the pointer. |
+| `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`              | GeoClue asks Gnoblin to authorize an application's location request.   |
+| `gnoblin.location.authorization-finished`  | `request_id`, `result`, `sequence`, `time`                                                     | A location request ends with `allowed`, `denied` or `timeout`.         |
+| `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time` | A program asks the session's polkit agent for authentication.          |
+| `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                                             | The authentication check needs input from the user.                    |
+| `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                                              | The authentication check has a line of text for the user.              |
+| `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                                                     | An authentication request ends.                                        |
 
-In the Lua configuration, the `location`, `auth` and `prompt` events above, and
+In the Lua configuration, the `location` and `auth` events above, and
 `gnoblin.session.lock-requested`, also carry `request`: a
 [`Request`](/shell-api/requests) that you answer with methods instead of
 `request_id`.

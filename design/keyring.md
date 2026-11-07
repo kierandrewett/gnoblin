@@ -62,8 +62,8 @@ How it works:
 4. **Screen lock does not lock the store by default.** Locking it on every
    screen lock would ask the user again. The optional leaf
    `keyring.lock-on-screen-lock` (default `false`, **PROPOSED**) would lock it.
-   The name follows the schema's kebab-case section and field pattern, as in
-   `prompts.enabled`. `crates/gnoblin-config/schema/config.toml` has no
+   The name follows the schema's kebab-case section and field pattern.
+   `crates/gnoblin-config/schema/config.toml` has no
    `keyring` section yet; add one when the feature is built.
 
 The service holds the derived key in process memory for the session. A
@@ -144,7 +144,7 @@ section.
   name. Secret Service clients keep talking to the other provider. The two
   stores are then separate, and the consent text must say so.
 
-Decided 2026-11-07 (item 35, revised): a config leaf, `keyring.enabled`, a bool that defaults to `true`, decides whether Gnoblin runs its built-in keyring. The doc line reads: "Run Gnoblin's built-in keyring. Turn it off to use a keyring from another program, or none." Gnoblin does not need to know which other keyring exists, so the earlier provider-name design (`keyring.provider`) is removed with no alias. With `keyring.enabled = false` the services role does not request `org.freedesktop.secrets`, creates no store file or directory, runs no keyring code, and the portal does not export the Secret object, so the system's keyring answers Secret requests. `prompts.enabled` stays a separate bool: with the built-in keyring off, turning prompts on lets Gnoblin draw the dialogs of the system keyring. The matrix is in `docs/config/configure/keyring.md`.
+Decided 2026-11-07 (item 35, revised): a config leaf, `keyring.enabled`, a bool that defaults to `true`, decides whether Gnoblin runs its built-in keyring. The doc line reads: "Run Gnoblin's built-in keyring. Turn it off to use a keyring from another program, or none." Gnoblin does not need to know which other keyring exists, so the earlier provider-name design (`keyring.provider`) is removed with no alias. With `keyring.enabled = false` the services role does not request `org.freedesktop.secrets`, creates no store file or directory, runs no keyring code, and the portal does not export the Secret object, so the system's keyring answers Secret requests. The unlock prompt is not a config switch: the keyring asks for its password through the `prompt.secret` slot. The config page is `docs/config/configure/keyring.md`.
 
 ## Secret Service API
 
@@ -152,8 +152,7 @@ The service implements these methods on the session bus at
 `org.freedesktop.secrets`, as the specification defines them.
 
 - `Service.OpenSession(algorithm, input)`: accepts `dh-ietf1024-sha256-aes128-cbc-pkcs7`
-  and refuses `plain`. The DH group is the 1024-bit Oakley group 2 (RFC 2409),
-  the same arithmetic the gcr adapter uses, with a different constant.
+  and refuses `plain`. The DH group is the 1024-bit Oakley group 2 (RFC 2409).
 - `Service.SearchItems`, `Service.Unlock`, `Service.Lock`, `Service.GetSecrets`:
   the store's lock state is per collection. `Unlock` returns a `Prompt` path,
   or `/` when no prompt is needed.
@@ -192,8 +191,8 @@ written to disk.
 - **Portal side:** `xdg-desktop-portal-gnoblin` routes `Secret` requests to the
   services role through the usual portal path. The compositor draws the consent
   step.
-- **Dependencies:** `rusqlite` with `bundled-sqlcipher`, and the crates the gcr
-  adapter already needs (`sha2`, `hkdf`, `aes`, `cbc`, `num-bigint`,
+- **Dependencies:** `rusqlite` with `bundled-sqlcipher`, and the crates the DH
+  session needs (`sha2`, `hkdf`, `aes`, `cbc`, `num-bigint`,
   `getrandom`). The crate does not exist yet.
 
 ## Failure modes

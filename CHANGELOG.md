@@ -218,6 +218,14 @@ console has no runtime`. The generic call that accepted one table for any unknow
   fails with `true` or `false` when no output has a privacy screen. A newer value replaces an older
   one, whoever set it.
 
+### Removed
+
+- The external prompter for keyring unlock passwords is removed. The built-in keyring asks for its unlock password
+  through the `prompt.secret` slot, like any passphrase request, and fails closed when no shell claims the slot. See
+  `docs/shell-api/passphrase-prompts.md`.
+- The `prompts` configuration section and its `prompts.enabled` key are removed. A configuration that sets them is
+  refused when it loads. `keyring.enabled` still turns the built-in keyring on and off.
+
 ### Added
 
 - `gnoblin.input.grab(options?)` takes the keyboard and returns a live `Grab` (bridge API 1.91). See

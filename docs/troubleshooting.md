@@ -316,10 +316,9 @@ end)
 Other windows from background apps stay behind the focused window. Check them
 with `gnoblinctl window list --json`; a hidden window has `"focused": false`.
 
-Password dialogs from the keyring or GPG are the common case. With `prevent` they
-open on top but without focus, so typing does nothing until you click the
-dialog. Remove the `prevent` setting to use the default, `allow`, or show these
-prompts in your shell with the [prompt broker](/config/configure/prompts).
+Keyring password dialogs are the common case. With `prevent` they open on top
+but without focus, so typing does nothing until you click the dialog. Remove the
+`prevent` setting to use the default, `allow`.
 
 The starter config uses `allow`, which lets an app take focus when it opens a
 window. A background app can then interrupt your typing. To keep focus where it

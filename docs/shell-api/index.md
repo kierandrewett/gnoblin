@@ -26,7 +26,7 @@ The supervised Lua runtime is available in the standalone Gnoblin session. Its A
 - [Session and runtime health](/shell-api/session-runtime): reload, session, and worker state.
 - [Privacy and location](/shell-api/privacy): privacy state and location policy.
 - [Authentication prompts](/shell-api/authentication): polkit authentication requests.
-- [Keyring and GPG prompts](/shell-api/passphrase-prompts): secret prompts.
+- [Keyring passphrase prompts](/shell-api/passphrase-prompts): the keyring's unlock password request.
 - [Appearance and animations](/shell-api/appearance-animations): color scheme and animation controls.
 - [Shared types](/shell-api/types) and [errors and results](/shell-api/errors).
 

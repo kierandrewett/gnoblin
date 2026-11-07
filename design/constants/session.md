@@ -187,10 +187,10 @@ Note on idle defaults: the screen saver service itself has no idle timeout. The 
 
 ### 2.11 Services role (gnoblin-services)
 
-| Constant (location)            | Value  | Q1  | Q2                                                                                                                                 | Q3                                                                     | Verdict                                                         | Risk   | Effort |
-| ------------------------------ | ------ | --- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------- | ------ | ------ |
-| `PUMP_TIMEOUT` (role.rs:62)    | 100 ms | N   | No                                                                                                                                 | Internal loop tick                                                     | KEEP                                                            | low    | S      |
-| `PROMPT_DEADLINE` (role.rs:68) | 120 s  | Y   | Comment says it follows the gcr-prompter / polkit default. [INFERENCE] Not verified against the polkit or gcr source in this audit | Derive from the polkit agent timeout if one is exposed; otherwise keep | CONFIGURE: `prompt.timeout-s` (int, default 120, range 10..600) | medium | M      |
+| Constant (location)            | Value  | Q1  | Q2                                                                                                                           | Q3                                        | Verdict | Risk | Effort |
+| ------------------------------ | ------ | --- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------- | ---- | ------ |
+| `PUMP_TIMEOUT` (role.rs:62)    | 100 ms | N   | No                                                                                                                           | Internal loop tick                        | KEEP    | low  | S      |
+| `PROMPT_DEADLINE` (role.rs:69) | 120 s  | Y   | Comment cited a gcr-prompter default; that adapter is gone. [INFERENCE] Not verified against the polkit source in this audit | Keep as an internal bound; no config leaf | KEEP    | low  | S      |
 
 ### 2.12 Binary (gnoblin)
 
@@ -216,14 +216,13 @@ Ranked by user value over effort. Each is a proposal, not a change made here.
 
 1. **Log store retention defaults.** `logging.store-max-age-days` and `logging.store-max-size-mb` default to 0 (no limit). A user will fill disk. Propose a non-zero default (for example 30 days or 512 MB) with a note in docs. Risk low, effort S. [config.toml:2090-2103]
 2. **Session ready timeout.** `DEFAULT_READY_WITHIN` (plan.rs:13) is 10 s, with no user leaf. Expose `session.ready-timeout-s`. Risk medium, effort M. Verify the header value first.
-3. **Prompt deadline.** `PROMPT_DEADLINE` (services role.rs:68) is 120 s. Expose `prompt.timeout-s`. Risk medium, effort M.
-4. **Store quota.** `DEFAULT_QUOTA` (store lib.rs:42) is 16 MiB with no leaf. Expose `store.quota-mb`. Risk low, effort S.
-5. **Journal datagram cap.** `MAX_DATAGRAM` (journal.rs:44) forces the wrong path for large entries. Remove the cap and retry via memfd on `EMSGSIZE`, per the protocol. Risk medium, effort M.
-6. **Merge duplicate busy timeouts.** Done: `BUSY_TIMEOUT` now lives once in `gnoblin-store/src/kv.rs:42`, and the log store uses it there. `READ_BUSY_TIMEOUT` is gone. Risk low, effort S.
-7. **Library constants for errno and signal.** `ENOBUFS` = 105 (journal.rs:56) and `SIGTERM` = 15 (supervisor.rs:723) should come from `libc`. Risk low, effort S.
-8. **Remove `DAY_MS`.** Replace with `Duration::from_secs(86_400)` (retention.rs:8). Risk low, effort S.
-9. **Remove duplicate `DEFAULT_FILTER`.** `init/options.rs:26` duplicates `DEFAULT_LEVEL` (filter.rs:31). One source, read from config. Risk low, effort S.
-10. **Secret-name list.** `SECRET_NAMES` (redact.rs:15) may need user additions. Expose `logging.redact-extra` as a list. Risk medium, effort M.
+3. **Store quota.** `DEFAULT_QUOTA` (store lib.rs:42) is 16 MiB with no leaf. Expose `store.quota-mb`. Risk low, effort S.
+4. **Journal datagram cap.** `MAX_DATAGRAM` (journal.rs:44) forces the wrong path for large entries. Remove the cap and retry via memfd on `EMSGSIZE`, per the protocol. Risk medium, effort M.
+5. **Merge duplicate busy timeouts.** Done: `BUSY_TIMEOUT` now lives once in `gnoblin-store/src/kv.rs:42`, and the log store uses it there. `READ_BUSY_TIMEOUT` is gone. Risk low, effort S.
+6. **Library constants for errno and signal.** `ENOBUFS` = 105 (journal.rs:56) and `SIGTERM` = 15 (supervisor.rs:723) should come from `libc`. Risk low, effort S.
+7. **Remove `DAY_MS`.** Replace with `Duration::from_secs(86_400)` (retention.rs:8). Risk low, effort S.
+8. **Remove duplicate `DEFAULT_FILTER`.** `init/options.rs:26` duplicates `DEFAULT_LEVEL` (filter.rs:31). One source, read from config. Risk low, effort S.
+9. **Secret-name list.** `SECRET_NAMES` (redact.rs:15) may need user additions. Expose `logging.redact-extra` as a list. Risk medium, effort M.
 
 ## 4. Proposed config leaves
 
@@ -235,7 +234,6 @@ Defaults equal current values unless stated.
 | ------------------------- | --------- | ---- | ------- | ---------- | --------------------------------- |
 | `store.quota-mb`          | int       | MiB  | 16      | 1..1048576 | `DEFAULT_QUOTA` store lib.rs:42   |
 | `session.ready-timeout-s` | int       | s    | 10      | 1..300     | `DEFAULT_READY_WITHIN` plan.rs:13 |
-| `prompt.timeout-s`        | int       | s    | 120     | 10..600    | `PROMPT_DEADLINE` role.rs:68      |
 | `logging.redact-extra`    | text list | n/a  | empty   | n/a        | `SECRET_NAMES` redact.rs:15       |
 
 Proposed default change (not an add): `logging.store-max-size-mb` default 0 to a non-zero value. Kieran to choose (see section 6).
@@ -260,7 +258,7 @@ None proposed from this group. Lua already gets the services through the session
 ## 6. Needs Kieran
 
 1. **Log retention default.** Should the default store cap be 0 (no limit, today), or a non-zero default? Affects disk use for every install. Choose a number and whether it applies to Bingux as well.
-2. **Ready and prompt timeouts as leaves.** Expose `session.ready-timeout-s` and `prompt.timeout-s` in core config, or leave them internal until someone asks? Medium risk either way.
+2. **Ready timeout as a leaf.** Expose `session.ready-timeout-s` in core config, or leave it internal until someone asks? Medium risk either way.
 3. **Secret-name extras.** Should users extend the redaction list in core config, or is that a Bingux-facing setting? Affects where the leaf lives.
 4. **Store quota leaf.** Core config or Bingux? The store is used by both.
 
@@ -276,7 +274,6 @@ None proposed from this group. Lua already gets the services through the session
 ## Not verified in this audit
 
 - `DEFAULT_READY_WITHIN` header value in `gnoblin-runtime-internal.h`: not read.
-- `PROMPT_DEADLINE` against gcr-prompter or polkit source: not read.
 - Idle timeout leaves in `idle.toml` and `gnoblin-idle` unit: not read in detail.
 - Polkit constants: names as recalled, not fetched from polkit docs.
 - No Rust was built or run, per the assignment.

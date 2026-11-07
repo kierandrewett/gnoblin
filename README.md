@@ -43,11 +43,11 @@ Gnoblin is built on Mutter. It does not ship a desktop shell UI.
   Wayland get composed text from engines such as Russian transliteration or
   Japanese. It needs a running `ibus-daemon` and an installed engine. See
   [type with an input method](docs/config/configure/input_sources.md#type-with-an-input-method).
-- **Prompts for your shell.** Gnoblin can act as the polkit agent and can
-  serve keyring and GPG passphrase prompts. Each request reaches Lua as an
-  event, so your shell draws the dialog and sends the answer back. Both are
+- **Keyring prompts for your shell.** Gnoblin can act as the polkit agent and can
+  ask your shell to draw the keyring's unlock dialog. Each request reaches Lua
+  as an event, so your shell draws the dialog and sends the answer back. Both are
   opt-in. See [authentication](docs/shell-api/authentication.md) and
-  [passphrase prompts](docs/shell-api/passphrase-prompts.md).
+  [keyring passphrase prompts](docs/shell-api/passphrase-prompts.md).
 - **Portal routing.** Gnoblin routes portal interfaces to the backend you choose.
   It does not manage app permissions; the selected backend decides them. The
   Gnoblin backend shows its normal consent dialogs.

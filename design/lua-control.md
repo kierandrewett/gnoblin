@@ -294,9 +294,9 @@ Other listed actions have direct runtime equivalents: focus history/policy, relo
 
 - **Runtime status:** Config/reload for policy. Runtime APIs can inspect policy, answer pending authorization, and revoke individual grants; they do not edit these policy declarations.
 
-### `location.enabled`, `location.max_accuracy`, `auth.polkit_agent`, `prompts.enabled`
+### `location.enabled`, `location.max_accuracy`, `auth.polkit_agent`
 
-- **Runtime status:** Config/reload only, aside from answering an already-pending authorization, authentication, or passphrase-prompt request.
+- **Runtime status:** Config/reload only, aside from answering an already-pending authorization, authentication, or passphrase request.
 
 ### `xwayland.allow_grabs`, `grab_access_rules`, `disable_extensions`, `allow_byte_swapped_clients`, `scaling_factor`
 

@@ -507,7 +507,6 @@ gnoblin/
       gnoblin-compat-dbus-gnome-shell-introspect/  org.gnome.Shell.Introspect
       gnoblin-compat-dbus-gnome-shell-screenshot/  org.gnome.Shell.Screenshot
       gnoblin-compat-dbus-gnome-session-manager/  org.gnome.SessionManager
-      gnoblin-compat-dbus-gnome-keyring-prompter/  org.gnome.keyring.SystemPrompter and PrivatePrompter, for gcr callers
       gnoblin-compat-wayland-gtk-shell1/          gtk_shell1 Wayland redirect (compositor side)
       gnoblin-compat-gtk-dconf-settings/  dconf layer for GTK (D15)
       gnoblin-compat-qt-portal-settings/  QT_QPA_PLATFORMTHEME for Qt (D15)
@@ -517,7 +516,7 @@ gnoblin/
     gnoblin-lua-sandbox/      mlua VM construction, instruction hook and memory limits, stdlib subset; a separate crate until the layout host lands, then folds into gnoblin-lua
     gnoblin-wasm/             WASM module host (wasmtime): WIT host API from the schema, capabilities, deadlines (D6); WASM extension tier (D22)
     gnoblin-session/          guardian: supervision, systemd and logind, environment, autostart, logs, recovery
-    gnoblin-services/         services role: serves the agents and links the GeoClue agent (`location_agent`); polkit, prompter, PipeWire privacy, inhibit, idle
+    gnoblin-services/         services role: serves the agents and links the GeoClue agent (`location_agent`); polkit, keyring, PipeWire privacy, inhibit, idle
     gnoblin-service-core/     the services role's shared machinery: slot registry, request state machine, the connection agents offer through
     gnoblin-service-testkit/  private message bus for one test (dev-dependency only)
     gnoblin-service-polkit/   polkit authentication agent (D-Bus client of the system bus)
@@ -892,7 +891,7 @@ These run as parallel lanes and merge as each reaches its gate.
 - Session hosting (D4): production nested backend, `gnoblin_session_host_v1` and
   protection covers. bsm's manager runs against a host Gnoblin, and bsm's
   security scenarios (`security-scenarios-results.md` in Bingux) pass on it.
-- Services role: polkit, GeoClue, prompter, PipeWire privacy, ScreenSaver,
+- Services role: polkit, GeoClue, keyring, PipeWire privacy, ScreenSaver,
   inhibit, logind, as providers in the slot model.
 - Compatibility adapters with the defaults chosen in D13, each proved by its
   real consumer against both targets.
@@ -1395,23 +1394,10 @@ request when the caller goes away.
 
 The session object lists each slot with its provider and state, so a shell,
 `gnoblinctl` and the recovery overlay can show what is missing. This replaces
-today's separate switches (`auth.polkit_agent`, `prompts.enabled`,
+today's separate switches (`auth.polkit_agent`,
 `location.enabled`) with one model.
 
-Gnoblin runs its own keyring service (D27), which holds the Secret store. The Secret portal serves per-app secrets from that store and holds none itself. The
-`prompt.secret` slot only shows a passphrase or confirm prompt and returns the
-answer. Programs reach it through an adapter:
-
-| Caller                                   | How it reaches `prompt.secret`                                    | Without the adapter                  |
-| ---------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
-| gnome-keyring, `pinentry-gnome3` (gcr)   | `gnoblin-compat-dbus-gnome-keyring-prompter` serves the gcr names | GNOME's `gcr-prompter`, if installed |
-| KeePassXC, KWallet, oo7 (Secret Service) | none; they draw their own unlock prompt                           | unchanged                            |
-| GPG with `pinentry-qt`, `-gtk`, `-tty`   | none; pinentry draws its own prompt                               | unchanged                            |
-
-The gcr adapter speaks the prompter's D-Bus interface through `zbus`, so Gnoblin
-no longer links `gcr-4` [INFERENCE: check that the interface is stable enough to
-serve without libgcr]. A distribution that ships no gcr callers leaves the crate
-out.
+Gnoblin runs its own keyring service (D27), which holds the Secret store. The Secret portal serves per-app secrets from that store and holds none itself. The `prompt.secret` slot only shows a passphrase or confirm prompt and returns the answer. The keyring's unlock prompt uses that slot too. No other program reaches it: KeePassXC, KWallet and oo7 draw their own unlock prompt, and GPG's pinentry draws its own prompt.
 
 ### Portals
 

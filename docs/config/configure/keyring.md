@@ -40,19 +40,6 @@ The store lives in `$XDG_DATA_HOME/gnoblin/keyring.db`, or under
 `$HOME/.local/share/gnoblin/` when `XDG_DATA_HOME` is unset. It stays locked
 until the login password reaches it.
 
-## Keyring and prompts together
-
-`keyring.enabled` and `prompts.enabled` are independent. The four combinations:
-
-| `keyring.enabled` | `prompts.enabled` | Result                                                                                      | Test                                      |
-| ----------------- | ----------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `true`            | `false`           | Gnoblin serves the Secret Service and draws no prompter dialogs.                            | `matrix_built_in_keyring_on_prompts_off`  |
-| `true`            | `true`            | Gnoblin serves the Secret Service and also takes the prompter role.                         | `matrix_built_in_keyring_on_prompts_on`   |
-| `false`           | `false`           | Gnoblin serves neither. The system keyring answers everything.                              | `matrix_built_in_keyring_off_prompts_off` |
-| `false`           | `true`            | The system keyring answers. Gnoblin draws the system keyring's dialogs (gcr prompter role). | `matrix_built_in_keyring_off_prompts_on`  |
-
-The tests are in `crates/gnoblin-config/src/keyring.rs`.
-
 ## When a change applies
 
 Gnoblin reads `keyring.enabled` when the services role starts. A change takes
