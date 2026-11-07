@@ -25,7 +25,7 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use glow::HasContext;
-use gnoblin_log::debug_in;
+
 use smithay::backend::renderer::Texture as _;
 use smithay::backend::renderer::gles::{GlesError, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
@@ -36,6 +36,8 @@ use gnoblin_types::{Rect, Size};
 use crate::render::RenderError;
 use crate::render::shader::uniforms::{UniformLayout, Uniforms};
 use crate::render::shader::{ShaderError, Stage};
+
+use crate::log;
 
 /// A driver failure, before it is known which line of a source it came from.
 pub(crate) struct CompileFailure {
@@ -146,7 +148,7 @@ impl Device {
                 // and the one name created here is stored in `Device`, which the context
                 // outlives.
                 let name = gl.create_texture().map_err(|error| {
-                    debug_in!("backend", %error, "[render] no white texture for the GLES renderer");
+                    log::debug!(%error, "[render] no white texture for the GLES renderer");
                     RenderError::Unavailable
                 })?;
                 gl.bind_texture(glow::TEXTURE_2D, Some(name));
@@ -265,8 +267,7 @@ impl Device {
             // The shaders are written so that the fragment stage is the only one with a
             // uniform block; a second block would be a program that silently ignored half of
             // its uniforms.
-            debug_in!(
-                "backend",
+            log::debug!(
                 blocks,
                 "[render] a pass declares an unexpected number of uniform blocks"
             );
@@ -298,7 +299,7 @@ impl Device {
                 // SAFETY: the name created here belongs to this context and is stored in the
                 // framebuffer that `framebuffer` builds over it, which the context outlives.
                 let texture = gl.create_texture().map_err(|error| {
-                    debug_in!("backend", %error, "[render] no target texture");
+                    log::debug!(%error, "[render] no target texture");
                     RenderError::Unavailable
                 })?;
                 gl.bind_texture(glow::TEXTURE_2D, Some(texture));
@@ -347,7 +348,7 @@ impl Device {
                 // SAFETY: every name created here belongs to this context and is stored in the
                 // returned `Framebuffer`, which the context outlives.
                 let framebuffer = gl.create_framebuffer().map_err(|error| {
-                    debug_in!("backend", %error, "[render] no target framebuffer");
+                    log::debug!(%error, "[render] no target framebuffer");
                     RenderError::Unavailable
                 })?;
                 gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
@@ -361,7 +362,7 @@ impl Device {
                 // The depth buffer is read only by a frame that draws in three dimensions; a flat
                 // frame never enables the depth test.
                 let depth = gl.create_renderbuffer().map_err(|error| {
-                    debug_in!("backend", %error, "[render] no target depth buffer");
+                    log::debug!(%error, "[render] no target depth buffer");
                     RenderError::Unavailable
                 })?;
                 gl.bind_renderbuffer(glow::RENDERBUFFER, Some(depth));
@@ -379,12 +380,7 @@ impl Device {
                 gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
                 gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                 if status != glow::FRAMEBUFFER_COMPLETE {
-                    debug_in!(
-                        "backend",
-                        width,
-                        height,
-                        "[render] the target framebuffer is incomplete"
-                    );
+                    log::debug!(width, height, "[render] the target framebuffer is incomplete");
                     return Err(RenderError::Unavailable);
                 }
                 Ok(Framebuffer {
@@ -700,7 +696,7 @@ impl Device {
                 // SAFETY: the name belongs to this context and is stored in the returned texture;
                 // the slice is `width * height * 4` bytes, which the caller guarantees.
                 let name = gl.create_texture().map_err(|error| {
-                    debug_in!("backend", %error, "[render] no test texture");
+                    log::debug!(%error, "[render] no test texture");
                     RenderError::Unavailable
                 })?;
                 gl.bind_texture(glow::TEXTURE_2D, Some(name));
@@ -752,13 +748,13 @@ fn compile(gl: &glow::Context, vertex: bool, source: &str) -> Result<glow::Shade
 
 /// The one render failure for a lost context, logged where it happened.
 fn context_lost(error: GlesError) -> RenderError {
-    debug_in!("backend", ?error, "[render] the GLES context is not current");
+    log::debug!(?error, "[render] the GLES context is not current");
     RenderError::Failed
 }
 
 /// A lost context while compiling, which is a link failure with nothing to point at.
 fn context_compile_lost(error: GlesError) -> CompileFailure {
-    debug_in!("backend", ?error, "[render] the GLES context is not current");
+    log::debug!(?error, "[render] the GLES context is not current");
     CompileFailure {
         stage: Stage::Link,
         log: "the GLES context is not current".to_owned(),
@@ -792,7 +788,7 @@ impl Program {
     /// failed pack of those would be a bug in the layout rather than in a caller's value.
     pub(crate) fn pack_fixed(&self, uniforms: &Uniforms, out: &mut Vec<u8>) {
         if let Err(error) = self.layout.pack(uniforms, &[], out) {
-            debug_in!("backend", %error, "[render] an effect pass failed to pack its uniforms");
+            log::debug!(%error, "[render] an effect pass failed to pack its uniforms");
         }
     }
 

@@ -45,7 +45,6 @@ use std::collections::VecDeque;
 use std::io;
 use std::rc::Rc;
 
-use gnoblin_log::{debug_in, info_in, warn_in};
 use smithay::backend::input::{
     AbsolutePositionEvent, Axis, Event, GesturePinchUpdateEvent, GestureSwipeUpdateEvent, InputEvent as BackendEvent,
     KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent, TouchEvent,
@@ -61,6 +60,8 @@ use crate::{InputEvent, InputSource, TouchPhase};
 
 pub use map::{DeviceEvent, Mapper, Screen};
 pub use settings::{Accel, Applier, ButtonMap, Click, DeviceKind, DeviceSettings, Scroll, Setting};
+
+use crate::log;
 
 /// One event libinput produced, as Smithay's device-agnostic wrapper.
 type Queued = BackendEvent<LibinputInputBackend>;
@@ -148,14 +149,14 @@ impl Libinput {
         let interface = LibinputSessionInterface::from(session.clone());
         let mut context = libinput::Libinput::new_with_udev(interface);
         context.udev_assign_seat(&seat).map_err(|error| {
-            warn_in!("backend", seat = %seat, ?error, "[input] libinput refused the seat");
+            log::warn!(seat = %seat, ?error, "[input] libinput refused the seat");
             LibinputError::Seat(format!("{error:?}"))
         })?;
         // The adapter is what turns libinput's own events into Smithay's; it is created here
         // and its events are drained through the loop source rather than by this module, so
         // the reading happens on the compositor's own thread and in its own iteration.
         let adapter = LibinputInputBackend::new(context);
-        info_in!("backend", seat = %seat, "[input] libinput is ready");
+        log::info!(seat = %seat, "[input] libinput is ready");
         Ok(Self {
             queue: Rc::new(RefCell::new(VecDeque::new())),
             mapper: Mapper::new(),
@@ -263,7 +264,7 @@ impl Libinput {
     fn gesture(&mut self, device: &libinput::Device, kind: RawGestureKind, begin: bool, end: bool, value: f64) {
         let sysname = device.sysname().to_string();
         let Some(known) = self.devices.iter().find(|known| known.sysname == sysname) else {
-            warn_in!("backend", sysname = %sysname, "[input] a gesture from a device that was never announced");
+            log::warn!(sysname = %sysname, "[input] a gesture from a device that was never announced");
             return;
         };
         self.raw.push_back(RawEvent::Gesture {
@@ -287,7 +288,7 @@ impl Libinput {
                     name: device.name().to_string(),
                     kind,
                 };
-                debug_in!("backend", name = %record.name, ?kind, "[input] a device arrived");
+                log::debug!(name = %record.name, ?kind, "[input] a device arrived");
                 produced.push(InputEvent::DeviceAdded { id: record.id, kind });
                 self.next = self.next.saturating_add(1);
                 self.devices.push(record);
@@ -300,7 +301,7 @@ impl Libinput {
                     .find(|known| known.sysname == sysname)
                     .map(|known| known.id);
                 self.devices.retain(|known| known.sysname != sysname);
-                info_in!("backend", sysname = %sysname, "[input] a device went away");
+                log::info!(sysname = %sysname, "[input] a device went away");
                 produced.extend(self.mapper.cancel());
                 if let Some(id) = id {
                     produced.push(InputEvent::DeviceRemoved { id });
@@ -411,7 +412,7 @@ impl Libinput {
             | BackendEvent::TabletToolButton { .. }
             | BackendEvent::SwitchToggle { .. } => {}
             other => {
-                debug_in!("backend", ?other, "[input] an event this seat does not use");
+                log::debug!(?other, "[input] an event this seat does not use");
             }
         }
         self.ready.extend(produced);

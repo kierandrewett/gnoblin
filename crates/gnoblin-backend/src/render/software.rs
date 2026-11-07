@@ -55,7 +55,6 @@
 //!    and the composer asks for full damage, so the next frame repaints everything:
 //!    `a_resize_replaces_the_buffer`.
 
-use gnoblin_log::warn_in;
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::pixman::{PixmanRenderer, PixmanTarget, PixmanTexture};
 use smithay::backend::renderer::{
@@ -71,6 +70,8 @@ use crate::render::RenderError;
 use crate::render::frame::{Layer, OutputFrame, Overlay, Surface};
 use crate::render::geometry::physical_rect;
 use crate::render::image::Image;
+
+use crate::log;
 
 /// The colour format of the offscreen buffer.
 ///
@@ -136,7 +137,7 @@ impl Software {
             });
         }
         let mut renderer = PixmanRenderer::new().map_err(|error| {
-            warn_in!("backend", ?error, "[render] the pixman renderer could not be created");
+            log::warn!(?error, "[render] the pixman renderer could not be created");
             RenderError::Unavailable
         })?;
         let buffer = create_buffer(&mut renderer, physical)?;
@@ -512,8 +513,7 @@ fn create_buffer(renderer: &mut PixmanRenderer, physical: Size) -> Result<Pixman
             PhysicalSize::from((physical.width as i32, physical.height as i32)),
         )
         .map_err(|error| {
-            warn_in!(
-                "backend",
+            log::warn!(
                 ?error,
                 width = physical.width,
                 height = physical.height,
@@ -532,8 +532,7 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
     let texture = renderer
         .import_shm_buffer(&surface.buffer, None, &[])
         .map_err(|error| {
-            warn_in!(
-                "backend",
+            log::warn!(
                 ?error,
                 "[render] a client buffer could not be imported; the layer is skipped"
             );
@@ -556,8 +555,7 @@ fn import(renderer: &mut PixmanRenderer, surface: &Surface, scratch: &mut Vec<u8
             false,
         )
         .map_err(|error| {
-            warn_in!(
-                "backend",
+            log::warn!(
                 ?error,
                 "[render] a tinted layer could not be made; the layer is skipped"
             );
@@ -579,11 +577,7 @@ fn import_overlay(renderer: &mut PixmanRenderer, image: &Image) -> Option<Pixman
             false,
         )
         .map_err(|error| {
-            warn_in!(
-                "backend",
-                ?error,
-                "[render] the overlay could not be imported; it is not drawn"
-            );
+            log::warn!(?error, "[render] the overlay could not be imported; it is not drawn");
         })
         .ok()
 }
@@ -648,7 +642,7 @@ fn tinted(colour: Color, tint: Color) -> Color {
 
 /// The one render failure for a pixman error, logged where it happens.
 fn failed(error: impl std::fmt::Debug) -> RenderError {
-    warn_in!("backend", ?error, "[render] the software renderer refused an operation");
+    log::warn!(?error, "[render] the software renderer refused an operation");
     RenderError::Failed
 }
 

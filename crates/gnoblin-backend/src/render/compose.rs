@@ -57,7 +57,6 @@
 
 use std::collections::BTreeMap;
 
-use gnoblin_log::debug_in;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::utils::Transform;
 
@@ -68,6 +67,8 @@ use gnoblin_render::{
 use gnoblin_types::{OutputId, Rect, RectF, Size, Vec3, WindowId};
 
 use crate::render::frame::{Layer, Model, OutputFrame, Surface};
+
+use crate::log;
 
 /// How long a placement, move or other visual change takes to reach its target.
 const MOTION_MS: u32 = 200;
@@ -552,7 +553,7 @@ impl Composer {
                 // scene's damage already covers the rotated bounds, so skipping the
                 // layer repaints those pixels with the background rather than leaving
                 // stale ones.
-                debug_in!("backend", %window, "[render] a rotated window is not drawn by the software renderer");
+                log::debug!(%window, "[render] a rotated window is not drawn by the software renderer");
                 continue;
             }
             frame.push_layer(Layer::Surface(Surface {

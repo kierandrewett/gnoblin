@@ -35,6 +35,8 @@ use super::{Portal, Reply, await_consent, export_request, refused, remove, sende
 use crate::backends::{ScreenshotOptions, StreamRequest};
 use crate::consent::{ConsentOutcome, Interface, NewSession, PortalCapability};
 
+use crate::log;
+
 /// `types` bit: an existing monitor.
 pub const SOURCE_MONITOR: u32 = 1;
 /// `types` bit: one application window.
@@ -138,7 +140,7 @@ impl Screenshot {
         };
         let _ = self.portal.close_session(&caller, &path);
         let _ = remove(&self.portal.connection, &path).await;
-        gnoblin_log::info_in!("portal", app = %app_id, response = reply.0, "a screenshot request finished");
+        log::info!(app = %app_id, response = reply.0, "a screenshot request finished");
         Ok(reply)
     }
 
@@ -263,7 +265,7 @@ impl ScreenCast {
         let _ = remove(&self.portal.connection, handle.as_str()).await;
         let mut results = BTreeMap::new();
         results.insert("session_id".to_owned(), text(&path));
-        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "a screen cast session was created");
+        log::info!(app = %app_id, session = %path, "a screen cast session was created");
         Ok((0, results))
     }
 
@@ -294,7 +296,7 @@ impl ScreenCast {
             selection
         };
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        gnoblin_log::info_in!("portal", app = %app_id,
+        log::info!(app = %app_id,
         session = %path,
         types = narrowed.get("types").map(|value| format!("{value:?}")),
         "a screen cast source selection was recorded");
@@ -364,7 +366,7 @@ impl ScreenCast {
             Err(refusal) => return Err(refusal),
         };
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        gnoblin_log::info_in!("portal", app = %app_id, session = %path, response = reply.0, "a screen cast start finished");
+        log::info!(app = %app_id, session = %path, response = reply.0, "a screen cast start finished");
         Ok(reply)
     }
 
@@ -506,7 +508,7 @@ pub fn streams(streams: &[(u32, BTreeMap<String, OwnedVariant>)]) -> OwnedVarian
         let dictionary: std::collections::HashMap<String, OwnedVariant> = properties.clone().into_iter().collect();
         let entry = Structure::from((*node, dictionary));
         if let Err(error) = array.append(Variant::Structure(entry)) {
-            gnoblin_log::warn_in!("portal", %error, "a stream could not be added to the reply");
+            log::warn!(%error, "a stream could not be added to the reply");
         }
     }
     OwnedVariant::try_from(Variant::Array(array)).expect("an array of streams is a value")

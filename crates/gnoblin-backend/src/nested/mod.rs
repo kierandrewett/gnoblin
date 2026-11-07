@@ -89,7 +89,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use gnoblin_log::{debug_in, info_in, warn_in};
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use wayland_client::backend::WaylandError;
@@ -111,6 +110,8 @@ use crate::{Backend, BackendError, BackendEvent, Host, InputSource, Output, Pres
 
 use handler::Handler;
 use surface::physical_extent;
+
+use crate::log;
 
 /// The size a nested output starts at when the parent leaves the size to the session.
 ///
@@ -376,7 +377,7 @@ impl Nested {
             readable: Arc::new(AtomicBool::new(false)),
         };
         backend.await_first_configures()?;
-        info_in!("backend", socket = %config.socket.display(), outputs = backend.outputs.len(), "[nested] connected to the parent");
+        log::info!(socket = %config.socket.display(), outputs = backend.outputs.len(), "[nested] connected to the parent");
         Ok(backend)
     }
 
@@ -489,7 +490,7 @@ impl Nested {
     /// thing to a session: there is nothing left to draw on.
     fn fail(&mut self, error: impl std::fmt::Debug) {
         if self.handler.table().is_connected() {
-            warn_in!("backend", ?error, "[nested] the connection to the parent ended");
+            log::warn!(?error, "[nested] the connection to the parent ended");
         }
         self.handler.table_mut().disconnected();
     }
@@ -545,7 +546,7 @@ impl Nested {
                 return;
             }
             Some(Err(error)) => {
-                warn_in!("backend", ?error, "[nested] a configure was refused");
+                log::warn!(?error, "[nested] a configure was refused");
                 return;
             }
             None => {}
@@ -558,22 +559,19 @@ impl Nested {
             return;
         };
         let Some(format) = self.handler.format() else {
-            warn_in!(
-                "backend",
-                "[nested] the parent and this session agree on no shared-memory format"
-            );
+            log::warn!("[nested] the parent and this session agree on no shared-memory format");
             return;
         };
         let qh = self.queue.handle();
         match NestedTarget::new(&qh, &self.handler.shm, format, surface, viewport, index, output.clone()) {
             Ok(target) => {
-                debug_in!("backend", connector = %output.connector, "[nested] an output connected");
+                log::debug!(connector = %output.connector, "[nested] an output connected");
                 if let Some(slot) = self.targets.get_mut(index) {
                     *slot = Some(target);
                 }
                 self.pending.push(BackendEvent::OutputConnected(output));
             }
-            Err(error) => warn_in!("backend", ?error, "[nested] the output could not be created"),
+            Err(error) => log::warn!(?error, "[nested] the output could not be created"),
         }
     }
 

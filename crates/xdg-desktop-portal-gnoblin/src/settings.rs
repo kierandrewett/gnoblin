@@ -43,6 +43,8 @@ use std::collections::BTreeMap;
 
 use gnoblin_model::{Observation, Value};
 
+use crate::log;
+
 /// One published setting.
 ///
 /// The set is the D-Bus types the interface can carry for the values the schema declares:
@@ -245,10 +247,7 @@ impl Table {
                 self.values.clear();
                 self.accent = [None; 3];
                 if had_values {
-                    gnoblin_log::info_in!(
-                        "portal",
-                        "the settings object ended; nothing is published until it returns"
-                    );
+                    log::info!("the settings object ended; nothing is published until it returns");
                 }
                 Vec::new()
             }
@@ -331,8 +330,7 @@ fn convert(property: &str, value: &Value) -> Option<Setting> {
     match value {
         Value::Uint(raw) => u32::try_from(*raw)
             .inspect_err(|_| {
-                gnoblin_log::warn_in!(
-                    "portal",
+                log::warn!(
                     property,
                     value = raw,
                     "a settings value does not fit the `u` its key is published as"
@@ -344,8 +342,7 @@ fn convert(property: &str, value: &Value) -> Option<Setting> {
         Value::Text(raw) => Some(Setting::Text(raw.clone())),
         Value::Bool(raw) => Some(Setting::Bool(*raw)),
         other => {
-            gnoblin_log::warn_in!(
-                "portal",
+            log::warn!(
                 property,
                 kind = other.kind(),
                 "a settings property has a shape its key is not published as"

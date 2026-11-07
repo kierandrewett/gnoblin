@@ -130,3 +130,6 @@ pub use recovery::{ConfigRecovery, ConfigStatus, Recovery};
 pub use state::{ChildState, ChildStatus, SessionState, StopReason};
 pub use supervisor::{SupervisorConfig, SupervisorError, TEST_FAST_VARIABLE, run as run_guardian};
 pub use time::Tick;
+
+gnoblin_log::logger!(log = "session");
+gnoblin_log::logger!(raw_log = "raw");

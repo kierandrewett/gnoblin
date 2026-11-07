@@ -58,3 +58,5 @@ pub use gnoblin_model::{RequestId, RequestOutcome, Tick};
 pub use host::{Host, LinkedAgent, OfferFailure};
 /// Slot types, re-exported from [`slot`].
 pub use slot::{CapabilitySlot, ClaimError, Provider, Slots, UnknownSlot};
+
+gnoblin_log::logger!(log = "service-core");

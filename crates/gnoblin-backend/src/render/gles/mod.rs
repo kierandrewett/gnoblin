@@ -103,7 +103,7 @@ pub(crate) mod gl;
 pub(crate) mod program;
 
 use crate::render::shader::sources as shaders;
-use gnoblin_log::warn_in;
+
 use smithay::backend::renderer::gles::GlesTexture;
 use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportMem, ImportMemWl};
@@ -360,8 +360,7 @@ impl Gles {
                 });
             }
             Err(error) => {
-                warn_in!(
-                    "backend",
+                log::warn!(
                     line = error.line(),
                     "[render] a user shader was refused; its pass is disabled"
                 );
@@ -434,7 +433,7 @@ impl Gles {
     ) -> Result<ScanBuffer, RenderError> {
         use smithay::backend::renderer::ImportDma as _;
         let texture = self.device.renderer().import_dmabuf(dmabuf, None).map_err(|error| {
-            warn_in!("backend", %error, "[render] a scan-out buffer cannot be imported");
+            log::warn!(%error, "[render] a scan-out buffer cannot be imported");
             RenderError::Failed
         })?;
         let framebuffer = self.device.framebuffer_over(&texture)?;
@@ -490,8 +489,7 @@ impl Gles {
         let stride = size.width as usize * 4;
         let expected = stride.saturating_mul(size.height as usize);
         if bytes.len() < expected {
-            warn_in!(
-                "backend",
+            log::warn!(
                 got = bytes.len(),
                 expected,
                 "[render] the GLES readback is short of the target"
@@ -678,8 +676,7 @@ impl Gles {
             .renderer()
             .import_shm_buffer(&surface.buffer, None, &[])
             .map_err(|error| {
-                warn_in!(
-                    "backend",
+                log::warn!(
                     ?error,
                     "[render] a client buffer could not be imported; the layer is skipped"
                 );
@@ -704,11 +701,7 @@ impl Gles {
                 false,
             )
             .map_err(|error| {
-                warn_in!(
-                    "backend",
-                    ?error,
-                    "[render] the overlay could not be imported; it is not drawn"
-                );
+                log::warn!(?error, "[render] the overlay could not be imported; it is not drawn");
             })
             .ok()?;
         Some(texture)
@@ -831,10 +824,7 @@ impl Painter<'_> {
         for pass in effects.passes() {
             match pass {
                 Pass::Shadow(_) | Pass::Blur(_) if placement.clip.is_some() => {
-                    warn_in!(
-                        "backend",
-                        "unsupported-effect-on-3d: a shadow or blur on a transformed layer is not drawn"
-                    );
+                    log::warn!("unsupported-effect-on-3d: a shadow or blur on a transformed layer is not drawn");
                 }
                 Pass::Shadow(shadow) if shadow.opacity > 0.0 && shadow.color.a > 0.0 => {
                     self.shadow(quad, radius, shadow)?;
@@ -1012,8 +1002,7 @@ impl Painter<'_> {
         static DOWNSCALE_IGNORED: std::sync::Once = std::sync::Once::new();
         if blur.downscale != 1.0 {
             DOWNSCALE_IGNORED.call_once(|| {
-                warn_in!(
-                    "backend",
+                log::warn!(
                     "unsupported-effect: blur downscale is not honoured on GLES; the blur runs at full resolution"
                 );
             });
@@ -1144,7 +1133,7 @@ impl Painter<'_> {
     /// log a line per frame for the life of the session.
     fn report(&mut self, error: ShaderError) {
         if self.error.is_none() {
-            warn_in!("backend", %error, "[render] a user shader was refused; its pass is disabled");
+            log::warn!(%error, "[render] a user shader was refused; its pass is disabled");
             *self.error = Some(error);
         }
     }
@@ -1347,3 +1336,5 @@ fn flip_rows(bytes: &mut [u8], stride: usize) {
 
 #[cfg(test)]
 mod tests;
+
+use crate::log;

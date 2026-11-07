@@ -30,6 +30,8 @@ pub mod role;
 /// The role's D-Bus connections ([`Buses`]), the role itself, and the error it reports when it cannot run.
 pub use role::{Buses, Role, RoleError};
 
+gnoblin_log::logger!(log = "services");
+
 /// The GeoClue agent, with the `location` table of the configuration as its policy. The
 /// services role links it as a linked agent; the session binary reaches it only through here.
 pub fn location_agent() -> Box<dyn link::LinkedAgent> {

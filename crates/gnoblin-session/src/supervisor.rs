@@ -76,6 +76,8 @@ use crate::recovery::{ConfigStatus, Recovery};
 use crate::state::{SessionState, StopReason};
 use crate::time::{Tick, secs};
 
+use crate::log;
+
 /// A test-only hook: shrinks every deadline so a real-process test can cross one.
 ///
 /// The guardian's shipped numbers are the C supervisor's — a 250 ms first restart, a 4 s
@@ -727,10 +729,10 @@ const SIGTERM: i32 = 15;
 /// `design/startup-recovery.md`.
 fn log(level: Level, message: &str) {
     match level {
-        Level::Debug => gnoblin_log::debug_in!("session", "{message}"),
-        Level::Info => gnoblin_log::info_in!("session", "{message}"),
-        Level::Warning => gnoblin_log::warn_in!("session", "{message}"),
-        Level::Error => gnoblin_log::error_in!("session", "{message}"),
+        Level::Debug => log::debug!("{message}"),
+        Level::Info => log::info!("{message}"),
+        Level::Warning => log::warn!("{message}"),
+        Level::Error => log::error!("{message}"),
     }
 }
 

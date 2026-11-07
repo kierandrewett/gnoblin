@@ -99,6 +99,8 @@ pub use iface::{BUS_NAME, PATH, Portal};
 /// Settings table types, re-exported from [`settings`].
 pub use settings::{Change, Setting, Table};
 
+gnoblin_log::logger!(log = "portal");
+
 /// The `portals.conf` this backend ships, checked in beside the source.
 ///
 /// It is data rather than generated text for the reason the plan's "Contracts are data"

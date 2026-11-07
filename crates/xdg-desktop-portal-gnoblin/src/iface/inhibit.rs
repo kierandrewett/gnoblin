@@ -25,6 +25,8 @@ use super::capture::{Options, sandboxed};
 use super::{Handle, Portal, export_session, refused, remove, sender, string_of, unsupported};
 use crate::consent::{Interface, NewSession, State};
 
+use crate::log;
+
 /// The version of `Inhibit` this build serves.
 const VERSION: u32 = 1;
 
@@ -71,7 +73,7 @@ impl Inhibit {
             Ok(handle) => {
                 super::export_request(&self.portal, &path).await?;
                 self.portal.handle(&path, Handle::Inhibition(handle));
-                gnoblin_log::info_in!("portal", app = %app_id, flags, "an inhibition was recorded");
+                log::info!(app = %app_id, flags, "an inhibition was recorded");
                 Ok(())
             }
             Err(missing) => {
@@ -113,7 +115,7 @@ impl Inhibit {
         }
         export_session(&self.portal, &path).await?;
         let _ = remove(&self.portal.connection, handle.as_str()).await;
-        gnoblin_log::info_in!("portal", app = %app_id, session = %path, "an inhibit monitor was created");
+        log::info!(app = %app_id, session = %path, "an inhibit monitor was created");
         Ok(0)
     }
 

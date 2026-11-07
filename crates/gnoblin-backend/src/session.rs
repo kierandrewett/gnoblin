@@ -60,11 +60,12 @@ use std::os::unix::io::OwnedFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use gnoblin_log::{debug_in, warn_in};
 use smithay::backend::session::Session as _;
 use smithay::backend::session::libseat::{LibSeatSession, LibSeatSessionNotifier};
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::rustix::fs::OFlags;
+
+use crate::log;
 
 /// Whether this process is the one driving the seat's devices.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -252,7 +253,7 @@ impl Seat {
     pub fn open() -> Result<Self, SessionError> {
         let (session, notifier) = LibSeatSession::new().map_err(|error| SessionError::Libseat(format!("{error:?}")))?;
         let name = session.seat();
-        debug_in!("backend", seat = %name, "[session] opened the seat session");
+        log::debug!(seat = %name, "[session] opened the seat session");
         Ok(Self {
             session,
             name,
@@ -293,7 +294,7 @@ impl Seat {
     pub fn open_device(&mut self, path: &Path) -> Result<OwnedFd, SessionError> {
         let flags = OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY;
         self.session.open(path, flags).map_err(|error| {
-            warn_in!("backend", path = %path.display(), ?error, "[session] the seat refused a device");
+            log::warn!(path = %path.display(), ?error, "[session] the seat refused a device");
             SessionError::Open {
                 path: path.display().to_string(),
                 reason: format!("{error:?}"),
@@ -308,7 +309,7 @@ impl Seat {
     /// [`SessionError::Switch`] when the seat refuses, which a session with one VT reports.
     pub fn change_vt(&mut self, vt: i32) -> Result<(), SessionError> {
         self.session.change_vt(vt).map_err(|error| {
-            warn_in!("backend", vt, ?error, "[session] the seat refused a VT switch");
+            log::warn!(vt, ?error, "[session] the seat refused a VT switch");
             SessionError::Switch {
                 vt,
                 reason: format!("{error:?}"),

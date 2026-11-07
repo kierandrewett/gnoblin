@@ -24,6 +24,9 @@ use std::time::Duration;
 
 use gnoblin_log::redact::Redactor;
 
+use crate::log;
+use crate::raw_log;
+
 /// The longest line logged. A longer line is cut here and marked with [`TRUNCATED`].
 pub const MAX_LINE: usize = 8 * 1024;
 
@@ -125,7 +128,7 @@ pub fn capture(role: &str, stream: OutputStream, policy: RawPolicy, reader: impl
     if let Err(error) = spawned {
         // Without a reader the child would block once its pipe fills, so this is worth a log
         // line even though the guardian carries on.
-        gnoblin_log::warn_in!("session", "cannot read the {} of a child: {error}", stream.as_str());
+        log::warn!("cannot read the {} of a child: {error}", stream.as_str());
     }
 }
 
@@ -207,7 +210,7 @@ pub fn run_logger(receiver: &Receiver<RawLine>, dropped: &AtomicU64) {
         }
         let total = dropped.load(Ordering::Relaxed);
         if total != reported {
-            gnoblin_log::warn_in!("raw", "dropped {} raw child lines", total - reported);
+            raw_log::warn!("dropped {} raw child lines", total - reported);
             reported = total;
         }
     }
@@ -232,10 +235,10 @@ pub fn finish(logger: std::thread::JoinHandle<()>, sink: RawSink) {
 fn log_line(line: &RawLine) {
     match line.stream {
         OutputStream::Stdout => {
-            gnoblin_log::info_in!("raw", role = %line.role, stream = "stdout", "{}", line.text);
+            raw_log::info!(role = %line.role, stream = "stdout", "{}", line.text);
         }
         OutputStream::Stderr => {
-            gnoblin_log::warn_in!("raw", role = %line.role, stream = "stderr", "{}", line.text);
+            raw_log::warn!(role = %line.role, stream = "stderr", "{}", line.text);
         }
     }
 }

@@ -40,6 +40,8 @@ use gnoblin_types::Version;
 use xdg_desktop_portal_gnoblin::host::NoShell;
 use xdg_desktop_portal_gnoblin::{BUS_NAME, Backends, Host, IpcHost, IpcLoop, Portal};
 
+gnoblin_log::logger!(log = "portal");
+
 /// How long one consent prompt stays open, in milliseconds.
 ///
 /// Two minutes is the frontend's own default for a response, so a portal that waits longer
@@ -56,12 +58,12 @@ fn main() -> ExitCode {
     let options = gnoblin_log::init::LogOptions::from_environment(&log_settings(&logging));
     let _log = gnoblin_log::init::init(gnoblin_log::ProcessRole::Portal, &options);
     if let Some(problem) = problem {
-        gnoblin_log::warn_in!("portal", "[logging] {problem}; the default logging is used");
+        log::warn!("[logging] {problem}; the default logging is used");
     }
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            gnoblin_log::error_in!("portal", "{error}");
+            log::error!("{error}");
             ExitCode::FAILURE
         }
     }
@@ -103,10 +105,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (host, loop_) = match ipc() {
         Ok((host, loop_)) => (Box::new(host) as Box<dyn Host>, Some(loop_)),
         Err(error) => {
-            gnoblin_log::warn_in!(
-                "portal",
-                "no compositor IPC ({error}); capture, input and shortcuts will be refused"
-            );
+            log::warn!("no compositor IPC ({error}); capture, input and shortcuts will be refused");
             (Box::new(NoShell) as Box<dyn Host>, None)
         }
     };
@@ -121,7 +120,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         connection
             .request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE)
             .await?;
-        gnoblin_log::info_in!("portal", name = BUS_NAME, "serving the Gnoblin portal backend");
+        log::info!(name = BUS_NAME, "serving the Gnoblin portal backend");
 
         if let Some(loop_) = loop_ {
             let serving = portal.clone();

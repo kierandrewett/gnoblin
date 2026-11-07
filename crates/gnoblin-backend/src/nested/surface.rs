@@ -50,7 +50,6 @@ use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use gnoblin_log::{debug_in, warn_in};
 use gnoblin_types::{Rect, Scale, Size};
 use wayland_client::protocol::wl_buffer;
 use wayland_client::protocol::{wl_shm, wl_shm_pool, wl_surface};
@@ -62,6 +61,8 @@ use super::handler::{Handler, OutputKey, SlotKey};
 use crate::Present;
 use crate::render::{Image, OutputFrame, RenderError, Software};
 use crate::{Output, Target};
+
+use crate::log;
 
 /// How many buffers one nested output cycles through.
 ///
@@ -585,24 +586,20 @@ impl Target for NestedTarget {
         }
         let Some(slot) = self.ring.take() else {
             // Every buffer is still attached; the parent is behind.
-            debug_in!("backend", "[nested] every buffer is in flight, so this frame waits");
+            log::debug!("[nested] every buffer is in flight, so this frame waits");
             return Present::Nothing;
         };
         let released = u8::try_from(slot).unwrap_or(0);
         let image = match self.software.capture(true) {
             Ok(image) => image,
             Err(error) => {
-                warn_in!("backend", ?error, "[nested] the frame could not be read back");
+                log::warn!(?error, "[nested] the frame could not be read back");
                 self.ring.release(released);
                 return Present::Nothing;
             }
         };
         if let Err(error) = self.write_slot(slot, &image) {
-            warn_in!(
-                "backend",
-                ?error,
-                "[nested] the frame could not be written into its buffer"
-            );
+            log::warn!(?error, "[nested] the frame could not be written into its buffer");
             self.ring.release(released);
             return Present::Nothing;
         }
@@ -738,7 +735,7 @@ fn anonymous_file(length: usize) -> io::Result<File> {
     // unlink is not fatal: the session still has its buffer, and the worst case is a
     // stale path in the runtime directory that the next counter avoids.
     if let Err(error) = std::fs::remove_file(&path) {
-        debug_in!("backend", ?error, path = %path.display(), "[nested] the buffer file was not unlinked");
+        log::debug!(?error, path = %path.display(), "[nested] the buffer file was not unlinked");
     }
     file.set_len(u64::try_from(length).unwrap_or(u64::MAX))?;
     Ok(file)

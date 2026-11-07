@@ -48,13 +48,15 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use futures_lite::StreamExt;
-use gnoblin_log::{info_in, warn_in};
+
 use gnoblin_model::{Fields, TypeKey, Value};
 use gnoblin_service_core::Host;
 use zbus::fdo;
 use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, interface};
+
+gnoblin_log::logger!(log = "screensaver");
 
 /// The well-known name this service owns on the session bus.
 pub const BUS_NAME: &str = "org.freedesktop.ScreenSaver";
@@ -206,7 +208,7 @@ impl ScreenSaver {
         let mut table = self.inhibitors();
         for cookie in table.cookies_of(sender) {
             if let Err(error) = self.inner.compositor.uninhibit(&holder_name(sender, cookie)) {
-                warn_in!("screensaver", sender, cookie, %error, "the compositor refused to release a departed sender's hold");
+                log::warn!(sender, cookie, %error, "the compositor refused to release a departed sender's hold");
             }
             table.forget(cookie);
         }
@@ -258,12 +260,12 @@ async fn watch_owners(connection: Connection, service: ScreenSaver) {
     let proxy = match fdo::DBusProxy::new(&connection).await {
         Ok(proxy) => proxy,
         Err(error) => {
-            warn_in!("screensaver", %error, "[services] cannot watch bus names, so inhibits outlive their senders");
+            log::warn!(%error, "[services] cannot watch bus names, so inhibits outlive their senders");
             return;
         }
     };
     let Ok(mut owners) = proxy.receive_name_owner_changed().await else {
-        warn_in!("screensaver", "[services] cannot subscribe to NameOwnerChanged");
+        log::warn!("[services] cannot subscribe to NameOwnerChanged");
         return;
     };
     while let Some(signal) = owners.next().await {
@@ -290,7 +292,7 @@ impl ScreenSaver {
     ) -> fdo::Result<u32> {
         let sender = sender_of(&header)?;
         let cookie = self.add_inhibit(&sender, application_name, reason)?;
-        info_in!("screensaver", %sender, cookie, application = application_name, "[services] screensaver inhibited");
+        log::info!(%sender, cookie, application = application_name, "[services] screensaver inhibited");
         Ok(cookie)
     }
 
@@ -431,7 +433,7 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
     let connection = match block_on(Connection::session()) {
         Ok(connection) => connection,
         Err(error) => {
-            info_in!("screensaver", %error, "[services] no session bus, so no screensaver service");
+            log::info!(%error, "[services] no session bus, so no screensaver service");
             return None;
         }
     };
@@ -439,7 +441,7 @@ pub fn start(host: &Host) -> Option<(ScreenSaver, Connection)> {
     match service.register(&connection) {
         Ok(()) => Some((service, connection)),
         Err(error) => {
-            warn_in!("screensaver", %error, "[services] the screensaver service could not be served");
+            log::warn!(%error, "[services] the screensaver service could not be served");
             None
         }
     }

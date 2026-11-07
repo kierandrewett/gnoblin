@@ -174,6 +174,8 @@ use smithay::reexports::calloop::LoopHandle;
 
 use gnoblin_output::{DisplayMode, OutputDescriptor};
 
+gnoblin_log::logger!(log = "backend");
+
 /// One output a backend drives.
 ///
 /// A backend knows the connector it drives, the mode the display is in and the

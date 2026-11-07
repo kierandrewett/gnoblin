@@ -12,6 +12,9 @@ use gnoblin_types::{Scale, Size};
 use super::Vulkan;
 use super::{Gles, Image, OutputFrame, RenderError, Software};
 
+#[cfg(not(feature = "vulkan"))]
+use crate::log;
+
 /// The renderers this crate can draw an output with.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RendererKind {
@@ -124,10 +127,7 @@ impl AnyRenderer {
 
     #[cfg(not(feature = "vulkan"))]
     fn vulkan(_physical: Size) -> Result<Self, RenderError> {
-        gnoblin_log::warn_in!(
-            "backend",
-            "[render] this build has no Vulkan renderer (the `vulkan` feature is off)"
-        );
+        log::warn!("[render] this build has no Vulkan renderer (the `vulkan` feature is off)");
         Err(RenderError::Unavailable)
     }
 

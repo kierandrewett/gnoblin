@@ -10,11 +10,13 @@ use std::time::Duration;
 
 use gnoblin_client::unix::UnixTransport;
 use gnoblin_client::{Client, ClientError};
-use gnoblin_log::warn_in;
+
 use gnoblin_model::{Fields, Filter, OperationOutcome, RequestId, RequestOutcome, Snapshot, Tick};
 use gnoblin_types::ObjectId;
 
 use crate::agent::{Offerer, Proposition, Refusal};
+
+use crate::log;
 
 /// The offerer the agents share: one privileged connection, one frame stream.
 ///
@@ -76,14 +78,14 @@ impl Host {
     /// Claim a request this role was offered, so it can end it.
     pub fn claim(&self, request: RequestId) {
         if let Err(error) = self.lock().claim(request) {
-            warn_in!("service-core", %error, request = request.get(), "[services] cannot claim an offer");
+            log::warn!(%error, request = request.get(), "[services] cannot claim an offer");
         }
     }
 
     /// Decline a request this role claimed: it draws nothing, so it cannot answer.
     pub fn decline(&self, request: RequestId) {
         if let Err(error) = self.lock().decline(request) {
-            warn_in!("service-core", %error, request = request.get(), "[services] cannot decline an offer");
+            log::warn!(%error, request = request.get(), "[services] cannot decline an offer");
         }
     }
 

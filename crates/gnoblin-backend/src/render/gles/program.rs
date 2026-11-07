@@ -20,7 +20,6 @@
 //!    preamble's line count is subtracted, so the number a caller reports is the number the
 //!    user can count to: `tests::a_syntax_error_names_the_user_line`.
 
-use gnoblin_log::debug_in;
 use naga::back::glsl::{Options as GlslOptions, PipelineOptions, Version, Writer};
 use naga::front::wgsl::Frontend;
 use naga::proc::BoundsCheckPolicies;
@@ -31,6 +30,8 @@ use crate::render::gles::gl::{CompileFailure, Device, Program};
 use crate::render::shader::sources as shaders;
 use crate::render::shader::uniforms::UniformLayout;
 use crate::render::shader::{ENTRY, ShaderError, ShaderOrigin, Stage};
+
+use crate::log;
 
 /// How a line in the generated module maps to a line of the source that was written.
 ///
@@ -159,7 +160,7 @@ fn translate(source: &str, context: &'static str, stage: Stage, shift: Shift) ->
     )
     .and_then(|mut writer| writer.write())
     .map_err(|error| {
-        debug_in!("backend", %error, "[render] naga could not write GLSL");
+        log::debug!(%error, "[render] naga could not write GLSL");
         ShaderError::new(
             ShaderOrigin::Effect(context),
             stage,
@@ -202,17 +203,17 @@ fn from_failure(shift: Shift, failure: CompileFailure) -> ShaderError {
 /// bug in the tree rather than a caller's mistake: there is no frame to draw without it.
 pub(crate) fn link(device: &mut Device, vertex: &str, fragment: &str) -> Result<Program, RenderError> {
     let vertex_glsl = translate(vertex, "vertex stage", Stage::Vertex, Shift::NONE).map_err(|error| {
-        debug_in!("backend", %error, "[render] an effect pass does not compile");
+        log::debug!(%error, "[render] an effect pass does not compile");
         RenderError::Unavailable
     })?;
     let fragment_glsl = translate(fragment, "effect pass", Stage::Fragment, Shift::NONE).map_err(|error| {
-        debug_in!("backend", %error, "[render] an effect pass does not compile");
+        log::debug!(%error, "[render] an effect pass does not compile");
         RenderError::Unavailable
     })?;
     device
         .program(&vertex_glsl, &fragment_glsl, UniformLayout::fixed())
         .map_err(|failure| {
-            debug_in!("backend", ?failure, "[render] an effect pass does not link");
+            log::debug!(?failure, "[render] an effect pass does not link");
             RenderError::Unavailable
         })
 }

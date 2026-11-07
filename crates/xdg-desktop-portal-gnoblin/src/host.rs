@@ -46,6 +46,8 @@ use gnoblin_types::{RequestId, Version};
 
 use crate::consent::{Host, OFFERER, Offer, Prompt, Refusal};
 
+use crate::log;
+
 /// The slot consent prompts are offered to.
 const SLOT: &str = crate::consent::PORTAL_UI;
 
@@ -165,12 +167,12 @@ impl<T: Transport> IpcLoop<T> {
     /// rather than from a handler that is already waiting on something else.
     pub fn run(mut self, portal: crate::iface::Portal) {
         if let Err(error) = self.client.set_read_timeout(Some(READ_TIMEOUT)) {
-            gnoblin_log::warn_in!("portal", %error, "the IPC socket has no read timeout; offers will wait for an event");
+            log::warn!(%error, "the IPC socket has no read timeout; offers will wait for an event");
         }
         if let Err(error) = self.client.subscribe(Filter::All) {
             // Without a subscription the settings interface publishes nothing, which is
             // visible and correct; the answers still work, so the loop continues.
-            gnoblin_log::warn_in!("portal", %error, "the portal cannot subscribe to the object graph");
+            log::warn!(%error, "the portal cannot subscribe to the object graph");
         }
         loop {
             while let Ok(command) = self.queue.try_recv() {
@@ -192,11 +194,11 @@ impl<T: Transport> IpcLoop<T> {
                                 // The compositor knows who provides the slot; a slot
                                 // nobody provides is refused here rather than turned into a
                                 // wait for a deadline that ends as "the app was cancelled".
-                                gnoblin_log::warn_in!("portal", %message, slot = SLOT, "nobody claims the consent slot");
+                                log::warn!(%message, slot = SLOT, "nobody claims the consent slot");
                                 Err(Refusal::NoProvider { slot: SLOT })
                             }
                             Err(error) => {
-                                gnoblin_log::warn_in!("portal", %error, "a consent prompt could not be offered");
+                                log::warn!(%error, "a consent prompt could not be offered");
                                 Err(Refusal::NoProvider { slot: SLOT })
                             }
                         };
@@ -204,7 +206,7 @@ impl<T: Transport> IpcLoop<T> {
                     }
                     Command::Decline(request) => {
                         if let Err(error) = self.client.decline(request) {
-                            gnoblin_log::debug_in!("portal", %error, request = request.get(), "an abandoned prompt was already over");
+                            log::debug!(%error, request = request.get(), "an abandoned prompt was already over");
                         }
                     }
                 }
@@ -222,7 +224,7 @@ impl<T: Transport> IpcLoop<T> {
                 }
                 Err(ClientError::Idle) => {}
                 Err(error) => {
-                    gnoblin_log::info_in!("portal", %error, "the IPC connection ended; the portal serves D-Bus only from here");
+                    log::info!(%error, "the IPC connection ended; the portal serves D-Bus only from here");
                     return;
                 }
             }
@@ -242,10 +244,10 @@ impl<T: Transport> IpcLoop<T> {
         };
         match outcome {
             Ok(outcome) => {
-                gnoblin_log::info_in!("portal", request = request.get(), ?outcome, "a consent answer arrived")
+                log::info!(request = request.get(), ?outcome, "a consent answer arrived")
             }
             Err(error) => {
-                gnoblin_log::debug_in!("portal", %error, request = request.get(), "an answer arrived for no prompt")
+                log::debug!(%error, request = request.get(), "an answer arrived for no prompt")
             }
         }
     }
