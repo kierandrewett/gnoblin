@@ -44,7 +44,7 @@ pub const FLOATING: &str = "floating";
 
 /// The `layout` section as the session reads it: plain data, so it can travel in a
 /// [`SessionConfig`](crate::SessionConfig) to the thread that runs the compositor.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LayoutSettings {
     /// The layout of a workspace with no override.
     pub default: LayoutSelector,

@@ -11,7 +11,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gnoblin_compositor::LayoutSettings;
+use gnoblin_config::LayoutSelector;
 use support::{Client, Command, Session, Window, wait_for, wait_for_listed_id};
+
+/// A layout named by its shipped or user name, as the `layout` section's string form.
+fn named(name: &str) -> LayoutSelector {
+    LayoutSelector::Named(name.to_owned())
+}
 
 /// The repository's shipped Lua layouts, the directory an installed prefix provides.
 fn shipped_modules() -> PathBuf {
@@ -97,7 +103,7 @@ fn settled_rects(session: &Session, ids: &[u64; 3]) -> Vec<[i64; 4]> {
 #[test]
 fn master_stack_tiles_three_toplevels_on_the_headless_output() {
     let session = session_with(LayoutSettings {
-        default: "gnoblin.layouts.master_stack".to_owned(),
+        default: named("gnoblin.layouts.master_stack"),
         shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
@@ -119,7 +125,7 @@ fn an_unknown_layout_is_refused_and_its_workspaces_float() {
     };
 
     let session = session_with(LayoutSettings {
-        default: "gnoblin.layouts.no_such_layout".to_owned(),
+        default: named("gnoblin.layouts.no_such_layout"),
         shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
@@ -150,7 +156,7 @@ fn a_module_that_errors_falls_back_and_the_session_keeps_running() {
     };
 
     let session = session_with(LayoutSettings {
-        default: "layouts.broken".to_owned(),
+        default: named("layouts.broken"),
         config_dir: Some(modules.path().to_path_buf()),
         ..LayoutSettings::default()
     });
@@ -169,7 +175,7 @@ fn an_output_override_applies_to_the_workspaces_on_that_output() {
     // The headless output is HEADLESS-1 and the workspace has no override of its own,
     // so the output's layout arranges it.
     let session = session_with(LayoutSettings {
-        outputs: vec![("HEADLESS-1".to_owned(), "gnoblin.layouts.master_stack".to_owned())],
+        outputs: vec![("HEADLESS-1".to_owned(), named("gnoblin.layouts.master_stack"))],
         shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
@@ -193,8 +199,8 @@ fn a_workspace_override_wins_over_the_output_override() {
     };
 
     let session = session_with(LayoutSettings {
-        outputs: vec![("HEADLESS-1".to_owned(), "gnoblin.layouts.master_stack".to_owned())],
-        workspaces: vec![("1".to_owned(), "floating".to_owned())],
+        outputs: vec![("HEADLESS-1".to_owned(), named("gnoblin.layouts.master_stack"))],
+        workspaces: vec![("1".to_owned(), named("floating"))],
         shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
@@ -242,7 +248,7 @@ fn set_layout_retiles_the_windows_on_the_workspace() {
 #[test]
 fn master_stack_publishes_the_rectangles_it_placed() {
     let session = session_with(LayoutSettings {
-        default: "gnoblin.layouts.master_stack".to_owned(),
+        default: named("gnoblin.layouts.master_stack"),
         shipped_dir: shipped_modules(),
         ..LayoutSettings::default()
     });
@@ -388,7 +394,7 @@ fn a_failing_layout_emits_layout_failed_and_its_windows_float() {
     .expect("the broken module");
 
     let session = session_with(LayoutSettings {
-        default: "layouts.broken".to_owned(),
+        default: named("layouts.broken"),
         config_dir: Some(modules.path().to_path_buf()),
         ..LayoutSettings::default()
     });
