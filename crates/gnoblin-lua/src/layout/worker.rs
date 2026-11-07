@@ -11,7 +11,7 @@ use super::LayoutReason;
 use super::data::Data;
 use super::host::WedgeHook;
 use super::lua::{LayoutCall, LayoutFault, LayoutManifest, Ran, Vm};
-use super::require::{LayoutRoots, message};
+use super::require::{ModuleRoots, message};
 use super::snapshot::LayoutSnapshot;
 
 /// Work the host sends to a worker. Generation 0 marks a load the host replays after a
@@ -57,7 +57,7 @@ pub(crate) struct Done {
 /// What a worker thread needs to build its VM.
 pub(crate) struct Spawn {
     pub(crate) limits: Limits,
-    pub(crate) roots: LayoutRoots,
+    pub(crate) roots: ModuleRoots,
     pub(crate) wedge: Option<WedgeHook>,
 }
 

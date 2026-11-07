@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, WedgeHook};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, ModuleRoots, WedgeHook};
 use gnoblin_types::{OutputId, Scale, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Collected, Generation, Job, Layout, LayoutEngine, LayoutExtent, LayoutFailure, LayoutOutcome, LayoutOutput,
@@ -31,8 +31,8 @@ fn modules(test: &str, files: &[(&str, &str)]) -> PathBuf {
 /// The roots a test host loads from. Every name these tests use lacks the `gnoblin.`
 /// prefix, so the shipped root is never read; it points at the same directory only so
 /// the struct is complete.
-fn user_roots(dir: PathBuf) -> LayoutRoots {
-    LayoutRoots {
+fn user_roots(dir: PathBuf) -> ModuleRoots {
+    ModuleRoots {
         shipped: dir.clone(),
         user: Some(dir),
     }

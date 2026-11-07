@@ -27,7 +27,7 @@ use std::time::Instant;
 
 use gnoblin_config::{Layout, LayoutOptionValue, LayoutRoot, LayoutSelector, SearchPaths, Store};
 use gnoblin_lua::layout::{
-    Data, Gaps, Host, HostConfig, HostFailure, LayoutKey, LayoutRoots, LuaEngine, default_prefix, installed_module_dir,
+    Data, Gaps, Host, HostConfig, HostFailure, LayoutKey, LuaEngine, ModuleRoots, default_prefix, installed_module_dir,
 };
 use gnoblin_types::WorkspaceId;
 use gnoblin_wayland::LayoutControl;
@@ -211,7 +211,7 @@ impl WorkspaceLayouts {
         // The shipped root is the settings' installed tree. The user root is the
         // configuration directory, when the session knows one. Both are fixed, so a
         // layout resolves the same way whatever document names it.
-        let roots = LayoutRoots {
+        let roots = ModuleRoots {
             shipped: settings.shipped_dir.clone(),
             user: settings.config_dir,
         };
@@ -405,7 +405,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
-    use gnoblin_lua::layout::{Gaps, Host, HostConfig, LayoutRoots, LuaEngine};
+    use gnoblin_lua::layout::{Gaps, Host, HostConfig, LuaEngine, ModuleRoots};
     use gnoblin_types::{OutputId, WindowId, WorkspaceId};
     use gnoblin_wm::layout::{Job, LayoutEngine, LayoutOutput, LayoutWindow, Params, Slot};
 
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn native_floating_matches_the_shipped_floating_module() {
         let params = params();
-        let roots = LayoutRoots {
+        let roots = ModuleRoots {
             shipped: shipped_modules(),
             user: None,
         };

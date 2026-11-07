@@ -15,7 +15,7 @@ use gnoblin_lua_sandbox::Limits;
 use super::LayoutReason;
 use super::data::Data;
 use super::lua::{LayoutCall, LayoutFault, LayoutManifest};
-use super::require::{LayoutRoots, fnv1a, read_source, resolve};
+use super::require::{ModuleRoots, Root, fnv1a, read_source, resolve};
 use super::snapshot::LayoutSnapshot;
 use super::worker::{Done, LayoutFinished, Spawn, Worker, WorkerJob};
 
@@ -28,10 +28,10 @@ pub type WedgeHook = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 pub struct HostConfig {
     /// The budgets each entry into Lua runs under.
     pub limits: Limits,
-    /// The two fixed roots layout modules are found under: the shipped tree for
-    /// `gnoblin.` names and the user's config directory for all others. See
-    /// [`LayoutRoots`] for why these are fixed rather than read from the document.
-    pub roots: LayoutRoots,
+    /// The two fixed roots layout modules are found under: the shipped tree and the user's
+    /// config directory. A `gnoblin.` name resolves under the shipped root alone. See
+    /// [`ModuleRoots`] for why these are fixed rather than read from the document.
+    pub roots: ModuleRoots,
     /// How long a worker may stay silent with work outstanding before it is abandoned.
     /// Registration waits at most this long for its load.
     pub hard_limit: Duration,
@@ -43,7 +43,7 @@ pub struct HostConfig {
 
 impl HostConfig {
     /// The production settings for layouts found under `roots`.
-    pub fn new(roots: LayoutRoots) -> Self {
+    pub fn new(roots: ModuleRoots) -> Self {
         Self {
             limits: Limits::default(),
             roots,
@@ -189,8 +189,9 @@ impl Host {
 
     /// Loads a layout that a configuration named by reference, after checking that the
     /// file the compositor is about to load is the file the configuration was checked
-    /// against. `root_shipped` says which fixed root the reference was written for: a
-    /// shipped reference must name a `gnoblin.` module and a user reference must not.
+    /// against. `root_shipped` says which root the reference was written for. It must match
+    /// the root `module` resolves under now, so a name that moved to the other root since the
+    /// configuration was checked is refused.
     ///
     /// The hash is a change detector, not a security boundary. Anyone who can edit the
     /// user's layout files can already run code in the session, so it only answers
@@ -204,17 +205,21 @@ impl Host {
         expected_hash: &str,
         options: Data,
     ) -> Result<(), HostFailure> {
-        if root_shipped != module.starts_with("gnoblin.") {
-            return Err(HostFailure {
-                reason: LayoutReason::UnknownModule,
-                message: format!("layout `{module}` is not in the root the configuration names"),
-            });
-        }
-        let path = resolve(&self.config.roots, module).map_err(|message| HostFailure {
+        let resolved = resolve(&self.config.roots, module).map_err(|message| HostFailure {
             reason: LayoutReason::UnknownModule,
             message,
         })?;
-        let source = read_source(&path, module).map_err(|message| HostFailure {
+        if root_shipped != (resolved.root == Root::Shipped) {
+            return Err(HostFailure {
+                reason: LayoutReason::UnknownModule,
+                message: format!(
+                    "layout `{module}` resolves under the {} root, but the configuration names the {} root",
+                    resolved.root.as_str(),
+                    if root_shipped { "shipped" } else { "user" },
+                ),
+            });
+        }
+        let source = read_source(&resolved.path, module).map_err(|message| HostFailure {
             reason: LayoutReason::MissingModule,
             message,
         })?;

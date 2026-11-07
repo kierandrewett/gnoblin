@@ -30,7 +30,7 @@ use std::process::Command;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LayoutRoots, LuaEngine, default_prefix, installed_module_dir};
+use gnoblin_lua::layout::{Data, Gaps, Host, HostConfig, LuaEngine, ModuleRoots, default_prefix, installed_module_dir};
 use gnoblin_types::{OutputId, Scale, Vec3, WindowId, WorkspaceId};
 use gnoblin_wm::layout::{
     Camera, Generation, Job, Layout, LayoutEngine, LayoutFailure, LayoutOutcome, LayoutOutput, LayoutWindow, Params,
@@ -103,7 +103,7 @@ fn write_module(dir: &Path, name: &str, source: &str) {
 /// shipped tree `SHIPPED`, with `layouts` registered as `(name, module)`. A name with
 /// the `gnoblin.` prefix loads from the shipped root; any other from `user`.
 fn hosted(user: Option<PathBuf>, layouts: &[(&str, &str)]) -> Rc<RefCell<Host>> {
-    let roots = LayoutRoots {
+    let roots = ModuleRoots {
         shipped: PathBuf::from(SHIPPED),
         user,
     };
@@ -547,7 +547,7 @@ fn installed_layouts_load_from_their_prefix() {
     let dir = installed_module_dir(&resolved);
     assert_eq!(dir, prefix.join("share/gnoblin/lua"));
 
-    let roots = LayoutRoots {
+    let roots = ModuleRoots {
         shipped: installed_module_dir(&resolved),
         user: None,
     };
@@ -570,7 +570,7 @@ fn installed_layouts_load_from_their_prefix() {
 fn installed_host_refuses_path_traversal() {
     let prefix = scratch_dir("install-traversal");
     copy_tree(Path::new(SHIPPED), &installed_module_dir(&prefix));
-    let roots = LayoutRoots {
+    let roots = ModuleRoots {
         shipped: installed_module_dir(&prefix),
         user: None,
     };
@@ -586,7 +586,7 @@ fn installed_host_refuses_path_traversal() {
 }
 
 /// Runs the real install rule, cmake/install-lua-data.cmake, in CMake script mode against a
-/// temp prefix, then loads the result with a `LayoutRoots` whose shipped root is the
+/// temp prefix, then loads the result with a `ModuleRoots` whose shipped root is the
 /// installed tree. install-session.cmake includes this same file, so the rule under test
 /// is the one the install step runs.
 /// The test is skipped with a notice when no `cmake` binary is on PATH.
@@ -627,7 +627,7 @@ fn cmake_install_rule_installs_shipped_layouts() {
         tree_files(Path::new(SHIPPED)),
         "the install copies every shipped module"
     );
-    let roots = LayoutRoots {
+    let roots = ModuleRoots {
         shipped: installed_module_dir(&prefix),
         user: None,
     };

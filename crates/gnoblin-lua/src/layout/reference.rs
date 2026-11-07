@@ -15,7 +15,7 @@ use mlua::{UserData, UserDataFields, UserDataMethods, Value as LuaValue};
 
 use super::data::{Data, LayoutKey};
 use super::lua::Vm;
-use super::require::{LayoutRoots, is_module_name, resolve, runtime};
+use super::require::{ModuleRoots, resolve, runtime};
 use gnoblin_lua_sandbox::Limits;
 
 /// A layout module named by a configuration file.
@@ -24,7 +24,7 @@ use gnoblin_lua_sandbox::Limits;
 /// its source as sixteen lowercase hex digits, and `options` are its declared defaults.
 #[derive(Clone, Debug)]
 pub(crate) struct LayoutRef {
-    /// `shipped` for a `gnoblin.` name, `user` for any other.
+    /// `shipped` or `user`: the root the module was found under.
     pub(crate) root: &'static str,
     pub(crate) module: String,
     pub(crate) hash: u64,
@@ -88,7 +88,7 @@ impl UserData for LayoutRef {
 /// Builds layout references for one configuration VM.
 pub(crate) struct LayoutModuleLoader {
     limits: Limits,
-    roots: Option<LayoutRoots>,
+    roots: Option<ModuleRoots>,
     vm: Option<Vm>,
 }
 
@@ -104,37 +104,40 @@ impl LayoutModuleLoader {
 
     /// Start a new configuration evaluation with `roots`. The shared layout VM is
     /// dropped here, so the evaluation starts from the files as they are now.
-    pub(crate) fn reset(&mut self, roots: LayoutRoots) {
+    pub(crate) fn reset(&mut self, roots: ModuleRoots) {
         self.roots = Some(roots);
         self.vm = None;
     }
 
     /// The reference for layout module `name`, reading and checking it on first use.
     ///
-    /// A name that is not a layout module under either root is reported as an unknown
-    /// module, the same message an unloaded extension namespace gives.
+    /// The name resolves exactly as `require` resolves it, so a layout reference and a
+    /// plain module cannot disagree about which file a name means. A name that resolves
+    /// nowhere is reported with the resolver's message.
     pub(crate) fn reference(&mut self, name: &str) -> Result<LayoutRef, String> {
-        let unknown = || format!("unknown module `{name}`: no extension namespace or layout module has that name");
-        let roots = self.roots.clone().ok_or_else(unknown)?;
-        if !is_module_name(name) || resolve(&roots, name).is_err() {
-            return Err(unknown());
-        }
-        let root = if name.starts_with("gnoblin.") {
-            "shipped"
-        } else {
-            "user"
-        };
+        let roots = self
+            .roots
+            .clone()
+            .ok_or_else(|| format!("unknown module `{name}`: no configuration is being evaluated"))?;
+        let resolved = resolve(&roots, name)?;
         if self.vm.is_none() {
             let vm = Vm::new(self.limits, roots).map_err(|error| error.to_string())?;
             self.vm = Some(vm);
         }
-        let vm = self.vm.as_mut().ok_or_else(unknown)?;
+        let vm = self.vm.as_mut().ok_or_else(|| format!("unknown module `{name}`"))?;
         let inspected = vm.inspect(name).map_err(|fault| fault.message)?;
         Ok(LayoutRef {
-            root,
+            root: resolved.root.as_str(),
             module: name.to_owned(),
             hash: inspected.hash,
             options: inspected.options,
         })
     }
+}
+
+/// Whether `name` is a layout name, `layouts.<rest>` or `gnoblin.layouts.<rest>`. Only these
+/// make `require` return a layout reference; any other name returns the module's value.
+pub(crate) fn is_layout_name(name: &str) -> bool {
+    let rest = name.strip_prefix("gnoblin.").unwrap_or(name);
+    rest.strip_prefix("layouts.").is_some_and(|tail| !tail.is_empty())
 }

@@ -120,6 +120,9 @@ pub(super) struct Shared<T: Transport> {
     /// The loader that answers `require` for a layout module with a reference. It holds
     /// the one layout VM of the current configuration evaluation.
     pub(super) layouts: crate::layout::LayoutModuleLoader,
+    /// The configuration VM's modules for one evaluation, so a plain `require` runs each
+    /// module once. `None` outside an evaluation.
+    pub(super) modules: Option<Rc<crate::layout::Modules>>,
 }
 
 impl<T: Transport> Shared<T> {
@@ -307,6 +310,7 @@ impl<T: Transport + 'static> Host<T> {
             reports: Vec::new(),
             extensions: ExtensionRegistry::new(),
             layouts: crate::layout::LayoutModuleLoader::new(limits),
+            modules: None,
         }));
         crate::bindings::install(&lua, Rc::clone(&shared), Rc::clone(&guard), limits).map_err(HostError::Sandbox)?;
         let mut host = Host {
@@ -376,10 +380,12 @@ impl<T: Transport + 'static> Host<T> {
             std::env::var_os("GNOBLIN_PREFIX").as_deref(),
         ));
         let user = path.path().parent().map(Path::to_path_buf);
-        self.shared
-            .borrow_mut()
-            .layouts
-            .reset(crate::layout::LayoutRoots { shipped, user });
+        let roots = crate::layout::ModuleRoots { shipped, user };
+        {
+            let mut shared = self.shared.borrow_mut();
+            shared.layouts.reset(roots.clone());
+            shared.modules = Some(Rc::new(crate::layout::Modules::new(roots)));
+        }
         {
             let mut shared = self.shared.borrow_mut();
             shared.document = Value::Map(BTreeMap::new());

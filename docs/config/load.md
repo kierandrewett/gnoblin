@@ -12,14 +12,14 @@ Files that packages install in `gnoblin/conf.d` under a data directory load with
 
 ## Lua `require`
 
-`require` is a global function, not a member of `gnoblin`. It loads a local module from beside the calling file or its `lua/` directory, caches the result for the current reload, and returns it. It does not support Lua's normal installed module search paths.
+`require` is a global function, not a member of `gnoblin`. It loads a module by its dotted name, caches the result for the current reload, and returns it. `require("a.b.c")` loads `a/b/c.lua`. It searches the directory of the top-level `init.lua` first, then Gnoblin's shipped modules. It does not support Lua's normal installed module search paths.
 
 ```lua
 local appearance = require("appearance")
 gnoblin.configure(appearance)
 ```
 
-Module names cannot contain `..`; use `gnoblin.load("parts/motion.lua")` for explicit subdirectories.
+A name that starts with `gnoblin.` is searched in the shipped modules only, so a file in your configuration cannot shadow it. Names cannot contain `..`. Use `gnoblin.load("parts/motion.lua")` for a file that should run in place and return nothing.
 
 ## Recover from a configuration error
 
@@ -102,5 +102,5 @@ successful reload clears the notice.
 
 ```lua
 gnoblin.load(path_or_glob) -- string; missing explicit paths are errors
-require(module_name) -- string; local module name, no `..`
+require(module_name) -- string; dotted module name, such as "parts.motion" for parts/motion.lua
 ```

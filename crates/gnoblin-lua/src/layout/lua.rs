@@ -12,7 +12,7 @@ use mlua::{Function, Lua, RegistryKey, Table, Value as LuaValue};
 
 use super::data::Data;
 use super::reply;
-use super::require::{self, LayoutRoots, Modules, message, runtime};
+use super::require::{self, ModuleRoots, Modules, message, runtime};
 use super::snapshot::{LayoutSnapshot, SnapshotWindow};
 
 /// Why a VM call failed: the reason the host reports, and the Lua message.
@@ -89,7 +89,7 @@ pub(crate) struct Vm {
 }
 
 impl Vm {
-    pub(crate) fn new(limits: Limits, roots: LayoutRoots) -> mlua::Result<Self> {
+    pub(crate) fn new(limits: Limits, roots: ModuleRoots) -> mlua::Result<Self> {
         let guard = Rc::new(Guard::new());
         let lua = sandbox::create(Profile::Layout, &limits, guard.clone(), crate::host::script_sink())?;
         let modules = Rc::new(Modules::new(roots));

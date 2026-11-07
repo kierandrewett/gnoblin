@@ -165,15 +165,16 @@ In `init.lua`:
 gnoblin.configure(require("appearance"))
 ```
 
-`require("appearance")` searches `appearance.lua`, then `lua/appearance.lua`,
-relative to its caller. It runs once per reload.
+`require("appearance")` loads `appearance.lua` from the directory of the top-level
+`init.lua`. `require("parts.motion")` loads `parts/motion.lua` from the same directory.
+It runs once per reload.
 
 Returning a table does not apply its settings by itself. Pass it to
 `gnoblin.configure` as shown above.
 
-Dots in module names are not converted to directories. For explicit subdirectories,
-use `gnoblin.load("parts/motion.lua")`. Avoid loading the same file through both a glob
-and `require`.
+Dots in a module name are directory separators. For a file that should run in place
+and return nothing, use `gnoblin.load("parts/motion.lua")`. Avoid loading the same file
+through both a glob and `require`.
 
 ## Available Lua functions
 
