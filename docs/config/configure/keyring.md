@@ -38,7 +38,10 @@ not serve.
 
 The store lives in `$XDG_DATA_HOME/gnoblin/keyring.db`, or under
 `$HOME/.local/share/gnoblin/` when `XDG_DATA_HOME` is unset. It stays locked
-until the login password reaches it.
+until the login password reaches it. When the login session has no password, the
+keyring asks for it through a `prompt.secret` request that a shell answers. With
+no shell claiming that request, the store stays locked. See
+[passphrase prompts](/shell-api/passphrase-prompts).
 
 ## When a change applies
 

@@ -51,10 +51,11 @@ How it works:
    to the library default). [INFERENCE] The hash is PBKDF2-HMAC-SHA512, from the
    SQLCipher 4 defaults; confirm on Agent37 before relying on it.
 2. **No password (fingerprint login, autologin).** The PAM module gets no
-   password, so it cannot unlock. The service then shows **one** unlock prompt
-   per login session, through the portals prompt UI (D28), or the built-in egui
-   dialog if the portal is not running. The store stays unlocked until logout,
-   so the user is never asked twice in one session.
+   password, so it cannot unlock. The keyring then offers **one** `prompt.secret`
+   request per login session. A shell claims that slot and draws the prompt; the
+   keyring never draws UI itself. If no shell claims the slot, the request is
+   refused at once and the store stays locked. The store stays unlocked until
+   logout, so the user is never asked twice in one session.
 3. **Password change.** A hook in the PAM password stage re-keys the store. If
    the hook is missing, the store stays locked after a change. [INFERENCE] This
    follows `pam_gnome_keyring`; it is not yet tested on greetd or
@@ -163,7 +164,8 @@ The service implements these methods on the session bus at
   over the bus. Attributes are stored in an indexed table, so `SearchItems`
   does not decrypt every item.
 - `Prompt` objects: `Prompt(window-id)` and `Dismiss`. The `Completed` signal
-  carries the result. Gnoblin's prompt UI draws them.
+  carries the result. The shell answers `prompt.secret` requests; see
+  `docs/shell-api/passphrase-prompts.md`.
 
 The store holds no plain-text secret. Every value is inside the SQLCipher file.
 
@@ -247,7 +249,8 @@ phase starts.
    login with a password unlocks; login without one prompts once.
 4. **Secret portal.** `RetrieveSecret`, the per-app derivation, the session grant
    in memory, consent through the compositor.
-5. **Prompt UI.** Gnoblin's prompt UI draws `Prompt` objects (`prompt.secret`).
+5. **Prompt UI.** Done for unlock (3fc351de6): the keyring offers `prompt.secret`
+   requests and never draws UI. The shell answers them.
 6. **Compat acceptance.** Run the acceptance checks below.
 
 Phase 1 facts, measured on Agent37 (rusqlite 0.41.1, libsqlite3-sys 0.39.1):
