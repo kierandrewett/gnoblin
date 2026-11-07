@@ -91,12 +91,7 @@ pub struct Software {
     textures: Vec<Option<PixmanTexture>>,
     /// The cursor's texture for the frame being drawn, if it has one.
     cursor: Option<PixmanTexture>,
-    /// The pixels under the overlay as they were before it was drawn: packed rows of
-    /// the overlay's visible rectangle, so a capture can leave the overlay out.
-    under: Vec<u8>,
-    /// The overlay's visible rectangle in the last frame, or `None` when it had none.
-    under_rect: Option<Rectangle<i32, Physical>>,
-    /// The pixels under the cursor before it was drawn, packed like `under`.
+    /// The pixels under the cursor before it was drawn: packed rows of its visible rectangle.
     cursor_under: Vec<u8>,
     /// The cursor's visible rectangle in the last frame, or `None` when it had none.
     cursor_under_rect: Option<Rectangle<i32, Physical>>,
@@ -133,8 +128,6 @@ impl Software {
             physical,
             textures: Vec::new(),
             cursor: None,
-            under: Vec::new(),
-            under_rect: None,
             cursor_under: Vec::new(),
             cursor_under_rect: None,
             scratch: Vec::new(),
@@ -239,7 +232,7 @@ impl Software {
     ///
     /// [`RenderError::Failed`] when pixman cannot copy the buffer out.
     pub fn capture(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
-        self.readback(true, with_cursor)
+        self.readback(with_cursor)
     }
 
     /// The buffer as drawn, overlay and cursor included. Exposed only to this crate's own
@@ -247,18 +240,15 @@ impl Software {
     /// composed frame. Normal builds cannot reach it.
     #[cfg(any(test, feature = "test-support"))]
     pub fn composed(&mut self) -> Result<Image, RenderError> {
-        self.readback(false, true)
+        self.readback(true)
     }
 
-    /// Reads the buffer back, with the overlay's pixels put back when `hide_overlay` and
-    /// the cursor's when `!with_cursor`.
-    fn readback(&mut self, hide_overlay: bool, with_cursor: bool) -> Result<Image, RenderError> {
+    /// Reads the buffer back, with the cursor's pixels put back when `!with_cursor`.
+    fn readback(&mut self, with_cursor: bool) -> Result<Image, RenderError> {
         let Self {
             renderer,
             buffer,
             physical,
-            under,
-            under_rect,
             cursor_under,
             cursor_under_rect,
             ..
@@ -277,12 +267,9 @@ impl Software {
         // is measured from the slice rather than assumed.
         let stride = bytes.len() / height;
         let mut bytes = bytes.to_vec();
-        // The cursor was drawn last, so its pixels go back first, over the overlay.
+        // The cursor was drawn last, so its pixels go back first.
         if let (false, Some(rect)) = (with_cursor, *cursor_under_rect) {
             paste_under(&mut bytes, stride, rect, cursor_under);
-        }
-        if let (true, Some(rect)) = (hide_overlay, *under_rect) {
-            paste_under(&mut bytes, stride, rect, under);
         }
         Image::new(Size::new(mapping.width(), mapping.height()), stride, bytes).ok_or(RenderError::Failed)
     }
@@ -298,7 +285,7 @@ impl Software {
     ///
     /// [`RenderError::Failed`] when pixman cannot read, upload or draw the buffer.
     fn final_pass(&mut self, view: Option<View>, matrix: Option<ColourMatrix>) -> Result<(), RenderError> {
-        let image = self.readback(false, true)?;
+        let image = self.readback(true)?;
         let size = image.size();
         let packed = transform_pixels(&image, view, matrix);
         let Self {
@@ -344,14 +331,11 @@ impl Software {
             physical,
             textures,
             cursor,
-            under,
-            under_rect,
             cursor_under,
             cursor_under_rect,
             ..
         } = self;
         let output = PhysicalSize::from((physical.width as i32, physical.height as i32));
-        *under_rect = None;
         let mut target = renderer.bind(buffer).map_err(failed)?;
         let mut pixman_frame = renderer
             .render(&mut target, output, Transform::Normal)
@@ -367,18 +351,7 @@ impl Software {
                     // closes here and reopens once the overlay is down.
                     let _sync = pixman_frame.finish().map_err(failed)?;
                     let texture = textures.get(index).and_then(Option::as_ref);
-                    draw_overlay_layer(
-                        renderer,
-                        &mut target,
-                        output,
-                        overlay,
-                        texture,
-                        scale,
-                        damage,
-                        clipped,
-                        under,
-                        under_rect,
-                    )?;
+                    draw_overlay_layer(renderer, &mut target, output, overlay, texture, scale, damage, clipped)?;
                     pixman_frame = renderer
                         .render(&mut target, output, Transform::Normal)
                         .map_err(failed)?;
@@ -467,8 +440,8 @@ fn layer_damage(
     }
 }
 
-/// Draws the overlay layer at its place in the list: keeps the pixels under it for a
-/// capture, then draws its image with nearest-neighbour scaling.
+/// Draws the overlay layer at its place in the list with nearest-neighbour scaling. A capture
+/// keeps the overlay; a secure one is masked by the backend, not here.
 #[allow(clippy::too_many_arguments)]
 fn draw_overlay_layer(
     renderer: &mut PixmanRenderer,
@@ -479,17 +452,10 @@ fn draw_overlay_layer(
     scale: Scale,
     damage: &[Rectangle<i32, Physical>],
     clipped: &mut Vec<Rectangle<i32, Physical>>,
-    under: &mut Vec<u8>,
-    under_rect: &mut Option<Rectangle<i32, Physical>>,
 ) -> Result<(), RenderError> {
     let Some(texture) = texture else {
         return Ok(());
     };
-    let bounds = Rectangle::new((0, 0).into(), (output.w, output.h).into());
-    if let Some(dst) = physical_rect(overlay.dst(), scale).intersection(bounds) {
-        capture_under(renderer, target, dst, damage, under)?;
-        *under_rect = Some(dst);
-    }
     // The overlay is a bitmap, so it scales with nearest neighbour; the default is restored
     // whether or not the draw succeeded.
     renderer.upscale_filter(TextureFilter::Nearest).map_err(failed)?;
@@ -530,8 +496,7 @@ fn draw_overlay(
     Ok(())
 }
 
-/// Keeps the pixels under the overlay's visible rectangle `dst`, read from the
-/// damaged parts of it, which the layers have just painted.
+/// Keeps the pixels under `dst`, read from the damaged parts of it, which the layers have just painted.
 fn capture_under(
     renderer: &mut PixmanRenderer,
     target: &PixmanTarget<'_>,
@@ -1050,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn a_capture_leaves_the_overlay_out_and_keeps_the_layers_under_it() {
+    fn a_capture_includes_the_overlay_blended_over_the_layers() {
         let mut software = Software::new(Size::new(6, 6)).expect("a software renderer");
         let translucent_red = Image::new(Size::new(2, 2), 8, [255, 0, 0, 128].repeat(4)).expect("a 2x2 image");
         let overlay = Overlay::new(Rect::new(2, 2, 2, 2), &translucent_red).expect("an overlay");
@@ -1065,12 +1030,12 @@ mod tests {
         let image = software.screenshot().expect("a readback");
         assert_eq!(
             image.colour_at(2, 2),
-            Some([0, 0, 255, 255]),
-            "a capture shows the blue layer under the overlay, not the overlay"
+            Some([128, 0, 127, 255]),
+            "a capture shows the overlay blended over the blue layer, not the layer alone"
         );
         assert_eq!(
             image.colour_at(3, 3),
-            Some([0, 0, 255, 255]),
+            Some([128, 0, 127, 255]),
             "and at the overlay's far corner"
         );
         assert_eq!(

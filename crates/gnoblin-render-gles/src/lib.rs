@@ -178,11 +178,6 @@ pub struct Gles {
     /// The frame's damage in physical pixels, reused across frames so a steady frame
     /// allocates nothing.
     damage: Vec<Rect>,
-    /// The pixels under the overlay as they were before it was drawn, top first over the
-    /// whole output, so a capture can leave the overlay out.
-    under: Vec<u8>,
-    /// The overlay's visible rectangle in the last frame, or `None` when it had none.
-    under_rect: Option<Rectangle<i32, Physical>>,
     /// The pixels under the cursor, top first over the whole output, so a capture can
     /// leave the cursor out.
     cursor_under: Vec<u8>,
@@ -267,8 +262,6 @@ impl Gles {
             physical,
             draws: 0,
             damage: Vec::new(),
-            under: Vec::new(),
-            under_rect: None,
             cursor_under: Vec::new(),
             cursor_under_rect: None,
         })
@@ -513,14 +506,6 @@ impl Gles {
                 bytes[start..start + width].copy_from_slice(&self.cursor_under[start..start + width]);
             }
         }
-        if let Some(rect) = self.under_rect {
-            let x = rect.loc.x as usize * 4;
-            let width = rect.size.w as usize * 4;
-            for y in rect.loc.y as usize..(rect.loc.y + rect.size.h) as usize {
-                let start = y * stride + x;
-                bytes[start..start + width].copy_from_slice(&self.under[start..start + width]);
-            }
-        }
         Image::new(size, stride, bytes).ok_or(RenderError::Failed)
     }
 
@@ -572,21 +557,12 @@ impl Gles {
             user,
             error,
             physical,
-            under,
-            under_rect,
             cursor_under,
             cursor_under_rect,
             ..
         } = self;
         let output: Rectangle<i32, Physical> =
             Rectangle::new((0, 0).into(), (physical.width as i32, physical.height as i32).into());
-        let overlay_rect = overlay
-            .as_ref()
-            .and_then(|(overlay, _)| physical_rect(overlay.dst(), scale).intersection(output));
-        *under_rect = overlay_rect;
-        if overlay_rect.is_some() {
-            under.resize(physical.width as usize * 4 * physical.height as usize, 0);
-        }
         let cursor_rect = frame
             .cursor()
             .and_then(|cursor| physical_rect(cursor.dst(), scale).intersection(output));
@@ -608,7 +584,6 @@ impl Gles {
             background,
             bytes: Vec::new(),
             clip: Rect::new(0, 0, 0, 0),
-            under,
             cursor_under,
         };
         for rect in damage {
@@ -634,13 +609,6 @@ impl Gles {
                 painter.draw_parts(parts, None, QuadPlacement::FLAT)?;
             }
             if let Some((overlay, texture)) = overlay {
-                if let Some(dst) = overlay_rect {
-                    let damaged: Rectangle<i32, Physical> =
-                        Rectangle::new((rect.x, rect.y).into(), (rect.width as i32, rect.height as i32).into());
-                    if let Some(captured) = damaged.intersection(dst) {
-                        painter.capture_under(captured, false)?;
-                    }
-                }
                 painter.overlay(overlay, texture)?;
             }
             if let Some((cursor, texture)) = cursor {
@@ -648,7 +616,7 @@ impl Gles {
                     let damaged: Rectangle<i32, Physical> =
                         Rectangle::new((rect.x, rect.y).into(), (rect.width as i32, rect.height as i32).into());
                     if let Some(captured) = damaged.intersection(dst) {
-                        painter.capture_under(captured, true)?;
+                        painter.capture_under(captured)?;
                     }
                 }
                 painter.overlay(cursor, texture)?;
@@ -767,9 +735,7 @@ struct Painter<'a> {
     bytes: Vec<u8>,
     /// The damage rectangle every pass is scissored to.
     clip: Rect,
-    /// The pre-overlay pixels, see [`Gles::screenshot`].
-    under: &'a mut Vec<u8>,
-    /// The pixels under the cursor, see `under`.
+    /// The pixels under the cursor before it was drawn, kept for a capture without it.
     cursor_under: &'a mut Vec<u8>,
 }
 impl Painter<'_> {
@@ -938,9 +904,9 @@ impl Painter<'_> {
         }
     }
 
-    /// Keeps the pixels of `rect` before the overlay is drawn over them, read back from
-    /// the target and stored top first in `under`, or in `cursor_under` for the cursor.
-    fn capture_under(&mut self, rect: Rectangle<i32, Physical>, cursor: bool) -> Result<(), RenderError> {
+    /// Keeps the pixels of `rect` before the cursor is drawn over them, read back from the
+    /// target and stored top first in `cursor_under`.
+    fn capture_under(&mut self, rect: Rectangle<i32, Physical>) -> Result<(), RenderError> {
         let stride = self.physical.width as usize * 4;
         let rows = self.physical.height as usize;
         let full = self.device.read(self.target)?;
@@ -952,12 +918,7 @@ impl Painter<'_> {
         for y in rect.loc.y as usize..(rect.loc.y + rect.size.h) as usize {
             let source = (rows - 1 - y) * stride + x;
             let start = y * stride + x;
-            let under: &mut Vec<u8> = if cursor {
-                &mut *self.cursor_under
-            } else {
-                &mut *self.under
-            };
-            under[start..start + width].copy_from_slice(&full[source..source + width]);
+            self.cursor_under[start..start + width].copy_from_slice(&full[source..source + width]);
         }
         Ok(())
     }

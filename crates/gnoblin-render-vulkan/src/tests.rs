@@ -301,8 +301,8 @@ fn the_overlay_and_the_cursor_match_the_software_renderer() {
     let frame = decorated(SIZE, 16);
     software.draw(&frame, Scale::IDENTITY).expect("the software frame");
     vulkan.draw(&frame, Scale::IDENTITY).expect("the Vulkan frame");
-    // Both with the overlay drawn and with it left out, with and without the cursor.
-    let composed = vulkan.read_target(false, true).expect("a composed readback");
+    // The composed readback always has the overlay; it adds the cursor too.
+    let composed = vulkan.read_target(true).expect("a composed readback");
     assert_close(
         "the overlay and the cursor, composed",
         &software.composed().expect("a composed readback"),
@@ -380,26 +380,26 @@ fn decorated(size: Size, cursor_x: i32) -> OutputFrame {
 }
 
 #[test]
-fn a_capture_leaves_the_overlay_out_and_the_cursor_when_asked() {
+fn a_capture_includes_the_overlay_and_the_cursor_when_asked() {
     let Some(mut vulkan) = renderer(SIZE) else { return };
     vulkan.draw(&decorated(SIZE, 30), Scale::IDENTITY).expect("the frame");
+    // Fully opaque where the overlay's alpha saturates, so its colour comes back exact.
+    let overlay = Some([200, 40, 40, 255]);
     let orange = Some([255, 128, 0, 255]);
     let without = vulkan.capture(false).expect("a capture");
-    assert_eq!(without.colour_at(12, 12), orange, "the overlay is not in a capture");
+    assert_eq!(without.colour_at(21, 21), overlay, "the overlay is in a capture");
     assert_eq!(
         without.colour_at(30, 14),
         orange,
         "the cursor is out unless it is asked for"
     );
     let with = vulkan.capture(true).expect("a capture");
-    assert_eq!(with.colour_at(12, 12), orange, "the overlay is still out");
-    assert_eq!(with.colour_at(30, 14), Some([255, 255, 255, 255]), "the cursor is in");
-    let composed = vulkan.read_target(false, true).expect("a composed readback");
-    assert_ne!(
-        composed.colour_at(12, 12),
-        orange,
-        "the composed frame does show the overlay"
+    assert_eq!(
+        with.colour_at(21, 21),
+        overlay,
+        "the overlay is in a capture with the cursor"
     );
+    assert_eq!(with.colour_at(30, 14), Some([255, 255, 255, 255]), "the cursor is in");
     clean(&vulkan);
 }
 

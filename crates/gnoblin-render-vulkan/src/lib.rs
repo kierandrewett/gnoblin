@@ -96,8 +96,6 @@ pub struct Vulkan {
     recorder: FrameRecorder,
     pipelines: Pipelines,
     target: RenderTarget,
-    /// The pixels the overlay covers, saved for a capture that leaves it out.
-    overlay_under: Saved,
     /// The pixels the cursor covers, saved for a capture that leaves it out.
     cursor_under: Saved,
     physical: Size,
@@ -151,7 +149,6 @@ impl Vulkan {
             recorder,
             pipelines,
             target,
-            overlay_under: Saved::default(),
             cursor_under: Saved::default(),
             physical,
             lost: false,
@@ -222,7 +219,6 @@ impl Vulkan {
     }
 
     /// Reads the target back as an [`Image`], with the cursor composed in when `with_cursor`.
-    /// The overlay is always left out.
     ///
     /// # Errors
     ///
@@ -232,7 +228,7 @@ impl Vulkan {
         if self.lost {
             return Err(RenderError::Lost);
         }
-        self.read_target(true, with_cursor).map_err(|result| self.fail(result))
+        self.read_target(with_cursor).map_err(|result| self.fail(result))
     }
 
     /// Replaces the target with one of `physical` pixels.
@@ -263,7 +259,6 @@ impl Vulkan {
         }
         self.target = target;
         self.physical = physical;
-        self.overlay_under.rect = None;
         self.cursor_under.rect = None;
         Ok(())
     }

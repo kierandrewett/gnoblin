@@ -15,8 +15,8 @@
 //! 2. **Plan.** With the textures known, the frame becomes a list of draws (`plan.rs`).
 //! 3. **Pass A.** The damage is cleared to the background and the layers are drawn, each
 //!    clipped to the damage rectangle it belongs to.
-//! 4. **Overlay.** The pixels it will cover are copied into a host buffer so a capture can
-//!    leave the overlay out, then it is drawn. The cursor does the same, above the overlay.
+//! 4. **Overlay.** The overlay is drawn over the layers. The cursor's pixels are copied into
+//!    a host buffer first so a capture can leave the cursor out, then the cursor is drawn.
 //! 5. **Submit and wait.**
 //!
 //! # Layouts
@@ -93,7 +93,7 @@ impl Drop for RenderTarget {
     }
 }
 
-/// The pixels under the overlay or the cursor, saved so a capture can leave them out.
+/// The pixels under the cursor, saved so a capture can leave it out.
 #[derive(Default)]
 pub(super) struct Saved {
     buffer: Option<VkBuffer>,
@@ -465,21 +465,17 @@ impl Vulkan {
         )?;
         self.recorder.uniforms.write(0, &planned.uniforms);
         self.recorder.instances.write(0, &instance_bytes);
-        for (saved, visible) in [
-            (&mut self.overlay_under, planned.overlay_visible),
-            (&mut self.cursor_under, planned.cursor_visible),
-        ] {
-            saved.rect = visible;
-            if let Some(rect) = visible {
-                let bytes = rect.width as usize * rect.height as usize * 4;
-                if saved.buffer.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
-                    saved.buffer = Some(VkBuffer::new(
-                        &context,
-                        bytes,
-                        vk::BufferUsageFlags::TRANSFER_DST,
-                        true,
-                    )?);
-                }
+        let saved = &mut self.cursor_under;
+        saved.rect = planned.cursor_visible;
+        if let Some(rect) = planned.cursor_visible {
+            let bytes = rect.width as usize * rect.height as usize * 4;
+            if saved.buffer.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
+                saved.buffer = Some(VkBuffer::new(
+                    &context,
+                    bytes,
+                    vk::BufferUsageFlags::TRANSFER_DST,
+                    true,
+                )?);
             }
         }
 
@@ -535,9 +531,6 @@ impl Vulkan {
             &sets,
             Some(background),
         );
-        if !planned.overlay_under.is_empty() {
-            self.save_under(&planned.overlay_under, self.overlay_under.rect, true);
-        }
         if planned.overlay_end > planned.layers_end {
             self.pass(
                 planned,
@@ -548,7 +541,7 @@ impl Vulkan {
             );
         }
         if !planned.cursor_under.is_empty() {
-            self.save_under(&planned.cursor_under, self.cursor_under.rect, false);
+            self.save_under(&planned.cursor_under, self.cursor_under.rect);
         }
         if planned.draws.len() > planned.overlay_end {
             self.pass(planned, &planned.draws[planned.overlay_end..], uniform_set, &sets, None);
@@ -595,18 +588,12 @@ impl Vulkan {
         );
     }
 
-    /// Copies the parts of the target the overlay or the cursor is about to cover.
-    fn save_under(&self, parts: &[Rect], visible: Option<Rect>, overlay: bool) {
-        let (Some(visible), saved) = (
-            visible,
-            if overlay {
-                &self.overlay_under
-            } else {
-                &self.cursor_under
-            },
-        ) else {
+    /// Copies the parts of the target the cursor is about to cover.
+    fn save_under(&self, parts: &[Rect], visible: Option<Rect>) {
+        let Some(visible) = visible else {
             return;
         };
+        let saved = &self.cursor_under;
         let Some(buffer) = saved.buffer.as_ref() else {
             return;
         };
@@ -764,9 +751,8 @@ impl Vulkan {
         }
     }
 
-    /// Reads the target back, with the overlay's pixels put back when `hide_overlay` and the
-    /// cursor's when `!with_cursor`.
-    pub(super) fn read_target(&mut self, hide_overlay: bool, with_cursor: bool) -> Result<Image, vk::Result> {
+    /// Reads the target back, with the cursor's pixels put back when `!with_cursor`.
+    pub(super) fn read_target(&mut self, with_cursor: bool) -> Result<Image, vk::Result> {
         let size = self.physical;
         let bytes = size.width as usize * size.height as usize * 4;
         let context = Rc::clone(&self.context);
@@ -841,11 +827,8 @@ impl Vulkan {
         };
         let mut pixels = pixels.to_vec();
         let stride = size.width as usize * 4;
-        // The cursor was drawn last, so it goes back first, over the overlay.
+        // The cursor is drawn last, so its pixels go back first.
         if !with_cursor && let (Some(rect), Some(saved)) = (self.cursor_under.rect, self.cursor_under.bytes()) {
-            paste(&mut pixels, stride, rect, saved);
-        }
-        if hide_overlay && let (Some(rect), Some(saved)) = (self.overlay_under.rect, self.overlay_under.bytes()) {
             paste(&mut pixels, stride, rect, saved);
         }
         Image::new(size, stride, pixels).ok_or(vk::Result::ERROR_UNKNOWN)

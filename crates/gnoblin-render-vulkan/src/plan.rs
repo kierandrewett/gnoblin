@@ -11,8 +11,8 @@
 //!   they do. Pixman clips to the union and GLES repeats the background under every
 //!   rectangle; disjoint rectangles give the union's result without a second code path.
 //! - **Order** is the frame's: for every damage rectangle, the layers bottom first. The
-//!   overlay and the cursor follow, each as its own range of the draw list, because the
-//!   renderer saves the pixels under each before it draws it (see `Vulkan::capture`).
+//!   overlay and the cursor follow, each as its own range of the draw list. The cursor's
+//!   pixels are saved before it is drawn, so a capture can leave it out (see `Vulkan::capture`).
 //! - **What is skipped**: a layer with a [`Model`](gnoblin_render_frame::frame::Model) belongs to
 //!   the depth pass, which this renderer does not have, so it is counted and left out; a
 //!   surface whose texture could not be made is left out; a layer that misses the rectangle
@@ -105,12 +105,8 @@ pub(super) struct FramePlan {
     pub layers_end: usize,
     /// The draws from `layers_end` to this index are the overlay, the rest the cursor.
     pub overlay_end: usize,
-    /// The overlay's rectangle on the output, when it is drawn at all.
-    pub overlay_visible: Option<Rect>,
     /// The cursor's rectangle on the output, when it is drawn at all.
     pub cursor_visible: Option<Rect>,
-    /// The parts of the overlay's rectangle this frame repaints, to be saved first.
-    pub overlay_under: Vec<Rect>,
     /// The parts of the cursor's rectangle this frame repaints, to be saved first.
     pub cursor_under: Vec<Rect>,
     /// The draws' uniform blocks, [`UNIFORM_STRIDE`] bytes apart.
@@ -182,7 +178,6 @@ pub(super) fn plan(frame: &OutputFrame, scale: Scale, physical: Size, sizes: &Te
     let overlay = overlay_of(frame)
         .zip(sizes.overlay)
         .map(|(overlay, _)| to_rect(physical_rect(overlay.dst(), scale)));
-    built.overlay_visible = overlay.and_then(|quad| quad.intersection(bounds));
     if let Some(quad) = overlay {
         bitmap(&mut built, &mut draws, TextureSlot::Overlay, quad);
     }
@@ -231,9 +226,8 @@ fn bitmap(built: &mut FramePlan, draws: &mut Draws, slot: TextureSlot, quad: Rec
         let Some(part) = damage.intersection(quad) else {
             continue;
         };
-        match slot {
-            TextureSlot::Cursor => built.cursor_under.push(part),
-            _ => built.overlay_under.push(part),
+        if matches!(slot, TextureSlot::Cursor) {
+            built.cursor_under.push(part);
         }
         draws.push(built, PassKind::Surface, Some(slot), damage, quad, &uniforms);
     }
