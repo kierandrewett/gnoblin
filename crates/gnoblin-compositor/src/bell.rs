@@ -20,10 +20,10 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
         Ok(stored) => {
             let section = stored.config.compositor.clone().unwrap_or_default();
             let settings = visual_bell_settings(&section);
-            log::debug!(enabled = settings.enabled, scope = ?settings.scope, "[bell] loaded from the last accepted configuration");
+            log::debug!(area = "bell", enabled = settings.enabled, scope = ?settings.scope, "loaded from the last accepted configuration");
             config.wayland.visual_bell = settings;
         }
-        Err(error) => log::warn!(%error, "[bell] configuration not readable; the visual bell stays off"),
+        Err(error) => log::warn!(area = "bell", %error, "configuration not readable; the visual bell stays off"),
     }
 }
 
@@ -32,12 +32,12 @@ pub fn configure_from_store(config: &mut SessionConfig, store: &Store, source: &
 /// With no configuration file there is no accepted document, so the visual bell stays off.
 pub fn configure_from_environment(config: &mut SessionConfig) {
     let Some(store) = Store::from_env() else {
-        log::debug!("[bell] no state directory is set; the visual bell stays off");
+        log::debug!(area = "bell", "no state directory is set; the visual bell stays off");
         return;
     };
     match gnoblin_config::locate(&SearchPaths::from_env()) {
         Ok(path) => configure_from_store(config, &store, path.path()),
-        Err(error) => log::debug!(%error, "[bell] no configuration file; the visual bell stays off"),
+        Err(error) => log::debug!(area = "bell", %error, "no configuration file; the visual bell stays off"),
     }
 }
 

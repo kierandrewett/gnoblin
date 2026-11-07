@@ -64,20 +64,16 @@ impl XdgShellHandler for State {
             log::debug!(
                 area = "xdg",
                 serial = u32::from(serial),
-                "[xdg] a window menu with an unissued serial was ignored"
+                "a window menu with an unissued serial was ignored"
             );
             return;
         }
         let Some(window) = self.window_of(surface.wl_surface()) else {
-            log::debug!(area = "xdg", "[xdg] a window menu for an unmanaged surface was ignored");
+            log::debug!(area = "xdg", "a window menu for an unmanaged surface was ignored");
             return;
         };
         let Some(origin) = self.geometry_of(window) else {
-            log::debug!(
-                area = "xdg",
-                ?window,
-                "[xdg] a window menu for a closed window was ignored"
-            );
+            log::debug!(area = "xdg", ?window, "a window menu for a closed window was ignored");
             return;
         };
         let anchor = MenuAnchor::point(origin.x + location.x, origin.y + location.y);

@@ -441,17 +441,14 @@ impl State {
     /// default places the menu.
     fn open_focused_window_menu(&mut self) {
         let Some(window) = self.wm.focused() else {
-            log::debug!(
-                area = "menu",
-                "[menu] the window-menu key was pressed with no focused window"
-            );
+            log::debug!(area = "menu", "the window-menu key was pressed with no focused window");
             return;
         };
         let Some(geometry) = self.geometry_of(window) else {
             log::debug!(
                 area = "menu",
                 ?window,
-                "[menu] the focused window has no geometry for its menu"
+                "the focused window has no geometry for its menu"
             );
             return;
         };

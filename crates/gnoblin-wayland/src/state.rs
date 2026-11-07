@@ -2135,11 +2135,7 @@ impl State {
     /// has closed gets no request: there is no menu to open for it.
     pub(crate) fn request_window_menu(&mut self, window: WindowId, anchor: MenuAnchor, source: MenuSource) -> bool {
         if self.wm.window(window).is_none() {
-            log::debug!(
-                area = "menu",
-                ?window,
-                "[menu] a request for a closed window was dropped"
-            );
+            log::debug!(area = "menu", ?window, "a request for a closed window was dropped");
             return false;
         }
         self.menu_seq = self.menu_seq.saturating_add(1);
@@ -2149,7 +2145,7 @@ impl State {
             ?window,
             seq = self.menu_seq,
             source = source.as_str(),
-            "[menu] requested"
+            "requested"
         );
         self.menu_requests.push_back(request);
         while self.menu_requests.len() > MENU_REQUESTS_KEPT {
