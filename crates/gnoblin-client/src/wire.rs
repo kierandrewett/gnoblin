@@ -308,6 +308,8 @@ pub fn portal_ui(request_id: u64, request: &PortalRequest) -> Envelope {
     writer.text(&request.prompt);
     writer.u64(request.timeout_ms);
     writer.fields(&request.options);
+    writer.text(&request.parent_window);
+    writer.u32(request.caller_pid);
     Envelope::request(NAMESPACE, member::PORTAL_UI, request_id, writer.finish())
 }
 
@@ -508,6 +510,14 @@ pub struct PortalRequest {
     pub timeout_ms: u64,
     /// The interface's own options, as named object-model values.
     pub options: Fields,
+    /// The `parent_window` the caller named, exactly as it arrived: the empty string for
+    /// none, or an `x11:` or `wayland:` identifier. The portal validates its form before it
+    /// is sent; the compositor parses it again and resolves it.
+    pub parent_window: String,
+    /// The Unix process id of the caller, as the bus reports it. `0` when the portal could
+    /// not learn it. The compositor compares it with the client that owns the parent window,
+    /// so a caller cannot make a dialog modal to someone else's window.
+    pub caller_pid: u32,
 }
 
 /// Decode a `portal.ui` request.
@@ -518,6 +528,8 @@ pub fn read_portal_ui(payload: &[u8]) -> Result<PortalRequest, WireError> {
     let prompt = reader.text()?;
     let timeout_ms = reader.u64()?;
     let options = reader.fields()?;
+    let parent_window = reader.text()?;
+    let caller_pid = reader.u32()?;
     reader.done()?;
     Ok(PortalRequest {
         interface,
@@ -525,6 +537,8 @@ pub fn read_portal_ui(payload: &[u8]) -> Result<PortalRequest, WireError> {
         prompt,
         timeout_ms,
         options,
+        parent_window,
+        caller_pid,
     })
 }
 
@@ -729,6 +743,10 @@ impl Writer {
         self.bytes.push(value);
     }
 
+    fn u32(&mut self, value: u32) {
+        self.bytes.extend_from_slice(&value.to_be_bytes());
+    }
+
     fn u64(&mut self, value: u64) {
         self.bytes.extend_from_slice(&value.to_be_bytes());
     }
@@ -827,6 +845,12 @@ impl<'a> Reader<'a> {
     fn u8(&mut self) -> Result<u8, WireError> {
         let byte = *self.take(1)?.first().ok_or(WireError::Truncated)?;
         Ok(byte)
+    }
+
+    fn u32(&mut self) -> Result<u32, WireError> {
+        let slice = self.take(4)?;
+        let array: [u8; 4] = slice.try_into().map_err(|_| WireError::Truncated)?;
+        Ok(u32::from_be_bytes(array))
     }
 
     fn u64(&mut self) -> Result<u64, WireError> {
@@ -1037,6 +1061,8 @@ mod tests {
                 ("multiple", Value::Bool(true)),
                 ("filters", Value::List(vec![Value::Text("*.txt".to_owned())])),
             ]),
+            parent_window: "wayland:0123abcd".to_owned(),
+            caller_pid: 4242,
         };
         let envelope = portal_ui(7, &request);
         assert_eq!(read_portal_ui(envelope.payload().unwrap_or(&[])), Ok(request));
@@ -1050,6 +1076,8 @@ mod tests {
             prompt: "Allow the camera".to_owned(),
             timeout_ms: 0,
             options: Fields::new(),
+            parent_window: String::new(),
+            caller_pid: 0,
         };
         let envelope = portal_ui(8, &request);
         assert_eq!(read_portal_ui(envelope.payload().unwrap_or(&[])), Ok(request));
@@ -1063,6 +1091,8 @@ mod tests {
             prompt: "p".to_owned(),
             timeout_ms: 1,
             options: fields(&[("k", Value::Uint(1))]),
+            parent_window: "x11:1a".to_owned(),
+            caller_pid: 7,
         };
         let envelope = portal_ui(9, &request);
         let payload = envelope.payload().unwrap_or(&[]);

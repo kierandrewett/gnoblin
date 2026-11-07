@@ -31,9 +31,28 @@ marks a claim not checked against code or a primary source.
   ([window identifiers](https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html)).
 - Every interface stores the string and drops it: `iface/capture.rs:88`, `:111`,
   `:177`, `:317`; `iface/remote.rs:165`, `:490`, `:527`; `iface/shortcuts.rs:103`, `:171`.
-- A grep of `crates/` finds no reader in `gnoblin-compositor`, `gnoblin-proto` or
-  `gnoblin-schema`. `gnoblin-wm/src/wm.rs:995` has its own `parent_window`, for a
-  transient window, not for a portal request.
+  Still true on this lane: the relay has not yet read the string.
+- **Done (typed, not yet routed):** `gnoblin_types::ParentWindow` parses the string
+  into `None`, `X11(u32)` or `Wayland(String)`, and refuses the rest with a reason
+  (`crates/gnoblin-types/src/parent_window.rs`). `PortalRequest` in
+  `crates/gnoblin-client/src/wire.rs` carries the raw `parent_window` and the caller's
+  `caller_pid` through `portal.ui`. Nothing reads them yet.
+- **Gaps, in order:**
+    1. The consent prompt does not carry the parent. The relay offers prompts to the
+       `portal.ui` slot with `Client::offer` (`wire.rs` `REQUEST_OFFERED`), which has no
+       parent field. Changing that frame changes what external slot providers receive.
+    2. The compositor's `PortalService::submit` (`ipc/portal.rs`) does not read
+       `parent_window`, and no resolver exists.
+    3. `wayland:` needs `XdgForeign::exported_surface`, which lives in the Wayland
+       `State`, not on the IPC thread. A channel or shared table is missing.
+    4. `x11:` has no XID-to-window lookup in `gnoblin-xwayland`.
+    5. The caller's identity is not read. The relay would need the sender's pid from
+       `org.freedesktop.DBus.GetConnectionUnixProcessID`, and the compositor would need
+       the owning client's pid, to refuse a parent owned by another client.
+    6. Placement over a parent rectangle and modal-to-parent input need the layer
+       registry wired into the compositor (`gnoblin-layers`, not yet wired).
+- The `portal_ui` schema (`crates/gnoblin-schema/schema/portal_ui.toml`) does not
+  drive the wire. `wire.rs` is hand-written, so the schema was not edited.
 
 ### xdg-foreign and the handle
 

@@ -35,6 +35,8 @@ fn consent(interface: &str) -> PortalRequest {
         prompt: "Share the screen?".to_owned(),
         timeout_ms: 30_000,
         options: Fields::default(),
+        parent_window: String::new(),
+        caller_pid: 0,
     }
 }
 
