@@ -53,10 +53,9 @@ recorder and logs never show the bytes.
 ## Status
 
 The IPC lifecycle is implemented in `crates/gnoblin-compositor/src/ipc/requests.rs`.
-The schema now declares the full `offered` signal above. The Lua surface is
-being wired to it; until that lands, Lua does not receive `request.offered` or
-`request.finished`, and the `request` class has no way to claim, answer or
-decline without an object identity.
+The Lua surface is wired to it: scripts receive `gnoblin.request.offered` and
+`gnoblin.request.finished`, and the `request` class claims, answers and declines by
+request id. A refusal raises a script error that carries the broker's code.
 
 With no provider holding a request's slot, the request is refused at once. A
 provider that claims it but never answers ends it as timed out.
