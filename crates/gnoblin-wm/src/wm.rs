@@ -67,7 +67,7 @@ use gnoblin_types::{Direction, Insets, OutputId, Rect, RectF, Size, Tick, Window
 use crate::activation::{ActivationDecision, NewWindowFocus};
 use crate::arrange::{self, Layouts};
 use crate::drag::{self, DragConstraint};
-use crate::effect::{Effect, RuleRejection};
+use crate::effect::{Effect, RuleRejection, WorkspaceDirection};
 use crate::event::{Event, Rejection, WindowProtocol, WindowSpec};
 use crate::geometry::clamp_to_i32;
 use crate::layout::{
@@ -1450,7 +1450,7 @@ impl Wm {
         let mut effects = Vec::new();
         if was_active {
             self.active_workspace = Some(neighbour);
-            effects.push(Effect::workspace_shown(neighbour));
+            effects.push(Effect::workspace_shown(neighbour, None));
         }
         for window_id in moved {
             effects.push(Effect::visible(window_id, self.is_visible(window_id)));
@@ -1473,8 +1473,9 @@ impl Wm {
             .keys()
             .map(|window| (*window, self.is_visible(*window)))
             .collect();
+        let direction = self.direction_to(id);
         self.active_workspace = Some(id);
-        let mut effects = vec![Effect::workspace_shown(id)];
+        let mut effects = vec![Effect::workspace_shown(id, direction)];
         for (window, was_visible) in before {
             if self.is_visible(window) != was_visible {
                 effects.push(Effect::visible(window, !was_visible));
@@ -1482,6 +1483,21 @@ impl Wm {
         }
         effects.extend(self.refocus());
         effects
+    }
+
+    /// Which way moving from the active workspace to `id` goes in the workspace order.
+    ///
+    /// `None` when there is no active workspace or either one is missing from the order,
+    /// which leaves the renderer nothing to slide along.
+    fn direction_to(&self, id: WorkspaceId) -> Option<WorkspaceDirection> {
+        let ids = self.workspaces.ids();
+        let from = ids.iter().position(|w| Some(*w) == self.active_workspace)?;
+        let to = ids.iter().position(|w| *w == id)?;
+        match to.cmp(&from) {
+            std::cmp::Ordering::Greater => Some(WorkspaceDirection::Later),
+            std::cmp::Ordering::Less => Some(WorkspaceDirection::Earlier),
+            std::cmp::Ordering::Equal => None,
+        }
     }
 
     /// The decision for a window that asks to be focused on its own initiative, as

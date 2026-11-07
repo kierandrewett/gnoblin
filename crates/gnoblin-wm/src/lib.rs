@@ -111,7 +111,7 @@ mod workspace;
 
 pub use activation::{ActivationDecision, NewWindowFocus};
 pub use drag::DragConstraint;
-pub use effect::{Effect, RuleRejection};
+pub use effect::{Effect, RuleRejection, WorkspaceDirection};
 pub use event::{Event, Rejection, WindowProtocol, WindowSpec};
 pub use output::Output;
 pub use placement::PlacementMode;

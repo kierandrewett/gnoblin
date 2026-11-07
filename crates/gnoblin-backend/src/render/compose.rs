@@ -73,6 +73,7 @@ use gnoblin_types::{Color, NodeId, OutputId, Rect, RectF, Size, TrackId, Vec3, W
 use gnoblin_render_frame::frame::{Layer, Model, OutputFrame, Solid, Surface, SurfaceSource};
 use gnoblin_render_frame::image::Image;
 use gnoblin_render_frame::shm;
+use gnoblin_wm::WorkspaceDirection;
 
 use crate::log;
 
@@ -139,6 +140,15 @@ struct Closing {
     on_end: CloseEnd,
 }
 
+/// The horizontal offsets a workspace switch moves windows along, in global logical pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WorkspaceSlide {
+    /// The offset a window leaving the workspace slides to.
+    outgoing: f64,
+    /// The offset a window entering the workspace slides in from.
+    incoming: f64,
+}
+
 /// One managed window's rendering state.
 #[derive(Clone, Debug)]
 struct WindowNode {
@@ -166,6 +176,12 @@ struct WindowNode {
     /// The window's last picture, once it is closing: drawn in place of its buffer until its
     /// fade ends, when the window is removed.
     closing: Option<Closing>,
+    /// The offset added to the window's geometry along the workspace slide. Zero when no slide
+    /// is running.
+    slide: f64,
+    /// Whether the window is sliding off the workspace it left: it is hidden, still drawn while
+    /// it slides, and loses its node when the slide ends.
+    leaving: bool,
 }
 
 /// The session's scene and the windows it draws.
@@ -192,6 +208,9 @@ pub struct Composer {
     /// The visual bell's flash in progress, if any. Only one runs at a time: a bell rung
     /// during a flash restarts it.
     flash: Option<Flash>,
+    /// The workspace switch in progress, while the compositor is between its begin and end
+    /// calls. `None` when no switch is running or motion is reduced.
+    workspace_slide: Option<WorkspaceSlide>,
 }
 
 impl Default for Composer {
@@ -216,6 +235,7 @@ impl Composer {
             reduced_motion: false,
             cursor: None,
             flash: None,
+            workspace_slide: None,
         }
     }
 
@@ -321,6 +341,8 @@ impl Composer {
                 surface_alpha: 1.0,
                 buffer: None,
                 closing: None,
+                slide: 0.0,
+                leaving: false,
             },
         );
         self.order.push(window);
@@ -435,6 +457,8 @@ impl Composer {
         let on_end = closing.on_end;
         if let Some(entry) = self.windows.get_mut(&window) {
             entry.closing = Some(closing);
+            entry.leaving = false;
+            entry.slide = 0.0;
         }
         let spec = TrackSpec {
             from: TrackStart::Current,
@@ -487,6 +511,10 @@ impl Composer {
     /// than cut. Showing it again while that fade runs eases it back to opaque on the same node.
     /// The window's content is kept either way, so the next show draws what the client last
     /// committed.
+    ///
+    /// During a workspace switch ([`Composer::begin_workspace_slide`]) the window slides instead:
+    /// a hidden window slides off the side the new workspace is not on, and a shown one slides in
+    /// from that side.
     pub fn set_window_visible(&mut self, window: WindowId, visible: bool) {
         let Some(entry) = self.windows.get_mut(&window) else {
             return;
@@ -496,9 +524,26 @@ impl Composer {
         }
         if visible {
             entry.visible = true;
-            if !self.cancel_hide_fade(window) {
-                self.sync(window, false);
+            if entry.leaving {
+                // Shown again before its slide landed: it slides back from where it is.
+                entry.leaving = false;
+                entry.slide = 0.0;
+                self.sync_with(window, false, true);
+                return;
             }
+            if self.cancel_hide_fade(window) {
+                return;
+            }
+            match self.workspace_slide {
+                Some(slide) => self.show_sliding(window, slide),
+                None => self.sync(window, false),
+            }
+            return;
+        }
+        if let Some(slide) = self.workspace_slide
+            && self.slides_off(window)
+        {
+            self.slide_off(window, slide);
             return;
         }
         let closing = if self.is_fading(window) {
@@ -526,6 +571,86 @@ impl Composer {
             (Some(closing), Some(node)) => self.start_fade(window, node, closing),
             _ => self.sync(window, false),
         }
+    }
+
+    /// Shows a window that a workspace switch brings in. A window with no node is drawn at the
+    /// side it enters from and eases to its place. A window still drawn has no node to slide, so
+    /// it stays where it is.
+    fn show_sliding(&mut self, window: WindowId, slide: WorkspaceSlide) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        if self.reduced_motion || entry.node.is_some() {
+            self.sync(window, false);
+            return;
+        }
+        entry.slide = slide.incoming;
+        self.sync_with(window, false, false);
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.slide = 0.0;
+        }
+        self.retarget(window, true);
+    }
+
+    /// Whether hiding a window starts a workspace slide: a drawn window that is not fading away.
+    fn slides_off(&self, window: WindowId) -> bool {
+        !self.reduced_motion
+            && !self.is_fading(window)
+            && self.windows.get(&window).is_some_and(|entry| entry.node.is_some())
+    }
+
+    /// Hides a window by sliding it off the side the workspace switch leaves. It keeps its node
+    /// and its picture while it moves, and loses the node when the slide lands.
+    fn slide_off(&mut self, window: WindowId, slide: WorkspaceSlide) {
+        let Some(entry) = self.windows.get_mut(&window) else {
+            return;
+        };
+        entry.visible = false;
+        entry.leaving = true;
+        entry.slide = slide.outgoing;
+        self.sync_with(window, false, true);
+        if !self.tracks.contains_key(&(window, VisualProperty::OffsetX)) {
+            self.settle_leaving(window);
+        }
+    }
+
+    /// Ends a window's slide off the workspace it left: it is no longer kept, so its node goes.
+    fn settle_leaving(&mut self, window: WindowId) {
+        if let Some(entry) = self.windows.get_mut(&window) {
+            entry.leaving = false;
+            entry.slide = 0.0;
+        }
+        self.sync(window, false);
+    }
+
+    /// Starts a workspace switch. Until [`Composer::end_workspace_slide`], the windows that
+    /// [`Composer::set_window_visible`] hides slide off the side the new workspace is not on, and
+    /// the windows it shows slide in from that side, each by one output width.
+    /// `Later` is the switch to the next workspace, which lies to the right: the windows being left
+    /// slide left and the new ones come in from the right. Reduced motion starts no slide: the
+    /// windows change at once.
+    pub fn begin_workspace_slide(&mut self, direction: WorkspaceDirection) {
+        if self.reduced_motion {
+            self.workspace_slide = None;
+            return;
+        }
+        let distance = self
+            .scene
+            .outputs()
+            .values()
+            .map(|rect| f64::from(rect.width))
+            .fold(0.0, f64::max);
+        let (outgoing, incoming) = match direction {
+            WorkspaceDirection::Later => (-distance, distance),
+            WorkspaceDirection::Earlier => (distance, -distance),
+        };
+        self.workspace_slide = Some(WorkspaceSlide { outgoing, incoming });
+    }
+
+    /// Ends the workspace switch begun by [`Composer::begin_workspace_slide`]. Slides already
+    /// running finish on their own.
+    pub fn end_workspace_slide(&mut self) {
+        self.workspace_slide = None;
     }
 
     /// Marks a window's surface secure, or clears the mark.
@@ -717,6 +842,11 @@ impl Composer {
                     .map(|closing| closing.on_end)
             {
                 self.finish_fade(window, on_end);
+            }
+            if let Some((window, VisualProperty::OffsetX)) = owner
+                && self.windows.get(&window).is_some_and(|entry| entry.leaving)
+            {
+                self.settle_leaving(window);
             }
         }
         self.advance_flash(elapsed_ms);
@@ -984,7 +1114,7 @@ impl Composer {
     fn target(entry: &WindowNode) -> VisualTransform {
         let mut transform = entry.transform;
         transform.base.offset = Vec3::new(
-            f64::from(entry.geometry.x),
+            f64::from(entry.geometry.x) + entry.slide,
             f64::from(entry.geometry.y),
             transform.base.offset.z,
         );
@@ -1002,6 +1132,12 @@ impl Composer {
         let Some(node) = entry.node else {
             return;
         };
+
+        if entry.leaving && !animate {
+            // A leaving window's slide is a track already running. Landing the target now would
+            // cancel it and leave the window at its outgoing offset with no track to end the leave.
+            return;
+        }
         let immediate = !animate || self.reduced_motion;
         let mut landing = Vec::new();
         let target = Self::target(entry);
@@ -1096,7 +1232,25 @@ impl Composer {
             }
             return;
         }
-        let content = if entry.visible { entry.content } else { None };
+
+        if entry.leaving && !entry.visible {
+            // A leaving window keeps its node only while its slide runs. Without content of the
+            // node's size the node cannot be kept, so the slide ends at once and the node goes.
+            let fits = entry.content.is_some_and(|content| {
+                entry
+                    .node
+                    .is_some_and(|node| self.scene.bounds(node) == Some(Rect::from_size(content.size)))
+            });
+            if !fits {
+                self.settle_leaving(window);
+                return;
+            }
+        }
+        let content = if entry.visible || entry.leaving {
+            entry.content
+        } else {
+            None
+        };
         let node = entry.node;
         let transform = Self::target(entry);
         let effects = entry.effects.clone();
@@ -1950,6 +2104,132 @@ mod tests {
         assert_eq!(composer.windows[&window].transform.opacity, 1.0);
         composer.set_window_opacity(window, -1.0);
         assert_eq!(composer.windows[&window].transform.opacity, 0.0);
+    }
+
+    // A workspace switch slides the windows it hides off the side the new workspace is not on,
+    // and slides the windows it shows in from that side. The slide lasts as long as a fade.
+    #[test]
+    fn a_window_leaving_a_workspace_slides_off_then_loses_its_node() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.set_window_visible(window, false);
+        composer.end_workspace_slide();
+        assert!(!composer.windows[&window].visible, "the window is hidden");
+        assert!(
+            composer.window_matrix(window).is_some(),
+            "it is still drawn while it slides off"
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        let (bounds, _) = drawn_pose(&composer, window);
+        assert!(
+            bounds.x < 20,
+            "it moves off to the left, away from the workspace shown: {bounds:?}"
+        );
+        composer.advance_motion(MOTION_MS * 2);
+        assert!(
+            composer.window_matrix(window).is_none(),
+            "its node goes once it has slid off"
+        );
+        assert!(composer.windows.contains_key(&window), "the window is still known");
+        assert!(!composer.windows[&window].leaving, "no leave outlives its slide");
+        assert!(composer.tracks.is_empty(), "no track outlives the slide");
+    }
+
+    #[test]
+    fn a_window_entering_a_workspace_slides_in_from_the_side_it_lies_on() {
+        let (mut composer, _) = screen();
+        let window = WindowId::new(1);
+        composer.insert_window(window, Rect::new(20, 30, 40, 50));
+        composer.set_window_content(window, Some(content()));
+        composer.advance_motion(MOTION_MS);
+        composer.set_window_visible(window, false);
+        composer.advance_motion(MOTION_MS * 2);
+        assert!(composer.window_matrix(window).is_none(), "a hidden window has no node");
+        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.set_window_visible(window, true);
+        composer.end_workspace_slide();
+        assert_eq!(
+            drawn_pose(&composer, window).0.x,
+            20 + 800,
+            "it starts one output width to the right"
+        );
+        composer.advance_motion(MOTION_MS / 2);
+        let middle = drawn_pose(&composer, window).0.x;
+        assert!(middle > 20 && middle < 820, "it slides in across the output: {middle}");
+        composer.advance_motion(MOTION_MS);
+        assert_eq!(
+            drawn_pose(&composer, window).0.x,
+            20,
+            "it lands where its geometry places it"
+        );
+        assert!(composer.tracks.is_empty(), "no track outlives the slide");
+    }
+
+    // Switching again before a slide lands reverses each window from where it is, so neither
+    // window jumps, and the window hidden last has no node once the slide ends.
+    #[test]
+    fn a_quick_double_switch_neither_jumps_nor_leaks_a_node() {
+        let (mut composer, _) = screen();
+        let leaving = WindowId::new(1);
+        let entering = WindowId::new(2);
+        for window in [leaving, entering] {
+            composer.insert_window(window, Rect::new(20, 30, 40, 50));
+            composer.set_window_content(window, Some(content()));
+        }
+        composer.advance_motion(MOTION_MS);
+        composer.set_window_visible(entering, false);
+        composer.advance_motion(MOTION_MS * 2);
+        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.set_window_visible(leaving, false);
+        composer.set_window_visible(entering, true);
+        composer.end_workspace_slide();
+        composer.advance_motion(MOTION_MS / 2);
+        let before = [drawn_pose(&composer, leaving).0.x, drawn_pose(&composer, entering).0.x];
+        composer.begin_workspace_slide(WorkspaceDirection::Earlier);
+        composer.set_window_visible(leaving, true);
+        composer.set_window_visible(entering, false);
+        composer.end_workspace_slide();
+        let after = [drawn_pose(&composer, leaving).0.x, drawn_pose(&composer, entering).0.x];
+        assert_eq!(before, after, "reversing mid-slide does not jump");
+        composer.advance_motion(MOTION_MS * 2);
+        assert_eq!(
+            drawn_pose(&composer, leaving).0.x,
+            20,
+            "the window shown again lands at rest"
+        );
+        assert!(
+            composer.window_matrix(entering).is_none(),
+            "the window hidden again has no node"
+        );
+        assert!(!composer.windows[&entering].leaving, "no leave outlives its slide");
+        assert!(composer.tracks.is_empty(), "no track outlives the slides");
+    }
+
+    #[test]
+    fn a_workspace_switch_with_reduced_motion_does_not_slide() {
+        let (mut composer, _) = screen();
+        composer.set_reduced_motion(true);
+        let leaving = WindowId::new(1);
+        let entering = WindowId::new(2);
+        for window in [leaving, entering] {
+            composer.insert_window(window, Rect::new(20, 30, 40, 50));
+            composer.set_window_content(window, Some(content()));
+        }
+        composer.set_window_visible(entering, false);
+        composer.begin_workspace_slide(WorkspaceDirection::Later);
+        composer.set_window_visible(leaving, false);
+        composer.set_window_visible(entering, true);
+        composer.end_workspace_slide();
+        assert!(
+            composer.window_matrix(leaving).is_none(),
+            "a window leaves at once with motion reduced"
+        );
+        assert_eq!(drawn_pose(&composer, entering).0.x, 20, "and enters at once");
+        assert!(composer.tracks.is_empty(), "no slide is started");
     }
 
     /// The rectangle and opacity `window` is drawn at. Compose builds each surface's destination

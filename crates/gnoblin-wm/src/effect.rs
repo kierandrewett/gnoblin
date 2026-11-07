@@ -14,6 +14,19 @@ use crate::rules::WorkspaceSelector;
 use crate::tiled::TiledEdges;
 use crate::window::WindowState;
 
+/// Which way the active workspace moved in the workspace order.
+///
+/// The renderer slides the outgoing windows off the side the new workspace is not on, so a
+/// switch from workspace 1 to 2 moves content left, and back again moves it right. A switch
+/// with no order to read, such as the removal of the active workspace, carries no direction.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WorkspaceDirection {
+    /// The new workspace comes after the old one in the order.
+    Later,
+    /// The new workspace comes before the old one in the order.
+    Earlier,
+}
+
 /// Why a rule could not be applied.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RuleRejection {
@@ -77,6 +90,8 @@ pub enum Effect {
     WorkspaceShown {
         /// The workspace now shown on the outputs.
         workspace: WorkspaceId,
+        /// Which way the workspace moved, or `None` when the order gives no direction.
+        direction: Option<WorkspaceDirection>,
     },
     /// A rule could not be applied to a newly managed window.
     RuleRejected {
@@ -149,8 +164,8 @@ impl Effect {
     }
 
     /// A workspace effect.
-    pub(crate) fn workspace_shown(workspace: WorkspaceId) -> Self {
-        Self::WorkspaceShown { workspace }
+    pub(crate) fn workspace_shown(workspace: WorkspaceId, direction: Option<WorkspaceDirection>) -> Self {
+        Self::WorkspaceShown { workspace, direction }
     }
 
     /// A rule-rejection effect.

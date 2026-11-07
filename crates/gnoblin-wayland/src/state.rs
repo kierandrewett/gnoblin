@@ -1261,7 +1261,14 @@ impl State {
                 Effect::ActivationDenied { window } => {
                     log::debug!(area = "focus", %window, "activation refused by the caller");
                 }
-                Effect::WorkspaceShown { workspace } => log::debug!(area = "workspace", %workspace, "shown"),
+                Effect::WorkspaceShown { workspace, direction } => {
+                    // The switch's visibility changes follow this effect in the same batch, so
+                    // they see the slide begun here.
+                    if let Some(direction) = direction {
+                        self.composer.begin_workspace_slide(direction);
+                    }
+                    log::debug!(area = "workspace", %workspace, ?direction, "shown");
+                }
                 Effect::RuleRejected { window, rule, reason } => {
                     log::warn!(area = "rules", %window, rule, ?reason, "rule did not apply")
                 }
@@ -1276,6 +1283,7 @@ impl State {
                 Effect::LayoutFailed { workspace, reason } => self.layout_failed(workspace, reason),
             }
         }
+        self.composer.end_workspace_slide();
     }
 
     /// Applies a configure to a toplevel and sends it if the client is ready for it.

@@ -4,7 +4,8 @@
 use gnoblin_types::{Insets, OutputId, Rect, Tick, WindowId, WorkspaceId};
 use gnoblin_wm::{
     ActivationDecision, DragConstraint, Effect, Event, FocusMode, MAX_RULES, Match, Pattern, PlacementMode, Rejection,
-    Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceSelector,
+    Rule, RuleError, RuleFields, RuleRejection, SnapZone, WindowSpec, Wm, WmOptions, WorkspaceDirection,
+    WorkspaceSelector,
 };
 
 const MONITOR: Rect = Rect::new(0, 0, 1920, 1080);
@@ -1360,5 +1361,33 @@ fn a_closed_secure_window_leaves_no_secure_record() {
     ));
     wm.apply(Event::WindowClosed { window: window(1) });
     assert_eq!(secure_of(&wm, 1), None, "the closed window has no surface record");
+    check(&wm);
+}
+
+// A workspace switch tells the renderer which way the new workspace lies in the order, so the
+// windows can slide the right way. Without it a switch cannot be told from a jump.
+#[test]
+fn a_workspace_switch_reports_which_way_the_new_workspace_lies() {
+    let mut wm = default_wm();
+    let effects = wm.apply(Event::WorkspaceActivated {
+        workspace: WorkspaceId::new(2),
+    });
+    assert!(
+        effects.contains(&Effect::WorkspaceShown {
+            workspace: WorkspaceId::new(2),
+            direction: Some(WorkspaceDirection::Later),
+        }),
+        "moving to a later workspace slides towards the later side: {effects:?}"
+    );
+    let effects = wm.apply(Event::WorkspaceActivated {
+        workspace: WorkspaceId::new(1),
+    });
+    assert!(
+        effects.contains(&Effect::WorkspaceShown {
+            workspace: WorkspaceId::new(1),
+            direction: Some(WorkspaceDirection::Earlier),
+        }),
+        "moving back to an earlier workspace slides the other way: {effects:?}"
+    );
     check(&wm);
 }
