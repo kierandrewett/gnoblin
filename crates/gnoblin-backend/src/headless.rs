@@ -774,7 +774,7 @@ mod tests {
     use gnoblin_types::Point;
 
     use super::*;
-    use gnoblin_render_frame::frame::{Layer, Solid};
+    use gnoblin_render_frame::frame::{Layer, Overlay, Solid};
 
     /// A host that describes one red rectangle and records what it was asked.
     #[derive(Default)]
@@ -947,6 +947,46 @@ mod tests {
             image.colour_at(1, 1),
             Some([255, 0, 0, 255]),
             "the frame the host described is in the buffer"
+        );
+    }
+
+    /// A host that describes a secure red square, with an ordinary blue overlay beside it.
+    struct SecureScene;
+
+    impl Host for SecureScene {
+        fn begin_frame(&mut self) {}
+
+        fn frame(&mut self, _output: OutputId, frame: &mut OutputFrame) -> bool {
+            frame.set_background(gnoblin_types::Color::BLACK);
+            frame.push_damage(Rect::new(0, 0, 8, 8));
+            let mut secret = Solid::new(Rect::new(0, 0, 4, 4), gnoblin_types::Color::from_rgba8(255, 0, 0, 255));
+            secret.secure = true;
+            frame.push_layer(Layer::Solid(secret));
+            let blue = Image::new(Size::new(2, 2), 8, [0, 0, 255, 255].repeat(4)).expect("a 2x2 image");
+            let overlay = Overlay::new(Rect::new(4, 4, 2, 2), &blue).expect("an overlay");
+            frame.push_layer(Layer::Overlay(overlay));
+            true
+        }
+
+        fn input(&mut self, _event: InputEvent) {}
+    }
+
+    #[test]
+    fn a_capture_masks_a_secure_layer_and_keeps_an_ordinary_overlay() {
+        let mut backend = Headless::new();
+        let output = backend.outputs[0].id;
+        let mut host = SecureScene;
+        assert_eq!(backend.render(&mut host, output), Ok(Present::Nothing));
+        let image = backend.capture(output, false).expect("a readback");
+        let [red, green, blue, alpha] = image.colour_at(1, 1).expect("a pixel inside the secure layer");
+        assert!(
+            red == green && green == blue && alpha == 255 && (100..=155).contains(&red),
+            "the secure layer reads as the neutral mask, not red"
+        );
+        assert_eq!(
+            image.colour_at(5, 5),
+            Some([0, 0, 255, 255]),
+            "an ordinary overlay is in a capture"
         );
     }
 
