@@ -60,7 +60,7 @@ pub async fn serve(store_path: &Path, socket: &Path) -> zbus::Result<Connection>
     let exported = Arc::clone(&state);
     // Called on the hand-off thread once the store is open, so the collections appear on the bus.
     let on_unlock = Box::new(move || {
-        if let Err(error) = block_on(objects::export_tree(&exporter.object_server(), &exported)) {
+        if let Err(error) = block_on(objects::export_tree(exporter.object_server(), &exported)) {
             log::warn!("the collections could not be exported: {error:?}");
         }
     });
